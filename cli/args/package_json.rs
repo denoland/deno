@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -34,13 +37,22 @@ pub fn parse_dep_entry_name_and_raw_version<'a>(
 /// entries to npm specifiers which can then be used in the resolver.
 pub fn get_local_package_json_version_reqs(
   package_json: &PackageJson,
-) -> Result<HashMap<String, NpmPackageReq>, AnyError> {
+) -> Result<BTreeMap<String, NpmPackageReq>, AnyError> {
   fn insert_deps(
     deps: Option<&HashMap<String, String>>,
-    result: &mut HashMap<String, NpmPackageReq>,
+    result: &mut BTreeMap<String, NpmPackageReq>,
   ) -> Result<(), AnyError> {
     if let Some(deps) = deps {
       for (key, value) in deps {
+        if value.starts_with("workspace:")
+          || value.starts_with("file:")
+          || value.starts_with("git:")
+          || value.starts_with("http:")
+          || value.starts_with("https:")
+        {
+          // skip these specifiers for now
+          continue;
+        }
         let (name, version_req) =
           parse_dep_entry_name_and_raw_version(key, value)?;
 
@@ -71,9 +83,7 @@ pub fn get_local_package_json_version_reqs(
 
   let deps = package_json.dependencies.as_ref();
   let dev_deps = package_json.dev_dependencies.as_ref();
-  let mut result = HashMap::with_capacity(
-    deps.map(|d| d.len()).unwrap_or(0) + dev_deps.map(|d| d.len()).unwrap_or(0),
-  );
+  let mut result = BTreeMap::new();
 
   // insert the dev dependencies first so the dependencies will
   // take priority and overwrite any collisions
@@ -81,6 +91,44 @@ pub fn get_local_package_json_version_reqs(
   insert_deps(deps, &mut result)?;
 
   Ok(result)
+}
+
+/// Attempts to discover the package.json file, maybe stopping when it
+/// reaches the specified `maybe_stop_at` directory.
+pub fn discover_from(
+  start: &Path,
+  maybe_stop_at: Option<PathBuf>,
+) -> Result<Option<PackageJson>, AnyError> {
+  const PACKAGE_JSON_NAME: &str = "package.json";
+
+  // note: ancestors() includes the `start` path
+  for ancestor in start.ancestors() {
+    let path = ancestor.join(PACKAGE_JSON_NAME);
+
+    let source = match std::fs::read_to_string(&path) {
+      Ok(source) => source,
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        if let Some(stop_at) = maybe_stop_at.as_ref() {
+          if ancestor == stop_at {
+            break;
+          }
+        }
+        continue;
+      }
+      Err(err) => bail!(
+        "Error loading package.json at {}. {:#}",
+        path.display(),
+        err
+      ),
+    };
+
+    let package_json = PackageJson::load_from_string(path.clone(), source)?;
+    log::debug!("package.json file found at '{}'", path.display());
+    return Ok(Some(package_json));
+  }
+
+  log::debug!("No package.json file found");
+  Ok(None)
 }
 
 #[cfg(test)]
@@ -126,7 +174,7 @@ mod test {
     let result = get_local_package_json_version_reqs(&package_json).unwrap();
     assert_eq!(
       result,
-      HashMap::from([
+      BTreeMap::from([
         (
           "test".to_string(),
           NpmPackageReq::from_str("test@^1.2").unwrap()
@@ -162,6 +210,27 @@ mod test {
         "   - 1.3\n",
         "  ~"
       )
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_skips_certain_specifiers() {
+    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
+    package_json.dependencies = Some(HashMap::from([
+      ("test".to_string(), "1".to_string()),
+      ("work".to_string(), "workspace:1.1.1".to_string()),
+      ("file".to_string(), "file:something".to_string()),
+      ("git".to_string(), "git:something".to_string()),
+      ("http".to_string(), "http://something".to_string()),
+      ("https".to_string(), "https://something".to_string()),
+    ]));
+    let result = get_local_package_json_version_reqs(&package_json).unwrap();
+    assert_eq!(
+      result,
+      BTreeMap::from([(
+        "test".to_string(),
+        NpmPackageReq::from_str("test@1").unwrap()
+      )])
     );
   }
 }

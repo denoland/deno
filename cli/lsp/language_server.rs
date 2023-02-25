@@ -9,12 +9,14 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
 use serde_json::from_value;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -58,6 +60,7 @@ use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
+use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
 use crate::args::CaData;
 use crate::args::CacheSetting;
@@ -130,6 +133,8 @@ pub struct Inner {
   maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// An optional package.json configuration file.
+  maybe_package_json: Option<PackageJson>,
   /// Configuration for formatter which has been taken from specified config file.
   fmt_options: FmtOptions,
   /// An optional configuration for linter which has been taken from specified config file.
@@ -376,6 +381,7 @@ impl Inner {
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
+      maybe_package_json: None,
       fmt_options: Default::default(),
       lint_options: Default::default(),
       maybe_testing_server: None,
@@ -456,8 +462,6 @@ impl Inner {
     Ok(navigation_tree)
   }
 
-  /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
-  /// If there's no config file specified in settings returns `None`.
   fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
     let workspace_settings = self.config.get_workspace_settings();
     let maybe_config = workspace_settings.config;
@@ -494,6 +498,28 @@ impl Inner {
       let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
       Ok(maybe_config.map(|c| {
         lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
+        c
+      }))
+    } else {
+      Ok(None)
+    }
+  }
+
+  fn get_package_json(
+    &self,
+    maybe_config_file: Option<&ConfigFile>,
+  ) -> Result<Option<PackageJson>, AnyError> {
+    // It is possible that root_uri is not set, for example when having a single
+    // file open and not a workspace.  In those situations we can't
+    // automatically discover the configuration
+    if let Some(root_uri) = &self.config.root_uri {
+      let root_path = specifier_to_file_path(root_uri)?;
+      let maybe_package_json = package_json::discover_from(
+        &root_path,
+        maybe_config_file.and_then(|f| f.specifier.to_file_path().ok()),
+      )?;
+      Ok(maybe_package_json.map(|c| {
+        lsp_log!("  Auto-resolved package.json: \"{}\"", c.specifier());
         c
       }))
     } else {
@@ -814,6 +840,15 @@ impl Inner {
     Ok(())
   }
 
+  /// Updates the package.json. Always ensure this is done after updating
+  /// the configuration file as the resolution of this depends on that.
+  fn update_package_json(&mut self) -> Result<(), AnyError> {
+    self.maybe_package_json = None;
+    self.maybe_package_json =
+      self.get_package_json(self.maybe_config_file.as_ref())?;
+    Ok(())
+  }
+
   async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_tsconfig", None::<()>);
     let mut tsconfig = TsConfig::new(json!({
@@ -923,6 +958,9 @@ impl Inner {
     if let Err(err) = self.update_config_file() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
+    if let Err(err) = self.update_package_json() {
+      self.client.show_message(MessageType::WARNING, err).await;
+    }
     if let Err(err) = self.update_tsconfig().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
@@ -950,6 +988,7 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
     );
@@ -1129,6 +1168,9 @@ impl Inner {
     if let Err(err) = self.update_config_file() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
+    if let Err(err) = self.update_package_json() {
+      self.client.show_message(MessageType::WARNING, err).await;
+    }
     if let Err(err) = self.update_import_map().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
@@ -1139,6 +1181,7 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
     );
@@ -1155,15 +1198,15 @@ impl Inner {
       .performance
       .mark("did_change_watched_files", Some(&params));
     let mut touched = false;
-    let changes: Vec<Url> = params
+    let changes: HashSet<Url> = params
       .changes
       .iter()
       .map(|f| self.url_map.normalize_url(&f.uri))
       .collect();
 
-    // if the current tsconfig has changed, we need to reload it
+    // if the current deno.json has changed, we need to reload it
     if let Some(config_file) = &self.maybe_config_file {
-      if changes.iter().any(|uri| config_file.specifier == *uri) {
+      if changes.contains(&config_file.specifier) {
         if let Err(err) = self.update_config_file() {
           self.client.show_message(MessageType::WARNING, err).await;
         }
@@ -1173,10 +1216,19 @@ impl Inner {
         touched = true;
       }
     }
-    // if the current import map, or config file has changed, we need to reload
+    if let Some(package_json) = &self.maybe_package_json {
+      // always update the package json if the deno config changes
+      if touched || changes.contains(&package_json.specifier()) {
+        if let Err(err) = self.update_package_json() {
+          self.client.show_message(MessageType::WARNING, err).await;
+        }
+        touched = true;
+      }
+    }
+    // if the current import map, or config file has changed, we need to
     // reload the import map
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if changes.iter().any(|uri| import_map_uri == uri) || touched {
+      if touched || changes.contains(import_map_uri) {
         if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::WARNING, err).await;
         }
@@ -1187,6 +1239,7 @@ impl Inner {
       self.documents.update_config(
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
+        self.maybe_package_json.as_ref(),
         self.npm_resolver.api().clone(),
         self.npm_resolver.resolution().clone(),
       );

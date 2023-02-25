@@ -3,6 +3,7 @@
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsConfigType;
+use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::TypeCheckCache;
@@ -16,6 +17,7 @@ use crate::tools::check;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -24,7 +26,11 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::Semaphore;
+use tokio::sync::SemaphorePermit;
 
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
@@ -155,14 +161,13 @@ pub async fn create_graph_and_maybe_check(
     ps.options.node_modules_dir_specifier(),
   );
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_package_json_deps = ps.options.maybe_package_json_deps()?;
   let cli_resolver = CliGraphResolver::new(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
     ps.options.no_npm(),
     ps.npm_resolver.api().clone(),
     ps.npm_resolver.resolution().clone(),
-    maybe_package_json_deps,
+    ps.package_json_deps_installer.clone(),
   );
   let graph_resolver = cli_resolver.as_graph_resolver();
   let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -306,6 +311,111 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
+#[derive(Default, Debug)]
+struct GraphData {
+  graph: Arc<ModuleGraph>,
+  checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
+}
+
+/// Holds the `ModuleGraph` and what parts of it are type checked.
+#[derive(Clone)]
+pub struct ModuleGraphContainer {
+  update_semaphore: Arc<Semaphore>,
+  graph_data: Arc<RwLock<GraphData>>,
+}
+
+impl Default for ModuleGraphContainer {
+  fn default() -> Self {
+    Self {
+      update_semaphore: Arc::new(Semaphore::new(1)),
+      graph_data: Default::default(),
+    }
+  }
+}
+
+impl ModuleGraphContainer {
+  /// Acquires a permit to modify the module graph without other code
+  /// having the chance to modify it. In the meantime, other code may
+  /// still read from the existing module graph.
+  pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
+    let permit = self.update_semaphore.acquire().await.unwrap();
+    ModuleGraphUpdatePermit {
+      permit,
+      graph_data: self.graph_data.clone(),
+      graph: (*self.graph_data.read().graph).clone(),
+    }
+  }
+
+  pub fn graph(&self) -> Arc<ModuleGraph> {
+    self.graph_data.read().graph.clone()
+  }
+
+  /// Mark `roots` and all of their dependencies as type checked under `lib`.
+  /// Assumes that all of those modules are known.
+  pub fn set_type_checked(&self, roots: &[ModuleSpecifier], lib: TsTypeLib) {
+    // It's ok to analyze and update this while the module graph itself is
+    // being updated in a permit because the module graph update is always
+    // additive and this will be a subset of the original graph
+    let graph = self.graph();
+    let entries = graph.walk(
+      roots,
+      deno_graph::WalkOptions {
+        check_js: true,
+        follow_dynamic: true,
+        follow_type_only: true,
+      },
+    );
+
+    // now update
+    let mut data = self.graph_data.write();
+    let checked_lib_set = data.checked_libs.entry(lib).or_default();
+    for (specifier, _) in entries {
+      checked_lib_set.insert(specifier.clone());
+    }
+  }
+
+  /// Check if `roots` are all marked as type checked under `lib`.
+  pub fn is_type_checked(
+    &self,
+    roots: &[ModuleSpecifier],
+    lib: TsTypeLib,
+  ) -> bool {
+    let data = self.graph_data.read();
+    match data.checked_libs.get(&lib) {
+      Some(checked_lib_set) => roots.iter().all(|r| {
+        let found = data.graph.resolve(r);
+        checked_lib_set.contains(&found)
+      }),
+      None => false,
+    }
+  }
+}
+
+/// A permit for updating the module graph. When complete and
+/// everything looks fine, calling `.commit()` will store the
+/// new graph in the ModuleGraphContainer.
+pub struct ModuleGraphUpdatePermit<'a> {
+  permit: SemaphorePermit<'a>,
+  graph_data: Arc<RwLock<GraphData>>,
+  graph: ModuleGraph,
+}
+
+impl<'a> ModuleGraphUpdatePermit<'a> {
+  /// Gets the module graph for mutation.
+  pub fn graph_mut(&mut self) -> &mut ModuleGraph {
+    &mut self.graph
+  }
+
+  /// Saves the mutated module graph in the container
+  /// and returns an Arc to the new module graph.
+  pub fn commit(self) -> Arc<ModuleGraph> {
+    let graph = Arc::new(self.graph);
+    self.graph_data.write().graph = graph.clone();
+    drop(self.permit); // explicit drop for clarity
+    graph
+  }
+}
+
 #[cfg(test)]
 mod test {
   use std::sync::Arc;
@@ -332,6 +442,7 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
+          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
@@ -348,6 +459,7 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
+          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },

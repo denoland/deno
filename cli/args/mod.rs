@@ -49,7 +49,7 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -391,49 +391,13 @@ fn discover_package_json(
   flags: &Flags,
   maybe_stop_at: Option<PathBuf>,
 ) -> Result<Option<PackageJson>, AnyError> {
-  fn discover_from(
-    start: &Path,
-    maybe_stop_at: Option<PathBuf>,
-  ) -> Result<Option<PackageJson>, AnyError> {
-    const PACKAGE_JSON_NAME: &str = "package.json";
-
-    // note: ancestors() includes the `start` path
-    for ancestor in start.ancestors() {
-      let path = ancestor.join(PACKAGE_JSON_NAME);
-
-      let source = match std::fs::read_to_string(&path) {
-        Ok(source) => source,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-          if let Some(stop_at) = maybe_stop_at.as_ref() {
-            if ancestor == stop_at {
-              break;
-            }
-          }
-          continue;
-        }
-        Err(err) => bail!(
-          "Error loading package.json at {}. {:#}",
-          path.display(),
-          err
-        ),
-      };
-
-      let package_json = PackageJson::load_from_string(path.clone(), source)?;
-      log::debug!("package.json file found at '{}'", path.display());
-      return Ok(Some(package_json));
-    }
-    // No config file found.
-    log::debug!("No package.json file found");
-    Ok(None)
-  }
-
   // TODO(bartlomieju): discover for all subcommands, but print warnings that
   // `package.json` is ignored in bundle/compile/etc.
 
   if let Some(package_json_dir) = flags.package_json_search_dir() {
     let package_json_dir =
       canonicalize_path_maybe_not_exists(&package_json_dir)?;
-    return discover_from(&package_json_dir, maybe_stop_at);
+    return package_json::discover_from(&package_json_dir, maybe_stop_at);
   }
 
   log::debug!("No package.json file found");
@@ -604,7 +568,12 @@ impl CliOptions {
     let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
 
     let mut maybe_package_json = None;
-    if let Some(config_file) = &maybe_config_file {
+    if flags.config_flag == ConfigFlag::Disabled
+      || flags.no_npm
+      || has_flag_env_var("DENO_NO_PACKAGE_JSON")
+    {
+      log::debug!("package.json auto-discovery is disabled")
+    } else if let Some(config_file) = &maybe_config_file {
       let specifier = config_file.specifier.clone();
       if specifier.scheme() == "file" {
         let maybe_stop_at = specifier
@@ -618,6 +587,7 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None)?;
     }
+
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Self::new(
@@ -835,7 +805,7 @@ impl CliOptions {
 
   pub fn maybe_package_json_deps(
     &self,
-  ) -> Result<Option<HashMap<String, NpmPackageReq>>, AnyError> {
+  ) -> Result<Option<BTreeMap<String, NpmPackageReq>>, AnyError> {
     if matches!(
       self.flags.subcommand,
       DenoSubcommand::Task(TaskFlags { task: None, .. })
@@ -1168,10 +1138,12 @@ fn resolve_files(
 
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &Flags) -> bool {
-  flags.no_prompt || {
-    let value = env::var("DENO_NO_PROMPT");
-    matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
-  }
+  flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+}
+
+fn has_flag_env_var(name: &str) -> bool {
+  let value = env::var(name);
+  matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
 }
 
 #[cfg(test)]

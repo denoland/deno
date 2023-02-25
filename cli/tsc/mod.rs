@@ -556,7 +556,19 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
           media_type = MediaType::Json;
           Some(Cow::Borrowed(&*module.source))
         }
-        Module::External(_) | Module::Npm(_) | Module::Node(_) => None,
+        Module::Npm(_) | Module::Node(_) => None,
+        Module::External(module) => {
+          // means it's Deno code importing an npm module
+          let specifier =
+            node::resolve_specifier_into_node_modules(&module.specifier);
+          media_type = MediaType::from(&specifier);
+          let file_path = specifier.to_file_path().unwrap();
+          let code =
+            std::fs::read_to_string(&file_path).with_context(|| {
+              format!("Unable to load {}", file_path.display())
+            })?;
+          Some(Cow::Owned(code))
+        }
       }
     } else if state
       .maybe_npm_resolver
@@ -718,7 +730,17 @@ fn resolve_graph_specifier_types(
         Ok(None)
       }
     }
-    Some(Module::External(_) | Module::Node(_)) | None => Ok(None),
+    Some(Module::External(module)) => {
+      // we currently only use "External" for when the module is in an npm package
+      Ok(state.maybe_npm_resolver.as_ref().map(|npm_resolver| {
+        let specifier =
+          node::resolve_specifier_into_node_modules(&module.specifier);
+        NodeResolution::into_specifier_and_media_type(
+          node::url_to_node_resolution(specifier, npm_resolver).ok(),
+        )
+      }))
+    }
+    Some(Module::Node(_)) | None => Ok(None),
   }
 }
 
