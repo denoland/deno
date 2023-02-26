@@ -364,7 +364,7 @@ class ClientRequest extends NodeWritable {
       this.once("timeout", callback);
     }
     if (this.#timeout) clearTimeout(this.#timeout);
-    
+
     this.#timeout = setTimeout(() => {
       this.emit("timeout");
     }, timeout);
