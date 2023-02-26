@@ -32,7 +32,6 @@ import {
   createWritableStdioStream,
   initStdin,
 } from "internal:deno_node/polyfills/_process/streams.mjs";
-import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
 import {
   enableNextTick,
   processTicksAndRejections,
@@ -752,16 +751,16 @@ internals.__bootstrapNodeProcess = function (
   });
 
   // Initializes stdin
-  stdin = stdio.stdin = process.stdin = initStdin();
+  stdin = process.stdin = initStdin();
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = stdio.stderr = process.stderr = createWritableStdioStream(
+  stderr = process.stderr = createWritableStdioStream(
     files.stderr,
     "stderr",
   );
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdio.stdout = process.stdout = createWritableStdioStream(
+  stdout = process.stdout = createWritableStdioStream(
     files.stdout,
     "stdout",
   );
