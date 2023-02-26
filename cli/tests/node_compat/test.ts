@@ -79,9 +79,10 @@ for await (const path of testPaths) {
       });
       const { code, stdout, stderr } = await command.output();
 
-      if (stdout.length && hasFilters) console.log(decoder.decode(stdout));
-
       if (code !== 0) {
+        // If the test case failed, show the stdout, stderr, and instruction
+        // for repeating the single test case.
+        if (stdout.length) console.log(decoder.decode(stdout));
         console.log(`Error: "${path}" failed`);
         console.log(
           "You can repeat only this test with the command:",
@@ -90,6 +91,11 @@ for await (const path of testPaths) {
           ),
         );
         fail(decoder.decode(stderr));
+      } else if (hasFilters) {
+        // Even if the test case is successful, shows the stdout and stderr
+        // when test case filtering is specified.
+        if (stdout.length) console.log(decoder.decode(stdout));
+        if (stderr.length) console.log(decoder.decode(stderr));
       }
     },
   });
