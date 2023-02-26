@@ -107,7 +107,6 @@ fn op_unit_result_fast_fn<'scope>(
         Err(err) => {
             op_state.last_fast_op_error.replace(err);
             __opts.fallback = true;
-            Default::default()
         }
     }
 }
