@@ -746,7 +746,7 @@
       "test-util-isDeepStrictEqual.js",
       "test-util-promisify.js",
       "test-util-types-exists.js",
-      "TODO:test-util-types.js",
+      "test-util-types.js",
       "test-util.js",
       "test-vm-static-this.js",
       "test-webcrypto-sign-verify.js",
