@@ -9,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
-use crate::args::CliOptions;
 use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::file_fetcher::File;
@@ -29,11 +28,8 @@ To grant permissions, set them before the script argument. For example:
     );
   }
 
-  let cli_options = CliOptions::from_flags(flags.clone())?;
-  let main_module = cli_options.resolve_main_module().unwrap()?;
-
   if flags.watch.is_some() {
-    return run_with_watch(flags, main_module).await;
+    return run_with_watch(flags).await;
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
@@ -47,6 +43,8 @@ To grant permissions, set them before the script argument. For example:
     ps.http_client.clone(),
     ps.dir.upgrade_check_file_path(),
   );
+
+  let main_module = ps.options.resolve_main_module().unwrap()?;
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
@@ -91,14 +89,12 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
-async fn run_with_watch(
-  flags: Flags,
-  main_module: ModuleSpecifier,
-) -> Result<i32, AnyError> {
+async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
   let mut ps =
     ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
+  let main_module = ps.options.resolve_main_module().unwrap()?;
 
   let operation = |main_module: ModuleSpecifier| {
     ps.reset_for_file_watcher();
