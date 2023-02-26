@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use test_util as util;
-
 itest!(ignore_unexplicit_files {
   args: "lint --unstable --ignore=./",
   output_str: Some("error: No target files found.\n"),

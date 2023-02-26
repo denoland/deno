@@ -3,6 +3,7 @@
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_pemfile;
+use lsp_types::Url;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
@@ -11,6 +12,10 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
+use util::assert_exit_code;
+use util::assert_output_text;
+use util::TestCommandBuilder;
+use util::TestContextBuilder;
 
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cert/cafile_url_imports.ts",
@@ -73,77 +78,48 @@ itest!(localhost_unsafe_ssl {
 
 #[flaky_test::flaky_test]
 fn cafile_env_fetch() {
-  use deno_core::url::Url;
-  let _g = util::http_server();
-  let deno_dir = TempDir::new();
   let module_url =
     Url::parse("https://localhost:5545/cert/cafile_url_imports.ts").unwrap();
-  let cafile = util::testdata_path().join("tls/RootCA.pem");
-  let output = Command::new(util::deno_exe_path())
-    .env("DENO_DIR", deno_dir.path())
-    .env("DENO_CERT", cafile)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(module_url.to_string())
-    .output()
-    .expect("Failed to spawn script");
-  assert!(output.status.success());
+  let context = TestContextBuilder::new().use_http_server().build();
+  let cafile = context.testdata_path().join("tls/RootCA.pem");
+  let output = TestCommandBuilder::new()
+    .args(format!("cache {}", module_url.to_string()))
+    .env("DENO_CERT", cafile.to_string_lossy())
+    .run(&context);
+
+  assert_exit_code!(output, 0);
+  output.skip_output_check();
 }
 
 #[flaky_test::flaky_test]
 fn cafile_fetch() {
-  use deno_core::url::Url;
-  let _g = util::http_server();
-  let deno_dir = TempDir::new();
   let module_url =
     Url::parse("http://localhost:4545/cert/cafile_url_imports.ts").unwrap();
-  let cafile = util::testdata_path().join("tls/RootCA.pem");
-  let output = Command::new(util::deno_exe_path())
-    .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg("--cert")
-    .arg(cafile)
-    .arg(module_url.to_string())
-    .output()
-    .expect("Failed to spawn script");
-  assert!(output.status.success());
-  let out = std::str::from_utf8(&output.stdout).unwrap();
-  assert_eq!(out, "");
+  let context = TestContextBuilder::new().use_http_server().build();
+  let cafile = context.testdata_path().join("tls/RootCA.pem");
+  let output = TestCommandBuilder::new()
+    .args(format!("cache --cert {}", module_url.to_string()))
+    .env("DENO_CERT", cafile.to_string_lossy())
+    .run(&context);
+
+  assert_exit_code!(output, 0);
+  assert_output_text!(output, "");
 }
 
 #[test]
 fn cafile_compile() {
-  let _g = util::http_server();
+  let context = TestContextBuilder::new().use_http_server().build();
   let dir = TempDir::new();
   let exe = if cfg!(windows) {
     dir.path().join("cert.exe")
   } else {
     dir.path().join("cert")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--cert")
-    .arg("./tls/RootCA.pem")
-    .arg("--allow-net")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./cert/cafile_ts_fetch.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"[WILDCARD]\nHello\n")
+  let output = TestCommandBuilder::new()
+    .args(format!("compile --cert ./tls/RootCA.pem --allow-net --output {} ./cert/cafile_ts_fetch.ts", exe.to_string_lossy()))
+    .run(&context);
+
+  assert_output_text!(output, "[WILDCARD]\nHello\n");
 }
 
 #[flaky_test::flaky_test]

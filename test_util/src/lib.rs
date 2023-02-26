@@ -15,7 +15,6 @@ use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
-use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use rustls::Certificate;
@@ -54,11 +53,16 @@ use tokio_tungstenite::accept_async;
 use url::Url;
 
 pub mod assertions;
+mod builders;
 pub mod lsp;
 mod npm;
 pub mod pty;
 mod temp_dir;
 
+pub use builders::TestCommandBuilder;
+pub use builders::TestCommandOutput;
+pub use builders::TestContext;
+pub use builders::TestContextBuilder;
 pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
@@ -1927,43 +1931,6 @@ pub fn run_powershell_script_file(
   Ok(())
 }
 
-pub struct TestContext<'a> {
-  options: TestContextOptions<'a>,
-  _http_server_guard: Option<HttpServerGuard>,
-  deno_dir: TempDir,
-  testdata_dir: PathBuf,
-}
-
-impl<'a> TestContext<'a> {
-  pub fn create(options: TestContextOptions<'a>) -> Self {
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let testdata_dir = if let Some(temp_copy_dir) = &options.copy_temp_dir {
-      let test_data_path = testdata_path().join(temp_copy_dir);
-      let temp_copy_dir = deno_dir.path().join(temp_copy_dir);
-      std::fs::create_dir_all(&temp_copy_dir).unwrap();
-      copy_dir_recursive(&test_data_path, &temp_copy_dir).unwrap();
-      deno_dir.path().to_owned()
-    } else {
-      testdata_path()
-    };
-
-    let deno_exe = deno_exe_path();
-    println!("deno_exe path {}", deno_exe.display());
-
-    let http_server_guard = if options.http_server {
-      Some(http_server())
-    } else {
-      None
-    };
-    Self {
-      options,
-      _http_server_guard: http_server_guard,
-      deno_dir,
-      testdata_dir,
-    }
-  }
-}
-
 #[derive(Debug, Default)]
 pub struct CheckOutputIntegrationTest<'a> {
   pub args: &'a str,
@@ -1985,180 +1952,44 @@ pub struct CheckOutputIntegrationTest<'a> {
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
-  pub fn run(self) {
-    let context = TestContext::create(TestContextOptions {
-      temp_cwd: self.temp_cwd,
-      copy_temp_dir: self.copy_temp_dir,
-      http_server: self.http_server,
-      cwd: None,
-      envs: Default::default(),
-    });
-    CheckOutputIntegrationTestCommandStep {
-      args: self.args,
-      args_vec: self.args_vec,
-      cwd: self.cwd,
-      env_clear: self.env_clear,
-      envs: self.envs,
-      exit_code: self.exit_code,
-      input: self.input,
-      output: self.output,
-      output_str: self.output_str,
-      skip_output_check: false,
+  pub fn output(&self) -> TestCommandOutput {
+    let mut context_builder = TestContextBuilder::default();
+    if self.temp_cwd {
+      context_builder.use_temp_cwd();
     }
-    .run(&context)
-  }
-}
-
-#[derive(Debug, Default)]
-pub struct CheckOutputIntegrationTestCommandStep<'a> {
-  pub args: &'a str,
-  pub args_vec: Vec<&'a str>,
-  pub skip_output_check: bool,
-  pub output: &'a str,
-  pub input: Option<&'a str>,
-  pub output_str: Option<&'a str>,
-  pub exit_code: i32,
-  pub envs: Vec<(String, String)>,
-  pub env_clear: bool,
-  pub cwd: Option<&'a str>,
-}
-
-impl<'a> CheckOutputIntegrationTestCommandStep<'a> {
-  pub fn run(self, context: &TestContext) {
-    let cwd = if context.options.temp_cwd {
-      assert!(self.cwd.is_none());
-      context.deno_dir.path().to_owned()
-    } else if let Some(cwd_) = self.cwd.or(context.options.cwd) {
-      context.testdata_dir.join(cwd_)
-    } else {
-      context.testdata_dir.clone()
-    };
-    let args = if self.args_vec.is_empty() {
-      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
-    } else {
-      assert!(
-        self.args.is_empty(),
-        "Do not provide args when providing args_vec."
-      );
-      std::borrow::Cow::Borrowed(&self.args_vec)
+    if let Some(dir) = &self.copy_temp_dir {
+      context_builder.use_copy_temp_dir(dir);
     }
-    .iter()
-    .map(|arg| {
-      arg.replace("$TESTDATA", &context.testdata_dir.to_string_lossy())
-    })
-    .collect::<Vec<_>>();
-    let (mut reader, writer) = pipe().unwrap();
-    let mut command = deno_cmd_with_deno_dir(&context.deno_dir);
+    if self.http_server {
+      context_builder.use_http_server();
+    }
 
-    println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &cwd);
-    command.args(args.iter());
+    let context = context_builder.build();
+
+    let mut command_builder = TestCommandBuilder::default();
+
+    if !self.args.is_empty() {
+      command_builder.args(&self.args);
+    }
+    if !self.args_vec.is_empty() {
+      command_builder
+        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+    }
+    if let Some(input) = &self.input {
+      command_builder.stdin(input);
+    }
+    for (key, value) in &self.envs {
+      command_builder.env(key, value);
+    }
     if self.env_clear {
-      command.env_clear();
+      command_builder.env_clear();
     }
-    command.envs({
-      let mut envs = self.envs.clone();
-      for entry in self.envs.clone() {
-        if let Some(index) = envs.iter().position(|(key, _)| key == &entry.0) {
-          envs.remove(index);
-        }
-        envs.push(entry);
-      }
-      envs
-    });
-    command.current_dir(cwd);
-    command.stdin(Stdio::piped());
-    let writer_clone = writer.try_clone().unwrap();
-    command.stderr(writer_clone);
-    command.stdout(writer);
-
-    let mut process = command.spawn().expect("failed to execute process");
-
-    if let Some(input) = self.input {
-      let mut p_stdin = process.stdin.take().unwrap();
-      write!(p_stdin, "{input}").unwrap();
+    if let Some(cwd) = &self.cwd {
+      command_builder.cwd(cwd);
     }
 
-    // Very important when using pipes: This parent process is still
-    // holding its copies of the write ends, and we have to close them
-    // before we read, otherwise the read end will never report EOF. The
-    // Command object owns the writers now, and dropping it closes them.
-    drop(command);
-
-    let mut actual = String::new();
-    reader.read_to_string(&mut actual).unwrap();
-
-    let status = process.wait().expect("failed to finish process");
-
-    if let Some(exit_code) = status.code() {
-      if self.exit_code != exit_code {
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!(
-          "bad exit code, expected: {:?}, actual: {:?}",
-          self.exit_code, exit_code
-        );
-      }
-    } else {
-      #[cfg(unix)]
-      {
-        use std::os::unix::process::ExitStatusExt;
-        let signal = status.signal().unwrap();
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!(
-        "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-        self.exit_code, signal,
-      );
-      }
-      #[cfg(not(unix))]
-      {
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
-      }
-    }
-
-    actual = strip_ansi_codes(&actual).to_string();
-
-    // deno test's output capturing flushes with a zero-width space in order to
-    // synchronize the output pipes. Occassionally this zero width space
-    // might end up in the output so strip it from the output comparison here.
-    if args.first().map(|s| s.as_str()) == Some("test") {
-      actual = actual.replace('\u{200B}', "");
-    }
-
-    if self.skip_output_check {
-      assert_eq!(self.output, "");
-      assert_eq!(self.output_str, None);
-    } else {
-      let expected = if let Some(s) = self.output_str {
-        s.to_owned()
-      } else if self.output.is_empty() {
-        String::new()
-      } else {
-        let output_path = context.testdata_dir.join(self.output);
-        println!("output path {}", output_path.display());
-        std::fs::read_to_string(output_path).expect("cannot read output")
-      };
-
-      if !expected.contains("[WILDCARD]") {
-        assert_eq!(actual, expected)
-      } else if !wildcard_match(&expected, &actual) {
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        println!("EXPECTED\n{expected}\nEXPECTED");
-        panic!("pattern match failed");
-      }
-    }
+    command_builder.run(&context)
   }
-}
-
-pub struct TestContextOptions<'a> {
-  pub http_server: bool,
-  pub temp_cwd: bool,
-  /// Copies the files at the specified directory in the "testdata" directory
-  /// to the temp folder and runs the test from there. This is useful when
-  /// the test creates files in the testdata directory (ex. a node_modules folder)
-  pub copy_temp_dir: Option<&'a str>,
-  pub cwd: Option<&'a str>,
-  pub envs: Vec<(String, String)>,
 }
 
 pub fn wildcard_match(pattern: &str, s: &str) -> bool {

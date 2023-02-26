@@ -5,12 +5,21 @@ macro_rules! itest(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[test]
   fn $name() {
-    (test_util::CheckOutputIntegrationTest {
+    let test = test_util::CheckOutputIntegrationTest {
       $(
         $key: $value,
        )*
       .. Default::default()
-    }).run()
+    };
+    let output = test.output();
+
+    output.assert_exit_code(test.exit_code);
+    if !test.output.is_empty() {
+      assert!(test.output_str.is_none());
+      test_util::assert_output_file!(output, test.output);
+    } else {
+      test_util::assert_output_text!(output, test.output_str.unwrap_or(""));
+    }
   }
 }
 );
@@ -20,12 +29,21 @@ macro_rules! itest_flaky(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[flaky_test::flaky_test]
   fn $name() {
-    (test_util::CheckOutputIntegrationTest {
+    let test = test_util::CheckOutputIntegrationTest {
       $(
         $key: $value,
        )*
       .. Default::default()
-    }).run()
+    };
+    let output = test.output();
+
+    output.assert_exit_code(test.exit_code);
+    if !test.output.is_empty() {
+      assert!(test.output_str.is_none());
+      test_util::assert_output_file!(output, test.output);
+    } else {
+      test_util::assert_output_text!(output, test.output_str.unwrap_or(""));
+    }
   }
 }
 );
