@@ -238,6 +238,7 @@ class ClientRequest extends NodeWritable {
   defaultProtocol = "http:";
   body: null | ReadableStream = null;
   controller: ReadableStreamDefaultController | null = null;
+  #timeout: number | null = null;
   constructor(
     public opts: RequestOptions,
     public cb?: (res: IncomingMessageForClient) => void,
@@ -355,8 +356,18 @@ class ClientRequest extends NodeWritable {
     }${path}`;
   }
 
-  setTimeout() {
-    console.log("not implemented: ClientRequest.setTimeout");
+  // It doesn't relies on the underlying socket (as in Node.js),
+  // we only have a dummy socket here anyway
+  // but it's required by some libraries so we just emulate it
+  setTimeout(timeout: number, callback?: () => void) {
+    if (typeof callback === "function") {
+      this.once("timeout", callback);
+    }
+    if (this.#timeout) clearTimeout(this.#timeout);
+    
+    this.#timeout = setTimeout(() => {
+      this.emit("timeout");
+    }, timeout);
   }
 }
 
