@@ -203,7 +203,7 @@ function isFullWidthCodePoint(code) {
   );
 }
 
-function getStringWidth(str) {
+export function getStringWidth(str) {
   str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
   let width = 0;
 
