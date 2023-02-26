@@ -29,7 +29,7 @@ const dylib = Deno.dlopen(
 let retry = false;
 const tripleLogCallback = () => {
   console.log("Sync");
-  Promise.resolve().then(() => {
+  queueMicrotask(() => {
     console.log("Async");
     callback.unref();
   });
@@ -66,7 +66,7 @@ console.log("STORED_FUNCTION called");
 // Wait to make sure synch logging and async logging
 await new Promise((res) => setTimeout(res, 100));
 
-// Ref once to make sure both `Promise.resolve().then()` and `setTimeout()`
+// Ref once to make sure both `queueMicrotask()` and `setTimeout()`
 // must resolve and unref before isolate exists.
 // One ref'ing has been done by `threadSafe` constructor.
 callback.ref();
