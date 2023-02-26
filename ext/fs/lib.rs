@@ -205,8 +205,9 @@ pub fn init_ops<P: FsPermissions + 'static>(unstable: bool) -> Extension {
   ops::<P>(&mut ext(), unstable).build()
 }
 
-fn default_err_mapper(err: Error, desc: String) -> Error {
+fn default_err_mapper(err: Error, desc: String) -> AnyError {
   Error::new(err.kind(), format!("{err}, {desc}"))
+  AnyError::new(Error::new(err.kind(), desc)).context(err)
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -1034,7 +1035,7 @@ where
       let mut st = std::mem::zeroed();
       let ret = stat(from.as_ptr(), &mut st);
       if ret != 0 {
-        return Err(err_mapper(Error::last_os_error()).into());
+        return Err(err_mapper(Error::last_os_error()));
       }
 
       if st.st_size > 128 * 1024 {
@@ -2219,9 +2220,9 @@ where
 
   let read_future = tokio::task::spawn_blocking(move || {
     let path = Path::new(&path);
-    Ok(std::fs::read(path).map(ZeroCopyBuf::from).map_err(|err| {
+    std::fs::read(path).map(ZeroCopyBuf::from).map_err(|err| {
       default_err_mapper(err, format!("readfile '{}'", path.display()))
-    })?)
+    })
   });
 
   let cancel_handle = cancel_rid.and_then(|rid| {

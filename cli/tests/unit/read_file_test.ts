@@ -158,3 +158,25 @@ Deno.test(
     assert(data.byteLength > 0);
   },
 );
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileEnoent() {
+    try {
+      await Deno.readFile("definitely-not-found.json");
+    } catch (e) {
+      assertEquals(e.code, "ENOENT");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileEisdir() {
+    try {
+      await Deno.readFile("cli/tests/testdata/assets/");
+    } catch (e) {
+      assertEquals(e.code, "EISDIR");
+    }
+  },
+);
