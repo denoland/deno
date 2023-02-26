@@ -358,7 +358,7 @@ class ClientRequest extends NodeWritable {
 
   // It doesn't relies on the underlying socket (as in Node.js),
   // we only have a dummy socket here anyway
-  // but it's required by some libraries so we just emulate it
+  // but it's required by some libraries so we just simulate it
   setTimeout(timeout: number, callback?: () => void) {
     if (typeof callback === "function") {
       this.once("timeout", callback);
