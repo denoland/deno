@@ -206,7 +206,6 @@ pub fn init_ops<P: FsPermissions + 'static>(unstable: bool) -> Extension {
 }
 
 fn default_err_mapper(err: Error, desc: String) -> AnyError {
-  Error::new(err.kind(), format!("{err}, {desc}"))
   AnyError::new(Error::new(err.kind(), desc)).context(err)
 }
 

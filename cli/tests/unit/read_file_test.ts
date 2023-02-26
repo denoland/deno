@@ -161,7 +161,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true } },
-  async function readFileEnoent() {
+  async function readFileNotFoundErrorCode() {
     try {
       await Deno.readFile("definitely-not-found.json");
     } catch (e) {
@@ -172,11 +172,15 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true } },
-  async function readFileEisdir() {
+  async function readFileIsDirectoryErrorCode() {
     try {
       await Deno.readFile("cli/tests/testdata/assets/");
     } catch (e) {
-      assertEquals(e.code, "EISDIR");
+      if (Deno.build.os === "windows") {
+        assertEquals(e.code, "ENOENT");
+      } else {
+        assertEquals(e.code, "EISDIR");
+      }
     }
   },
 );
