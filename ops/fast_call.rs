@@ -250,13 +250,19 @@ pub(crate) fn generate(
       //
       // V8 calls the slow path so we can take the slot
       // value and throw.
-      let result_wrap = q!(Vars { op_state }, {
+      let default = if optimizer.fast_result == Some(FastValue::Pointer) {
+        // Pointers do not have default value.
+        q!({ ::std::ptr::null_mut() })
+      } else {
+        q!({ Default::default() })
+      };
+      let result_wrap = q!(Vars { op_state, default }, {
         match result {
           Ok(result) => result,
           Err(err) => {
             op_state.last_fast_op_error.replace(err);
             __opts.fallback = true;
-            Default::default()
+            default
           }
         }
       });

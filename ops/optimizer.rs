@@ -219,6 +219,8 @@ fn get_fast_scalar(s: &str) -> Option<FastValue> {
     "i32" => Some(FastValue::I32),
     "u64" => Some(FastValue::U64),
     "i64" => Some(FastValue::I64),
+    "usize" => Some(FastValue::U64),
+    "isize" => Some(FastValue::I64),
     "f32" => Some(FastValue::F32),
     "f64" => Some(FastValue::F64),
     "* const c_void" | "* mut c_void" => Some(FastValue::Pointer),
