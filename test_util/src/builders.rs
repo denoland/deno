@@ -278,6 +278,13 @@ impl TestCommandBuilder {
 
     let status = process.wait().expect("failed to finish process");
     let exit_code = status.code();
+    #[cfg(unix)]
+    let signal = {
+      use std::os::unix::process::ExitStatusExt;
+      status.signal()
+    };
+    #[cfg(not(unix))]
+    let signal = None;
 
     actual = strip_ansi_codes(&actual).to_string();
 
@@ -290,6 +297,7 @@ impl TestCommandBuilder {
 
     TestCommandOutput {
       exit_code,
+      signal,
       text: actual,
       testdata_dir: self.context.testdata_dir.clone(),
       asserted_exit_code: RefCell::new(false),
@@ -302,6 +310,7 @@ impl TestCommandBuilder {
 pub struct TestCommandOutput {
   text: String,
   exit_code: Option<i32>,
+  signal: Option<i32>,
   testdata_dir: PathBuf,
   asserted_text: RefCell<bool>,
   asserted_exit_code: RefCell<bool>,
@@ -347,6 +356,10 @@ impl TestCommandOutput {
   pub fn exit_code(&self) -> Option<i32> {
     self.skip_exit_code_check();
     self.exit_code
+  }
+
+  pub fn signal(&self) -> Option<i32> {
+    self.signal
   }
 
   pub fn text(&self) -> &str {

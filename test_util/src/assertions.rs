@@ -87,19 +87,13 @@ macro_rules! assert_exit_code {
         );
       }
     } else {
-      #[cfg(unix)]
-      {
-        use std::os::unix::process::ExitStatusExt;
-        let signal = status.signal().unwrap();
-        println!("OUTPUT\n{actual}\nOUTPUT");
+      println!("OUTPUT\n{actual}\nOUTPUT");
+      if let Some(signal) = output.signal() {
         panic!(
-        "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-        actual_exit_code, signal,
-      );
-      }
-      #[cfg(not(unix))]
-      {
-        println!("OUTPUT\n{actual}\nOUTPUT");
+          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
+          actual_exit_code, signal,
+        );
+      } else {
         panic!("process terminated without status code on non unix platform, expected exit code: {:?}", actual_exit_code);
       }
     }
