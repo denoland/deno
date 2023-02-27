@@ -88,8 +88,8 @@ impl TestContextBuilder {
   pub fn use_sync_npm_download(&mut self) -> &mut Self {
     self.env(
       // make downloads determinstic
-      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
-      "1".to_string(),
+      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
+      "1",
     );
     self
   }
