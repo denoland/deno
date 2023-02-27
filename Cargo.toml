@@ -99,7 +99,7 @@ percent-encoding = "=2.2.0"
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pretty_assertions = "=1.3.0"
 rand = "=0.8.5"
-regex = "=1.6.0"
+regex = "^1.7.0"
 reqwest = { version = "0.11.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
 ring = "=0.16.20"
 rusqlite = { version = "=0.28.0", features = ["unlock_notify", "bundled"] }
@@ -116,9 +116,9 @@ tar = "=0.4.38"
 tokio = { version = "=1.25.0", features = ["full"] }
 tokio-rustls = "0.23.3"
 tokio-tungstenite = "0.16.1"
-tokio-util = "=0.7.4"
+tokio-util = "0.7.4"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
-uuid = { version = "=1.1.2", features = ["v4"] }
+uuid = { version = "1.3.0", features = ["v4"] }
 zstd = "=0.11.2"
 
 # crypto
