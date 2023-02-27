@@ -60,6 +60,21 @@ pub async fn execute_script(
         .await;
     Ok(exit_code)
   } else if let Some(script) = package_json_scripts.get(task_name) {
+    log::info!(
+      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
+      colors::yellow("Warning"),
+    );
+    if let Some(package_deps) = ps.package_json_deps_installer.package_deps() {
+      for (key, value) in package_deps {
+        if value.is_err() {
+          log::info!(
+            "{} Ignoring {} dependency in package.json because its version requirement failed to parse.",
+            colors::yellow("Warning"),
+            key,
+          );
+        }
+      }
+    }
     ps.package_json_deps_installer
       .ensure_top_level_install()
       .await?;
@@ -76,10 +91,6 @@ pub async fn execute_script(
         .to_owned(),
     };
     let script = get_script_with_args(script, &ps);
-    log::info!(
-      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
-      colors::yellow("Warning"),
-    );
     output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;

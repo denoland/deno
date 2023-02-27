@@ -1,0 +1,4 @@
+Warning Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.
+Warning Ignoring @denotest/cjs-default-export dependency in package.json because its version requirement failed to parse.
+Task test echo 1
+1
