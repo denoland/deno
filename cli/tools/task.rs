@@ -60,6 +60,11 @@ pub async fn execute_script(
         .await;
     Ok(exit_code)
   } else if let Some(script) = package_json_scripts.get(task_name) {
+    ps.package_json_deps_installer
+      .ensure_top_level_install()
+      .await?;
+    ps.npm_resolver.resolve_pending().await?;
+
     let cwd = match task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => maybe_package_json
@@ -72,10 +77,9 @@ pub async fn execute_script(
     };
     let script = get_script_with_args(script, &ps);
     log::info!(
-      "{} Currently only basic package.json `scripts` are supported.",
+      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
       colors::yellow("Warning"),
     );
-    log::info!("{}", colors::gray("Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release."));
     output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;

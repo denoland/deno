@@ -404,8 +404,9 @@ impl NpmResolution {
   }
 
   /// Resolves a package requirement for deno graph. This should only be
-  /// called by deno_graph's NpmResolver.
-  pub fn resolve_package_req_for_deno_graph(
+  /// called by deno_graph's NpmResolver or for resolving packages in
+  /// a package.json
+  pub fn resolve_package_req_as_pending(
     &self,
     pkg_req: &NpmPackageReq,
   ) -> Result<NpmPackageNv, AnyError> {

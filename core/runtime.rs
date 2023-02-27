@@ -322,12 +322,6 @@ impl SnapshotOptions {
       SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
     )
   }
-  pub fn will_snapshot(&self) -> bool {
-    matches!(
-      self,
-      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
-    )
-  }
 
   fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
     match (snapshot_loaded, will_snapshot) {
@@ -2923,10 +2917,10 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.ops.op_test(42);
-        var p2 = Deno.core.ops.op_test(42);
+        var p1 = Deno.core.opAsync("op_test", 42);
+        var p2 = Deno.core.opAsync("op_test", 42);
         "#,
       )
       .unwrap();
@@ -2979,7 +2973,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.initializeAsyncOps();
+        
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2998,7 +2992,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -3015,7 +3009,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -3030,7 +3024,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
@@ -3904,7 +3898,7 @@ if (errMessage !== "higher-level sync error: original sync error") {
         .execute_script(
           "test_error_context_async.js",
           r#"
-Deno.core.initializeAsyncOps();
+
 (async () => {
   let errMessage;
   try {
@@ -4059,7 +4053,7 @@ assertEquals(1, notify_return_value);
     runtime
       .execute_script(
         "op_async_borrow.js",
-        "Deno.core.initializeAsyncOps(); Deno.core.ops.op_async_borrow()",
+        "Deno.core.opAsync(\"op_async_borrow\")",
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
@@ -4133,8 +4127,8 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       .execute_script(
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
-Deno.core.initializeAsyncOps();
-Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
+
+Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   lines: {
     100: {
       unit: "m"
@@ -4172,7 +4166,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       .execute_script(
         "macrotasks_and_nextticks.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         (async function () {
           const results = [];
           Deno.core.ops.op_set_macrotask_callback(() => {
@@ -4440,12 +4434,12 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           "",
           &format!(
             r#"
-              Deno.core.initializeAsyncOps();
+              
               globalThis.rejectValue = undefined;
               Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
               }});
-              Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
+              Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
             "#
           ),
         )
@@ -4876,12 +4870,12 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
+            
             (async function () {
-              const buf = await Deno.core.ops.op_test(false);
+              const buf = await Deno.core.opAsync("op_test", false);
               let err;
               try {
-                await Deno.core.ops.op_test(true);
+                await Deno.core.opAsync("op_test", true);
               } catch(e) {
                 err = e;
               }
@@ -4930,8 +4924,8 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
-            var promise = Deno.core.ops.op_pending();
+            
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();
@@ -4940,8 +4934,8 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
-            var promise = Deno.core.ops.op_pending();
+            
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();

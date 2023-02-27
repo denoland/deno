@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -36,13 +37,22 @@ pub fn parse_dep_entry_name_and_raw_version<'a>(
 /// entries to npm specifiers which can then be used in the resolver.
 pub fn get_local_package_json_version_reqs(
   package_json: &PackageJson,
-) -> Result<HashMap<String, NpmPackageReq>, AnyError> {
+) -> Result<BTreeMap<String, NpmPackageReq>, AnyError> {
   fn insert_deps(
     deps: Option<&HashMap<String, String>>,
-    result: &mut HashMap<String, NpmPackageReq>,
+    result: &mut BTreeMap<String, NpmPackageReq>,
   ) -> Result<(), AnyError> {
     if let Some(deps) = deps {
       for (key, value) in deps {
+        if value.starts_with("workspace:")
+          || value.starts_with("file:")
+          || value.starts_with("git:")
+          || value.starts_with("http:")
+          || value.starts_with("https:")
+        {
+          // skip these specifiers for now
+          continue;
+        }
         let (name, version_req) =
           parse_dep_entry_name_and_raw_version(key, value)?;
 
@@ -73,9 +83,7 @@ pub fn get_local_package_json_version_reqs(
 
   let deps = package_json.dependencies.as_ref();
   let dev_deps = package_json.dev_dependencies.as_ref();
-  let mut result = HashMap::with_capacity(
-    deps.map(|d| d.len()).unwrap_or(0) + dev_deps.map(|d| d.len()).unwrap_or(0),
-  );
+  let mut result = BTreeMap::new();
 
   // insert the dev dependencies first so the dependencies will
   // take priority and overwrite any collisions
@@ -166,7 +174,7 @@ mod test {
     let result = get_local_package_json_version_reqs(&package_json).unwrap();
     assert_eq!(
       result,
-      HashMap::from([
+      BTreeMap::from([
         (
           "test".to_string(),
           NpmPackageReq::from_str("test@^1.2").unwrap()
@@ -202,6 +210,27 @@ mod test {
         "   - 1.3\n",
         "  ~"
       )
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_skips_certain_specifiers() {
+    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
+    package_json.dependencies = Some(HashMap::from([
+      ("test".to_string(), "1".to_string()),
+      ("work".to_string(), "workspace:1.1.1".to_string()),
+      ("file".to_string(), "file:something".to_string()),
+      ("git".to_string(), "git:something".to_string()),
+      ("http".to_string(), "http://something".to_string()),
+      ("https".to_string(), "https://something".to_string()),
+    ]));
+    let result = get_local_package_json_version_reqs(&package_json).unwrap();
+    assert_eq!(
+      result,
+      BTreeMap::from([(
+        "test".to_string(),
+        NpmPackageReq::from_str("test@1").unwrap()
+      )])
     );
   }
 }

@@ -21,6 +21,7 @@ use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -1170,7 +1171,7 @@ impl Documents {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
-      maybe_package_json_deps: Option<&HashMap<String, NpmPackageReq>>,
+      maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       if let Some(import_map) = maybe_import_map {
@@ -1181,7 +1182,6 @@ impl Documents {
         hasher.write_hashable(&jsx_config);
       }
       if let Some(deps) = maybe_package_json_deps {
-        let deps = deps.iter().collect::<BTreeMap<_, _>>();
         hasher.write_hashable(&deps);
       }
       hasher.finish()
@@ -1213,13 +1213,18 @@ impl Documents {
         None => Vec::new(),
       }
     });
+    let deps_installer = PackageJsonDepsInstaller::new(
+      npm_registry_api.clone(),
+      npm_resolution.clone(),
+      maybe_package_json_deps,
+    );
     self.resolver = CliGraphResolver::new(
       maybe_jsx_config,
       maybe_import_map,
       false,
       npm_registry_api,
       npm_resolution,
-      maybe_package_json_deps,
+      deps_installer,
     );
     self.imports = Arc::new(
       if let Some(Ok(imports)) =

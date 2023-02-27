@@ -545,6 +545,12 @@ itest!(dynamic_import_already_rejected {
   output: "run/dynamic_import_already_rejected/main.out",
 });
 
+itest!(dynamic_import_concurrent_non_statically_analyzable {
+  args: "run --allow-read --allow-net --quiet run/dynamic_import_concurrent_non_statically_analyzable/main.ts",
+  output: "run/dynamic_import_concurrent_non_statically_analyzable/main.out",
+  http_server: true,
+});
+
 itest!(no_check_imports_not_used_as_values {
     args: "run --config run/no_check_imports_not_used_as_values/preserve_imports.tsconfig.json --no-check run/no_check_imports_not_used_as_values/main.ts",
     output: "run/no_check_imports_not_used_as_values/main.out",
@@ -2749,9 +2755,10 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
-itest!(package_json_auto_discovered_for_local_script_log {
+itest!(package_json_auto_discovered_for_local_script_arg {
   args: "run -L debug -A no_deno_json/main.ts",
   output: "run/with_package_json/no_deno_json/main.out",
+  // notice this is not in no_deno_json
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
@@ -2762,7 +2769,7 @@ itest!(package_json_auto_discovered_for_local_script_log {
 // In this case we shouldn't discover `package.json` file, because it's in a
 // directory that is above the directory containing `deno.json` file.
 itest!(
-  package_json_auto_discovered_for_local_script_log_with_stop {
+  package_json_auto_discovered_for_local_script_arg_with_stop {
     args: "run -L debug with_stop/some/nested/dir/main.ts",
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
@@ -2772,6 +2779,25 @@ itest!(
     exit_code: 1,
   }
 );
+
+itest!(package_json_not_auto_discovered_no_config {
+  args: "run -L debug -A --no-config noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+});
+
+itest!(package_json_not_auto_discovered_no_npm {
+  args: "run -L debug -A --no-npm noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+});
+
+itest!(package_json_not_auto_discovered_env_var {
+  args: "run -L debug -A noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+  envs: vec![("DENO_NO_PACKAGE_JSON".to_string(), "1".to_string())],
+});
 
 itest!(
   package_json_auto_discovered_node_modules_relative_package_json {
@@ -2789,6 +2815,23 @@ itest!(package_json_auto_discovered_for_npm_binary {
   output: "run/with_package_json/npm_binary/main.out",
   cwd: Some("run/with_package_json/npm_binary/"),
   copy_temp_dir: Some("run/with_package_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
+itest!(package_json_auto_discovered_no_package_json_imports {
+  // this should not use --quiet because we should ensure no package.json install occurs
+  args: "run -A no_package_json_imports.ts",
+  output: "run/with_package_json/no_deno_json/no_package_json_imports.out",
+  cwd: Some("run/with_package_json/no_deno_json"),
+  copy_temp_dir: Some("run/with_package_json/no_deno_json"),
+});
+
+itest!(package_json_with_deno_json {
+  args: "run --quiet -A main.ts",
+  output: "package_json/deno_json/main.out",
+  cwd: Some("package_json/deno_json/"),
+  copy_temp_dir: Some("package_json/deno_json/"),
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
 });
