@@ -2,7 +2,9 @@
 
 use deno_core::url::Url;
 use test_util as util;
+use util::assert_output_file;
 use util::env_vars_for_npm_tests;
+use util::TestContext;
 
 #[test]
 fn no_color() {
@@ -414,13 +416,9 @@ fn file_protocol() {
       .unwrap()
       .to_string();
 
-  (util::CheckOutputIntegrationTest {
-    args_vec: vec!["test", &file_url],
-    exit_code: 0,
-    output: "test/file_protocol.out",
-    ..Default::default()
-  })
-  .run();
+  let context = TestContext::default();
+  let output = context.new_command().args(format!("test {file_url}")).run();
+  assert_output_file!(output, "test/file_protocol.out");
 }
 
 itest!(uncaught_errors {
