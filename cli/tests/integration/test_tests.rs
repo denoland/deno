@@ -2,6 +2,7 @@
 
 use deno_core::url::Url;
 use test_util as util;
+use util::env_vars_for_npm_tests;
 
 #[test]
 fn no_color() {
@@ -451,4 +452,14 @@ itest!(parallel_output {
   args: "test --parallel --reload test/parallel_output.ts",
   output: "test/parallel_output.out",
   exit_code: 1,
+});
+
+itest!(package_json_basic {
+  args: "test",
+  output: "package_json/basic/lib.test.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
 });

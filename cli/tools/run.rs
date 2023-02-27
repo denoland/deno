@@ -7,6 +7,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
@@ -14,7 +15,6 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::file_fetcher::File;
-use crate::npm::NpmPackageReference;
 use crate::proc_state::ProcState;
 use crate::util;
 use crate::worker::create_main_worker;
@@ -50,12 +50,12 @@ To grant permissions, set them before the script argument. For example:
     ps.dir.upgrade_check_file_path(),
   );
 
-  let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
-  {
-    ModuleSpecifier::parse(&run_flags.script)?
-  } else {
-    resolve_url_or_path(&run_flags.script)?
-  };
+  let main_module =
+    if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
+      ModuleSpecifier::parse(&run_flags.script)?
+    } else {
+      resolve_url_or_path(&run_flags.script)?
+    };
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);

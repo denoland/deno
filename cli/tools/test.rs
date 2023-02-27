@@ -7,7 +7,7 @@ use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
-use crate::graph_util::graph_valid;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
@@ -1377,7 +1377,7 @@ pub async fn run_tests_with_watch(
         test_modules.clone()
       };
       let graph = ps.create_graph(test_modules.clone()).await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      graph_valid_with_cli_options(&graph, &test_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1389,7 +1389,7 @@ pub async fn run_tests_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(module) = maybe_module {
+          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {

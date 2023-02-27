@@ -2,6 +2,7 @@
 
 use deno_core::url::Url;
 use test_util as util;
+use util::env_vars_for_npm_tests;
 
 itest!(overloads {
   args: "bench bench/overloads.ts",
@@ -178,6 +179,12 @@ itest!(bench_with_malformed_config {
   output: "bench/collect_with_malformed_config.out",
 });
 
+itest!(json_output {
+  args: "bench --json bench/pass.ts",
+  exit_code: 0,
+  output: "bench/pass.json.out",
+});
+
 #[test]
 fn recursive_permissions_pledge() {
   let output = util::deno_cmd()
@@ -210,3 +217,13 @@ fn file_protocol() {
   })
   .run();
 }
+
+itest!(package_json_basic {
+  args: "bench",
+  output: "package_json/basic/lib.bench.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
+});

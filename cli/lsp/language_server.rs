@@ -2,18 +2,21 @@
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
 use serde_json::from_value;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -57,6 +60,7 @@ use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
 use crate::args::get_root_cert_store;
+use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
 use crate::args::CaData;
 use crate::args::CacheSetting;
@@ -69,11 +73,11 @@ use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
-use crate::graph_util::graph_valid;
+use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::RealNpmRegistryApi;
+use crate::npm::NpmRegistryApi;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -129,6 +133,8 @@ pub struct Inner {
   maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// An optional package.json configuration file.
+  maybe_package_json: Option<PackageJson>,
   /// Configuration for formatter which has been taken from specified config file.
   fmt_options: FmtOptions,
   /// An optional configuration for linter which has been taken from specified config file.
@@ -173,19 +179,41 @@ impl LanguageServer {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
-      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
-      graph_valid(&graph, true, false)?;
+      let graph = ps
+        .create_graph_with_loader(roots.clone(), &mut loader)
+        .await?;
+      graph_util::graph_valid(
+        &graph,
+        &roots,
+        graph_util::GraphValidOptions {
+          is_vendoring: false,
+          follow_type_only: true,
+          check_js: false,
+        },
+      )?;
       Ok(())
     }
 
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => {
         // do as much as possible in a read, then do a write outside
-        let result = {
+        let maybe_cache_result = {
           let inner = self.0.read().await; // ensure dropped
-          inner.prepare_cache(params)?
+          match inner.prepare_cache(params) {
+            Ok(maybe_cache_result) => maybe_cache_result,
+            Err(err) => {
+              self
+                .0
+                .read()
+                .await
+                .client
+                .show_message(MessageType::WARNING, err)
+                .await;
+              return Err(LspError::internal_error());
+            }
+          }
         };
-        if let Some(result) = result {
+        if let Some(result) = maybe_cache_result {
           let cli_options = result.cli_options;
           let roots = result.roots;
           let open_docs = result.open_docs;
@@ -294,7 +322,7 @@ fn create_lsp_npm_resolver(
   dir: &DenoDir,
   http_client: HttpClient,
 ) -> NpmPackageResolver {
-  let registry_url = RealNpmRegistryApi::default_url();
+  let registry_url = NpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
@@ -306,13 +334,13 @@ fn create_lsp_npm_resolver(
     http_client.clone(),
     progress_bar.clone(),
   );
-  let api = RealNpmRegistryApi::new(
-    registry_url,
+  let api = NpmRegistryApi::new(
+    registry_url.clone(),
     npm_cache.clone(),
     http_client,
     progress_bar,
   );
-  NpmPackageResolver::new(npm_cache, api, false, None)
+  NpmPackageResolver::new(npm_cache, api)
 }
 
 impl Inner {
@@ -353,6 +381,7 @@ impl Inner {
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
+      maybe_package_json: None,
       fmt_options: Default::default(),
       lint_options: Default::default(),
       maybe_testing_server: None,
@@ -433,8 +462,6 @@ impl Inner {
     Ok(navigation_tree)
   }
 
-  /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
-  /// If there's no config file specified in settings returns `None`.
   fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
     let workspace_settings = self.config.get_workspace_settings();
     let maybe_config = workspace_settings.config;
@@ -471,6 +498,28 @@ impl Inner {
       let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
       Ok(maybe_config.map(|c| {
         lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
+        c
+      }))
+    } else {
+      Ok(None)
+    }
+  }
+
+  fn get_package_json(
+    &self,
+    maybe_config_file: Option<&ConfigFile>,
+  ) -> Result<Option<PackageJson>, AnyError> {
+    // It is possible that root_uri is not set, for example when having a single
+    // file open and not a workspace.  In those situations we can't
+    // automatically discover the configuration
+    if let Some(root_uri) = &self.config.root_uri {
+      let root_path = specifier_to_file_path(root_uri)?;
+      let maybe_package_json = package_json::discover_from(
+        &root_path,
+        maybe_config_file.and_then(|f| f.specifier.to_file_path().ok()),
+      )?;
+      Ok(maybe_package_json.map(|c| {
+        lsp_log!("  Auto-resolved package.json: \"{}\"", c.specifier());
         c
       }))
     } else {
@@ -791,6 +840,15 @@ impl Inner {
     Ok(())
   }
 
+  /// Updates the package.json. Always ensure this is done after updating
+  /// the configuration file as the resolution of this depends on that.
+  fn update_package_json(&mut self) -> Result<(), AnyError> {
+    self.maybe_package_json = None;
+    self.maybe_package_json =
+      self.get_package_json(self.maybe_config_file.as_ref())?;
+    Ok(())
+  }
+
   async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_tsconfig", None::<()>);
     let mut tsconfig = TsConfig::new(json!({
@@ -900,6 +958,9 @@ impl Inner {
     if let Err(err) = self.update_config_file() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
+    if let Err(err) = self.update_package_json() {
+      self.client.show_message(MessageType::WARNING, err).await;
+    }
     if let Err(err) = self.update_tsconfig().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
@@ -927,6 +988,9 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
     );
 
     self.assets.intitialize(self.snapshot()).await;
@@ -1104,6 +1168,9 @@ impl Inner {
     if let Err(err) = self.update_config_file() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
+    if let Err(err) = self.update_package_json() {
+      self.client.show_message(MessageType::WARNING, err).await;
+    }
     if let Err(err) = self.update_import_map().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
@@ -1114,6 +1181,9 @@ impl Inner {
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
     );
 
     self.send_diagnostics_update();
@@ -1128,15 +1198,15 @@ impl Inner {
       .performance
       .mark("did_change_watched_files", Some(&params));
     let mut touched = false;
-    let changes: Vec<Url> = params
+    let changes: HashSet<Url> = params
       .changes
       .iter()
       .map(|f| self.url_map.normalize_url(&f.uri))
       .collect();
 
-    // if the current tsconfig has changed, we need to reload it
+    // if the current deno.json has changed, we need to reload it
     if let Some(config_file) = &self.maybe_config_file {
-      if changes.iter().any(|uri| config_file.specifier == *uri) {
+      if changes.contains(&config_file.specifier) {
         if let Err(err) = self.update_config_file() {
           self.client.show_message(MessageType::WARNING, err).await;
         }
@@ -1146,10 +1216,19 @@ impl Inner {
         touched = true;
       }
     }
-    // if the current import map, or config file has changed, we need to reload
+    if let Some(package_json) = &self.maybe_package_json {
+      // always update the package json if the deno config changes
+      if touched || changes.contains(&package_json.specifier()) {
+        if let Err(err) = self.update_package_json() {
+          self.client.show_message(MessageType::WARNING, err).await;
+        }
+        touched = true;
+      }
+    }
+    // if the current import map, or config file has changed, we need to
     // reload the import map
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if changes.iter().any(|uri| import_map_uri == uri) || touched {
+      if touched || changes.contains(import_map_uri) {
         if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::WARNING, err).await;
         }
@@ -1160,6 +1239,9 @@ impl Inner {
       self.documents.update_config(
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
+        self.maybe_package_json.as_ref(),
+        self.npm_resolver.api().clone(),
+        self.npm_resolver.resolution().clone(),
       );
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
@@ -2977,7 +3059,7 @@ impl Inner {
   fn prepare_cache(
     &self,
     params: lsp_custom::CacheParams,
-  ) -> LspResult<Option<PrepareCacheResult>> {
+  ) -> Result<Option<PrepareCacheResult>, AnyError> {
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
@@ -3005,10 +3087,13 @@ impl Inner {
         unstable: true,
         ..Default::default()
       },
+      std::env::current_dir().with_context(|| "Failed getting cwd.")?,
       self.maybe_config_file.clone(),
       // TODO(#16510): add support for lockfile
       None,
-    );
+      // TODO(bartlomieju): handle package.json dependencies here
+      None,
+    )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
     let open_docs = self.documents.documents(true, true);

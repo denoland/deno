@@ -6,6 +6,7 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
+use deno_graph::Module;
 use deno_runtime::colors;
 
 use crate::args::BundleFlags;
@@ -25,6 +26,15 @@ pub async fn bundle(
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let cli_options = Arc::new(CliOptions::from_flags(flags)?);
+
+  log::info!(
+    "{} \"deno bundle\" is deprecated and will be removed in the future.",
+    colors::yellow("Warning"),
+  );
+  log::info!(
+    "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
+  );
+
   let resolver = |_| {
     let cli_options = cli_options.clone();
     let source_file1 = &bundle_flags.source_file;
@@ -38,7 +48,14 @@ pub async fn bundle(
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
-        .filter_map(|(_, r)| r.ok().and_then(|(s, _, _)| s.to_file_path().ok()))
+        .filter_map(|(_, r)| {
+          r.ok().and_then(|module| match module {
+            Module::Esm(m) => m.specifier.to_file_path().ok(),
+            Module::Json(m) => m.specifier.to_file_path().ok(),
+            // nothing to watch
+            Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
+          })
+        })
         .collect();
 
       if let Ok(Some(import_map_path)) = ps

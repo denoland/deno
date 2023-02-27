@@ -2,8 +2,8 @@
 
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::npm::NpmPackageReference;
 use crate::ProcState;
+
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
 use deno_ast::swc::visit::Visit;
@@ -18,7 +18,9 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Resolver;
+use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
 
 use super::cdp;
@@ -443,26 +445,25 @@ impl ReplSession {
       .flat_map(|i| {
         self
           .proc_state
-          .maybe_resolver
-          .as_ref()
-          .and_then(|resolver| resolver.resolve(i, &self.referrer).ok())
+          .resolver
+          .resolve(i, &self.referrer)
+          .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })
       .collect::<Vec<_>>();
 
     let npm_imports = resolved_imports
       .iter()
-      .flat_map(|url| NpmPackageReference::from_specifier(url).ok())
+      .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
       .map(|r| r.req)
       .collect::<Vec<_>>();
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
       if !self.has_initialized_node_runtime {
-        self.proc_state.prepare_node_std_graph().await?;
-        crate::node::initialize_runtime(
+        deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
-          self.proc_state.options.node_modules_dir(),
+          self.proc_state.options.has_node_modules_dir(),
         )
         .await?;
         self.has_initialized_node_runtime = true;

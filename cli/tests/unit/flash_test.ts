@@ -89,12 +89,13 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const listeningPromise = deferred();
 
   const server = Deno.serve({
-    handler: async (request) => {
+    handler: async (request, { remoteAddr }) => {
       // FIXME(bartlomieju):
       // make sure that request can be inspected
       console.log(request);
       assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
       assertEquals(await request.text(), "");
+      assertEquals(remoteAddr.hostname, "127.0.0.1");
       promise.resolve();
       return new Response("Hello World", { headers: { "foo": "bar" } });
     },
@@ -1701,7 +1702,7 @@ Deno.test(
     const server = Deno.serve({
       handler: () => {
         promise.resolve();
-        return new Response("foo bar baz");
+        return new Response("NaN".repeat(100));
       },
       port: 4503,
       signal: ac.signal,
@@ -1726,7 +1727,7 @@ Deno.test(
     assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
 
-    assert(msg.endsWith("Content-Length: 11\r\n\r\n"));
+    assert(msg.endsWith("Content-Length: 300\r\n\r\n"));
 
     conn.close();
 

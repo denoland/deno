@@ -14,7 +14,6 @@ use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
-use deno_core::located_script_name;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -35,7 +34,6 @@ use deno_web::BlobStore;
 use log::debug;
 
 use crate::inspector_server::InspectorServer;
-use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
@@ -67,6 +65,7 @@ pub struct MainWorker {
   should_break_on_first_statement: bool,
   should_wait_for_inspector_session: bool,
   exit_code: ExitCode,
+  bootstrap_fn_global: Option<v8::Global<v8::Function>>,
 }
 
 pub struct WorkerOptions {
@@ -266,7 +265,8 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<PermissionsContainer>(unstable),
+      deno_napi::init::<PermissionsContainer>(),
+      deno_node::init_polyfill(),
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
@@ -281,13 +281,17 @@ impl MainWorker {
     ];
     extensions.extend(std::mem::take(&mut options.extensions));
 
+    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
+    let startup_snapshot = options
+      .startup_snapshot
+      .unwrap_or_else(crate::js::deno_isolate_init);
+    #[cfg(feature = "dont_create_runtime_snapshot")]
+    let startup_snapshot = options.startup_snapshot
+      .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(
-        options
-          .startup_snapshot
-          .unwrap_or_else(js::deno_isolate_init),
-      ),
+      startup_snapshot: Some(startup_snapshot),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -314,20 +318,45 @@ impl MainWorker {
       op_state.borrow_mut().put(inspector);
     }
 
+    let bootstrap_fn_global = {
+      let context = js_runtime.global_context();
+      let scope = &mut js_runtime.handle_scope();
+      let context_local = v8::Local::new(scope, context);
+      let global_obj = context_local.global(scope);
+      let bootstrap_str = v8::String::new(scope, "bootstrap").unwrap();
+      let bootstrap_ns: v8::Local<v8::Object> = global_obj
+        .get(scope, bootstrap_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let main_runtime_str = v8::String::new(scope, "mainRuntime").unwrap();
+      let bootstrap_fn =
+        bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
+      let bootstrap_fn =
+        v8::Local::<v8::Function>::try_from(bootstrap_fn).unwrap();
+      v8::Global::new(scope, bootstrap_fn)
+    };
+
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
       should_wait_for_inspector_session: options
         .should_wait_for_inspector_session,
       exit_code,
+      bootstrap_fn_global: Some(bootstrap_fn_global),
     }
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
-    let script = format!("bootstrap.mainRuntime({})", options.as_json());
-    self
-      .execute_script(&located_script_name!(), &script)
-      .expect("Failed to execute bootstrap script");
+    let scope = &mut self.js_runtime.handle_scope();
+    let options_v8 =
+      deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+    let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
+    let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
+    let undefined = v8::undefined(scope);
+    bootstrap_fn
+      .call(scope, undefined.into(), &[options_v8])
+      .unwrap();
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
