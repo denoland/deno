@@ -809,12 +809,10 @@ impl CliOptions {
     ) {
       // don't have any package json dependencies for deno task with no args
       None
-    } else if let Some(package_json) = self.maybe_package_json() {
-      Some(package_json::get_local_package_json_version_reqs(
-        package_json,
-      ))
     } else {
-      None
+      self
+        .maybe_package_json()
+        .map(package_json::get_local_package_json_version_reqs)
     }
   }
 
