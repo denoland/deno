@@ -568,7 +568,12 @@ impl CliOptions {
     let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
 
     let mut maybe_package_json = None;
-    if let Some(config_file) = &maybe_config_file {
+    if flags.config_flag == ConfigFlag::Disabled
+      || flags.no_npm
+      || has_flag_env_var("DENO_NO_PACKAGE_JSON")
+    {
+      log::debug!("package.json auto-discovery is disabled")
+    } else if let Some(config_file) = &maybe_config_file {
       let specifier = config_file.specifier.clone();
       if specifier.scheme() == "file" {
         let maybe_stop_at = specifier
@@ -582,6 +587,7 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None)?;
     }
+
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Self::new(
@@ -1132,10 +1138,12 @@ fn resolve_files(
 
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &Flags) -> bool {
-  flags.no_prompt || {
-    let value = env::var("DENO_NO_PROMPT");
-    matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
-  }
+  flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+}
+
+fn has_flag_env_var(name: &str) -> bool {
+  let value = env::var(name);
+  matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
 }
 
 #[cfg(test)]

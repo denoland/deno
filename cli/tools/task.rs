@@ -60,6 +60,11 @@ pub async fn execute_script(
         .await;
     Ok(exit_code)
   } else if let Some(script) = package_json_scripts.get(task_name) {
+    ps.package_json_deps_installer
+      .ensure_top_level_install()
+      .await?;
+    ps.npm_resolver.resolve_pending().await?;
+
     let cwd = match task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => maybe_package_json

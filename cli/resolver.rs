@@ -20,18 +20,19 @@ use std::sync::Arc;
 use crate::args::JsxImportSourceConfig;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug, Clone)]
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
-  maybe_package_json_deps: Option<BTreeMap<String, NpmPackageReq>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
+  package_json_deps_installer: PackageJsonDepsInstaller,
   sync_download_semaphore: Option<Arc<tokio::sync::Semaphore>>,
 }
 
@@ -49,7 +50,7 @@ impl Default for CliGraphResolver {
       no_npm: false,
       npm_registry_api,
       npm_resolution,
-      maybe_package_json_deps: Default::default(),
+      package_json_deps_installer: Default::default(),
       sync_download_semaphore: Self::create_sync_download_semaphore(),
     }
   }
@@ -62,7 +63,7 @@ impl CliGraphResolver {
     no_npm: bool,
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
-    maybe_package_json_deps: Option<BTreeMap<String, NpmPackageReq>>,
+    package_json_deps_installer: PackageJsonDepsInstaller,
   ) -> Self {
     Self {
       maybe_import_map,
@@ -74,7 +75,7 @@ impl CliGraphResolver {
       no_npm,
       npm_registry_api,
       npm_resolution,
-      maybe_package_json_deps,
+      package_json_deps_installer,
       sync_download_semaphore: Self::create_sync_download_semaphore(),
     }
   }
@@ -125,7 +126,8 @@ impl Resolver for CliGraphResolver {
     };
 
     // then with package.json
-    if let Some(deps) = self.maybe_package_json_deps.as_ref() {
+    if let Some(deps) = self.package_json_deps_installer.package_deps().as_ref()
+    {
       if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
         return Ok(specifier);
       }
@@ -187,17 +189,37 @@ impl NpmResolver for CliGraphResolver {
     // this will internally cache the package information
     let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
-    let mut maybe_sync_download_semaphore =
-      self.sync_download_semaphore.clone();
+    let deps_installer = self.package_json_deps_installer.clone();
+    let maybe_sync_download_semaphore = self.sync_download_semaphore.clone();
     async move {
-      let result = if let Some(semaphore) = maybe_sync_download_semaphore.take()
-      {
-        let _permit = semaphore.acquire().await.unwrap();
-        api.package_info(&package_name).await
+      let permit = if let Some(semaphore) = &maybe_sync_download_semaphore {
+        Some(semaphore.acquire().await.unwrap())
       } else {
-        api.package_info(&package_name).await
+        None
       };
-      result.map(|_| ()).map_err(|err| format!("{err:#}"))
+
+      // trigger an npm install if the package name matches
+      // a package in the package.json
+      //
+      // todo(dsherret): ideally this would only download if a bare
+      // specifiy matched in the package.json, but deno_graph only
+      // calls this once per package name and we might resolve an
+      // npm specifier first which calls this, then a bare specifier
+      // second and that would cause this not to occur.
+      if deps_installer.has_package_name(&package_name) {
+        deps_installer
+          .ensure_top_level_install()
+          .await
+          .map_err(|err| format!("{err:#}"))?;
+      }
+
+      let result = api
+        .package_info(&package_name)
+        .await
+        .map(|_| ())
+        .map_err(|err| format!("{err:#}"));
+      drop(permit);
+      result
     }
     .boxed()
   }
@@ -211,7 +233,7 @@ impl NpmResolver for CliGraphResolver {
     }
     self
       .npm_resolution
-      .resolve_package_req_for_deno_graph(package_req)
+      .resolve_package_req_as_pending(package_req)
   }
 }
 

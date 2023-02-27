@@ -559,7 +559,9 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
         Module::Npm(_) | Module::Node(_) => None,
         Module::External(module) => {
           // means it's Deno code importing an npm module
-          media_type = MediaType::from(&module.specifier);
+          let specifier =
+            node::resolve_specifier_into_node_modules(&module.specifier);
+          media_type = MediaType::from(&specifier);
           let file_path = specifier.to_file_path().unwrap();
           let code =
             std::fs::read_to_string(&file_path).with_context(|| {
@@ -731,9 +733,10 @@ fn resolve_graph_specifier_types(
     Some(Module::External(module)) => {
       // we currently only use "External" for when the module is in an npm package
       Ok(state.maybe_npm_resolver.as_ref().map(|npm_resolver| {
+        let specifier =
+          node::resolve_specifier_into_node_modules(&module.specifier);
         NodeResolution::into_specifier_and_media_type(
-          node::url_to_node_resolution(module.specifier.clone(), npm_resolver)
-            .ok(),
+          node::url_to_node_resolution(specifier, npm_resolver).ok(),
         )
       }))
     }

@@ -44,6 +44,15 @@ pub fn get_local_package_json_version_reqs(
   ) -> Result<(), AnyError> {
     if let Some(deps) = deps {
       for (key, value) in deps {
+        if value.starts_with("workspace:")
+          || value.starts_with("file:")
+          || value.starts_with("git:")
+          || value.starts_with("http:")
+          || value.starts_with("https:")
+        {
+          // skip these specifiers for now
+          continue;
+        }
         let (name, version_req) =
           parse_dep_entry_name_and_raw_version(key, value)?;
 
@@ -201,6 +210,27 @@ mod test {
         "   - 1.3\n",
         "  ~"
       )
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_skips_certain_specifiers() {
+    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
+    package_json.dependencies = Some(HashMap::from([
+      ("test".to_string(), "1".to_string()),
+      ("work".to_string(), "workspace:1.1.1".to_string()),
+      ("file".to_string(), "file:something".to_string()),
+      ("git".to_string(), "git:something".to_string()),
+      ("http".to_string(), "http://something".to_string()),
+      ("https".to_string(), "https://something".to_string()),
+    ]));
+    let result = get_local_package_json_version_reqs(&package_json).unwrap();
+    assert_eq!(
+      result,
+      BTreeMap::from([(
+        "test".to_string(),
+        NpmPackageReq::from_str("test@1").unwrap()
+      )])
     );
   }
 }

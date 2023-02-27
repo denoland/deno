@@ -40,6 +40,7 @@ use regex::Regex;
 use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::NpmPackageResolver;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod analyze;
 
@@ -283,6 +284,25 @@ pub fn node_resolve_npm_reference(
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
+}
+
+/// Resolves a specifier that is pointing into a node_modules folder.
+///
+/// Note: This should be called whenever getting the specifier from
+/// a Module::External(module) reference because that module might
+/// not be fully resolved at the time deno_graph is analyzing it
+/// because the node_modules folder might not exist at that time.
+pub fn resolve_specifier_into_node_modules(
+  specifier: &ModuleSpecifier,
+) -> ModuleSpecifier {
+  specifier
+    .to_file_path()
+    .ok()
+    // this path might not exist at the time the graph is being created
+    // because the node_modules folder might not yet exist
+    .and_then(|path| canonicalize_path_maybe_not_exists(&path).ok())
+    .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
+    .unwrap_or_else(|| specifier.clone())
 }
 
 pub fn node_resolve_binary_commands(
