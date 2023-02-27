@@ -83,7 +83,7 @@ fn cafile_env_fetch() {
   let cafile = context.testdata_path().join("tls/RootCA.pem");
   let output = context
     .new_command()
-    .args(format!("cache {}", module_url.to_string()))
+    .args(format!("cache {}", module_url))
     .env("DENO_CERT", cafile.to_string_lossy())
     .run();
 
@@ -102,7 +102,7 @@ fn cafile_fetch() {
     .args(format!(
       "cache --quiet --cert {} {}",
       cafile.to_string_lossy(),
-      module_url.to_string()
+      module_url,
     ))
     .run();
 

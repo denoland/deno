@@ -74,12 +74,13 @@ macro_rules! assert_output_file {
 macro_rules! assert_exit_code {
   ($output:expr, $exit_code:expr) => {
     let output = &$output;
+    let actual = output.text();
     let expected_exit_code = $exit_code;
     let actual_exit_code = output.exit_code();
 
     if let Some(exit_code) = &actual_exit_code {
       if *exit_code != expected_exit_code {
-        println!("OUTPUT\n{}\nOUTPUT", output.text());
+        println!("OUTPUT\n{actual}\nOUTPUT");
         panic!(
           "bad exit code, expected: {:?}, actual: {:?}",
           expected_exit_code, exit_code
@@ -98,7 +99,7 @@ macro_rules! assert_exit_code {
       }
       #[cfg(not(unix))]
       {
-        println!("OUTPUT\n{}\nOUTPUT", output.text());
+        println!("OUTPUT\n{actual}\nOUTPUT");
         panic!("process terminated without status code on non unix platform, expected exit code: {:?}", actual_exit_code);
       }
     }
