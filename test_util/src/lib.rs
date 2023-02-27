@@ -1966,10 +1966,10 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 
     let context = context_builder.build();
 
-    let mut command_builder = TestCommandBuilder::default();
+    let mut command_builder = context.new_command();
 
     if !self.args.is_empty() {
-      command_builder.args(&self.args);
+      command_builder.args(self.args);
     }
     if !self.args_vec.is_empty() {
       command_builder
@@ -1988,7 +1988,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder.cwd(cwd);
     }
 
-    command_builder.run(&context)
+    command_builder.run()
   }
 }
 

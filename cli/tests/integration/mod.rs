@@ -12,8 +12,7 @@ macro_rules! itest(
       .. Default::default()
     };
     let output = test.output();
-
-    output.assert_exit_code(test.exit_code);
+    test_util::assert_exit_code!(output, test.exit_code);
     if !test.output.is_empty() {
       assert!(test.output_str.is_none());
       test_util::assert_output_file!(output, test.output);
@@ -36,8 +35,7 @@ macro_rules! itest_flaky(
       .. Default::default()
     };
     let output = test.output();
-
-    output.assert_exit_code(test.exit_code);
+    test_util::assert_exit_code!(output, test.exit_code);
     if !test.output.is_empty() {
       assert!(test.output_str.is_none());
       test_util::assert_output_file!(output, test.output);

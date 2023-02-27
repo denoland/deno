@@ -59,10 +59,13 @@ macro_rules! assert_output_text {
 #[macro_export]
 macro_rules! assert_output_file {
   ($output:expr, $file_path:expr) => {
-    let output = $output;
+    let output = &$output;
     let output_path = output.testdata_dir().join($file_path);
     println!("output path {}", output_path.display());
-    let expected_text = std::fs::read_to_string(output_path).unwrap();
+    let expected_text =
+      std::fs::read_to_string(&output_path).unwrap_or_else(|err| {
+        panic!("failed loading {}\n\n{err:#}", output_path.display())
+      });
     test_util::assert_output_text!(output, expected_text);
   };
 }
@@ -70,7 +73,7 @@ macro_rules! assert_output_file {
 #[macro_export]
 macro_rules! assert_exit_code {
   ($output:expr, $exit_code:expr) => {
-    let output = $output;
+    let output = &$output;
     let expected_exit_code = $exit_code;
     let actual_exit_code = output.exit_code();
 

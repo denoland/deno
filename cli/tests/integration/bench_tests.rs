@@ -6,7 +6,7 @@ use util::assert_contains;
 use util::assert_exit_code;
 use util::assert_output_file;
 use util::env_vars_for_npm_tests;
-use util::TestCommandBuilder;
+use util::TestContext;
 
 itest!(overloads {
   args: "bench bench/overloads.ts",
@@ -191,9 +191,11 @@ itest!(json_output {
 
 #[test]
 fn recursive_permissions_pledge() {
-  let output = TestCommandBuilder::new()
+  let context = TestContext::default();
+  let output = context
+    .new_command()
     .args("bench bench/recursive_permissions_pledge.js")
-    .run_default_context();
+    .run();
   assert_exit_code!(output, 1);
   assert_contains!(
     output.text(),
@@ -207,9 +209,11 @@ fn file_protocol() {
     Url::from_file_path(util::testdata_path().join("bench/file_protocol.ts"))
       .unwrap()
       .to_string();
-  let output = TestCommandBuilder::new()
+  let context = TestContext::default();
+  let output = context
+    .new_command()
     .args(format!("bench bench/file_protocol.ts {file_url}"))
-    .run_default_context();
+    .run();
   assert_output_file!(output, "bench/file_protocol.out");
 }
 

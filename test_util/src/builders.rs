@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
+use std::rc::Rc;
 
 use os_pipe::pipe;
 
@@ -14,7 +15,6 @@ use crate::http_server;
 use crate::new_deno_dir;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
-use crate::wildcard_match;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -84,7 +84,7 @@ impl TestContextBuilder {
     println!("deno_exe path {}", deno_exe.display());
 
     let http_server_guard = if self.use_http_server {
-      Some(http_server())
+      Some(Rc::new(http_server()))
     } else {
       None
     };
@@ -100,11 +100,12 @@ impl TestContextBuilder {
   }
 }
 
+#[derive(Clone)]
 pub struct TestContext {
   envs: HashMap<String, String>,
   use_temp_cwd: bool,
   cwd: Option<String>,
-  _http_server_guard: Option<HttpServerGuard>,
+  _http_server_guard: Option<Rc<HttpServerGuard>>,
   deno_dir: TempDir,
   testdata_dir: PathBuf,
 }
@@ -116,12 +117,32 @@ impl Default for TestContext {
 }
 
 impl TestContext {
+  pub fn with_http_server() -> Self {
+    TestContextBuilder::default().use_http_server().build()
+  }
+
   pub fn testdata_path(&self) -> &PathBuf {
     &self.testdata_dir
   }
+
+  pub fn deno_dir(&self) -> &TempDir {
+    &self.deno_dir
+  }
+
+  pub fn new_command(&self) -> TestCommandBuilder {
+    TestCommandBuilder {
+      command_name: Default::default(),
+      args: Default::default(),
+      args_vec: Default::default(),
+      stdin: Default::default(),
+      envs: Default::default(),
+      env_clear: Default::default(),
+      cwd: Default::default(),
+      context: self.clone(),
+    }
+  }
 }
 
-#[derive(Default)]
 pub struct TestCommandBuilder {
   command_name: Option<String>,
   args: String,
@@ -130,16 +151,10 @@ pub struct TestCommandBuilder {
   envs: HashMap<String, String>,
   env_clear: bool,
   cwd: Option<String>,
-  // output: &'a str,
-  // output_str: Option<&'a str>,
-  // exit_code: i32,
+  context: TestContext,
 }
 
 impl TestCommandBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
-
   pub fn command_name(&mut self, name: impl AsRef<str>) -> &mut Self {
     self.command_name = Some(name.as_ref().to_string());
     self
@@ -181,19 +196,15 @@ impl TestCommandBuilder {
     self
   }
 
-  pub fn run_default_context(&self) -> TestCommandOutput {
-    self.run(&TestContext::default())
-  }
-
-  pub fn run(&self, context: &TestContext) -> TestCommandOutput {
-    let cwd = self.cwd.as_ref().or(context.cwd.as_ref());
-    let cwd = if context.use_temp_cwd {
+  pub fn run(&self) -> TestCommandOutput {
+    let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
+    let cwd = if self.context.use_temp_cwd {
       assert!(cwd.is_none());
-      context.deno_dir.path().to_owned()
+      self.context.deno_dir.path().to_owned()
     } else if let Some(cwd_) = cwd {
-      context.testdata_dir.join(cwd_)
+      self.context.testdata_dir.join(cwd_)
     } else {
-      context.testdata_dir.clone()
+      self.context.testdata_dir.clone()
     };
     let args = if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
@@ -212,7 +223,7 @@ impl TestCommandBuilder {
     }
     .iter()
     .map(|arg| {
-      arg.replace("$TESTDATA", &context.testdata_dir.to_string_lossy())
+      arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
     .collect::<Vec<_>>();
     let (mut reader, writer) = pipe().unwrap();
@@ -226,7 +237,7 @@ impl TestCommandBuilder {
     } else {
       Command::new(&command_name)
     };
-    command.env("DENO_DIR", context.deno_dir.path());
+    command.env("DENO_DIR", self.context.deno_dir.path());
 
     println!("command {} {}", command_name, args.join(" "));
     println!("command cwd {:?}", &cwd);
@@ -235,7 +246,7 @@ impl TestCommandBuilder {
       command.env_clear();
     }
     command.envs({
-      let mut envs = context.envs.clone();
+      let mut envs = self.context.envs.clone();
       for (key, value) in &self.envs {
         envs.insert(key.to_string(), value.to_string());
       }
@@ -278,20 +289,22 @@ impl TestCommandBuilder {
     TestCommandOutput {
       exit_code,
       text: actual,
-      testdata_dir: context.testdata_dir.clone(),
+      testdata_dir: self.context.testdata_dir.clone(),
       asserted_exit_code: RefCell::new(false),
       asserted_text: RefCell::new(false),
+      _test_context: self.context.clone(),
     }
   }
 }
 
-#[derive(Debug)]
 pub struct TestCommandOutput {
   text: String,
   exit_code: Option<i32>,
   testdata_dir: PathBuf,
   asserted_text: RefCell<bool>,
   asserted_exit_code: RefCell<bool>,
+  // keep alive for the duration of the output reference
+  _test_context: TestContext,
 }
 
 impl Drop for TestCommandOutput {
@@ -306,7 +319,7 @@ impl Drop for TestCommandOutput {
         self.exit_code
       )
     }
-    if !*self.asserted_text.borrow() && self.text.len() > 0 {
+    if !*self.asserted_text.borrow() && !self.text.is_empty() {
       println!("OUTPUT\n{}\nOUTPUT", self.text);
       panic!(concat!(
         "The non-empty text of the command was not asserted. ",
@@ -331,7 +344,7 @@ impl TestCommandOutput {
 
   pub fn exit_code(&self) -> Option<i32> {
     self.skip_exit_code_check();
-    self.exit_code.clone()
+    self.exit_code
   }
 
   pub fn text(&self) -> &str {

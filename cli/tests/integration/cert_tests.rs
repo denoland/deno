@@ -14,8 +14,7 @@ use test_util::TempDir;
 use tokio::task::LocalSet;
 use util::assert_exit_code;
 use util::assert_output_text;
-use util::TestCommandBuilder;
-use util::TestContextBuilder;
+use util::TestContext;
 
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cert/cafile_url_imports.ts",
@@ -80,12 +79,13 @@ itest!(localhost_unsafe_ssl {
 fn cafile_env_fetch() {
   let module_url =
     Url::parse("https://localhost:5545/cert/cafile_url_imports.ts").unwrap();
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContext::with_http_server();
   let cafile = context.testdata_path().join("tls/RootCA.pem");
-  let output = TestCommandBuilder::new()
+  let output = context
+    .new_command()
     .args(format!("cache {}", module_url.to_string()))
     .env("DENO_CERT", cafile.to_string_lossy())
-    .run(&context);
+    .run();
 
   assert_exit_code!(output, 0);
   output.skip_output_check();
@@ -95,12 +95,16 @@ fn cafile_env_fetch() {
 fn cafile_fetch() {
   let module_url =
     Url::parse("http://localhost:4545/cert/cafile_url_imports.ts").unwrap();
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContext::with_http_server();
   let cafile = context.testdata_path().join("tls/RootCA.pem");
-  let output = TestCommandBuilder::new()
-    .args(format!("cache --cert {}", module_url.to_string()))
-    .env("DENO_CERT", cafile.to_string_lossy())
-    .run(&context);
+  let output = context
+    .new_command()
+    .args(format!(
+      "cache --quiet --cert {} {}",
+      cafile.to_string_lossy(),
+      module_url.to_string()
+    ))
+    .run();
 
   assert_exit_code!(output, 0);
   assert_output_text!(output, "");
@@ -108,18 +112,24 @@ fn cafile_fetch() {
 
 #[test]
 fn cafile_compile() {
-  let context = TestContextBuilder::new().use_http_server().build();
-  let dir = TempDir::new();
-  let exe = if cfg!(windows) {
-    dir.path().join("cert.exe")
+  let context = TestContext::with_http_server();
+  let temp_dir = context.deno_dir().path();
+  let output_exe = if cfg!(windows) {
+    temp_dir.join("cert.exe")
   } else {
-    dir.path().join("cert")
+    temp_dir.join("cert")
   };
-  let output = TestCommandBuilder::new()
-    .args(format!("compile --cert ./tls/RootCA.pem --allow-net --output {} ./cert/cafile_ts_fetch.ts", exe.to_string_lossy()))
-    .run(&context);
+  let output = context.new_command()
+    .args(format!("compile --quiet --cert ./tls/RootCA.pem --allow-net --output {} ./cert/cafile_ts_fetch.ts", output_exe.to_string_lossy()))
+    .run();
+  output.skip_output_check();
 
-  assert_output_text!(output, "[WILDCARD]\nHello\n");
+  let exe_output = context
+    .new_command()
+    .command_name(output_exe.to_string_lossy())
+    .run();
+
+  assert_output_text!(exe_output, "[WILDCARD]\nHello\n");
 }
 
 #[flaky_test::flaky_test]
