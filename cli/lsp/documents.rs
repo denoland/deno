@@ -853,6 +853,11 @@ impl Documents {
   }
 
   pub fn open_root(&mut self, root_dir: &Path) {
+    // todo(THIS PR): this is wrong. We should probably do this when
+    // updating the configuration and it should be based on the enabled
+    // paths rather than pulling in everything. Additionally, we should
+    // skip searching certain directories by default like node_modules
+    // and .git
     let mut fs_docs = self.file_system_docs.lock();
     let resolver = self.resolver.as_graph_resolver();
 
