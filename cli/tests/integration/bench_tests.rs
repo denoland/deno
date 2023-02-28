@@ -3,8 +3,6 @@
 use deno_core::url::Url;
 use test_util as util;
 use util::assert_contains;
-use util::assert_exit_code;
-use util::assert_output_file;
 use util::env_vars_for_npm_tests;
 use util::TestContext;
 
@@ -196,7 +194,7 @@ fn recursive_permissions_pledge() {
     .new_command()
     .args("bench bench/recursive_permissions_pledge.js")
     .run();
-  assert_exit_code!(output, 1);
+  output.assert_exit_code(1);
   assert_contains!(
     output.text(),
     "pledge test permissions called before restoring previous pledge"
@@ -210,11 +208,11 @@ fn file_protocol() {
       .unwrap()
       .to_string();
   let context = TestContext::default();
-  let output = context
+  context
     .new_command()
     .args(format!("bench bench/file_protocol.ts {file_url}"))
-    .run();
-  assert_output_file!(output, "bench/file_protocol.out");
+    .run()
+    .assert_matches_file("bench/file_protocol.out");
 }
 
 itest!(package_json_basic {
