@@ -2844,14 +2844,14 @@ fn package_json_error_dep_value_test() {
     .cwd("package_json/invalid_value")
     .build();
 
-  // should succeed
+  // should run fine when not referencing a failing dep entry
   context
     .new_command()
     .args("run ok.ts")
     .run()
     .assert_matches_file("package_json/invalid_value/ok.ts.out");
 
-  // should fail
+  // should fail when referencing a failing dep entry
   context
     .new_command()
     .args("run error.ts")
@@ -2859,7 +2859,7 @@ fn package_json_error_dep_value_test() {
     .assert_exit_code(1)
     .assert_matches_file("package_json/invalid_value/error.ts.out");
 
-  // should output a warning about the package
+  // should output a warning about the failing dep entry
   context
     .new_command()
     .args("task test")
