@@ -415,8 +415,8 @@ impl TestCommandOutput {
 
     if !expected_text.contains("[WILDCARD]") {
       assert_eq!(actual, expected_text, "at {}", failed_position());
-    } else if !wildcard_match(&expected_text, actual) {
-      println!("OUTPUT START\n{}\nOUTPUT END", actual);
+    } else if !wildcard_match(expected_text, actual) {
+      println!("OUTPUT START\n{actual}\nOUTPUT END");
       println!("EXPECTED START\n{expected_text}\nEXPECTED END");
       panic!("pattern match failed at {}", failed_position());
     }
