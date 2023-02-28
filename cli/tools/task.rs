@@ -60,10 +60,6 @@ pub async fn execute_script(
         .await;
     Ok(exit_code)
   } else if let Some(script) = package_json_scripts.get(task_name) {
-    log::info!(
-      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
-      colors::yellow("Warning"),
-    );
     if let Some(package_deps) = ps.package_json_deps_installer.package_deps() {
       for (key, value) in package_deps {
         if let Err(err) = value {
@@ -80,6 +76,11 @@ pub async fn execute_script(
       .ensure_top_level_install()
       .await?;
     ps.npm_resolver.resolve_pending().await?;
+
+    log::info!(
+      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
+      colors::yellow("Warning"),
+    );
 
     let cwd = match task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
