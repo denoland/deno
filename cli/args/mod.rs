@@ -595,14 +595,12 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
-  // TODO(Cre3per): In deno_ast
-  // - Change MediaType::map_js_like_extension() to operate on extension, not path
-  // - Add MediaType::to_content_type() (This function, but complete)
+  // TODO(Cre3per): This mapping moves to deno_ast with https://github.com/denoland/deno_ast/issues/133
   fn media_type_from_file_extension(extension: &str) -> Option<String> {
     match extension {
-      "ts" => Some("application/typescript"),
+      "ts" => Some("text/typescript"),
       "tsx" => Some("text/tsx"),
-      "js" => Some("application/javascript"),
+      "js" => Some("text/javascript"),
       "jsx" => Some("text/jsx"),
       _ => None,
     }
