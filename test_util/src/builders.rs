@@ -450,5 +450,5 @@ fn failed_position() -> String {
     }
   }
 
-  String::new()
+  "<unknown>".to_string()
 }
