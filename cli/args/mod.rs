@@ -812,6 +812,7 @@ impl CliOptions {
     } else {
       self
         .maybe_package_json()
+        .as_ref()
         .map(package_json::get_local_package_json_version_reqs)
     }
   }

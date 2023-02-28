@@ -86,7 +86,7 @@ impl PackageJsonDepsInstaller {
     for package_req in package_reqs {
       inner
         .npm_resolution
-        .resolve_package_req_as_pending(&package_req)?;
+        .resolve_package_req_as_pending(package_req)?;
     }
 
     Ok(())

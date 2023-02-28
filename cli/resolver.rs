@@ -150,7 +150,7 @@ fn resolve_package_json_dep(
   for (bare_specifier, req_result) in deps {
     if specifier.starts_with(bare_specifier) {
       let path = &specifier[bare_specifier.len()..];
-      if path.is_empty() || path.starts_with("/") {
+      if path.is_empty() || path.starts_with('/') {
         let req = req_result.as_ref().map_err(|err| {
           anyhow!(
             "Parsing version constraints in the application-level package.json is more strict at the moment.\n\n{:#}",
