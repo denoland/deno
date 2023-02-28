@@ -78,6 +78,7 @@ declare namespace __bootstrap {
     export const SafePromisePrototypeFinally: UncurryThis<
       Promise.prototype.finally
     >;
+    export const SafeRegExp: typeof RegExp;
 
     // safe iterators
     export const SafeArrayIterator: new <T>(array: T[]) => IterableIterator<T>;
