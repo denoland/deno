@@ -7,6 +7,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
+  SafeRegExp,
   StringPrototypeReplace,
   TypeError,
 } = primordials;
@@ -49,7 +50,7 @@ function createResolvable() {
 function pathFromURLWin32(url) {
   let p = StringPrototypeReplace(
     url.pathname,
-    /^\/*([A-Za-z]:)(\/|$)/,
+    new SafeRegExp(/^\/*([A-Za-z]:)(\/|$)/),
     "$1/",
   );
   p = StringPrototypeReplace(
@@ -59,7 +60,7 @@ function pathFromURLWin32(url) {
   );
   p = StringPrototypeReplace(
     p,
-    /%(?![0-9A-Fa-f]{2})/g,
+    new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g),
     "%25",
   );
   let path = decodeURIComponent(p);
@@ -79,7 +80,11 @@ function pathFromURLPosix(url) {
   }
 
   return decodeURIComponent(
-    StringPrototypeReplace(url.pathname, /%(?![0-9A-Fa-f]{2})/g, "%25"),
+    StringPrototypeReplace(
+      url.pathname,
+      new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g),
+      "%25",
+    ),
   );
 }
 
