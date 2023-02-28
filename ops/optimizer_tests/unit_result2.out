@@ -142,7 +142,6 @@ fn op_set_nodelay_fast_fn<'scope>(
         Err(err) => {
             state.last_fast_op_error.replace(err);
             __opts.fallback = true;
-            Default::default()
         }
     }
 }

@@ -7,6 +7,7 @@ use deno_bench_util::bencher::Bencher;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
+use deno_core::OpState;
 use deno_web::BlobStore;
 
 struct Permissions;
@@ -15,11 +16,7 @@ impl deno_web::TimersPermission for Permissions {
   fn allow_hrtime(&mut self) -> bool {
     false
   }
-  fn check_unstable(
-    &self,
-    _state: &deno_core::OpState,
-    _api_name: &'static str,
-  ) {
+  fn check_unstable(&self, _state: &OpState, _api_name: &'static str) {
     unreachable!()
   }
 }

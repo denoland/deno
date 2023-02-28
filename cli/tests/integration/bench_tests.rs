@@ -2,7 +2,11 @@
 
 use deno_core::url::Url;
 use test_util as util;
+use util::assert_contains;
+use util::assert_exit_code;
+use util::assert_output_file;
 use util::env_vars_for_npm_tests;
+use util::TestContext;
 
 itest!(overloads {
   args: "bench bench/overloads.ts",
@@ -187,19 +191,16 @@ itest!(json_output {
 
 #[test]
 fn recursive_permissions_pledge() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("bench")
-    .arg("bench/recursive_permissions_pledge.js")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(String::from_utf8(output.stderr).unwrap().contains(
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("bench bench/recursive_permissions_pledge.js")
+    .run();
+  assert_exit_code!(output, 1);
+  assert_contains!(
+    output.text(),
     "pledge test permissions called before restoring previous pledge"
-  ));
+  );
 }
 
 #[test]
@@ -208,14 +209,12 @@ fn file_protocol() {
     Url::from_file_path(util::testdata_path().join("bench/file_protocol.ts"))
       .unwrap()
       .to_string();
-
-  (util::CheckOutputIntegrationTest {
-    args_vec: vec!["bench", &file_url],
-    exit_code: 0,
-    output: "bench/file_protocol.out",
-    ..Default::default()
-  })
-  .run();
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args(format!("bench bench/file_protocol.ts {file_url}"))
+    .run();
+  assert_output_file!(output, "bench/file_protocol.out");
 }
 
 itest!(package_json_basic {
