@@ -12,12 +12,12 @@ macro_rules! itest(
       .. Default::default()
     };
     let output = test.output();
-    test_util::assert_exit_code!(output, test.exit_code);
+    output.assert_exit_code(test.exit_code);
     if !test.output.is_empty() {
       assert!(test.output_str.is_none());
-      test_util::assert_output_file!(output, test.output);
+      output.assert_matches_file(test.output);
     } else {
-      test_util::assert_output_text!(output, test.output_str.unwrap_or(""));
+      output.assert_matches_text(test.output_str.unwrap_or(""));
     }
   }
 }
@@ -35,12 +35,12 @@ macro_rules! itest_flaky(
       .. Default::default()
     };
     let output = test.output();
-    test_util::assert_exit_code!(output, test.exit_code);
+    output.assert_exit_code(test.exit_code);
     if !test.output.is_empty() {
       assert!(test.output_str.is_none());
-      test_util::assert_output_file!(output, test.output);
+      output.assert_matches_file(test.output);
     } else {
-      test_util::assert_output_text!(output, test.output_str.unwrap_or(""));
+      output.assert_matches_text(test.output_str.unwrap_or(""));
     }
   }
 }
