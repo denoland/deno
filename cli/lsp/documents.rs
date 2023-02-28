@@ -852,6 +852,48 @@ impl Documents {
     }
   }
 
+  pub fn open_root(&mut self, root_dir: &Path) {
+    let mut fs_docs = self.file_system_docs.lock();
+    let resolver = self.resolver.as_graph_resolver();
+
+    let mut pending_dirs = VecDeque::new();
+    pending_dirs.push_back(root_dir.to_path_buf());
+
+    while let Some(dir_path) = pending_dirs.pop_front() {
+      if let Ok(read_dir) = std::fs::read_dir(&dir_path) {
+        for entry in read_dir {
+          let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+          };
+          let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+          };
+          let new_path = dir_path.join(entry.file_name());
+          if file_type.is_dir() {
+            pending_dirs.push_back(new_path);
+          } else if file_type.is_file() {
+            if let Some(ext) = new_path.extension() {
+              let ext = ext.to_string_lossy().to_lowercase();
+              // todo: use media type here?
+              if matches!(ext.as_str(), "ts" | "js" | "mts" | "tsx") {
+                if let Ok(specifier) = ModuleSpecifier::from_file_path(new_path)
+                {
+                  if !self.open_docs.contains_key(&specifier)
+                    && !fs_docs.docs.contains_key(&specifier)
+                  {
+                    fs_docs.refresh_document(&self.cache, resolver, &specifier);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   /// "Open" a document from the perspective of the editor, meaning that
   /// requests for information from the document will come from the in-memory
   /// representation received from the language server client, versus reading

@@ -995,6 +995,12 @@ impl Inner {
 
     self.assets.intitialize(self.snapshot()).await;
 
+    if let Some(root_uri) = &self.config.root_uri {
+      if let Ok(dir_path) = root_uri.to_file_path() {
+        self.documents.open_root(&dir_path);
+      }
+    }
+
     self.performance.measure(mark);
     Ok(InitializeResult {
       capabilities,
