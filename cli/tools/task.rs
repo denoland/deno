@@ -66,11 +66,12 @@ pub async fn execute_script(
     );
     if let Some(package_deps) = ps.package_json_deps_installer.package_deps() {
       for (key, value) in package_deps {
-        if value.is_err() {
+        if let Err(err) = value {
           log::info!(
-            "{} Ignoring {} dependency in package.json because its version requirement failed to parse.",
+            "{} Ignoring dependency '{}' in package.json because its version requirement failed to parse: {:#}",
             colors::yellow("Warning"),
             key,
+            err,
           );
         }
       }
