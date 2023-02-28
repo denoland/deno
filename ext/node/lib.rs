@@ -146,7 +146,6 @@ pub fn init_polyfill() -> Extension {
     "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
-    "_process/stdio.mjs",
     "_process/streams.mjs",
     "_readline.mjs",
     "_stream.mjs",

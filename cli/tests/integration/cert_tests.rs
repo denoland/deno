@@ -12,8 +12,6 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
-use util::assert_exit_code;
-use util::assert_output_text;
 use util::TestContext;
 
 itest_flaky!(cafile_url_imports {
@@ -81,14 +79,14 @@ fn cafile_env_fetch() {
     Url::parse("https://localhost:5545/cert/cafile_url_imports.ts").unwrap();
   let context = TestContext::with_http_server();
   let cafile = context.testdata_path().join("tls/RootCA.pem");
-  let output = context
+
+  context
     .new_command()
     .args(format!("cache {module_url}"))
     .env("DENO_CERT", cafile.to_string_lossy())
-    .run();
-
-  assert_exit_code!(output, 0);
-  output.skip_output_check();
+    .run()
+    .assert_exit_code(0)
+    .skip_output_check();
 }
 
 #[flaky_test::flaky_test]
@@ -97,17 +95,16 @@ fn cafile_fetch() {
     Url::parse("http://localhost:4545/cert/cafile_url_imports.ts").unwrap();
   let context = TestContext::with_http_server();
   let cafile = context.testdata_path().join("tls/RootCA.pem");
-  let output = context
+  context
     .new_command()
     .args(format!(
       "cache --quiet --cert {} {}",
       cafile.to_string_lossy(),
       module_url,
     ))
-    .run();
-
-  assert_exit_code!(output, 0);
-  assert_output_text!(output, "");
+    .run()
+    .assert_exit_code(0)
+    .assert_matches_text("");
 }
 
 #[test]
@@ -124,12 +121,11 @@ fn cafile_compile() {
     .run();
   output.skip_output_check();
 
-  let exe_output = context
+  context
     .new_command()
     .command_name(output_exe.to_string_lossy())
-    .run();
-
-  assert_output_text!(exe_output, "[WILDCARD]\nHello\n");
+    .run()
+    .assert_matches_text("[WILDCARD]\nHello\n");
 }
 
 #[flaky_test::flaky_test]
