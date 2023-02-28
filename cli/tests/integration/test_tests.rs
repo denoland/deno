@@ -2,7 +2,6 @@
 
 use deno_core::url::Url;
 use test_util as util;
-use util::assert_output_file;
 use util::env_vars_for_npm_tests;
 use util::TestContext;
 
@@ -417,8 +416,11 @@ fn file_protocol() {
       .to_string();
 
   let context = TestContext::default();
-  let output = context.new_command().args(format!("test {file_url}")).run();
-  assert_output_file!(output, "test/file_protocol.out");
+  context
+    .new_command()
+    .args(format!("test {file_url}"))
+    .run()
+    .assert_matches_file("test/file_protocol.out");
 }
 
 itest!(uncaught_errors {
