@@ -217,8 +217,8 @@ fn get_fast_scalar(s: &str) -> Option<FastValue> {
     "bool" => Some(FastValue::Bool),
     "u32" => Some(FastValue::U32),
     "i32" => Some(FastValue::I32),
-    "u64" => Some(FastValue::U64),
-    "i64" => Some(FastValue::I64),
+    "u64" | "usize" => Some(FastValue::U64),
+    "i64" | "isize" => Some(FastValue::I64),
     "f32" => Some(FastValue::F32),
     "f64" => Some(FastValue::F64),
     "* const c_void" | "* mut c_void" => Some(FastValue::Pointer),
@@ -252,6 +252,16 @@ pub(crate) enum FastValue {
   Uint8Array,
   Uint32Array,
   Float64Array,
+}
+
+impl FastValue {
+  pub fn default_value(&self) -> Quote {
+    match self {
+      FastValue::Pointer => q!({ ::std::ptr::null_mut() }),
+      FastValue::Void => q!({}),
+      _ => q!({ Default::default() }),
+    }
+  }
 }
 
 impl Default for FastValue {
