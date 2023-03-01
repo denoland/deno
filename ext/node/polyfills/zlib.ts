@@ -121,6 +121,29 @@ export default {
   unzipSync,
 };
 
+interface ZlibOptions {
+  flush?: number;
+  finishFlush?: number;
+  chunkSize?: number;
+  windowBits?: number;
+  level?: number;
+  memLevel?: number;
+  strategy?: number;
+  dictionary?: Buffer | ArrayBuffer | ArrayBufferView;
+  info?: boolean;
+  maxOutputLength?: number;
+}
+const { ops } = globalThis.__bootstrap.core;
+
+function deflateSync(
+  buffer: Buffer | ArrayBuffer | ArrayBufferView,
+  options?: ZlibOptions,
+) {
+  return ops.op_zlib_deflate_sync(
+    buffer,
+  );
+}
+
 export {
   codes,
   createDeflate,

@@ -22,6 +22,7 @@ mod polyfill;
 mod resolution;
 mod v8;
 mod winerror;
+mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
