@@ -81,6 +81,7 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub no_terminal: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -922,6 +923,11 @@ fn compile_subcommand<'a>() -> Command<'a> {
           "x86_64-apple-darwin",
           "aarch64-apple-darwin",
         ]),
+    )
+    .arg(
+      Arg::new("no-terminal")
+        .long("no-terminal")
+        .help("Prevents terminal from opening up on windows"),
     )
     .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
@@ -2487,12 +2493,14 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
   let target = matches.value_of("target").map(String::from);
+  let no_terminal = matches.is_present("no-terminal");
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
     args,
     target,
+    no_terminal,
   });
 }
 

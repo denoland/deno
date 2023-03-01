@@ -13,6 +13,7 @@ use crate::util::path::path_has_trailing_slash;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::ProcState;
+use byteorder::{ByteOrder, LittleEndian};
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -28,6 +29,7 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -159,6 +161,17 @@ async fn create_standalone_binary(
   compile_flags: &CompileFlags,
   ps: ProcState,
 ) -> Result<Vec<u8>, AnyError> {
+  let target = compile_flags
+    .target
+    .clone()
+    .unwrap_or(env::consts::OS.to_string());
+
+  if compile_flags.no_terminal
+    & (target == "x86_64-pc-windows-msvc" || target == "windows")
+  {
+    original_bin = set_windows_binary_to_gui(original_bin);
+  }
+
   let mut eszip_archive = eszip.into_bytes();
 
   let ca_data = match ps.options.ca_data() {
@@ -207,6 +220,18 @@ async fn create_standalone_binary(
   final_bin.append(&mut trailer);
 
   Ok(final_bin)
+}
+
+fn set_windows_binary_to_gui(mut bin: Vec<u8>) -> Vec<u8> {
+  let header_start = LittleEndian::read_i32(&bin[60..64]);
+  let subsystem_offset = 92;
+  let subsystem_start = header_start + subsystem_offset;
+  let subsystem_range = Range {
+    start: subsystem_start as usize,
+    end: (subsystem_start + 2) as usize,
+  };
+  LittleEndian::write_i16(&mut bin[subsystem_range], 2);
+  bin
 }
 
 /// This function writes out a final binary to specified path. If output path
