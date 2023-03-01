@@ -985,21 +985,9 @@ impl Inner {
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
-    self.documents.update_config(
-      self.maybe_import_map.clone(),
-      self.maybe_config_file.as_ref(),
-      self.maybe_package_json.as_ref(),
-      self.npm_resolver.api().clone(),
-      self.npm_resolver.resolution().clone(),
-    );
 
+    self.refresh_config();
     self.assets.intitialize(self.snapshot()).await;
-
-    if let Some(root_uri) = &self.config.root_uri {
-      if let Ok(dir_path) = root_uri.to_file_path() {
-        self.documents.open_root(&dir_path);
-      }
-    }
 
     self.performance.measure(mark);
     Ok(InitializeResult {
@@ -1007,6 +995,17 @@ impl Inner {
       server_info: Some(server_info),
       offset_encoding: None,
     })
+  }
+
+  fn refresh_config(&mut self) {
+    self.documents.update_config(
+      self.config.root_dirs(),
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
+      self.npm_resolver.api().clone(),
+      self.npm_resolver.resolution().clone(),
+    );
   }
 
   async fn initialized(&mut self, _: InitializedParams) {
@@ -1039,6 +1038,7 @@ impl Inner {
       }
     }
     self.config.update_enabled_paths(self.client.clone()).await;
+    self.refresh_config();
 
     if self.config.client_capabilities.testing_api {
       let test_server = testing::TestServer::new(
@@ -1184,13 +1184,7 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    self.documents.update_config(
-      self.maybe_import_map.clone(),
-      self.maybe_config_file.as_ref(),
-      self.maybe_package_json.as_ref(),
-      self.npm_resolver.api().clone(),
-      self.npm_resolver.resolution().clone(),
-    );
+    self.refresh_config();
 
     self.send_diagnostics_update();
     self.send_testing_update();
@@ -1242,13 +1236,7 @@ impl Inner {
       }
     }
     if touched {
-      self.documents.update_config(
-        self.maybe_import_map.clone(),
-        self.maybe_config_file.as_ref(),
-        self.maybe_package_json.as_ref(),
-        self.npm_resolver.api().clone(),
-        self.npm_resolver.resolution().clone(),
-      );
+      self.refresh_config();
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
       self.restart_ts_server().await;
@@ -2826,6 +2814,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         }
         let mut ls = language_server.0.write().await;
         if ls.config.update_enabled_paths(client).await {
+          ls.refresh_config();
           ls.diagnostics_server.invalidate_all();
           // this will be called in the inner did_change_configuration, but the
           // problem then becomes, if there was a change, the snapshot used

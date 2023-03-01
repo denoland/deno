@@ -43,6 +43,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use indexmap::IndexMap;
+use lsp::Url;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -775,18 +776,6 @@ impl FileSystemDocuments {
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
   }
-
-  pub fn refresh_dependencies(
-    &mut self,
-    resolver: &dyn deno_graph::source::Resolver,
-  ) {
-    for doc in self.docs.values_mut() {
-      if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
-        *doc = new_doc;
-      }
-    }
-    self.dirty = true;
-  }
 }
 
 fn get_document_path(
@@ -849,53 +838,6 @@ impl Documents {
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
-    }
-  }
-
-  pub fn open_root(&mut self, root_dir: &Path) {
-    // todo(THIS PR): this is wrong. We should probably do this when
-    // updating the configuration and it should be based on the enabled
-    // paths rather than pulling in everything. Additionally, we should
-    // skip searching certain directories by default like node_modules
-    // and .git
-    let mut fs_docs = self.file_system_docs.lock();
-    let resolver = self.resolver.as_graph_resolver();
-
-    let mut pending_dirs = VecDeque::new();
-    pending_dirs.push_back(root_dir.to_path_buf());
-
-    while let Some(dir_path) = pending_dirs.pop_front() {
-      if let Ok(read_dir) = std::fs::read_dir(&dir_path) {
-        for entry in read_dir {
-          let entry = match entry {
-            Ok(entry) => entry,
-            Err(_) => continue,
-          };
-          let file_type = match entry.file_type() {
-            Ok(file_type) => file_type,
-            Err(_) => continue,
-          };
-          let new_path = dir_path.join(entry.file_name());
-          if file_type.is_dir() {
-            pending_dirs.push_back(new_path);
-          } else if file_type.is_file() {
-            if let Some(ext) = new_path.extension() {
-              let ext = ext.to_string_lossy().to_lowercase();
-              // todo: use media type here?
-              if matches!(ext.as_str(), "ts" | "js" | "mts" | "tsx") {
-                if let Ok(specifier) = ModuleSpecifier::from_file_path(new_path)
-                {
-                  if !self.open_docs.contains_key(&specifier)
-                    && !fs_docs.docs.contains_key(&specifier)
-                  {
-                    fs_docs.refresh_document(&self.cache, resolver, &specifier);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
     }
   }
 
@@ -1209,6 +1151,7 @@ impl Documents {
 
   pub fn update_config(
     &mut self,
+    root_dirs: Vec<Url>,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
@@ -1216,21 +1159,24 @@ impl Documents {
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
+      root_dirs: &[Url],
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
+      hasher.write_hashable(&{
+        // ensure these are sorted
+        let mut root_dirs = root_dirs.to_vec();
+        root_dirs.sort();
+        root_dirs
+      });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      if let Some(jsx_config) = maybe_jsx_config {
-        hasher.write_hashable(&jsx_config);
-      }
-      if let Some(deps) = maybe_package_json_deps {
-        hasher.write_hashable(&deps);
-      }
+      hasher.write_hashable(&maybe_jsx_config);
+      hasher.write_hashable(&maybe_package_json_deps);
       hasher.finish()
     }
 
@@ -1246,6 +1192,7 @@ impl Documents {
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
+      &root_dirs,
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
@@ -1295,21 +1242,108 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies();
+      self.refresh_dependencies(root_dirs);
       self.resolver_config_hash = new_resolver_config_hash;
     }
 
     self.dirty = true;
   }
 
-  fn refresh_dependencies(&mut self) {
+  fn refresh_dependencies(&mut self, root_dirs: Vec<Url>) {
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
         *doc = new_doc;
       }
     }
-    self.file_system_docs.lock().refresh_dependencies(resolver);
+
+    // update the file system document
+    let mut fs_docs = self.file_system_docs.lock();
+    let mut not_found_docs =
+      fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+
+    let mut pending_dirs = VecDeque::new();
+    for dir in root_dirs {
+      if let Ok(path) = dir.to_file_path() {
+        pending_dirs.push_back(path.to_path_buf());
+      }
+    }
+
+    while let Some(dir_path) = pending_dirs.pop_front() {
+      if let Some(dir_name) = dir_path.file_name() {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        if matches!(dir_name.as_str(), "node_modules" | ".git") {
+          continue;
+        }
+      }
+      let read_dir = match std::fs::read_dir(&dir_path) {
+        Ok(entry) => entry,
+        Err(_) => continue,
+      };
+
+      for entry in read_dir {
+        let entry = match entry {
+          Ok(entry) => entry,
+          Err(_) => continue,
+        };
+        let file_type = match entry.file_type() {
+          Ok(file_type) => file_type,
+          Err(_) => continue,
+        };
+        let new_path = dir_path.join(entry.file_name());
+        if file_type.is_dir() {
+          pending_dirs.push_back(new_path);
+        } else if file_type.is_file() {
+          let media_type: MediaType = (&new_path).into();
+          let is_diagnosable = match media_type {
+            MediaType::JavaScript
+            | MediaType::Jsx
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Tsx => true,
+            MediaType::Json
+            | MediaType::Wasm
+            | MediaType::SourceMap
+            | MediaType::TsBuildInfo
+            | MediaType::Unknown => false,
+          };
+          if !is_diagnosable {
+            continue;
+          }
+          let specifier = match ModuleSpecifier::from_file_path(new_path) {
+            Ok(specifier) => specifier,
+            Err(_) => continue,
+          };
+
+          if !self.open_docs.contains_key(&specifier)
+            && !fs_docs.docs.contains_key(&specifier)
+          {
+            fs_docs.refresh_document(&self.cache, resolver, &specifier);
+          } else {
+            not_found_docs.remove(&specifier);
+            // update the existing entry to have the new resolver
+            if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+              if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+                *doc = new_doc;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // clean up and remove any documents that weren't found
+    for uri in not_found_docs {
+      fs_docs.docs.remove(&uri);
+    }
+
+    fs_docs.dirty = true;
   }
 
   /// Iterate through the documents, building a map where the key is a unique
@@ -1681,6 +1715,7 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(
+        vec![],
         Some(Arc::new(import_map)),
         None,
         None,
@@ -1720,6 +1755,7 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(
+        vec![],
         Some(Arc::new(import_map)),
         None,
         None,
