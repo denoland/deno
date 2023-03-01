@@ -6,7 +6,7 @@ const windowsRunnerCondition =
   "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
-    "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+    "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
   macos: "macos-12",
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
@@ -853,7 +853,7 @@ const ci = {
     },
     "publish-canary": {
       name: "publish canary",
-      "runs-on": "ubuntu-20.04",
+      "runs-on": "ubuntu-22.04",
       needs: ["build"],
       if:
         "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
