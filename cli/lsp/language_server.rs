@@ -2873,6 +2873,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     tokio::spawn(async move {
       let mut ls = language_server.0.write().await;
       if ls.config.update_enabled_paths(client).await {
+        ls.refresh_config();
         ls.diagnostics_server.invalidate_all();
         ls.send_diagnostics_update();
       }
