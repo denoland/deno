@@ -15,7 +15,6 @@ use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
-use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use rustls::Certificate;
@@ -54,11 +53,16 @@ use tokio_tungstenite::accept_async;
 use url::Url;
 
 pub mod assertions;
+mod builders;
 pub mod lsp;
 mod npm;
 pub mod pty;
 mod temp_dir;
 
+pub use builders::TestCommandBuilder;
+pub use builders::TestCommandOutput;
+pub use builders::TestContext;
+pub use builders::TestContextBuilder;
 pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
@@ -1948,131 +1952,43 @@ pub struct CheckOutputIntegrationTest<'a> {
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
-  pub fn run(&self) {
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let args = if self.args_vec.is_empty() {
-      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
-    } else {
-      assert!(
-        self.args.is_empty(),
-        "Do not provide args when providing args_vec."
-      );
-      std::borrow::Cow::Borrowed(&self.args_vec)
-    };
-    let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
-      let test_data_path = testdata_path().join(temp_copy_dir);
-      let temp_copy_dir = deno_dir.path().join(temp_copy_dir);
-      std::fs::create_dir_all(&temp_copy_dir).unwrap();
-      copy_dir_recursive(&test_data_path, &temp_copy_dir).unwrap();
-      deno_dir.path().to_owned()
-    } else {
-      testdata_path()
-    };
-    let args = args
-      .iter()
-      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
-      .collect::<Vec<_>>();
-    let deno_exe = deno_exe_path();
-    println!("deno_exe path {}", deno_exe.display());
+  pub fn output(&self) -> TestCommandOutput {
+    let mut context_builder = TestContextBuilder::default();
+    if self.temp_cwd {
+      context_builder.use_temp_cwd();
+    }
+    if let Some(dir) = &self.copy_temp_dir {
+      context_builder.use_copy_temp_dir(dir);
+    }
+    if self.http_server {
+      context_builder.use_http_server();
+    }
 
-    let _http_server_guard = if self.http_server {
-      Some(http_server())
-    } else {
-      None
-    };
+    let context = context_builder.build();
 
-    let (mut reader, writer) = pipe().unwrap();
-    let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    let cwd = if self.temp_cwd {
-      deno_dir.path().to_owned()
-    } else if let Some(cwd_) = &self.cwd {
-      testdata_dir.join(cwd_)
-    } else {
-      testdata_dir.clone()
-    };
-    println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &cwd);
-    command.args(args.iter());
+    let mut command_builder = context.new_command();
+
+    if !self.args.is_empty() {
+      command_builder.args(self.args);
+    }
+    if !self.args_vec.is_empty() {
+      command_builder
+        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+    }
+    if let Some(input) = &self.input {
+      command_builder.stdin(input);
+    }
+    for (key, value) in &self.envs {
+      command_builder.env(key, value);
+    }
     if self.env_clear {
-      command.env_clear();
+      command_builder.env_clear();
     }
-    command.envs(self.envs.clone());
-    command.current_dir(cwd);
-    command.stdin(Stdio::piped());
-    let writer_clone = writer.try_clone().unwrap();
-    command.stderr(writer_clone);
-    command.stdout(writer);
-
-    let mut process = command.spawn().expect("failed to execute process");
-
-    if let Some(input) = self.input {
-      let mut p_stdin = process.stdin.take().unwrap();
-      write!(p_stdin, "{input}").unwrap();
+    if let Some(cwd) = &self.cwd {
+      command_builder.cwd(cwd);
     }
 
-    // Very important when using pipes: This parent process is still
-    // holding its copies of the write ends, and we have to close them
-    // before we read, otherwise the read end will never report EOF. The
-    // Command object owns the writers now, and dropping it closes them.
-    drop(command);
-
-    let mut actual = String::new();
-    reader.read_to_string(&mut actual).unwrap();
-
-    let status = process.wait().expect("failed to finish process");
-
-    if let Some(exit_code) = status.code() {
-      if self.exit_code != exit_code {
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!(
-          "bad exit code, expected: {:?}, actual: {:?}",
-          self.exit_code, exit_code
-        );
-      }
-    } else {
-      #[cfg(unix)]
-      {
-        use std::os::unix::process::ExitStatusExt;
-        let signal = status.signal().unwrap();
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          self.exit_code, signal,
-        );
-      }
-      #[cfg(not(unix))]
-      {
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
-      }
-    }
-
-    actual = strip_ansi_codes(&actual).to_string();
-
-    // deno test's output capturing flushes with a zero-width space in order to
-    // synchronize the output pipes. Occassionally this zero width space
-    // might end up in the output so strip it from the output comparison here.
-    if args.first().map(|s| s.as_str()) == Some("test") {
-      actual = actual.replace('\u{200B}', "");
-    }
-
-    let expected = if let Some(s) = self.output_str {
-      s.to_owned()
-    } else if self.output.is_empty() {
-      String::new()
-    } else {
-      let output_path = testdata_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      std::fs::read_to_string(output_path).expect("cannot read output")
-    };
-
-    if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected)
-    } else if !wildcard_match(&expected, &actual) {
-      println!("OUTPUT\n{actual}\nOUTPUT");
-      println!("EXPECTED\n{expected}\nEXPECTED");
-      panic!("pattern match failed");
-    }
+    command_builder.run()
   }
 }
 
