@@ -95,18 +95,6 @@ pub struct IpAddr {
   pub port: u16,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct MulticastMembershipV4 {
-  pub address: String,
-  pub interface: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct MulticastMembershipV6 {
-  pub address: String,
-  pub interface: u32,
-}
-
 impl From<SocketAddr> for IpAddr {
   fn from(addr: SocketAddr) -> Self {
     Self {
@@ -211,7 +199,8 @@ where
 async fn op_net_join_multi_v4_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  membership: MulticastMembershipV4,
+  address: String,
+  multi_interface: String,
 ) -> Result<(), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -223,8 +212,8 @@ where
     .map_err(|_| bad_resource("Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
-  let addr = Ipv4Addr::from_str(membership.address.as_str())?;
-  let interface_addr = Ipv4Addr::from_str(membership.interface.as_str())?;
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
 
   socket.join_multicast_v4(addr, interface_addr)?;
 
@@ -235,7 +224,8 @@ where
 async fn op_net_join_multi_v6_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  membership: MulticastMembershipV6,
+  address: String,
+  multi_interface: u32,
 ) -> Result<(), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -247,9 +237,9 @@ where
     .map_err(|_| bad_resource("Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
-  let addr = Ipv6Addr::from_str(membership.address.as_str())?;
+  let addr = Ipv6Addr::from_str(address.as_str())?;
 
-  socket.join_multicast_v6(&addr, membership.interface)?;
+  socket.join_multicast_v6(&addr, multi_interface)?;
 
   Ok(())
 }
@@ -258,7 +248,8 @@ where
 async fn op_net_leave_multi_v4_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  membership: MulticastMembershipV4,
+  address: String,
+  multi_interface: String,
 ) -> Result<(), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -270,8 +261,8 @@ where
     .map_err(|_| bad_resource("Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
-  let addr = Ipv4Addr::from_str(membership.address.as_str())?;
-  let interface_addr = Ipv4Addr::from_str(membership.interface.as_str())?;
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
 
   socket.leave_multicast_v4(addr, interface_addr)?;
 
@@ -282,7 +273,8 @@ where
 async fn op_net_leave_multi_v6_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  membership: MulticastMembershipV6,
+  address: String,
+  multi_interface: u32,
 ) -> Result<(), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -294,9 +286,9 @@ where
     .map_err(|_| bad_resource("Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
-  let addr = Ipv6Addr::from_str(membership.address.as_str())?;
+  let addr = Ipv6Addr::from_str(address.as_str())?;
 
-  socket.leave_multicast_v6(&addr, membership.interface)?;
+  socket.leave_multicast_v6(&addr, multi_interface)?;
 
   Ok(())
 }

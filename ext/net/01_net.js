@@ -281,7 +281,8 @@ class Datagram {
     await core.opAsync(
       "op_net_join_multi_v4_udp",
       this.rid,
-      { address: addr, interface: multiInterface },
+      addr,
+      multiInterface,
     );
 
     return {
@@ -289,7 +290,8 @@ class Datagram {
         return core.opAsync(
           "op_net_leave_multi_v4_udp",
           this.rid,
-          { address: addr, interface: multiInterface },
+          addr,
+          multiInterface,
         );
       },
       setLoopback: (loopback) => {
@@ -314,7 +316,8 @@ class Datagram {
     await core.opAsync(
       "op_net_join_multi_v6_udp",
       this.rid,
-      { address: addr, interface: multiInterface },
+      addr,
+      multiInterface,
     );
 
     return {
@@ -322,7 +325,8 @@ class Datagram {
         return core.opAsync(
           "op_net_leave_multi_v6_udp",
           this.rid,
-          { address: addr, interface: multiInterface },
+          addr,
+          multiInterface,
         );
       },
       setLoopback: (loopback) => {
