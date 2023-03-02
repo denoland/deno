@@ -510,7 +510,8 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 
   /** @param value {string} */
   function hasWord(value) {
-    for (const [cLower, cUpper] of charCodes) {
+    for (let j = 0; j < charCodes.length; ++j) {
+      const { 0: cLower, 1: cUpper } = charCodes[j];
       if (cLower === char || cUpper === char) {
         char = StringPrototypeCharCodeAt(value, ++i);
       } else {

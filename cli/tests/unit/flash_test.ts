@@ -2272,7 +2272,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function serveWithPrototypeOverride() {
+  async function serveWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
     const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {

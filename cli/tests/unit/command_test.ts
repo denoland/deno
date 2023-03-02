@@ -851,7 +851,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true } },
-  async function commandWithPrototypeOverride() {
+  async function commandWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
     const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
