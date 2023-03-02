@@ -490,7 +490,7 @@ async fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
   lint_options: &LintOptions,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {

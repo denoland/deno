@@ -21,7 +21,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -121,7 +120,7 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<Vec<Reference>, AnyError> {
   let linter = create_linter(parsed_source.media_type(), lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
