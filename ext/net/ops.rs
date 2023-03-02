@@ -29,7 +29,6 @@ use socket2::Socket;
 use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::net::IpAddr as StdIpAddr;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
@@ -297,7 +296,7 @@ where
 async fn op_net_set_multi_loopback_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  group_address: String,
+  is_v4_membership: bool,
   loopback: bool,
 ) -> Result<(), AnyError>
 where
@@ -310,15 +309,10 @@ where
     .map_err(|_| bad_resource("Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
 
-  let addr = StdIpAddr::from_str(group_address.as_str())?;
-
-  match addr {
-    StdIpAddr::V4(_) => {
-      socket.set_multicast_loop_v4(loopback)?;
-    }
-    StdIpAddr::V6(_) => {
-      socket.set_multicast_loop_v6(loopback)?;
-    }
+  if is_v4_membership {
+    socket.set_multicast_loop_v4(loopback)?
+  } else {
+    socket.set_multicast_loop_v6(loopback)?;
   }
 
   Ok(())

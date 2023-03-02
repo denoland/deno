@@ -298,7 +298,7 @@ class Datagram {
         return core.opAsync(
           "op_net_set_multi_loopback_udp",
           this.rid,
-          addr,
+          true,
           loopback,
         );
       },
@@ -333,7 +333,7 @@ class Datagram {
         return core.opAsync(
           "op_net_set_multi_loopback_udp",
           this.rid,
-          addr,
+          false,
           loopback,
         );
       },
