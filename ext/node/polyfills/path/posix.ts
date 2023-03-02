@@ -20,6 +20,8 @@ import {
   normalizeString,
 } from "internal:deno_node/path/_util.ts";
 
+const { ops } = globalThis.__bootstrap.core;
+
 export const sep = "/";
 export const delimiter = ":";
 
@@ -226,26 +228,14 @@ export function toNamespacedPath(path: string): string {
  * @param path to determine name for
  */
 export function dirname(path: string): string {
-  assertPath(path);
-  if (path.length === 0) return ".";
-  const hasRoot = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
-  let end = -1;
-  let matchedSlash = true;
-  for (let i = path.length - 1; i >= 1; --i) {
-    if (path.charCodeAt(i) === CHAR_FORWARD_SLASH) {
-      if (!matchedSlash) {
-        end = i;
-        break;
-      }
-    } else {
-      // We saw the first non-path separator
-      matchedSlash = false;
+  try {
+    return ops.op_node_path_posix_dirname(path);
+  } catch (e) {
+    if (e.message.startsWith("Expected string")) {
+      throw new ERR_INVALID_ARG_TYPE("path", ["string"], path);
     }
+    throw e;
   }
-
-  if (end === -1) return hasRoot ? "/" : ".";
-  if (hasRoot && end === 1) return "//";
-  return path.slice(0, end);
 }
 
 /**

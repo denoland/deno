@@ -334,6 +334,8 @@ pub fn init_polyfill() -> Extension {
       crypto::op_node_private_encrypt::decl(),
       crypto::op_node_private_decrypt::decl(),
       crypto::op_node_public_encrypt::decl(),
+      path::posix::op_node_path_posix_dirname::decl(),
+      path::win32::op_node_path_win32_dirname::decl(),
       winerror::op_node_sys_to_uv_error::decl(),
       v8::op_v8_cached_data_version_tag::decl(),
       v8::op_v8_get_heap_statistics::decl(),
