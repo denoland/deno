@@ -13,7 +13,8 @@ use crate::util::path::path_has_trailing_slash;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::ProcState;
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::ByteOrder;
+use byteorder::LittleEndian;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -369,6 +370,7 @@ mod test {
       output: Some(PathBuf::from("./file")),
       args: Vec::new(),
       target: Some("x86_64-unknown-linux-gnu".to_string()),
+      no_terminal: false,
     })
     .await
     .unwrap();
@@ -386,6 +388,7 @@ mod test {
       output: Some(PathBuf::from("./file")),
       args: Vec::new(),
       target: Some("x86_64-pc-windows-msvc".to_string()),
+      no_terminal: false,
     })
     .await
     .unwrap();

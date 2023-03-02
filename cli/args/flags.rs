@@ -6226,6 +6226,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          no_terminal: false
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6245,6 +6246,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
+          no_terminal: false
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
