@@ -297,12 +297,17 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
     serialized_package_req: String,
     serialized_package_id: String,
   ) {
+    let maybe_prev = self.content.npm.specifiers.get(&serialized_package_req);
+
+    if maybe_prev.is_none() || maybe_prev != Some(&serialized_package_id) {
+      self.has_content_changed = true;
+    }
+
     self
       .content
       .npm
       .specifiers
       .insert(serialized_package_req, serialized_package_id);
-    self.has_content_changed = true;
   }
 }
 
