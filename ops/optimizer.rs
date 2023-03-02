@@ -409,6 +409,13 @@ impl Optimizer {
       self.analyze_param_type(index, param)?;
     }
 
+    // TODO(@littledivy): https://github.com/denoland/deno/issues/17159
+    if self.returns_result
+      && self.fast_parameters.contains(&FastValue::SeqOneByteString)
+    {
+      self.fast_compatible = false;
+    }
+
     Ok(())
   }
 
