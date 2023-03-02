@@ -83,8 +83,8 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_set_env(
   state: &mut OpState,
-  key: String,
-  value: String,
+  key: &str,
+  value: &str,
 ) -> Result<(), AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   if key.is_empty() {
