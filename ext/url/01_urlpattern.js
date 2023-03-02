@@ -15,9 +15,9 @@ const {
   ArrayPrototypeMap,
   ObjectKeys,
   ObjectFromEntries,
-  RegExp,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
+  SafeRegExp,
   Symbol,
   SymbolFor,
   TypeError,
@@ -73,7 +73,7 @@ class URLPattern {
     for (let i = 0; i < keys.length; ++i) {
       const key = keys[i];
       try {
-        components[key].regexp = new RegExp(
+        components[key].regexp = new SafeRegExp(
           components[key].regexpString,
           "u",
         );
