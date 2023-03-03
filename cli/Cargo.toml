@@ -46,7 +46,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_gra
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = "0.57.0"
 deno_emit = "0.16.0"
-deno_graph = "=0.44.2"
+deno_graph = "=0.44.3"
 deno_lint = { version = "0.41.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
@@ -82,7 +82,7 @@ log = { workspace = true, features = ["serde"] }
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 lzzzz = '1.0'
 mitata = "=0.0.7"
-monch = "=0.4.0"
+monch = "=0.4.1"
 notify.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
