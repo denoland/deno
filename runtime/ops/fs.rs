@@ -545,7 +545,7 @@ fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
 }
 
 #[op]
-fn op_chdir(state: &mut OpState, directory: String) -> Result<(), AnyError> {
+fn op_chdir(state: &mut OpState, directory: &str) -> Result<(), AnyError> {
   let d = PathBuf::from(&directory);
   state
     .borrow_mut::<PermissionsContainer>()
@@ -620,10 +620,10 @@ async fn op_mkdir_async(
 #[op]
 fn op_chmod_sync(
   state: &mut OpState,
-  path: String,
+  path: &str,
   mode: u32,
 ) -> Result<(), AnyError> {
-  let path = Path::new(&path);
+  let path = Path::new(path);
   let mode = mode & 0o777;
 
   state
@@ -675,11 +675,11 @@ fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
 #[op]
 fn op_chown_sync(
   state: &mut OpState,
-  path: String,
+  path: &str,
   #[cfg_attr(windows, allow(unused_variables))] uid: Option<u32>,
   #[cfg_attr(windows, allow(unused_variables))] gid: Option<u32>,
 ) -> Result<(), AnyError> {
-  let path = Path::new(&path).to_path_buf();
+  let path = Path::new(path).to_path_buf();
   state
     .borrow_mut::<PermissionsContainer>()
     .check_write(&path, "Deno.chownSync()")?;
@@ -750,10 +750,10 @@ async fn op_chown_async(
 #[op]
 fn op_remove_sync(
   state: &mut OpState,
-  path: String,
+  path: &str,
   recursive: bool,
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&path);
+  let path = PathBuf::from(path);
 
   state
     .borrow_mut::<PermissionsContainer>()
@@ -847,11 +847,11 @@ async fn op_remove_async(
 #[op]
 fn op_copy_file_sync(
   state: &mut OpState,
-  from: String,
-  to: String,
+  from: &str,
+  to: &str,
 ) -> Result<(), AnyError> {
-  let from_path = PathBuf::from(&from);
-  let to_path = PathBuf::from(&to);
+  let from_path = PathBuf::from(from);
+  let to_path = PathBuf::from(to);
 
   let permissions = state.borrow_mut::<PermissionsContainer>();
   permissions.check_read(&from_path, "Deno.copyFileSync()")?;
@@ -1115,11 +1115,11 @@ pub struct StatArgs {
 #[op]
 fn op_stat_sync(
   state: &mut OpState,
-  path: String,
+  path: &str,
   lstat: bool,
   out_buf: &mut [u32],
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&path);
+  let path = PathBuf::from(path);
   state
     .borrow_mut::<PermissionsContainer>()
     .check_read(&path, "Deno.statSync()")?;
@@ -1325,11 +1325,11 @@ async fn op_read_dir_async(
 #[op]
 fn op_rename_sync(
   state: &mut OpState,
-  oldpath: String,
-  newpath: String,
+  oldpath: &str,
+  newpath: &str,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&oldpath);
-  let newpath = PathBuf::from(&newpath);
+  let oldpath = PathBuf::from(oldpath);
+  let newpath = PathBuf::from(newpath);
 
   let permissions = state.borrow_mut::<PermissionsContainer>();
   permissions.check_read(&oldpath, "Deno.renameSync()")?;
@@ -1377,11 +1377,11 @@ async fn op_rename_async(
 #[op]
 fn op_link_sync(
   state: &mut OpState,
-  oldpath: String,
-  newpath: String,
+  oldpath: &str,
+  newpath: &str,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&oldpath);
-  let newpath = PathBuf::from(&newpath);
+  let oldpath = PathBuf::from(oldpath);
+  let newpath = PathBuf::from(newpath);
 
   let permissions = state.borrow_mut::<PermissionsContainer>();
   permissions.check_read(&oldpath, "Deno.linkSync()")?;
@@ -1433,12 +1433,12 @@ async fn op_link_async(
 #[op]
 fn op_symlink_sync(
   state: &mut OpState,
-  oldpath: String,
-  newpath: String,
+  oldpath: &str,
+  newpath: &str,
   _type: Option<String>,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&oldpath);
-  let newpath = PathBuf::from(&newpath);
+  let oldpath = PathBuf::from(oldpath);
+  let newpath = PathBuf::from(newpath);
 
   state
     .borrow_mut::<PermissionsContainer>()
@@ -1631,10 +1631,10 @@ async fn op_ftruncate_async(
 #[op]
 fn op_truncate_sync(
   state: &mut OpState,
-  path: String,
+  path: &str,
   len: u64,
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&path);
+  let path = PathBuf::from(path);
 
   state
     .borrow_mut::<PermissionsContainer>()
@@ -1901,13 +1901,13 @@ async fn op_futime_async(
 #[op]
 fn op_utime_sync(
   state: &mut OpState,
-  path: String,
+  path: &str,
   atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&path);
+  let path = PathBuf::from(path);
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
