@@ -190,6 +190,7 @@ mod startup_snapshot {
         "deno_napi",
         "deno_http",
         "deno_flash",
+        "deno_io",
       ])
       .esm(include_js_files!(
         dir "js",
@@ -199,7 +200,6 @@ mod startup_snapshot {
         "06_util.js",
         "10_permissions.js",
         "11_workers.js",
-        "12_io.js",
         "13_buffer.js",
         "30_fs.js",
         "30_os.js",
@@ -245,6 +245,7 @@ mod startup_snapshot {
       ),
       deno_napi::init::<Permissions>(),
       deno_http::init(),
+      deno_io::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they

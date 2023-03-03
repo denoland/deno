@@ -2,6 +2,7 @@
 
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncMutFuture;
@@ -82,6 +83,8 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 pub fn init() -> Extension {
   Extension::builder("deno_io")
     .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
+    .dependencies(vec!["deno_web"])
+    .esm(include_js_files!("12_io.js",))
     .build()
 }
 
@@ -119,6 +122,7 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
   let stdio = Rc::new(RefCell::new(Some(stdio)));
 
   Extension::builder("deno_stdio")
+    .dependencies(vec!["deno_io"])
     .middleware(|op| match op.name {
       "op_print" => op_print::decl(),
       _ => op,
