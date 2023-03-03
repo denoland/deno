@@ -249,8 +249,10 @@ async function generateWptReport(
         if (!case_.passed) {
           if (typeof test.expectation === "boolean") {
             expected = test.expectation ? "PASS" : "FAIL";
-          } else {
+          } else if (Array.isArray(test.expectation)) {
             expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          } else {
+            expected = "PASS";
           }
         }
 
@@ -708,10 +710,12 @@ function discoverTestsToRun(
             }
           }
 
-          assert(
-            Array.isArray(expectation) || typeof expectation == "boolean",
-            "test entry must not have a folder expectation",
-          );
+          if (!noIgnore) {
+            assert(
+              Array.isArray(expectation) || typeof expectation == "boolean",
+              "test entry must not have a folder expectation",
+            );
+          }
 
           if (
             filter &&

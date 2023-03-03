@@ -98,6 +98,7 @@ export function getExpectFailForCase(
   expectation: boolean | string[],
   caseName: string,
 ): boolean {
+  if (noIgnore) return false;
   if (typeof expectation == "boolean") {
     return !expectation;
   }
