@@ -332,6 +332,8 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-sys` permission.
+   * 
+   * On Windows there is no API available to retrieve this information and this method returns 0.
    *
    * @tags allow-sys
    * @category Observability
