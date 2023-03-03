@@ -31,6 +31,9 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
 
+mod utils;
+use utils::TaskQueue;
+
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 
@@ -169,8 +172,6 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
 
 #[cfg(unix)]
 use nix::sys::termios;
-
-use super::utils::TaskQueue;
 
 #[derive(Default)]
 pub struct TtyMetadata {
