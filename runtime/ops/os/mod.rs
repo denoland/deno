@@ -86,7 +86,7 @@ fn op_set_env(
   key: &str,
   value: &str,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
     return Err(type_error("Key is an empty string."));
   }
