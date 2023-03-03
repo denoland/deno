@@ -1,4 +1,4 @@
-import { nextTick } from "../../../../test_util/std/node/_next_tick.ts";
+import { nextTick } from "node:process";
 
 // https://github.com/denoland/deno_std/issues/1651
 
