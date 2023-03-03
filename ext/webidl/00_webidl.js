@@ -58,6 +58,7 @@ const {
   ReflectHas,
   ReflectOwnKeys,
   RegExpPrototypeTest,
+  SafeRegExp,
   Set,
   SetPrototypeEntries,
   SetPrototypeForEach,
@@ -386,7 +387,7 @@ converters.DOMString = function (V, opts = {}) {
 };
 
 // deno-lint-ignore no-control-regex
-const IS_BYTE_STRING = /^[\x00-\xFF]*$/;
+const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
 converters.ByteString = (V, opts) => {
   const x = converters.DOMString(V, opts);
   if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
@@ -500,7 +501,9 @@ ArrayPrototypeForEach(
   ],
   (func) => {
     const name = func.name;
-    const article = RegExpPrototypeTest(/^[AEIOU]/, name) ? "an" : "a";
+    const article = RegExpPrototypeTest(new SafeRegExp(/^[AEIOU]/), name)
+      ? "an"
+      : "a";
     converters[name] = (V, opts = {}) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(

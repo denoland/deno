@@ -26,7 +26,9 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   MathRandom,
+  ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
+  SafeRegExp,
   Symbol,
   StringFromCharCode,
   StringPrototypeTrim,
@@ -277,19 +279,25 @@ webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 webidl.configurePrototype(FormData);
 const FormDataPrototype = FormData.prototype;
 
-const escape = (str, isFilename) => {
-  const escapeMap = {
-    "\n": "%0A",
-    "\r": "%0D",
-    '"': "%22",
-  };
+const ESCAPE_FILENAME_PATTERN = new SafeRegExp(/\r?\n|\r/g);
+const ESCAPE_PATTERN = new SafeRegExp(/([\n\r"])/g);
+const ESCAPE_MAP = ObjectFreeze({
+  "\n": "%0A",
+  "\r": "%0D",
+  '"': "%22",
+});
 
+function escape(str, isFilename) {
   return StringPrototypeReplace(
-    isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
-    /([\n\r"])/g,
-    (c) => escapeMap[c],
+    isFilename
+      ? str
+      : StringPrototypeReplace(str, ESCAPE_FILENAME_PATTERN, "\r\n"),
+    ESCAPE_PATTERN,
+    (c) => ESCAPE_MAP[c],
   );
-};
+}
+
+const FORM_DETA_SERIALIZE_PATTERN = new SafeRegExp(/\r(?!\n)|(?<!\r)\n/g);
 
 /**
  * convert FormData to a Blob synchronous without reading all of the files
@@ -313,7 +321,11 @@ function formDataToBlob(formData) {
       ArrayPrototypePush(
         chunks,
         prefix + escape(name) + '"' + CRLF + CRLF +
-          StringPrototypeReplace(value, /\r(?!\n)|(?<!\r)\n/g, CRLF) + CRLF,
+          StringPrototypeReplace(
+            value,
+            FORM_DETA_SERIALIZE_PATTERN,
+            CRLF,
+          ) + CRLF,
       );
     } else {
       ArrayPrototypePush(

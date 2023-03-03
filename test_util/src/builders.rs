@@ -4,12 +4,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Read;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
 
+use backtrace::Backtrace;
 use os_pipe::pipe;
+use pretty_assertions::assert_eq;
 
 use crate::copy_dir_recursive;
 use crate::deno_exe_path;
@@ -17,6 +20,7 @@ use crate::http_server;
 use crate::new_deno_dir;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
+use crate::wildcard_match;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -326,16 +330,20 @@ impl Drop for TestCommandOutput {
     // force the caller to assert these
     if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
       panic!(
-        "The non-zero exit code of the command was not asserted: {:?}.",
-        self.exit_code
+        "The non-zero exit code of the command was not asserted: {:?} at {}.",
+        self.exit_code,
+        failed_position(),
       )
     }
     if !*self.asserted_text.borrow() && !self.text.is_empty() {
       println!("OUTPUT\n{}\nOUTPUT", self.text);
-      panic!(concat!(
-        "The non-empty text of the command was not asserted. ",
-        "Call `output.skip_output_check()` to skip if necessary.",
-      ));
+      panic!(
+        concat!(
+          "The non-empty text of the command was not asserted. ",
+          "Call `output.skip_output_check()` to skip if necessary at {}.",
+        ),
+        failed_position()
+      );
     }
   }
 }
@@ -366,4 +374,81 @@ impl TestCommandOutput {
     self.skip_output_check();
     &self.text
   }
+
+  pub fn assert_exit_code(&self, expected_exit_code: i32) -> &Self {
+    let actual_exit_code = self.exit_code();
+
+    if let Some(exit_code) = &actual_exit_code {
+      if *exit_code != expected_exit_code {
+        println!("OUTPUT\n{}\nOUTPUT", self.text());
+        panic!(
+          "bad exit code, expected: {:?}, actual: {:?} at {}",
+          expected_exit_code,
+          exit_code,
+          failed_position(),
+        );
+      }
+    } else {
+      println!("OUTPUT\n{}\nOUTPUT", self.text());
+      if let Some(signal) = self.signal() {
+        panic!(
+          "process terminated by signal, expected exit code: {:?}, actual signal: {:?} at {}",
+          actual_exit_code,
+          signal,
+          failed_position(),
+        );
+      } else {
+        panic!(
+          "process terminated without status code on non unix platform, expected exit code: {:?} at {}",
+          actual_exit_code,
+          failed_position(),
+        );
+      }
+    }
+
+    self
+  }
+
+  pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
+    let expected_text = expected_text.as_ref();
+    let actual = self.text();
+
+    if !expected_text.contains("[WILDCARD]") {
+      assert_eq!(actual, expected_text, "at {}", failed_position());
+    } else if !wildcard_match(expected_text, actual) {
+      println!("OUTPUT START\n{actual}\nOUTPUT END");
+      println!("EXPECTED START\n{expected_text}\nEXPECTED END");
+      panic!("pattern match failed at {}", failed_position());
+    }
+
+    self
+  }
+
+  pub fn assert_matches_file(&self, file_path: impl AsRef<Path>) -> &Self {
+    let output_path = self.testdata_dir().join(file_path);
+    println!("output path {}", output_path.display());
+    let expected_text =
+      std::fs::read_to_string(&output_path).unwrap_or_else(|err| {
+        panic!("failed loading {}\n\n{err:#}", output_path.display())
+      });
+    self.assert_matches_text(expected_text)
+  }
+}
+
+fn failed_position() -> String {
+  let backtrace = Backtrace::new();
+
+  for frame in backtrace.frames() {
+    for symbol in frame.symbols() {
+      if let Some(filename) = symbol.filename() {
+        if !filename.to_string_lossy().ends_with("builders.rs") {
+          let line_num = symbol.lineno().unwrap_or(0);
+          let line_col = symbol.colno().unwrap_or(0);
+          return format!("{}:{}:{}", filename.display(), line_num, line_col);
+        }
+      }
+    }
+  }
+
+  "<unknown>".to_string()
 }
