@@ -37,9 +37,9 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   RangeError,
-  RegExp,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeRegExp,
   Symbol,
   SymbolFor,
   TypeError,
@@ -54,7 +54,7 @@ const REASON_PHRASE = [
   ...new SafeArrayIterator(OBS_TEXT),
 ];
 const REASON_PHRASE_MATCHER = regexMatcher(REASON_PHRASE);
-const REASON_PHRASE_RE = new RegExp(`^[${REASON_PHRASE_MATCHER}]*$`);
+const REASON_PHRASE_RE = new SafeRegExp(`^[${REASON_PHRASE_MATCHER}]*$`);
 
 const _response = Symbol("response");
 const _headers = Symbol("headers");

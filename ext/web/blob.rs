@@ -248,10 +248,10 @@ pub fn op_blob_create_object_url(
 
 #[op]
 pub fn op_blob_revoke_object_url(
-  state: &mut OpState,
-  url: String,
+  state: &mut deno_core::OpState,
+  url: &str,
 ) -> Result<(), AnyError> {
-  let url = Url::parse(&url)?;
+  let url = Url::parse(url)?;
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_object_url(&url);
   Ok(())
