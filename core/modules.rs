@@ -328,6 +328,7 @@ pub type InternalModuleLoaderCb =
 pub struct InternalModuleLoader {
   module_loader: Rc<dyn ModuleLoader>,
   esm_sources: Vec<ExtensionFileSource>,
+  used_esm_sources: RefCell<HashMap<String, bool>>,
   maybe_load_callback: Option<InternalModuleLoaderCb>,
 }
 
@@ -336,6 +337,7 @@ impl Default for InternalModuleLoader {
     Self {
       module_loader: Rc::new(NoopModuleLoader),
       esm_sources: vec![],
+      used_esm_sources: RefCell::new(HashMap::default()),
       maybe_load_callback: None,
     }
   }
@@ -347,10 +349,27 @@ impl InternalModuleLoader {
     esm_sources: Vec<ExtensionFileSource>,
     maybe_load_callback: Option<InternalModuleLoaderCb>,
   ) -> Self {
+    let used_esm_sources: HashMap<String, bool> = esm_sources
+      .iter()
+      .map(|file_source| (file_source.specifier.to_string(), false))
+      .collect();
+
     InternalModuleLoader {
       module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
       esm_sources,
+      used_esm_sources: RefCell::new(used_esm_sources),
       maybe_load_callback,
+    }
+  }
+}
+
+impl Drop for InternalModuleLoader {
+  fn drop(&mut self) {
+    let used_esm_sources = self.used_esm_sources.get_mut();
+    for (key, value) in used_esm_sources {
+      if !*value {
+        panic!("{key} was passed to InternalModuleLoader but was never used");
+      }
     }
   }
 }
@@ -400,6 +419,12 @@ impl ModuleLoader for InternalModuleLoader {
       .find(|file_source| file_source.specifier == module_specifier.as_str());
 
     if let Some(file_source) = maybe_file_source {
+      {
+        let mut used_esm_sources = self.used_esm_sources.borrow_mut();
+        let used = used_esm_sources.get_mut(&file_source.specifier).unwrap();
+        *used = true;
+      }
+
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
