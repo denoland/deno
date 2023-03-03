@@ -29,8 +29,8 @@ use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use tokio::sync::SemaphorePermit;
+use tokio::sync::Mutex;
+use tokio::sync::MutexGuard;
 
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
@@ -320,14 +320,14 @@ struct GraphData {
 /// Holds the `ModuleGraph` and what parts of it are type checked.
 #[derive(Clone)]
 pub struct ModuleGraphContainer {
-  update_semaphore: Arc<Semaphore>,
+  update_lock: Arc<Mutex<()>>,
   graph_data: Arc<RwLock<GraphData>>,
 }
 
 impl Default for ModuleGraphContainer {
   fn default() -> Self {
     Self {
-      update_semaphore: Arc::new(Semaphore::new(1)),
+      update_lock: Arc::new(Mutex::new(())),
       graph_data: Default::default(),
     }
   }
@@ -338,9 +338,9 @@ impl ModuleGraphContainer {
   /// having the chance to modify it. In the meantime, other code may
   /// still read from the existing module graph.
   pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
-    let permit = self.update_semaphore.acquire().await.unwrap();
+    let guard = self.update_lock.lock().await;
     ModuleGraphUpdatePermit {
-      permit,
+      guard,
       graph_data: self.graph_data.clone(),
       graph: (*self.graph_data.read().graph).clone(),
     }
@@ -395,7 +395,7 @@ impl ModuleGraphContainer {
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
 pub struct ModuleGraphUpdatePermit<'a> {
-  permit: SemaphorePermit<'a>,
+  guard: MutexGuard<'a, ()>,
   graph_data: Arc<RwLock<GraphData>>,
   graph: ModuleGraph,
 }
@@ -411,7 +411,7 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
   pub fn commit(self) -> Arc<ModuleGraph> {
     let graph = Arc::new(self.graph);
     self.graph_data.write().graph = graph.clone();
-    drop(self.permit); // explicit drop for clarity
+    drop(self.guard); // explicit drop for clarity
     graph
   }
 }
