@@ -20,6 +20,7 @@ impl SingleConcurrencyEnforcer {
   /// Acquire a permit to force other calls to `acquire` to wait until the
   /// permit is dropped. Permits are acquired in order (first-in, first-out).
   pub async fn acquire(&self) -> SingleConcurrencyEnforcerPermit {
+    // it is ok to unwrap here because we don't ever call `self.0.close()`
     let permit = self.0.acquire().await.unwrap();
     SingleConcurrencyEnforcerPermit(permit)
   }
