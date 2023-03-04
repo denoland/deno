@@ -234,7 +234,7 @@ impl ProcState {
     let package_json_deps_installer = PackageJsonDepsInstaller::new(
       npm_resolver.api().clone(),
       npm_resolver.resolution().clone(),
-      cli_options.maybe_package_json_deps()?,
+      cli_options.maybe_package_json_deps(),
     );
     let maybe_import_map = cli_options
       .resolve_import_map(&file_fetcher)

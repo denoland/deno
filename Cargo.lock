@@ -1117,9 +1117,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.44.2"
+version = "0.44.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a2cb8c414852294d5fb23d265725bbf1fab9608296e04301440dba14fef71e5"
+checksum = "500e2ba1f77f6baf0722a84290ab238ff47c46e48d0f94e3f3cd5632a012ee0c"
 dependencies = [
  "anyhow",
  "data-url",
@@ -1163,9 +1163,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.40.0"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "663d65cb008cddda1d705cd397d5d80fd37716e708b4182ca076244e18132ace"
+checksum = "bb65a10eb9bbff2c0e475958ea4a1f7db1f1e92d4a78a07853867049b7dfee8f"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2939,9 +2939,9 @@ dependencies = [
 
 [[package]]
 name = "monch"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f13de1c3edc9a5b9dc3a1029f56e9ab3eba34640010aff4fc01044c42ef67afa"
+checksum = "1120c1ab92ab8cdacb3b89ac9a214f512d2e78e90e3b57c00d9551ced19f646f"
 
 [[package]]
 name = "naga"
