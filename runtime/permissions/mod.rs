@@ -1915,6 +1915,41 @@ impl deno_websocket::WebSocketPermissions for PermissionsContainer {
   }
 }
 
+impl crate::ops::fs::FsPermissions for PermissionsContainer {
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, Some(api_name))
+  }
+
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check_blind(path, display, api_name)
+  }
+
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, Some(api_name))
+  }
+
+  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check_all(Some(api_name))
+  }
+
+  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check_all(Some(api_name))
+  }
+}
+
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl deno_napi::NapiPermissions for PermissionsContainer {

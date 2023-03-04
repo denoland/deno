@@ -256,7 +256,7 @@ impl MainWorker {
       ),
       ops::spawn::init(),
       ops::fs_events::init(),
-      ops::fs::init(),
+      ops::fs::init::<PermissionsContainer>(),
       deno_io::init(),
       deno_io::init_stdio(options.stdio),
       deno_tls::init(),
