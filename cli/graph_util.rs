@@ -13,6 +13,8 @@ use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
+use crate::util::synchronization::SingleConcurrencyEnforcer;
+use crate::util::synchronization::SingleConcurrencyEnforcerPermit;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -29,8 +31,6 @@ use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use tokio::sync::SemaphorePermit;
 
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
@@ -320,14 +320,17 @@ struct GraphData {
 /// Holds the `ModuleGraph` and what parts of it are type checked.
 #[derive(Clone)]
 pub struct ModuleGraphContainer {
-  update_semaphore: Arc<Semaphore>,
+  // Allow only one request to update the graph data at a time,
+  // but allow other threads to read from it at any time even
+  // while another request is updating the data.
+  update_sce: Arc<SingleConcurrencyEnforcer>,
   graph_data: Arc<RwLock<GraphData>>,
 }
 
 impl Default for ModuleGraphContainer {
   fn default() -> Self {
     Self {
-      update_semaphore: Arc::new(Semaphore::new(1)),
+      update_sce: Default::default(),
       graph_data: Default::default(),
     }
   }
@@ -338,7 +341,7 @@ impl ModuleGraphContainer {
   /// having the chance to modify it. In the meantime, other code may
   /// still read from the existing module graph.
   pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
-    let permit = self.update_semaphore.acquire().await.unwrap();
+    let permit = self.update_sce.acquire().await;
     ModuleGraphUpdatePermit {
       permit,
       graph_data: self.graph_data.clone(),
@@ -395,7 +398,7 @@ impl ModuleGraphContainer {
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
 pub struct ModuleGraphUpdatePermit<'a> {
-  permit: SemaphorePermit<'a>,
+  permit: SingleConcurrencyEnforcerPermit<'a>,
   graph_data: Arc<RwLock<GraphData>>,
   graph: ModuleGraph,
 }
