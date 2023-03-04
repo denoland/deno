@@ -425,7 +425,7 @@ impl WebWorker {
       ),
       // Extensions providing Deno.* features
       ops::fs_events::init(),
-      ops::fs::init(),
+      ops::fs::init::<PermissionsContainer>(),
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
       deno_tls::init(),
