@@ -13,8 +13,6 @@ use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
-use crate::util::synchronization::SingleConcurrencyEnforcer;
-use crate::util::synchronization::SingleConcurrencyEnforcerPermit;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -323,7 +321,7 @@ pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
-  update_sce: Arc<SingleConcurrencyEnforcer>,
+  update_sce: Arc<TaskQueue>,
   graph_data: Arc<RwLock<GraphData>>,
 }
 
