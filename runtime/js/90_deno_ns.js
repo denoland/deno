@@ -14,7 +14,7 @@ import * as build from "internal:runtime/js/01_build.js";
 import * as errors from "internal:runtime/js/01_errors.js";
 import * as version from "internal:runtime/js/01_version.ts";
 import * as permissions from "internal:runtime/js/10_permissions.js";
-import * as io from "internal:runtime/js/12_io.js";
+import * as io from "internal:deno_io/12_io.js";
 import * as buffer from "internal:runtime/js/13_buffer.js";
 import * as fs from "internal:runtime/js/30_fs.js";
 import * as os from "internal:runtime/js/30_os.js";
