@@ -318,22 +318,13 @@ struct GraphData {
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
-  // but allow other threads to read from it at any time even
+  // but allow other requests to read from it at any time even
   // while another request is updating the data.
   update_sce: Arc<SingleConcurrencyEnforcer>,
   graph_data: Arc<RwLock<GraphData>>,
-}
-
-impl Default for ModuleGraphContainer {
-  fn default() -> Self {
-    Self {
-      update_sce: Default::default(),
-      graph_data: Default::default(),
-    }
-  }
 }
 
 impl ModuleGraphContainer {
