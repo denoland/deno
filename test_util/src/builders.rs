@@ -16,6 +16,7 @@ use pretty_assertions::assert_eq;
 
 use crate::copy_dir_recursive;
 use crate::deno_exe_path;
+use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::http_server;
 use crate::new_deno_dir;
 use crate::strip_ansi_codes;
@@ -41,6 +42,12 @@ impl TestContextBuilder {
     Self::default()
   }
 
+  pub fn for_npm() -> Self {
+    let mut builder = Self::new();
+    builder.use_http_server().add_npm_env_vars();
+    builder
+  }
+
   pub fn use_http_server(&mut self) -> &mut Self {
     self.use_http_server = true;
     self
@@ -54,11 +61,12 @@ impl TestContextBuilder {
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
-  pub fn use_copy_temp_dir(&mut self, dir: impl AsRef<str>) {
+  pub fn use_copy_temp_dir(&mut self, dir: impl AsRef<str>) -> &mut Self {
     self.copy_temp_dir = Some(dir.as_ref().to_string());
+    self
   }
 
-  pub fn set_cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
+  pub fn cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
     self.cwd = Some(cwd.as_ref().to_string());
     self
   }
@@ -71,6 +79,22 @@ impl TestContextBuilder {
     self
       .envs
       .insert(key.as_ref().to_string(), value.as_ref().to_string());
+    self
+  }
+
+  pub fn add_npm_env_vars(&mut self) -> &mut Self {
+    for (key, value) in env_vars_for_npm_tests_no_sync_download() {
+      self.env(key, value);
+    }
+    self
+  }
+
+  pub fn use_sync_npm_download(&mut self) -> &mut Self {
+    self.env(
+      // make downloads determinstic
+      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
+      "1",
+    );
     self
   }
 
