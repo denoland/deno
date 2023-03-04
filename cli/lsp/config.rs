@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::client::Client;
 use super::logging::lsp_log;
 use crate::util::path::ensure_directory_specifier;
 use crate::util::path::specifier_to_file_path;
@@ -227,7 +226,7 @@ impl Default for ImportCompletionSettings {
 
 /// Deno language server specific settings that can be applied uniquely to a
 /// specifier.
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
@@ -406,26 +405,17 @@ impl ConfigSnapshot {
         }
       }
     }
-    if let Some((_, SpecifierSettings { enable, .. })) =
-      self.settings.specifiers.get(specifier)
-    {
-      *enable
+    if let Some(settings) = self.settings.specifiers.get(specifier) {
+      settings.enable
     } else {
       self.settings.workspace.enable
     }
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct SpecifierWithClientUri {
-  pub specifier: ModuleSpecifier,
-  pub client_uri: ModuleSpecifier,
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
-  pub specifiers:
-    BTreeMap<ModuleSpecifier, (ModuleSpecifier, SpecifierSettings)>,
+  pub specifiers: BTreeMap<ModuleSpecifier, SpecifierSettings>,
   pub workspace: WorkspaceSettings,
 }
 
@@ -492,7 +482,7 @@ impl Config {
       .settings
       .specifiers
       .get(specifier)
-      .map(|(_, s)| s.enable)
+      .map(|settings| settings.enable)
       .unwrap_or_else(|| self.settings.workspace.enable)
   }
 
@@ -519,7 +509,7 @@ impl Config {
       .settings
       .specifiers
       .get(specifier)
-      .map(|(_, s)| s.code_lens.test)
+      .map(|settings| settings.code_lens.test)
       .unwrap_or_else(|| self.settings.workspace.code_lens.test);
     value
   }
@@ -573,13 +563,15 @@ impl Config {
 
   /// Given the configured workspaces or root URI and the their settings,
   /// update and resolve any paths that should be enabled
-  pub async fn update_enabled_paths(&mut self, client: Client) -> bool {
+  pub fn update_enabled_paths(&mut self) -> bool {
     if let Some(workspace_folders) = self.workspace_folders.clone() {
       let mut touched = false;
-      for (workspace, folder) in workspace_folders {
-        if let Ok(settings) = client.specifier_configuration(&folder.uri).await
-        {
-          if self.update_enabled_paths_entry(workspace, settings.enable_paths) {
+      for (workspace, _) in workspace_folders {
+        if let Some(settings) = self.settings.specifiers.get(&workspace) {
+          if self.update_enabled_paths_entry(
+            workspace,
+            settings.enable_paths.clone(),
+          ) {
             touched = true;
           }
         }
@@ -629,28 +621,23 @@ impl Config {
     touched
   }
 
-  pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {
-    self
-      .settings
-      .specifiers
-      .iter()
-      .map(|(s, (u, _))| SpecifierWithClientUri {
-        specifier: s.clone(),
-        client_uri: u.clone(),
-      })
-      .collect()
+  pub fn get_specifiers(&self) -> Vec<ModuleSpecifier> {
+    self.settings.specifiers.keys().cloned().collect()
   }
 
   pub fn set_specifier_settings(
     &mut self,
     specifier: ModuleSpecifier,
-    client_uri: ModuleSpecifier,
     settings: SpecifierSettings,
-  ) {
-    self
-      .settings
-      .specifiers
-      .insert(specifier, (client_uri, settings));
+  ) -> bool {
+    if let Some(existing) = self.settings.specifiers.get(&specifier) {
+      if *existing == settings {
+        return false;
+      }
+    }
+
+    self.settings.specifiers.insert(specifier, settings);
+    true
   }
 }
 

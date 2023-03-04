@@ -316,6 +316,89 @@ impl LanguageServer {
       None => Err(LspError::invalid_params("Missing parameters")),
     }
   }
+
+  pub async fn refresh_specifiers_from_client(&self) {
+    let (client, specifiers) =
+      {
+        let ls = self.0.read().await;
+        let specifiers =
+          if ls.config.client_capabilities.workspace_configuration {
+            let root_capacity = match &ls.config.workspace_folders {
+              Some(folder) => folder.len(),
+              None => 1,
+            };
+            let config_specifiers = ls.config.get_specifiers();
+            let mut specifiers =
+              HashMap::with_capacity(root_capacity + config_specifiers.len());
+            match &ls.config.workspace_folders {
+              Some(entry) => {
+                for (specifier, folder) in entry {
+                  specifiers.insert(specifier.clone(), folder.uri.clone());
+                }
+              }
+              None => {
+                if let Some(root_uri) = &ls.config.root_uri {
+                  specifiers.insert(
+                    root_uri.clone(),
+                    ls.url_map.normalize_specifier(root_uri).unwrap(),
+                  );
+                }
+              }
+            }
+            specifiers.extend(ls.config.get_specifiers().iter().map(|s| {
+              (s.clone(), ls.url_map.normalize_specifier(s).unwrap())
+            }));
+
+            Some(specifiers.into_iter().collect::<Vec<_>>())
+          } else {
+            None
+          };
+
+        (ls.client.clone(), specifiers)
+      };
+
+    let mut touched = false;
+    if let Some(specifiers) = specifiers {
+      let configs_result = client
+        .specifier_configurations(
+          specifiers
+            .iter()
+            .map(|(_, client_uri)| client_uri.clone())
+            .collect(),
+        )
+        .await;
+
+      let mut ls = self.0.write().await;
+      if let Ok(configs) = configs_result {
+        for (i, value) in configs.into_iter().enumerate() {
+          match value {
+            Ok(specifier_settings) => {
+              let internal_uri = specifiers[i].1.clone();
+              if ls
+                .config
+                .set_specifier_settings(internal_uri, specifier_settings)
+              {
+                touched = true;
+              }
+            }
+            Err(err) => {
+              error!("{}", err);
+            }
+          }
+        }
+      }
+
+      if ls.config.update_enabled_paths() {
+        touched = true;
+      }
+
+      if touched {
+        ls.refresh_documents_config();
+        ls.diagnostics_server.invalidate_all();
+        ls.send_diagnostics_update();
+      }
+    }
+  }
 }
 
 fn create_lsp_npm_resolver(
@@ -986,7 +1069,7 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    self.refresh_config();
+    // self.refresh_documents_config(); // todo(THIS PR): REMOVE
     self.assets.intitialize(self.snapshot()).await;
 
     self.performance.measure(mark);
@@ -997,7 +1080,7 @@ impl Inner {
     })
   }
 
-  fn refresh_config(&mut self) {
+  fn refresh_documents_config(&mut self) {
     self.documents.update_config(
       self.config.root_dirs(),
       self.maybe_import_map.clone(),
@@ -1037,8 +1120,6 @@ impl Inner {
         warn!("Client errored on capabilities.\n{:#}", err);
       }
     }
-    self.config.update_enabled_paths(self.client.clone()).await;
-    self.refresh_config();
 
     if self.config.client_capabilities.testing_api {
       let test_server = testing::TestServer::new(
@@ -1048,8 +1129,6 @@ impl Inner {
       );
       self.maybe_testing_server = Some(test_server);
     }
-
-    lsp_log!("Server ready.");
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -1184,7 +1263,7 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    self.refresh_config();
+    self.refresh_documents_config();
 
     self.send_diagnostics_update();
     self.send_testing_update();
@@ -1236,7 +1315,7 @@ impl Inner {
       }
     }
     if touched {
-      self.refresh_config();
+      self.refresh_documents_config();
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
       self.restart_ts_server().await;
@@ -1246,13 +1325,10 @@ impl Inner {
     self.performance.measure(mark);
   }
 
-  async fn did_change_workspace_folders(
+  fn did_change_workspace_folders(
     &mut self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    let mark = self
-      .performance
-      .mark("did_change_workspace_folders", Some(&params));
     let mut workspace_folders = params
       .event
       .added
@@ -1271,7 +1347,6 @@ impl Inner {
     }
 
     self.config.workspace_folders = Some(workspace_folders);
-    self.performance.measure(mark);
   }
 
   async fn document_symbol(
@@ -2677,7 +2752,11 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn initialized(&self, params: InitializedParams) {
-    self.0.write().await.initialized(params).await
+    self.0.write().await.initialized(params).await;
+
+    self.refresh_specifiers_from_client().await;
+
+    lsp_log!("Server ready.");
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -2692,11 +2771,11 @@ impl tower_lsp::LanguageServer for LanguageServer {
       return;
     }
 
-    let (client, uri, specifier, had_specifier_settings) = {
+    let (client, client_uri, specifier, had_specifier_settings) = {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
-      let uri = params.text_document.uri.clone();
-      let specifier = inner.url_map.normalize_url(&uri);
+      let client_uri = params.text_document.uri.clone();
+      let specifier = inner.url_map.normalize_url(&client_uri);
       let document = inner.did_open(&specifier, params).await;
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
@@ -2710,39 +2789,34 @@ impl tower_lsp::LanguageServer for LanguageServer {
           inner.send_testing_update();
         }
       }
-      (client, uri, specifier, has_specifier_settings)
+      (client, client_uri, specifier, has_specifier_settings)
     };
 
     // retrieve the specifier settings outside the lock if
-    // they haven't been asked for yet on its own time
+    // they haven't been asked for yet
     if !had_specifier_settings {
-      let language_server = self.clone();
-      tokio::spawn(async move {
-        let response = client.specifier_configuration(&uri).await;
-        let mut inner = language_server.0.write().await;
-        match response {
-          Ok(specifier_settings) => {
-            // now update the config and send a diagnostics update
-            inner.config.set_specifier_settings(
-              specifier.clone(),
-              uri,
-              specifier_settings,
-            );
-          }
-          Err(err) => {
-            error!("{}", err);
-          }
+      let response = client.specifier_configuration(&client_uri).await;
+      let mut ls = self.0.write().await;
+      match response {
+        Ok(specifier_settings) => {
+          ls.config
+            .set_specifier_settings(specifier.clone(), specifier_settings);
+          ls.config.update_enabled_paths();
         }
-        if inner
-          .documents
-          .get(&specifier)
-          .map(|d| d.is_diagnosable())
-          .unwrap_or(false)
-        {
-          inner.send_diagnostics_update();
-          inner.send_testing_update();
+        Err(err) => {
+          error!("{}", err);
         }
-      });
+      }
+
+      if ls
+        .documents
+        .get(&specifier)
+        .map(|d| d.is_diagnosable())
+        .unwrap_or(false)
+      {
+        ls.refresh_documents_config();
+        ls.send_diagnostics_update();
+      }
     }
   }
 
@@ -2763,67 +2837,18 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    let (has_workspace_capability, client, specifiers, mark) = {
-      let inner = self.0.write().await;
-      let mark = inner
-        .performance
-        .mark("did_change_configuration", Some(&params));
-
-      let specifiers =
-        if inner.config.client_capabilities.workspace_configuration {
-          Some(inner.config.get_specifiers_with_client_uris())
-        } else {
-          None
-        };
+    let (mark, has_workspace_capability, client) = {
+      let inner = self.0.read().await;
       (
+        inner
+          .performance
+          .mark("did_change_configuration", Some(&params)),
         inner.config.client_capabilities.workspace_configuration,
         inner.client.clone(),
-        specifiers,
-        mark,
       )
     };
 
-    // start retrieving all the specifiers' settings outside the lock on its own
-    // time
-    if let Some(specifiers) = specifiers {
-      let language_server = self.clone();
-      let client = client.clone();
-      tokio::spawn(async move {
-        if let Ok(configs) = client
-          .specifier_configurations(
-            specifiers.iter().map(|s| s.client_uri.clone()).collect(),
-          )
-          .await
-        {
-          let mut inner = language_server.0.write().await;
-          for (i, value) in configs.into_iter().enumerate() {
-            match value {
-              Ok(specifier_settings) => {
-                let entry = specifiers[i].clone();
-                inner.config.set_specifier_settings(
-                  entry.specifier,
-                  entry.client_uri,
-                  specifier_settings,
-                );
-              }
-              Err(err) => {
-                error!("{}", err);
-              }
-            }
-          }
-        }
-        let mut ls = language_server.0.write().await;
-        if ls.config.update_enabled_paths(client).await {
-          ls.refresh_config();
-          ls.diagnostics_server.invalidate_all();
-          // this will be called in the inner did_change_configuration, but the
-          // problem then becomes, if there was a change, the snapshot used
-          // will be an out of date one, so we will call it again here if the
-          // workspace folders have been touched
-          ls.send_diagnostics_update();
-        }
-      });
-    }
+    self.refresh_specifiers_from_client().await;
 
     // Get the configuration from the client outside of the lock
     // in order to prevent potential deadlocking scenarios where
@@ -2864,20 +2889,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    let client = {
-      let mut inner = self.0.write().await;
-      inner.did_change_workspace_folders(params).await;
-      inner.client.clone()
+    let mark = {
+      let mut ls = self.0.write().await;
+      let mark = ls
+        .performance
+        .mark("did_change_workspace_folders", Some(&params));
+      ls.did_change_workspace_folders(params);
+      mark
     };
-    let language_server = self.clone();
-    tokio::spawn(async move {
-      let mut ls = language_server.0.write().await;
-      if ls.config.update_enabled_paths(client).await {
-        ls.refresh_config();
-        ls.diagnostics_server.invalidate_all();
-        ls.send_diagnostics_update();
-      }
-    });
+
+    self.refresh_specifiers_from_client().await;
+    self.0.read().await.performance.measure(mark);
   }
 
   async fn document_symbol(
