@@ -372,15 +372,17 @@ impl Drop for InternalModuleLoader {
       .map(|(s, _)| s)
       .collect();
 
-    let mut msg =
+    if !unused_modules.is_empty() {
+      let mut msg =
       "Following modules were passed to InternalModuleLoader but never used:\n"
         .to_string();
-    for m in unused_modules {
-      msg.push_str("  - ");
-      msg.push_str(m);
-      msg.push_str("\n");
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m);
+        msg.push_str("\n");
+      }
+      panic!("{}", msg);
     }
-    panic!("{}", msg);
   }
 }
 
