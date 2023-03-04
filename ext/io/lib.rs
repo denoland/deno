@@ -33,9 +33,6 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
 
-mod utils;
-use utils::TaskQueue;
-
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 
