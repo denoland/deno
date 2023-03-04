@@ -13,12 +13,12 @@ use std::collections::HashSet;
 use std::fs;
 use std::process::Stdio;
 use test_util::deno_cmd_with_deno_dir;
-use test_util::deno_exe_path;
 use test_util::env_vars_for_npm_tests;
 use test_util::http_server;
 use test_util::lsp::LspClient;
+use test_util::lsp::LspClientBuilder;
 use test_util::testdata_path;
-use test_util::TempDir;
+use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
 
 fn load_fixture(path: &str) -> Value {
@@ -40,8 +40,8 @@ fn load_fixture_str(path: &str) -> String {
 }
 
 fn init(init_path: &str) -> LspClient {
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  let test_context = TestContextBuilder::new().build();
+  let mut client = test_context.new_lsp_command().build();
   client
     .write_request::<_, _, Value>("initialize", load_fixture(init_path))
     .unwrap();
@@ -91,13 +91,6 @@ fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
   CollectedDiagnostics(diagnostics)
 }
 
-fn shutdown(client: &mut LspClient) {
-  client
-    .write_request::<_, _, Value>("shutdown", json!(null))
-    .unwrap();
-  client.write_notification("exit", json!(null)).unwrap();
-}
-
 pub fn ensure_directory_specifier(
   mut specifier: ModuleSpecifier,
 ) -> ModuleSpecifier {
@@ -109,6 +102,7 @@ pub fn ensure_directory_specifier(
   specifier
 }
 
+// todo(THIS PR): get rid of this in favour of LspClient
 struct TestSession {
   client: LspClient,
   open_file_count: usize,
@@ -163,7 +157,7 @@ impl TestSession {
   }
 
   pub fn shutdown_and_exit(&mut self) {
-    shutdown(&mut self.client);
+    self.client.shutdown();
   }
 }
 
@@ -230,32 +224,29 @@ impl CollectedDiagnostics {
 
 #[test]
 fn lsp_startup_shutdown() {
-  let mut client = init("initialize_params.json");
-  shutdown(&mut client);
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
+  client.shutdown();
 }
 
 #[test]
 fn lsp_init_tsconfig() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let tsconfig =
-    serde_json::to_vec_pretty(&load_fixture("lib.tsconfig.json")).unwrap();
-  fs::write(temp_dir.path().join("lib.tsconfig.json"), tsconfig).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
 
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./lib.tsconfig.json"));
-    params.initialization_options = Some(Value::Object(map));
+  temp_dir.write(
+    "lib.tsconfig.json",
+    r#"{
+  "compilerOptions": {
+    "lib": ["deno.ns", "deno.unstable", "dom"]
   }
+}"#,
+  );
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  client.write_notification("initialized", json!({})).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("lib.tsconfig.json");
+  });
 
   let diagnostics = did_open(
     &mut client,
@@ -272,33 +263,36 @@ fn lsp_init_tsconfig() {
   let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
   assert_eq!(diagnostics.count(), 0);
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_tsconfig_types() {
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new();
-  let tsconfig =
-    serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
-  fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
-  let a_dts = load_fixture_str("a.d.ts");
-  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
 
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./types.tsconfig.json"));
-    params.initialization_options = Some(Value::Object(map));
+  temp_dir.write(
+    "types.tsconfig.json",
+    r#"{
+  "compilerOptions": {
+    "types": [
+      "./a.d.ts"
+    ]
+  },
+  "lint": {
+    "rules": {
+      "tags": []
+    }
   }
+}"#,
+  );
+  let a_dts = "// deno-lint-ignore-file no-var\ndeclare var a: string;";
+  temp_dir.write("a.d.ts", a_dts);
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  client.write_notification("initialized", json!({})).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("types.tsconfig.json");
+  });
 
   let diagnostics = did_open(
     &mut client,
@@ -315,12 +309,17 @@ fn lsp_tsconfig_types() {
   let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
   assert_eq!(diagnostics.count(), 0);
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_tsconfig_bad_config_path() {
-  let mut client = init("initialize_params_bad_config_option.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize(|builder| {
+    builder
+      .set_config("bad_tsconfig.json")
+      .set_maybe_root_uri(None);
+  });
   let (method, maybe_params) = client.read_notification().unwrap();
   assert_eq!(method, "window/showMessage");
   assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
@@ -344,27 +343,18 @@ fn lsp_tsconfig_bad_config_path() {
 
 #[test]
 fn lsp_triple_slash_types() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let a_dts = load_fixture_str("a.d.ts");
-  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  client.write_notification("initialized", json!({})).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  let a_dts = "// deno-lint-ignore-file no-var\ndeclare var a: string;";
+  temp_dir.write("a.d.ts", a_dts);
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
 
   let diagnostics = did_open(
     &mut client,
     json!({
       "textDocument": {
-        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+        "uri": temp_dir.uri().join("test.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "/// <reference types=\"./a.d.ts\" />\n\nconsole.log(a);\n"
@@ -375,37 +365,27 @@ fn lsp_triple_slash_types() {
   let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
   assert_eq!(diagnostics.count(), 0);
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_import_map() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let import_map =
-    serde_json::to_vec_pretty(&load_fixture("import-map.json")).unwrap();
-  fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
-  fs::create_dir(temp_dir.path().join("lib")).unwrap();
-  fs::write(
-    temp_dir.path().join("lib").join("b.ts"),
-    r#"export const b = "b";"#,
-  )
-  .unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("importMap".to_string(), json!("import-map.json"));
-    params.initialization_options = Some(Value::Object(map));
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  let import_map = r#"{
+  "imports": {
+    "/~/": "./lib/"
   }
+}"#;
+  temp_dir.write("import-map.json", import_map);
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_import_map("import-map.json");
+  });
 
-  client.write_notification("initialized", json!({})).unwrap();
   let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
 
   let diagnostics = did_open(
@@ -460,12 +440,16 @@ fn lsp_import_map() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_import_map_data_url() {
-  let mut client = init("initialize_params_import_map.json");
+  let context = TestContextBuilder::new().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
+  });
   let diagnostics = did_open(
     &mut client,
     json!({
@@ -479,49 +463,42 @@ fn lsp_import_map_data_url() {
   );
 
   let mut diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  // This indicates that the import map from initialize_params_import_map.json
-  // is applied correctly.
+  // This indicates that the import map is applied correctly.
   assert!(diagnostics.any(|diagnostic| diagnostic.code
     == Some(lsp::NumberOrString::String("no-cache".to_string()))
     && diagnostic
       .message
       .contains("https://deno.land/x/example/mod.ts")));
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_import_map_config_file() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-
-  let deno_import_map_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.import_map.jsonc")).unwrap();
-  fs::write(
-    temp_dir.path().join("deno.import_map.jsonc"),
-    deno_import_map_jsonc,
-  )
-  .unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./deno.import_map.jsonc"));
-    params.initialization_options = Some(Value::Object(map));
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  temp_dir.write(
+    "deno.import_map.jsonc",
+    r#"{
+  "importMap": "import-map.json"
+}"#,
+  );
+  temp_dir.write(
+    "import-map.json",
+    r#"{
+  "imports": {
+    "/~/": "./lib/"
   }
-  let import_map_text =
-    serde_json::to_string_pretty(&load_fixture("import-map.json")).unwrap();
-  temp_dir.write("import-map.json", import_map_text);
+}"#,
+  );
   temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.import_map.jsonc");
+  });
 
-  client.write_notification("initialized", json!({})).unwrap();
-  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+  let uri = temp_dir.uri().join("a.ts").unwrap();
 
   let diagnostics = did_open(
     &mut client,
@@ -575,40 +552,30 @@ fn lsp_import_map_config_file() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_import_map_embedded_in_config_file() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-
-  let deno_import_map_jsonc = serde_json::to_string_pretty(&load_fixture(
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  temp_dir.write(
     "deno.embedded_import_map.jsonc",
-  ))
-  .unwrap();
-  temp_dir.write("deno.embedded_import_map.jsonc", deno_import_map_jsonc);
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert(
-      "config".to_string(),
-      json!("./deno.embedded_import_map.jsonc"),
-    );
-    params.initialization_options = Some(Value::Object(map));
+    r#"{
+  "imports": {
+    "/~/": "./lib/"
   }
-  fs::create_dir(temp_dir.path().join("lib")).unwrap();
+}"#,
+  );
+  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.embedded_import_map.jsonc");
+  });
 
-  client.write_notification("initialized", json!({})).unwrap();
-  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+  let uri = temp_dir.uri().join("a.ts").unwrap();
 
   let diagnostics = did_open(
     &mut client,
@@ -662,33 +629,27 @@ fn lsp_import_map_embedded_in_config_file() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_deno_task() {
-  let temp_dir = TempDir::new();
-  let workspace_root = temp_dir.path().canonicalize().unwrap();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  fs::write(
-    workspace_root.join("deno.jsonc"),
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  temp_dir.write(
+    "deno.jsonc",
     r#"{
     "tasks": {
       "build": "deno test",
       "some:test": "deno bundle mod.ts"
     }
   }"#,
-  )
-  .unwrap();
+  );
 
-  params.root_uri = Some(Url::from_file_path(workspace_root).unwrap());
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.jsonc");
+  });
 
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>("deno/task", json!(null))
@@ -712,7 +673,12 @@ fn lsp_deno_task() {
 
 #[test]
 fn lsp_import_assertions() {
-  let mut client = init("initialize_params_import_map.json");
+  let context = TestContextBuilder::new().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
+  });
+
   client
     .write_notification(
       "textDocument/didOpen",
@@ -785,39 +751,32 @@ fn lsp_import_assertions() {
     maybe_res,
     Some(load_fixture("code_action_response_import_assertion.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_import_map_import_completions() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let import_map =
-    serde_json::to_vec_pretty(&load_fixture("import-map-completions.json"))
-      .unwrap();
-  fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
-  fs::create_dir(temp_dir.path().join("lib")).unwrap();
-  fs::write(
-    temp_dir.path().join("lib").join("b.ts"),
-    r#"export const b = "b";"#,
-  )
-  .unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("importMap".to_string(), json!("import-map.json"));
-    params.initialization_options = Some(Value::Object(map));
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  temp_dir.write(
+    "import-map.json",
+    r#"{
+  "imports": {
+    "/~/": "./lib/",
+    "fs": "https://example.com/fs/index.js",
+    "std/": "https://example.com/std@0.123.0/"
   }
+}"#,
+  );
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_import_map("import-map.json");
+  });
 
-  client.write_notification("initialized", json!({})).unwrap();
-  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+  let uri = temp_dir.uri().join("a.ts").unwrap();
 
   did_open(
     &mut client,
@@ -981,12 +940,13 @@ fn lsp_import_map_import_completions() {
     }))
   );
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -1036,12 +996,13 @@ fn lsp_hover() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover_asset() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -1116,7 +1077,7 @@ fn lsp_hover_asset() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -1154,7 +1115,7 @@ fn lsp_hover_disabled() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -1309,7 +1270,8 @@ fn lsp_inlay_hints() {
 
 #[test]
 fn lsp_inlay_hints_not_enabled() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -1366,31 +1328,25 @@ fn lsp_inlay_hints_not_enabled() {
 
 #[test]
 fn lsp_workspace_enable_paths() {
-  let mut params: lsp::InitializeParams = serde_json::from_value(load_fixture(
-    "initialize_params_workspace_enable_paths.json",
-  ))
-  .unwrap();
+  let context = TestContextBuilder::new().build();
   // we aren't actually writing anything to the tempdir in this test, but we
   // just need a legitimate file path on the host system so that logic that
   // tries to convert to and from the fs paths works on all env
-  let temp_dir = TempDir::new();
+  let temp_dir = context.deno_dir();
 
-  let root_specifier =
-    ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
+  let root_specifier = temp_dir.uri();
 
-  params.root_uri = Some(root_specifier.clone());
-  params.workspace_folders = Some(vec![lsp::WorkspaceFolder {
-    uri: root_specifier.clone(),
-    name: "project".to_string(),
-  }]);
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  client.write_notification("initialized", json!({})).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder
+      .set_enable_paths(vec!["./worker".to_string()])
+      .set_root_uri(root_specifier.clone())
+      .set_workspace_folders(vec![lsp::WorkspaceFolder {
+        uri: root_specifier.clone(),
+        name: "project".to_string(),
+      }])
+      .set_deno_enable(false);
+  });
 
   handle_configuration_request(
     &mut client,
@@ -1560,12 +1516,13 @@ fn lsp_workspace_enable_paths() {
     }))
   );
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover_unstable_disabled() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -1613,7 +1570,7 @@ fn lsp_hover_unstable_disabled() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -1668,12 +1625,13 @@ fn lsp_hover_unstable_enabled() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover_change_mbc() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -1756,24 +1714,22 @@ fn lsp_hover_change_mbc() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover_closed_document() {
-  let temp_dir_guard = TempDir::new();
-  let temp_dir = temp_dir_guard.path();
-  let a_path = temp_dir.join("a.ts");
-  fs::write(a_path, r#"export const a = "a";"#).unwrap();
-  let b_path = temp_dir.join("b.ts");
-  fs::write(&b_path, r#"export * from "./a.ts";"#).unwrap();
-  let b_specifier = Url::from_file_path(b_path).unwrap();
-  let c_path = temp_dir.join("c.ts");
-  fs::write(&c_path, "import { a } from \"./b.ts\";\nconsole.log(a);\n")
-    .unwrap();
-  let c_specifier = Url::from_file_path(c_path).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  temp_dir.write("a.ts", r#"export const a = "a";"#);
+  temp_dir.write("b.ts", r#"export * from "./a.ts";"#);
+  temp_dir.write("c.ts", "import { a } from \"./b.ts\";\nconsole.log(a);\n");
 
-  let mut client = init("initialize_params.json");
+  let b_specifier = temp_dir.uri().join("b.ts").unwrap();
+  let c_specifier = temp_dir.uri().join("c.ts").unwrap();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
   client
     .write_notification(
       "textDocument/didOpen",
@@ -1902,13 +1858,14 @@ fn lsp_hover_closed_document() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover_dependency() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2113,7 +2070,8 @@ fn lsp_hover_dependency() {
 // unable to resolve dependencies when there was an invalid syntax in the module
 #[test]
 fn lsp_hover_deps_preserved_when_invalid_parse() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2236,13 +2194,14 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover_typescript_types() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2306,12 +2265,13 @@ fn lsp_hover_typescript_types() {
       }
     })
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_hover_jsdoc_symbol_link() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2371,12 +2331,13 @@ fn lsp_hover_jsdoc_symbol_link() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_goto_type_definition() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2431,12 +2392,13 @@ fn lsp_goto_type_definition() {
       }
     ]))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_call_hierarchy() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2489,12 +2451,13 @@ fn lsp_call_hierarchy() {
     maybe_res,
     Some(load_fixture("outgoing_calls_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_large_doc_changes() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(&mut client, load_fixture("did_open_params_large.json"));
   client
     .write_notification(
@@ -2622,14 +2585,15 @@ fn lsp_large_doc_changes() {
     .unwrap();
   assert!(maybe_res.is_some());
   assert!(maybe_err.is_none());
-  shutdown(&mut client);
+  client.shutdown();
 
   assert!(client.duration().as_millis() <= 15000);
 }
 
 #[test]
 fn lsp_document_symbol() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(&mut client, load_fixture("did_open_params_doc_symbol.json"));
   let (maybe_res, maybe_err) = client
     .write_request(
@@ -2646,12 +2610,13 @@ fn lsp_document_symbol() {
     maybe_res,
     Some(load_fixture("document_symbol_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_folding_range() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2701,12 +2666,13 @@ fn lsp_folding_range() {
       }
     ]))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_rename() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2736,12 +2702,13 @@ fn lsp_rename() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(load_fixture("rename_response.json")));
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_selection_range() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2774,12 +2741,13 @@ fn lsp_selection_range() {
     maybe_res,
     Some(load_fixture("selection_range_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_semantic_tokens() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     load_fixture("did_open_params_semantic_tokens.json"),
@@ -2838,12 +2806,13 @@ fn lsp_semantic_tokens() {
       ]
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_lens() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2893,12 +2862,13 @@ fn lsp_code_lens() {
     maybe_res,
     Some(load_fixture("code_lens_resolve_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_lens_impl() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -2992,7 +2962,7 @@ fn lsp_code_lens_impl() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -3017,7 +2987,7 @@ fn lsp_code_lens_test() {
     maybe_res,
     Some(load_fixture("code_lens_response_test.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -3062,12 +3032,13 @@ fn lsp_code_lens_test_disabled() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!([])));
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_lens_non_doc_nav_tree() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3147,12 +3118,13 @@ fn lsp_code_lens_non_doc_nav_tree() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_nav_tree_updates() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3220,12 +3192,13 @@ fn lsp_nav_tree_updates() {
     maybe_res,
     Some(load_fixture("code_lens_response_changed.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_signature_help() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3362,12 +3335,13 @@ fn lsp_signature_help() {
       "activeParameter": 1
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_actions() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3398,7 +3372,7 @@ fn lsp_code_actions() {
     maybe_res,
     Some(load_fixture("code_action_resolve_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -3542,7 +3516,8 @@ export class DuckConfig {
 
 #[test]
 fn lsp_code_actions_refactor() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3576,7 +3551,7 @@ fn lsp_code_actions_refactor() {
     maybe_res,
     Some(load_fixture("code_action_resolve_response_refactor.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -3624,12 +3599,13 @@ fn lsp_code_actions_refactor_no_disabled_support() {
     maybe_res,
     Some(load_fixture("code_action_response_no_disabled.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_actions_deadlock() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   client
     .write_notification(
       "textDocument/didOpen",
@@ -3763,12 +3739,13 @@ fn lsp_code_actions_deadlock() {
 
   read_diagnostics(&mut client);
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_completions() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3816,12 +3793,13 @@ fn lsp_completions() {
     maybe_res,
     Some(load_fixture("completion_resolve_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_completions_private_fields() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3859,12 +3837,13 @@ fn lsp_completions_private_fields() {
   } else {
     panic!("unexpected response");
   }
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_completions_optional() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -3929,12 +3908,13 @@ fn lsp_completions_optional() {
       "insertText": "b"
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_completions_auto_import() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -4046,7 +4026,8 @@ fn lsp_completions_auto_import() {
 
 #[test]
 fn lsp_completions_snippet() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -4226,7 +4207,8 @@ fn lsp_completions_no_snippet() {
 #[test]
 fn lsp_completions_npm() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -4383,13 +4365,14 @@ fn lsp_completions_npm() {
     panic!("unexpected response");
   }
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_npm_specifier_unopened_file() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
 
   // create other.ts, which re-exports an npm specifier
   client.deno_dir().write(
@@ -4493,7 +4476,8 @@ fn lsp_npm_specifier_unopened_file() {
 #[test]
 fn lsp_completions_node_specifier() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   let diagnostics = CollectedDiagnostics(did_open(
     &mut client,
     json!({
@@ -4737,7 +4721,7 @@ fn lsp_completions_node_specifier() {
     panic!("unexpected response");
   }
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -4791,7 +4775,7 @@ fn lsp_completions_registry() {
     maybe_res,
     Some(load_fixture("completion_resolve_response_registry.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -4832,13 +4816,14 @@ fn lsp_completions_registry_empty() {
     maybe_res,
     Some(load_fixture("completion_request_response_empty.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_auto_discover_registry() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -4879,13 +4864,15 @@ fn lsp_auto_discover_registry() {
       "suggestions": true,
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_cache_location() {
-  let _g = http_server();
-  let temp_dir = TempDir::new();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let temp_dir = context.deno_dir();
+
+  // todo(THIS PR): update this
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params_registry.json"))
       .unwrap();
@@ -4896,8 +4883,7 @@ fn lsp_cache_location() {
     params.initialization_options = Some(Value::Object(map));
   }
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  let mut client = context.new_lsp_command().build();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5017,8 +5003,7 @@ fn lsp_tls_cert() {
 
   params.root_uri = Some(Url::from_file_path(testdata_path()).unwrap());
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  let mut client = LspClientBuilder::new().build();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5127,7 +5112,8 @@ fn lsp_tls_cert() {
 #[test]
 fn lsp_diagnostics_warn_redirect() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -5201,13 +5187,14 @@ fn lsp_diagnostics_warn_redirect() {
       version: Some(1),
     }
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_redirect_quick_fix() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -5270,12 +5257,13 @@ fn lsp_redirect_quick_fix() {
     maybe_res,
     Some(load_fixture("code_action_redirect_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_diagnostics_deprecated() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   let diagnostics = did_open(
     &mut client,
     json!({
@@ -5328,12 +5316,13 @@ fn lsp_diagnostics_deprecated() {
       }
     ])
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_diagnostics_deno_types() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   client
     .write_notification(
       "textDocument/didOpen",
@@ -5359,7 +5348,7 @@ fn lsp_diagnostics_deno_types() {
   assert!(maybe_err.is_none());
   let diagnostics = read_diagnostics(&mut client);
   assert_eq!(diagnostics.viewed().len(), 5);
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -5466,7 +5455,8 @@ struct PerformanceAverages {
 
 #[test]
 fn lsp_performance() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -5503,12 +5493,13 @@ fn lsp_performance() {
   } else {
     panic!("unexpected result");
   }
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_no_changes() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -5537,12 +5528,13 @@ fn lsp_format_no_changes() {
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
   client.assert_no_notification("window/showMessage");
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_error() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -5570,12 +5562,13 @@ fn lsp_format_error() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_mbc() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -5606,34 +5599,40 @@ fn lsp_format_mbc() {
     maybe_res,
     Some(json!(load_fixture("formatting_mbc_response.json")))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_exclude_with_config() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_fmt_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
-  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
 
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
-    params.initialization_options = Some(Value::Object(map));
-  }
+  temp_dir.write(
+    "deno.fmt.jsonc",
+    r#"{
+    "fmt": {
+      "files": {
+        "exclude": [
+          "ignored.ts"
+        ]
+      },
+      "options": {
+        "useTabs": true,
+        "lineWidth": 40,
+        "indentWidth": 8,
+        "singleQuote": true,
+        "proseWrap": "always"
+      }
+    }
+  }"#,
+  );
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.fmt.jsonc");
+  });
 
-  let file_uri =
-    ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts"))
-      .unwrap()
-      .to_string();
+  let file_uri = temp_dir.uri().join("ignored.ts").unwrap();
   did_open(
     &mut client,
     json!({
@@ -5661,31 +5660,40 @@ fn lsp_format_exclude_with_config() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_exclude_default_config() {
-  let temp_dir = TempDir::new();
-  let workspace_root = temp_dir.path().canonicalize().unwrap();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
-  fs::write(workspace_root.join("deno.jsonc"), deno_jsonc).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
 
-  params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
+  temp_dir.write(
+    "deno.fmt.jsonc",
+    r#"{
+    "fmt": {
+      "files": {
+        "exclude": [
+          "ignored.ts"
+        ]
+      },
+      "options": {
+        "useTabs": true,
+        "lineWidth": 40,
+        "indentWidth": 8,
+        "singleQuote": true,
+        "proseWrap": "always"
+      }
+    }
+  }"#,
+  );
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.fmt.jsonc");
+  });
 
-  let file_uri =
-    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts"))
-      .unwrap()
-      .to_string();
+  let file_uri = temp_dir.uri().join("ignored.ts").unwrap();
   did_open(
     &mut client,
     json!({
@@ -5713,12 +5721,13 @@ fn lsp_format_exclude_default_config() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_json() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   client
     .write_notification(
       "textDocument/didOpen",
@@ -5783,12 +5792,13 @@ fn lsp_format_json() {
       }
     ]))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_json_no_diagnostics() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   client
     .write_notification(
       "textDocument/didOpen",
@@ -5833,12 +5843,13 @@ fn lsp_json_no_diagnostics() {
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_markdown() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   client
     .write_notification(
       "textDocument/didOpen",
@@ -5888,29 +5899,33 @@ fn lsp_format_markdown() {
       }
     ]))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_format_with_config() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_fmt_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.fmt.jsonc")).unwrap();
-  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
-    params.initialization_options = Some(Value::Object(map));
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
+  temp_dir.write(
+    "deno.fmt.jsonc",
+    r#"{
+    "fmt": {
+      "options": {
+        "useTabs": true,
+        "lineWidth": 40,
+        "indentWidth": 8,
+        "singleQuote": true,
+        "proseWrap": "always"
+      }
+    }
   }
+  "#,
+  );
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.fmt.jsonc");
+  });
 
   client
     .write_notification(
@@ -6051,12 +6066,13 @@ fn lsp_format_with_config() {
       }]
     ))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_markdown_no_diagnostics() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   client
     .write_notification(
       "textDocument/didOpen",
@@ -6101,7 +6117,7 @@ fn lsp_markdown_no_diagnostics() {
   assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
@@ -6191,12 +6207,13 @@ fn lsp_configuration_did_change() {
     maybe_res,
     Some(load_fixture("completion_resolve_response_registry.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_workspace_symbol() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -6305,12 +6322,13 @@ fn lsp_workspace_symbol() {
       }
     ]))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_actions_ignore_lint() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -6333,13 +6351,14 @@ fn lsp_code_actions_ignore_lint() {
     maybe_res,
     Some(load_fixture("code_action_ignore_lint_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 /// This test exercises updating an existing deno-lint-ignore-file comment.
 #[test]
 fn lsp_code_actions_update_ignore_lint() {
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -6367,29 +6386,37 @@ console.log(snake_case);
     maybe_res,
     Some(load_fixture("code_action_update_ignore_lint_response.json"))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_lint_with_config() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_lint_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.lint.jsonc")).unwrap();
-  fs::write(temp_dir.path().join("deno.lint.jsonc"), deno_lint_jsonc).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
 
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./deno.lint.jsonc"));
-    params.initialization_options = Some(Value::Object(map));
+  temp_dir.write(
+    "deno.lint.jsonc",
+    r#"{
+    "lint": {
+      "rules": {
+        "exclude": [
+          "camelcase"
+        ],
+        "include": [
+          "ban-untagged-todo"
+        ],
+        "tags": []
+      }
+    }
   }
+  "#,
+  );
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.lint.jsonc");
+  });
+
   let mut session = TestSession::from_client(client);
 
   let diagnostics = session.did_open(load_fixture("did_open_lint.json"));
@@ -6404,25 +6431,35 @@ fn lsp_lint_with_config() {
 
 #[test]
 fn lsp_lint_exclude_with_config() {
-  let temp_dir = TempDir::new();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_lint_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.lint.exclude.jsonc"))
-      .unwrap();
-  fs::write(temp_dir.path().join("deno.lint.jsonc"), deno_lint_jsonc).unwrap();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
 
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./deno.lint.jsonc"));
-    params.initialization_options = Some(Value::Object(map));
-  }
+  temp_dir.write(
+    "deno.lint.jsonc",
+    r#"{
+      "lint": {
+        "files": {
+          "exclude": [
+            "ignored.ts"
+          ]
+        },
+        "rules": {
+          "exclude": [
+            "camelcase"
+          ],
+          "include": [
+            "ban-untagged-todo"
+          ],
+          "tags": []
+        }
+      }
+    }"#,
+  );
 
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.lint.jsonc");
+  });
 
   let diagnostics = did_open(
     &mut client,
@@ -6440,13 +6477,14 @@ fn lsp_lint_exclude_with_config() {
     .flat_map(|x| x.diagnostics)
     .collect::<Vec<_>>();
   assert_eq!(diagnostics, Vec::new());
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[test]
 fn lsp_jsx_import_source_pragma() {
   let _g = http_server();
-  let mut client = init("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({
@@ -6519,7 +6557,7 @@ export function B() {
       }
     }))
   );
-  shutdown(&mut client);
+  client.shutdown();
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -6562,15 +6600,9 @@ struct TestRunResponseParams {
 
 #[test]
 fn lsp_testing_api() {
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new();
+  let context = TestContextBuilder::new().build();
+  let temp_dir = context.deno_dir();
 
-  let root_specifier =
-    ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
-
-  let module_path = temp_dir.path().join("./test.ts");
-  let specifier = ModuleSpecifier::from_file_path(&module_path).unwrap();
   let contents = r#"
 Deno.test({
   name: "test a",
@@ -6579,18 +6611,12 @@ Deno.test({
   }
 });
 "#;
-  fs::write(&module_path, contents).unwrap();
-  fs::write(temp_dir.path().join("./deno.jsonc"), r#"{}"#).unwrap();
+  temp_dir.write("./test.ts", &contents);
+  temp_dir.write("./deno.jsonc", "{}");
+  let specifier = temp_dir.uri().join("test.ts").unwrap();
 
-  params.root_uri = Some(root_specifier);
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  client.write_notification("initialized", json!({})).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
 
   client
     .write_notification(
@@ -6763,5 +6789,5 @@ Deno.test({
     _ => panic!("unexpected message {}", json!(notification)),
   }
 
-  shutdown(&mut client);
+  client.shutdown();
 }
