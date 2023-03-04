@@ -366,11 +366,21 @@ impl InternalModuleLoader {
 impl Drop for InternalModuleLoader {
   fn drop(&mut self) {
     let used_esm_sources = self.used_esm_sources.get_mut();
-    for (key, value) in used_esm_sources {
-      if !*value {
-        panic!("{key} was passed to InternalModuleLoader but was never used");
-      }
+    let unused_modules: Vec<_> = used_esm_sources
+      .iter()
+      .filter(|(_s, v)| !*v)
+      .map(|(s, _)| s)
+      .collect();
+
+    let mut msg =
+      "Following modules were passed to InternalModuleLoader but never used:\n"
+        .to_string();
+    for m in unused_modules {
+      msg.push_str("  - ");
+      msg.push_str(m);
+      msg.push_str("\n");
     }
+    panic!("{}", msg);
   }
 }
 
