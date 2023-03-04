@@ -832,7 +832,7 @@ fn extract_files_from_source_comments(
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.as_str().to_string(),
+    specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,

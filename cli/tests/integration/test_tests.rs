@@ -241,7 +241,7 @@ itest!(trace_ops_catch_error {
 // });
 
 itest!(ops_sanitizer_nexttick {
-  args: "test test/ops_sanitizer_nexttick.ts",
+  args: "test --no-check test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",
 });
 
