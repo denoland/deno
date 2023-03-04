@@ -17,6 +17,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::TaskQueue;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
