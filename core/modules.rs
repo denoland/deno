@@ -379,7 +379,7 @@ impl Drop for InternalModuleLoader {
       for m in unused_modules {
         msg.push_str("  - ");
         msg.push_str(m);
-        msg.push_str("\n");
+        msg.push('\n');
       }
       panic!("{}", msg);
     }
