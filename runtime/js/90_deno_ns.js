@@ -26,7 +26,6 @@ import * as readFile from "internal:runtime/40_read_file.js";
 import * as signals from "internal:runtime/40_signals.js";
 import * as tty from "internal:runtime/40_tty.js";
 import * as writeFile from "internal:runtime/40_write_file.js";
-import * as spawn from "internal:runtime/40_spawn.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "internal:runtime/40_http.js";
 
@@ -152,9 +151,9 @@ const denoNs = {
   consoleSize: tty.consoleSize,
   gid: os.gid,
   uid: os.uid,
-  Command: spawn.Command,
+  Command: process.Command,
   // TODO(bartlomieju): why is this exported?
-  ChildProcess: spawn.ChildProcess,
+  ChildProcess: process.ChildProcess,
 };
 
 const denoNsUnstable = {

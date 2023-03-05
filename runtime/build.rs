@@ -210,7 +210,6 @@ mod startup_snapshot {
         "40_process.js",
         "40_read_file.js",
         "40_signals.js",
-        "40_spawn.js",
         "40_tty.js",
         "40_write_file.js",
         "41_prompt.js",
