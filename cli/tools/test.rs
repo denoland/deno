@@ -775,7 +775,6 @@ fn extract_files_from_regex_blocks(
           Some(&"mts") => MediaType::Mts,
           Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => media_type,
           _ => MediaType::Unknown,
         }
       } else {
