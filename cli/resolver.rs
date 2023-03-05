@@ -7,6 +7,7 @@ use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
+use deno_core::TaskQueue;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::source::NpmResolver;
@@ -22,7 +23,6 @@ use crate::args::JsxImportSourceConfig;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
-use crate::util::synchronization::SingleConcurrencyEnforcer;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
@@ -35,7 +35,7 @@ pub struct CliGraphResolver {
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
   package_json_deps_installer: PackageJsonDepsInstaller,
-  sync_download_sce: Option<Arc<SingleConcurrencyEnforcer>>,
+  sync_download_queue: Option<Arc<TaskQueue>>,
 }
 
 impl Default for CliGraphResolver {
@@ -53,7 +53,7 @@ impl Default for CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       package_json_deps_installer: Default::default(),
-      sync_download_sce: Self::create_sync_download_sce(),
+      sync_download_queue: Self::create_sync_download_queue(),
     }
   }
 }
@@ -78,11 +78,11 @@ impl CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       package_json_deps_installer,
-      sync_download_sce: Self::create_sync_download_sce(),
+      sync_download_queue: Self::create_sync_download_queue(),
     }
   }
 
-  fn create_sync_download_sce() -> Option<Arc<SingleConcurrencyEnforcer>> {
+  fn create_sync_download_queue() -> Option<Arc<TaskQueue>> {
     if crate::npm::should_sync_download() {
       Some(Default::default())
     } else {
@@ -195,10 +195,10 @@ impl NpmResolver for CliGraphResolver {
     let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
     let deps_installer = self.package_json_deps_installer.clone();
-    let maybe_sync_download_semaphore = self.sync_download_sce.clone();
+    let maybe_sync_download_queue = self.sync_download_queue.clone();
     async move {
-      let permit = if let Some(semaphore) = &maybe_sync_download_semaphore {
-        Some(semaphore.acquire().await)
+      let permit = if let Some(task_queue) = &maybe_sync_download_queue {
+        Some(task_queue.acquire().await)
       } else {
         None
       };

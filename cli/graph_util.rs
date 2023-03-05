@@ -19,6 +19,8 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
+use deno_core::TaskQueue;
+use deno_core::TaskQueuePermit;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -321,7 +323,7 @@ pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
-  update_sce: Arc<TaskQueue>,
+  update_queue: Arc<TaskQueue>,
   graph_data: Arc<RwLock<GraphData>>,
 }
 
@@ -330,7 +332,7 @@ impl ModuleGraphContainer {
   /// having the chance to modify it. In the meantime, other code may
   /// still read from the existing module graph.
   pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
-    let permit = self.update_sce.acquire().await;
+    let permit = self.update_queue.acquire().await;
     ModuleGraphUpdatePermit {
       permit,
       graph_data: self.graph_data.clone(),
@@ -387,7 +389,7 @@ impl ModuleGraphContainer {
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
 pub struct ModuleGraphUpdatePermit<'a> {
-  permit: SingleConcurrencyEnforcerPermit<'a>,
+  permit: TaskQueuePermit<'a>,
   graph_data: Arc<RwLock<GraphData>>,
   graph: ModuleGraph,
 }
