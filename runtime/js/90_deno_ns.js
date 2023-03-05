@@ -18,7 +18,6 @@ import * as io from "internal:deno_io/12_io.js";
 import * as buffer from "internal:runtime/13_buffer.js";
 import * as fs from "internal:runtime/30_fs.js";
 import * as os from "internal:runtime/30_os.js";
-import * as diagnostics from "internal:runtime/40_diagnostics.js";
 import * as files from "internal:runtime/40_files.js";
 import * as fsEvents from "internal:runtime/40_fs_events.js";
 import * as process from "internal:runtime/40_process.js";
@@ -158,7 +157,6 @@ const denoNs = {
 };
 
 const denoNsUnstable = {
-  DiagnosticCategory: diagnostics.DiagnosticCategory,
   listenDatagram: net.listenDatagram,
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
