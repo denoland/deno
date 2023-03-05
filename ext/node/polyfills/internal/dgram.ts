@@ -20,16 +20,16 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { lookup as defaultLookup } from "internal:deno_node/polyfills/dns.ts";
+import { lookup as defaultLookup } from "internal:deno_node/dns.ts";
 import {
   isInt32,
   validateFunction,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import type { ErrnoException } from "internal:deno_node/polyfills/internal/errors.ts";
-import { ERR_SOCKET_BAD_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
-import { UDP } from "internal:deno_node/polyfills/internal_binding/udp_wrap.ts";
-import { guessHandleType } from "internal:deno_node/polyfills/internal_binding/util.ts";
-import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
+} from "internal:deno_node/internal/validators.mjs";
+import type { ErrnoException } from "internal:deno_node/internal/errors.ts";
+import { ERR_SOCKET_BAD_TYPE } from "internal:deno_node/internal/errors.ts";
+import { UDP } from "internal:deno_node/internal_binding/udp_wrap.ts";
+import { guessHandleType } from "internal:deno_node/internal_binding/util.ts";
+import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
 
 export type SocketType = "udp4" | "udp6";
 

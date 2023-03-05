@@ -21,8 +21,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { inspect } from "internal:deno_node/polyfills/util.ts";
-import { stripColor as removeColors } from "internal:deno_node/polyfills/_util/std_fmt_colors.ts";
+import { inspect } from "internal:deno_node/util.ts";
+import { stripColor as removeColors } from "internal:deno_node/_util/std_fmt_colors.ts";
 
 function getConsoleWidth(): number {
   try {
@@ -44,7 +44,7 @@ const {
   keys: ObjectKeys,
 } = Object;
 
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
+import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
 
 let blue = "";
 let green = "";

@@ -5,4 +5,4 @@ error: Uncaught (in worker "") Error
     at Object.action (internal:deno_web/02_timers.js:[WILDCARD])
     at handleTimerMacrotask (internal:deno_web/02_timers.js:[WILDCARD])
 error: Uncaught (in promise) Error: Unhandled error in child worker.
-    at Worker.#pollControl (internal:runtime/js/11_workers.js:[WILDCARD])
+    at Worker.#pollControl (internal:runtime/11_workers.js:[WILDCARD])
