@@ -4,12 +4,12 @@ import {
   TextDecoder,
   TextEncoder,
 } from "internal:deno_web/08_text_encoding.js";
-import { asyncIterableToCallback } from "internal:deno_node/polyfills/_fs/_fs_watch.ts";
-import Dirent from "internal:deno_node/polyfills/_fs/_fs_dirent.ts";
-import { denoErrorToNodeError } from "internal:deno_node/polyfills/internal/errors.ts";
-import { getValidatedPath } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+import { asyncIterableToCallback } from "internal:deno_node/_fs/_fs_watch.ts";
+import Dirent from "internal:deno_node/_fs/_fs_dirent.ts";
+import { denoErrorToNodeError } from "internal:deno_node/internal/errors.ts";
+import { getValidatedPath } from "internal:deno_node/internal/fs/utils.mjs";
+import { Buffer } from "internal:deno_node/buffer.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 function toDirent(val: Deno.DirEntry): Dirent {
   return new Dirent(val);

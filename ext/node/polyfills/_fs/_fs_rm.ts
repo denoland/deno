@@ -2,9 +2,9 @@
 import {
   validateRmOptions,
   validateRmOptionsSync,
-} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { denoErrorToNodeError } from "internal:deno_node/polyfills/internal/errors.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+} from "internal:deno_node/internal/fs/utils.mjs";
+import { denoErrorToNodeError } from "internal:deno_node/internal/errors.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 type rmOptions = {
   force?: boolean;

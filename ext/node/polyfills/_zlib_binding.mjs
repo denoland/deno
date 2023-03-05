@@ -4,9 +4,9 @@
 
 // deno-lint-ignore-file
 
-import assert from "internal:deno_node/polyfills/assert.ts";
-import { constants, zlib_deflate, zlib_inflate, Zstream } from "internal:deno_node/polyfills/_pako.mjs";
-import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
+import assert from "internal:deno_node/assert.ts";
+import { constants, zlib_deflate, zlib_inflate, Zstream } from "internal:deno_node/_pako.mjs";
+import { nextTick } from "internal:deno_node/_next_tick.ts";
 
 export const Z_NO_FLUSH = constants.Z_NO_FLUSH;
 export const Z_PARTIAL_FLUSH = constants.Z_PARTIAL_FLUSH;

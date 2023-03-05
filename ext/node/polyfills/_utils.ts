@@ -4,8 +4,8 @@ import {
   TextDecoder,
   TextEncoder,
 } from "internal:deno_web/08_text_encoding.js";
-import { errorMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
+import { errorMap } from "internal:deno_node/internal_binding/uv.ts";
+import { codes } from "internal:deno_node/internal/error_codes.ts";
 
 export type BinaryEncodings = "binary";
 

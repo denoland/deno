@@ -25,8 +25,8 @@ import {
   validateNumber,
   validateOneOf,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import { isIP } from "internal:deno_node/polyfills/internal/net.ts";
+} from "internal:deno_node/internal/validators.mjs";
+import { isIP } from "internal:deno_node/internal/net.ts";
 import {
   emitInvalidHostnameWarning,
   getDefaultResolver,
@@ -35,7 +35,7 @@ import {
   isLookupOptions,
   Resolver as CallbackResolver,
   validateHints,
-} from "internal:deno_node/polyfills/internal/dns/utils.ts";
+} from "internal:deno_node/internal/dns/utils.ts";
 import type {
   LookupAddress,
   LookupAllOptions,
@@ -44,19 +44,19 @@ import type {
   Records,
   ResolveOptions,
   ResolveWithTtlOptions,
-} from "internal:deno_node/polyfills/internal/dns/utils.ts";
+} from "internal:deno_node/internal/dns/utils.ts";
 import {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "internal:deno_node/internal/errors.ts";
 import {
   ChannelWrapQuery,
   getaddrinfo,
   GetAddrInfoReqWrap,
   QueryReqWrap,
-} from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
-import { toASCII } from "internal:deno_node/polyfills/punycode.ts";
+} from "internal:deno_node/internal_binding/cares_wrap.ts";
+import { toASCII } from "internal:deno_node/punycode.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,
