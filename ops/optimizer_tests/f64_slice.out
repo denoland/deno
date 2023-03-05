@@ -26,7 +26,6 @@ impl op_f64_buf {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            argc: 1usize,
         }
     }
     #[inline]
