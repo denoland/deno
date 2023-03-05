@@ -4,7 +4,7 @@ const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 import * as abortSignal from "internal:deno_web/03_abort_signal.js";
 import { pathFromURL } from "internal:runtime/js/06_util.js";
-import { open } from "internal:runtime/js/40_files.js";
+import { open } from "internal:runtime/js/30_fs.js";
 import { ReadableStreamPrototype } from "internal:deno_web/06_streams.js";
 const { ObjectPrototypeIsPrototypeOf } = primordials;
 
