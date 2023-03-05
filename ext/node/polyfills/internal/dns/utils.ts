@@ -20,30 +20,30 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { getOptionValue } from "internal:deno_node/polyfills/internal/options.ts";
-import { emitWarning } from "internal:deno_node/polyfills/process.ts";
+import { getOptionValue } from "internal:deno_node/internal/options.ts";
+import { emitWarning } from "internal:deno_node/process.ts";
 import {
   AI_ADDRCONFIG,
   AI_ALL,
   AI_V4MAPPED,
-} from "internal:deno_node/polyfills/internal_binding/ares.ts";
+} from "internal:deno_node/internal_binding/ares.ts";
 import {
   ChannelWrap,
   strerror,
-} from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
+} from "internal:deno_node/internal_binding/cares_wrap.ts";
 import {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_IP_ADDRESS,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import type { ErrnoException } from "internal:deno_node/polyfills/internal/errors.ts";
+} from "internal:deno_node/internal/errors.ts";
+import type { ErrnoException } from "internal:deno_node/internal/errors.ts";
 import {
   validateArray,
   validateInt32,
   validateOneOf,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import { isIP } from "internal:deno_node/polyfills/internal/net.ts";
+} from "internal:deno_node/internal/validators.mjs";
+import { isIP } from "internal:deno_node/internal/net.ts";
 
 export interface LookupOptions {
   family?: number | undefined;

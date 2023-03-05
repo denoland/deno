@@ -8,8 +8,8 @@ import {
   fstatSync,
   ftruncate,
   ftruncateSync,
-} from "internal:runtime/js/30_fs.js";
-import { pathFromURL } from "internal:runtime/js/06_util.js";
+} from "internal:runtime/30_fs.js";
+import { pathFromURL } from "internal:runtime/06_util.js";
 import {
   readableStreamForRid,
   writableStreamForRid,

@@ -6,8 +6,8 @@ import {
   statCallbackBigInt,
   statOptions,
   Stats,
-} from "internal:deno_node/polyfills/_fs/_fs_stat.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+} from "internal:deno_node/_fs/_fs_stat.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 export function lstat(path: string | URL, callback: statCallback): void;
 export function lstat(

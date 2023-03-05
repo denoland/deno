@@ -2,7 +2,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { pathFromURL } from "internal:runtime/06_util.js";
 import * as abortSignal from "internal:deno_web/03_abort_signal.js";
 
 function readFileSync(path) {

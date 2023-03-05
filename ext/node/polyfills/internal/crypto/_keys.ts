@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { kKeyObject } from "internal:deno_node/polyfills/internal/crypto/constants.ts";
+import { kKeyObject } from "internal:deno_node/internal/crypto/constants.ts";
 
 export const kKeyType = Symbol("kKeyType");
 

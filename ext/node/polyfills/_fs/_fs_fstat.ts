@@ -6,7 +6,7 @@ import {
   statCallbackBigInt,
   statOptions,
   Stats,
-} from "internal:deno_node/polyfills/_fs/_fs_stat.ts";
+} from "internal:deno_node/_fs/_fs_stat.ts";
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(

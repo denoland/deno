@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import type { CallbackWithError } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
-import { fromFileUrl } from "internal:deno_node/polyfills/path.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+import type { CallbackWithError } from "internal:deno_node/_fs/_fs_common.ts";
+import { fromFileUrl } from "internal:deno_node/path.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 function getValidTime(
   time: number | string | Date,

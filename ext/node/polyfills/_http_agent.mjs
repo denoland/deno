@@ -1,23 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import * as net from "internal:deno_node/polyfills/net.ts";
-import EventEmitter from "internal:deno_node/polyfills/events.ts";
-import { debuglog } from "internal:deno_node/polyfills/internal/util/debuglog.ts";
+import * as net from "internal:deno_node/net.ts";
+import EventEmitter from "internal:deno_node/events.ts";
+import { debuglog } from "internal:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {
   debug = fn;
 });
-import { AsyncResource } from "internal:deno_node/polyfills/async_hooks.ts";
-import { symbols } from "internal:deno_node/polyfills/internal/async_hooks.ts";
+import { AsyncResource } from "internal:deno_node/async_hooks.ts";
+import { symbols } from "internal:deno_node/internal/async_hooks.ts";
 // deno-lint-ignore camelcase
 const { async_id_symbol } = symbols;
-import { ERR_OUT_OF_RANGE } from "internal:deno_node/polyfills/internal/errors.ts";
-import { once } from "internal:deno_node/polyfills/internal/util.mjs";
+import { ERR_OUT_OF_RANGE } from "internal:deno_node/internal/errors.ts";
+import { once } from "internal:deno_node/internal/util.mjs";
 import {
   validateNumber,
   validateOneOf,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "internal:deno_node/internal/validators.mjs";
 
 const kOnKeylog = Symbol("onkeylog");
 const kRequestOptions = Symbol("requestOptions");

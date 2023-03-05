@@ -5,9 +5,9 @@ import {
   intoCallbackAPIWithIntercept,
   MaybeEmpty,
   notImplemented,
-} from "internal:deno_node/polyfills/_utils.ts";
-import { fromFileUrl } from "internal:deno_node/polyfills/path.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+} from "internal:deno_node/_utils.ts";
+import { fromFileUrl } from "internal:deno_node/path.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,

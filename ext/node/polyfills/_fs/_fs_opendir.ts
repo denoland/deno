@@ -1,17 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import Dir from "internal:deno_node/polyfills/_fs/_fs_dir.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+import Dir from "internal:deno_node/_fs/_fs_dir.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
 import {
   getOptions,
   getValidatedPath,
-} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { denoErrorToNodeError } from "internal:deno_node/polyfills/internal/errors.ts";
+} from "internal:deno_node/internal/fs/utils.mjs";
+import { denoErrorToNodeError } from "internal:deno_node/internal/errors.ts";
 import {
   validateFunction,
   validateInteger,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+} from "internal:deno_node/internal/validators.mjs";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 /** These options aren't funcitonally used right now, as `Dir` doesn't yet support them.
  * However, these values are still validated.
