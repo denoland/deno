@@ -564,7 +564,7 @@ mod deprecated {
 
   #[cfg(unix)]
   pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
-    let signo = super::signal::signal_str_to_int(signal)?;
+    let signo = super::super::signal::signal_str_to_int(signal)?;
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;

@@ -209,7 +209,7 @@ impl TestCommandBuilder {
 
   /// Splits the output into stdout and stderr rather than having them combined.
   pub fn split_output(&mut self) -> &mut Self {
-    // Note: it was previously attempted to capture stdout & stderr separately,
+    // Note: it was previously attempted to capture stdout & stderr separately
     // then forward the output to a combined pipe, but this was found to be
     // too racy compared to providing the same combined pipe to both.
     self.split_output = true;
