@@ -10,7 +10,6 @@ import * as net from "internal:deno_net/01_net.js";
 import * as tls from "internal:deno_net/02_tls.js";
 import * as http from "internal:deno_http/01_http.js";
 import * as flash from "internal:deno_flash/01_http.js";
-import * as build from "internal:runtime/01_build.js";
 import * as errors from "internal:runtime/01_errors.js";
 import * as version from "internal:runtime/01_version.ts";
 import * as permissions from "internal:runtime/10_permissions.js";
@@ -65,7 +64,7 @@ const denoNs = {
   renameSync: fs.renameSync,
   rename: fs.rename,
   version: version.version,
-  build: build.build,
+  build: core.build,
   statSync: fs.statSync,
   lstatSync: fs.lstatSync,
   stat: fs.stat,
