@@ -10,7 +10,7 @@ import {
   Interface,
   moveCursor,
   promises,
-} from "internal:deno_node/polyfills/_readline.mjs";
+} from "internal:deno_node/_readline.mjs";
 
 export {
   clearLine,

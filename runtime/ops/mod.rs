@@ -7,7 +7,6 @@ pub mod permissions;
 pub mod process;
 pub mod runtime;
 pub mod signal;
-pub mod spawn;
 pub mod tty;
 mod utils;
 pub mod web_worker;

@@ -194,7 +194,6 @@ mod startup_snapshot {
       ])
       .esm(include_js_files!(
         dir "js",
-        "01_build.js",
         "01_errors.js",
         "01_version.ts",
         "06_util.js",
@@ -203,15 +202,11 @@ mod startup_snapshot {
         "13_buffer.js",
         "30_fs.js",
         "30_os.js",
-        "40_diagnostics.js",
         "40_fs_events.js",
         "40_http.js",
         "40_process.js",
-        "40_read_file.js",
         "40_signals.js",
-        "40_spawn.js",
         "40_tty.js",
-        "40_write_file.js",
         "41_prompt.js",
         "90_deno_ns.js",
         "98_global_scope.js",

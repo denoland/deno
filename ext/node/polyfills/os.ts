@@ -20,11 +20,11 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { validateIntegerRange } from "internal:deno_node/polyfills/_utils.ts";
-import process from "internal:deno_node/polyfills/process.ts";
-import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
-import { os } from "internal:deno_node/polyfills/internal_binding/constants.ts";
+import { notImplemented } from "internal:deno_node/_utils.ts";
+import { validateIntegerRange } from "internal:deno_node/_utils.ts";
+import process from "internal:deno_node/process.ts";
+import { isWindows, osType } from "internal:deno_node/_util/os.ts";
+import { os } from "internal:deno_node/internal_binding/constants.ts";
 
 export const constants = os;
 

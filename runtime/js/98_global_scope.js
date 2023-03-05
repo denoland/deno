@@ -7,7 +7,7 @@ const {
   SymbolFor,
 } = primordials;
 
-import * as util from "internal:runtime/js/06_util.js";
+import * as util from "internal:runtime/06_util.js";
 import * as location from "internal:deno_web/12_location.js";
 import * as event from "internal:deno_web/02_event.js";
 import * as timers from "internal:deno_web/02_timers.js";
@@ -16,7 +16,7 @@ import * as encoding from "internal:deno_web/08_text_encoding.js";
 import * as console from "internal:deno_console/02_console.js";
 import * as caches from "internal:deno_cache/01_cache.js";
 import * as compression from "internal:deno_web/14_compression.js";
-import * as worker from "internal:runtime/js/11_workers.js";
+import * as worker from "internal:runtime/11_workers.js";
 import * as performance from "internal:deno_web/15_performance.js";
 import * as crypto from "internal:deno_crypto/00_crypto.js";
 import * as url from "internal:deno_url/00_url.js";
@@ -39,7 +39,7 @@ import DOMException from "internal:deno_web/01_dom_exception.js";
 import * as abortSignal from "internal:deno_web/03_abort_signal.js";
 import * as globalInterfaces from "internal:deno_web/04_global_interfaces.js";
 import * as webStorage from "internal:deno_webstorage/01_webstorage.js";
-import * as prompt from "internal:runtime/js/41_prompt.js";
+import * as prompt from "internal:runtime/41_prompt.js";
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {

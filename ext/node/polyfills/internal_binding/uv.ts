@@ -26,9 +26,9 @@
 //
 // See also: http://docs.libuv.org/en/v1.x/errors.html#error-constants
 
-import { unreachable } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { osType } from "internal:deno_node/polyfills/_util/os.ts";
-import { uvTranslateSysError } from "internal:deno_node/polyfills/internal_binding/_libuv_winerror.ts";
+import { unreachable } from "internal:deno_node/_util/asserts.ts";
+import { osType } from "internal:deno_node/_util/os.ts";
+import { uvTranslateSysError } from "internal:deno_node/internal_binding/_libuv_winerror.ts";
 
 // In Node these values are coming from libuv:
 // Ref: https://github.com/libuv/libuv/blob/v1.x/include/uv/errno.h

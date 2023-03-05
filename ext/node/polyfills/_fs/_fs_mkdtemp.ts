@@ -5,16 +5,13 @@ import {
   TextDecoder,
   TextEncoder,
 } from "internal:deno_web/08_text_encoding.js";
-import { existsSync } from "internal:deno_node/polyfills/_fs/_fs_exists.ts";
-import {
-  mkdir,
-  mkdirSync,
-} from "internal:deno_node/polyfills/_fs/_fs_mkdir.ts";
+import { existsSync } from "internal:deno_node/_fs/_fs_exists.ts";
+import { mkdir, mkdirSync } from "internal:deno_node/_fs/_fs_mkdir.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_OPT_VALUE_ENCODING,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+} from "internal:deno_node/internal/errors.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 export type mkdtempCallback = (
   err: Error | null,
