@@ -2,7 +2,6 @@
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
 use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
@@ -33,6 +32,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_io::Stdio;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
@@ -425,9 +425,8 @@ impl WebWorker {
       ),
       // Extensions providing Deno.* features
       ops::fs_events::init(),
-      ops::fs::init(),
-      ops::io::init(),
-      ops::io::init_stdio(options.stdio),
+      ops::fs::init::<PermissionsContainer>(),
+      deno_io::init(options.stdio),
       deno_tls::init(),
       deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
@@ -439,8 +438,7 @@ impl WebWorker {
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
-      ops::process::init(),
-      ops::spawn::init(),
+      ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),

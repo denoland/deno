@@ -25,7 +25,7 @@
 // - https://github.com/nodejs/node/blob/master/src/util.cc
 // - https://github.com/nodejs/node/blob/master/src/util.h
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+import { notImplemented } from "internal:deno_node/_utils.ts";
 
 export function guessHandleType(_fd: number): string {
   notImplemented("util.guessHandleType");

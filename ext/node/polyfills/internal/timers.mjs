@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { inspect } from "internal:deno_node/polyfills/internal/util/inspect.mjs";
-import { validateFunction, validateNumber } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "internal:deno_node/polyfills/internal/errors.ts";
-import { emitWarning } from "internal:deno_node/polyfills/process.ts";
+import { inspect } from "internal:deno_node/internal/util/inspect.mjs";
+import { validateFunction, validateNumber } from "internal:deno_node/internal/validators.mjs";
+import { ERR_OUT_OF_RANGE } from "internal:deno_node/internal/errors.ts";
+import { emitWarning } from "internal:deno_node/process.ts";
 import {
   setTimeout as setTimeout_,
   clearTimeout as clearTimeout_,

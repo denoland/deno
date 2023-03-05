@@ -51,9 +51,6 @@ pub struct OpDecl {
   pub enabled: bool,
   pub is_async: bool,
   pub is_unstable: bool,
-  /// V8 argument count. Used as an optimization
-  /// hint by `core.initalizeAsyncOps`.
-  pub argc: usize,
   pub is_v8: bool,
   pub fast_fn: Option<Box<dyn FastFunction>>,
 }
@@ -323,7 +320,7 @@ macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($dir, "/", $file).to_string(),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!(concat!($dir, "/", $file)
         )),
@@ -349,7 +346,7 @@ macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($dir, "/", $file).to_string(),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),

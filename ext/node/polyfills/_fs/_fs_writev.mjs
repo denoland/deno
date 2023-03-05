@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { validateBufferArray } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { getValidatedFd } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { maybeCallback } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
+import { validateBufferArray } from "internal:deno_node/internal/fs/utils.mjs";
+import { getValidatedFd } from "internal:deno_node/internal/fs/utils.mjs";
+import { maybeCallback } from "internal:deno_node/_fs/_fs_common.ts";
 
 export function writev(fd, buffers, position, callback) {
   const innerWritev = async (fd, buffers, position) => {

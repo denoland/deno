@@ -14,8 +14,8 @@ const {
 import * as webidl from "internal:deno_webidl/00_webidl.js";
 import { URL } from "internal:deno_url/00_url.js";
 import { getLocationHref } from "internal:deno_web/12_location.js";
-import { serializePermissions } from "internal:runtime/js/10_permissions.js";
-import { log } from "internal:runtime/js/06_util.js";
+import { serializePermissions } from "internal:runtime/10_permissions.js";
+import { log } from "internal:runtime/06_util.js";
 import {
   defineEventHandler,
   ErrorEvent,

@@ -26,6 +26,7 @@ const {
   SafeMap,
   SafeArrayIterator,
   SymbolFor,
+  WeakMap,
 } = primordials;
 
 const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
@@ -179,6 +180,7 @@ class UnsafePointerView {
 
 const OUT_BUFFER = new Uint32Array(2);
 const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
+const POINTER_TO_BUFFER_WEAK_MAP = new WeakMap();
 class UnsafePointer {
   static create(value) {
     return ops.op_ffi_ptr_create(value);
@@ -195,7 +197,11 @@ class UnsafePointer {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       return value.pointer;
     }
-    return ops.op_ffi_ptr_of(value);
+    const pointer = ops.op_ffi_ptr_of(value);
+    if (pointer) {
+      POINTER_TO_BUFFER_WEAK_MAP.set(pointer, value);
+    }
+    return pointer;
   }
 
   static offset(value, offset) {
