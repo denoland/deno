@@ -42,7 +42,6 @@ const {
 import * as util from "internal:runtime/06_util.js";
 import * as event from "internal:deno_web/02_event.js";
 import * as location from "internal:deno_web/12_location.js";
-import * as build from "internal:runtime/01_build.js";
 import * as version from "internal:runtime/01_version.ts";
 import * as os from "internal:runtime/30_os.js";
 import * as timers from "internal:deno_web/02_timers.js";
@@ -305,7 +304,7 @@ function runtimeStart(runtimeOptions, source) {
     runtimeOptions.v8Version,
     runtimeOptions.tsVersion,
   );
-  build.setBuildInfo(runtimeOptions.target);
+  core.setBuildInfo(runtimeOptions.target);
   util.setLogDebug(runtimeOptions.debugFlag, source);
   colors.setNoColor(runtimeOptions.noColor || !runtimeOptions.isTty);
   // deno-lint-ignore prefer-primordials
