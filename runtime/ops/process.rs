@@ -1,12 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::io::ChildStderrResource;
-use super::io::ChildStdinResource;
-use super::io::ChildStdoutResource;
-use super::io::StdFileResource;
 use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_io::ChildStderrResource;
+use deno_io::ChildStdinResource;
+use deno_io::ChildStdoutResource;
+use deno_io::StdFileResource;
 
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
