@@ -165,6 +165,41 @@ mod startup_snapshot {
     }
   }
 
+  impl deno_fs::FsPermissions for Permissions {
+    fn check_read(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read_blind(
+      &mut self,
+      _path: &Path,
+      _display: &str,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   fn create_runtime_snapshot(
     snapshot_path: PathBuf,
     maybe_additional_extension: Option<Extension>,
@@ -200,7 +235,6 @@ mod startup_snapshot {
         "10_permissions.js",
         "11_workers.js",
         "13_buffer.js",
-        "30_fs.js",
         "30_os.js",
         "40_fs_events.js",
         "40_http.js",
@@ -240,6 +274,7 @@ mod startup_snapshot {
       deno_napi::init::<Permissions>(),
       deno_http::init(),
       deno_io::init(Default::default()),
+      deno_fs::init::<Permissions>(false),
       deno_flash::init::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they

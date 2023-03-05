@@ -15,7 +15,7 @@ import * as version from "internal:runtime/01_version.ts";
 import * as permissions from "internal:runtime/10_permissions.js";
 import * as io from "internal:deno_io/12_io.js";
 import * as buffer from "internal:runtime/13_buffer.js";
-import * as fs from "internal:runtime/30_fs.js";
+import * as fs from "internal:deno_fs/30_fs.js";
 import * as os from "internal:runtime/30_os.js";
 import * as fsEvents from "internal:runtime/40_fs_events.js";
 import * as process from "internal:runtime/40_process.js";

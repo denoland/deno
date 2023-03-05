@@ -4,6 +4,7 @@
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -119,6 +120,7 @@ use deno_core::error::not_supported;
 
 pub fn init<P: FsPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder("deno_fs")
+    .esm(include_js_files!("30_fs.js",))
     .state(move |state| {
       state.put(UnstableChecker { unstable });
       Ok(())
