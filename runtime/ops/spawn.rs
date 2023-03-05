@@ -1,8 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::io::ChildStderrResource;
-use super::io::ChildStdinResource;
-use super::io::ChildStdoutResource;
 use super::process::Stdio;
 use super::process::StdioOrRid;
 use crate::permissions::PermissionsContainer;
@@ -13,6 +10,9 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_io::ChildStderrResource;
+use deno_io::ChildStdinResource;
+use deno_io::ChildStdoutResource;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;

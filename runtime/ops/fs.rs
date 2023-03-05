@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::io::StdFileResource;
 use super::utils::into_string;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::custom_error;
@@ -15,6 +14,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
+use deno_io::StdFileResource;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;

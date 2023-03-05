@@ -3,7 +3,6 @@
 pub mod fs;
 pub mod fs_events;
 pub mod http;
-pub mod io;
 pub mod os;
 pub mod permissions;
 pub mod process;

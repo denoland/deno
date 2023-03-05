@@ -9,6 +9,7 @@ pub use deno_fetch;
 pub use deno_ffi;
 pub use deno_flash;
 pub use deno_http;
+pub use deno_io;
 pub use deno_napi;
 pub use deno_net;
 pub use deno_node;

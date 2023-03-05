@@ -2,7 +2,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { read, readSync, write, writeSync } from "internal:runtime/js/12_io.js";
+import { read, readSync, write, writeSync } from "internal:deno_io/12_io.js";
 import {
   fstat,
   fstatSync,

@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::io::StdFileResource;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_io::StdFileResource;
 use std::io::Error;
 
 #[cfg(unix)]
