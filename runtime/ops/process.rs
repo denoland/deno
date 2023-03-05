@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::check_unstable;
-use super::signal;
 use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -593,8 +592,8 @@ mod deprecated {
     } else if pid <= 0 {
       Err(type_error("Invalid pid"))
     } else {
-      // SAFETY: winapi call
       let handle =
+        // SAFETY: winapi call
         unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
 
       if handle.is_null() {

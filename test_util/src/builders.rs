@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
-use std::thread::JoinHandle;
 
 use backtrace::Backtrace;
 use os_pipe::pipe;
@@ -169,6 +168,7 @@ impl TestContext {
       envs: Default::default(),
       env_clear: Default::default(),
       cwd: Default::default(),
+      split_output: false,
       context: self.clone(),
     }
   }
@@ -182,6 +182,7 @@ pub struct TestCommandBuilder {
   envs: HashMap<String, String>,
   env_clear: bool,
   cwd: Option<String>,
+  split_output: bool,
   context: TestContext,
 }
 
@@ -203,6 +204,15 @@ impl TestCommandBuilder {
 
   pub fn stdin(&mut self, text: impl AsRef<str>) -> &mut Self {
     self.stdin = Some(text.as_ref().to_string());
+    self
+  }
+
+  /// Splits the output into stdout and stderr rather than having them combined.
+  pub fn split_output(&mut self) -> &mut Self {
+    // Note: it was previously attempted to capture stdout & stderr separately,
+    // then forward the output to a combined pipe, but this was found to be
+    // too racy compared to providing the same combined pipe to both.
+    self.split_output = true;
     self
   }
 
@@ -228,33 +238,10 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
-    fn read_and_forward_pipe(
-      mut pipe_from: os_pipe::PipeReader,
-      mut pipe_to: os_pipe::PipeWriter,
-    ) -> JoinHandle<String> {
-      std::thread::spawn(move || {
-        let mut output = Vec::new();
-        let mut buffer = [0; 512];
-        while let Ok(size) = pipe_from.read(&mut buffer) {
-          if size == 0 {
-            break;
-          }
-          pipe_to.write_all(&buffer[0..size]).unwrap();
-          pipe_to.flush().unwrap();
-          output.write_all(&buffer[0..size]).unwrap();
-        }
-        String::from_utf8_lossy(&output).to_string()
-      })
-    }
-
-    fn read_pipe_to_string(
-      mut pipe: os_pipe::PipeReader,
-    ) -> JoinHandle<String> {
-      std::thread::spawn(move || {
-        let mut output = String::new();
-        pipe.read_to_string(&mut output).unwrap();
-        output
-      })
+    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
+      let mut output = String::new();
+      pipe.read_to_string(&mut output).unwrap();
+      output
     }
 
     fn sanitize_output(text: String, args: &[String]) -> String {
@@ -297,9 +284,6 @@ impl TestCommandBuilder {
       arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
     .collect::<Vec<_>>();
-    let (stdout_reader, stdout_writer) = pipe().unwrap();
-    let (stderr_reader, stderr_writer) = pipe().unwrap();
-    let (combined_reader, combined_writer) = pipe().unwrap();
     let command_name = self
       .command_name
       .as_ref()
@@ -327,8 +311,25 @@ impl TestCommandBuilder {
     });
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
-    command.stderr(stderr_writer);
-    command.stdout(stdout_writer);
+
+    let (combined_reader, std_out_err_handle) = if self.split_output {
+      let (stdout_reader, stdout_writer) = pipe().unwrap();
+      let (stderr_reader, stderr_writer) = pipe().unwrap();
+      command.stdout(stdout_writer);
+      command.stderr(stderr_writer);
+      (
+        None,
+        Some((
+          std::thread::spawn(move || read_pipe_to_string(stdout_reader)),
+          std::thread::spawn(move || read_pipe_to_string(stderr_reader)),
+        )),
+      )
+    } else {
+      let (combined_reader, combined_writer) = pipe().unwrap();
+      command.stdout(combined_writer.try_clone().unwrap());
+      command.stderr(combined_writer);
+      (Some(combined_reader), None)
+    };
 
     let mut process = command.spawn().unwrap();
 
@@ -343,20 +344,16 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let stdout_string_task = read_and_forward_pipe(
-      stdout_reader,
-      combined_writer.try_clone().unwrap(),
-    );
-    let stderr_string_task =
-      read_and_forward_pipe(stderr_reader, combined_writer);
-    let combined_string_task = read_pipe_to_string(combined_reader);
+    let combined = combined_reader
+      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
 
     let status = process.wait().unwrap();
-
-    let stdout = sanitize_output(stdout_string_task.join().unwrap(), &args);
-    let stderr = sanitize_output(stderr_string_task.join().unwrap(), &args);
-    let combined = sanitize_output(combined_string_task.join().unwrap(), &args);
-
+    let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
+      (
+        sanitize_output(stdout.join().unwrap(), &args),
+        sanitize_output(stderr.join().unwrap(), &args),
+      )
+    });
     let exit_code = status.code();
     #[cfg(unix)]
     let signal = {
@@ -369,9 +366,8 @@ impl TestCommandBuilder {
     TestCommandOutput {
       exit_code,
       signal,
-      stdout,
-      stderr,
       combined,
+      std_out_err,
       testdata_dir: self.context.testdata_dir.clone(),
       asserted_exit_code: RefCell::new(false),
       asserted_stdout: RefCell::new(false),
@@ -383,9 +379,8 @@ impl TestCommandBuilder {
 }
 
 pub struct TestCommandOutput {
-  stdout: String,
-  stderr: String,
-  combined: String,
+  combined: Option<String>,
+  std_out_err: Option<(String, String)>,
   exit_code: Option<i32>,
   signal: Option<i32>,
   testdata_dir: PathBuf,
@@ -399,6 +394,17 @@ pub struct TestCommandOutput {
 
 impl Drop for TestCommandOutput {
   fn drop(&mut self) {
+    fn panic_unasserted_output(text: &str) {
+      println!("OUTPUT\n{text}\nOUTPUT");
+      panic!(
+        concat!(
+          "The non-empty text of the command was not asserted at {}. ",
+          "Call `output.skip_output_check()` to skip if necessary.",
+        ),
+        failed_position()
+      );
+    }
+
     if std::thread::panicking() {
       return;
     }
@@ -412,21 +418,17 @@ impl Drop for TestCommandOutput {
     }
 
     // either the combined output needs to be asserted or both stdout and stderr
-    if !*self.asserted_combined.borrow() && !self.combined.is_empty() {
-      let asserted_stdout =
-        !*self.asserted_stdout.borrow() && !self.stdout.is_empty();
-      let asserted_stderr =
-        !*self.asserted_stderr.borrow() && !self.stderr.is_empty();
-
-      if !asserted_stdout || !asserted_stderr {
-        println!("OUTPUT\n{}\nOUTPUT", self.combined);
-        panic!(
-          concat!(
-            "The non-empty text of the command was not asserted at {}. ",
-            "Call `output.skip_output_check()` to skip if necessary.",
-          ),
-          failed_position()
-        );
+    if let Some(combined) = &self.combined {
+      if !*self.asserted_combined.borrow() && !combined.is_empty() {
+        panic_unasserted_output(combined);
+      }
+    }
+    if let Some((stdout, stderr)) = &self.std_out_err {
+      if !*self.asserted_stdout.borrow() && !stdout.is_empty() {
+        panic_unasserted_output(stdout);
+      }
+      if !*self.asserted_stderr.borrow() && !stderr.is_empty() {
+        panic_unasserted_output(stderr);
       }
     }
   }
@@ -439,6 +441,8 @@ impl TestCommandOutput {
 
   pub fn skip_output_check(&self) {
     *self.asserted_combined.borrow_mut() = true;
+    *self.asserted_stdout.borrow_mut() = true;
+    *self.asserted_stderr.borrow_mut() = true;
   }
 
   pub fn skip_exit_code_check(&self) {
@@ -454,19 +458,30 @@ impl TestCommandOutput {
     self.signal
   }
 
-  pub fn text(&self) -> &str {
+  pub fn combined_output(&self) -> &str {
     self.skip_output_check();
-    &self.combined
+    self
+      .combined
+      .as_deref()
+      .expect("not available since .split_output() was called")
   }
 
   pub fn stdout(&self) -> &str {
     *self.asserted_stdout.borrow_mut() = true;
-    &self.stdout
+    self
+      .std_out_err
+      .as_ref()
+      .map(|(stdout, _)| stdout.as_str())
+      .expect("call .split_output() on the builder")
   }
 
   pub fn stderr(&self) -> &str {
     *self.asserted_stderr.borrow_mut() = true;
-    &self.stderr
+    self
+      .std_out_err
+      .as_ref()
+      .map(|(_, stderr)| stderr.as_str())
+      .expect("call .split_output() on the builder")
   }
 
   pub fn assert_exit_code(&self, expected_exit_code: i32) -> &Self {
@@ -474,7 +489,7 @@ impl TestCommandOutput {
 
     if let Some(exit_code) = &actual_exit_code {
       if *exit_code != expected_exit_code {
-        println!("OUTPUT\n{}\nOUTPUT", self.text());
+        self.print_output();
         panic!(
           "bad exit code, expected: {:?}, actual: {:?} at {}",
           expected_exit_code,
@@ -483,7 +498,7 @@ impl TestCommandOutput {
         );
       }
     } else {
-      println!("OUTPUT\n{}\nOUTPUT", self.text());
+      self.print_output();
       if let Some(signal) = self.signal() {
         panic!(
           "process terminated by signal, expected exit code: {:?}, actual signal: {:?} at {}",
@@ -503,29 +518,79 @@ impl TestCommandOutput {
     self
   }
 
-  pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
-    let expected_text = expected_text.as_ref();
-    let actual = self.text();
-
-    if !expected_text.contains("[WILDCARD]") {
-      assert_eq!(actual, expected_text, "at {}", failed_position());
-    } else if !wildcard_match(expected_text, actual) {
-      println!("OUTPUT START\n{actual}\nOUTPUT END");
-      println!("EXPECTED START\n{expected_text}\nEXPECTED END");
-      panic!("pattern match failed at {}", failed_position());
+  pub fn print_output(&self) {
+    if let Some(combined) = &self.combined {
+      println!("OUTPUT\n{combined}\nOUTPUT");
+    } else if let Some((stdout, stderr)) = &self.std_out_err {
+      println!("STDOUT OUTPUT\n{stdout}\nSTDOUT OUTPUT");
+      println!("STDERR OUTPUT\n{stderr}\nSTDERR OUTPUT");
     }
+  }
 
-    self
+  pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
+    self.inner_assert_matches_text(self.combined_output(), expected_text)
   }
 
   pub fn assert_matches_file(&self, file_path: impl AsRef<Path>) -> &Self {
+    self.inner_assert_matches_file(self.combined_output(), file_path)
+  }
+
+  pub fn assert_stdout_matches_text(
+    &self,
+    expected_text: impl AsRef<str>,
+  ) -> &Self {
+    self.inner_assert_matches_text(self.stdout(), expected_text)
+  }
+
+  pub fn assert_stdout_matches_file(
+    &self,
+    file_path: impl AsRef<Path>,
+  ) -> &Self {
+    self.inner_assert_matches_file(self.stdout(), file_path)
+  }
+
+  pub fn assert_stderr_matches_text(
+    &self,
+    expected_text: impl AsRef<str>,
+  ) -> &Self {
+    self.inner_assert_matches_text(self.stderr(), expected_text)
+  }
+
+  pub fn assert_stderrr_matches_file(
+    &self,
+    file_path: impl AsRef<Path>,
+  ) -> &Self {
+    self.inner_assert_matches_file(self.stderr(), file_path)
+  }
+
+  fn inner_assert_matches_text(
+    &self,
+    actual: &str,
+    expected: impl AsRef<str>,
+  ) -> &Self {
+    let expected = expected.as_ref();
+    if !expected.contains("[WILDCARD]") {
+      assert_eq!(actual, expected, "at {}", failed_position());
+    } else if !wildcard_match(expected, actual) {
+      println!("OUTPUT START\n{actual}\nOUTPUT END");
+      println!("EXPECTED START\n{expected}\nEXPECTED END");
+      panic!("pattern match failed at {}", failed_position());
+    }
+    self
+  }
+
+  fn inner_assert_matches_file(
+    &self,
+    actual: &str,
+    file_path: impl AsRef<Path>,
+  ) -> &Self {
     let output_path = self.testdata_dir().join(file_path);
     println!("output path {}", output_path.display());
     let expected_text =
       std::fs::read_to_string(&output_path).unwrap_or_else(|err| {
         panic!("failed loading {}\n\n{err:#}", output_path.display())
       });
-    self.assert_matches_text(expected_text)
+    self.inner_assert_matches_text(actual, expected_text)
   }
 }
 
