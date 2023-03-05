@@ -330,7 +330,7 @@ pub fn host_import_module_dynamically_callback<'s>(
 
   if is_internal_module {
     let message =
-      v8::String::new(scope, "Cannot load internal module from external code")
+      v8::String::new(scope, "Cannot load extension module from external code")
         .unwrap();
     let exception = v8::Exception::type_error(scope, message);
     resolver.reject(scope, exception);

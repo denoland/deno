@@ -5053,7 +5053,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .unwrap_err();
     assert_eq!(
       err.to_string(),
-      "Cannot load internal module from external code"
+      "Cannot load extension module from external code"
     );
   }
 }
