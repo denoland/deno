@@ -17,7 +17,7 @@ fn setup() -> Vec<Extension> {
       .esm(vec![ExtensionFileSource {
         specifier: "internal:setup".to_string(),
         code: ExtensionFileSourceCode::IncludedInBinary(
-          r#"import { URL } from "internal:deno_url/00_url.js";
+          r#"import { URL } from "ext:deno_url/00_url.js";
         globalThis.URL = URL;
         "#,
         ),

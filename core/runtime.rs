@@ -8,7 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
-use crate::modules::InternalModuleLoaderCb;
+use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -275,7 +275,7 @@ pub struct RuntimeOptions {
   /// An optional callback that will be called for each module that is loaded
   /// during snapshotting. This callback can be used to transpile source on the
   /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
-  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
+  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -620,7 +620,7 @@ impl JsRuntime {
         }
       }
 
-      Rc::new(crate::modules::InternalModuleLoader::new(
+      Rc::new(crate::modules::ExtModuleLoader::new(
         options.module_loader,
         esm_sources,
         options.snapshot_module_load_cb,

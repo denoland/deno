@@ -16,10 +16,10 @@ const {
   SymbolFor,
   Symbol,
 } = primordials;
-import { FsFile } from "internal:deno_fs/30_fs.js";
-import { readAll } from "internal:deno_io/12_io.js";
-import { assert, pathFromURL } from "internal:deno_web/00_infra.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+import { FsFile } from "ext:deno_fs/30_fs.js";
+import { readAll } from "ext:deno_io/12_io.js";
+import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   readableStreamCollectIntoUint8Array,
   readableStreamForRidUnrefable,
@@ -27,7 +27,7 @@ import {
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "internal:deno_web/06_streams.js";
+} from "ext:deno_web/06_streams.js";
 
 function opKill(pid, signo, apiName) {
   ops.op_kill(pid, signo, apiName);

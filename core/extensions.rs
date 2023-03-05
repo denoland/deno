@@ -210,7 +210,7 @@ impl ExtensionBuilder {
       // use a different result struct that `ExtensionFileSource` as it's confusing
       // when (and why) the remapping happens.
       js_files.into_iter().map(|file_source| ExtensionFileSource {
-        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
       });
     self.js.extend(js_files);
@@ -224,7 +224,7 @@ impl ExtensionBuilder {
       // use a different result struct that `ExtensionFileSource` as it's confusing
       // when (and why) the remapping happens.
       .map(|file_source| ExtensionFileSource {
-        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
       });
     self.esm.extend(esm_files);
@@ -288,7 +288,7 @@ impl ExtensionBuilder {
 
 /// Helps embed JS files in an extension. Returns a vector of
 /// `ExtensionFileSource`, that represent the filename and source code. All
-/// specified files are rewritten into "internal:<extension_name>/<file_name>".
+/// specified files are rewritten into "ext:<extension_name>/<file_name>".
 ///
 /// An optional "dir" option can be specified to prefix all files with a
 /// directory name.
@@ -300,8 +300,8 @@ impl ExtensionBuilder {
 ///   "02_goodbye.js",
 /// )
 /// // Produces following specifiers:
-/// - "internal:my_extension/01_hello.js"
-/// - "internal:my_extension/02_goodbye.js"
+/// - "ext:my_extension/01_hello.js"
+/// - "ext:my_extension/02_goodbye.js"
 ///
 /// /// Example with "dir" option (for "my_extension"):
 /// ```ignore
@@ -311,8 +311,8 @@ impl ExtensionBuilder {
 ///   "02_goodbye.js",
 /// )
 /// // Produces following specifiers:
-/// - "internal:my_extension/js/01_hello.js"
-/// - "internal:my_extension/js/02_goodbye.js"
+/// - "ext:my_extension/js/01_hello.js"
+/// - "ext:my_extension/js/02_goodbye.js"
 /// ```
 #[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]

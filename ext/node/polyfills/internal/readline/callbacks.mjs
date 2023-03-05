@@ -22,11 +22,11 @@
 
 "use strict";
 
-import { ERR_INVALID_ARG_VALUE, ERR_INVALID_CURSOR_POS } from "internal:deno_node/internal/errors.ts";
+import { ERR_INVALID_ARG_VALUE, ERR_INVALID_CURSOR_POS } from "ext:deno_node/internal/errors.ts";
 
-import { validateFunction } from "internal:deno_node/internal/validators.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
-import { CSI } from "internal:deno_node/internal/readline/utils.mjs";
+import { CSI } from "ext:deno_node/internal/readline/utils.mjs";
 
 const {
   kClearLine,

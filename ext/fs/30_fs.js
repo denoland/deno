@@ -17,14 +17,14 @@ const {
   SymbolIterator,
   Uint32Array,
 } = primordials;
-import { read, readSync, write, writeSync } from "internal:deno_io/12_io.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   readableStreamForRid,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "internal:deno_web/06_streams.js";
-import { pathFromURL } from "internal:deno_web/00_infra.js";
+} from "ext:deno_web/06_streams.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 function chmodSync(path, mode) {
   ops.op_chmod_sync(pathFromURL(path), mode);

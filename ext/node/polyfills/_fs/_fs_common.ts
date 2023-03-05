@@ -7,15 +7,15 @@ import {
   O_RDWR,
   O_TRUNC,
   O_WRONLY,
-} from "internal:deno_node/_fs/_fs_constants.ts";
-import { validateFunction } from "internal:deno_node/internal/validators.mjs";
-import type { ErrnoException } from "internal:deno_node/_global.d.ts";
+} from "ext:deno_node/_fs/_fs_constants.ts";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import {
   BinaryEncodings,
   Encodings,
   notImplemented,
   TextEncodings,
-} from "internal:deno_node/_utils.ts";
+} from "ext:deno_node/_utils.ts";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 
@@ -212,7 +212,7 @@ export function getOpenOptions(
   return openOptions;
 }
 
-export { isUint32 as isFd } from "internal:deno_node/internal/validators.mjs";
+export { isUint32 as isFd } from "ext:deno_node/internal/validators.mjs";
 
 export function maybeCallback(cb: unknown) {
   validateFunction(cb, "cb");

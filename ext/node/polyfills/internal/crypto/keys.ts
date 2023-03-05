@@ -4,30 +4,30 @@
 import {
   kHandle,
   kKeyObject,
-} from "internal:deno_node/internal/crypto/constants.ts";
+} from "ext:deno_node/internal/crypto/constants.ts";
 import {
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "internal:deno_node/internal/errors.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import type {
   KeyFormat,
   KeyType,
   PrivateKeyInput,
   PublicKeyInput,
-} from "internal:deno_node/internal/crypto/types.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "internal:deno_node/internal/util/types.ts";
-import { hideStackFrames } from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/internal/util/types.ts";
+import { hideStackFrames } from "ext:deno_node/internal/errors.ts";
 import {
   isCryptoKey as isCryptoKey_,
   isKeyObject as isKeyObject_,
   kKeyType,
-} from "internal:deno_node/internal/crypto/_keys.ts";
+} from "ext:deno_node/internal/crypto/_keys.ts";
 
 const getArrayBufferOrView = hideStackFrames(
   (

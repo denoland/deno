@@ -9,7 +9,7 @@ import {
   green,
   red,
   white,
-} from "internal:deno_node/_util/std_fmt_colors.ts";
+} from "ext:deno_node/_util/std_fmt_colors.ts";
 
 interface FarthestPoint {
   y: number;

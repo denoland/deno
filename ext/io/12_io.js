@@ -10,7 +10,7 @@ const primordials = globalThis.__bootstrap.primordials;
 import {
   readableStreamForRid,
   writableStreamForRid,
-} from "internal:deno_web/06_streams.js";
+} from "ext:deno_web/06_streams.js";
 const {
   Uint8Array,
   ArrayPrototypePush,
