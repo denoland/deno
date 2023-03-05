@@ -852,6 +852,34 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Represents membership of a IPv4 multicast group.
+   *
+   * @category Network
+   */
+  interface MulticastV4Membership {
+    /** Leaves the multicast group. */
+    leave: () => Promise<void>;
+    /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+    setLoopback: (loopback: boolean) => Promise<void>;
+    /** Sets the time-to-live of outgoing multicast packets for this socket. */
+    setTTL: (ttl: number) => Promise<void>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Represents membership of a IPv6 multicast group.
+   *
+   * @category Network
+   */
+  interface MulticastV6Membership {
+    /** Leaves the multicast group. */
+    leave: () => Promise<void>;
+    /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+    setLoopback: (loopback: boolean) => Promise<void>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A generic transport listener for message-oriented protocols.
    *
    * @category Network
@@ -861,25 +889,13 @@ declare namespace Deno {
     joinMulticastV4(
       address: string,
       networkInterface: string,
-    ): Promise<{
-      /** Leaves the multicast group. */
-      leave: () => Promise<void>;
-      /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
-      setLoopback: (loopback: boolean) => Promise<void>;
-      /** Sets the time-to-live of outgoing multicast packets for this socket. */
-      setTTL: (ttl: number) => Promise<void>;
-    }>;
+    ): Promise<MulticastV4Membership>;
 
     /** Joins an IPv6 multicast group. */
     joinMulticastV6(
       address: string,
       networkInterface: number,
-    ): Promise<{
-      /** Leaves the multicast group. */
-      leave: () => Promise<void>;
-      /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
-      setLoopback: (loopback: boolean) => Promise<void>;
-    }>;
+    ): Promise<MulticastV6Membership>;
 
     /** Waits for and resolves to the next message to the instance.
      *
