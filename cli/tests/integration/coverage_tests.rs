@@ -84,7 +84,7 @@ fn error_if_invalid_cache() {
 
 fn run_coverage_text(test_name: &str, extension: &str) {
   let context = TestContext::default();
-  let tempdir = TempDir::new();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
   let output = context
@@ -152,7 +152,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 #[test]
 fn multifile_coverage() {
   let context = TestContext::default();
-  let tempdir = TempDir::new();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
   let output = context
@@ -218,7 +218,7 @@ fn multifile_coverage() {
 
 fn no_snaps_included(test_name: &str, extension: &str) {
   let context = TestContext::default();
-  let tempdir = TempDir::new();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
   let output = context
@@ -263,7 +263,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 #[test]
 fn no_transpiled_lines() {
   let context = TestContext::default();
-  let tempdir = TempDir::new();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
   let output = context
