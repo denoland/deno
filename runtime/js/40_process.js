@@ -18,8 +18,7 @@ const {
 } = primordials;
 import { FsFile } from "internal:runtime/30_fs.js";
 import { readAll } from "internal:deno_io/12_io.js";
-import { pathFromURL } from "internal:runtime/06_util.js";
-import { assert } from "internal:deno_web/00_infra.js";
+import { assert, pathFromURL } from "internal:deno_web/00_infra.js";
 import * as abortSignal from "internal:deno_web/03_abort_signal.js";
 import {
   readableStreamCollectIntoUint8Array,
