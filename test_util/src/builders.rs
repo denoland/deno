@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
+use std::thread::JoinHandle;
 
 use backtrace::Backtrace;
 use os_pipe::pipe;
@@ -227,6 +228,53 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
+    fn read_and_forward_pipe(
+      mut pipe_from: os_pipe::PipeReader,
+      mut pipe_to: os_pipe::PipeWriter,
+    ) -> JoinHandle<String> {
+      std::thread::spawn(move || {
+        let mut output = Vec::new();
+        let mut buffer = [0; 512];
+        loop {
+          match pipe_from.read(&mut buffer) {
+            Ok(size) => {
+              if size == 0 {
+                break;
+              }
+              pipe_to.write_all(&buffer[0..size]).unwrap();
+              pipe_to.flush().unwrap();
+              output.write_all(&buffer[0..size]).unwrap();
+            }
+            Err(_) => {
+              break;
+            }
+          }
+        }
+        String::from_utf8_lossy(&output).to_string()
+      })
+    }
+
+    fn read_pipe_to_string(
+      mut pipe: os_pipe::PipeReader,
+    ) -> JoinHandle<String> {
+      std::thread::spawn(move || {
+        let mut output = String::new();
+        pipe.read_to_string(&mut output).unwrap();
+        output
+      })
+    }
+
+    fn sanitize_output(text: String, args: &[String]) -> String {
+      let mut text = strip_ansi_codes(&text).to_string();
+      // deno test's output capturing flushes with a zero-width space in order to
+      // synchronize the output pipes. Occassionally this zero width space
+      // might end up in the output so strip it from the output comparison here.
+      if args.first().map(|s| s.as_str()) == Some("test") {
+        text = text.replace('\u{200B}', "");
+      }
+      text
+    }
+
     let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
     let cwd = if self.context.use_temp_cwd {
       assert!(cwd.is_none());
@@ -256,7 +304,9 @@ impl TestCommandBuilder {
       arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
     .collect::<Vec<_>>();
-    let (mut reader, writer) = pipe().unwrap();
+    let (stdout_reader, stdout_writer) = pipe().unwrap();
+    let (stderr_reader, stderr_writer) = pipe().unwrap();
+    let (combined_reader, combined_writer) = pipe().unwrap();
     let command_name = self
       .command_name
       .as_ref()
@@ -284,9 +334,8 @@ impl TestCommandBuilder {
     });
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
-    let writer_clone = writer.try_clone().unwrap();
-    command.stderr(writer_clone);
-    command.stdout(writer);
+    command.stderr(stderr_writer);
+    command.stdout(stdout_writer);
 
     let mut process = command.spawn().unwrap();
 
@@ -301,10 +350,20 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let mut actual = String::new();
-    reader.read_to_string(&mut actual).unwrap();
+    let stdout_string_task = read_and_forward_pipe(
+      stdout_reader,
+      combined_writer.try_clone().unwrap(),
+    );
+    let stderr_string_task =
+      read_and_forward_pipe(stderr_reader, combined_writer);
+    let combined_string_task = read_pipe_to_string(combined_reader);
 
-    let status = process.wait().expect("failed to finish process");
+    let status = process.wait().unwrap();
+
+    let stdout = sanitize_output(stdout_string_task.join().unwrap(), &args);
+    let stderr = sanitize_output(stderr_string_task.join().unwrap(), &args);
+    let combined = sanitize_output(combined_string_task.join().unwrap(), &args);
+
     let exit_code = status.code();
     #[cfg(unix)]
     let signal = {
@@ -314,33 +373,32 @@ impl TestCommandBuilder {
     #[cfg(not(unix))]
     let signal = None;
 
-    actual = strip_ansi_codes(&actual).to_string();
-
-    // deno test's output capturing flushes with a zero-width space in order to
-    // synchronize the output pipes. Occassionally this zero width space
-    // might end up in the output so strip it from the output comparison here.
-    if args.first().map(|s| s.as_str()) == Some("test") {
-      actual = actual.replace('\u{200B}', "");
-    }
-
     TestCommandOutput {
       exit_code,
       signal,
-      text: actual,
+      stdout,
+      stderr,
+      combined,
       testdata_dir: self.context.testdata_dir.clone(),
       asserted_exit_code: RefCell::new(false),
-      asserted_text: RefCell::new(false),
+      asserted_stdout: RefCell::new(false),
+      asserted_stderr: RefCell::new(false),
+      asserted_combined: RefCell::new(false),
       _test_context: self.context.clone(),
     }
   }
 }
 
 pub struct TestCommandOutput {
-  text: String,
+  stdout: String,
+  stderr: String,
+  combined: String,
   exit_code: Option<i32>,
   signal: Option<i32>,
   testdata_dir: PathBuf,
-  asserted_text: RefCell<bool>,
+  asserted_stdout: RefCell<bool>,
+  asserted_stderr: RefCell<bool>,
+  asserted_combined: RefCell<bool>,
   asserted_exit_code: RefCell<bool>,
   // keep alive for the duration of the output reference
   _test_context: TestContext,
@@ -359,15 +417,24 @@ impl Drop for TestCommandOutput {
         failed_position(),
       )
     }
-    if !*self.asserted_text.borrow() && !self.text.is_empty() {
-      println!("OUTPUT\n{}\nOUTPUT", self.text);
-      panic!(
-        concat!(
-          "The non-empty text of the command was not asserted. ",
-          "Call `output.skip_output_check()` to skip if necessary at {}.",
-        ),
-        failed_position()
-      );
+
+    // either the combined output needs to be asserted or both stdout and stderr
+    if !*self.asserted_combined.borrow() && !self.combined.is_empty() {
+      let asserted_stdout =
+        !*self.asserted_stdout.borrow() && !self.stdout.is_empty();
+      let asserted_stderr =
+        !*self.asserted_stderr.borrow() && !self.stderr.is_empty();
+
+      if !asserted_stdout || !asserted_stderr {
+        println!("OUTPUT\n{}\nOUTPUT", self.combined);
+        panic!(
+          concat!(
+            "The non-empty text of the command was not asserted at {}. ",
+            "Call `output.skip_output_check()` to skip if necessary.",
+          ),
+          failed_position()
+        );
+      }
     }
   }
 }
@@ -378,7 +445,7 @@ impl TestCommandOutput {
   }
 
   pub fn skip_output_check(&self) {
-    *self.asserted_text.borrow_mut() = true;
+    *self.asserted_combined.borrow_mut() = true;
   }
 
   pub fn skip_exit_code_check(&self) {
@@ -396,7 +463,17 @@ impl TestCommandOutput {
 
   pub fn text(&self) -> &str {
     self.skip_output_check();
-    &self.text
+    &self.combined
+  }
+
+  pub fn stdout(&self) -> &str {
+    *self.asserted_stdout.borrow_mut() = true;
+    &self.stdout
+  }
+
+  pub fn stderr(&self) -> &str {
+    *self.asserted_stderr.borrow_mut() = true;
+    &self.stderr
   }
 
   pub fn assert_exit_code(&self, expected_exit_code: i32) -> &Self {
