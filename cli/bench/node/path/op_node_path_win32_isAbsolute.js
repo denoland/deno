@@ -19,4 +19,4 @@ function bench(fun) {
   if (--total) queueMicrotask(() => bench(fun));
 }
 
-bench(() => win32.dirname("c:\\foo\\bar\\"));
+bench(() => win32.isAbsolute("c:\\foo\\bar\\"));
