@@ -286,6 +286,12 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_cache(&mut self, value: impl AsRef<str>) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("cache".to_string(), value.as_ref().to_string().into());
+    self
+  }
+
   pub fn set_config(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("config".to_string(), value.as_ref().to_string().into());
@@ -307,6 +313,28 @@ impl InitializeParamsBuilder {
   pub fn set_import_map(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("importMap".to_string(), value.as_ref().to_string().into());
+    self
+  }
+
+  pub fn add_test_server_suggestions(&mut self) -> &mut Self {
+    self.set_suggest_imports_hosts(vec![(
+      "http://localhost:4545/".to_string(),
+      true,
+    )])
+  }
+
+  pub fn set_suggest_imports_hosts(
+    &mut self,
+    values: Vec<(String, bool)>,
+  ) -> &mut Self {
+    let options = self.initialization_options_mut();
+    let suggest = options.get_mut("suggest").unwrap().as_object_mut().unwrap();
+    let imports = suggest.get_mut("imports").unwrap().as_object_mut().unwrap();
+    let hosts = imports.get_mut("hosts").unwrap().as_object_mut().unwrap();
+    hosts.clear();
+    for (key, value) in values {
+      hosts.insert(key.into(), value.into());
+    }
     self
   }
 

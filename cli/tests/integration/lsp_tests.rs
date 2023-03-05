@@ -91,17 +91,6 @@ fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
   CollectedDiagnostics(diagnostics)
 }
 
-pub fn ensure_directory_specifier(
-  mut specifier: ModuleSpecifier,
-) -> ModuleSpecifier {
-  let path = specifier.path();
-  if !path.ends_with('/') {
-    let new_path = format!("{path}/");
-    specifier.set_path(&new_path);
-  }
-  specifier
-}
-
 // todo(THIS PR): get rid of this in favour of LspClient
 struct TestSession {
   client: LspClient,
@@ -1082,7 +1071,11 @@ fn lsp_hover_asset() {
 
 #[test]
 fn lsp_hover_disabled() {
-  let mut client = init("initialize_params_disabled.json");
+  let context = TestContextBuilder::new().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_deno_enable(false);
+  });
   client
     .write_notification(
       "textDocument/didOpen",
@@ -1863,8 +1856,8 @@ fn lsp_hover_closed_document() {
 
 #[test]
 fn lsp_hover_dependency() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   did_open(
     &mut client,
@@ -2199,8 +2192,8 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
 
 #[test]
 fn lsp_hover_typescript_types() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   did_open(
     &mut client,
@@ -4206,8 +4199,8 @@ fn lsp_completions_no_snippet() {
 
 #[test]
 fn lsp_completions_npm() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   did_open(
     &mut client,
@@ -4370,8 +4363,8 @@ fn lsp_completions_npm() {
 
 #[test]
 fn lsp_npm_specifier_unopened_file() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
   // create other.ts, which re-exports an npm specifier
@@ -4475,8 +4468,8 @@ fn lsp_npm_specifier_unopened_file() {
 
 #[test]
 fn lsp_completions_node_specifier() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = CollectedDiagnostics(did_open(
     &mut client,
@@ -4726,8 +4719,11 @@ fn lsp_completions_node_specifier() {
 
 #[test]
 fn lsp_completions_registry() {
-  let _g = http_server();
-  let mut client = init("initialize_params_registry.json");
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.add_test_server_suggestions();
+  });
   did_open(
     &mut client,
     json!({
@@ -4780,8 +4776,11 @@ fn lsp_completions_registry() {
 
 #[test]
 fn lsp_completions_registry_empty() {
-  let _g = http_server();
-  let mut client = init("initialize_params_registry.json");
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.add_test_server_suggestions();
+  });
   did_open(
     &mut client,
     json!({
@@ -4821,8 +4820,8 @@ fn lsp_completions_registry_empty() {
 
 #[test]
 fn lsp_auto_discover_registry() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   did_open(
     &mut client,
@@ -4871,25 +4870,12 @@ fn lsp_auto_discover_registry() {
 fn lsp_cache_location() {
   let context = TestContextBuilder::new().use_http_server().build();
   let temp_dir = context.deno_dir();
-
-  // todo(THIS PR): update this
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params_registry.json"))
-      .unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("cache".to_string(), json!(".cache"));
-    params.initialization_options = Some(Value::Object(map));
-  }
-
   let mut client = context.new_lsp_command().build();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-  client.write_notification("initialized", json!({})).unwrap();
-  let mut session = TestSession::from_client(client);
+  client.initialize(|builder| {
+    builder.set_cache(".cache").add_test_server_suggestions();
+  });
 
+  let mut session = TestSession::from_client(client);
   session.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file_01.ts",
@@ -5111,8 +5097,8 @@ fn lsp_tls_cert() {
 
 #[test]
 fn lsp_diagnostics_warn_redirect() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   did_open(
     &mut client,
@@ -5192,8 +5178,8 @@ fn lsp_diagnostics_warn_redirect() {
 
 #[test]
 fn lsp_redirect_quick_fix() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   did_open(
     &mut client,
@@ -6482,8 +6468,8 @@ fn lsp_lint_exclude_with_config() {
 
 #[test]
 fn lsp_jsx_import_source_pragma() {
-  let _g = http_server();
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   did_open(
     &mut client,
