@@ -226,6 +226,7 @@ mod startup_snapshot {
         "deno_http",
         "deno_flash",
         "deno_io",
+        "deno_fs",
       ])
       .esm(include_js_files!(
         dir "js",
