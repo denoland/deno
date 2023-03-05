@@ -478,6 +478,7 @@ Deno.test(
       port: 5353,
       transport: "udp",
       reuseAddress: true,
+      loopback: true,
     });
 
     const bob = Deno.listenDatagram({
@@ -488,16 +489,16 @@ Deno.test(
     });
 
     const aliceMembership = await alice.joinMulticastV4(
-      "224.0.0.251",
+      "224.0.0.1",
       "0.0.0.0",
     );
 
-    const bobMembership = await bob.joinMulticastV4("224.0.0.251", "0.0.0.0");
+    const bobMembership = await bob.joinMulticastV4("224.0.0.1", "0.0.0.0");
 
     const sent = new Uint8Array([1, 2, 3]);
 
     await alice.send(sent, {
-      hostname: "224.0.0.251",
+      hostname: "224.0.0.1",
       port: 5353,
       transport: "udp",
     });
@@ -516,6 +517,46 @@ Deno.test(
 
     alice.close();
     bob.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true }, ignore: true },
+  async function netUdpMulticastLoopbackOption() {
+    // Must bind sender to an address that can send to the broadcast address on MacOS.
+    // Macos will give us error 49 when sending the broadcast packet if we omit hostname here.
+    const listener = Deno.listenDatagram({
+      port: 5353,
+      transport: "udp",
+      hostname: "0.0.0.0",
+      loopback: true,
+      reuseAddress: true,
+    });
+
+    const membership = await listener.joinMulticastV4(
+      "224.0.0.1",
+      "0.0.0.0",
+    );
+
+    // await membership.setLoopback(true);
+
+    const sent = new Uint8Array([1, 2, 3]);
+    const byteLength = await listener.send(sent, {
+      hostname: "224.0.0.1",
+      port: 5353,
+      transport: "udp",
+    });
+
+    assertEquals(byteLength, 3);
+    const [recvd, remote] = await listener.receive();
+    assert(remote.transport === "udp");
+    assertEquals(remote.port, 5353);
+    assertEquals(recvd.length, 3);
+    assertEquals(1, recvd[0]);
+    assertEquals(2, recvd[1]);
+    assertEquals(3, recvd[2]);
+    membership.leave();
+    listener.close();
   },
 );
 

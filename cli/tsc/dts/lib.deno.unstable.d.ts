@@ -958,6 +958,11 @@ declare namespace Deno {
      *
      * @default {false} */
     reuseAddress?: boolean;
+
+    /** When `true`, sent multicast packets will be looped back to the local socket.
+     *
+     * @default {false} */
+    loopback?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

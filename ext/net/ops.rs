@@ -450,6 +450,7 @@ fn net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -485,9 +486,21 @@ where
   let socket_addr = socket2::SockAddr::from(addr);
   socket_tmp.bind(&socket_addr)?;
   socket_tmp.set_nonblocking(true)?;
+
   // Enable messages to be sent to the broadcast address (255.255.255.255) by default
   socket_tmp.set_broadcast(true)?;
+
+  if domain == Domain::IPV4 {
+    println!("ipv4 loopback {}", loopback);
+
+    socket_tmp.set_multicast_loop_v4(loopback)?;
+  } else {
+    println!("ipv6 loopback {}", loopback);
+    socket_tmp.set_multicast_loop_v6(loopback)?;
+  }
+
   let std_socket: std::net::UdpSocket = socket_tmp.into();
+
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {
@@ -504,12 +517,13 @@ fn op_net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_udp::<NP>(state, addr, reuse_address)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
 #[op]
@@ -517,11 +531,12 @@ fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  net_listen_udp::<NP>(state, addr, reuse_address)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]

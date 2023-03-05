@@ -446,6 +446,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
             port: args.port,
           },
           args.reuseAddress ?? false,
+          args.loopback ?? false,
         );
         addr.transport = "udp";
         return new Datagram(rid, addr);
