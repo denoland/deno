@@ -304,21 +304,14 @@ export function normalize(path: string): string {
  * @param path to verify
  */
 export function isAbsolute(path: string): boolean {
-  assertPath(path);
-  const len = path.length;
-  if (len === 0) return false;
-
-  const code = path.charCodeAt(0);
-  if (isPathSeparator(code)) {
-    return true;
-  } else if (isWindowsDeviceRoot(code)) {
-    // Possible device root
-
-    if (len > 2 && path.charCodeAt(1) === CHAR_COLON) {
-      if (isPathSeparator(path.charCodeAt(2))) return true;
-    }
-  }
-  return false;
+  try {
+     return ops.op_node_path_win32_isAbsolute(path);
+   } catch (e) {
+     if (e.message.startsWith("Expected string")) {
+       throw new ERR_INVALID_ARG_TYPE("path", ["string"], path);
+     }
+     throw e;
+   }
 }
 
 /**

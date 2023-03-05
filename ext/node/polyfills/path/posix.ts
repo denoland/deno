@@ -20,6 +20,7 @@ import {
   normalizeString,
 } from "internal:deno_node/path/_util.ts";
 
+const { ops } = globalThis.__bootstrap.core;
 export const sep = "/";
 export const delimiter = ":";
 
@@ -102,8 +103,14 @@ export function normalize(path: string): string {
  * @param path to be verified as absolute
  */
 export function isAbsolute(path: string): boolean {
-  assertPath(path);
-  return path.length > 0 && path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  try {
+     return ops.op_node_path_posix_isAbsolute(path);
+   } catch (e) {
+     if (e.message.startsWith("Expected string")) {
+       throw new ERR_INVALID_ARG_TYPE("path", ["string"], path);
+     }
+     throw e;
+   }
 }
 
 /**

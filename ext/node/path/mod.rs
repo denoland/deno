@@ -3,6 +3,10 @@
 use std::path::Component;
 use std::path::PathBuf;
 
+pub mod constants;
+pub mod posix;
+pub mod win32;
+
 /// Extension to path_clean::PathClean
 pub trait PathClean<T> {
   fn clean(&self) -> T;
@@ -37,4 +41,22 @@ impl PathClean<PathBuf> for PathBuf {
       path
     }
   }
+}
+
+pub fn is_windows_device_root(code: u32) -> bool {
+  (constants::CHAR_LOWERCASE_A..=constants::CHAR_LOWERCASE_Z).contains(&code)
+    || (constants::CHAR_UPPERCASE_A..=constants::CHAR_UPPERCASE_Z)
+      .contains(&code)
+}
+
+pub fn is_posix_path_separator(code: u32) -> bool {
+  code == constants::CHAR_FORWARD_SLASH
+}
+
+pub fn is_path_separator(code: u32) -> bool {
+  is_posix_path_separator(code) || code == constants::CHAR_BACKWARD_SLASH
+}
+
+pub fn char_at_index(path: &str, index: usize) -> Option<char> {
+  path.chars().nth(index)
 }
