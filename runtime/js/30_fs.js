@@ -24,7 +24,7 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "internal:deno_web/06_streams.js";
-import { pathFromURL } from "internal:runtime/06_util.js";
+import { pathFromURL } from "internal:deno_web/00_infra.js";
 
 function chmodSync(path, mode) {
   ops.op_chmod_sync(pathFromURL(path), mode);
