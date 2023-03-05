@@ -245,7 +245,7 @@ mod startup_snapshot {
       ),
       deno_napi::init::<Permissions>(),
       deno_http::init(),
-      deno_io::init(),
+      deno_io::init(Default::default()),
       deno_flash::init::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they
