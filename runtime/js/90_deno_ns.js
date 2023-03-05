@@ -10,22 +10,22 @@ import * as net from "internal:deno_net/01_net.js";
 import * as tls from "internal:deno_net/02_tls.js";
 import * as http from "internal:deno_http/01_http.js";
 import * as flash from "internal:deno_flash/01_http.js";
-import * as build from "internal:runtime/js/01_build.js";
-import * as errors from "internal:runtime/js/01_errors.js";
-import * as version from "internal:runtime/js/01_version.ts";
-import * as permissions from "internal:runtime/js/10_permissions.js";
+import * as build from "internal:runtime/01_build.js";
+import * as errors from "internal:runtime/01_errors.js";
+import * as version from "internal:runtime/01_version.ts";
+import * as permissions from "internal:runtime/10_permissions.js";
 import * as io from "internal:deno_io/12_io.js";
-import * as buffer from "internal:runtime/js/13_buffer.js";
-import * as fs from "internal:runtime/js/30_fs.js";
-import * as os from "internal:runtime/js/30_os.js";
-import * as diagnostics from "internal:runtime/js/40_diagnostics.js";
-import * as fsEvents from "internal:runtime/js/40_fs_events.js";
-import * as process from "internal:runtime/js/40_process.js";
-import * as signals from "internal:runtime/js/40_signals.js";
-import * as tty from "internal:runtime/js/40_tty.js";
-import * as spawn from "internal:runtime/js/40_spawn.js";
+import * as buffer from "internal:runtime/13_buffer.js";
+import * as fs from "internal:runtime/30_fs.js";
+import * as os from "internal:runtime/30_os.js";
+import * as diagnostics from "internal:runtime/40_diagnostics.js";
+import * as fsEvents from "internal:runtime/40_fs_events.js";
+import * as process from "internal:runtime/40_process.js";
+import * as signals from "internal:runtime/40_signals.js";
+import * as tty from "internal:runtime/40_tty.js";
+import * as spawn from "internal:runtime/40_spawn.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
-import * as httpRuntime from "internal:runtime/js/40_http.js";
+import * as httpRuntime from "internal:runtime/40_http.js";
 
 const denoNs = {
   metrics: core.metrics,
