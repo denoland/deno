@@ -16,6 +16,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::TaskQueue;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -169,8 +170,6 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
 
 #[cfg(unix)]
 use nix::sys::termios;
-
-use super::utils::TaskQueue;
 
 #[derive(Default)]
 pub struct TtyMetadata {
