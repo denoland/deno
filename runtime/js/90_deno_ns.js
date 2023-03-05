@@ -19,7 +19,6 @@ import * as buffer from "internal:runtime/js/13_buffer.js";
 import * as fs from "internal:runtime/js/30_fs.js";
 import * as os from "internal:runtime/js/30_os.js";
 import * as diagnostics from "internal:runtime/js/40_diagnostics.js";
-import * as files from "internal:runtime/js/40_files.js";
 import * as fsEvents from "internal:runtime/js/40_fs_events.js";
 import * as process from "internal:runtime/js/40_process.js";
 import * as readFile from "internal:runtime/js/40_read_file.js";
@@ -102,17 +101,17 @@ const denoNs = {
   readSync: io.readSync,
   write: io.write,
   writeSync: io.writeSync,
-  File: files.File,
-  FsFile: files.FsFile,
-  open: files.open,
-  openSync: files.openSync,
-  create: files.create,
-  createSync: files.createSync,
-  stdin: files.stdin,
-  stdout: files.stdout,
-  stderr: files.stderr,
-  seek: files.seek,
-  seekSync: files.seekSync,
+  File: fs.File,
+  FsFile: fs.FsFile,
+  open: fs.open,
+  openSync: fs.openSync,
+  create: fs.create,
+  createSync: fs.createSync,
+  stdin: io.stdin,
+  stdout: io.stdout,
+  stderr: io.stderr,
+  seek: fs.seek,
+  seekSync: fs.seekSync,
   connect: net.connect,
   listen: net.listen,
   loadavg: os.loadavg,
