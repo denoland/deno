@@ -20,38 +20,31 @@ impl Parse for Attributes {
   fn parse(input: ParseStream) -> Result<Self> {
     let mut self_ = Self::default();
     let mut fast = false;
-    loop {
-      match input.parse::<Ident>() {
-        Ok(v) => {
-          match v.to_string().as_str() {
-            "unstable" => self_.is_unstable = true,
-            "v8" => self_.is_v8 = true,
-            "fast" => fast = true,
-            "deferred" => self_.deferred = true,
-            "wasm" => self_.is_wasm = true,
-            "slow" => {
-              if !fast {
-                return Err(Error::new(
-                  input.span(),
-                  "relational attributes can only be used with fast attribute",
-                ));
-              }
-              input.parse::<Token![=]>()?;
-              self_.relation = Some(input.parse()?);
-            }
-            _ => {
-              return Err(Error::new(
+    while let Ok(v) = input.parse::<Ident>() {
+      match v.to_string().as_str() {
+        "unstable" => self_.is_unstable = true,
+        "v8" => self_.is_v8 = true,
+        "fast" => fast = true,
+        "deferred" => self_.deferred = true,
+        "wasm" => self_.is_wasm = true,
+        "slow" => {
+          if !fast {
+            return Err(Error::new(
+              input.span(),
+              "relational attributes can only be used with fast attribute",
+            ));
+          }
+          input.parse::<Token![=]>()?;
+          self_.relation = Some(input.parse()?);
+        }
+        _ => {
+          return Err(Error::new(
              input.span(),
             "invalid attribute, expected one of: unstable, v8, fast, deferred, wasm",
             ));
-            }
-          };
-          let _ = input.parse::<Token![,]>();
         }
-        Err(_) => {
-          break;
-        }
-      }
+      };
+      let _ = input.parse::<Token![,]>();
     }
 
     self_.must_be_fast = self_.is_wasm || fast;
