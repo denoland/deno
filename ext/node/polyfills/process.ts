@@ -38,7 +38,7 @@ import {
   runNextTicks,
 } from "internal:deno_node/polyfills/_next_tick.ts";
 import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import * as files from "internal:runtime/js/40_files.js";
+import * as io from "internal:deno_io/12_io.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -755,13 +755,13 @@ internals.__bootstrapNodeProcess = function (
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
   stderr = process.stderr = createWritableStdioStream(
-    files.stderr,
+    io.stderr,
     "stderr",
   );
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
   stdout = process.stdout = createWritableStdioStream(
-    files.stdout,
+    io.stdout,
     "stdout",
   );
 
