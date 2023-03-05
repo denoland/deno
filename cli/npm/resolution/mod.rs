@@ -10,6 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
+use deno_core::TaskQueue;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReq;
@@ -241,7 +242,7 @@ pub struct NpmResolution(Arc<NpmResolutionInner>);
 struct NpmResolutionInner {
   api: NpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
-  update_semaphore: tokio::sync::Semaphore,
+  update_queue: TaskQueue,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
@@ -263,7 +264,7 @@ impl NpmResolution {
     Self(Arc::new(NpmResolutionInner {
       api,
       snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
-      update_semaphore: tokio::sync::Semaphore::new(1),
+      update_queue: Default::default(),
       maybe_lockfile,
     }))
   }
@@ -275,7 +276,7 @@ impl NpmResolution {
     let inner = &self.0;
 
     // only allow one thread in here at a time
-    let _permit = inner.update_semaphore.acquire().await?;
+    let _permit = inner.update_queue.acquire().await;
     let snapshot = inner.snapshot.read().clone();
 
     let snapshot = add_package_reqs_to_snapshot(
@@ -296,7 +297,7 @@ impl NpmResolution {
   ) -> Result<(), AnyError> {
     let inner = &self.0;
     // only allow one thread in here at a time
-    let _permit = inner.update_semaphore.acquire().await?;
+    let _permit = inner.update_queue.acquire().await;
     let snapshot = inner.snapshot.read().clone();
 
     let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
@@ -326,7 +327,7 @@ impl NpmResolution {
   pub async fn resolve_pending(&self) -> Result<(), AnyError> {
     let inner = &self.0;
     // only allow one thread in here at a time
-    let _permit = inner.update_semaphore.acquire().await?;
+    let _permit = inner.update_queue.acquire().await;
     let snapshot = inner.snapshot.read().clone();
 
     let snapshot = add_package_reqs_to_snapshot(

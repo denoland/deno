@@ -118,6 +118,7 @@ pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
 pub use crate::task_queue::TaskQueue;
+pub use crate::task_queue::TaskQueuePermit;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
