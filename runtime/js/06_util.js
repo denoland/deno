@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -11,7 +12,6 @@ const {
   StringPrototypeReplace,
   TypeError,
 } = primordials;
-import { build } from "internal:runtime/01_build.js";
 import { URLPrototype } from "internal:deno_url/00_url.js";
 let logDebug = false;
 let logSource = "JS";
@@ -94,7 +94,7 @@ function pathFromURL(pathOrUrl) {
       throw new TypeError("Must be a file URL.");
     }
 
-    return build.os == "windows"
+    return core.build.os == "windows"
       ? pathFromURLWin32(pathOrUrl)
       : pathFromURLPosix(pathOrUrl);
   }

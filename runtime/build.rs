@@ -194,7 +194,6 @@ mod startup_snapshot {
       ])
       .esm(include_js_files!(
         dir "js",
-        "01_build.js",
         "01_errors.js",
         "01_version.ts",
         "06_util.js",
