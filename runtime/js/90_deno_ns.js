@@ -21,10 +21,8 @@ import * as os from "internal:runtime/js/30_os.js";
 import * as diagnostics from "internal:runtime/js/40_diagnostics.js";
 import * as fsEvents from "internal:runtime/js/40_fs_events.js";
 import * as process from "internal:runtime/js/40_process.js";
-import * as readFile from "internal:runtime/js/40_read_file.js";
 import * as signals from "internal:runtime/js/40_signals.js";
 import * as tty from "internal:runtime/js/40_tty.js";
-import * as writeFile from "internal:runtime/js/40_write_file.js";
 import * as spawn from "internal:runtime/js/40_spawn.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "internal:runtime/js/40_http.js";
@@ -34,14 +32,14 @@ const denoNs = {
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,
-  writeFileSync: writeFile.writeFileSync,
-  writeFile: writeFile.writeFile,
-  writeTextFileSync: writeFile.writeTextFileSync,
-  writeTextFile: writeFile.writeTextFile,
-  readTextFile: readFile.readTextFile,
-  readTextFileSync: readFile.readTextFileSync,
-  readFile: readFile.readFile,
-  readFileSync: readFile.readFileSync,
+  writeFileSync: fs.writeFileSync,
+  writeFile: fs.writeFile,
+  writeTextFileSync: fs.writeTextFileSync,
+  writeTextFile: fs.writeTextFile,
+  readTextFile: fs.readTextFile,
+  readTextFileSync: fs.readTextFileSync,
+  readFile: fs.readFile,
+  readFileSync: fs.readFileSync,
   watchFs: fsEvents.watchFs,
   chmodSync: fs.chmodSync,
   chmod: fs.chmod,

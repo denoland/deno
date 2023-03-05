@@ -18,8 +18,10 @@ const {
   Uint32Array,
 } = primordials;
 import { read, readSync, write, writeSync } from "internal:deno_io/12_io.js";
+import * as abortSignal from "internal:deno_web/03_abort_signal.js";
 import {
   readableStreamForRid,
+  ReadableStreamPrototype,
   writableStreamForRid,
 } from "internal:deno_web/06_streams.js";
 import { pathFromURL } from "internal:runtime/js/06_util.js";
@@ -676,6 +678,157 @@ function checkOpenOptions(options) {
 
 const File = FsFile;
 
+function readFileSync(path) {
+  return ops.op_readfile_sync(pathFromURL(path));
+}
+
+async function readFile(path, options) {
+  let cancelRid;
+  let abortHandler;
+  if (options?.signal) {
+    options.signal.throwIfAborted();
+    cancelRid = ops.op_cancel_handle();
+    abortHandler = () => core.tryClose(cancelRid);
+    options.signal[abortSignal.add](abortHandler);
+  }
+
+  try {
+    const read = await core.opAsync(
+      "op_readfile_async",
+      pathFromURL(path),
+      cancelRid,
+    );
+    return read;
+  } finally {
+    if (options?.signal) {
+      options.signal[abortSignal.remove](abortHandler);
+
+      // always throw the abort error when aborted
+      options.signal.throwIfAborted();
+    }
+  }
+}
+
+function readTextFileSync(path) {
+  return ops.op_readfile_text_sync(pathFromURL(path));
+}
+
+async function readTextFile(path, options) {
+  let cancelRid;
+  let abortHandler;
+  if (options?.signal) {
+    options.signal.throwIfAborted();
+    cancelRid = ops.op_cancel_handle();
+    abortHandler = () => core.tryClose(cancelRid);
+    options.signal[abortSignal.add](abortHandler);
+  }
+
+  try {
+    const read = await core.opAsync(
+      "op_readfile_text_async",
+      pathFromURL(path),
+      cancelRid,
+    );
+    return read;
+  } finally {
+    if (options?.signal) {
+      options.signal[abortSignal.remove](abortHandler);
+
+      // always throw the abort error when aborted
+      options.signal.throwIfAborted();
+    }
+  }
+}
+
+function writeFileSync(
+  path,
+  data,
+  options = {},
+) {
+  options.signal?.throwIfAborted();
+  ops.op_write_file_sync(
+    pathFromURL(path),
+    options.mode,
+    options.append ?? false,
+    options.create ?? true,
+    options.createNew ?? false,
+    data,
+  );
+}
+
+async function writeFile(
+  path,
+  data,
+  options = {},
+) {
+  let cancelRid;
+  let abortHandler;
+  if (options.signal) {
+    options.signal.throwIfAborted();
+    cancelRid = ops.op_cancel_handle();
+    abortHandler = () => core.tryClose(cancelRid);
+    options.signal[abortSignal.add](abortHandler);
+  }
+  try {
+    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+      const file = await open(path, {
+        mode: options.mode,
+        append: options.append ?? false,
+        create: options.create ?? true,
+        createNew: options.createNew ?? false,
+        write: true,
+      });
+      await data.pipeTo(file.writable, {
+        signal: options.signal,
+      });
+    } else {
+      await core.opAsync(
+        "op_write_file_async",
+        pathFromURL(path),
+        options.mode,
+        options.append ?? false,
+        options.create ?? true,
+        options.createNew ?? false,
+        data,
+        cancelRid,
+      );
+    }
+  } finally {
+    if (options.signal) {
+      options.signal[abortSignal.remove](abortHandler);
+
+      // always throw the abort error when aborted
+      options.signal.throwIfAborted();
+    }
+  }
+}
+
+function writeTextFileSync(
+  path,
+  data,
+  options = {},
+) {
+  const encoder = new TextEncoder();
+  return writeFileSync(path, encoder.encode(data), options);
+}
+
+function writeTextFile(
+  path,
+  data,
+  options = {},
+) {
+  if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+    return writeFile(
+      path,
+      data.pipeThrough(new TextEncoderStream()),
+      options,
+    );
+  } else {
+    const encoder = new TextEncoder();
+    return writeFile(path, encoder.encode(data), options);
+  }
+}
+
 export {
   chdir,
   chmod,
@@ -717,8 +870,12 @@ export {
   openSync,
   readDir,
   readDirSync,
+  readFile,
+  readFileSync,
   readLink,
   readLinkSync,
+  readTextFile,
+  readTextFileSync,
   realPath,
   realPathSync,
   remove,
@@ -736,4 +893,8 @@ export {
   umask,
   utime,
   utimeSync,
+  writeFile,
+  writeFileSync,
+  writeTextFile,
+  writeTextFileSync,
 };
