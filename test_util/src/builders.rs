@@ -235,20 +235,13 @@ impl TestCommandBuilder {
       std::thread::spawn(move || {
         let mut output = Vec::new();
         let mut buffer = [0; 512];
-        loop {
-          match pipe_from.read(&mut buffer) {
-            Ok(size) => {
-              if size == 0 {
-                break;
-              }
-              pipe_to.write_all(&buffer[0..size]).unwrap();
-              pipe_to.flush().unwrap();
-              output.write_all(&buffer[0..size]).unwrap();
-            }
-            Err(_) => {
-              break;
-            }
+        while let Ok(size) = pipe_from.read(&mut buffer) {
+          if size == 0 {
+            break;
           }
+          pipe_to.write_all(&buffer[0..size]).unwrap();
+          pipe_to.flush().unwrap();
+          output.write_all(&buffer[0..size]).unwrap();
         }
         String::from_utf8_lossy(&output).to_string()
       })
