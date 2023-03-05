@@ -1,15 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { validateEncoding, validateInteger } from "internal:deno_node/polyfills/internal/validators.mjs";
+import { Buffer } from "internal:deno_node/buffer.ts";
+import { validateEncoding, validateInteger } from "internal:deno_node/internal/validators.mjs";
 import {
   getValidatedFd,
   showStringCoercionDeprecation,
   validateOffsetLengthWrite,
   validateStringAfterArrayBufferView,
-} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { isArrayBufferView } from "internal:deno_node/polyfills/internal/util/types.ts";
-import { maybeCallback } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
+} from "internal:deno_node/internal/fs/utils.mjs";
+import { isArrayBufferView } from "internal:deno_node/internal/util/types.ts";
+import { maybeCallback } from "internal:deno_node/_fs/_fs_common.ts";
 
 export function writeSync(fd, buffer, offset, length, position) {
   fd = getValidatedFd(fd);

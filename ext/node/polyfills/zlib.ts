@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { zlib as constants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
+import { notImplemented } from "internal:deno_node/_utils.ts";
+import { zlib as constants } from "internal:deno_node/internal_binding/constants.ts";
 import {
   codes,
   createDeflate,
@@ -31,7 +31,7 @@ import {
   Unzip,
   unzip,
   unzipSync,
-} from "internal:deno_node/polyfills/_zlib.mjs";
+} from "internal:deno_node/_zlib.mjs";
 export class Options {
   constructor() {
     notImplemented("Options.prototype.constructor");

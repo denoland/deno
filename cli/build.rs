@@ -342,6 +342,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
+    deno_io::init(Default::default()),
     deno_node::init::<PermissionsContainer>(None), // No --unstable.
     deno_node::init_polyfill(),
     deno_ffi::init::<PermissionsContainer>(false),
