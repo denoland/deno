@@ -13,18 +13,18 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { inspect } from "internal:deno_node/polyfills/internal/util/inspect.mjs";
-import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
+import { inspect } from "internal:deno_node/internal/util/inspect.mjs";
+import { codes } from "internal:deno_node/internal/error_codes.ts";
 import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
-} from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import { os as osConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import { hideStackFrames } from "internal:deno_node/polyfills/internal/hide_stack_frames.ts";
-import { getSystemErrorName } from "internal:deno_node/polyfills/_utils.ts";
+} from "internal:deno_node/internal_binding/uv.ts";
+import { assert } from "internal:deno_node/_util/asserts.ts";
+import { isWindows } from "internal:deno_node/_util/os.ts";
+import { os as osConstants } from "internal:deno_node/internal_binding/constants.ts";
+import { hideStackFrames } from "internal:deno_node/internal/hide_stack_frames.ts";
+import { getSystemErrorName } from "internal:deno_node/_utils.ts";
 
 export { errorMap };
 

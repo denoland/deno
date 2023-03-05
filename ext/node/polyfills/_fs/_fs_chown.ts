@@ -2,15 +2,15 @@
 import {
   type CallbackWithError,
   makeCallback,
-} from "internal:deno_node/polyfills/_fs/_fs_common.ts";
+} from "internal:deno_node/_fs/_fs_common.ts";
 import {
   getValidatedPath,
   kMaxUserId,
-} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import * as pathModule from "internal:deno_node/polyfills/path.ts";
-import { validateInteger } from "internal:deno_node/polyfills/internal/validators.mjs";
-import type { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+} from "internal:deno_node/internal/fs/utils.mjs";
+import * as pathModule from "internal:deno_node/path.ts";
+import { validateInteger } from "internal:deno_node/internal/validators.mjs";
+import type { Buffer } from "internal:deno_node/buffer.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 /**
  * Asynchronously changes the owner and group

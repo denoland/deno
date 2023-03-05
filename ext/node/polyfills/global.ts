@@ -1,14 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-var
-import processModule from "internal:deno_node/polyfills/process.ts";
-import { Buffer as bufferModule } from "internal:deno_node/polyfills/buffer.ts";
+import processModule from "internal:deno_node/process.ts";
+import { Buffer as bufferModule } from "internal:deno_node/buffer.ts";
 import {
   clearInterval,
   clearTimeout,
   setInterval,
   setTimeout,
-} from "internal:deno_node/polyfills/timers.ts";
-import timers from "internal:deno_node/polyfills/timers.ts";
+} from "internal:deno_node/timers.ts";
+import timers from "internal:deno_node/timers.ts";
 
 type GlobalType = {
   process: typeof processModule;

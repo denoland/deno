@@ -19,6 +19,8 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
+use deno_core::TaskQueue;
+use deno_core::TaskQueuePermit;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -29,8 +31,6 @@ use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use tokio::sync::SemaphorePermit;
 
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
@@ -318,19 +318,13 @@ struct GraphData {
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ModuleGraphContainer {
-  update_semaphore: Arc<Semaphore>,
+  // Allow only one request to update the graph data at a time,
+  // but allow other requests to read from it at any time even
+  // while another request is updating the data.
+  update_queue: Arc<TaskQueue>,
   graph_data: Arc<RwLock<GraphData>>,
-}
-
-impl Default for ModuleGraphContainer {
-  fn default() -> Self {
-    Self {
-      update_semaphore: Arc::new(Semaphore::new(1)),
-      graph_data: Default::default(),
-    }
-  }
 }
 
 impl ModuleGraphContainer {
@@ -338,7 +332,7 @@ impl ModuleGraphContainer {
   /// having the chance to modify it. In the meantime, other code may
   /// still read from the existing module graph.
   pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
-    let permit = self.update_semaphore.acquire().await.unwrap();
+    let permit = self.update_queue.acquire().await;
     ModuleGraphUpdatePermit {
       permit,
       graph_data: self.graph_data.clone(),
@@ -395,7 +389,7 @@ impl ModuleGraphContainer {
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
 pub struct ModuleGraphUpdatePermit<'a> {
-  permit: SemaphorePermit<'a>,
+  permit: TaskQueuePermit<'a>,
   graph_data: Arc<RwLock<GraphData>>,
   graph: ModuleGraph,
 }

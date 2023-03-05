@@ -23,9 +23,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { pbkdf2Sync as pbkdf2 } from "internal:deno_node/polyfills/internal/crypto/pbkdf2.ts";
-import { HASH_DATA } from "internal:deno_node/polyfills/internal/crypto/types.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
+import { pbkdf2Sync as pbkdf2 } from "internal:deno_node/internal/crypto/pbkdf2.ts";
+import { HASH_DATA } from "internal:deno_node/internal/crypto/types.ts";
 
 type Opts = Partial<{
   N: number;

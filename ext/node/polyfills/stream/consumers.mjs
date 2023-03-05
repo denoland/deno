@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
 
 /**
  * @typedef {import('../_global.d.ts').ReadableStream
