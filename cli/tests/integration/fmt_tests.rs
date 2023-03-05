@@ -6,7 +6,8 @@ use util::TestContext;
 
 #[test]
 fn fmt_test() {
-  let t = TempDir::new();
+  let context = TestContext::default();
+  let t = context.deno_dir();
   let testdata_fmt_dir = util::testdata_path().join("fmt");
   let fixed_js = testdata_fmt_dir.join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
@@ -28,7 +29,7 @@ fn fmt_test() {
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
   std::fs::copy(badly_formatted_original_json, &badly_formatted_json).unwrap();
   // First, check formatting by ignoring the badly formatted file.
-  let context = TestContext::default();
+  
   let output = context
     .new_command()
     .cwd("fmt")
