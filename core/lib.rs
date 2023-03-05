@@ -141,16 +141,11 @@ pub mod _ops {
 /// A helper macro that will return a call site in Rust code. Should be
 /// used when executing internal one-line scripts for JsRuntime lifecycle.
 ///
-/// Returns a string in form of: "`[internal:<filename>:<line>:<column>]`"
+/// Returns a string in form of: "`[ext:<filename>:<line>:<column>]`"
 #[macro_export]
 macro_rules! located_script_name {
   () => {
-    format!(
-      "[internal:{}:{}:{}]",
-      std::file!(),
-      std::line!(),
-      std::column!()
-    );
+    format!("[ext:{}:{}:{}]", std::file!(), std::line!(), std::column!());
   };
 }
 

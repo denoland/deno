@@ -28,7 +28,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
     .esm(vec![
       ExtensionFileSource {
-        specifier: "internal:setup".to_string(), 
+        specifier: "ext:setup".to_string(), 
         code: ExtensionFileSourceCode::IncludedInBinary(r#"
       import { setTimeout, handleTimerMacrotask } from "ext:deno_web/02_timers.js";
       globalThis.setTimeout = setTimeout;

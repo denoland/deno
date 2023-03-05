@@ -276,7 +276,7 @@ pub fn host_import_module_dynamically_callback<'s>(
     .unwrap()
     .to_rust_string_lossy(scope);
 
-  let is_internal_module = specifier_str.starts_with("internal:");
+  let is_internal_module = specifier_str.starts_with("ext:");
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 

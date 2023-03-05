@@ -3981,8 +3981,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap_err();
     let error_string = error.to_string();
-    // Test that the script specifier is a URL: `internal:<repo-relative path>`.
-    assert!(error_string.contains("internal:core/01_core.js"));
+    // Test that the script specifier is a URL: `ext:<repo-relative path>`.
+    assert!(error_string.contains("ext:core/01_core.js"));
   }
 
   #[test]
@@ -5016,8 +5016,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ) -> Pin<Box<ModuleSourceFuture>> {
         let source = r#"
         // This module doesn't really exist, just verifying that we'll get
-        // an error when specifier starts with "internal:".
-        import { core } from "internal:core.js";
+        // an error when specifier starts with "ext:".
+        import { core } from "ext:core.js";
         "#;
 
         async move {
