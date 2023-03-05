@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+import { notImplemented } from "internal:deno_node/_utils.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 

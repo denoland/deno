@@ -323,7 +323,7 @@ macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($dir, "/", $file).to_string(),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!(concat!($dir, "/", $file)
         )),
@@ -349,7 +349,7 @@ macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($dir, "/", $file).to_string(),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),

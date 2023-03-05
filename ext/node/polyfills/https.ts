@@ -1,15 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { urlToHttpOptions } from "internal:deno_node/polyfills/internal/url.ts";
+import { notImplemented } from "internal:deno_node/_utils.ts";
+import { urlToHttpOptions } from "internal:deno_node/internal/url.ts";
 import {
   Agent as HttpAgent,
   ClientRequest,
   IncomingMessageForClient as IncomingMessage,
   type RequestOptions,
-} from "internal:deno_node/polyfills/http.ts";
-import type { Socket } from "internal:deno_node/polyfills/net.ts";
+} from "internal:deno_node/http.ts";
+import type { Socket } from "internal:deno_node/net.ts";
 
 export class Agent extends HttpAgent {
 }

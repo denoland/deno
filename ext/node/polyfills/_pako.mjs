@@ -418,7 +418,7 @@ const gen_bitlen = (s, desc) => //    deflate_state *s;
   /* Now recompute all bit lengths, scanning in increasing frequency.
    * h is still equal to HEAP_SIZE. (It is simpler to reconstruct all
    * lengths instead of fixing only the wrong ones. This idea is taken
-   * from "internal:deno_node/polyfills/ar" written by Haruhiko Okumura.)
+   * from "internal:deno_node/ar" written by Haruhiko Okumura.)
    */
   for (bits = max_length; bits !== 0; bits--) {
     n = s.bl_count[bits];

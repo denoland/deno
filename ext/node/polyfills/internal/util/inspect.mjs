@@ -20,15 +20,15 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import * as types from "internal:deno_node/polyfills/internal/util/types.ts";
-import { validateObject, validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
+import * as types from "internal:deno_node/internal/util/types.ts";
+import { validateObject, validateString } from "internal:deno_node/internal/validators.mjs";
+import { codes } from "internal:deno_node/internal/error_codes.ts";
 
 import {
   ALL_PROPERTIES,
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
-} from "internal:deno_node/polyfills/internal_binding/util.ts";
+} from "internal:deno_node/internal_binding/util.ts";
 
 const kObjectType = 0;
 const kArrayType = 1;
