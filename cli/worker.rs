@@ -293,8 +293,7 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages()
-      || self.ps.has_node_builtin_specifier()
+    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
     {
       self.initialize_main_module_for_node().await?;
     }
@@ -304,7 +303,7 @@ impl CliMainWorker {
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
-      self.ps.options.node_modules_dir(),
+      self.ps.options.has_node_modules_dir(),
     )
     .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
@@ -421,7 +420,7 @@ pub async fn create_main_worker_for_test_or_bench(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -439,7 +438,7 @@ async fn create_main_worker_internal(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
   bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
@@ -448,11 +447,15 @@ async fn create_main_worker_internal(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
+    let pkg_nv = ps
+      .npm_resolver
+      .resolution()
+      .resolve_pkg_id_from_pkg_req(&package_ref.req)?
+      .nv;
     let node_resolution = node::node_resolve_binary_export(
-      &package_ref.req,
+      &pkg_nv,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
-      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
@@ -626,7 +629,7 @@ fn create_web_worker_pre_execute_module_callback(
       if ps.npm_resolver.has_packages() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
-          ps.options.node_modules_dir(),
+          ps.options.has_node_modules_dir(),
         )
         .await?;
       }
@@ -639,7 +642,7 @@ fn create_web_worker_pre_execute_module_callback(
 
 fn create_web_worker_callback(
   ps: ProcState,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let maybe_inspector_server = ps.maybe_inspector_server.clone();

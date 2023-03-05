@@ -4,7 +4,7 @@
 import {
   BufferEncoding,
   ErrnoException,
-} from "internal:deno_node/polyfills/_global.d.ts";
+} from "internal:deno_node/_global.d.ts";
 
 /**
  * Write `buffer` to the file specified by `fd`. If `buffer` is a normal object, it

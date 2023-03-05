@@ -146,7 +146,6 @@ pub fn init_polyfill() -> Extension {
     "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
-    "_process/stdio.mjs",
     "_process/streams.mjs",
     "_readline.mjs",
     "_stream.mjs",
@@ -365,7 +364,8 @@ pub fn init_polyfill() -> Extension {
 
   Extension::builder(env!("CARGO_PKG_NAME"))
     .esm(esm_files)
-    .esm_entry_point("internal:deno_node/polyfills/module_all.ts")
+    .esm_entry_point("internal:deno_node/module_all.ts")
+    .dependencies(vec!["deno_io"])
     .ops(vec![
       crypto::op_node_create_hash::decl(),
       crypto::op_node_hash_update::decl(),

@@ -332,6 +332,8 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-sys` permission.
+   * 
+   * On Windows there is no API available to retrieve this information and this method returns `[ 0, 0, 0 ]`.
    *
    * @tags allow-sys
    * @category Observability
@@ -3688,10 +3690,7 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
-  /** 
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
-   * Options which can be used with {@linkcode Deno.run}.
+  /** Options which can be used with {@linkcode Deno.run}.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -3749,10 +3748,7 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** 
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
-   * The status resolved from the `.status()` method of a
+  /** The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
    *
    * If `success` is `true`, then `code` will be `0`, but if `success` is
@@ -3772,8 +3768,6 @@ declare namespace Deno {
     };
 
   /**
-   * * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
    *
@@ -3930,10 +3924,7 @@ declare namespace Deno {
     handler: () => void,
   ): void;
 
-  /** 
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
-   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
+  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts

@@ -490,7 +490,7 @@ async fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
   lint_options: &LintOptions,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
@@ -911,7 +911,8 @@ fn diagnose_resolution(
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           if npm_resolver
-            .resolve_package_folder_from_deno_module(&pkg_ref.req)
+            .resolution()
+            .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
             diagnostics.push(
@@ -932,7 +933,8 @@ fn diagnose_resolution(
           let types_node_ref =
             NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
-            .resolve_package_folder_from_deno_module(&types_node_ref.req)
+            .resolution()
+            .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
             diagnostics.push(

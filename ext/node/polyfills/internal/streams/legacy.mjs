@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import EE from "internal:deno_node/polyfills/events.ts";
+import EE from "internal:deno_node/events.ts";
 
 function Stream(opts) {
   EE.call(this, opts);

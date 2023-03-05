@@ -29,7 +29,6 @@ use call::op_ffi_call_ptr;
 use call::op_ffi_call_ptr_nonblocking;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
-use callback::op_ffi_unsafe_callback_unref;
 use dlfcn::op_ffi_load;
 use dlfcn::ForeignFunction;
 use r#static::op_ffi_get_static;
@@ -91,7 +90,11 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_call_nonblocking::decl(),
       op_ffi_call_ptr::decl::<P>(),
       op_ffi_call_ptr_nonblocking::decl::<P>(),
+      op_ffi_ptr_create::decl::<P>(),
+      op_ffi_ptr_equals::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
+      op_ffi_ptr_offset::decl::<P>(),
+      op_ffi_ptr_value::decl::<P>(),
       op_ffi_get_buf::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
@@ -106,9 +109,9 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_i64::decl::<P>(),
       op_ffi_read_f32::decl::<P>(),
       op_ffi_read_f64::decl::<P>(),
+      op_ffi_read_ptr::decl::<P>(),
       op_ffi_unsafe_callback_create::decl::<P>(),
       op_ffi_unsafe_callback_ref::decl(),
-      op_ffi_unsafe_callback_unref::decl(),
     ])
     .event_loop_middleware(|op_state_rc, _cx| {
       // FFI callbacks coming in from other threads will call in and get queued.

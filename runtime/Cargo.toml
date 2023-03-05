@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.97.0"
+version = "0.99.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -43,6 +43,7 @@ deno_fetch.workspace = true
 deno_ffi.workspace = true
 deno_flash.workspace = true
 deno_http.workspace = true
+deno_io.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
 deno_tls.workspace = true
@@ -70,6 +71,7 @@ deno_fetch.workspace = true
 deno_ffi.workspace = true
 deno_flash.workspace = true
 deno_http.workspace = true
+deno_io.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true

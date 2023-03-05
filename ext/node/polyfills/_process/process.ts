@@ -4,10 +4,10 @@
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
-import { build } from "internal:runtime/js/01_build.js";
-import { nextTick as _nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
-import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
-import * as fs from "internal:runtime/js/30_fs.js";
+import { build } from "internal:runtime/01_build.js";
+import { nextTick as _nextTick } from "internal:deno_node/_next_tick.ts";
+import { _exiting } from "internal:deno_node/_process/exiting.ts";
+import * as fs from "internal:runtime/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {

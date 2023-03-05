@@ -240,7 +240,10 @@ pub async fn run(
           Some(Arc::new(
             parse_from_json(&base, &source).unwrap().import_map,
           )),
-          None,
+          false,
+          ps.npm_resolver.api().clone(),
+          ps.npm_resolver.resolution().clone(),
+          ps.package_json_deps_installer.clone(),
         )
       },
     ),

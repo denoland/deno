@@ -31,6 +31,7 @@ const {
   PromisePrototypeCatch,
   PromisePrototypeThen,
   SafePromiseAll,
+  TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   TypeError,
   Uint8Array,
@@ -114,15 +115,24 @@ const methods = {
 let dateInterval;
 let date;
 
-// Construct an HTTP response message.
-// All HTTP/1.1 messages consist of a start-line followed by a sequence
-// of octets.
-//
-//  HTTP-message = start-line
-//    *( header-field CRLF )
-//    CRLF
-//    [ message-body ]
-//
+/**
+ * Construct an HTTP response message.
+ * All HTTP/1.1 messages consist of a start-line followed by a sequence
+ * of octets.
+ *
+ *  HTTP-message = start-line
+ *    *( header-field CRLF )
+ *    CRLF
+ *    [ message-body ]
+ *
+ * @param {keyof typeof methods} method
+ * @param {keyof typeof statusCodes} status
+ * @param {[name: string, value: string][]} headerList
+ * @param {Uint8Array | string | null} body
+ * @param {number} bodyLen
+ * @param {boolean} earlyEnd
+ * @returns {Uint8Array | string}
+ */
 function http1Response(
   method,
   status,
@@ -178,9 +188,9 @@ function http1Response(
     str += body ?? "";
   } else {
     const head = core.encode(str);
-    const response = new Uint8Array(head.byteLength + body.byteLength);
-    response.set(head, 0);
-    response.set(body, head.byteLength);
+    const response = new Uint8Array(head.byteLength + bodyLen);
+    TypedArrayPrototypeSet(response, head, 0);
+    TypedArrayPrototypeSet(response, body, head.byteLength);
     return response;
   }
 
@@ -252,7 +262,7 @@ async function handleResponse(
   // If response body length is known, it will be sent synchronously in a
   // single op, in other case a "response body" resource will be created and
   // we'll be streaming it.
-  /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
+  /** @type {ReadableStream<Uint8Array> | Uint8Array | string | null} */
   let respBody = null;
   let isStreamingResponseBody = false;
   if (innerResp.body !== null) {
@@ -353,8 +363,8 @@ async function handleResponse(
                 method,
                 innerResp.status ?? 200,
                 innerResp.headerList,
-                0, // Content-Length will be set by the op.
                 null,
+                0, // Content-Length will be set by the op.
                 true,
               ),
               serverId,
@@ -383,8 +393,8 @@ async function handleResponse(
             method,
             innerResp.status ?? 200,
             innerResp.headerList,
-            respBody.byteLength,
             null,
+            respBody.byteLength,
           ),
           respBody.byteLength,
           false,
@@ -569,16 +579,19 @@ function createServe(opFn) {
             );
 
             let resp;
+            let remoteAddr;
             try {
-              resp = handler(req, () => {
-                const { 0: hostname, 1: port } = core.ops.op_flash_addr(
-                  serverId,
-                  i,
-                );
-                return {
-                  hostname,
-                  port,
-                };
+              resp = handler(req, {
+                get remoteAddr() {
+                  if (!remoteAddr) {
+                    const { 0: hostname, 1: port } = core.ops.op_flash_addr(
+                      serverId,
+                      i,
+                    );
+                    remoteAddr = { hostname, port };
+                  }
+                  return remoteAddr;
+                },
               });
               if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
                 PromisePrototypeCatch(

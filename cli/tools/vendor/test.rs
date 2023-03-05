@@ -20,6 +20,9 @@ use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
+use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
@@ -260,8 +263,24 @@ async fn build_test_graph(
   mut loader: TestLoader,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver = original_import_map
-    .map(|m| CliGraphResolver::new(None, Some(Arc::new(m)), None));
+  let resolver = original_import_map.map(|m| {
+    let npm_registry_api = NpmRegistryApi::new_uninitialized();
+    let npm_resolution =
+      NpmResolution::new(npm_registry_api.clone(), None, None);
+    let deps_installer = PackageJsonDepsInstaller::new(
+      npm_registry_api.clone(),
+      npm_resolution.clone(),
+      None,
+    );
+    CliGraphResolver::new(
+      None,
+      Some(Arc::new(m)),
+      false,
+      npm_registry_api,
+      npm_resolution,
+      deps_installer,
+    )
+  });
   let mut graph = ModuleGraph::default();
   graph
     .build(

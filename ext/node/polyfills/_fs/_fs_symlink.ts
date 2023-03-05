@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { CallbackWithError } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
-import { fromFileUrl } from "internal:deno_node/polyfills/path.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+import { CallbackWithError } from "internal:deno_node/_fs/_fs_common.ts";
+import { fromFileUrl } from "internal:deno_node/path.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 type SymlinkType = "file" | "dir";
 

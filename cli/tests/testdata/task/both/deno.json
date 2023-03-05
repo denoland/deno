@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "output": "deno eval 'console.log(1)'",
+    "other": "deno eval 'console.log(2)'"
+  }
+}

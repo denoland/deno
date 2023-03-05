@@ -463,7 +463,7 @@ impl ReplSession {
       if !self.has_initialized_node_runtime {
         deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
-          self.proc_state.options.node_modules_dir(),
+          self.proc_state.options.has_node_modules_dir(),
         )
         .await?;
         self.has_initialized_node_runtime = true;

@@ -135,9 +135,6 @@ pub fn initialize_context<'s>(
       .try_into()
       .unwrap();
     initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
-    if snapshot_options != SnapshotOptions::CreateFromExisting {
-      initialize_async_ops_info(scope, ops_obj, op_ctxs);
-    }
     return scope.escape(context);
   }
 
@@ -161,9 +158,6 @@ pub fn initialize_context<'s>(
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
 
-  if !snapshot_options.will_snapshot() {
-    initialize_async_ops_info(scope, ops_obj, op_ctxs);
-  }
   initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
   scope.escape(context)
 }
@@ -656,85 +650,4 @@ pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);
-}
-
-struct AsyncOpsInfo {
-  ptr: *const OpCtx,
-  len: usize,
-}
-
-impl<'s> IntoIterator for &'s AsyncOpsInfo {
-  type Item = &'s OpCtx;
-  type IntoIter = AsyncOpsInfoIterator<'s>;
-
-  fn into_iter(self) -> Self::IntoIter {
-    AsyncOpsInfoIterator {
-      // SAFETY: OpCtx slice is valid for the lifetime of the Isolate
-      info: unsafe { std::slice::from_raw_parts(self.ptr, self.len) },
-      index: 0,
-    }
-  }
-}
-
-struct AsyncOpsInfoIterator<'s> {
-  info: &'s [OpCtx],
-  index: usize,
-}
-
-impl<'s> Iterator for AsyncOpsInfoIterator<'s> {
-  type Item = &'s OpCtx;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    loop {
-      match self.info.get(self.index) {
-        Some(ctx) if ctx.decl.is_async => {
-          self.index += 1;
-          return Some(ctx);
-        }
-        Some(_) => {
-          self.index += 1;
-        }
-        None => return None,
-      }
-    }
-  }
-}
-
-fn async_ops_info(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let async_op_names = v8::Object::new(scope);
-  let external: v8::Local<v8::External> = args.data().try_into().unwrap();
-  let info: &AsyncOpsInfo =
-    // SAFETY: external is guaranteed to be a valid pointer to AsyncOpsInfo
-    unsafe { &*(external.value() as *const AsyncOpsInfo) };
-  for ctx in info {
-    let name = v8::String::new(scope, ctx.decl.name).unwrap();
-    let argc = v8::Integer::new(scope, ctx.decl.argc as i32);
-    async_op_names.set(scope, name.into(), argc.into());
-  }
-  rv.set(async_op_names.into());
-}
-
-fn initialize_async_ops_info(
-  scope: &mut v8::HandleScope,
-  ops_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-) {
-  let key = v8::String::new(scope, "asyncOpsInfo").unwrap();
-  let external = v8::External::new(
-    scope,
-    Box::into_raw(Box::new(AsyncOpsInfo {
-      ptr: op_ctxs as *const [OpCtx] as _,
-      len: op_ctxs.len(),
-    })) as *mut c_void,
-  );
-  let val = v8::Function::builder(async_ops_info)
-    .data(external.into())
-    .build(scope)
-    .unwrap();
-  val.set_name(key);
-  ops_obj.set(scope, key.into(), val.into());
 }

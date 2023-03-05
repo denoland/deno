@@ -6,6 +6,7 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
+use deno_graph::Module;
 use deno_runtime::colors;
 
 use crate::args::BundleFlags;
@@ -48,8 +49,12 @@ pub async fn bundle(
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
         .filter_map(|(_, r)| {
-          r.ok()
-            .and_then(|module| module.specifier.to_file_path().ok())
+          r.ok().and_then(|module| match module {
+            Module::Esm(m) => m.specifier.to_file_path().ok(),
+            Module::Json(m) => m.specifier.to_file_path().ok(),
+            // nothing to watch
+            Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
+          })
         })
         .collect();
 

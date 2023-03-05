@@ -17,6 +17,7 @@ path = "src/test_server.rs"
 anyhow.workspace = true
 async-stream = "0.3.3"
 atty.workspace = true
+backtrace = "0.3.67"
 base64.workspace = true
 flate2.workspace = true
 futures.workspace = true
