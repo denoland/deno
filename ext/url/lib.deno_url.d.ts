@@ -248,7 +248,7 @@ declare interface URLPatternResult {
  * ```
  *
  * ```ts
- * // Specify a relative string pattern with a base url.
+ * // Specify a relative string pattern with a base URL.
  * const pattern = new URLPattern("/article/:id", "https://blog.example.com");
  * console.log(pattern.test("https://blog.example.com/article")); // false
  * console.log(pattern.test("https://blog.example.com/article/123")); // true
@@ -262,8 +262,8 @@ declare class URLPattern {
   /**
    * Test if the given input matches the stored pattern.
    *
-   * The input can either be provided as an absolute url string,
-   * relative url string with a base url, or as individual components
+   * The input can either be provided as an absolute URL string with an optional base,
+   * relative URL string with a required base, or as individual components
    * in the form of an `URLPatternInit` object.
    *
    * ```ts
@@ -284,8 +284,8 @@ declare class URLPattern {
   /**
    * Match the given input against the stored pattern.
    *
-   * The input can either be provided as an absolute url string,
-   * relative url string with a base url, or as individual components
+   * The input can either be provided as an absolute URL string with an optional base,
+   * relative URL string with a required base, or as individual components
    * in the form of an `URLPatternInit` object.
    *
    * ```ts
