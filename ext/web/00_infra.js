@@ -426,7 +426,7 @@ function pathFromURL(pathOrUrl) {
       throw new TypeError("Must be a file URL.");
     }
 
-    return build.os == "windows"
+    return core.build.os == "windows"
       ? pathFromURLWin32(pathOrUrl)
       : pathFromURLPosix(pathOrUrl);
   }
@@ -464,6 +464,7 @@ export {
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
   httpTrim,
+  pathFromURL,
   regexMatcher,
   serializeJSValueToJSONString,
 };
