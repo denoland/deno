@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
+hex = "0.4.3"
 idna = "0.3.0"
 indexmap.workspace = true
 md-5 = "0.10.5"

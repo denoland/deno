@@ -336,7 +336,9 @@ pub fn init_polyfill() -> Extension {
     .ops(vec![
       crypto::op_node_create_hash::decl(),
       crypto::op_node_hash_update::decl(),
+      crypto::op_node_hash_update_str::decl(),
       crypto::op_node_hash_digest::decl(),
+      crypto::op_node_hash_digest_hex::decl(),
       crypto::op_node_hash_clone::decl(),
       crypto::op_node_private_encrypt::decl(),
       crypto::op_node_private_decrypt::decl(),
