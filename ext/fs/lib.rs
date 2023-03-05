@@ -100,17 +100,16 @@ fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
 }
 
 pub trait FsPermissions {
-  fn check_read(&mut self, _p: &Path, _api_name: &str) -> Result<(), AnyError>;
-  fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError>;
+  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_read_blind(
     &mut self,
-    _p: &Path,
-    _display: &str,
-    _api_name: &str,
+    p: &Path,
+    display: &str,
+    api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_write(&mut self, _p: &Path, _api_name: &str)
-    -> Result<(), AnyError>;
-  fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError>;
+  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
 }
 
 #[cfg(not(unix))]
