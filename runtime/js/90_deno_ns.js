@@ -18,13 +18,10 @@ import * as io from "internal:deno_io/12_io.js";
 import * as buffer from "internal:runtime/13_buffer.js";
 import * as fs from "internal:runtime/30_fs.js";
 import * as os from "internal:runtime/30_os.js";
-import * as files from "internal:runtime/40_files.js";
 import * as fsEvents from "internal:runtime/40_fs_events.js";
 import * as process from "internal:runtime/40_process.js";
-import * as readFile from "internal:runtime/40_read_file.js";
 import * as signals from "internal:runtime/40_signals.js";
 import * as tty from "internal:runtime/40_tty.js";
-import * as writeFile from "internal:runtime/40_write_file.js";
 import * as spawn from "internal:runtime/40_spawn.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "internal:runtime/40_http.js";
@@ -34,14 +31,14 @@ const denoNs = {
   Process: process.Process,
   run: process.run,
   isatty: tty.isatty,
-  writeFileSync: writeFile.writeFileSync,
-  writeFile: writeFile.writeFile,
-  writeTextFileSync: writeFile.writeTextFileSync,
-  writeTextFile: writeFile.writeTextFile,
-  readTextFile: readFile.readTextFile,
-  readTextFileSync: readFile.readTextFileSync,
-  readFile: readFile.readFile,
-  readFileSync: readFile.readFileSync,
+  writeFileSync: fs.writeFileSync,
+  writeFile: fs.writeFile,
+  writeTextFileSync: fs.writeTextFileSync,
+  writeTextFile: fs.writeTextFile,
+  readTextFile: fs.readTextFile,
+  readTextFileSync: fs.readTextFileSync,
+  readFile: fs.readFile,
+  readFileSync: fs.readFileSync,
   watchFs: fsEvents.watchFs,
   chmodSync: fs.chmodSync,
   chmod: fs.chmod,
@@ -101,17 +98,17 @@ const denoNs = {
   readSync: io.readSync,
   write: io.write,
   writeSync: io.writeSync,
-  File: files.File,
-  FsFile: files.FsFile,
-  open: files.open,
-  openSync: files.openSync,
-  create: files.create,
-  createSync: files.createSync,
-  stdin: files.stdin,
-  stdout: files.stdout,
-  stderr: files.stderr,
-  seek: files.seek,
-  seekSync: files.seekSync,
+  File: fs.File,
+  FsFile: fs.FsFile,
+  open: fs.open,
+  openSync: fs.openSync,
+  create: fs.create,
+  createSync: fs.createSync,
+  stdin: io.stdin,
+  stdout: io.stdout,
+  stderr: io.stderr,
+  seek: fs.seek,
+  seekSync: fs.seekSync,
   connect: net.connect,
   listen: net.listen,
   loadavg: os.loadavg,
