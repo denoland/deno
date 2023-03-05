@@ -203,7 +203,6 @@ mod startup_snapshot {
         "13_buffer.js",
         "30_fs.js",
         "30_os.js",
-        "40_diagnostics.js",
         "40_fs_events.js",
         "40_http.js",
         "40_process.js",
