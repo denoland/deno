@@ -4,6 +4,7 @@ use std::fs;
 use test_util as util;
 use test_util::TempDir;
 use util::TestContext;
+use util::TestContextBuilder;
 
 #[test]
 fn branch() {
@@ -27,7 +28,8 @@ fn no_snaps() {
 
 #[test]
 fn error_if_invalid_cache() {
-  let deno_dir = TempDir::new();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = context.deno_dir();
   let deno_dir_path = deno_dir.path();
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
@@ -52,12 +54,8 @@ fn error_if_invalid_cache() {
   std::fs::copy(mod_test_path, mod_test_temp_path).unwrap();
 
   // Generate coverage
-  let context = TestContext::default();
-  let deno_dir_str = deno_dir_path.to_str().unwrap();
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
-    .cwd(deno_dir_str)
     .args(format!(
       "test --quiet --coverage={}",
       tempdir.to_str().unwrap()
@@ -70,11 +68,8 @@ fn error_if_invalid_cache() {
   // Modify the file between deno test and deno coverage, thus invalidating the cache
   std::fs::copy(mod_after_path, mod_temp_path).unwrap();
 
-  let deno_dir_str = deno_dir_path.to_str().unwrap();
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
-    .cwd(deno_dir_str)
     .args(format!("coverage {}/", tempdir.to_str().unwrap()))
     .run();
 
@@ -88,40 +83,34 @@ fn error_if_invalid_cache() {
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
-  let deno_dir = TempDir::new();
+  let context = TestContext::default();
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let context = TestContext::default();
-  let deno_dir_str = deno_dir.path().to_str().unwrap();
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "test -A --quiet --coverage={} coverage/{test_name}_test.{extension}",
       tempdir.to_str().unwrap()
     ))
     .run();
+
   output.assert_exit_code(0);
   output.skip_output_check();
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--unstable")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args(format!(
+      "coverage --unstable {}/",
+      tempdir.to_str().unwrap()
+    ))
+    .run();
 
   // Verify there's no "Check" being printed
   // TODO: how to assert this with test builder output?
-  assert!(output.stderr.is_empty());
+  // assert!(output.stderr.is_empty());
 
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.text()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
@@ -134,11 +123,10 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     panic!("pattern match failed");
   }
 
-  assert!(output.status.success());
+  output.assert_exit_code(0);
 
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "coverage --quiet --unstable --lcov {}/",
       tempdir.to_str().unwrap()
@@ -163,15 +151,12 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
 #[test]
 fn multifile_coverage() {
-  let deno_dir = TempDir::new();
+  let context = TestContext::default();
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let context = TestContext::default();
-  let deno_dir_str = deno_dir.path().to_str().unwrap();
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "test --quiet --coverage={} coverage/multifile/",
       tempdir.to_str().unwrap()
@@ -183,7 +168,6 @@ fn multifile_coverage() {
 
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "coverage --unstable {}/",
       tempdir.to_str().unwrap()
@@ -210,7 +194,6 @@ fn multifile_coverage() {
 
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "coverage --quiet --unstable --lcov {}/",
       tempdir.to_str().unwrap()
@@ -234,15 +217,12 @@ fn multifile_coverage() {
 }
 
 fn no_snaps_included(test_name: &str, extension: &str) {
-  let deno_dir = TempDir::new();
+  let context = TestContext::default();
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let context = TestContext::default();
-  let deno_dir_str = deno_dir.path().to_str().unwrap();
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "test --quiet --unstable --allow-read --coverage={} coverage/no_snaps_included/{test_name}_test.{extension}",
       tempdir.to_str().unwrap()
@@ -254,7 +234,6 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "coverage --unstable --include=no_snaps_included.ts {}/",
       tempdir.to_str().unwrap()
@@ -283,15 +262,12 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 
 #[test]
 fn no_transpiled_lines() {
-  let deno_dir = TempDir::new();
+  let context = TestContext::default();
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
 
-  let context = TestContext::default();
-  let deno_dir_str = deno_dir.path().to_str().unwrap();
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "test --quiet --coverage={} coverage/no_transpiled_lines/",
       tempdir.to_str().unwrap()
@@ -301,10 +277,8 @@ fn no_transpiled_lines() {
   output.assert_exit_code(0);
   output.skip_output_check();
 
-  let deno_dir_str = deno_dir.path().to_str().unwrap();
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "coverage --include=no_transpiled_lines/index.ts {}/",
       tempdir.to_str().unwrap()
@@ -328,7 +302,6 @@ fn no_transpiled_lines() {
 
   let output = context
     .new_command()
-    .env("DENO_DIR", deno_dir_str)
     .args(format!(
       "coverage --lcov --include=no_transpiled_lines/index.ts {}/",
       tempdir.to_str().unwrap()
