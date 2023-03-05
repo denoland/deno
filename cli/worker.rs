@@ -420,7 +420,7 @@ pub async fn create_main_worker_for_test_or_bench(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -438,7 +438,7 @@ async fn create_main_worker_internal(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
   bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
@@ -642,7 +642,7 @@ fn create_web_worker_pre_execute_module_callback(
 
 fn create_web_worker_callback(
   ps: ProcState,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let maybe_inspector_server = ps.maybe_inspector_server.clone();

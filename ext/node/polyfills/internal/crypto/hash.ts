@@ -5,24 +5,24 @@ import {
   TextDecoder,
   TextEncoder,
 } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { Transform } from "internal:deno_node/polyfills/stream.ts";
-import { encode as encodeToHex } from "internal:deno_node/polyfills/internal/crypto/_hex.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
+import { Transform } from "internal:deno_node/stream.ts";
+import { encode as encodeToHex } from "internal:deno_node/internal/crypto/_hex.ts";
 import {
   forgivingBase64Encode as encodeToBase64,
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "internal:deno_web/00_infra.js";
-import type { TransformOptions } from "internal:deno_node/polyfills/_stream.d.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+import type { TransformOptions } from "internal:deno_node/_stream.d.ts";
+import { validateString } from "internal:deno_node/internal/validators.mjs";
 import type {
   BinaryToTextEncoding,
   Encoding,
-} from "internal:deno_node/polyfills/internal/crypto/types.ts";
+} from "internal:deno_node/internal/crypto/types.ts";
 import {
   KeyObject,
   prepareSecretKey,
-} from "internal:deno_node/polyfills/internal/crypto/keys.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+} from "internal:deno_node/internal/crypto/keys.ts";
+import { notImplemented } from "internal:deno_node/_utils.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 

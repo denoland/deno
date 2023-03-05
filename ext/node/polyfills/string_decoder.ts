@@ -20,11 +20,11 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
 import {
   normalizeEncoding as castEncoding,
   notImplemented,
-} from "internal:deno_node/polyfills/_utils.ts";
+} from "internal:deno_node/_utils.ts";
 
 enum NotImplemented {
   "ascii",

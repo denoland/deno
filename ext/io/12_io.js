@@ -7,6 +7,10 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
+import {
+  readableStreamForRid,
+  writableStreamForRid,
+} from "internal:deno_web/06_streams.js";
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -225,6 +229,105 @@ async function readAllInnerSized(r, size, options) {
   }
 }
 
+class Stdin {
+  #readable;
+
+  constructor() {
+  }
+
+  get rid() {
+    return 0;
+  }
+
+  read(p) {
+    return read(this.rid, p);
+  }
+
+  readSync(p) {
+    return readSync(this.rid, p);
+  }
+
+  close() {
+    core.close(this.rid);
+  }
+
+  get readable() {
+    if (this.#readable === undefined) {
+      this.#readable = readableStreamForRid(this.rid);
+    }
+    return this.#readable;
+  }
+
+  setRaw(mode, options = {}) {
+    const cbreak = !!(options.cbreak ?? false);
+    ops.op_stdin_set_raw(mode, cbreak);
+  }
+}
+
+class Stdout {
+  #writable;
+
+  constructor() {
+  }
+
+  get rid() {
+    return 1;
+  }
+
+  write(p) {
+    return write(this.rid, p);
+  }
+
+  writeSync(p) {
+    return writeSync(this.rid, p);
+  }
+
+  close() {
+    core.close(this.rid);
+  }
+
+  get writable() {
+    if (this.#writable === undefined) {
+      this.#writable = writableStreamForRid(this.rid);
+    }
+    return this.#writable;
+  }
+}
+
+class Stderr {
+  #writable;
+
+  constructor() {
+  }
+
+  get rid() {
+    return 2;
+  }
+
+  write(p) {
+    return write(this.rid, p);
+  }
+
+  writeSync(p) {
+    return writeSync(this.rid, p);
+  }
+
+  close() {
+    core.close(this.rid);
+  }
+
+  get writable() {
+    if (this.#writable === undefined) {
+      this.#writable = writableStreamForRid(this.rid);
+    }
+    return this.#writable;
+  }
+}
+
+const stdin = new Stdin();
+const stdout = new Stdout();
+const stderr = new Stderr();
+
 export {
   copy,
   iter,
@@ -237,6 +340,9 @@ export {
   readAllSyncSized,
   readSync,
   SeekMode,
+  stderr,
+  stdin,
+  stdout,
   write,
   writeSync,
 };

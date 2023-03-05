@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { denoErrorToNodeError } from "internal:deno_node/polyfills/internal/errors.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+import { denoErrorToNodeError } from "internal:deno_node/internal/errors.ts";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 export type statOptions = {
   bigint: boolean;
