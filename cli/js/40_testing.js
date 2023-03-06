@@ -3,9 +3,9 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
-import { setExitHandler } from "internal:runtime/js/30_os.js";
+import { setExitHandler } from "internal:runtime/30_os.js";
 import { Console } from "internal:deno_console/02_console.js";
-import { serializePermissions } from "internal:runtime/js/10_permissions.js";
+import { serializePermissions } from "internal:runtime/10_permissions.js";
 import { assert } from "internal:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -1424,6 +1424,6 @@ internals.testing = {
   enableBench,
 };
 
-import { denoNs } from "internal:runtime/js/90_deno_ns.js";
+import { denoNs } from "internal:runtime/90_deno_ns.js";
 denoNs.bench = bench;
 denoNs.test = test;

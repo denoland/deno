@@ -28,6 +28,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_io::Stdio;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
@@ -35,7 +36,6 @@ use log::debug;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 
@@ -254,11 +254,9 @@ impl MainWorker {
         options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::spawn::init(),
       ops::fs_events::init(),
-      ops::fs::init(),
-      ops::io::init(),
-      ops::io::init_stdio(options.stdio),
+      ops::fs::init::<PermissionsContainer>(),
+      deno_io::init(options.stdio),
       deno_tls::init(),
       deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
@@ -270,7 +268,7 @@ impl MainWorker {
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
-      ops::process::init(),
+      ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),

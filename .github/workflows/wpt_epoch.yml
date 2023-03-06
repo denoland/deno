@@ -72,7 +72,7 @@ jobs:
           deno run --unstable --allow-write --allow-read --allow-net           \
             --allow-env --allow-run --lock=tools/deno.lock.json                \
             ./tools/wpt.ts run                                                 \
-            --binary=$(which deno) --quiet --release --json=wpt.json --wptreport=wptreport.json || true
+            --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json || true
 
       - name: Upload wpt results to wpt.fyi
         env:

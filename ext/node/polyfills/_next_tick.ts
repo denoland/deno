@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
-import { core } from "internal:deno_node/polyfills/_core.ts";
-import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
-import { FixedQueue } from "internal:deno_node/polyfills/internal/fixed_queue.ts";
+import { core } from "internal:deno_node/_core.ts";
+import { validateFunction } from "internal:deno_node/internal/validators.mjs";
+import { _exiting } from "internal:deno_node/_process/exiting.ts";
+import { FixedQueue } from "internal:deno_node/internal/fixed_queue.ts";
 
 interface Tock {
   callback: (...args: Array<unknown>) => void;

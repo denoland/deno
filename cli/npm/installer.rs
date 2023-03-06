@@ -1,11 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_graph::npm::NpmPackageReq;
+
+use crate::args::package_json::PackageJsonDeps;
 
 use super::NpmRegistryApi;
 use super::NpmResolution;
@@ -15,7 +15,7 @@ struct PackageJsonDepsInstallerInner {
   has_installed: AtomicBool,
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
-  package_deps: BTreeMap<String, NpmPackageReq>,
+  package_deps: PackageJsonDeps,
 }
 
 /// Holds and controls installing dependencies from package.json.
@@ -26,7 +26,7 @@ impl PackageJsonDepsInstaller {
   pub fn new(
     npm_registry_api: NpmRegistryApi,
     npm_resolution: NpmResolution,
-    deps: Option<BTreeMap<String, NpmPackageReq>>,
+    deps: Option<PackageJsonDeps>,
   ) -> Self {
     Self(deps.map(|package_deps| {
       Arc::new(PackageJsonDepsInstallerInner {
@@ -38,7 +38,7 @@ impl PackageJsonDepsInstaller {
     }))
   }
 
-  pub fn package_deps(&self) -> Option<&BTreeMap<String, NpmPackageReq>> {
+  pub fn package_deps(&self) -> Option<&PackageJsonDeps> {
     self.0.as_ref().map(|inner| &inner.package_deps)
   }
 
@@ -47,7 +47,10 @@ impl PackageJsonDepsInstaller {
     if let Some(package_deps) = self.package_deps() {
       // ensure this looks at the package name and not the
       // bare specifiers (do not look at the keys!)
-      package_deps.values().any(|v| v.name == name)
+      package_deps
+        .values()
+        .filter_map(|r| r.as_ref().ok())
+        .any(|v| v.name == name)
     } else {
       false
     }
@@ -66,8 +69,11 @@ impl PackageJsonDepsInstaller {
       return Ok(()); // already installed by something else
     }
 
-    let mut package_reqs =
-      inner.package_deps.values().cloned().collect::<Vec<_>>();
+    let mut package_reqs = inner
+      .package_deps
+      .values()
+      .filter_map(|r| r.as_ref().ok())
+      .collect::<Vec<_>>();
     package_reqs.sort(); // deterministic resolution
 
     inner
@@ -80,7 +86,7 @@ impl PackageJsonDepsInstaller {
     for package_req in package_reqs {
       inner
         .npm_resolution
-        .resolve_package_req_as_pending(&package_req)?;
+        .resolve_package_req_as_pending(package_req)?;
     }
 
     Ok(())

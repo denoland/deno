@@ -21,6 +21,7 @@ members = [
   "ext/flash",
   "ext/ffi",
   "ext/http",
+  "ext/io",
   "ext/net",
   "ext/node",
   "ext/url",
@@ -62,6 +63,7 @@ deno_fetch = { version = "0.115.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.78.0", path = "./ext/ffi" }
 deno_flash = { version = "0.27.0", path = "./ext/flash" }
 deno_http = { version = "0.86.0", path = "./ext/http" }
+deno_io = { version = "0.1.0", path = "./ext/io" }
 deno_net = { version = "0.83.0", path = "./ext/net" }
 deno_node = { version = "0.28.0", path = "./ext/node" }
 deno_tls = { version = "0.78.0", path = "./ext/tls" }
@@ -203,6 +205,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_crypto]
 opt-level = 3
+[profile.bench.package.deno_node]
+opt-level = 3
 [profile.bench.package.num-bigint-dig]
 opt-level = 3
 [profile.bench.package.v8]
@@ -260,6 +264,8 @@ opt-level = 3
 [profile.release.package.deno_web]
 opt-level = 3
 [profile.release.package.deno_crypto]
+opt-level = 3
+[profile.release.package.deno_node]
 opt-level = 3
 [profile.release.package.deno_broadcast_channel]
 opt-level = 3

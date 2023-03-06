@@ -1,4 +1,3 @@
-Check [WILDCARD]/testdata/test/ops_sanitizer_nexttick.ts
 running 2 tests from ./test/ops_sanitizer_nexttick.ts
 test 1 ... ok ([WILDCARD])
 test 2 ... ok ([WILDCARD])

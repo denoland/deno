@@ -1,1 +1,1 @@
-import "internal:runtime/js/01_build.js";
+import "internal:runtime/01_errors.js";

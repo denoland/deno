@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Encodings } from "internal:deno_node/polyfills/_utils.ts";
-import { fromFileUrl } from "internal:deno_node/polyfills/path.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+import { Encodings } from "internal:deno_node/_utils.ts";
+import { fromFileUrl } from "internal:deno_node/path.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
 import {
   CallbackWithError,
   checkEncoding,
@@ -9,17 +9,17 @@ import {
   getOpenOptions,
   isFileOptions,
   WriteFileOptions,
-} from "internal:deno_node/polyfills/_fs/_fs_common.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
+} from "internal:deno_node/_fs/_fs_common.ts";
+import { isWindows } from "internal:deno_node/_util/os.ts";
 import {
   AbortError,
   denoErrorToNodeError,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "internal:deno_node/internal/errors.ts";
 import {
   showStringCoercionDeprecation,
   validateStringAfterArrayBufferView,
-} from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+} from "internal:deno_node/internal/fs/utils.mjs";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;

@@ -333,6 +333,8 @@ declare namespace Deno {
    *
    * Requires `allow-sys` permission.
    *
+   * On Windows there is no API available to retrieve this information and this method returns `[ 0, 0, 0 ]`.
+   *
    * @tags allow-sys
    * @category Observability
    */
@@ -3479,7 +3481,7 @@ declare namespace Deno {
    *
    * ### Truncate part of the file
    *
-   * ```
+   * ```ts
    * const file = await Deno.makeTempFile();
    * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
    * await Deno.truncate(file, 7);
@@ -4093,7 +4095,7 @@ declare namespace Deno {
     unref(): void;
   }
 
-  /** 
+  /**
    * Options which can be set when calling {@linkcode Deno.Command}.
    *
    * @category Sub Process
@@ -4157,7 +4159,7 @@ declare namespace Deno {
     windowsRawArguments?: boolean;
   }
 
-  /** 
+  /**
    * @category Sub Process
    */
   export interface CommandStatus {
@@ -4170,7 +4172,7 @@ declare namespace Deno {
     signal: Signal | null;
   }
 
-  /** 
+  /**
    * The interface returned from calling {@linkcode Command.output} or
    * {@linkcode Command.outputSync} which represents the result of spawning the
    * child process.
@@ -4718,7 +4720,7 @@ declare namespace Deno {
    *
    * Then `Deno.args` will contain:
    *
-   * ```
+   * ```ts
    * [ "/etc/passwd" ]
    * ```
    *

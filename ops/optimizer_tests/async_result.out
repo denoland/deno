@@ -26,7 +26,6 @@ impl op_async_result {
             is_async: true,
             is_unstable: false,
             is_v8: false,
-            argc: 1usize,
         }
     }
     #[inline]
