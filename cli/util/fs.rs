@@ -14,6 +14,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use walkdir::WalkDir;
 
@@ -469,6 +470,104 @@ pub fn dir_size(path: &Path) -> std::io::Result<u64> {
     };
   }
   Ok(total)
+}
+
+struct LaxSingleProcessFileLockFlagInner {
+  file_path: PathBuf,
+  fs_file: std::fs::File,
+  finished_token: Arc<tokio_util::sync::CancellationToken>,
+}
+
+impl Drop for LaxSingleProcessFileLockFlagInner {
+  fn drop(&mut self) {
+    use fs3::FileExt;
+    self.finished_token.cancel();
+    if let Err(err) = self.fs_file.unlock() {
+      log::debug!(
+        "Failed releasing lock for {}. {:#}",
+        self.file_path.display(),
+        err
+      );
+    }
+  }
+}
+
+pub struct LaxSingleProcessFileLockFlag(
+  Option<LaxSingleProcessFileLockFlagInner>,
+);
+
+impl LaxSingleProcessFileLockFlag {
+  pub async fn lock(file_path: PathBuf) -> Self {
+    log::debug!("Acquiring file lock at {}", file_path.display());
+    use fs3::FileExt;
+    let last_updated_path = file_path.with_extension("lock.poll");
+    let open_result = std::fs::OpenOptions::new()
+      .read(true)
+      .write(true)
+      .create(true)
+      .open(&file_path);
+    let inner = match open_result {
+      Ok(fs_file) => loop {
+        let lock_result = fs_file.try_lock_exclusive();
+        match lock_result {
+          Ok(_) => {
+            log::debug!("Acquired file lock at {}", file_path.display());
+            let _ignore = std::fs::write(&last_updated_path, "");
+            let token = Arc::new(tokio_util::sync::CancellationToken::new());
+
+            // Spawn a task that will continually update a file signalling
+            // the lock is alive. This is a fail safe for when a file lock
+            // is never released.
+            tokio::task::spawn({
+              let token = token.clone();
+              let last_updated_path = last_updated_path.clone();
+              async move {
+                while !token.is_cancelled() {
+                  let _ignore = std::fs::write(&last_updated_path, "");
+                  tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+              }
+            });
+
+            break Some(LaxSingleProcessFileLockFlagInner {
+              file_path,
+              fs_file,
+              finished_token: token,
+            });
+          }
+          Err(_) => {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            match std::fs::metadata(&last_updated_path)
+              .and_then(|p| p.modified())
+            {
+              Ok(last_updated_time) => {
+                let current_time = std::time::SystemTime::now();
+                match current_time.duration_since(last_updated_time) {
+                  Ok(duration) => {
+                    if duration.as_millis() > 1_000 {
+                      break None;
+                    }
+                  }
+                  Err(_) => break None,
+                }
+              }
+              Err(_) => break None,
+            }
+          }
+        }
+      },
+      Err(err) => {
+        log::debug!(
+          "Failed to open file lock at {}. {:#}",
+          file_path.display(),
+          err
+        );
+        None
+      }
+    };
+
+    Self(inner)
+  }
 }
 
 #[cfg(test)]

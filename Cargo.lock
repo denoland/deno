@@ -850,6 +850,7 @@ dependencies = [
  "fancy-regex",
  "flaky_test",
  "flate2",
+ "fs3",
  "fwdansi",
  "glibc_version",
  "http",

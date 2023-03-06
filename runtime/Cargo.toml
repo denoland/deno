@@ -87,7 +87,7 @@ atty.workspace = true
 dlopen.workspace = true
 encoding_rs.workspace = true
 filetime = "0.2.16"
-fs3 = "0.5.0"
+fs3.workspace = true
 http.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true

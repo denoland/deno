@@ -10,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::util::fs::symlink_dir;
+use crate::util::fs::LaxSingleProcessFileLockFlag;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -236,6 +237,11 @@ async fn sync_resolution_with_fs(
     format!("Creating '{}'", deno_local_registry_dir.display())
   })?;
 
+  let process_lock = LaxSingleProcessFileLockFlag::lock(
+    deno_local_registry_dir.join(".deno.lock"),
+  )
+  .await;
+
   // 1. Write all the packages out the .deno directory.
   //
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
@@ -252,6 +258,7 @@ async fn sync_resolution_with_fs(
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
   for package in &package_partitions.packages {
+    eprintln!("PACKAGE: {}", package.pkg_id.as_serialized());
     let folder_name =
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&folder_name);
@@ -393,6 +400,8 @@ async fn sync_resolution_with_fs(
       pending_packages.push_back((id.clone(), false));
     }
   }
+
+  drop(process_lock);
 
   Ok(())
 }
