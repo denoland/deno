@@ -65,7 +65,7 @@ pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new_external_onebyte_static(s, b"").unwrap();
+  let source_map_url = v8::String::empty(s);
   v8::ScriptOrigin::new(
     s,
     resource_name.into(),
@@ -84,7 +84,7 @@ pub fn module_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new_external_onebyte_static(s, b"").unwrap();
+  let source_map_url = v8::String::empty(s);
   v8::ScriptOrigin::new(
     s,
     resource_name.into(),
