@@ -321,13 +321,15 @@ impl MainWorker {
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let bootstrap_str = v8::String::new(scope, "bootstrap").unwrap();
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
       let bootstrap_ns: v8::Local<v8::Object> = global_obj
         .get(scope, bootstrap_str.into())
         .unwrap()
         .try_into()
         .unwrap();
-      let main_runtime_str = v8::String::new(scope, "mainRuntime").unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"mainRuntime").unwrap();
       let bootstrap_fn =
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =
