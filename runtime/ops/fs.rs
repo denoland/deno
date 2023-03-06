@@ -1,9 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::io::StdFileResource;
 use super::utils::into_string;
 use crate::fs_util::canonicalize_path;
-use crate::permissions::PermissionsContainer;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -16,6 +14,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
+use deno_io::StdFileResource;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -36,18 +35,31 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+pub trait FsPermissions {
+  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
+  fn check_read_blind(
+    &mut self,
+    p: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
+}
+
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-pub fn init() -> Extension {
+pub fn init<P: FsPermissions + 'static>() -> Extension {
   Extension::builder("deno_fs")
     .ops(vec![
-      op_open_sync::decl(),
-      op_open_async::decl(),
-      op_write_file_sync::decl(),
-      op_write_file_async::decl(),
+      op_open_sync::decl::<P>(),
+      op_open_async::decl::<P>(),
+      op_write_file_sync::decl::<P>(),
+      op_write_file_async::decl::<P>(),
       op_seek_sync::decl(),
       op_seek_async::decl(),
       op_fdatasync_sync::decl(),
@@ -61,48 +73,48 @@ pub fn init() -> Extension {
       op_funlock_sync::decl(),
       op_funlock_async::decl(),
       op_umask::decl(),
-      op_chdir::decl(),
-      op_mkdir_sync::decl(),
-      op_mkdir_async::decl(),
-      op_chmod_sync::decl(),
-      op_chmod_async::decl(),
-      op_chown_sync::decl(),
-      op_chown_async::decl(),
-      op_remove_sync::decl(),
-      op_remove_async::decl(),
-      op_copy_file_sync::decl(),
-      op_copy_file_async::decl(),
-      op_stat_sync::decl(),
-      op_stat_async::decl(),
-      op_realpath_sync::decl(),
-      op_realpath_async::decl(),
-      op_read_dir_sync::decl(),
-      op_read_dir_async::decl(),
-      op_rename_sync::decl(),
-      op_rename_async::decl(),
-      op_link_sync::decl(),
-      op_link_async::decl(),
-      op_symlink_sync::decl(),
-      op_symlink_async::decl(),
-      op_read_link_sync::decl(),
-      op_read_link_async::decl(),
+      op_chdir::decl::<P>(),
+      op_mkdir_sync::decl::<P>(),
+      op_mkdir_async::decl::<P>(),
+      op_chmod_sync::decl::<P>(),
+      op_chmod_async::decl::<P>(),
+      op_chown_sync::decl::<P>(),
+      op_chown_async::decl::<P>(),
+      op_remove_sync::decl::<P>(),
+      op_remove_async::decl::<P>(),
+      op_copy_file_sync::decl::<P>(),
+      op_copy_file_async::decl::<P>(),
+      op_stat_sync::decl::<P>(),
+      op_stat_async::decl::<P>(),
+      op_realpath_sync::decl::<P>(),
+      op_realpath_async::decl::<P>(),
+      op_read_dir_sync::decl::<P>(),
+      op_read_dir_async::decl::<P>(),
+      op_rename_sync::decl::<P>(),
+      op_rename_async::decl::<P>(),
+      op_link_sync::decl::<P>(),
+      op_link_async::decl::<P>(),
+      op_symlink_sync::decl::<P>(),
+      op_symlink_async::decl::<P>(),
+      op_read_link_sync::decl::<P>(),
+      op_read_link_async::decl::<P>(),
       op_ftruncate_sync::decl(),
       op_ftruncate_async::decl(),
-      op_truncate_sync::decl(),
-      op_truncate_async::decl(),
-      op_make_temp_dir_sync::decl(),
-      op_make_temp_dir_async::decl(),
-      op_make_temp_file_sync::decl(),
-      op_make_temp_file_async::decl(),
-      op_cwd::decl(),
+      op_truncate_sync::decl::<P>(),
+      op_truncate_async::decl::<P>(),
+      op_make_temp_dir_sync::decl::<P>(),
+      op_make_temp_dir_async::decl::<P>(),
+      op_make_temp_file_sync::decl::<P>(),
+      op_make_temp_file_async::decl::<P>(),
+      op_cwd::decl::<P>(),
       op_futime_sync::decl(),
       op_futime_async::decl(),
-      op_utime_sync::decl(),
-      op_utime_async::decl(),
-      op_readfile_sync::decl(),
-      op_readfile_text_sync::decl(),
-      op_readfile_async::decl(),
-      op_readfile_text_async::decl(),
+      op_utime_sync::decl::<P>(),
+      op_utime_async::decl::<P>(),
+      op_readfile_sync::decl::<P>(),
+      op_readfile_text_sync::decl::<P>(),
+      op_readfile_async::decl::<P>(),
+      op_readfile_text_async::decl::<P>(),
     ])
     .build()
 }
@@ -124,13 +136,16 @@ pub struct OpenOptions {
 }
 
 #[inline]
-fn open_helper(
+fn open_helper<P>(
   state: &mut OpState,
   path: &str,
   mode: Option<u32>,
   options: Option<&OpenOptions>,
   api_name: &str,
-) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
+) -> Result<(PathBuf, std::fs::OpenOptions), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(path).to_path_buf();
 
   let mut open_options = std::fs::OpenOptions::new();
@@ -147,7 +162,7 @@ fn open_helper(
     let _ = mode; // avoid unused warning
   }
 
-  let permissions = state.borrow_mut::<PermissionsContainer>();
+  let permissions = state.borrow_mut::<P>();
 
   match options {
     None => {
@@ -183,14 +198,17 @@ fn open_helper(
 }
 
 #[op]
-fn op_open_sync(
+fn op_open_sync<P>(
   state: &mut OpState,
   path: String,
   options: Option<OpenOptions>,
   mode: Option<u32>,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let (path, open_options) =
-    open_helper(state, &path, mode, options.as_ref(), "Deno.openSync()")?;
+    open_helper::<P>(state, &path, mode, options.as_ref(), "Deno.openSync()")?;
   let std_file = open_options.open(&path).map_err(|err| {
     default_err_mapper(err, format!("open '{}'", path.display()))
   })?;
@@ -200,13 +218,16 @@ fn op_open_sync(
 }
 
 #[op]
-async fn op_open_async(
+async fn op_open_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   options: Option<OpenOptions>,
   mode: Option<u32>,
-) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(
+) -> Result<ResourceId, AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let (path, open_options) = open_helper::<P>(
     &mut state.borrow_mut(),
     &path,
     mode,
@@ -241,7 +262,7 @@ fn write_open_options(
 }
 
 #[op]
-fn op_write_file_sync(
+fn op_write_file_sync<P>(
   state: &mut OpState,
   path: String,
   mode: Option<u32>,
@@ -249,8 +270,11 @@ fn op_write_file_sync(
   create: bool,
   create_new: bool,
   data: ZeroCopyBuf,
-) -> Result<(), AnyError> {
-  let (path, open_options) = open_helper(
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let (path, open_options) = open_helper::<P>(
     state,
     &path,
     mode,
@@ -261,7 +285,7 @@ fn op_write_file_sync(
 }
 
 #[op]
-async fn op_write_file_async(
+async fn op_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   mode: Option<u32>,
@@ -270,8 +294,11 @@ async fn op_write_file_async(
   create_new: bool,
   data: ZeroCopyBuf,
   cancel_rid: Option<ResourceId>,
-) -> Result<(), AnyError> {
-  let (path, open_options) = open_helper(
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let (path, open_options) = open_helper::<P>(
     &mut state.borrow_mut(),
     &path,
     mode,
@@ -545,11 +572,12 @@ fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
 }
 
 #[op]
-fn op_chdir(state: &mut OpState, directory: &str) -> Result<(), AnyError> {
+fn op_chdir<P>(state: &mut OpState, directory: &str) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let d = PathBuf::from(&directory);
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_read(&d, "Deno.chdir()")?;
+  state.borrow_mut::<P>().check_read(&d, "Deno.chdir()")?;
   set_current_dir(&d)
     .map_err(|err| default_err_mapper(err, format!("chdir '{directory}'")))?;
   Ok(())
@@ -564,11 +592,17 @@ pub struct MkdirArgs {
 }
 
 #[op]
-fn op_mkdir_sync(state: &mut OpState, args: MkdirArgs) -> Result<(), AnyError> {
+fn op_mkdir_sync<P>(
+  state: &mut OpState,
+  args: MkdirArgs,
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_write(&path, "Deno.mkdirSync()")?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
@@ -585,18 +619,19 @@ fn op_mkdir_sync(state: &mut OpState, args: MkdirArgs) -> Result<(), AnyError> {
 }
 
 #[op]
-async fn op_mkdir_async(
+async fn op_mkdir_async<P>(
   state: Rc<RefCell<OpState>>,
   args: MkdirArgs,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   {
     let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_write(&path, "Deno.mkdir()")?;
+    state.borrow_mut::<P>().check_write(&path, "Deno.mkdir()")?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -618,34 +653,38 @@ async fn op_mkdir_async(
 }
 
 #[op]
-fn op_chmod_sync(
+fn op_chmod_sync<P>(
   state: &mut OpState,
   path: &str,
   mode: u32,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(path);
   let mode = mode & 0o777;
 
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_write(path, "Deno.chmodSync()")?;
   raw_chmod(path, mode)
 }
 
 #[op]
-async fn op_chmod_async(
+async fn op_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   mode: u32,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(&path).to_path_buf();
   let mode = mode & 0o777;
 
   {
     let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_write(&path, "Deno.chmod()")?;
+    state.borrow_mut::<P>().check_write(&path, "Deno.chmod()")?;
   }
 
   tokio::task::spawn_blocking(move || raw_chmod(&path, mode))
@@ -673,15 +712,18 @@ fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
 }
 
 #[op]
-fn op_chown_sync(
+fn op_chown_sync<P>(
   state: &mut OpState,
   path: &str,
   #[cfg_attr(windows, allow(unused_variables))] uid: Option<u32>,
   #[cfg_attr(windows, allow(unused_variables))] gid: Option<u32>,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(path).to_path_buf();
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_write(&path, "Deno.chownSync()")?;
   #[cfg(unix)]
   {
@@ -707,19 +749,20 @@ fn op_chown_sync(
 }
 
 #[op]
-async fn op_chown_async(
+async fn op_chown_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   #[cfg_attr(windows, allow(unused_variables))] uid: Option<u32>,
   #[cfg_attr(windows, allow(unused_variables))] gid: Option<u32>,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(&path).to_path_buf();
 
   {
     let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_write(&path, "Deno.chown()")?;
+    state.borrow_mut::<P>().check_write(&path, "Deno.chown()")?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -748,15 +791,18 @@ async fn op_chown_async(
 }
 
 #[op]
-fn op_remove_sync(
+fn op_remove_sync<P>(
   state: &mut OpState,
   path: &str,
   recursive: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(path);
 
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_write(&path, "Deno.removeSync()")?;
 
   #[cfg(not(unix))]
@@ -793,17 +839,20 @@ fn op_remove_sync(
 }
 
 #[op]
-async fn op_remove_async(
+async fn op_remove_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   recursive: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<PermissionsContainer>()
+      .borrow_mut::<P>()
       .check_write(&path, "Deno.remove()")?;
   }
 
@@ -845,15 +894,18 @@ async fn op_remove_async(
 }
 
 #[op]
-fn op_copy_file_sync(
+fn op_copy_file_sync<P>(
   state: &mut OpState,
   from: &str,
   to: &str,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let from_path = PathBuf::from(from);
   let to_path = PathBuf::from(to);
 
-  let permissions = state.borrow_mut::<PermissionsContainer>();
+  let permissions = state.borrow_mut::<P>();
   permissions.check_read(&from_path, "Deno.copyFileSync()")?;
   permissions.check_write(&to_path, "Deno.copyFileSync()")?;
 
@@ -952,17 +1004,20 @@ fn op_copy_file_sync(
 }
 
 #[op]
-async fn op_copy_file_async(
+async fn op_copy_file_async<P>(
   state: Rc<RefCell<OpState>>,
   from: String,
   to: String,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let from = PathBuf::from(&from);
   let to = PathBuf::from(&to);
 
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<PermissionsContainer>();
+    let permissions = state.borrow_mut::<P>();
     permissions.check_read(&from, "Deno.copyFile()")?;
     permissions.check_write(&to, "Deno.copyFile()")?;
   }
@@ -1113,15 +1168,18 @@ pub struct StatArgs {
 }
 
 #[op]
-fn op_stat_sync(
+fn op_stat_sync<P>(
   state: &mut OpState,
   path: &str,
   lstat: bool,
   out_buf: &mut [u32],
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(path);
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_read(&path, "Deno.statSync()")?;
   let err_mapper =
     |err| default_err_mapper(err, format!("stat '{}'", path.display()));
@@ -1138,18 +1196,19 @@ fn op_stat_sync(
 }
 
 #[op]
-async fn op_stat_async(
+async fn op_stat_async<P>(
   state: Rc<RefCell<OpState>>,
   args: StatArgs,
-) -> Result<FsStat, AnyError> {
+) -> Result<FsStat, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
   {
     let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read(&path, "Deno.stat()")?;
+    state.borrow_mut::<P>().check_read(&path, "Deno.stat()")?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -1168,13 +1227,16 @@ async fn op_stat_async(
 }
 
 #[op]
-fn op_realpath_sync(
+fn op_realpath_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
-  let permissions = state.borrow_mut::<PermissionsContainer>();
+  let permissions = state.borrow_mut::<P>();
   permissions.check_read(&path, "Deno.realPathSync()")?;
   if path.is_relative() {
     permissions.check_read_blind(
@@ -1193,15 +1255,18 @@ fn op_realpath_sync(
 }
 
 #[op]
-async fn op_realpath_async(
+async fn op_realpath_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<PermissionsContainer>();
+    let permissions = state.borrow_mut::<P>();
     permissions.check_read(&path, "Deno.realPath()")?;
     if path.is_relative() {
       permissions.check_read_blind(
@@ -1234,14 +1299,17 @@ pub struct DirEntry {
 }
 
 #[op]
-fn op_read_dir_sync(
+fn op_read_dir_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<Vec<DirEntry>, AnyError> {
+) -> Result<Vec<DirEntry>, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_read(&path, "Deno.readDirSync()")?;
 
   debug!("op_read_dir_sync {}", path.display());
@@ -1276,15 +1344,18 @@ fn op_read_dir_sync(
 }
 
 #[op]
-async fn op_read_dir_async(
+async fn op_read_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
-) -> Result<Vec<DirEntry>, AnyError> {
+) -> Result<Vec<DirEntry>, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<PermissionsContainer>()
+      .borrow_mut::<P>()
       .check_read(&path, "Deno.readDir()")?;
   }
   tokio::task::spawn_blocking(move || {
@@ -1323,15 +1394,18 @@ async fn op_read_dir_async(
 }
 
 #[op]
-fn op_rename_sync(
+fn op_rename_sync<P>(
   state: &mut OpState,
   oldpath: &str,
   newpath: &str,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(oldpath);
   let newpath = PathBuf::from(newpath);
 
-  let permissions = state.borrow_mut::<PermissionsContainer>();
+  let permissions = state.borrow_mut::<P>();
   permissions.check_read(&oldpath, "Deno.renameSync()")?;
   permissions.check_write(&oldpath, "Deno.renameSync()")?;
   permissions.check_write(&newpath, "Deno.renameSync()")?;
@@ -1346,16 +1420,19 @@ fn op_rename_sync(
 }
 
 #[op]
-async fn op_rename_async(
+async fn op_rename_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&oldpath);
   let newpath = PathBuf::from(&newpath);
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<PermissionsContainer>();
+    let permissions = state.borrow_mut::<P>();
     permissions.check_read(&oldpath, "Deno.rename()")?;
     permissions.check_write(&oldpath, "Deno.rename()")?;
     permissions.check_write(&newpath, "Deno.rename()")?;
@@ -1375,15 +1452,18 @@ async fn op_rename_async(
 }
 
 #[op]
-fn op_link_sync(
+fn op_link_sync<P>(
   state: &mut OpState,
   oldpath: &str,
   newpath: &str,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(oldpath);
   let newpath = PathBuf::from(newpath);
 
-  let permissions = state.borrow_mut::<PermissionsContainer>();
+  let permissions = state.borrow_mut::<P>();
   permissions.check_read(&oldpath, "Deno.linkSync()")?;
   permissions.check_write(&oldpath, "Deno.linkSync()")?;
   permissions.check_read(&newpath, "Deno.linkSync()")?;
@@ -1399,17 +1479,20 @@ fn op_link_sync(
 }
 
 #[op]
-async fn op_link_async(
+async fn op_link_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&oldpath);
   let newpath = PathBuf::from(&newpath);
 
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<PermissionsContainer>();
+    let permissions = state.borrow_mut::<P>();
     permissions.check_read(&oldpath, "Deno.link()")?;
     permissions.check_write(&oldpath, "Deno.link()")?;
     permissions.check_read(&newpath, "Deno.link()")?;
@@ -1431,20 +1514,23 @@ async fn op_link_async(
 }
 
 #[op]
-fn op_symlink_sync(
+fn op_symlink_sync<P>(
   state: &mut OpState,
   oldpath: &str,
   newpath: &str,
   _type: Option<String>,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(oldpath);
   let newpath = PathBuf::from(newpath);
 
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_write_all("Deno.symlinkSync()")?;
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_read_all("Deno.symlinkSync()")?;
 
   let err_mapper = |err| {
@@ -1490,23 +1576,22 @@ fn op_symlink_sync(
 }
 
 #[op]
-async fn op_symlink_async(
+async fn op_symlink_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
   _type: Option<String>,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&oldpath);
   let newpath = PathBuf::from(&newpath);
 
   {
     let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_write_all("Deno.symlink()")?;
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read_all("Deno.symlink()")?;
+    state.borrow_mut::<P>().check_write_all("Deno.symlink()")?;
+    state.borrow_mut::<P>().check_read_all("Deno.symlink()")?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -1554,14 +1639,17 @@ async fn op_symlink_async(
 }
 
 #[op]
-fn op_read_link_sync(
+fn op_read_link_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_read(&path, "Deno.readLink()")?;
 
   debug!("op_read_link_value {}", path.display());
@@ -1575,15 +1663,18 @@ fn op_read_link_sync(
 }
 
 #[op]
-async fn op_read_link_async(
+async fn op_read_link_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<PermissionsContainer>()
+      .borrow_mut::<P>()
       .check_read(&path, "Deno.readLink()")?;
   }
   tokio::task::spawn_blocking(move || {
@@ -1629,15 +1720,18 @@ async fn op_ftruncate_async(
 }
 
 #[op]
-fn op_truncate_sync(
+fn op_truncate_sync<P>(
   state: &mut OpState,
   path: &str,
   len: u64,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(path);
 
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_write(&path, "Deno.truncateSync()")?;
 
   debug!("op_truncate_sync {} {}", path.display(), len);
@@ -1652,17 +1746,20 @@ fn op_truncate_sync(
 }
 
 #[op]
-async fn op_truncate_async(
+async fn op_truncate_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   len: u64,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<PermissionsContainer>()
+      .borrow_mut::<P>()
       .check_write(&path, "Deno.truncate()")?;
   }
   tokio::task::spawn_blocking(move || {
@@ -1734,15 +1831,18 @@ pub struct MakeTempArgs {
 }
 
 #[op]
-fn op_make_temp_dir_sync(
+fn op_make_temp_dir_sync<P>(
   state: &mut OpState,
   args: MakeTempArgs,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state.borrow_mut::<PermissionsContainer>().check_write(
+  state.borrow_mut::<P>().check_write(
     dir.clone().unwrap_or_else(temp_dir).as_path(),
     "Deno.makeTempDirSync()",
   )?;
@@ -1763,16 +1863,19 @@ fn op_make_temp_dir_sync(
 }
 
 #[op]
-async fn op_make_temp_dir_async(
+async fn op_make_temp_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<PermissionsContainer>().check_write(
+    state.borrow_mut::<P>().check_write(
       dir.clone().unwrap_or_else(temp_dir).as_path(),
       "Deno.makeTempDir()",
     )?;
@@ -1797,15 +1900,18 @@ async fn op_make_temp_dir_async(
 }
 
 #[op]
-fn op_make_temp_file_sync(
+fn op_make_temp_file_sync<P>(
   state: &mut OpState,
   args: MakeTempArgs,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
-  state.borrow_mut::<PermissionsContainer>().check_write(
+  state.borrow_mut::<P>().check_write(
     dir.clone().unwrap_or_else(temp_dir).as_path(),
     "Deno.makeTempFileSync()",
   )?;
@@ -1826,16 +1932,19 @@ fn op_make_temp_file_sync(
 }
 
 #[op]
-async fn op_make_temp_file_async(
+async fn op_make_temp_file_async<P>(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<PermissionsContainer>().check_write(
+    state.borrow_mut::<P>().check_write(
       dir.clone().unwrap_or_else(temp_dir).as_path(),
       "Deno.makeTempFile()",
     )?;
@@ -1899,21 +2008,22 @@ async fn op_futime_async(
 }
 
 #[op]
-fn op_utime_sync(
+fn op_utime_sync<P>(
   state: &mut OpState,
   path: &str,
   atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
   mtime_nanos: u32,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(path);
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_write(&path, "Deno.utime()")?;
+  state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
   filetime::set_file_times(&path, atime, mtime).map_err(|err| {
     default_err_mapper(err, format!("utime '{}'", path.display()))
   })?;
@@ -1921,21 +2031,24 @@ fn op_utime_sync(
 }
 
 #[op]
-async fn op_utime_async(
+async fn op_utime_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
   mtime_nanos: u32,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
   state
     .borrow_mut()
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_write(&path, "Deno.utime()")?;
 
   tokio::task::spawn_blocking(move || {
@@ -1949,23 +2062,29 @@ async fn op_utime_async(
 }
 
 #[op]
-fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
+fn op_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = current_dir()?;
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_read_blind(&path, "CWD", "Deno.cwd()")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(path_str)
 }
 
 #[op]
-fn op_readfile_sync(
+fn op_readfile_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ZeroCopyBuf, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(&path);
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_read(path, "Deno.readFileSync()")?;
   Ok(
     std::fs::read(path)
@@ -1977,13 +2096,16 @@ fn op_readfile_sync(
 }
 
 #[op]
-fn op_readfile_text_sync(
+fn op_readfile_text_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   let path = Path::new(&path);
   state
-    .borrow_mut::<PermissionsContainer>()
+    .borrow_mut::<P>()
     .check_read(path, "Deno.readTextFileSync()")?;
   Ok(string_from_utf8_lossy(std::fs::read(path).map_err(
     |err| default_err_mapper(err, format!("readfile '{}'", path.display())),
@@ -1991,16 +2113,19 @@ fn op_readfile_text_sync(
 }
 
 #[op]
-async fn op_readfile_async(
+async fn op_readfile_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ZeroCopyBuf, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   {
     let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<PermissionsContainer>()
+      .borrow_mut::<P>()
       .check_read(path, "Deno.readFile()")?;
   }
 
@@ -2033,16 +2158,19 @@ async fn op_readfile_async(
 }
 
 #[op]
-async fn op_readfile_text_async(
+async fn op_readfile_text_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: FsPermissions + 'static,
+{
   {
     let path = Path::new(&path);
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<PermissionsContainer>()
+      .borrow_mut::<P>()
       .check_read(path, "Deno.readTextFile()")?;
   }
 

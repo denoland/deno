@@ -3,10 +3,10 @@
 import {
   setUnrefTimeout,
   Timeout,
-} from "internal:deno_node/polyfills/internal/timers.mjs";
-import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
-export { setUnrefTimeout } from "internal:deno_node/polyfills/internal/timers.mjs";
+} from "internal:deno_node/internal/timers.mjs";
+import { validateFunction } from "internal:deno_node/internal/validators.mjs";
+import { promisify } from "internal:deno_node/internal/util.mjs";
+export { setUnrefTimeout } from "internal:deno_node/internal/timers.mjs";
 import * as timers from "internal:deno_web/02_timers.js";
 
 const clearTimeout_ = timers.clearTimeout;

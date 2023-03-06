@@ -31,9 +31,9 @@ use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_io::Stdio;
+use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::ops::io::Stdio;
-use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -775,7 +775,6 @@ fn extract_files_from_regex_blocks(
           Some(&"mts") => MediaType::Mts,
           Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => media_type,
           _ => MediaType::Unknown,
         }
       } else {
@@ -832,7 +831,7 @@ fn extract_files_from_source_comments(
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.as_str().to_string(),
+    specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,

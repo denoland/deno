@@ -23,20 +23,17 @@
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
-import { GetAddrInfoReqWrap } from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
-import { HandleWrap } from "internal:deno_node/polyfills/internal_binding/handle_wrap.ts";
-import { ownerSymbol } from "internal:deno_node/polyfills/internal_binding/symbols.ts";
-import {
-  codeMap,
-  errorMap,
-} from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import type { ErrnoException } from "internal:deno_node/polyfills/internal/errors.ts";
-import { isIP } from "internal:deno_node/polyfills/internal/net.ts";
+} from "internal:deno_node/internal_binding/async_wrap.ts";
+import { GetAddrInfoReqWrap } from "internal:deno_node/internal_binding/cares_wrap.ts";
+import { HandleWrap } from "internal:deno_node/internal_binding/handle_wrap.ts";
+import { ownerSymbol } from "internal:deno_node/internal_binding/symbols.ts";
+import { codeMap, errorMap } from "internal:deno_node/internal_binding/uv.ts";
+import { notImplemented } from "internal:deno_node/_utils.ts";
+import { Buffer } from "internal:deno_node/buffer.ts";
+import type { ErrnoException } from "internal:deno_node/internal/errors.ts";
+import { isIP } from "internal:deno_node/internal/net.ts";
 
-import { isLinux, isWindows } from "internal:deno_node/polyfills/_util/os.ts";
+import { isLinux, isWindows } from "internal:deno_node/_util/os.ts";
 
 // @ts-ignore Deno[Deno.internal] is used on purpose here
 const DenoListenDatagram = Deno[Deno.internal]?.nodeUnstable?.listenDatagram ||

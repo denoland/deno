@@ -1,28 +1,28 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { Readline } from "internal:deno_node/polyfills/internal/readline/promises.mjs";
+import { Readline } from "internal:deno_node/internal/readline/promises.mjs";
 
 import {
   Interface as _Interface,
   kQuestion,
   kQuestionCancel,
-} from "internal:deno_node/polyfills/internal/readline/interface.mjs";
-import { AbortError } from "internal:deno_node/polyfills/internal/errors.ts";
-import { validateAbortSignal } from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "internal:deno_node/internal/readline/interface.mjs";
+import { AbortError } from "internal:deno_node/internal/errors.ts";
+import { validateAbortSignal } from "internal:deno_node/internal/validators.mjs";
 
-import { kEmptyObject } from "internal:deno_node/polyfills/internal/util.mjs";
-import type { Abortable } from "internal:deno_node/polyfills/_events.d.ts";
+import { kEmptyObject } from "internal:deno_node/internal/util.mjs";
+import type { Abortable } from "internal:deno_node/_events.d.ts";
 import type {
   AsyncCompleter,
   Completer,
   ReadLineOptions,
-} from "internal:deno_node/polyfills/_readline_shared_types.d.ts";
+} from "internal:deno_node/_readline_shared_types.d.ts";
 
 import type {
   ReadableStream,
   WritableStream,
-} from "internal:deno_node/polyfills/_global.d.ts";
+} from "internal:deno_node/_global.d.ts";
 
 /**
  * The `readline/promise` module provides an API for reading lines of input from a Readable stream one line at a time.

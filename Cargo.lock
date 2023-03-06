@@ -1162,6 +1162,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_io"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "nix",
+ "once_cell",
+ "tokio",
+ "winapi",
+]
+
+[[package]]
 name = "deno_lint"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1217,6 +1228,7 @@ version = "0.28.0"
 dependencies = [
  "deno_core",
  "digest 0.10.6",
+ "hex",
  "idna 0.3.0",
  "indexmap",
  "md-5",
@@ -1265,6 +1277,7 @@ dependencies = [
  "deno_ffi",
  "deno_flash",
  "deno_http",
+ "deno_io",
  "deno_napi",
  "deno_net",
  "deno_node",
@@ -2228,6 +2241,12 @@ checksum = "ee512640fe35acbfb4bb779db6f0d80704c2cacfa2e39b601ef3e3f47d1ae4c7"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hexf-parse"

@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+import { promisify } from "internal:deno_node/internal/util.mjs";
 
 type Options = { encoding: string };
 type Callback = (err: Error | null, path?: string) => void;
