@@ -24,8 +24,7 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "internal:deno_web/06_streams.js";
-import { pathFromURL } from "internal:runtime/06_util.js";
-import { build } from "internal:runtime/01_build.js";
+import { pathFromURL } from "internal:deno_web/00_infra.js";
 
 function chmodSync(path, mode) {
   ops.op_chmod_sync(pathFromURL(path), mode);
@@ -274,7 +273,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
 });
 
 function parseFileInfo(response) {
-  const unix = build.os === "darwin" || build.os === "linux";
+  const unix = core.build.os === "darwin" || core.build.os === "linux";
   return {
     isFile: response.isFile,
     isDirectory: response.isDirectory,

@@ -10,7 +10,6 @@ import * as net from "internal:deno_net/01_net.js";
 import * as tls from "internal:deno_net/02_tls.js";
 import * as http from "internal:deno_http/01_http.js";
 import * as flash from "internal:deno_flash/01_http.js";
-import * as build from "internal:runtime/01_build.js";
 import * as errors from "internal:runtime/01_errors.js";
 import * as version from "internal:runtime/01_version.ts";
 import * as permissions from "internal:runtime/10_permissions.js";
@@ -22,7 +21,6 @@ import * as fsEvents from "internal:runtime/40_fs_events.js";
 import * as process from "internal:runtime/40_process.js";
 import * as signals from "internal:runtime/40_signals.js";
 import * as tty from "internal:runtime/40_tty.js";
-import * as spawn from "internal:runtime/40_spawn.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "internal:runtime/40_http.js";
 
@@ -66,7 +64,7 @@ const denoNs = {
   renameSync: fs.renameSync,
   rename: fs.rename,
   version: version.version,
-  build: build.build,
+  build: core.build,
   statSync: fs.statSync,
   lstatSync: fs.lstatSync,
   stat: fs.stat,
@@ -148,9 +146,9 @@ const denoNs = {
   consoleSize: tty.consoleSize,
   gid: os.gid,
   uid: os.uid,
-  Command: spawn.Command,
+  Command: process.Command,
   // TODO(bartlomieju): why is this exported?
-  ChildProcess: spawn.ChildProcess,
+  ChildProcess: process.ChildProcess,
 };
 
 const denoNsUnstable = {

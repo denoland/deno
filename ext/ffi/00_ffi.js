@@ -2,7 +2,6 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferIsView,
@@ -32,7 +31,9 @@ const {
   SafeMap,
   SafeArrayIterator,
   SymbolFor,
+  WeakMap,
 } = primordials;
+import { pathFromURL } from "internal:deno_web/00_infra.js";
 
 /**
  * @param {BufferSource} source
@@ -203,6 +204,7 @@ const OUT_BUFFER = new Uint32Array(2);
 const OUT_BUFFER_64 = new BigInt64Array(
   TypedArrayPrototypeGetBuffer(OUT_BUFFER),
 );
+const POINTER_TO_BUFFER_WEAK_MAP = new WeakMap();
 class UnsafePointer {
   static create(value) {
     return ops.op_ffi_ptr_create(value);
@@ -219,7 +221,11 @@ class UnsafePointer {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       return value.pointer;
     }
-    return ops.op_ffi_ptr_of(value);
+    const pointer = ops.op_ffi_ptr_of(value);
+    if (pointer) {
+      POINTER_TO_BUFFER_WEAK_MAP.set(pointer, value);
+    }
+    return pointer;
   }
 
   static offset(value, offset) {
@@ -560,9 +566,6 @@ class DynamicLibrary {
 }
 
 function dlopen(path, symbols) {
-  // TODO(@crowlKats): remove me
-  // URL support is progressively enhanced by util in `runtime/js`.
-  const pathFromURL = internals.pathFromURL ?? ((p) => p);
   return new DynamicLibrary(pathFromURL(path), symbols);
 }
 
