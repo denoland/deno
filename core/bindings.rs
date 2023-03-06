@@ -65,7 +65,7 @@ pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new(s, "").unwrap();
+  let source_map_url = v8::String::empty(s);
   v8::ScriptOrigin::new(
     s,
     resource_name.into(),
@@ -84,7 +84,7 @@ pub fn module_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new(s, "").unwrap();
+  let source_map_url = v8::String::empty(s);
   v8::ScriptOrigin::new(
     s,
     resource_name.into(),
@@ -111,9 +111,11 @@ pub fn initialize_context<'s>(
 
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  let deno_str = v8::String::new(scope, "Deno").unwrap();
-  let core_str = v8::String::new(scope, "core").unwrap();
-  let ops_str = v8::String::new(scope, "ops").unwrap();
+  let deno_str =
+    v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
+  let core_str =
+    v8::String::new_external_onebyte_static(scope, b"core").unwrap();
+  let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
 
   // Snapshot already registered `Deno.core.ops` but
   // extensions may provide ops that aren't part of the snapshot.
@@ -150,7 +152,8 @@ pub fn initialize_context<'s>(
 
   // Bind v8 console object to Deno.core.console
   let extra_binding_obj = context.get_extras_binding_object(scope);
-  let console_str = v8::String::new(scope, "console").unwrap();
+  let console_str =
+    v8::String::new_external_onebyte_static(scope, b"console").unwrap();
   let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
   core_obj.set(scope, console_str.into(), console_obj);
 
@@ -203,7 +206,8 @@ pub fn set_func(
   name: &'static str,
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
-  let key = v8::String::new(scope, name).unwrap();
+  let key =
+    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
   let val = v8::Function::new(scope, callback).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
@@ -220,7 +224,8 @@ pub fn set_func_raw(
   fast_function: &Option<Box<dyn FastFunction>>,
   snapshot_options: SnapshotOptions,
 ) {
-  let key = v8::String::new(scope, name).unwrap();
+  let key =
+    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
   let builder =
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
@@ -329,9 +334,11 @@ pub fn host_import_module_dynamically_callback<'s>(
   let promise = promise.catch(scope, map_err).unwrap();
 
   if is_internal_module {
-    let message =
-      v8::String::new(scope, "Cannot load internal module from external code")
-        .unwrap();
+    let message = v8::String::new_external_onebyte_static(
+      scope,
+      b"Cannot load internal module from external code",
+    )
+    .unwrap();
     let exception = v8::Exception::type_error(scope, message);
     resolver.reject(scope, exception);
   }
@@ -354,18 +361,20 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
     .get_info(&module_global)
     .expect("Module not found");
 
-  let url_key = v8::String::new(scope, "url").unwrap();
+  let url_key = v8::String::new_external_onebyte_static(scope, b"url").unwrap();
   let url_val = v8::String::new(scope, &info.name).unwrap();
   meta.create_data_property(scope, url_key.into(), url_val.into());
 
-  let main_key = v8::String::new(scope, "main").unwrap();
+  let main_key =
+    v8::String::new_external_onebyte_static(scope, b"main").unwrap();
   let main_val = v8::Boolean::new(scope, info.main);
   meta.create_data_property(scope, main_key.into(), main_val.into());
 
   let builder =
     v8::FunctionBuilder::new(import_meta_resolve).data(url_val.into());
   let val = v8::FunctionBuilder::<v8::Function>::build(builder, scope).unwrap();
-  let resolve_key = v8::String::new(scope, "resolve").unwrap();
+  let resolve_key =
+    v8::String::new_external_onebyte_static(scope, b"resolve").unwrap();
   meta.set(scope, resolve_key.into(), val.into());
 }
 
@@ -447,7 +456,8 @@ fn catch_dynamic_import_promise_error(
     let message = v8::Exception::create_message(scope, arg);
     if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
       let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
-      let message_key = v8::String::new(scope, "message").unwrap();
+      let message_key =
+        v8::String::new_external_onebyte_static(scope, b"message").unwrap();
       let message = arg.get(scope, message_key.into()).unwrap();
       let exception = match name.as_str() {
         "RangeError" => {
@@ -464,8 +474,11 @@ fn catch_dynamic_import_promise_error(
         }
         _ => v8::Exception::error(scope, message.try_into().unwrap()),
       };
-      let code_key = v8::String::new(scope, "code").unwrap();
-      let code_value = v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+      let code_key =
+        v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+      let code_value =
+        v8::String::new_external_onebyte_static(scope, b"ERR_MODULE_NOT_FOUND")
+          .unwrap();
       let exception_obj = exception.to_object(scope).unwrap();
       exception_obj.set(scope, code_key.into(), code_value.into());
       scope.throw_exception(exception);
