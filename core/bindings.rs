@@ -276,11 +276,11 @@ pub fn host_import_module_dynamically_callback<'s>(
     .unwrap()
     .to_rust_string_lossy(scope);
 
-  let is_internal_module = specifier_str.starts_with("ext:");
+  let is_ext_module = specifier_str.starts_with("ext:");
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  if !is_internal_module {
+  if !is_ext_module {
     let assertions = parse_import_assertions(
       scope,
       import_assertions,
@@ -328,7 +328,7 @@ pub fn host_import_module_dynamically_callback<'s>(
 
   let promise = promise.catch(scope, map_err).unwrap();
 
-  if is_internal_module {
+  if is_ext_module {
     let message =
       v8::String::new(scope, "Cannot load extension module from external code")
         .unwrap();
