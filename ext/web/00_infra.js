@@ -7,14 +7,17 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 const core = globalThis.Deno.core;
+const internals = globalThis.__bootstrap.internals;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  decodeURIComponent,
   Error,
   JSONStringify,
   NumberPrototypeToString,
+  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   SafeRegExp,
   String,
@@ -29,6 +32,7 @@ const {
   StringPrototypeToUpperCase,
   TypeError,
 } = primordials;
+import { URLPrototype } from "internal:deno_url/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
 const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
@@ -362,6 +366,77 @@ function serializeJSValueToJSONString(value) {
   return result;
 }
 
+const PATHNAME_WIN_RE = new SafeRegExp(/^\/*([A-Za-z]:)(\/|$)/);
+const SLASH_WIN_RE = new SafeRegExp(/\//g);
+const PERCENT_RE = new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g);
+
+// Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
+/**
+ * @param {URL} url
+ * @returns {string}
+ */
+function pathFromURLWin32(url) {
+  let p = StringPrototypeReplace(
+    url.pathname,
+    PATHNAME_WIN_RE,
+    "$1/",
+  );
+  p = StringPrototypeReplace(
+    p,
+    SLASH_WIN_RE,
+    "\\",
+  );
+  p = StringPrototypeReplace(
+    p,
+    PERCENT_RE,
+    "%25",
+  );
+  let path = decodeURIComponent(p);
+  if (url.hostname != "") {
+    // Note: The `URL` implementation guarantees that the drive letter and
+    // hostname are mutually exclusive. Otherwise it would not have been valid
+    // to append the hostname and path like this.
+    path = `\\\\${url.hostname}${path}`;
+  }
+  return path;
+}
+
+// Keep in sync with `fromFileUrl()` in `std/path/posix.ts`.
+/**
+ * @param {URL} url
+ * @returns {string}
+ */
+function pathFromURLPosix(url) {
+  if (url.hostname !== "") {
+    throw new TypeError(`Host must be empty.`);
+  }
+
+  return decodeURIComponent(
+    StringPrototypeReplace(
+      url.pathname,
+      PERCENT_RE,
+      "%25",
+    ),
+  );
+}
+
+function pathFromURL(pathOrUrl) {
+  if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrUrl)) {
+    if (pathOrUrl.protocol != "file:") {
+      throw new TypeError("Must be a file URL.");
+    }
+
+    return core.build.os == "windows"
+      ? pathFromURLWin32(pathOrUrl)
+      : pathFromURLPosix(pathOrUrl);
+  }
+  return pathOrUrl;
+}
+
+// NOTE(bartlomieju): this is exposed on `internals` so we can test
+// it in unit tests
+internals.pathFromURL = pathFromURL;
+
 export {
   ASCII_ALPHA,
   ASCII_ALPHANUMERIC,
@@ -389,6 +464,7 @@ export {
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
   httpTrim,
+  pathFromURL,
   regexMatcher,
   serializeJSValueToJSONString,
 };
