@@ -215,7 +215,6 @@ pub fn init_polyfill() -> Extension {
     "internal/cli_table.ts",
     "internal/console/constructor.mjs",
     "internal/constants.ts",
-    "internal/crypto/_hex.ts",
     "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
     "internal/crypto/_randomFill.ts",
