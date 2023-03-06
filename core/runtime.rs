@@ -992,11 +992,15 @@ impl JsRuntime {
       let context = realm.context();
       let context_local = v8::Local::new(scope, context);
       let global = context_local.global(scope);
-      let deno_str = v8::String::new(scope, "Deno").unwrap();
-      let core_str = v8::String::new(scope, "core").unwrap();
-      let opresolve_str = v8::String::new(scope, "opresolve").unwrap();
+      let deno_str =
+        v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
+      let core_str =
+        v8::String::new_external_onebyte_static(scope, b"core").unwrap();
+      let opresolve_str =
+        v8::String::new_external_onebyte_static(scope, b"opresolve").unwrap();
       let build_custom_error_str =
-        v8::String::new(scope, "buildCustomError").unwrap();
+        v8::String::new_external_onebyte_static(scope, b"buildCustomError")
+          .unwrap();
 
       let deno_obj: v8::Local<v8::Object> = global
         .get(scope, deno_str.into())
