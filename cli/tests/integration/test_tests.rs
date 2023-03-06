@@ -366,7 +366,7 @@ fn captured_output() {
   let output_start = "------- output -------";
   let output_end = "----- output end -----";
   output.assert_exit_code(0);
-  let output_text = output.text();
+  let output_text = output.combined_output();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
   // replace zero width space that may appear in test output due
@@ -393,7 +393,7 @@ fn recursive_permissions_pledge() {
     .run();
   output.assert_exit_code(1);
   assert_contains!(
-    output.text(),
+    output.combined_output(),
     "pledge test permissions called before restoring previous pledge"
   );
 }

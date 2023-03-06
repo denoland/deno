@@ -74,7 +74,7 @@ fn error_if_invalid_cache() {
     .run();
 
   output.assert_exit_code(1);
-  let out = output.text();
+  let out = output.combined_output();
 
   // Expect error
   let error = util::strip_ansi_codes(out).to_string();
@@ -104,13 +104,13 @@ fn run_coverage_text(test_name: &str, extension: &str) {
       "coverage --unstable {}/",
       tempdir.to_str().unwrap()
     ))
+    .split_output()
     .run();
 
   // Verify there's no "Check" being printed
-  // TODO: how to assert this with test builder output?
-  // assert!(output.stderr.is_empty());
+  assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.text()).to_string();
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
@@ -133,7 +133,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     ))
     .run();
 
-  let actual = util::strip_ansi_codes(output.text()).to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
@@ -172,13 +172,13 @@ fn multifile_coverage() {
       "coverage --unstable {}/",
       tempdir.to_str().unwrap()
     ))
+    .split_output()
     .run();
 
   // Verify there's no "Check" being printed
-  // TODO: how to assert this with test builder output?
-  // assert!(output.stderr.is_empty());
+  assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.text()).to_string();
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/multifile/expected.out"),
@@ -200,7 +200,7 @@ fn multifile_coverage() {
     ))
     .run();
 
-  let actual = util::strip_ansi_codes(output.text()).to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/multifile/expected.lcov"),
@@ -238,13 +238,13 @@ fn no_snaps_included(test_name: &str, extension: &str) {
       "coverage --unstable --include=no_snaps_included.ts {}/",
       tempdir.to_str().unwrap()
     ))
+    .split_output()
     .run();
 
   // Verify there's no "Check" being printed
-  // TODO
-  // assert!(output.stderr.is_empty());
+  assert!(output.stderr().is_empty());
 
-  let actual = util::strip_ansi_codes(output.text()).to_string();
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/no_snaps_included/expected.out"),
@@ -285,7 +285,7 @@ fn no_transpiled_lines() {
     ))
     .run();
 
-  let actual = util::strip_ansi_codes(output.text()).to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
@@ -308,7 +308,7 @@ fn no_transpiled_lines() {
     ))
     .run();
 
-  let actual = util::strip_ansi_codes(output.text()).to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),

@@ -29,7 +29,7 @@ fn fmt_test() {
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
   std::fs::copy(badly_formatted_original_json, &badly_formatted_json).unwrap();
   // First, check formatting by ignoring the badly formatted file.
-  
+
   let output = context
     .new_command()
     .cwd("fmt")
@@ -103,7 +103,7 @@ fn fmt_ignore_unexplicit_files() {
     .run();
 
   output.assert_exit_code(1);
-  assert_eq!(output.text(), "error: No target files found.\n");
+  assert_eq!(output.combined_output(), "error: No target files found.\n");
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn fmt_auto_ignore_git_and_node_modules() {
     .run();
 
   output.assert_exit_code(1);
-  assert_eq!(output.text(), "error: No target files found.\n");
+  assert_eq!(output.combined_output(), "error: No target files found.\n");
 }
 
 itest!(fmt_quiet_check_fmt_dir {
