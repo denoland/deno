@@ -397,7 +397,7 @@ impl Highlighter for EditorHelper {
 #[derive(Clone)]
 pub struct ReplEditor {
   inner: Arc<Mutex<Editor<EditorHelper>>>,
-  history_file_path: PathBuf,
+  history_file_path: Option<PathBuf>,
   errored_on_history_save: Arc<AtomicBool>,
   should_exit_on_interrupt: Arc<AtomicBool>,
 }
@@ -405,7 +405,7 @@ pub struct ReplEditor {
 impl ReplEditor {
   pub fn new(
     helper: EditorHelper,
-    history_file_path: PathBuf,
+    history_file_path: Option<PathBuf>,
   ) -> Result<Self, AnyError> {
     let editor_config = Config::builder()
       .completion_type(CompletionType::List)
@@ -414,7 +414,9 @@ impl ReplEditor {
     let mut editor =
       Editor::with_config(editor_config).expect("Failed to create editor.");
     editor.set_helper(Some(helper));
-    editor.load_history(&history_file_path).unwrap_or(());
+    if let Some(history_file_path) = &history_file_path {
+      editor.load_history(history_file_path).unwrap_or(());
+    }
     editor.bind_sequence(
       KeyEvent(KeyCode::Char('s'), Modifiers::CTRL),
       EventHandler::Simple(Cmd::Newline),
@@ -431,13 +433,15 @@ impl ReplEditor {
       })),
     );
 
-    let history_file_dir = history_file_path.parent().unwrap();
-    std::fs::create_dir_all(history_file_dir).with_context(|| {
-      format!(
-        "Unable to create directory for the history file: {}",
-        history_file_dir.display()
-      )
-    })?;
+    if let Some(history_file_path) = &history_file_path {
+      let history_file_dir = history_file_path.parent().unwrap();
+      std::fs::create_dir_all(history_file_dir).with_context(|| {
+        format!(
+          "Unable to create directory for the history file: {}",
+          history_file_dir.display()
+        )
+      })?;
+    }
 
     Ok(ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
@@ -453,13 +457,15 @@ impl ReplEditor {
 
   pub fn update_history(&self, entry: String) {
     self.inner.lock().add_history_entry(entry);
-    if let Err(e) = self.inner.lock().append_history(&self.history_file_path) {
-      if self.errored_on_history_save.load(Relaxed) {
-        return;
-      }
+    if let Some(history_file_path) = &self.history_file_path {
+      if let Err(e) = self.inner.lock().append_history(history_file_path) {
+        if self.errored_on_history_save.load(Relaxed) {
+          return;
+        }
 
-      self.errored_on_history_save.store(true, Relaxed);
-      eprintln!("Unable to save history file: {e}");
+        self.errored_on_history_save.store(true, Relaxed);
+        eprintln!("Unable to save history file: {e}");
+      }
     }
   }
 

@@ -590,6 +590,9 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
+    DENO_REPL_HISTORY    Set REPL history file path
+                         History file is disabled when the value is empty
+                         (defaults to $DENO_DIR/deno_history.txt)
     DENO_NO_PACKAGE_JSON Disables auto-resolution of package.json
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
