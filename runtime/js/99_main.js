@@ -383,6 +383,8 @@ function promiseRejectMacrotaskCallback() {
 }
 
 let hasBootstrapped = false;
+// Set up global properties shared by main and worker runtime.
+ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
@@ -392,12 +394,9 @@ function bootstrapMainRuntime(runtimeOptions) {
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
-  const consoleFromV8 = globalThis.Deno.core.console;
-
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
-  util.log("bootstrapMainRuntime");
   hasBootstrapped = true;
 
   // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
@@ -411,7 +410,6 @@ function bootstrapMainRuntime(runtimeOptions) {
     location.setLocationHref(runtimeOptions.location);
   }
 
-  ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
   if (runtimeOptions.unstableFlag) {
     ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
   }
@@ -423,6 +421,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectSetPrototypeOf(globalThis, Window.prototype);
 
   if (runtimeOptions.inspectFlag) {
+    const consoleFromV8 = core.console;
     const consoleFromDeno = globalThis.console;
     wrapConsole(consoleFromDeno, consoleFromV8);
   }
@@ -529,9 +528,8 @@ function bootstrapWorkerRuntime(
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
-  util.log("bootstrapWorkerRuntime");
   hasBootstrapped = true;
-  ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+
   if (runtimeOptions.unstableFlag) {
     ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
   }
@@ -634,12 +632,7 @@ function bootstrapWorkerRuntime(
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 }
 
-ObjectDefineProperties(globalThis, {
-  bootstrap: {
-    value: {
-      mainRuntime: bootstrapMainRuntime,
-      workerRuntime: bootstrapWorkerRuntime,
-    },
-    configurable: true,
-  },
-});
+globalThis.bootstrap = {
+  mainRuntime: bootstrapMainRuntime,
+  workerRuntime: bootstrapWorkerRuntime,
+};
