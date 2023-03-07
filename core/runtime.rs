@@ -93,6 +93,9 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
+  // Marks if it's OK to leak the current isolate. Use only by the
+  // CLI main worker.
+  leak_isolate: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -305,6 +308,10 @@ pub struct RuntimeOptions {
   /// Describe if this is the main runtime instance, used by debuggers in some
   /// situation - like disconnecting when program finishes running.
   pub is_main: bool,
+
+  /// Whether it is OK to leak the V8 isolate. Only to be used by CLI
+  /// top-level runtime.
+  pub leak_isolate: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -335,8 +342,11 @@ impl SnapshotOptions {
 
 impl Drop for JsRuntime {
   fn drop(&mut self) {
-    if let Some(v8_isolate) = self.v8_isolate.as_mut() {
-      Self::drop_state_and_module_map(v8_isolate);
+    if let Some(mut v8_isolate) = self.v8_isolate.take() {
+      Self::drop_state_and_module_map(&mut v8_isolate);
+      if self.leak_isolate {
+        std::mem::forget(v8_isolate);
+      }
     }
   }
 }
@@ -674,6 +684,7 @@ impl JsRuntime {
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
+      leak_isolate: options.leak_isolate,
     };
 
     // Init resources and ops before extensions to make sure they are

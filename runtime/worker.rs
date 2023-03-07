@@ -141,6 +141,7 @@ pub struct WorkerOptions {
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub leak_isolate: bool,
 }
 
 impl Default for WorkerOptions {
@@ -298,6 +299,7 @@ impl MainWorker {
       extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
+      leak_isolate: options.leak_isolate,
       ..Default::default()
     });
 

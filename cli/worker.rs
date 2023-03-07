@@ -550,6 +550,7 @@ async fn create_main_worker_internal(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
+    leak_isolate: !bench_or_test,
   };
 
   let mut worker = MainWorker::bootstrap_from_options(
@@ -780,6 +781,7 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
+      leak_isolate: false,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)
