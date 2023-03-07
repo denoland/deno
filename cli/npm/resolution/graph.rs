@@ -116,14 +116,15 @@ impl ResolvedId {
     hasher.finish()
   }
 
-  pub fn push_peer_dep(&mut self, peer_dep: ResolvedIdPeerDep) {
+  pub fn push_peer_dep(&mut self, peer_dep: ResolvedIdPeerDep) -> bool {
     let new_hash = peer_dep.current_state_hash();
     for dep in &self.peer_dependencies {
       if new_hash == dep.current_state_hash() {
-        return;
+        return false;
       }
     }
     self.peer_dependencies.push(peer_dep);
+    true
   }
 }
 
@@ -192,14 +193,16 @@ enum GraphPathNodeOrRoot {
 /// the dependency resolution. The graph tries to share duplicate package
 /// information and we try to avoid traversing parts of the graph that we know
 /// are resolved.
-#[derive(Clone)]
 struct GraphPath {
   previous_node: Option<GraphPathNodeOrRoot>,
   node_id_ref: NodeIdRef,
-  // todo(dsherret): I think we might be able to get rid of specifier and
-  // node version here, but I added them for extra protection for the time being.
   specifier: String,
+  // we could consider not storing this here and instead reference the resolved
+  // nodes, but we should performance profile this code first
   nv: NpmPackageNv,
+  /// Descendants in the path that circularly link to an ancestor in a child.These
+  /// descendants should be kept up to date and always point to this node.
+  linked_circular_descendants: Mutex<Vec<Arc<GraphPath>>>,
 }
 
 impl GraphPath {
@@ -210,6 +213,7 @@ impl GraphPath {
       // use an empty specifier
       specifier: "".to_string(),
       nv,
+      linked_circular_descendants: Default::default(),
     })
   }
 
@@ -228,38 +232,47 @@ impl GraphPath {
   pub fn with_id(
     self: &Arc<GraphPath>,
     node_id: NodeId,
-    specifier: &str,
+    specifier: String,
     nv: NpmPackageNv,
-  ) -> Option<Arc<Self>> {
-    if self.has_visited(&nv) {
-      None
-    } else {
-      Some(Arc::new(Self {
-        previous_node: Some(GraphPathNodeOrRoot::Node(self.clone())),
-        node_id_ref: NodeIdRef::new(node_id),
-        specifier: specifier.to_string(),
-        nv,
-      }))
-    }
+  ) -> Arc<Self> {
+    Arc::new(Self {
+      previous_node: Some(GraphPathNodeOrRoot::Node(self.clone())),
+      node_id_ref: NodeIdRef::new(node_id),
+      specifier,
+      nv,
+      linked_circular_descendants: Default::default(),
+    })
   }
 
-  /// Each time an identifier is added, we do a check to ensure
-  /// that we haven't previously visited this node. I suspect this
-  /// might be a little slow since it has to go up through the ancestors,
-  /// so some optimizations could be made here in the future.
-  pub fn has_visited(self: &Arc<Self>, nv: &NpmPackageNv) -> bool {
-    if self.nv == *nv {
-      return true;
-    }
+  /// Gets if there is an ancestor with the same name & version along this path.
+  pub fn find_ancestor(&self, nv: &NpmPackageNv) -> Option<Arc<GraphPath>> {
     let mut maybe_next_node = self.previous_node.as_ref();
     while let Some(GraphPathNodeOrRoot::Node(next_node)) = maybe_next_node {
       // we've visited this before, so stop
       if next_node.nv == *nv {
-        return true;
+        return Some(next_node.clone());
       }
       maybe_next_node = next_node.previous_node.as_ref();
     }
-    false
+    None
+  }
+
+  /// Gets the bottom-up path to the ancestor, not including the current node.
+  pub fn get_path_to_ancestor(
+    &self,
+    ancestor_node_id: NodeId,
+  ) -> Vec<&Arc<GraphPath>> {
+    let mut path = Vec::new();
+    let mut maybe_next_node = self.previous_node.as_ref();
+    while let Some(GraphPathNodeOrRoot::Node(next_node)) = maybe_next_node {
+      path.push(next_node);
+      if next_node.node_id() == ancestor_node_id {
+        break;
+      }
+      maybe_next_node = next_node.previous_node.as_ref();
+    }
+    debug_assert!(maybe_next_node.is_some());
+    path
   }
 
   pub fn ancestors(&self) -> GraphPathAncestorIterator {
@@ -786,11 +799,11 @@ impl<'a> GraphDependencyResolver<'a> {
     &mut self,
     entry: &NpmDependencyEntry,
     package_info: &NpmPackageInfo,
-    graph_path: &Arc<GraphPath>,
+    parent_path: &Arc<GraphPath>,
   ) -> Result<NodeId, AnyError> {
     debug_assert_eq!(entry.kind, NpmDependencyEntryKind::Dep);
-    let parent_id = graph_path.node_id();
-    let (_, node_id) = self.resolve_node_from_info(
+    let parent_id = parent_path.node_id();
+    let (child_nv, child_id) = self.resolve_node_from_info(
       &entry.name,
       &entry.version_req,
       package_info,
@@ -799,42 +812,27 @@ impl<'a> GraphDependencyResolver<'a> {
     // Some packages may resolves to themselves as a dependency. If this occurs,
     // just ignore adding these as dependencies because this is likely a mistake
     // in the package.
-    if node_id != parent_id {
+    if child_id != parent_id {
       self.graph.set_child_of_parent_node(
         &entry.bare_specifier,
-        node_id,
+        child_id,
         parent_id,
       );
-      self.try_add_pending_unresolved_node(
-        graph_path,
-        node_id,
-        &entry.bare_specifier,
-      );
-    }
-    Ok(node_id)
-  }
 
-  fn try_add_pending_unresolved_node(
-    &mut self,
-    path: &Arc<GraphPath>,
-    node_id: NodeId,
-    specifier: &str,
-  ) {
-    if self.graph.nodes.get(&node_id).unwrap().no_peers {
-      return; // skip, no need to analyze this again
+      let maybe_ancestor = parent_path.find_ancestor(&child_nv);
+      let new_path = parent_path.with_id(
+        child_id,
+        entry.bare_specifier.to_string(),
+        child_nv,
+      );
+      if let Some(ancestor) = maybe_ancestor {
+        // this node is circular, so we link it to the ancestor
+        self.add_linked_circular_descendant(&ancestor, new_path);
+      } else {
+        self.pending_unresolved_nodes.push_back(new_path);
+      }
     }
-    let node_nv = self
-      .graph
-      .resolved_node_ids
-      .get(node_id)
-      .unwrap()
-      .nv
-      .clone();
-    let new_path = match path.with_id(node_id, specifier, node_nv) {
-      Some(path) => path,
-      None => return, // circular, don't visit this node
-    };
-    self.pending_unresolved_nodes.push_back(new_path);
+    Ok(child_id)
   }
 
   fn resolve_node_from_info(
@@ -896,9 +894,9 @@ impl<'a> GraphDependencyResolver<'a> {
   pub async fn resolve_pending(&mut self) -> Result<(), AnyError> {
     while !self.pending_unresolved_nodes.is_empty() {
       // now go down through the dependencies by tree depth
-      while let Some(graph_path) = self.pending_unresolved_nodes.pop_front() {
-        let (pkg_nv, deps) = {
-          let node_id = graph_path.node_id();
+      while let Some(parent_path) = self.pending_unresolved_nodes.pop_front() {
+        let (parent_nv, child_deps) = {
+          let node_id = parent_path.node_id();
           if self.graph.nodes.get(&node_id).unwrap().no_peers {
             // We can skip as there's no reason to analyze this graph segment further.
             continue;
@@ -932,33 +930,49 @@ impl<'a> GraphDependencyResolver<'a> {
         self
           .api
           .cache_in_parallel({
-            deps.iter().map(|dep| dep.name.clone()).collect()
+            child_deps.iter().map(|dep| dep.name.clone()).collect()
           })
           .await?;
 
         // resolve the dependencies
         let mut found_peer = false;
 
-        for dep in deps.iter() {
+        for dep in child_deps.iter() {
           let package_info = self.api.package_info(&dep.name).await?;
 
           match dep.kind {
             NpmDependencyEntryKind::Dep => {
-              let parent_id = graph_path.node_id();
+              let parent_id = parent_path.node_id();
               let node = self.graph.nodes.get(&parent_id).unwrap();
               let child_id = match node.children.get(&dep.bare_specifier) {
                 Some(child_id) => {
-                  // skip over this dependency because it was previously resolved
+                  // this dependency was previously analyzed by another path
+                  // so we don't attempt to resolve the version again
                   let child_id = *child_id;
-                  self.try_add_pending_unresolved_node(
-                    &graph_path,
+                  let child_nv = self
+                    .graph
+                    .resolved_node_ids
+                    .get(child_id)
+                    .unwrap()
+                    .nv
+                    .clone();
+                  let maybe_ancestor = parent_path.find_ancestor(&child_nv);
+                  let child_path = parent_path.with_id(
                     child_id,
-                    &dep.bare_specifier,
+                    dep.bare_specifier.clone(),
+                    child_nv,
                   );
+                  if let Some(ancestor) = maybe_ancestor {
+                    // it's circular, so mark it as such in the ancestor
+                    self.add_linked_circular_descendant(&ancestor, child_path);
+                  } else {
+                    // mark the child as pending
+                    self.pending_unresolved_nodes.push_back(child_path);
+                  }
                   child_id
                 }
                 None => {
-                  self.analyze_dependency(dep, &package_info, &graph_path)?
+                  self.analyze_dependency(dep, &package_info, &parent_path)?
                 }
               };
 
@@ -976,7 +990,7 @@ impl<'a> GraphDependencyResolver<'a> {
                 &dep.bare_specifier,
                 dep,
                 &package_info,
-                &graph_path,
+                &parent_path,
               )?;
 
               // For optional dependencies, we want to resolve them if any future
@@ -990,14 +1004,14 @@ impl<'a> GraphDependencyResolver<'a> {
                 match maybe_new_id {
                   Some(new_id) => {
                     if let Some(unresolved_optional_peers) =
-                      self.unresolved_optional_peers.remove(&pkg_nv)
+                      self.unresolved_optional_peers.remove(&parent_nv)
                     {
                       for optional_peer in unresolved_optional_peers {
                         let peer_parent = GraphPathNodeOrRoot::Node(
                           optional_peer.graph_path.clone(),
                         );
                         self.set_new_peer_dep(
-                          vec![&optional_peer.graph_path],
+                          &[&optional_peer.graph_path],
                           peer_parent,
                           &optional_peer.specifier,
                           new_id,
@@ -1009,11 +1023,11 @@ impl<'a> GraphDependencyResolver<'a> {
                     // store this for later if it's resolved for this version
                     self
                       .unresolved_optional_peers
-                      .entry(pkg_nv.clone())
+                      .entry(parent_nv.clone())
                       .or_default()
                       .push(UnresolvedOptionalPeer {
                         specifier: dep.bare_specifier.clone(),
-                        graph_path: graph_path.clone(),
+                        graph_path: parent_path.clone(),
                       });
                   }
                 }
@@ -1023,7 +1037,7 @@ impl<'a> GraphDependencyResolver<'a> {
         }
 
         if !found_peer {
-          self.graph.borrow_node_mut(graph_path.node_id()).no_peers = true;
+          self.graph.borrow_node_mut(parent_path.node_id()).no_peers = true;
         }
       }
     }
@@ -1055,7 +1069,7 @@ impl<'a> GraphDependencyResolver<'a> {
 
       if let Some((peer_parent, peer_dep_id)) = maybe_peer_dep {
         // this will always have an ancestor because we're not at the root
-        self.set_new_peer_dep(path, peer_parent, specifier, peer_dep_id);
+        self.set_new_peer_dep(&path, peer_parent, specifier, peer_dep_id);
         return Ok(Some(peer_dep_id));
       }
     }
@@ -1073,7 +1087,7 @@ impl<'a> GraphDependencyResolver<'a> {
           )?;
           if let Some((parent, peer_dep_id)) = maybe_peer_dep {
             // this will always have an ancestor because we're not at the root
-            self.set_new_peer_dep(path, parent, specifier, peer_dep_id);
+            self.set_new_peer_dep(&path, parent, specifier, peer_dep_id);
             return Ok(Some(peer_dep_id));
           }
         }
@@ -1089,7 +1103,7 @@ impl<'a> GraphDependencyResolver<'a> {
               .map(|(pkg_id, id)| (*id, pkg_id)),
           )? {
             let peer_parent = GraphPathNodeOrRoot::Root(root_pkg_id.clone());
-            self.set_new_peer_dep(path, peer_parent, specifier, child_id);
+            self.set_new_peer_dep(&path, peer_parent, specifier, child_id);
             return Ok(Some(child_id));
           }
         }
@@ -1110,12 +1124,7 @@ impl<'a> GraphDependencyResolver<'a> {
         Some(parent_id),
       )?;
       let peer_parent = GraphPathNodeOrRoot::Node(ancestor_path.clone());
-      self.set_new_peer_dep(
-        vec![ancestor_path],
-        peer_parent,
-        specifier,
-        node_id,
-      );
+      self.set_new_peer_dep(&[ancestor_path], peer_parent, specifier, node_id);
       Ok(Some(node_id))
     } else {
       Ok(None)
@@ -1162,28 +1171,17 @@ impl<'a> GraphDependencyResolver<'a> {
     }
   }
 
-  fn set_new_peer_dep(
+  fn add_peer_dep_to_path(
     &mut self,
     // path from the node above the resolved dep to just above the peer dep
-    path: Vec<&Arc<GraphPath>>,
-    peer_dep_parent: GraphPathNodeOrRoot,
-    peer_dep_specifier: &str,
-    mut peer_dep_id: NodeId,
-  ) {
+    path: &[&Arc<GraphPath>],
+    peer_dep: &ResolvedIdPeerDep,
+    peer_dep_nv: &NpmPackageNv,
+    peer_dep_id: Option<NodeId>,
+  ) -> Option<Arc<GraphPath>> {
     debug_assert!(!path.is_empty());
-    let peer_dep_pkg_nv = self
-      .graph
-      .resolved_node_ids
-      .get(peer_dep_id)
-      .unwrap()
-      .nv
-      .clone();
 
-    let peer_dep = ResolvedIdPeerDep::ParentReference {
-      parent: peer_dep_parent,
-      child_pkg_nv: peer_dep_pkg_nv.clone(),
-    };
-    let mut found_in_ancestor = false;
+    let mut found_ancestor_node = None;
     for graph_path_node in path.iter().rev() {
       let old_node_id = graph_path_node.node_id();
       let old_resolved_id = self
@@ -1193,18 +1191,23 @@ impl<'a> GraphDependencyResolver<'a> {
         .unwrap()
         .clone();
 
-      let mut new_resolved_id = old_resolved_id.clone();
-      if new_resolved_id.nv != peer_dep_pkg_nv {
-        new_resolved_id.push_peer_dep(peer_dep.clone());
+      // todo: get rid of passing this in?
+      let is_current_ancestor_peer_dep = Some(old_node_id) == peer_dep_id;
+      if is_current_ancestor_peer_dep {
+        debug_assert_eq!(old_resolved_id.nv, *peer_dep_nv);
+        found_ancestor_node = Some((*graph_path_node).clone());
+        continue;
+      } else if old_resolved_id.nv == *peer_dep_nv {
+        continue;
       }
+
+      let mut new_resolved_id = old_resolved_id.clone();
+      if !new_resolved_id.push_peer_dep(peer_dep.clone()) {
+        continue; // nothing to change
+      }
+
       let (created, new_node_id) =
         self.graph.get_or_create_for_id(&new_resolved_id);
-
-      // this will occur when the peer dependency is in an ancestor
-      if old_node_id == peer_dep_id {
-        peer_dep_id = new_node_id;
-        found_in_ancestor = true;
-      }
 
       if created {
         let old_children =
@@ -1221,6 +1224,21 @@ impl<'a> GraphDependencyResolver<'a> {
 
       debug_assert_eq!(graph_path_node.node_id(), old_node_id);
       graph_path_node.change_id(new_node_id);
+      let circular_descendants =
+        graph_path_node.linked_circular_descendants.lock().clone();
+      for descendant in circular_descendants {
+        let path = descendant.get_path_to_ancestor(new_node_id);
+        self.add_peer_dep_to_path(&path, peer_dep, peer_dep_nv, None);
+        descendant.change_id(new_node_id);
+
+        // update the parent to point to this new node id
+        let parent_node_id = path[0].node_id();
+        self.graph.set_child_of_parent_node(
+          descendant.specifier(),
+          descendant.node_id(),
+          parent_node_id,
+        );
+      }
 
       // update the previous parent to have this as its child
       match graph_path_node.previous_node.as_ref().unwrap() {
@@ -1237,6 +1255,38 @@ impl<'a> GraphDependencyResolver<'a> {
       }
     }
 
+    found_ancestor_node
+  }
+
+  fn set_new_peer_dep(
+    &mut self,
+    // path from the node above the resolved dep to just above the peer dep
+    path: &[&Arc<GraphPath>],
+    peer_dep_parent: GraphPathNodeOrRoot,
+    peer_dep_specifier: &str,
+    peer_dep_id: NodeId,
+  ) {
+    debug_assert!(!path.is_empty());
+    let peer_dep_nv = self
+      .graph
+      .resolved_node_ids
+      .get(peer_dep_id)
+      .unwrap()
+      .nv
+      .clone();
+
+    let peer_dep = ResolvedIdPeerDep::ParentReference {
+      parent: peer_dep_parent,
+      child_pkg_nv: peer_dep_nv.clone(),
+    };
+
+    let found_ancestor_node = self.add_peer_dep_to_path(
+      path,
+      &peer_dep,
+      &peer_dep_nv,
+      Some(peer_dep_id),
+    );
+
     // now set the peer dependency
     let bottom_node = path.first().unwrap();
     let parent_node_id = bottom_node.node_id();
@@ -1246,22 +1296,74 @@ impl<'a> GraphDependencyResolver<'a> {
       parent_node_id,
     );
 
-    // mark the peer dependency to be analyzed, but only bother
-    // if it wasn't found in an ancestor
-    //if !found_in_ancestor {
-    self.try_add_pending_unresolved_node(
-      bottom_node,
+    // queue next step
+    let new_path = bottom_node.with_id(
       peer_dep_id,
-      peer_dep_specifier,
+      peer_dep_specifier.to_string(),
+      peer_dep_nv,
     );
-    //}
+    if let Some(ancestor_node) = found_ancestor_node {
+      // it's circular, so link this in step with the ancestor node
+      ancestor_node
+        .linked_circular_descendants
+        .lock()
+        .push(new_path);
+    } else {
+      // mark the peer dep as needing to be analyzed
+      self.pending_unresolved_nodes.push_back(new_path);
+    }
 
     debug!(
       "Resolved peer dependency for {} in {} to {}",
       peer_dep_specifier,
-      &self.graph.get_npm_pkg_id(parent_node_id).as_serialized(),
+      &self
+        .graph
+        .get_npm_pkg_id(bottom_node.node_id())
+        .as_serialized(),
       &self.graph.get_npm_pkg_id(peer_dep_id).as_serialized(),
     );
+  }
+
+  fn add_linked_circular_descendant(
+    &mut self,
+    ancestor: &Arc<GraphPath>,
+    descendant: Arc<GraphPath>,
+  ) {
+    let ancestor_node_id = ancestor.node_id();
+    let path = descendant.get_path_to_ancestor(ancestor_node_id);
+
+    let ancestor_resolved_id = self
+      .graph
+      .resolved_node_ids
+      .get(ancestor_node_id)
+      .unwrap()
+      .clone();
+
+    for peer_dep in ancestor_resolved_id.peer_dependencies {
+      let peer_dep_nv = match &peer_dep {
+        ResolvedIdPeerDep::ParentReference { child_pkg_nv, .. } => {
+          child_pkg_nv.clone()
+        }
+        ResolvedIdPeerDep::SnapshotNodeId(node_id) => self
+          .graph
+          .resolved_node_ids
+          .get(*node_id)
+          .unwrap()
+          .nv
+          .clone(),
+      };
+      self.add_peer_dep_to_path(&path, &peer_dep, &peer_dep_nv, None);
+    }
+
+    // todo(THIS PR): can this be removed?
+    let parent_node_id = path[0].node_id();
+    self.graph.set_child_of_parent_node(
+      descendant.specifier(),
+      descendant.node_id(),
+      parent_node_id,
+    );
+
+    ancestor.linked_circular_descendants.lock().push(descendant);
   }
 }
 
