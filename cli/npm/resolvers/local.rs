@@ -239,6 +239,8 @@ async fn sync_resolution_with_fs(
 
   let process_lock = LaxSingleProcessFileLockFlag::lock(
     deno_local_registry_dir.join(".deno.lock"),
+    // similar message used by cargo build
+    "waiting for file lock on node_modules directory",
   )
   .await;
 
@@ -258,7 +260,6 @@ async fn sync_resolution_with_fs(
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
   for package in &package_partitions.packages {
-    eprintln!("PACKAGE: {}", package.pkg_id.as_serialized());
     let folder_name =
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&folder_name);

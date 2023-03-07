@@ -19,6 +19,9 @@ use std::time::Duration;
 use walkdir::WalkDir;
 
 use crate::args::FilesConfig;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::path::specifier_to_file_path;
 
@@ -497,10 +500,13 @@ pub struct LaxSingleProcessFileLockFlag(
 );
 
 impl LaxSingleProcessFileLockFlag {
-  pub async fn lock(file_path: PathBuf) -> Self {
+  pub async fn lock(file_path: PathBuf, long_wait_message: &str) -> Self {
     log::debug!("Acquiring file lock at {}", file_path.display());
     use fs3::FileExt;
     let last_updated_path = file_path.with_extension("lock.poll");
+    let start_instant = std::time::Instant::now();
+    let progress_bars = ProgressBar::new(ProgressBarStyle::TextOnly);
+    let mut pb_update_guard = None;
     let open_result = std::fs::OpenOptions::new()
       .read(true)
       .write(true)
@@ -509,22 +515,28 @@ impl LaxSingleProcessFileLockFlag {
     let inner = match open_result {
       Ok(fs_file) => loop {
         let lock_result = fs_file.try_lock_exclusive();
+        let update_ms = 100;
         match lock_result {
           Ok(_) => {
             log::debug!("Acquired file lock at {}", file_path.display());
             let _ignore = std::fs::write(&last_updated_path, "");
             let token = Arc::new(tokio_util::sync::CancellationToken::new());
 
-            // Spawn a task that will continually update a file signalling
-            // the lock is alive. This is a fail safe for when a file lock
-            // is never released.
-            tokio::task::spawn({
+            // Spawn a blocking task that will continually update a file
+            // signalling the lock is alive. This is a fail safe for when
+            // a file lock is never released. This uses a blocking task
+            // because we use a single threaded runtime and this is time
+            // sensitive.
+            tokio::task::spawn_blocking({
               let token = token.clone();
               let last_updated_path = last_updated_path.clone();
-              async move {
+              move || {
+                let mut i = 0;
                 while !token.is_cancelled() {
-                  let _ignore = std::fs::write(&last_updated_path, "");
-                  tokio::time::sleep(Duration::from_millis(500)).await;
+                  i += 1;
+                  let _ignore =
+                    std::fs::write(&last_updated_path, i.to_string());
+                  std::thread::sleep(Duration::from_millis(update_ms));
                 }
               }
             });
@@ -536,7 +548,19 @@ impl LaxSingleProcessFileLockFlag {
             });
           }
           Err(_) => {
+            // show a message if it's been a while
+            if pb_update_guard.is_none()
+              && start_instant.elapsed().as_millis() > 1_000
+            {
+              pb_update_guard = Some(progress_bars.update_with_prompt(
+                ProgressMessagePrompt::Blocking,
+                long_wait_message,
+              ));
+            }
+
             tokio::time::sleep(Duration::from_millis(20)).await;
+
+            // poll the last updated path to check if it's stopped updating
             match std::fs::metadata(&last_updated_path)
               .and_then(|p| p.modified())
             {
@@ -544,7 +568,7 @@ impl LaxSingleProcessFileLockFlag {
                 let current_time = std::time::SystemTime::now();
                 match current_time.duration_since(last_updated_time) {
                   Ok(duration) => {
-                    if duration.as_millis() > 1_000 {
+                    if duration.as_millis() > (update_ms * 2) as u128 {
                       break None;
                     }
                   }
@@ -566,6 +590,7 @@ impl LaxSingleProcessFileLockFlag {
       }
     };
 
+    drop(pb_update_guard); // explicit for clarity
     Self(inner)
   }
 }
