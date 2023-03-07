@@ -521,7 +521,6 @@ pub fn init<P: WebSocketPermissions + 'static>(
         unsafely_ignore_certificate_errors.clone(),
       ));
       state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
-      Ok(())
     })
     .build()
 }

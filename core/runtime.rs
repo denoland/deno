@@ -939,7 +939,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -957,7 +957,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -2887,7 +2887,6 @@ pub mod tests {
           mode,
           dispatch_count: dispatch_count2.clone(),
         });
-        Ok(())
       })
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -4045,7 +4044,6 @@ assertEquals(1, notify_return_value);
       .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
-        Ok(())
       })
       .build();
 

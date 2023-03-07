@@ -96,7 +96,6 @@ pub fn init<P: NetPermissions + 'static>(
       state.put(UnsafelyIgnoreCertificateErrors(
         unsafely_ignore_certificate_errors.clone(),
       ));
-      Ok(())
     })
     .build()
 }

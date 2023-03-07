@@ -42,7 +42,7 @@ pub struct ExtensionFileSource {
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
-pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
+pub type OpStateFn = dyn Fn(&mut OpState);
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
 pub struct OpDecl {
@@ -147,10 +147,9 @@ impl Extension {
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
-  pub fn init_state(&self, state: &mut OpState) -> Result<(), Error> {
-    match &self.opstate_fn {
-      Some(ofn) => ofn(state),
-      None => Ok(()),
+  pub fn init_state(&self, state: &mut OpState) {
+    if let Some(op_fn) = &self.opstate_fn {
+      op_fn(state);
     }
   }
 
@@ -243,7 +242,7 @@ impl ExtensionBuilder {
 
   pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
   where
-    F: Fn(&mut OpState) -> Result<(), Error> + 'static,
+    F: Fn(&mut OpState) + 'static,
   {
     self.state = Some(Box::new(opstate_fn));
     self

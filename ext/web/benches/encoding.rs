@@ -40,7 +40,6 @@ fn setup() -> Vec<Extension> {
       }])
       .state(|state| {
         state.put(Permissions {});
-        Ok(())
       })
       .build(),
   ]
