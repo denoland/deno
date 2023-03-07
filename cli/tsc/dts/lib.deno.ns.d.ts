@@ -4173,8 +4173,8 @@ declare namespace Deno {
   }
 
   /**
-   * The interface returned from calling {@linkcode Command.output} or
-   * {@linkcode Command.outputSync} which represents the result of spawning the
+   * The interface returned from calling {@linkcode Deno.Command.output} or
+   * {@linkcode Deno.Command.outputSync} which represents the result of spawning the
    * child process.
    *
    * @category Sub Process
