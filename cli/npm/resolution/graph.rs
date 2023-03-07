@@ -257,18 +257,18 @@ impl GraphPath {
     None
   }
 
-  /// Gets the bottom-up path to the ancestor, not including the current node.
-  pub fn get_path_to_ancestor(
+  /// Gets the bottom-up path to the ancestor not including the current or ancestor node.
+  pub fn get_path_to_ancestor_exclusive(
     &self,
     ancestor_node_id: NodeId,
   ) -> Vec<&Arc<GraphPath>> {
     let mut path = Vec::new();
     let mut maybe_next_node = self.previous_node.as_ref();
     while let Some(GraphPathNodeOrRoot::Node(next_node)) = maybe_next_node {
-      path.push(next_node);
       if next_node.node_id() == ancestor_node_id {
         break;
       }
+      path.push(next_node);
       maybe_next_node = next_node.previous_node.as_ref();
     }
     debug_assert!(maybe_next_node.is_some());
@@ -1239,7 +1239,7 @@ impl<'a> GraphDependencyResolver<'a> {
       let circular_descendants =
         graph_path_node.linked_circular_descendants.lock().clone();
       for descendant in circular_descendants {
-        let path = descendant.get_path_to_ancestor(new_node_id);
+        let path = descendant.get_path_to_ancestor_exclusive(new_node_id);
         self.add_peer_dep_to_path(&path, peer_dep, peer_dep_nv);
         descendant.change_id(new_node_id);
 
@@ -1291,10 +1291,11 @@ impl<'a> GraphDependencyResolver<'a> {
     };
 
     let top_node = path.last().unwrap();
-    let maybe_ancestor_node = if top_node.nv == peer_dep_nv {
-      Some(top_node)
+    let (maybe_circular_ancestor, path) = if top_node.nv == peer_dep_nv {
+      // it's circular, so exclude the top node
+      (Some(top_node), &path[0..path.len() - 1])
     } else {
-      None
+      (None, path)
     };
     self.add_peer_dep_to_path(path, &peer_dep, &peer_dep_nv);
 
@@ -1313,7 +1314,7 @@ impl<'a> GraphDependencyResolver<'a> {
       peer_dep_specifier.to_string(),
       peer_dep_nv,
     );
-    if let Some(ancestor_node) = maybe_ancestor_node {
+    if let Some(ancestor_node) = maybe_circular_ancestor {
       // it's circular, so link this in step with the ancestor node
       ancestor_node
         .linked_circular_descendants
@@ -1341,7 +1342,7 @@ impl<'a> GraphDependencyResolver<'a> {
     descendant: Arc<GraphPath>,
   ) {
     let ancestor_node_id = ancestor.node_id();
-    let path = descendant.get_path_to_ancestor(ancestor_node_id);
+    let path = descendant.get_path_to_ancestor_exclusive(ancestor_node_id);
 
     let ancestor_resolved_id = self
       .graph
