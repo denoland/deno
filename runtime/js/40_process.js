@@ -16,7 +16,7 @@ const {
   SymbolFor,
   Symbol,
 } = primordials;
-import { FsFile } from "internal:runtime/30_fs.js";
+import { FsFile } from "internal:deno_fs/30_fs.js";
 import { readAll } from "internal:deno_io/12_io.js";
 import { assert, pathFromURL } from "internal:deno_web/00_infra.js";
 import * as abortSignal from "internal:deno_web/03_abort_signal.js";
