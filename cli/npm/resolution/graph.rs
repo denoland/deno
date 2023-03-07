@@ -831,7 +831,7 @@ impl<'a> GraphDependencyResolver<'a> {
       .nv
       .clone();
     let new_path = match path.with_id(node_id, specifier, node_nv) {
-      Some(visited_versions) => visited_versions,
+      Some(path) => path,
       None => return, // circular, don't visit this node
     };
     self.pending_unresolved_nodes.push_back(new_path);
@@ -900,10 +900,7 @@ impl<'a> GraphDependencyResolver<'a> {
         let (pkg_nv, deps) = {
           let node_id = graph_path.node_id();
           if self.graph.nodes.get(&node_id).unwrap().no_peers {
-            // We can skip as there's no reason to analyze this graph segment further
-            // Note that we don't need to count parent references here because that's
-            // only necessary for graph segments that could potentially have peer
-            // dependencies within them.
+            // We can skip as there's no reason to analyze this graph segment further.
             continue;
           }
 
@@ -1249,13 +1246,13 @@ impl<'a> GraphDependencyResolver<'a> {
 
     // mark the peer dependency to be analyzed, but only bother
     // if it wasn't found in an ancestor
-    if !found_in_ancestor {
-      self.try_add_pending_unresolved_node(
-        bottom_node,
-        peer_dep_id,
-        peer_dep_specifier,
-      );
-    }
+    //if !found_in_ancestor {
+    self.try_add_pending_unresolved_node(
+      bottom_node,
+      peer_dep_id,
+      peer_dep_specifier,
+    );
+    //}
 
     debug!(
       "Resolved peer dependency for {} in {} to {}",
@@ -3730,6 +3727,80 @@ mod test {
           "package-peer@1.0.0".to_string()
         )
       ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_dep_with_peer_deps_circular() {
+    // a -> b -> c -> d -> c where c has a peer dependency on b
+    let api = TestNpmRegistryApiInner::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-d", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
+    api.add_dependency(("package-b", "1.0.0"), ("package-c", "1"));
+    api.add_dependency(("package-c", "1.0.0"), ("package-d", "1"));
+    api.add_peer_dependency(("package-c", "1.0.0"), ("package-b", "1"));
+    api.add_dependency(("package-d", "1.0.0"), ("package-c", "1"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-a@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::from_serialized("package-b@1.0.0").unwrap(),
+          ),]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-b@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-c".to_string(),
+            NpmPackageId::from_serialized("package-c@1.0.0_package-b@1.0.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized(
+            "package-c@1.0.0_package-b@1.0.0"
+          )
+          .unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([
+            (
+              "package-b".to_string(),
+              NpmPackageId::from_serialized("package-b@1.0.0").unwrap(),
+            ),
+            (
+              "package-d".to_string(),
+              NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
+            )
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          pkg_id: NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
+          copy_index: 0,
+          dependencies: HashMap::from([(
+            "package-c".to_string(),
+            NpmPackageId::from_serialized("package-c@1.0.0_package-b@1.0.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
     );
   }
 
