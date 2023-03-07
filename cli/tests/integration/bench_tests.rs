@@ -196,7 +196,7 @@ fn recursive_permissions_pledge() {
     .run();
   output.assert_exit_code(1);
   assert_contains!(
-    output.text(),
+    output.combined_output(),
     "pledge test permissions called before restoring previous pledge"
   );
 }
