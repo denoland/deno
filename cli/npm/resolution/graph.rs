@@ -1197,7 +1197,6 @@ impl<'a> GraphDependencyResolver<'a> {
     path: &[&Arc<GraphPath>],
     peer_dep: &ResolvedIdPeerDep,
     peer_dep_nv: &Arc<NpmPackageNv>,
-    peer_dep_id: Option<NodeId>,
   ) -> Option<Arc<GraphPath>> {
     debug_assert!(!path.is_empty());
 
@@ -1211,13 +1210,8 @@ impl<'a> GraphDependencyResolver<'a> {
         .unwrap()
         .clone();
 
-      // todo: get rid of passing this in?
-      let is_current_ancestor_peer_dep = Some(old_node_id) == peer_dep_id;
-      if is_current_ancestor_peer_dep {
-        debug_assert_eq!(old_resolved_id.nv, *peer_dep_nv);
+      if old_resolved_id.nv == *peer_dep_nv {
         found_ancestor_node = Some((*graph_path_node).clone());
-        continue;
-      } else if old_resolved_id.nv == *peer_dep_nv {
         continue;
       }
 
@@ -1248,7 +1242,7 @@ impl<'a> GraphDependencyResolver<'a> {
         graph_path_node.linked_circular_descendants.lock().clone();
       for descendant in circular_descendants {
         let path = descendant.get_path_to_ancestor(new_node_id);
-        self.add_peer_dep_to_path(&path, peer_dep, peer_dep_nv, None);
+        self.add_peer_dep_to_path(&path, peer_dep, peer_dep_nv);
         descendant.change_id(new_node_id);
 
         // update the parent to point to this new node id
@@ -1300,12 +1294,8 @@ impl<'a> GraphDependencyResolver<'a> {
       child_pkg_nv: peer_dep_nv.clone(),
     };
 
-    let found_ancestor_node = self.add_peer_dep_to_path(
-      path,
-      &peer_dep,
-      &peer_dep_nv,
-      Some(peer_dep_id),
-    );
+    let found_ancestor_node =
+      self.add_peer_dep_to_path(path, &peer_dep, &peer_dep_nv);
 
     // now set the peer dependency
     let bottom_node = path.first().unwrap();
@@ -1372,7 +1362,7 @@ impl<'a> GraphDependencyResolver<'a> {
           .nv
           .clone(),
       };
-      self.add_peer_dep_to_path(&path, &peer_dep, &peer_dep_nv, None);
+      self.add_peer_dep_to_path(&path, &peer_dep, &peer_dep_nv);
     }
 
     let parent_node_id = path[0].node_id();
@@ -3403,7 +3393,7 @@ mod test {
   }
 
   #[tokio::test]
-  async fn resolve_dep_with_peer_deps_circular_scenario_1() {
+  async fn resolve_dep_with_peer_deps_circular_1() {
     // a -> b -> c -> d -> c where c has a peer dependency on b
     let api = TestNpmRegistryApiInner::default();
     api.ensure_package_version("package-a", "1.0.0");
@@ -3465,7 +3455,7 @@ mod test {
   }
 
   #[tokio::test]
-  async fn resolve_dep_with_peer_deps_circular_scenario_2() {
+  async fn resolve_dep_with_peer_deps_circular_2() {
     // a -> b -> c -> d -> c where c has a peer dependency on b
     //             -> e -> f -> d -> c where f has a peer dep on a
     let api = TestNpmRegistryApiInner::default();
@@ -3551,6 +3541,85 @@ mod test {
             "package-d".to_string(),
             "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0_package-a@1.0.0".to_string(),
           )]),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_dep_with_peer_deps_circular_3() {
+    // a -> b -> c -> d -> c (peer)
+    //                  -> e -> a (peer)
+    let api = TestNpmRegistryApiInner::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-d", "1.0.0");
+    api.ensure_package_version("package-e", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
+    api.add_dependency(("package-b", "1.0.0"), ("package-c", "1"));
+    api.add_dependency(("package-c", "1.0.0"), ("package-d", "1"));
+    api.add_dependency(("package-d", "1.0.0"), ("package-e", "1"));
+    api.add_peer_dependency(("package-d", "1.0.0"), ("package-c", "1"));
+    api.add_peer_dependency(("package-e", "1.0.0"), ("package-a", "1"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        TestNpmResolutionPackage {
+          pkg_id: "package-a@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: BTreeMap::from([(
+            "package-b".to_string(),
+            "package-b@1.0.0_package-a@1.0.0".to_string(),
+          ),]),
+        },
+        TestNpmResolutionPackage {
+          pkg_id: "package-b@1.0.0_package-a@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: BTreeMap::from([(
+            "package-c".to_string(),
+            "package-c@1.0.0_package-a@1.0.0".to_string(),
+          )]),
+        },
+        TestNpmResolutionPackage {
+          pkg_id: "package-c@1.0.0_package-a@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: BTreeMap::from([(
+            "package-d".to_string(),
+            "package-d@1.0.0_package-c@1.0.0__package-a@1.0.0_package-a@1.0.0"
+              .to_string(),
+          )]),
+        },
+        TestNpmResolutionPackage {
+          pkg_id:
+            "package-d@1.0.0_package-c@1.0.0__package-a@1.0.0_package-a@1.0.0"
+              .to_string(),
+          copy_index: 0,
+          dependencies: BTreeMap::from([
+            (
+              "package-c".to_string(),
+              "package-c@1.0.0_package-a@1.0.0".to_string(),
+            ),
+            (
+              "package-e".to_string(),
+              "package-e@1.0.0_package-a@1.0.0".to_string()
+            ),
+          ]),
+        },
+        TestNpmResolutionPackage {
+          pkg_id: "package-e@1.0.0_package-a@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: BTreeMap::from([(
+            "package-a".to_string(),
+            "package-a@1.0.0".to_string()
+          ),]),
         },
       ]
     );
