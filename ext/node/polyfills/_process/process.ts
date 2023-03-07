@@ -7,7 +7,7 @@
 const core = globalThis.Deno.core;
 import { nextTick as _nextTick } from "internal:deno_node/_next_tick.ts";
 import { _exiting } from "internal:deno_node/_process/exiting.ts";
-import * as fs from "internal:runtime/30_fs.js";
+import * as fs from "internal:deno_fs/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
