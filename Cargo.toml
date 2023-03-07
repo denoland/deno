@@ -20,6 +20,7 @@ members = [
   "ext/fetch",
   "ext/flash",
   "ext/ffi",
+  "ext/fs",
   "ext/http",
   "ext/io",
   "ext/net",
@@ -62,6 +63,7 @@ deno_crypto = { version = "0.105.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.115.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.78.0", path = "./ext/ffi" }
 deno_flash = { version = "0.27.0", path = "./ext/flash" }
+deno_fs = { version = "0.1.0", path = "./ext/fs" }
 deno_http = { version = "0.86.0", path = "./ext/http" }
 deno_io = { version = "0.1.0", path = "./ext/io" }
 deno_net = { version = "0.83.0", path = "./ext/net" }
