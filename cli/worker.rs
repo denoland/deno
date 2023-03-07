@@ -502,7 +502,7 @@ async fn create_main_worker_internal(
   let mut extensions = ops::cli_exts(ps.clone());
   extensions.append(&mut custom_extensions);
 
-  let options = WorkerOptions {
+  let mut options = WorkerOptions {
     bootstrap: BootstrapOptions {
       args: ps.options.argv().clone(),
       cpu_count: std::thread::available_parallelism()
@@ -550,7 +550,7 @@ async fn create_main_worker_internal(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
-    leak_isolate: !bench_or_test && ps.options.coverage_dir().is_none(),
+    leak_isolate: !bench_or_test || ps.options.coverage_dir().is_none(),
   };
 
   let mut worker = MainWorker::bootstrap_from_options(
