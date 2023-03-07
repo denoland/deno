@@ -803,7 +803,7 @@ impl<'a> GraphDependencyResolver<'a> {
   ) -> Result<NodeId, AnyError> {
     debug_assert_eq!(entry.kind, NpmDependencyEntryKind::Dep);
     let parent_id = parent_path.node_id();
-    let (child_nv, child_id) = self.resolve_node_from_info(
+    let (child_nv, mut child_id) = self.resolve_node_from_info(
       &entry.name,
       &entry.version_req,
       package_info,
@@ -813,13 +813,17 @@ impl<'a> GraphDependencyResolver<'a> {
     // just ignore adding these as dependencies because this is likely a mistake
     // in the package.
     if child_id != parent_id {
+      let maybe_ancestor = parent_path.find_ancestor(&child_nv);
+      if let Some(ancestor) = &maybe_ancestor {
+        child_id = ancestor.node_id();
+      }
+
       self.graph.set_child_of_parent_node(
         &entry.bare_specifier,
         child_id,
         parent_id,
       );
 
-      let maybe_ancestor = parent_path.find_ancestor(&child_nv);
       let new_path = parent_path.with_id(
         child_id,
         entry.bare_specifier.to_string(),
