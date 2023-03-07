@@ -62,7 +62,7 @@ enum ResolvedIdPeerDep {
   /// change from under it.
   ParentReference {
     parent: GraphPathNodeOrRoot,
-    child_pkg_nv: NpmPackageNv,
+    child_pkg_nv: Arc<NpmPackageNv>,
   },
   /// A node that was created during snapshotting and is not being used in any path.
   SnapshotNodeId(NodeId),
@@ -98,7 +98,7 @@ impl ResolvedIdPeerDep {
 /// will become fully resolved to an `NpmPackageId`.
 #[derive(Clone)]
 struct ResolvedId {
-  nv: NpmPackageNv,
+  nv: Arc<NpmPackageNv>,
   peer_dependencies: Vec<ResolvedIdPeerDep>,
 }
 
@@ -186,7 +186,7 @@ impl NodeIdRef {
 #[derive(Clone)]
 enum GraphPathNodeOrRoot {
   Node(Arc<GraphPath>),
-  Root(NpmPackageNv),
+  Root(Arc<NpmPackageNv>),
 }
 
 /// Path through the graph that represents a traversal through the graph doing
@@ -199,14 +199,14 @@ struct GraphPath {
   specifier: String,
   // we could consider not storing this here and instead reference the resolved
   // nodes, but we should performance profile this code first
-  nv: NpmPackageNv,
+  nv: Arc<NpmPackageNv>,
   /// Descendants in the path that circularly link to an ancestor in a child.These
   /// descendants should be kept up to date and always point to this node.
   linked_circular_descendants: Mutex<Vec<Arc<GraphPath>>>,
 }
 
 impl GraphPath {
-  pub fn for_root(node_id: NodeId, nv: NpmPackageNv) -> Arc<Self> {
+  pub fn for_root(node_id: NodeId, nv: Arc<NpmPackageNv>) -> Arc<Self> {
     Arc::new(Self {
       previous_node: Some(GraphPathNodeOrRoot::Root(nv.clone())),
       node_id_ref: NodeIdRef::new(node_id),
@@ -233,7 +233,7 @@ impl GraphPath {
     self: &Arc<GraphPath>,
     node_id: NodeId,
     specifier: String,
-    nv: NpmPackageNv,
+    nv: Arc<NpmPackageNv>,
   ) -> Arc<Self> {
     Arc::new(Self {
       previous_node: Some(GraphPathNodeOrRoot::Node(self.clone())),
@@ -249,7 +249,7 @@ impl GraphPath {
     let mut maybe_next_node = self.previous_node.as_ref();
     while let Some(GraphPathNodeOrRoot::Node(next_node)) = maybe_next_node {
       // we've visited this before, so stop
-      if next_node.nv == *nv {
+      if *next_node.nv == *nv {
         return Some(next_node.clone());
       }
       maybe_next_node = next_node.previous_node.as_ref();
@@ -303,11 +303,11 @@ impl<'a> Iterator for GraphPathAncestorIterator<'a> {
 #[derive(Default)]
 pub struct Graph {
   /// Each requirement is mapped to a specific name and version.
-  package_reqs: HashMap<NpmPackageReq, NpmPackageNv>,
+  package_reqs: HashMap<NpmPackageReq, Arc<NpmPackageNv>>,
   /// Then each name and version is mapped to an exact node id.
   /// Note: Uses a BTreeMap in order to create some determinism
   /// when creating the snapshot.
-  root_packages: BTreeMap<NpmPackageNv, NodeId>,
+  root_packages: BTreeMap<Arc<NpmPackageNv>, NodeId>,
   package_name_versions: HashMap<String, HashSet<Version>>,
   nodes: HashMap<NodeId, Node>,
   resolved_node_ids: ResolvedNodeIds,
@@ -315,7 +315,7 @@ pub struct Graph {
   // inform the final snapshot creation.
   packages_to_copy_index: HashMap<NpmPackageId, usize>,
   /// Packages that the resolver should resolve first.
-  pending_unresolved_packages: Vec<NpmPackageNv>,
+  pending_unresolved_packages: Vec<Arc<NpmPackageNv>>,
 }
 
 impl Graph {
@@ -324,18 +324,18 @@ impl Graph {
   ) -> Result<Self, AnyError> {
     fn get_or_create_graph_node(
       graph: &mut Graph,
-      resolved_id: &NpmPackageId,
+      pkg_id: &NpmPackageId,
       packages: &HashMap<NpmPackageId, NpmResolutionPackage>,
       created_package_ids: &mut HashMap<NpmPackageId, NodeId>,
     ) -> Result<NodeId, AnyError> {
-      if let Some(id) = created_package_ids.get(resolved_id) {
+      if let Some(id) = created_package_ids.get(pkg_id) {
         return Ok(*id);
       }
 
-      let node_id = graph.create_node(&resolved_id.nv);
-      created_package_ids.insert(resolved_id.clone(), node_id);
+      let node_id = graph.create_node(&pkg_id.nv);
+      created_package_ids.insert(pkg_id.clone(), node_id);
 
-      let peer_dep_ids = resolved_id
+      let peer_dep_ids = pkg_id
         .peer_dependencies
         .iter()
         .map(|peer_dep| {
@@ -348,14 +348,14 @@ impl Graph {
         })
         .collect::<Result<Vec<_>, AnyError>>()?;
       let graph_resolved_id = ResolvedId {
-        nv: resolved_id.nv.clone(),
+        nv: Arc::new(pkg_id.nv.clone()),
         peer_dependencies: peer_dep_ids,
       };
       graph.resolved_node_ids.set(node_id, graph_resolved_id);
-      let resolution = match packages.get(resolved_id) {
+      let resolution = match packages.get(pkg_id) {
         Some(resolved_id) => resolved_id,
         // maybe the user messed around with the lockfile
-        None => bail!("not found package: {}", resolved_id.as_serialized()),
+        None => bail!("not found package: {}", pkg_id.as_serialized()),
       };
       for (name, child_id) in &resolution.dependencies {
         let child_node_id = get_or_create_graph_node(
@@ -377,8 +377,16 @@ impl Graph {
         .iter()
         .map(|(id, p)| (id.clone(), p.copy_index))
         .collect(),
-      package_reqs: snapshot.package_reqs,
-      pending_unresolved_packages: snapshot.pending_unresolved_packages,
+      package_reqs: snapshot
+        .package_reqs
+        .into_iter()
+        .map(|(k, v)| (k, Arc::new(v)))
+        .collect(),
+      pending_unresolved_packages: snapshot
+        .pending_unresolved_packages
+        .into_iter()
+        .map(Arc::new)
+        .collect(),
       ..Default::default()
     };
     let mut created_package_ids =
@@ -390,12 +398,12 @@ impl Graph {
         &snapshot.packages,
         &mut created_package_ids,
       )?;
-      graph.root_packages.insert(id, node_id);
+      graph.root_packages.insert(Arc::new(id), node_id);
     }
     Ok(graph)
   }
 
-  pub fn take_pending_unresolved(&mut self) -> Vec<NpmPackageNv> {
+  pub fn take_pending_unresolved(&mut self) -> Vec<Arc<NpmPackageNv>> {
     std::mem::take(&mut self.pending_unresolved_packages)
   }
 
@@ -419,12 +427,12 @@ impl Graph {
   ) -> NpmPackageId {
     if resolved_id.peer_dependencies.is_empty() {
       NpmPackageId {
-        nv: resolved_id.nv.clone(),
+        nv: (*resolved_id.nv).clone(),
         peer_dependencies: Vec::new(),
       }
     } else {
       let mut npm_pkg_id = NpmPackageId {
-        nv: resolved_id.nv.clone(),
+        nv: (*resolved_id.nv).clone(),
         peer_dependencies: Vec::with_capacity(
           resolved_id.peer_dependencies.len(),
         ),
@@ -605,8 +613,11 @@ impl Graph {
       root_packages: self
         .root_packages
         .into_iter()
-        .map(|(id, node_id)| {
-          (id, packages_to_resolved_id.get(&node_id).unwrap().clone())
+        .map(|(nv, node_id)| {
+          (
+            (*nv).clone(),
+            packages_to_resolved_id.get(&node_id).unwrap().clone(),
+          )
         })
         .collect(),
       packages_by_name: packages_by_name
@@ -618,8 +629,16 @@ impl Graph {
         })
         .collect(),
       packages,
-      package_reqs: self.package_reqs,
-      pending_unresolved_packages: self.pending_unresolved_packages,
+      package_reqs: self
+        .package_reqs
+        .into_iter()
+        .map(|(req, nv)| (req, (*nv).clone()))
+        .collect(),
+      pending_unresolved_packages: self
+        .pending_unresolved_packages
+        .into_iter()
+        .map(|nv| (*nv).clone())
+        .collect(),
     })
   }
 
@@ -686,12 +705,12 @@ impl Graph {
 }
 
 #[derive(Default)]
-struct DepEntryCache(HashMap<NpmPackageNv, Arc<Vec<NpmDependencyEntry>>>);
+struct DepEntryCache(HashMap<Arc<NpmPackageNv>, Arc<Vec<NpmDependencyEntry>>>);
 
 impl DepEntryCache {
   pub fn store(
     &mut self,
-    nv: NpmPackageNv,
+    nv: Arc<NpmPackageNv>,
     version_info: &NpmPackageVersionInfo,
   ) -> Result<Arc<Vec<NpmDependencyEntry>>, AnyError> {
     debug_assert!(!self.0.contains_key(&nv)); // we should not be re-inserting
@@ -723,7 +742,8 @@ pub struct GraphDependencyResolver<'a> {
   graph: &'a mut Graph,
   api: &'a NpmRegistryApi,
   pending_unresolved_nodes: VecDeque<Arc<GraphPath>>,
-  unresolved_optional_peers: HashMap<NpmPackageNv, Vec<UnresolvedOptionalPeer>>,
+  unresolved_optional_peers:
+    HashMap<Arc<NpmPackageNv>, Vec<UnresolvedOptionalPeer>>,
   dep_entry_cache: DepEntryCache,
 }
 
@@ -753,16 +773,16 @@ impl<'a> GraphDependencyResolver<'a> {
     let version_req =
       VersionReq::parse_from_specifier(&format!("{}", package_nv.version))
         .unwrap();
-    let (pkg_id, node_id) = self.resolve_node_from_info(
+    let (pkg_nv, node_id) = self.resolve_node_from_info(
       &package_nv.name,
       &version_req,
       package_info,
       None,
     )?;
-    self.graph.root_packages.insert(pkg_id.clone(), node_id);
+    self.graph.root_packages.insert(pkg_nv.clone(), node_id);
     self
       .pending_unresolved_nodes
-      .push_back(GraphPath::for_root(node_id, pkg_id));
+      .push_back(GraphPath::for_root(node_id, pkg_nv));
     Ok(())
   }
 
@@ -844,7 +864,7 @@ impl<'a> GraphDependencyResolver<'a> {
     version_req: &VersionReq,
     package_info: &NpmPackageInfo,
     parent_id: Option<NodeId>,
-  ) -> Result<(NpmPackageNv, NodeId), AnyError> {
+  ) -> Result<(Arc<NpmPackageNv>, NodeId), AnyError> {
     let version_and_info = resolve_best_package_version_and_info(
       version_req,
       package_info,
@@ -856,21 +876,21 @@ impl<'a> GraphDependencyResolver<'a> {
         .iter(),
     )?;
     let resolved_id = ResolvedId {
-      nv: NpmPackageNv {
+      nv: Arc::new(NpmPackageNv {
         name: package_info.name.to_string(),
         version: version_and_info.version.clone(),
-      },
+      }),
       peer_dependencies: Vec::new(),
     };
     let (_, node_id) = self.graph.get_or_create_for_id(&resolved_id);
-    let pkg_id = resolved_id.nv;
+    let pkg_nv = resolved_id.nv;
 
-    let has_deps = if let Some(deps) = self.dep_entry_cache.get(&pkg_id) {
+    let has_deps = if let Some(deps) = self.dep_entry_cache.get(&pkg_nv) {
       !deps.is_empty()
     } else {
       let deps = self
         .dep_entry_cache
-        .store(pkg_id.clone(), version_and_info.info)?;
+        .store(pkg_nv.clone(), version_and_info.info)?;
       !deps.is_empty()
     };
 
@@ -888,10 +908,10 @@ impl<'a> GraphDependencyResolver<'a> {
       },
       pkg_req_name,
       version_req.version_text(),
-      pkg_id.to_string(),
+      pkg_nv.to_string(),
     );
 
-    Ok((pkg_id, node_id))
+    Ok((pkg_nv, node_id))
   }
 
   pub async fn resolve_pending(&mut self) -> Result<(), AnyError> {
@@ -1099,11 +1119,7 @@ impl<'a> GraphDependencyResolver<'a> {
           if let Some(child_id) = find_matching_child(
             peer_dep,
             peer_package_info,
-            self
-              .graph
-              .root_packages
-              .iter()
-              .map(|(pkg_id, id)| (*id, pkg_id)),
+            self.graph.root_packages.iter().map(|(nv, id)| (*id, nv)),
           )? {
             let peer_parent = GraphPathNodeOrRoot::Root(root_pkg_id.clone());
             self.set_new_peer_dep(&path, peer_parent, specifier, child_id);
@@ -1179,7 +1195,7 @@ impl<'a> GraphDependencyResolver<'a> {
     // path from the node above the resolved dep to just above the peer dep
     path: &[&Arc<GraphPath>],
     peer_dep: &ResolvedIdPeerDep,
-    peer_dep_nv: &NpmPackageNv,
+    peer_dep_nv: &Arc<NpmPackageNv>,
     peer_dep_id: Option<NodeId>,
   ) -> Option<Arc<GraphPath>> {
     debug_assert!(!path.is_empty());
@@ -1372,7 +1388,7 @@ impl<'a> GraphDependencyResolver<'a> {
 fn find_matching_child<'a>(
   peer_dep: &NpmDependencyEntry,
   peer_package_info: &NpmPackageInfo,
-  children: impl Iterator<Item = (NodeId, &'a NpmPackageNv)>,
+  children: impl Iterator<Item = (NodeId, &'a Arc<NpmPackageNv>)>,
 ) -> Result<Option<NodeId>, AnyError> {
   for (child_id, pkg_id) in children {
     if pkg_id.name == peer_dep.name
@@ -1403,7 +1419,7 @@ mod test {
     let mut ids = ResolvedNodeIds::default();
     let node_id = NodeId(0);
     let resolved_id = ResolvedId {
-      nv: NpmPackageNv::from_str("package@1.1.1").unwrap(),
+      nv: Arc::new(NpmPackageNv::from_str("package@1.1.1").unwrap()),
       peer_dependencies: Vec::new(),
     };
     ids.set(node_id, resolved_id.clone());
@@ -1412,7 +1428,7 @@ mod test {
     assert_eq!(ids.get_node_id(&resolved_id), Some(node_id));
 
     let resolved_id_new = ResolvedId {
-      nv: NpmPackageNv::from_str("package@1.1.2").unwrap(),
+      nv: Arc::new(NpmPackageNv::from_str("package@1.1.2").unwrap()),
       peer_dependencies: Vec::new(),
     };
     ids.set(node_id, resolved_id_new.clone());
