@@ -2190,7 +2190,7 @@ fn v8_flags_arg<'a>() -> Arg<'a> {
     .use_value_delimiter(true)
     .require_equals(true)
     .help("Set V8 command line options")
-    .long_help("To see a list of all available flags use --v8-flags=--help.\
+    .long_help("To see a list of all available flags use --v8-flags=--help. \
     Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
 }
 
