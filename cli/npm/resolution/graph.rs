@@ -33,6 +33,9 @@ use super::snapshot::NpmResolutionSnapshot;
 use super::NpmPackageId;
 use super::NpmResolutionPackage;
 
+// todo(dsherret): for perf we should use an arena/bump allocator for
+// creating the nodes and paths since this is done in a phase
+
 /// A unique identifier to a node in the graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 struct NodeId(u32);
@@ -547,7 +550,7 @@ impl Graph {
     self,
     api: &NpmRegistryApi,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
-    let packages_to_resolved_id = self
+    let packages_to_pkg_ids = self
       .nodes
       .keys()
       .map(|node_id| (*node_id, self.get_npm_pkg_id(*node_id)))
@@ -560,52 +563,52 @@ impl Graph {
     let mut packages = HashMap::with_capacity(self.nodes.len());
     let mut packages_by_name: HashMap<String, Vec<_>> =
       HashMap::with_capacity(self.nodes.len());
-    let mut traversed_node_ids = HashSet::with_capacity(self.nodes.len());
+
+    // todo(dsherret): there is a lurking bug within the peer dependencies code.
+    // You can see it by using `NodeIds` instead of `NpmPackageIds` on this travered_ids
+    // hashset, which will cause the bottom of the "tree" nodes to be populated in
+    // the result instead of the top of the "tree". I think there's maybe one small
+    // thing that's not being updated properly.
+    let mut traversed_ids = HashSet::with_capacity(self.nodes.len());
     let mut pending = VecDeque::new();
+
     for root_id in self.root_packages.values().copied() {
-      if traversed_node_ids.insert(root_id) {
-        pending
-          .push_back((root_id, packages_to_resolved_id.get(&root_id).unwrap()));
+      let pkg_id = packages_to_pkg_ids.get(&root_id).unwrap();
+      if traversed_ids.insert(pkg_id.clone()) {
+        pending.push_back((root_id, pkg_id));
       }
     }
-    while let Some((node_id, resolved_id)) = pending.pop_front() {
+
+    while let Some((node_id, pkg_id)) = pending.pop_front() {
       let node = self.nodes.get(&node_id).unwrap();
 
       packages_by_name
-        .entry(resolved_id.nv.name.clone())
+        .entry(pkg_id.nv.name.clone())
         .or_default()
-        .push(resolved_id.clone());
+        .push(pkg_id.clone());
 
       // todo(dsherret): grab this from the dep entry cache, which should have it
       let dist = api
-        .package_version_info(&resolved_id.nv)
+        .package_version_info(&pkg_id.nv)
         .await?
-        .unwrap_or_else(|| panic!("missing: {:?}", resolved_id.nv))
+        .unwrap_or_else(|| panic!("missing: {:?}", pkg_id.nv))
         .dist;
 
       let mut dependencies = HashMap::with_capacity(node.children.len());
-      let is_match =
-        resolved_id.as_serialized() == "@parcel/types@2.8.3_@parcel+core@2.8.3";
-      if is_match {
-        eprintln!("{:?}: {}", node_id, resolved_id.as_serialized());
-      }
       for (specifier, child_id) in &node.children {
         let child_id = *child_id;
-        let resolved_id = packages_to_resolved_id.get(&child_id).unwrap();
-        if traversed_node_ids.insert(child_id) {
-          pending.push_back((child_id, resolved_id));
+        let child_pkg_id = packages_to_pkg_ids.get(&child_id).unwrap();
+        if traversed_ids.insert(child_pkg_id.clone()) {
+          pending.push_back((child_id, child_pkg_id));
         }
-        dependencies.insert(specifier.clone(), (*resolved_id).clone());
-        if is_match {
-          eprintln!("    {:?}: {}", child_id, resolved_id.as_serialized());
-        }
+        dependencies.insert(specifier.clone(), (*child_pkg_id).clone());
       }
 
       packages.insert(
-        (*resolved_id).clone(),
+        (*pkg_id).clone(),
         NpmResolutionPackage {
-          copy_index: copy_index_resolver.resolve(resolved_id),
-          pkg_id: (*resolved_id).clone(),
+          copy_index: copy_index_resolver.resolve(pkg_id),
+          pkg_id: (*pkg_id).clone(),
           dist,
           dependencies,
         },
@@ -619,7 +622,7 @@ impl Graph {
         .map(|(nv, node_id)| {
           (
             (*nv).clone(),
-            packages_to_resolved_id.get(&node_id).unwrap().clone(),
+            packages_to_pkg_ids.get(&node_id).unwrap().clone(),
           )
         })
         .collect(),
@@ -1355,22 +1358,6 @@ impl<'a> GraphDependencyResolver<'a> {
       .get(ancestor_node_id)
       .unwrap()
       .clone();
-
-    // for peer_dep in ancestor_resolved_id.peer_dependencies {
-    //   let peer_dep_nv = match &peer_dep {
-    //     ResolvedIdPeerDep::ParentReference { child_pkg_nv, .. } => {
-    //       child_pkg_nv.clone()
-    //     }
-    //     ResolvedIdPeerDep::SnapshotNodeId(node_id) => self
-    //       .graph
-    //       .resolved_node_ids
-    //       .get(*node_id)
-    //       .unwrap()
-    //       .nv
-    //       .clone(),
-    //   };
-    //   self.add_peer_deps_to_path(&path, &[(&peer_dep, peer_dep_nv)]);
-    // }
 
     let peer_deps = ancestor_resolved_id
       .peer_dependencies
