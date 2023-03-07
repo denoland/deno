@@ -1116,6 +1116,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_fs"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_crypto",
+ "deno_io",
+ "filetime",
+ "fs3",
+ "libc",
+ "log",
+ "nix",
+ "serde",
+ "tokio",
+ "winapi",
+]
+
+[[package]]
 name = "deno_graph"
 version = "0.44.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1276,6 +1293,7 @@ dependencies = [
  "deno_fetch",
  "deno_ffi",
  "deno_flash",
+ "deno_fs",
  "deno_http",
  "deno_io",
  "deno_napi",
