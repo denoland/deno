@@ -818,12 +818,6 @@ impl<'a> GraphDependencyResolver<'a> {
         child_id = ancestor.node_id();
       }
 
-      self.graph.set_child_of_parent_node(
-        &entry.bare_specifier,
-        child_id,
-        parent_id,
-      );
-
       let new_path = parent_path.with_id(
         child_id,
         entry.bare_specifier.to_string(),
@@ -833,6 +827,11 @@ impl<'a> GraphDependencyResolver<'a> {
         // this node is circular, so we link it to the ancestor
         self.add_linked_circular_descendant(&ancestor, new_path);
       } else {
+        self.graph.set_child_of_parent_node(
+          &entry.bare_specifier,
+          child_id,
+          parent_id,
+        );
         self.pending_unresolved_nodes.push_back(new_path);
       }
     }
@@ -1359,7 +1358,6 @@ impl<'a> GraphDependencyResolver<'a> {
       self.add_peer_dep_to_path(&path, &peer_dep, &peer_dep_nv, None);
     }
 
-    // todo(THIS PR): can this be removed?
     let parent_node_id = path[0].node_id();
     self.graph.set_child_of_parent_node(
       descendant.specifier(),
