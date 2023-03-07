@@ -122,7 +122,6 @@ pub fn init<BC: BroadcastChannel + 'static>(
     .state(move |state| {
       state.put(bc.clone());
       state.put(Unstable(unstable));
-      Ok(())
     })
     .build()
 }

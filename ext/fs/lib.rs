@@ -122,7 +122,6 @@ pub fn init<P: FsPermissions + 'static>(unstable: bool) -> Extension {
     .esm(include_js_files!("30_fs.js",))
     .state(move |state| {
       state.put(UnstableChecker { unstable });
-      Ok(())
     })
     .ops(vec![
       op_open_sync::decl::<P>(),

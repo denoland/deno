@@ -383,7 +383,6 @@ pub fn init<P: NodePermissions + 'static>(
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
         state.put(npm_resolver);
       }
-      Ok(())
     })
     .build()
 }

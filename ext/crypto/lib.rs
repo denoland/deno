@@ -111,7 +111,6 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));
       }
-      Ok(())
     })
     .build()
 }

@@ -151,8 +151,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
         async_work_receiver,
         async_work_sender,
       });
-
-      Ok(())
     })
     .build()
 }

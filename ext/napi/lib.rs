@@ -578,7 +578,6 @@ pub fn init<P: NapiPermissions + 'static>() -> Extension {
         env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
         tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
       });
-      Ok(())
     })
     .build()
 }
