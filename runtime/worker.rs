@@ -263,7 +263,10 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
+      // TODO(bartlomieju): this should be conditional on `dont_create_runtime_snapshot`
+      // cargo feature and should use `init_polyfill_ops` or `init_polyfill_ops_and_esm`
+      // if the feature is enabled
+      deno_node::init_polyfill_ops(),
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),

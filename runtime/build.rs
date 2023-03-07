@@ -281,7 +281,7 @@ mod startup_snapshot {
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
       deno_node::init::<Permissions>(None),
-      deno_node::init_polyfill(),
+      deno_node::init_polyfill_ops_and_esm(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
