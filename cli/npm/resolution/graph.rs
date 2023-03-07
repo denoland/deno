@@ -120,7 +120,7 @@ impl ResolvedId {
     let new_hash = peer_dep.current_state_hash();
     for dep in &self.peer_dependencies {
       if new_hash == dep.current_state_hash() {
-        return false;
+        return false; // peer dep already set
       }
     }
     self.peer_dependencies.push(peer_dep);
@@ -364,7 +364,7 @@ impl Graph {
           packages,
           created_package_ids,
         )?;
-        graph.set_child_of_parent_node(name, child_node_id, node_id);
+        graph.set_child_of_parent_node(node_id, name, child_node_id);
       }
       Ok(node_id)
     }
@@ -531,9 +531,9 @@ impl Graph {
 
   fn set_child_of_parent_node(
     &mut self,
+    parent_id: NodeId,
     specifier: &str,
     child_id: NodeId,
-    parent_id: NodeId,
   ) {
     assert_ne!(child_id, parent_id);
     let parent = self.borrow_node_mut(parent_id);
@@ -848,9 +848,9 @@ impl<'a> GraphDependencyResolver<'a> {
         self.add_linked_circular_descendant(&ancestor, new_path);
       } else {
         self.graph.set_child_of_parent_node(
+          parent_id,
           &entry.bare_specifier,
           child_id,
-          parent_id,
         );
         self.pending_unresolved_nodes.push_back(new_path);
       }
@@ -1191,12 +1191,11 @@ impl<'a> GraphDependencyResolver<'a> {
     }
   }
 
-  fn add_peer_dep_to_path(
+  fn add_peer_deps_to_path(
     &mut self,
     // path from the node above the resolved dep to just above the peer dep
     path: &[&Arc<GraphPath>],
-    peer_dep: &ResolvedIdPeerDep,
-    peer_dep_nv: &Arc<NpmPackageNv>,
+    peer_deps: &[(&ResolvedIdPeerDep, Arc<NpmPackageNv>)],
   ) {
     debug_assert!(!path.is_empty());
 
@@ -1209,12 +1208,18 @@ impl<'a> GraphDependencyResolver<'a> {
         .unwrap()
         .clone();
 
-      if old_resolved_id.nv == *peer_dep_nv {
-        continue;
+      let mut new_resolved_id = old_resolved_id;
+      let mut has_changed = false;
+      for (peer_dep, nv) in peer_deps {
+        if *nv == new_resolved_id.nv {
+          continue;
+        }
+        if new_resolved_id.push_peer_dep((*peer_dep).clone()) {
+          has_changed = true;
+        }
       }
 
-      let mut new_resolved_id = old_resolved_id.clone();
-      if !new_resolved_id.push_peer_dep(peer_dep.clone()) {
+      if !has_changed {
         continue; // nothing to change
       }
 
@@ -1227,28 +1232,28 @@ impl<'a> GraphDependencyResolver<'a> {
         // copy over the old children to this new one
         for (specifier, child_id) in &old_children {
           self.graph.set_child_of_parent_node(
+            new_node_id,
             specifier,
             *child_id,
-            new_node_id,
           );
         }
       }
 
-      debug_assert_eq!(graph_path_node.node_id(), old_node_id);
       graph_path_node.change_id(new_node_id);
+
       let circular_descendants =
         graph_path_node.linked_circular_descendants.lock().clone();
       for descendant in circular_descendants {
         let path = descendant.get_path_to_ancestor_exclusive(new_node_id);
-        self.add_peer_dep_to_path(&path, peer_dep, peer_dep_nv);
+        self.add_peer_deps_to_path(&path, peer_deps);
         descendant.change_id(new_node_id);
 
-        // update the parent to point to this new node id
-        let parent_node_id = path[0].node_id();
+        // update the bottom node to point to this new node id
+        let bottom_node_id = path[0].node_id();
         self.graph.set_child_of_parent_node(
+          bottom_node_id,
           descendant.specifier(),
           descendant.node_id(),
-          parent_node_id,
         );
       }
 
@@ -1297,15 +1302,14 @@ impl<'a> GraphDependencyResolver<'a> {
     } else {
       (None, path)
     };
-    self.add_peer_dep_to_path(path, &peer_dep, &peer_dep_nv);
+    self.add_peer_deps_to_path(path, &[(&peer_dep, peer_dep_nv.clone())]);
 
     // now set the peer dependency
     let bottom_node = path.first().unwrap();
-    let parent_node_id = bottom_node.node_id();
     self.graph.set_child_of_parent_node(
+      bottom_node.node_id(),
       peer_dep_specifier,
       peer_dep_id,
-      parent_node_id,
     );
 
     // queue next step
@@ -1364,14 +1368,40 @@ impl<'a> GraphDependencyResolver<'a> {
           .nv
           .clone(),
       };
-      self.add_peer_dep_to_path(&path, &peer_dep, &peer_dep_nv);
+      self.add_peer_deps_to_path(&path, &[(&peer_dep, peer_dep_nv)]);
     }
 
-    let parent_node_id = path[0].node_id();
+    // todo: for some reason this causes issues...
+    // let peer_deps = ancestor_resolved_id
+    //   .peer_dependencies
+    //   .iter()
+    //   .map(|peer_dep| {
+    //     (
+    //       peer_dep,
+    //       match &peer_dep {
+    //         ResolvedIdPeerDep::ParentReference { child_pkg_nv, .. } => {
+    //           child_pkg_nv.clone()
+    //         }
+    //         ResolvedIdPeerDep::SnapshotNodeId(node_id) => self
+    //           .graph
+    //           .resolved_node_ids
+    //           .get(*node_id)
+    //           .unwrap()
+    //           .nv
+    //           .clone(),
+    //       },
+    //     )
+    //   })
+    //   .collect::<Vec<_>>();
+    // if !peer_deps.is_empty() {
+    //   self.add_peer_deps_to_path(&path, &peer_deps);
+    // }
+
+    let bottom_node_id = path[0].node_id();
     self.graph.set_child_of_parent_node(
+      bottom_node_id,
       descendant.specifier(),
       descendant.node_id(),
-      parent_node_id,
     );
 
     ancestor.linked_circular_descendants.lock().push(descendant);
