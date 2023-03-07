@@ -502,7 +502,7 @@ async fn create_main_worker_internal(
   let mut extensions = ops::cli_exts(ps.clone());
   extensions.append(&mut custom_extensions);
 
-  let mut options = WorkerOptions {
+  let options = WorkerOptions {
     bootstrap: BootstrapOptions {
       args: ps.options.argv().clone(),
       cpu_count: std::thread::available_parallelism()
