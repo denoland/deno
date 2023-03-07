@@ -342,9 +342,11 @@ impl SnapshotOptions {
 
 impl Drop for JsRuntime {
   fn drop(&mut self) {
-    if let Some(mut v8_isolate) = self.v8_isolate.take() {
+    if let Some(mut v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(&mut v8_isolate);
-      if self.leak_isolate {
+    }
+    if self.leak_isolate {
+      if let Some(v8_isolate) = self.v8_isolate.take() {
         std::mem::forget(v8_isolate);
       }
     }
