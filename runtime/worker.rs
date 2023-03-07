@@ -178,6 +178,7 @@ impl Default for WorkerOptions {
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      leak_isolate: false,
     }
   }
 }
