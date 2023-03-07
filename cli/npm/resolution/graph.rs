@@ -1197,10 +1197,9 @@ impl<'a> GraphDependencyResolver<'a> {
     path: &[&Arc<GraphPath>],
     peer_dep: &ResolvedIdPeerDep,
     peer_dep_nv: &Arc<NpmPackageNv>,
-  ) -> Option<Arc<GraphPath>> {
+  ) {
     debug_assert!(!path.is_empty());
 
-    let mut found_ancestor_node = None;
     for graph_path_node in path.iter().rev() {
       let old_node_id = graph_path_node.node_id();
       let old_resolved_id = self
@@ -1211,7 +1210,6 @@ impl<'a> GraphDependencyResolver<'a> {
         .clone();
 
       if old_resolved_id.nv == *peer_dep_nv {
-        found_ancestor_node = Some((*graph_path_node).clone());
         continue;
       }
 
@@ -1268,8 +1266,6 @@ impl<'a> GraphDependencyResolver<'a> {
         }
       }
     }
-
-    found_ancestor_node
   }
 
   fn set_new_peer_dep(
@@ -1294,8 +1290,13 @@ impl<'a> GraphDependencyResolver<'a> {
       child_pkg_nv: peer_dep_nv.clone(),
     };
 
-    let found_ancestor_node =
-      self.add_peer_dep_to_path(path, &peer_dep, &peer_dep_nv);
+    let top_node = path.last().unwrap();
+    let maybe_ancestor_node = if top_node.nv == peer_dep_nv {
+      Some(top_node)
+    } else {
+      None
+    };
+    self.add_peer_dep_to_path(path, &peer_dep, &peer_dep_nv);
 
     // now set the peer dependency
     let bottom_node = path.first().unwrap();
@@ -1312,7 +1313,7 @@ impl<'a> GraphDependencyResolver<'a> {
       peer_dep_specifier.to_string(),
       peer_dep_nv,
     );
-    if let Some(ancestor_node) = found_ancestor_node {
+    if let Some(ancestor_node) = maybe_ancestor_node {
       // it's circular, so link this in step with the ancestor node
       ancestor_node
         .linked_circular_descendants
