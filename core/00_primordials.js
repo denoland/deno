@@ -507,50 +507,52 @@
       SafePromise.all(arrayToSafePromiseIterable(values)).then(a, b)
     );
 
-  /**
-   * Creates a Promise that is resolved with an array of results when all
-   * of the provided Promises resolve or reject.
-   * @template T
-   * @param {Array<T | PromiseLike<T>>} values
-   * @returns {Promise<PromiseSettledResult<T>[]>}
-   */
-  primordials.SafePromiseAllSettled = (values) =>
-    // Wrapping on a new Promise is necessary to not expose the SafePromise
-    // prototype to user-land.
-    new Promise((a, b) =>
-      SafePromise.allSettled(arrayToSafePromiseIterable(values)).then(a, b)
-    );
+  // NOTE: Uncomment the following functions when you need to use them
 
-  /**
-   * The any function returns a promise that is fulfilled by the first given
-   * promise to be fulfilled, or rejected with an AggregateError containing
-   * an array of rejection reasons if all of the given promises are rejected.
-   * It resolves all elements of the passed iterable to promises as it runs
-   * this algorithm.
-   * @template T
-   * @param {T} values
-   * @returns {Promise<Awaited<T[number]>>}
-   */
-  primordials.SafePromiseAny = (values) =>
-    // Wrapping on a new Promise is necessary to not expose the SafePromise
-    // prototype to user-land.
-    new Promise((a, b) =>
-      SafePromise.any(arrayToSafePromiseIterable(values)).then(a, b)
-    );
+  // /**
+  //  * Creates a Promise that is resolved with an array of results when all
+  //  * of the provided Promises resolve or reject.
+  //  * @template T
+  //  * @param {Array<T | PromiseLike<T>>} values
+  //  * @returns {Promise<PromiseSettledResult<T>[]>}
+  //  */
+  // primordials.SafePromiseAllSettled = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.allSettled(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
 
-  /**
-   * Creates a Promise that is resolved or rejected when any of the provided
-   * Promises are resolved or rejected.
-   * @template T
-   * @param {T} values
-   * @returns {Promise<Awaited<T[number]>>}
-   */
-  primordials.SafePromiseRace = (values) =>
-    // Wrapping on a new Promise is necessary to not expose the SafePromise
-    // prototype to user-land.
-    new Promise((a, b) =>
-      SafePromise.race(arrayToSafePromiseIterable(values)).then(a, b)
-    );
+  // /**
+  //  * The any function returns a promise that is fulfilled by the first given
+  //  * promise to be fulfilled, or rejected with an AggregateError containing
+  //  * an array of rejection reasons if all of the given promises are rejected.
+  //  * It resolves all elements of the passed iterable to promises as it runs
+  //  * this algorithm.
+  //  * @template T
+  //  * @param {T} values
+  //  * @returns {Promise<Awaited<T[number]>>}
+  //  */
+  // primordials.SafePromiseAny = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.any(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
+
+  // /**
+  //  * Creates a Promise that is resolved or rejected when any of the provided
+  //  * Promises are resolved or rejected.
+  //  * @template T
+  //  * @param {T} values
+  //  * @returns {Promise<Awaited<T[number]>>}
+  //  */
+  // primordials.SafePromiseRace = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.race(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
 
   /**
    * Attaches a callback that is invoked when the Promise is settled (fulfilled or
