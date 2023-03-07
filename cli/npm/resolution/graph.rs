@@ -351,7 +351,7 @@ impl Graph {
           packages,
           created_package_ids,
         )?;
-        graph.set_child_parent_node(name, child_node_id, node_id);
+        graph.set_child_of_parent_node(name, child_node_id, node_id);
       }
       Ok(node_id)
     }
@@ -508,7 +508,7 @@ impl Graph {
     self.nodes.get_mut(&node_id).unwrap()
   }
 
-  fn set_child_parent_node(
+  fn set_child_of_parent_node(
     &mut self,
     specifier: &str,
     child_id: NodeId,
@@ -800,7 +800,7 @@ impl<'a> GraphDependencyResolver<'a> {
     // just ignore adding these as dependencies because this is likely a mistake
     // in the package.
     if node_id != parent_id {
-      self.graph.set_child_parent_node(
+      self.graph.set_child_of_parent_node(
         &entry.bare_specifier,
         node_id,
         parent_id,
@@ -1211,9 +1211,11 @@ impl<'a> GraphDependencyResolver<'a> {
           self.graph.borrow_node_mut(old_node_id).children.clone();
         // copy over the old children to this new one
         for (specifier, child_id) in &old_children {
-          self
-            .graph
-            .set_child_parent_node(specifier, *child_id, new_node_id);
+          self.graph.set_child_of_parent_node(
+            specifier,
+            *child_id,
+            new_node_id,
+          );
         }
       }
 
@@ -1238,7 +1240,7 @@ impl<'a> GraphDependencyResolver<'a> {
     // now set the peer dependency
     let bottom_node = path.first().unwrap();
     let parent_node_id = bottom_node.node_id();
-    self.graph.set_child_parent_node(
+    self.graph.set_child_of_parent_node(
       peer_dep_specifier,
       peer_dep_id,
       parent_node_id,
@@ -3781,13 +3783,17 @@ mod test {
             ),
             (
               "package-d".to_string(),
-              NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
+              NpmPackageId::from_serialized("package-d@1.0.0_package-b@1.0.0")
+                .unwrap(),
             )
           ]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          pkg_id: NpmPackageId::from_serialized("package-d@1.0.0").unwrap(),
+          pkg_id: NpmPackageId::from_serialized(
+            "package-d@1.0.0_package-b@1.0.0"
+          )
+          .unwrap(),
           copy_index: 0,
           dependencies: HashMap::from([(
             "package-c".to_string(),
