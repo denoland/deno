@@ -206,7 +206,6 @@ impl MainWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));

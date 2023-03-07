@@ -1567,7 +1567,6 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
         join_handles: HashMap::default(),
         servers: HashMap::default(),
       });
-      Ok(())
     })
     .build()
 }

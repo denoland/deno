@@ -45,7 +45,6 @@ pub fn init(exit_code: ExitCode) -> Extension {
   init_ops(&mut builder)
     .state(move |state| {
       state.put::<ExitCode>(exit_code.clone());
-      Ok(())
     })
     .build()
 }

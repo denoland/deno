@@ -376,7 +376,6 @@ impl WebWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {

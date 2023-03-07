@@ -269,8 +269,6 @@ mod ts {
         state.put(op_crate_libs.clone());
         state.put(build_libs.clone());
         state.put(path_dts.clone());
-
-        Ok(())
       })
       .build();
 
