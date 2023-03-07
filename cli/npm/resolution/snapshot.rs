@@ -217,35 +217,12 @@ impl NpmResolutionSnapshot {
   }
 
   pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
-    /// Gets the minimum copy index for each package name and version.
-    /// This is necessary for when the lockfile is corrupt and the snapshot
-    /// has ended up with no copy_index=0 package.
-    fn get_min_copy_indexes(
-      packages: &[NpmResolutionPackage],
-    ) -> HashMap<NpmPackageNv, usize> {
-      let mut result = HashMap::with_capacity(packages.len());
-
-      for package in packages {
-        let entry = result
-          .entry(package.pkg_id.nv.clone())
-          .or_insert(package.copy_index);
-        if package.copy_index < *entry {
-          *entry = package.copy_index;
-        }
-      }
-
-      result
-    }
-
     let mut packages = self.all_packages();
     let mut copy_packages = Vec::with_capacity(packages.len() / 2); // at most 1 copy for every package
-    let min_copy_indexes = get_min_copy_indexes(&packages);
 
     // partition out any packages that are "copy" packages
     for i in (0..packages.len()).rev() {
-      let pkg = &packages[i];
-      let min_copy_index = *min_copy_indexes.get(&pkg.pkg_id.nv).unwrap();
-      if pkg.copy_index > min_copy_index {
+      if packages[i].copy_index > 0 {
         copy_packages.push(packages.swap_remove(i));
       }
     }
