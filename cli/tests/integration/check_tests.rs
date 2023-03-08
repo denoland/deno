@@ -203,11 +203,8 @@ fn typecheck_core() {
   )
   .unwrap();
 
-  let output = context
-    .new_command()
-    .args(format!("run {}", test_file.to_str().unwrap()))
-    .split_output()
-    .run();
+  let args = vec!["run".to_string(), test_file.to_string_lossy().into_owned()];
+  let output = context.new_command().args_vec(args).split_output().run();
 
   println!("stdout: {}", output.stdout());
   println!("stderr: {}", output.stderr());

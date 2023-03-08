@@ -56,10 +56,11 @@ fn error_if_invalid_cache() {
   // Generate coverage
   let output = context
     .new_command()
-    .args(format!(
-      "test --quiet --coverage={}",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+    ])
     .run();
 
   output.assert_exit_code(0);
@@ -70,7 +71,10 @@ fn error_if_invalid_cache() {
 
   let output = context
     .new_command()
-    .args(format!("coverage {}/", tempdir.to_str().unwrap()))
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .run();
 
   output.assert_exit_code(1);
@@ -89,10 +93,13 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .args(format!(
-      "test -A --quiet --coverage={} coverage/{test_name}_test.{extension}",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "test".to_string(),
+      "-A".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/{test_name}_test.{extension}"),
+    ])
     .run();
 
   output.assert_exit_code(0);
@@ -100,10 +107,10 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .args(format!(
-      "coverage --unstable {}/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .split_output()
     .run();
 
@@ -127,10 +134,12 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .args(format!(
-      "coverage --quiet --unstable --lcov {}/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--quiet".to_string(),
+      "--lcov".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .run();
 
   let actual = util::strip_ansi_codes(output.combined_output()).to_string();
@@ -157,10 +166,12 @@ fn multifile_coverage() {
 
   let output = context
     .new_command()
-    .args(format!(
-      "test --quiet --coverage={} coverage/multifile/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/multifile/"),
+    ])
     .run();
 
   output.assert_exit_code(0);
@@ -168,10 +179,10 @@ fn multifile_coverage() {
 
   let output = context
     .new_command()
-    .args(format!(
-      "coverage --unstable {}/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .split_output()
     .run();
 
@@ -194,10 +205,12 @@ fn multifile_coverage() {
 
   let output = context
     .new_command()
-    .args(format!(
-      "coverage --quiet --unstable --lcov {}/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--quiet".to_string(),
+      "--lcov".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .run();
 
   let actual = util::strip_ansi_codes(output.combined_output()).to_string();
@@ -223,10 +236,13 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .args(format!(
-      "test --quiet --unstable --allow-read --coverage={} coverage/no_snaps_included/{test_name}_test.{extension}",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/no_snaps_included/{test_name}_test.{extension}"),
+    ])
     .run();
 
   output.assert_exit_code(0);
@@ -234,10 +250,11 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .args(format!(
-      "coverage --unstable --include=no_snaps_included.ts {}/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--include=no_snaps_included.ts".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .split_output()
     .run();
 
@@ -268,10 +285,12 @@ fn no_transpiled_lines() {
 
   let output = context
     .new_command()
-    .args(format!(
-      "test --quiet --coverage={} coverage/no_transpiled_lines/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      "coverage/no_transpiled_lines/".to_string(),
+    ])
     .run();
 
   output.assert_exit_code(0);
@@ -279,10 +298,11 @@ fn no_transpiled_lines() {
 
   let output = context
     .new_command()
-    .args(format!(
-      "coverage --include=no_transpiled_lines/index.ts {}/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--include=no_transpiled_lines/index.ts".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .run();
 
   let actual = util::strip_ansi_codes(output.combined_output()).to_string();
@@ -302,10 +322,12 @@ fn no_transpiled_lines() {
 
   let output = context
     .new_command()
-    .args(format!(
-      "coverage --lcov --include=no_transpiled_lines/index.ts {}/",
-      tempdir.to_str().unwrap()
-    ))
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--lcov".to_string(),
+      "--include=no_transpiled_lines/index.ts".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
     .run();
 
   let actual = util::strip_ansi_codes(output.combined_output()).to_string();
