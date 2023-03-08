@@ -14,7 +14,6 @@ use std::fs;
 use std::process::Stdio;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
-use test_util::http_server;
 use test_util::lsp::LspClient;
 use test_util::lsp::LspClientBuilder;
 use test_util::testdata_path;
@@ -37,16 +36,6 @@ fn load_fixture_str(path: &str) -> String {
   let fixtures_path = testdata_path().join("lsp");
   let path = fixtures_path.join(path);
   fs::read_to_string(path).unwrap()
-}
-
-fn init(init_path: &str) -> LspClient {
-  let test_context = TestContextBuilder::new().build();
-  let mut client = test_context.new_lsp_command().build();
-  client
-    .write_request::<_, _, Value>("initialize", load_fixture(init_path))
-    .unwrap();
-  client.write_notification("initialized", json!({})).unwrap();
-  client
 }
 
 fn did_open<V>(
@@ -98,10 +87,6 @@ struct TestSession {
 }
 
 impl TestSession {
-  pub fn from_file(init_path: &str) -> Self {
-    Self::from_client(init(init_path))
-  }
-
   pub fn from_client(client: LspClient) -> Self {
     Self {
       client,
@@ -3387,7 +3372,9 @@ fn lsp_code_actions() {
 
 #[test]
 fn lsp_code_actions_deno_cache() {
-  let mut session = TestSession::from_file("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
+  let mut session = TestSession::from_client(client);
   let diagnostics = session.did_open(json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -3418,7 +3405,9 @@ fn lsp_code_actions_deno_cache() {
 
 #[test]
 fn lsp_code_actions_deno_cache_npm() {
-  let mut session = TestSession::from_file("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
+  let mut session = TestSession::from_client(client);
   let diagnostics = session.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
@@ -3449,7 +3438,9 @@ fn lsp_code_actions_deno_cache_npm() {
 
 #[test]
 fn lsp_code_actions_imports() {
-  let mut session = TestSession::from_file("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
+  let mut session = TestSession::from_client(client);
   session.did_open(json!({
       "textDocument": {
         "uri": "file:///a/file00.ts",
@@ -3566,7 +3557,14 @@ fn lsp_code_actions_refactor() {
 
 #[test]
 fn lsp_code_actions_refactor_no_disabled_support() {
-  let mut client = init("initialize_params_ca_no_disabled.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize(|builder| {
+    builder.with_capabilities(|c| {
+      let doc = c.text_document.as_mut().unwrap();
+      let code_action = doc.code_action.as_mut().unwrap();
+      code_action.disabled_support = Some(false);
+    });
+  });
   did_open(
     &mut client,
     json!({
@@ -4150,7 +4148,13 @@ fn lsp_completions_snippet() {
 
 #[test]
 fn lsp_completions_no_snippet() {
-  let mut client = init("initialize_params_no_snippet.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize(|builder| {
+    builder.with_capabilities(|c| {
+      let doc = c.text_document.as_mut().unwrap();
+      doc.completion = None;
+    });
+  });
   did_open(
     &mut client,
     json!({
@@ -5355,7 +5359,9 @@ fn lsp_diagnostics_deno_types() {
 
 #[test]
 fn lsp_diagnostics_refresh_dependents() {
-  let mut session = TestSession::from_file("initialize_params.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
+  let mut session = TestSession::from_client(client);
   session.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file_00.ts",
@@ -6124,8 +6130,9 @@ fn lsp_markdown_no_diagnostics() {
 
 #[test]
 fn lsp_configuration_did_change() {
-  let _g = http_server();
-  let mut client = init("initialize_params_did_config_change.json");
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
   did_open(
     &mut client,
     json!({

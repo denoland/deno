@@ -409,6 +409,14 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn with_capabilities(
+    &mut self,
+    mut action: impl FnMut(&mut ClientCapabilities),
+  ) -> &mut Self {
+    action(&mut self.params.capabilities);
+    self
+  }
+
   fn initialization_options_mut(
     &mut self,
   ) -> &mut serde_json::Map<String, serde_json::Value> {
