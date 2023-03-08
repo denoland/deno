@@ -80,6 +80,7 @@ pub fn op_close(
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8
+  eprintln!("op_close");
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
   state.resource_table.close(rid)?;
   Ok(())
@@ -94,6 +95,7 @@ pub fn op_try_close(
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8.
+  eprintln!("op_try_close");
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
   let _ = state.resource_table.close(rid);
   Ok(())

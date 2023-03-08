@@ -41,6 +41,7 @@ pub fn external_references(
   });
 
   for ctx in ops {
+    eprintln!("external references {}", ctx.decl.name);
     let ctx_ptr = ctx as *const OpCtx as _;
     references.push(v8::ExternalReference { pointer: ctx_ptr });
     references.push(v8::ExternalReference {
@@ -194,7 +195,9 @@ fn initialize_ops(
   // TODO(bartlomieju): remove this option
   snapshot_options: SnapshotOptions,
 ) {
+  eprintln!("initialize_ops");
   for ctx in op_ctxs {
+    eprintln!("register {}", ctx.decl.name);
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
     // If this is a fast op, we don't want it to be in the snapshot.
@@ -230,12 +233,14 @@ fn initialize_ops_from_existing_snapshot(
   // TODO(bartlomieju): remove this option
   snapshot_options: SnapshotOptions,
 ) {
+  eprintln!("initialize_ops_from_existing_snapshot");
   // Only register ops that have `force_registration` flag set to true,
   // the remaining ones should already be in the snapshot.
   for ctx in op_ctxs
     .iter()
     .filter(|op_ctx| op_ctx.decl.force_registration)
   {
+    eprintln!("register {}", ctx.decl.name);
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
     // TODO(bartlomieju): move to a helper function?
