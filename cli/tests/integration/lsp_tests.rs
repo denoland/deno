@@ -230,9 +230,7 @@ fn lsp_tsconfig_types() {
     "types.tsconfig.json",
     r#"{
   "compilerOptions": {
-    "types": [
-      "./a.d.ts"
-    ]
+    "types": ["./a.d.ts"]
   },
   "lint": {
     "rules": {
@@ -590,8 +588,7 @@ fn lsp_deno_task() {
       {
         "name": "build",
         "detail": "deno test"
-      },
-      {
+      }, {
         "name": "some:test",
         "detail": "deno bundle mod.ts"
       }
@@ -789,32 +786,28 @@ fn lsp_import_map_import_completions() {
           "sortText": "1",
           "insertText": ".",
           "commitCharacters": ["\"", "'"],
-        },
-        {
+        }, {
           "label": "..",
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
           "insertText": "..",
           "commitCharacters": ["\"", "'"],
-        },
-        {
+        }, {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "std",
           "insertText": "std",
           "commitCharacters": ["\"", "'"],
-        },
-        {
+        }, {
           "label": "fs",
           "kind": 17,
           "detail": "(import map)",
           "sortText": "fs",
           "insertText": "fs",
           "commitCharacters": ["\"", "'"],
-        },
-        {
+        }, {
           "label": "/~",
           "kind": 19,
           "detail": "(import map)",
@@ -1111,55 +1104,46 @@ fn lsp_inlay_hints() {
         "label": ": string",
         "kind": 1,
         "paddingLeft": true
-      },
-      {
+      }, {
         "position": { "line": 4, "character": 10 },
         "label": "b:",
         "kind": 2,
         "paddingRight": true
-      },
-      {
+      }, {
         "position": { "line": 7, "character": 11 },
         "label": "= 0",
         "paddingLeft": true
-      },
-      {
+      }, {
         "position": { "line": 10, "character": 17 },
         "label": "string:",
         "kind": 2,
         "paddingRight": true
-      },
-      {
+      }, {
         "position": { "line": 10, "character": 24 },
         "label": "radix:",
         "kind": 2,
         "paddingRight": true
-      },
-      {
+      }, {
         "position": { "line": 12, "character": 15 },
         "label": ": number",
         "kind": 1,
         "paddingLeft": true
-      },
-      {
+      }, {
         "position": { "line": 15, "character": 11 },
         "label": ": number",
         "kind": 1,
         "paddingLeft": true
-      },
-      {
+      }, {
         "position": { "line": 18, "character": 18 },
         "label": "callbackfn:",
         "kind": 2,
         "paddingRight": true
-      },
-      {
+      }, {
         "position": { "line": 18, "character": 20 },
         "label": ": string",
         "kind": 1,
         "paddingLeft": true
-      },
-      {
+      }, {
         "position": { "line": 18, "character": 21 },
         "label": ": string",
         "kind": 1,
@@ -1247,9 +1231,7 @@ fn lsp_workspace_enable_paths() {
     &mut client,
     json!([{
       "enable": false,
-      "enablePaths": [
-        "./worker"
-      ],
+      "enablePaths": ["./worker"],
     }]),
   );
 
@@ -2451,9 +2433,7 @@ fn lsp_document_symbol() {
       }, {
         "name": "baz",
         "kind": 6,
-        "tags": [
-          1
-        ],
+        "tags": [1],
         "range": {
           "start": { "line": 8, "character": 2 },
           "end": { "line": 8, "character": 25 }
@@ -3691,8 +3671,7 @@ fn lsp_signature_help() {
                 "kind": "markdown",
                 "value": "This is a first number."
               }
-            },
-            {
+            }, {
               "label": "b: number",
               "documentation": {
                 "kind": "markdown",
@@ -3755,8 +3734,7 @@ fn lsp_signature_help() {
                 "kind": "markdown",
                 "value": "This is a first number."
               }
-            },
-            {
+            }, {
               "label": "b: number",
               "documentation": {
                 "kind": "markdown",
@@ -3947,8 +3925,7 @@ fn lsp_code_actions() {
               "end": { "line": 4, "character": 7 }
             },
             "newText": "async "
-          },
-          {
+          }, {
             "range": {
               "start": { "line": 4, "character": 21 },
               "end": { "line": 4, "character": 25 }
@@ -4361,8 +4338,7 @@ export class DuckConfig {
         "code": 2304,
         "source": "deno-ts",
         "message": "Cannot find name 'DuckConfigOptions'."
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 4, "character": 39 },
           "end": { "line": 4, "character": 49 }
@@ -4649,9 +4625,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
         },
         "context": {
           "diagnostics": [],
-          "only": [
-            "refactor"
-          ]
+          "only": ["refactor"]
         }
       }),
     )
@@ -5359,8 +5333,7 @@ fn lsp_completions_npm() {
         "uris": [
           {
             "uri": "npm:@denotest/cjs-default-export",
-          },
-          {
+          }, {
             "uri": "npm:chalk",
           }
         ]
@@ -6448,13 +6421,11 @@ fn lsp_diagnostics_deprecated() {
         "uri": "file:///a/file.ts",
         "diagnostics": [],
         "version": 1
-      },
-      {
+      }, {
         "uri": "file:///a/file.ts",
         "diagnostics": [],
         "version": 1
-      },
-      {
+      }, {
         "uri": "file:///a/file.ts",
         "diagnostics": [
           {
@@ -6467,9 +6438,7 @@ fn lsp_diagnostics_deprecated() {
             "source": "deno-ts",
             "message": "'a' is deprecated.",
             "relatedInformation": [],
-            "tags": [
-              2
-            ]
+            "tags": [2]
           }
         ],
         "version": 1
@@ -6790,9 +6759,7 @@ fn lsp_format_exclude_with_config() {
     r#"{
     "fmt": {
       "files": {
-        "exclude": [
-          "ignored.ts"
-        ]
+        "exclude": ["ignored.ts"]
       },
       "options": {
         "useTabs": true,
@@ -6851,9 +6818,7 @@ fn lsp_format_exclude_default_config() {
     r#"{
     "fmt": {
       "files": {
-        "exclude": [
-          "ignored.ts"
-        ]
+        "exclude": ["ignored.ts"]
       },
       "options": {
         "useTabs": true,
@@ -6947,15 +6912,13 @@ fn lsp_format_json() {
           "end": { "line": 0, "character": 1 }
         },
         "newText": " "
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 7 }
         },
         "newText": " "
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 0, "character": 14 },
           "end": { "line": 0, "character": 15 }
@@ -7058,8 +7021,7 @@ fn lsp_format_markdown() {
           "end": { "line": 0, "character": 3 }
         },
         "newText": ""
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 0, "character": 15 },
           "end": { "line": 0, "character": 15 }
@@ -7135,50 +7097,43 @@ fn lsp_format_with_config() {
           "end": { "line": 1, "character": 0 }
         },
         "newText": "\t"
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 1, "character": 23 },
           "end": { "line": 1, "character": 24 }
         },
         "newText": "\n\t\t'"
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 1, "character": 73 },
           "end": { "line": 1, "character": 74 }
         },
         "newText": "',\n\t"
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 2, "character": 0 },
           "end": { "line": 2, "character": 0 }
         },
         "newText": "\t"
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 3, "character": 0 },
           "end": { "line": 3, "character": 0 }
         },
         "newText": "\t"
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 3, "character": 12 },
           "end": { "line": 3, "character": 13 }
         },
         "newText": "'"
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 3, "character": 22 },
           "end": { "line": 3, "character": 24 }
         },
         "newText": "');"
-      },
-      {
+      }, {
         "range": {
           "start": { "line": 4, "character": 1 },
           "end": { "line": 4, "character": 1 }
@@ -7401,8 +7356,7 @@ fn lsp_workspace_symbol() {
           }
         },
         "containerName": "A"
-      },
-      {
+      }, {
         "name": "fieldB",
         "kind": 8,
         "location": {
@@ -7413,8 +7367,7 @@ fn lsp_workspace_symbol() {
           }
         },
         "containerName": "A"
-      },
-      {
+      }, {
         "name": "fieldC",
         "kind": 8,
         "location": {
@@ -7425,8 +7378,7 @@ fn lsp_workspace_symbol() {
           }
         },
         "containerName": "B"
-      },
-      {
+      }, {
         "name": "fieldD",
         "kind": 8,
         "location": {
@@ -7713,12 +7665,8 @@ fn lsp_lint_with_config() {
     r#"{
     "lint": {
       "rules": {
-        "exclude": [
-          "camelcase"
-        ],
-        "include": [
-          "ban-untagged-todo"
-        ],
+        "exclude": ["camelcase"],
+        "include": ["ban-untagged-todo"],
         "tags": []
       }
     }
@@ -7760,17 +7708,11 @@ fn lsp_lint_exclude_with_config() {
     r#"{
       "lint": {
         "files": {
-          "exclude": [
-            "ignored.ts"
-          ]
+          "exclude": ["ignored.ts"]
         },
         "rules": {
-          "exclude": [
-            "camelcase"
-          ],
-          "include": [
-            "ban-untagged-todo"
-          ],
+          "exclude": ["camelcase"],
+          "include": ["ban-untagged-todo"],
           "tags": []
         }
       }
@@ -7834,11 +7776,9 @@ export function B() {
         "referrer": {
           "uri": "file:///a/file.tsx",
         },
-        "uris": [
-          {
-            "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
-          }
-        ],
+        "uris": [{
+          "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
+        }],
       }),
     )
     .unwrap();
