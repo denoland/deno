@@ -112,7 +112,7 @@ impl TestContextBuilder {
       testdata_path()
     };
 
-    let deno_exe = self.deno_exe.clone().unwrap_or_else(|| deno_exe_path());
+    let deno_exe = self.deno_exe.clone().unwrap_or_else(deno_exe_path);
     println!("deno_exe path {}", deno_exe.display());
 
     let http_server_guard = if self.use_http_server {
@@ -179,7 +179,7 @@ impl TestContext {
 
   pub fn new_lsp_command(&self) -> LspClientBuilder {
     let mut builder = LspClientBuilder::new();
-    builder.deno_exe(&self.deno_exe).set_test_context(&self);
+    builder.deno_exe(&self.deno_exe).set_test_context(self);
     builder
   }
 }
@@ -298,7 +298,7 @@ impl TestCommandBuilder {
     let mut command = if command_name == "deno" {
       Command::new(deno_exe_path())
     } else {
-      Command::new(&command_name)
+      Command::new(command_name)
     };
     command.env("DENO_DIR", self.context.deno_dir.path());
 

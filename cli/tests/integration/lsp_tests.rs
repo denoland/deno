@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::ModuleSpecifier;
-use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -19,24 +18,6 @@ use test_util::lsp::LspClientBuilder;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
-
-fn load_fixture(path: &str) -> Value {
-  load_fixture_as(path)
-}
-
-fn load_fixture_as<T>(path: &str) -> T
-where
-  T: DeserializeOwned,
-{
-  let fixture_str = load_fixture_str(path);
-  serde_json::from_str::<T>(&fixture_str).unwrap()
-}
-
-fn load_fixture_str(path: &str) -> String {
-  let fixtures_path = testdata_path().join("lsp");
-  let path = fixtures_path.join(path);
-  fs::read_to_string(path).unwrap()
-}
 
 fn did_open<V>(
   client: &mut LspClient,
@@ -80,7 +61,7 @@ fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
   CollectedDiagnostics(diagnostics)
 }
 
-// todo(THIS PR): get rid of this in favour of LspClient
+// todo(dsherret): get rid of this in favour of LspClient
 struct TestSession {
   client: LspClient,
   open_file_count: usize,
@@ -2288,7 +2269,20 @@ fn lsp_call_hierarchy() {
 fn lsp_large_doc_changes() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(&mut client, load_fixture("did_open_params_large.json"));
+  let large_file_text =
+    fs::read_to_string(testdata_path().join("lsp").join("large_file.txt"))
+      .unwrap();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "javascript",
+        "version": 1,
+        "text": large_file_text,
+      }
+    }),
+  );
   client
     .write_notification(
       "textDocument/didChange",
@@ -4038,7 +4032,28 @@ fn lsp_code_actions_deno_cache() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_response_cache.json"))
+    Some(json!([{
+      "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 49 }
+        },
+        "severity": 1,
+        "code": "no-cache",
+        "source": "deno",
+        "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
+        "data": {
+          "specifier": "https://deno.land/x/a/mod.ts"
+        }
+      }],
+      "command": {
+        "title": "",
+        "command": "deno.cache",
+        "arguments": [["https://deno.land/x/a/mod.ts"]]
+      }
+    }]))
   );
   session.shutdown_and_exit();
 }
@@ -4400,24 +4415,202 @@ fn lsp_code_actions_refactor() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_action_params_refactor.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "context": {
+          "diagnostics": [],
+          "only": ["refactor"]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_response_refactor.json"))
+    Some(json!([{
+      "title": "Extract to function in module scope",
+      "kind": "refactor.extract.function",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Extract Symbol",
+        "actionName": "function_scope_0"
+      }
+    }, {
+      "title": "Extract to constant in enclosing scope",
+      "kind": "refactor.extract.constant",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Extract Symbol",
+        "actionName": "constant_scope_0"
+      }
+    }, {
+      "title": "Move to a new file",
+      "kind": "refactor.move.newFile",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Move to a new file",
+        "actionName": "Move to a new file"
+      }
+    }, {
+      "title": "Convert default export to named export",
+      "kind": "refactor.rewrite.export.named",
+      "isPreferred": false,
+      "disabled": {
+        "reason": "This file already has a default export"
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Convert export",
+        "actionName": "Convert default export to named export"
+      }
+    }, {
+      "title": "Convert named export to default export",
+      "kind": "refactor.rewrite.export.default",
+      "isPreferred": false,
+      "disabled": {
+        "reason": "This file already has a default export"
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Convert export",
+        "actionName": "Convert named export to default export"
+      }
+    }, {
+      "title": "Convert namespace import to named imports",
+      "kind": "refactor.rewrite.import.named",
+      "isPreferred": false,
+      "disabled": {
+        "reason": "Selection is not an import declaration."
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Convert import",
+        "actionName": "Convert namespace import to named imports"
+      }
+    }, {
+      "title": "Convert named imports to default import",
+      "kind": "refactor.rewrite.import.default",
+      "isPreferred": false,
+      "disabled": {
+        "reason": "Selection is not an import declaration."
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Convert import",
+        "actionName": "Convert named imports to default import"
+      }
+    }, {
+      "title": "Convert named imports to namespace import",
+      "kind": "refactor.rewrite.import.namespace",
+      "isPreferred": false,
+      "disabled": {
+        "reason": "Selection is not an import declaration."
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Convert import",
+        "actionName": "Convert named imports to namespace import"
+      }
+    }]))
   );
   let (maybe_res, maybe_err) = client
     .write_request(
       "codeAction/resolve",
-      load_fixture("code_action_resolve_params_refactor.json"),
+      json!({
+        "title": "Extract to interface",
+        "kind": "refactor.extract.interface",
+        "isPreferred": true,
+        "data": {
+          "specifier": "file:///a/file.ts",
+          "range": {
+            "start": { "line": 0, "character": 7 },
+            "end": { "line": 0, "character": 33 }
+          },
+          "refactorName": "Extract type",
+          "actionName": "Extract to interface"
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_resolve_response_refactor.json"))
+    Some(json!({
+      "title": "Extract to interface",
+      "kind": "refactor.extract.interface",
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "interface NewType {\n  a?: number;\n  b?: string;\n}\n\n"
+          }, {
+            "range": {
+              "start": { "line": 0, "character": 7 },
+              "end": { "line": 0, "character": 33 }
+            },
+            "newText": "NewType"
+          }]
+        }]
+      },
+      "isPreferred": true,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 33 }
+        },
+        "refactorName": "Extract type",
+        "actionName": "Extract to interface"
+      }
+    }))
   );
   client.shutdown();
 }
@@ -4466,7 +4659,33 @@ fn lsp_code_actions_refactor_no_disabled_support() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_response_no_disabled.json"))
+    Some(json!([{
+      "title": "Extract to function in module scope",
+      "kind": "refactor.extract.function",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 14, "character": 0 }
+        },
+        "refactorName": "Extract Symbol",
+        "actionName": "function_scope_0"
+      }
+    }, {
+      "title": "Move to a new file",
+      "kind": "refactor.move.newFile",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 14, "character": 0 }
+        },
+        "refactorName": "Move to a new file",
+        "actionName": "Move to a new file"
+      }
+    }]))
   );
   client.shutdown();
 }
@@ -4475,10 +4694,20 @@ fn lsp_code_actions_refactor_no_disabled_support() {
 fn lsp_code_actions_deadlock() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
+  let large_file_text =
+    fs::read_to_string(testdata_path().join("lsp").join("large_file.txt"))
+      .unwrap();
   client
     .write_notification(
       "textDocument/didOpen",
-      load_fixture("did_open_params_large.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "languageId": "javascript",
+          "version": 1,
+          "text": large_file_text,
+        }
+      }),
     )
     .unwrap();
   let (id, method, _) = client.read_request::<Value>().unwrap();
@@ -4579,7 +4808,28 @@ fn lsp_code_actions_deadlock() {
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
       "textDocument/codeAction",
-      load_fixture("code_action_params_deadlock.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 441, "character": 33 },
+          "end": { "line": 441, "character": 42 }
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 441, "character": 33 },
+              "end": { "line": 441, "character": 42 }
+            },
+            "severity": 1,
+            "code": 7031,
+            "source": "deno-ts",
+            "message": "Binding element 'debugFlag' implicitly has an 'any' type."
+          }],
+          "only": [ "quickfix" ]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
@@ -4630,13 +4880,36 @@ fn lsp_completions() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "completionItem/resolve",
-      load_fixture("completion_resolve_params.json"),
+      json!({
+        "label": "build",
+        "kind": 6,
+        "sortText": "1",
+        "insertTextFormat": 1,
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/file.ts",
+            "position": 5,
+            "name": "build",
+            "useCodeSnippet": false
+          }
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("completion_resolve_response.json"))
+    Some(json!({
+      "label": "build",
+      "kind": 6,
+      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string | undefined;\n}",
+      "documentation": {
+        "kind": "markdown",
+        "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* - Runtime Environment"
+      },
+      "sortText": "1",
+      "insertTextFormat": 1
+    }))
   );
   client.shutdown();
 }
@@ -4700,7 +4973,16 @@ fn lsp_completions_optional() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/completion",
-      load_fixture("completion_request_params_optional.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": { "line": 8, "character": 4 },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "."
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
@@ -6469,7 +6751,31 @@ fn lsp_format_mbc() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(json!(load_fixture("formatting_mbc_response.json")))
+    Some(json!([{
+      "range": {
+        "start": { "line": 0, "character": 12 },
+        "end": { "line": 0, "character": 13 }
+      },
+      "newText": "\""
+    }, {
+      "range": {
+        "start": { "line": 0, "character": 21 },
+        "end": { "line": 0, "character": 22 }
+      },
+      "newText": "\";"
+    }, {
+      "range": {
+        "start": { "line": 1, "character": 12 },
+        "end": { "line": 1, "character": 13 }
+      },
+      "newText": "\""
+    }, {
+      "range": {
+        "start": { "line": 1, "character": 23 },
+        "end": { "line": 1, "character": 25 }
+      },
+      "newText": "\");"
+    }]))
   );
   client.shutdown();
 }

@@ -176,6 +176,7 @@ pub struct InitializeParamsBuilder {
 }
 
 impl InitializeParamsBuilder {
+  #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
     Self {
       params: InitializeParams {
@@ -404,7 +405,7 @@ impl InitializeParamsBuilder {
     let hosts = imports.get_mut("hosts").unwrap().as_object_mut().unwrap();
     hosts.clear();
     for (key, value) in values {
-      hosts.insert(key.into(), value.into());
+      hosts.insert(key, value.into());
     }
     self
   }
@@ -436,6 +437,7 @@ pub struct LspClientBuilder {
 }
 
 impl LspClientBuilder {
+  #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
     Self {
       print_stderr: false,
