@@ -594,7 +594,9 @@ impl LaxSingleProcessFsFlag {
                         // the other process hasn't updated this file in a long time
                         // so maybe it was killed and the operating system hasn't
                         // released the file lock yet
-                        error_count += 1;
+                        return Self(None);
+                      } else {
+                        error_count = 0; // reset
                       }
                     }
                     Err(_) => {
@@ -628,6 +630,8 @@ impl LaxSingleProcessFsFlag {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::futures;
+  use deno_core::parking_lot::Mutex;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
   use tokio::sync::Notify;
@@ -995,5 +999,43 @@ mod tests {
     signal4.notify_one();
     signal5.notified().await;
     assert_eq!(temp_dir.read_to_string("file.txt"), "update2");
+  }
+
+  #[tokio::test]
+  async fn lax_fs_lock_ordered() {
+    let temp_dir = TempDir::new();
+    let lock_path = temp_dir.path().join("file.lock");
+    let output_path = temp_dir.path().join("output");
+    let expected_order = Arc::new(Mutex::new(Vec::new()));
+    let count = 10;
+    let mut tasks = Vec::with_capacity(count);
+
+    std::fs::write(&output_path, "").unwrap();
+
+    for i in 0..count {
+      let lock_path = lock_path.clone();
+      let output_path = output_path.clone();
+      let expected_order = expected_order.clone();
+      tasks.push(tokio::spawn(async move {
+        let flag =
+          LaxSingleProcessFsFlag::lock(lock_path.clone(), "waiting").await;
+        expected_order.lock().push(i.to_string());
+        // be extremely racy
+        let mut output = std::fs::read_to_string(&output_path).unwrap();
+        if !output.is_empty() {
+          output.push('\n');
+        }
+        output.push_str(&i.to_string());
+        std::fs::write(&output_path, output).unwrap();
+        drop(flag);
+      }));
+    }
+
+    futures::future::join_all(tasks).await;
+    let expected_output = expected_order.lock().join("\n");
+    assert_eq!(
+      std::fs::read_to_string(output_path).unwrap(),
+      expected_output
+    );
   }
 }
