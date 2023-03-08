@@ -1226,11 +1226,127 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
   }
 }
 
+#[cfg(windows)]
+#[inline(always)]
+fn get_stat2(metadata: std::fs::Metadata, dev: u64) -> FsStat {
+  let (mtime, mtime_set) = to_msec(metadata.modified());
+  let (atime, atime_set) = to_msec(metadata.accessed());
+  let (birthtime, birthtime_set) = to_msec(metadata.created());
+
+  FsStat {
+    is_file: metadata.is_file(),
+    is_directory: metadata.is_dir(),
+    is_symlink: metadata.file_type().is_symlink(),
+    size: metadata.len(),
+    mtime_set,
+    mtime,
+    atime_set,
+    atime,
+    birthtime_set,
+    birthtime,
+    dev,
+    ino: 0,
+    mode: 0,
+    nlink: 0,
+    uid: 0,
+    gid: 0,
+    rdev: 0,
+    blksize: 0,
+    blocks: 0,
+  }
+}
+
+#[cfg(not(windows))]
+#[inline(always)]
+fn get_stat2(metadata: std::fs::Metadata) -> FsStat {
+  #[cfg(unix)]
+  use std::os::unix::fs::MetadataExt;
+  let (mtime, mtime_set) = to_msec(metadata.modified());
+  let (atime, atime_set) = to_msec(metadata.accessed());
+  let (birthtime, birthtime_set) = to_msec(metadata.created());
+
+  FsStat {
+    is_file: metadata.is_file(),
+    is_directory: metadata.is_dir(),
+    is_symlink: metadata.file_type().is_symlink(),
+    size: metadata.len(),
+    mtime_set,
+    mtime,
+    atime_set,
+    atime,
+    birthtime_set,
+    birthtime,
+    dev: metadata.dev(),
+    ino: metadata.ino(),
+    mode: metadata.mode(),
+    nlink: metadata.nlink(),
+    uid: metadata.uid(),
+    gid: metadata.gid(),
+    rdev: metadata.rdev(),
+    blksize: metadata.blksize(),
+    blocks: metadata.blocks(),
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatArgs {
   path: String,
   lstat: bool,
+}
+
+#[cfg(not(windows))]
+fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
+  let err_mapper =
+    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path).map_err(err_mapper)?
+  } else {
+    std::fs::metadata(&path).map_err(err_mapper)?
+  };
+
+  Ok(get_stat2(metadata))
+}
+
+#[cfg(windows)]
+fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
+  let err_mapper =
+    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path).map_err(err_mapper)?
+  } else {
+    std::fs::metadata(&path).map_err(err_mapper)?
+  };
+
+  let file = std::fs::File::open(&path)?;
+
+  let dev = unsafe { get_dev(&file) }?;
+
+  Ok(get_stat2(metadata, dev))
+}
+
+#[cfg(windows)]
+use std::os::windows::prelude::AsRawHandle;
+#[cfg(windows)]
+use winapi::um::fileapi::GetFileInformationByHandle;
+#[cfg(windows)]
+use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
+
+#[cfg(windows)]
+unsafe fn get_dev<T: AsRawHandle>(handle: &T) -> std::io::Result<u64> {
+  let info = {
+    let mut info =
+      std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+    if GetFileInformationByHandle(handle.as_raw_handle(), info.as_mut_ptr())
+      == 0
+    {
+      return Err(std::io::Error::last_os_error());
+    }
+
+    info.assume_init()
+  };
+
+  Ok(info.dwVolumeSerialNumber as u64)
 }
 
 #[op]
@@ -1247,15 +1363,8 @@ where
   state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.statSync()")?;
-  let err_mapper =
-    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
-  let metadata = if lstat {
-    std::fs::symlink_metadata(&path).map_err(err_mapper)?
-  } else {
-    std::fs::metadata(&path).map_err(err_mapper)?
-  };
 
-  let stat = get_stat(metadata);
+  let stat = do_stat(path, lstat)?;
   stat.write(out_buf);
 
   Ok(())
@@ -1279,14 +1388,7 @@ where
 
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
-    let err_mapper =
-      |err| default_err_mapper(err, format!("stat '{}'", path.display()));
-    let metadata = if lstat {
-      std::fs::symlink_metadata(&path).map_err(err_mapper)?
-    } else {
-      std::fs::metadata(&path).map_err(err_mapper)?
-    };
-    Ok(get_stat(metadata))
+    do_stat(path, lstat)
   })
   .await
   .unwrap()
