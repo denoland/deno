@@ -7923,7 +7923,7 @@ Deno.test({
   }
 });
 "#;
-  temp_dir.write("./test.ts", &contents);
+  temp_dir.write("./test.ts", contents);
   temp_dir.write("./deno.jsonc", "{}");
   let specifier = temp_dir.uri().join("test.ts").unwrap();
 
