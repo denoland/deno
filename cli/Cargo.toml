@@ -73,6 +73,7 @@ env_logger = "=0.9.0"
 eszip = "=0.37.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
+fs3.workspace = true
 http.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
