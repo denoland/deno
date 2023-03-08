@@ -385,6 +385,20 @@ function promiseRejectMacrotaskCallback() {
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+// FIXME(bartlomieju): temporarily add whole `Deno.core` to
+// `Deno[Deno.internal]` namespace. It should be removed and only necessary
+// methods should be left there.
+ObjectAssign(internals, {
+  core,
+});
+const internalSymbol = Symbol("Deno.internal");
+const finalDenoNs = {
+  internal: internalSymbol,
+  [internalSymbol]: internals,
+  resources: core.resources,
+  close: core.close,
+  ...denoNs,
+};
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
@@ -452,8 +466,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   setUserAgent(runtimeOptions.userAgent);
   setLanguage(runtimeOptions.locale);
 
-  const internalSymbol = Symbol("Deno.internal");
-
   // These have to initialized here and not in `90_deno_ns.js` because
   // the op function that needs to be passed will be invalidated by creating
   // a snapshot
@@ -475,13 +487,6 @@ function bootstrapMainRuntime(runtimeOptions) {
     core,
   });
 
-  const finalDenoNs = {
-    internal: internalSymbol,
-    [internalSymbol]: internals,
-    resources: core.resources,
-    close: core.close,
-    ...denoNs,
-  };
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(runtimeOptions.pid),
     ppid: util.readOnly(runtimeOptions.ppid),
@@ -579,8 +584,6 @@ function bootstrapWorkerRuntime(
 
   globalThis.pollForMessages = pollForMessages;
 
-  const internalSymbol = Symbol("Deno.internal");
-
   // These have to initialized here and not in `90_deno_ns.js` because
   // the op function that needs to be passed will be invalidated by creating
   // a snapshot
@@ -602,13 +605,6 @@ function bootstrapWorkerRuntime(
     core,
   });
 
-  const finalDenoNs = {
-    internal: internalSymbol,
-    [internalSymbol]: internals,
-    resources: core.resources,
-    close: core.close,
-    ...denoNs,
-  };
   if (runtimeOptions.unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
     // These have to initialized here and not in `90_deno_ns.js` because
