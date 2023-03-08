@@ -475,16 +475,18 @@ pub fn dir_size(path: &Path) -> std::io::Result<u64> {
   Ok(total)
 }
 
-struct LaxSingleProcessFileLockFlagInner {
+struct LaxSingleProcessFsFlagInner {
   file_path: PathBuf,
   fs_file: std::fs::File,
   finished_token: Arc<tokio_util::sync::CancellationToken>,
 }
 
-impl Drop for LaxSingleProcessFileLockFlagInner {
+impl Drop for LaxSingleProcessFsFlagInner {
   fn drop(&mut self) {
     use fs3::FileExt;
+    // kill the poll thread
     self.finished_token.cancel();
+    // release the file lock
     if let Err(err) = self.fs_file.unlock() {
       log::debug!(
         "Failed releasing lock for {}. {:#}",
@@ -495,103 +497,131 @@ impl Drop for LaxSingleProcessFileLockFlagInner {
   }
 }
 
-pub struct LaxSingleProcessFileLockFlag(
-  Option<LaxSingleProcessFileLockFlagInner>,
-);
+/// A file system based flag that will attempt to synchronize multiple
+/// processes so they go one after the other. In scenarios where
+/// synchronization cannot be achieved, it will allow the current process
+/// to proceed.
+///
+/// This should only be used in places where it's ideal for multiple
+/// processes to not update something on the file system at the same time,
+/// but it's not that big of a deal.
+pub struct LaxSingleProcessFsFlag(Option<LaxSingleProcessFsFlagInner>);
 
-impl LaxSingleProcessFileLockFlag {
+impl LaxSingleProcessFsFlag {
   pub async fn lock(file_path: PathBuf, long_wait_message: &str) -> Self {
     log::debug!("Acquiring file lock at {}", file_path.display());
     use fs3::FileExt;
     let last_updated_path = file_path.with_extension("lock.poll");
     let start_instant = std::time::Instant::now();
     let progress_bars = ProgressBar::new(ProgressBarStyle::TextOnly);
-    let mut pb_update_guard = None;
     let open_result = std::fs::OpenOptions::new()
       .read(true)
       .write(true)
       .create(true)
       .open(&file_path);
-    let inner = match open_result {
-      Ok(fs_file) => loop {
-        let lock_result = fs_file.try_lock_exclusive();
-        let update_ms = 100;
-        match lock_result {
-          Ok(_) => {
-            log::debug!("Acquired file lock at {}", file_path.display());
-            let _ignore = std::fs::write(&last_updated_path, "");
-            let token = Arc::new(tokio_util::sync::CancellationToken::new());
 
-            // Spawn a blocking task that will continually update a file
-            // signalling the lock is alive. This is a fail safe for when
-            // a file lock is never released. This uses a blocking task
-            // because we use a single threaded runtime and this is time
-            // sensitive.
-            tokio::task::spawn_blocking({
-              let token = token.clone();
-              let last_updated_path = last_updated_path.clone();
-              move || {
-                let mut i = 0;
-                while !token.is_cancelled() {
-                  i += 1;
-                  let _ignore =
-                    std::fs::write(&last_updated_path, i.to_string());
-                  std::thread::sleep(Duration::from_millis(update_ms));
+    match open_result {
+      Ok(fs_file) => {
+        let mut pb_update_guard = None;
+        let mut error_count = 0;
+        while error_count < 10 {
+          let lock_result = fs_file.try_lock_exclusive();
+          let poll_file_update_ms = 100;
+          match lock_result {
+            Ok(_) => {
+              log::debug!("Acquired file lock at {}", file_path.display());
+              let _ignore = std::fs::write(&last_updated_path, "");
+              let token = Arc::new(tokio_util::sync::CancellationToken::new());
+
+              // Spawn a blocking task that will continually update a file
+              // signalling the lock is alive. This is a fail safe for when
+              // a file lock is never released. For example, on some operating
+              // systems, if a process does not release the lock (say it's
+              // killed), then the OS may release it at an indeterminate time
+              //
+              // This uses a blocking task because we use a single threaded
+              // runtime and this is time sensitive so we don't want it to update
+              // at the whims of of whatever is occurring on the runtime thread.
+              tokio::task::spawn_blocking({
+                let token = token.clone();
+                let last_updated_path = last_updated_path.clone();
+                move || {
+                  let mut i = 0;
+                  while !token.is_cancelled() {
+                    i += 1;
+                    let _ignore =
+                      std::fs::write(&last_updated_path, i.to_string());
+                    std::thread::sleep(Duration::from_millis(
+                      poll_file_update_ms,
+                    ));
+                  }
                 }
-              }
-            });
+              });
 
-            break Some(LaxSingleProcessFileLockFlagInner {
-              file_path,
-              fs_file,
-              finished_token: token,
-            });
-          }
-          Err(_) => {
-            // show a message if it's been a while
-            if pb_update_guard.is_none()
-              && start_instant.elapsed().as_millis() > 1_000
-            {
-              pb_update_guard = Some(progress_bars.update_with_prompt(
-                ProgressMessagePrompt::Blocking,
-                long_wait_message,
-              ));
+              return Self(Some(LaxSingleProcessFsFlagInner {
+                file_path,
+                fs_file,
+                finished_token: token,
+              }));
             }
+            Err(_) => {
+              // show a message if it's been a while
+              if pb_update_guard.is_none()
+                && start_instant.elapsed().as_millis() > 1_000
+              {
+                pb_update_guard = Some(progress_bars.update_with_prompt(
+                  ProgressMessagePrompt::Blocking,
+                  long_wait_message,
+                ));
+              }
 
-            tokio::time::sleep(Duration::from_millis(20)).await;
+              // sleep for a little bit
+              tokio::time::sleep(Duration::from_millis(20)).await;
 
-            // poll the last updated path to check if it's stopped updating
-            match std::fs::metadata(&last_updated_path)
-              .and_then(|p| p.modified())
-            {
-              Ok(last_updated_time) => {
-                let current_time = std::time::SystemTime::now();
-                match current_time.duration_since(last_updated_time) {
-                  Ok(duration) => {
-                    if duration.as_millis() > (update_ms * 2) as u128 {
-                      break None;
+              // Poll the last updated path to check if it's stopped updating,
+              // which is an indication that the file lock is claimed, but
+              // was never properly released.
+              match std::fs::metadata(&last_updated_path)
+                .and_then(|p| p.modified())
+              {
+                Ok(last_updated_time) => {
+                  let current_time = std::time::SystemTime::now();
+                  match current_time.duration_since(last_updated_time) {
+                    Ok(duration) => {
+                      if duration.as_millis()
+                        > (poll_file_update_ms * 2) as u128
+                      {
+                        // the other process hasn't updated this file in a long time
+                        // so maybe it was killed and the operating system hasn't
+                        // released the file lock yet
+                        error_count += 1;
+                      }
+                    }
+                    Err(_) => {
+                      error_count += 1;
                     }
                   }
-                  Err(_) => break None,
+                }
+                Err(_) => {
+                  error_count += 1;
                 }
               }
-              Err(_) => break None,
             }
           }
         }
-      },
+
+        drop(pb_update_guard); // explicit for clarity
+        Self(None)
+      }
       Err(err) => {
         log::debug!(
           "Failed to open file lock at {}. {:#}",
           file_path.display(),
           err
         );
-        None
+        Self(None) // let the process through
       }
-    };
-
-    drop(pb_update_guard); // explicit for clarity
-    Self(inner)
+    }
   }
 }
 
@@ -600,6 +630,7 @@ mod tests {
   use super::*;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
+  use tokio::sync::Notify;
 
   #[test]
   fn resolve_from_cwd_child() {
@@ -916,5 +947,53 @@ mod tests {
         PathBuf::from(expected)
       );
     }
+  }
+
+  #[tokio::test]
+  async fn lax_fs_lock() {
+    let temp_dir = TempDir::new();
+    let lock_path = temp_dir.path().join("file.lock");
+    let signal1 = Arc::new(Notify::new());
+    let signal2 = Arc::new(Notify::new());
+    let signal3 = Arc::new(Notify::new());
+    let signal4 = Arc::new(Notify::new());
+    tokio::spawn({
+      let lock_path = lock_path.clone();
+      let signal1 = signal1.clone();
+      let signal2 = signal2.clone();
+      let signal3 = signal3.clone();
+      let signal4 = signal4.clone();
+      let temp_dir = temp_dir.clone();
+      async move {
+        let flag =
+          LaxSingleProcessFsFlag::lock(lock_path.clone(), "waiting").await;
+        signal1.notify_one();
+        signal2.notified().await;
+        tokio::time::sleep(Duration::from_millis(10)).await; // give the other thread time to acquire the lock
+        temp_dir.write("file.txt", "update1");
+        signal3.notify_one();
+        signal4.notified().await;
+        drop(flag);
+      }
+    });
+    let signal5 = Arc::new(Notify::new());
+    tokio::spawn({
+      let temp_dir = temp_dir.clone();
+      let signal5 = signal5.clone();
+      async move {
+        signal1.notified().await;
+        signal2.notify_one();
+        let flag = LaxSingleProcessFsFlag::lock(lock_path, "waiting").await;
+        temp_dir.write("file.txt", "update2");
+        signal5.notify_one();
+        drop(flag);
+      }
+    });
+
+    signal3.notified().await;
+    assert_eq!(temp_dir.read_to_string("file.txt"), "update1");
+    signal4.notify_one();
+    signal5.notified().await;
+    assert_eq!(temp_dir.read_to_string("file.txt"), "update2");
   }
 }

@@ -10,7 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::util::fs::symlink_dir;
-use crate::util::fs::LaxSingleProcessFileLockFlag;
+use crate::util::fs::LaxSingleProcessFsFlag;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -237,7 +237,7 @@ async fn sync_resolution_with_fs(
     format!("Creating '{}'", deno_local_registry_dir.display())
   })?;
 
-  let process_lock = LaxSingleProcessFileLockFlag::lock(
+  let single_process_lock = LaxSingleProcessFsFlag::lock(
     deno_local_registry_dir.join(".deno.lock"),
     // similar message used by cargo build
     "waiting for file lock on node_modules directory",
@@ -402,7 +402,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  drop(process_lock);
+  drop(single_process_lock);
 
   Ok(())
 }
