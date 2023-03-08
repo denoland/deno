@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import randomBytes, {
   MAX_SIZE as kMaxUint32,
-} from "internal:deno_node/internal/crypto/_randomBytes.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
+} from "ext:deno_node/internal/crypto/_randomBytes.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 
 const kBufferMaxLength = 0x7fffffff;
 

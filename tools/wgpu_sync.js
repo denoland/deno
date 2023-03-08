@@ -86,8 +86,8 @@ async function patchSrcLib() {
     join(TARGET_DIR, "src", "lib.rs"),
     (data) =>
       data.replace(
-        `prefix "internal:deno_webgpu",`,
-        `prefix "internal:deno_webgpu",`,
+        `prefix "ext:deno_webgpu",`,
+        `prefix "ext:deno_webgpu",`,
       ),
   );
 }
@@ -97,8 +97,8 @@ async function patchSurface() {
     join(TARGET_DIR, "src", "surface.rs"),
     (data) =>
       data.replace(
-        `prefix "internal:deno_webgpu",`,
-        `prefix "internal:deno_webgpu",`,
+        `prefix "ext:deno_webgpu",`,
+        `prefix "ext:deno_webgpu",`,
       ),
   );
 }

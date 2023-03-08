@@ -4048,14 +4048,14 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
-itest!(internal_import {
-  args: "run run/internal_import.ts",
-  output: "run/internal_import.ts.out",
+itest!(extension_import {
+  args: "run run/extension_import.ts",
+  output: "run/extension_import.ts.out",
   exit_code: 1,
 });
 
-itest!(internal_dynamic_import {
-  args: "run run/internal_dynamic_import.ts",
-  output: "run/internal_dynamic_import.ts.out",
+itest!(extension_dynamic_import {
+  args: "run run/extension_dynamic_import.ts",
+  output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });

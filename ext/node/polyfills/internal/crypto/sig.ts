@@ -1,19 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { validateString } from "internal:deno_node/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import type { WritableOptions } from "internal:deno_node/_stream.d.ts";
-import Writable from "internal:deno_node/internal/streams/writable.mjs";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
+import Writable from "ext:deno_node/internal/streams/writable.mjs";
 import type {
   BinaryLike,
   BinaryToTextEncoding,
   Encoding,
   PrivateKeyInput,
   PublicKeyInput,
-} from "internal:deno_node/internal/crypto/types.ts";
-import { KeyObject } from "internal:deno_node/internal/crypto/keys.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
+import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 
 export type DSAEncoding = "der" | "ieee-p1363";
 

@@ -1,14 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import type { CallbackWithError } from "internal:deno_node/_fs/_fs_common.ts";
-import { makeCallback } from "internal:deno_node/_fs/_fs_common.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
+import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   getValidatedPath,
   getValidMode,
-} from "internal:deno_node/internal/fs/utils.mjs";
-import { fs } from "internal:deno_node/internal_binding/constants.ts";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/internal/fs/utils.mjs";
+import { fs } from "ext:deno_node/internal_binding/constants.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function copyFile(
   src: string | Buffer | URL,

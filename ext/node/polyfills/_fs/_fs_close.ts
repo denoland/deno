@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import type { CallbackWithError } from "internal:deno_node/_fs/_fs_common.ts";
-import { getValidatedFd } from "internal:deno_node/internal/fs/utils.mjs";
+import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 
 export function close(fd: number, callback: CallbackWithError) {
   fd = getValidatedFd(fd);

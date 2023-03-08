@@ -23,7 +23,7 @@
 
 // These are simplified versions of the "real" errors in Node.
 
-import { nextTick } from "internal:deno_node/_next_tick.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 class NodeFalsyValueRejectionError extends Error {
   public reason: unknown;

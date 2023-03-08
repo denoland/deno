@@ -7,8 +7,8 @@ import {
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
-} from "internal:deno_web/06_streams.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+} from "ext:deno_web/06_streams.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,

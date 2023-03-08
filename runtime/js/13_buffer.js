@@ -4,7 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { assert } from "internal:deno_web/00_infra.js";
+import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   TypedArrayPrototypeSubarray,

@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { isWindows, osType } from "internal:deno_node/_util/os.ts";
-import { SEP, SEP_PATTERN } from "internal:deno_node/path/separator.ts";
-import * as _win32 from "internal:deno_node/path/win32.ts";
-import * as _posix from "internal:deno_node/path/posix.ts";
-import type { OSType } from "internal:deno_node/_util/os.ts";
+import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+import { SEP, SEP_PATTERN } from "ext:deno_node/path/separator.ts";
+import * as _win32 from "ext:deno_node/path/win32.ts";
+import * as _posix from "ext:deno_node/path/posix.ts";
+import type { OSType } from "ext:deno_node/_util/os.ts";
 
 const path = isWindows ? _win32 : _posix;
 const { join, normalize } = path;

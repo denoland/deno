@@ -334,7 +334,7 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
 
   Extension::builder(env!("CARGO_PKG_NAME"))
     .esm(esm_files)
-    .esm_entry_point("internal:deno_node/module_all.ts")
+    .esm_entry_point("ext:deno_node/module_all.ts")
     .dependencies(vec!["deno_io", "deno_fs"])
     .ops(vec![
       crypto::op_node_create_hash::decl(),
