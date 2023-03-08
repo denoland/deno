@@ -2,18 +2,18 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
-import { BlobPrototype } from "internal:deno_web/09_file.js";
-import { TcpConn } from "internal:deno_net/01_net.js";
-import { toInnerResponse } from "internal:deno_fetch/23_response.js";
-import { _flash, fromFlashRequest } from "internal:deno_fetch/23_request.js";
-import { Event } from "internal:deno_web/02_event.js";
+import { BlobPrototype } from "ext:deno_web/09_file.js";
+import { TcpConn } from "ext:deno_net/01_net.js";
+import { toInnerResponse } from "ext:deno_fetch/23_response.js";
+import { _flash, fromFlashRequest } from "ext:deno_fetch/23_request.js";
+import { Event } from "ext:deno_web/02_event.js";
 import {
   _state,
   getReadableStreamResourceBacking,
   ReadableStream,
   readableStreamClose,
   ReadableStreamPrototype,
-} from "internal:deno_web/06_streams.js";
+} from "ext:deno_web/06_streams.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -23,8 +23,8 @@ import {
   _rid,
   _serverHandleIdleTimeout,
   WebSocket,
-} from "internal:deno_websocket/01_websocket.js";
-import { _ws } from "internal:deno_http/01_http.js";
+} from "ext:deno_websocket/01_websocket.js";
+import { _ws } from "ext:deno_http/01_http.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototype,

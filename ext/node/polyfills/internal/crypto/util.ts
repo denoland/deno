@@ -1,21 +1,21 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
-} from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "internal:deno_node/internal/util/types.ts";
-import { crypto as constants } from "internal:deno_node/internal_binding/constants.ts";
+} from "ext:deno_node/internal/util/types.ts";
+import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
 import {
   kHandle,
   kKeyObject,
-} from "internal:deno_node/internal/crypto/constants.ts";
+} from "ext:deno_node/internal/crypto/constants.ts";
 
 // TODO(kt3k): Generate this list from `digestAlgorithms`
 // of std/crypto/_wasm/mod.ts

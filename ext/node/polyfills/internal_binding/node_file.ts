@@ -25,7 +25,7 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 
-import { assert } from "internal:deno_node/_util/asserts.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
 
 /**
  * Write to the given file from the given buffer synchronously.

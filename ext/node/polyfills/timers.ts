@@ -1,13 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  setUnrefTimeout,
-  Timeout,
-} from "internal:deno_node/internal/timers.mjs";
-import { validateFunction } from "internal:deno_node/internal/validators.mjs";
-import { promisify } from "internal:deno_node/internal/util.mjs";
-export { setUnrefTimeout } from "internal:deno_node/internal/timers.mjs";
-import * as timers from "internal:deno_web/02_timers.js";
+import { setUnrefTimeout, Timeout } from "ext:deno_node/internal/timers.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { promisify } from "ext:deno_node/internal/util.mjs";
+export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
+import * as timers from "ext:deno_web/02_timers.js";
 
 const clearTimeout_ = timers.clearTimeout;
 const clearInterval_ = timers.clearInterval;

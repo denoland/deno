@@ -39,28 +39,28 @@ const {
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
-import * as util from "internal:runtime/06_util.js";
-import * as event from "internal:deno_web/02_event.js";
-import * as location from "internal:deno_web/12_location.js";
-import * as version from "internal:runtime/01_version.ts";
-import * as os from "internal:runtime/30_os.js";
-import * as timers from "internal:deno_web/02_timers.js";
-import * as colors from "internal:deno_console/01_colors.js";
-import * as net from "internal:deno_net/01_net.js";
+import * as util from "ext:runtime/06_util.js";
+import * as event from "ext:deno_web/02_event.js";
+import * as location from "ext:deno_web/12_location.js";
+import * as version from "ext:runtime/01_version.ts";
+import * as os from "ext:runtime/30_os.js";
+import * as timers from "ext:deno_web/02_timers.js";
+import * as colors from "ext:deno_console/01_colors.js";
+import * as net from "ext:deno_net/01_net.js";
 import {
   inspectArgs,
   quoteString,
   wrapConsole,
-} from "internal:deno_console/02_console.js";
-import * as performance from "internal:deno_web/15_performance.js";
-import * as url from "internal:deno_url/00_url.js";
-import * as fetch from "internal:deno_fetch/26_fetch.js";
-import * as messagePort from "internal:deno_web/13_message_port.js";
-import { denoNs, denoNsUnstable } from "internal:runtime/90_deno_ns.js";
-import { errors } from "internal:runtime/01_errors.js";
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
-import * as flash from "internal:deno_flash/01_http.js";
+} from "ext:deno_console/02_console.js";
+import * as performance from "ext:deno_web/15_performance.js";
+import * as url from "ext:deno_url/00_url.js";
+import * as fetch from "ext:deno_fetch/26_fetch.js";
+import * as messagePort from "ext:deno_web/13_message_port.js";
+import { denoNs, denoNsUnstable } from "ext:runtime/90_deno_ns.js";
+import { errors } from "ext:runtime/01_errors.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
+import * as flash from "ext:deno_flash/01_http.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,
@@ -69,7 +69,7 @@ import {
   unstableWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
-} from "internal:runtime/98_global_scope.js";
+} from "ext:runtime/98_global_scope.js";
 
 let windowIsClosing = false;
 let globalThis_;

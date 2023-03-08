@@ -27,15 +27,15 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { HandleWrap } from "internal:deno_node/internal_binding/handle_wrap.ts";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/internal_binding/async_wrap.ts";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
+} from "ext:deno_node/internal_binding/async_wrap.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;

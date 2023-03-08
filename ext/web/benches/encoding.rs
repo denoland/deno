@@ -29,10 +29,10 @@ fn setup() -> Vec<Extension> {
     deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
-        specifier: "internal:setup".to_string(),
+        specifier: "ext:setup".to_string(),
         code: ExtensionFileSourceCode::IncludedInBinary(
           r#"
-        import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
+        import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
         globalThis.TextDecoder = TextDecoder;
         globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
         "#,
