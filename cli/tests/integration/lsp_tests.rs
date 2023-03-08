@@ -693,21 +693,17 @@ fn lsp_import_assertions() {
           "end": { "line": 0, "character": 27 }
         },
         "context": {
-          "diagnostics": [
-            {
-              "range": {
-                "start": { "line": 0, "character": 14 },
-                "end": { "line": 0, "character": 27 }
-              },
-              "severity": 1,
-              "code": "no-assert-type",
-              "source": "deno",
-              "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
-            }
-          ],
-          "only": [
-            "quickfix"
-          ]
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 0, "character": 14 },
+              "end": { "line": 0, "character": 27 }
+            },
+            "severity": 1,
+            "code": "no-assert-type",
+            "source": "deno",
+            "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+          }],
+          "only": ["quickfix"]
         }
       }),
     )
@@ -2980,7 +2976,61 @@ fn lsp_code_lens_impl() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_lens_response_impl.json"))
+    Some(json!([ {
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "implementations"
+      }
+    }, {
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 4, "character": 6 },
+        "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 10, "character": 10 },
+        "end": { "line": 10, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "implementations"
+      }
+    }, {
+      "range": {
+        "start": { "line": 10, "character": 10 },
+        "end": { "line": 10, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 11, "character": 2 },
+        "end": { "line": 11, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }]))
   );
   let (maybe_res, maybe_err) = client
     .write_request(
@@ -3000,7 +3050,27 @@ fn lsp_code_lens_impl() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_lens_resolve_response_impl.json"))
+    Some(json!({
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "command": {
+        "title": "1 implementation",
+        "command": "deno.showReferences",
+        "arguments": [
+          "file:///a/file.ts",
+          { "line": 0, "character": 10 },
+          [{
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 4, "character": 6 },
+              "end": { "line": 4, "character": 7 }
+            }
+          }]
+        ]
+      }
+    }))
   );
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
@@ -3042,7 +3112,14 @@ fn lsp_code_lens_test() {
   });
   did_open(
     &mut client,
-    load_fixture("did_open_params_test_code_lens.json"),
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "const { test } = Deno;\nconst { test: test2 } = Deno;\nconst test3 = Deno.test;\n\nDeno.test(\"test a\", () => {});\nDeno.test({\n  name: \"test b\",\n  fn() {},\n});\ntest({\n  name: \"test c\",\n  fn() {},\n});\ntest(\"test d\", () => {});\ntest2({\n  name: \"test e\",\n  fn() {},\n});\ntest2(\"test f\", () => {});\ntest3({\n  name: \"test g\",\n  fn() {},\n});\ntest3(\"test h\", () => {});\n"
+      }
+    }),
   );
   let (maybe_res, maybe_err) = client
     .write_request(
@@ -3057,7 +3134,231 @@ fn lsp_code_lens_test() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_lens_response_test.json"))
+    Some(json!([{
+      "range": {
+        "start": { "line": 4, "character": 5 },
+        "end": { "line": 4, "character": 9 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test a",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 4, "character": 5 },
+        "end": { "line": 4, "character": 9 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test a",
+          { "inspect": true }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 5 },
+        "end": { "line": 5, "character": 9 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test b",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 5 },
+        "end": { "line": 5, "character": 9 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test b",
+          { "inspect": true }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 9, "character": 0 },
+        "end": { "line": 9, "character": 4 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test c",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 9, "character": 0 },
+        "end": { "line": 9, "character": 4 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test c",
+          { "inspect": true }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 13, "character": 0 },
+        "end": { "line": 13, "character": 4 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test d",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 13, "character": 0 },
+        "end": { "line": 13, "character": 4 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test d",
+          { "inspect": true }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 14, "character": 0 },
+        "end": { "line": 14, "character": 5 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test e",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 14, "character": 0 },
+        "end": { "line": 14, "character": 5 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test e",
+          { "inspect": true }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 18, "character": 0 },
+        "end": { "line": 18, "character": 5 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test f",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 18, "character": 0 },
+        "end": { "line": 18, "character": 5 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test f",
+          { "inspect": true }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 19, "character": 0 },
+        "end": { "line": 19, "character": 5 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test g",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 19, "character": 0 },
+        "end": { "line": 19, "character": 5 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test g",
+          { "inspect": true }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 23, "character": 0 },
+        "end": { "line": 23, "character": 5 }
+      },
+      "command": {
+        "title": "▶︎ Run Test",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test h",
+          { "inspect": false }
+        ]
+      }
+    }, {
+      "range": {
+        "start": { "line": 23, "character": 0 },
+        "end": { "line": 23, "character": 5 }
+      },
+      "command": {
+        "title": "Debug",
+        "command": "deno.test",
+        "arguments": [
+          "file:///a/file.ts",
+          "test h",
+          { "inspect": true }
+        ]
+      }
+    }]))
   );
   client.shutdown();
 }
@@ -3075,7 +3376,14 @@ fn lsp_code_lens_test_disabled() {
   client
     .write_notification(
       "textDocument/didOpen",
-      load_fixture("did_open_params_test_code_lens.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "const { test } = Deno;\nconst { test: test2 } = Deno;\nconst test3 = Deno.test;\n\nDeno.test(\"test a\", () => {});\nDeno.test({\n  name: \"test b\",\n  fn() {},\n});\ntest({\n  name: \"test c\",\n  fn() {},\n});\ntest(\"test d\", () => {});\ntest2({\n  name: \"test e\",\n  fn() {},\n});\ntest2(\"test f\", () => {});\ntest3({\n  name: \"test g\",\n  fn() {},\n});\ntest3(\"test h\", () => {});\n"
+        }
+      }),
     )
     .unwrap();
 
@@ -3219,7 +3527,61 @@ fn lsp_nav_tree_updates() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_lens_response_impl.json"))
+    Some(Some(json!([ {
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "implementations"
+      }
+    }, {
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 4, "character": 6 },
+        "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 10, "character": 10 },
+        "end": { "line": 10, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "implementations"
+      }
+    }, {
+      "range": {
+        "start": { "line": 10, "character": 10 },
+        "end": { "line": 10, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 11, "character": 2 },
+        "end": { "line": 11, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }])))
   );
   client
     .write_notification(
@@ -3254,7 +3616,34 @@ fn lsp_nav_tree_updates() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_lens_response_changed.json"))
+    Some(json!([{
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "implementations"
+      }
+    }, {
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 4, "character": 6 },
+        "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }]))
   );
   client.shutdown();
 }
@@ -3408,21 +3797,177 @@ fn lsp_code_actions() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_action_params.json"),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert_eq!(maybe_res, Some(load_fixture("code_action_response.json")));
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "codeAction/resolve",
-      load_fixture("code_action_resolve_params.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 7 }
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 1, "character": 2 },
+              "end": { "line": 1, "character": 7 }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }],
+          "only": ["quickfix"]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_resolve_response.json"))
+    Some(json!([{
+      "title": "Add async modifier to containing function",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 7 }
+        },
+        "severity": 1,
+        "code": 1308,
+        "source": "deno-ts",
+        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 7 },
+              "end": { "line": 0, "character": 7 }
+            },
+            "newText": "async "
+          }, {
+            "range": {
+              "start": { "line": 0, "character": 21 },
+              "end": { "line": 0, "character": 25 }
+            },
+            "newText": "Promise<void>"
+          }]
+        }]
+      }
+    }, {
+      "title": "Add all missing 'async' modifiers",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 7 }
+        },
+        "severity": 1,
+        "code": 1308,
+        "source": "deno-ts",
+        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+        "relatedInformation": []
+      }],
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "fixId": "fixAwaitInSyncFunction"
+      }
+    }]))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "codeAction/resolve",
+      json!({
+        "title": "Add all missing 'async' modifiers",
+        "kind": "quickfix",
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 1, "character": 2 },
+            "end": { "line": 1, "character": 7 }
+          },
+          "severity": 1,
+          "code": 1308,
+          "source": "deno-ts",
+          "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+          "relatedInformation": []
+        }],
+        "data": {
+          "specifier": "file:///a/file.ts",
+          "fixId": "fixAwaitInSyncFunction"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "title": "Add all missing 'async' modifiers",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 2
+            },
+            "end": {
+              "line": 1,
+              "character": 7
+            }
+          },
+          "severity": 1,
+          "code": 1308,
+          "source": "deno-ts",
+          "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+          "relatedInformation": []
+        }
+      ],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 7 },
+              "end": { "line": 0, "character": 7 }
+            },
+            "newText": "async "
+          }, {
+            "range": {
+              "start": { "line": 0, "character": 21 },
+              "end": { "line": 0, "character": 25 }
+            },
+            "newText": "Promise<void>"
+          }, {
+            "range": {
+              "start": { "line": 4, "character": 7 },
+              "end": { "line": 4, "character": 7 }
+            },
+            "newText": "async "
+          },
+          {
+            "range": {
+              "start": { "line": 4, "character": 21 },
+              "end": { "line": 4, "character": 25 }
+            },
+            "newText": "Promise<void>"
+          }]
+        }]
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "fixId": "fixAwaitInSyncFunction"
+      }
+    }))
   );
   client.shutdown();
 }
@@ -3442,14 +3987,52 @@ fn lsp_code_actions_deno_cache() {
     }));
   assert_eq!(
     diagnostics.with_source("deno"),
-    load_fixture_as("diagnostics_deno_deps.json")
+    serde_json::from_value(json!({
+      "uri": "file:///a/file.ts",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 49 }
+        },
+        "severity": 1,
+        "code": "no-cache",
+        "source": "deno",
+        "message": "Uncached or missing remote URL: \"https://deno.land/x/a/mod.ts\".",
+        "data": { "specifier": "https://deno.land/x/a/mod.ts" }
+      }],
+      "version": 1
+    })).unwrap()
   );
 
   let (maybe_res, maybe_err) = session
     .client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_action_params_cache.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 49 }
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 49 }
+            },
+            "severity": 1,
+            "code": "no-cache",
+            "source": "deno",
+            "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
+            "data": {
+              "specifier": "https://deno.land/x/a/mod.ts"
+            }
+          }],
+          "only": ["quickfix"]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
@@ -3475,20 +4058,76 @@ fn lsp_code_actions_deno_cache_npm() {
   }));
   assert_eq!(
     diagnostics.with_source("deno"),
-    load_fixture_as("code_actions/cache_npm/diagnostics.json")
+    serde_json::from_value(json!({
+      "uri": "file:///a/file.ts",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 18 },
+          "end": { "line": 0, "character": 29 }
+        },
+        "severity": 1,
+        "code": "no-cache-npm",
+        "source": "deno",
+        "message": "Uncached or missing npm package: \"chalk\".",
+        "data": { "specifier": "npm:chalk" }
+      }],
+      "version": 1
+    }))
+    .unwrap()
   );
 
   let (maybe_res, maybe_err) = session
     .client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_actions/cache_npm/cache_action.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 0, "character": 18 },
+          "end": { "line": 0, "character": 29 }
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 0, "character": 18 },
+              "end": { "line": 0, "character": 29 }
+            },
+            "severity": 1,
+            "code": "no-cache-npm",
+            "source": "deno",
+            "message": "Uncached or missing npm package: \"chalk\".",
+            "data": { "specifier": "npm:chalk" }
+          }],
+          "only": ["quickfix"]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_actions/cache_npm/cache_response.json"))
+    Some(json!([{
+      "title": "Cache \"npm:chalk\" and its dependencies.",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 18 },
+          "end": { "line": 0, "character": 29 }
+        },
+        "severity": 1,
+        "code": "no-cache-npm",
+        "source": "deno",
+        "message": "Uncached or missing npm package: \"chalk\".",
+        "data": { "specifier": "npm:chalk" }
+      }],
+      "command": {
+        "title": "",
+        "command": "deno.cache",
+        "arguments": [["npm:chalk"]]
+      }
+    }]))
   );
   session.shutdown_and_exit();
 }
@@ -3548,25 +4187,196 @@ export class DuckConfig {
     .client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_action_params_imports.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file00.ts"
+        },
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 6, "character": 0 }
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 0, "character": 50 },
+              "end": { "line": 0, "character": 67 }
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'DuckConfigOptions'."
+          }, {
+            "range": {
+              "start": { "line": 4, "character": 39 },
+              "end": { "line": 4, "character": 49 }
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'DuckConfig'."
+          }],
+          "only": ["quickfix"]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_response_imports.json"))
+    Some(json!([{
+      "title": "Add import from \"./file02.ts\"",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file00.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
+          }]
+        }]
+      }
+    }, {
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
+      }
+    }, {
+      "title": "Add import from \"./file01.ts\"",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 4, "character": 39 },
+          "end": { "line": 4, "character": 49 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfig'."
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file00.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
+          }]
+        }]
+      }
+    }]))
   );
   let (maybe_res, maybe_err) = session
     .client
     .write_request(
       "codeAction/resolve",
-      load_fixture("code_action_resolve_params_imports.json"),
+      json!({
+        "title": "Add all missing imports",
+        "kind": "quickfix",
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 50 },
+            "end": { "line": 0, "character": 67 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'DuckConfigOptions'."
+        }, {
+          "range": {
+            "start": { "line": 4, "character": 39 },
+            "end": { "line": 4, "character": 49 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'DuckConfig'."
+        }],
+        "data": {
+          "specifier": "file:///a/file00.ts",
+          "fixId": "fixMissingImport"
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_resolve_response_imports.json"))
+    Some(json!({
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      },
+      {
+        "range": {
+          "start": { "line": 4, "character": 39 },
+          "end": { "line": 4, "character": 49 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfig'."
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file00.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "import { DuckConfig } from \"./file01.ts\";\nimport { DuckConfigOptions } from \"./file02.ts\";\n\n"
+          }]
+        }]
+      },
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
+      }
+    }))
   );
 
   session.shutdown_and_exit();
@@ -4598,9 +5408,7 @@ fn lsp_completions_node_specifier() {
         },
         "context": {
           "diagnostics": json!(diagnostics),
-          "only": [
-            "quickfix"
-          ]
+          "only": ["quickfix"]
         }
       }),
     )
@@ -5291,9 +6099,7 @@ fn lsp_redirect_quick_fix() {
         },
         "context": {
           "diagnostics": diagnostics,
-          "only": [
-            "quickfix"
-          ]
+          "only": ["quickfix"]
         }
       })),
     )
@@ -6371,9 +7177,7 @@ fn lsp_code_actions_ignore_lint() {
               "relatedInformation": []
             }
           ],
-          "only": [
-            "quickfix"
-          ]
+          "only": ["quickfix"]
         }
       }),
     )
@@ -6381,7 +7185,82 @@ fn lsp_code_actions_ignore_lint() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_ignore_lint_response.json"))
+    Some(json!([{
+      "title": "Disable prefer-const for this line",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore prefer-const\n"
+          }]
+        }
+      }
+    }, {
+      "title": "Disable prefer-const for the entire file",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore-file prefer-const\n"
+          }]
+        }
+      }
+    }, {
+      "title": "Ignore lint errors for the entire file",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore-file\n"
+          }]
+        }
+      }
+    }]))
   );
   client.shutdown();
 }
@@ -6410,13 +7289,110 @@ console.log(snake_case);
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_action_update_ignore_lint_params.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 3, "character": 5 },
+          "end": { "line": 3, "character": 15 }
+        },
+        "context": {
+          "diagnostics": [{
+            "range": {
+              "start": { "line": 3, "character": 5 },
+              "end": { "line": 3, "character": 15 }
+            },
+            "severity": 1,
+            "code": "prefer-const",
+            "source": "deno-lint",
+            "message": "'snake_case' is never reassigned\nUse 'const' instead",
+            "relatedInformation": []
+          }],
+          "only": ["quickfix"]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_update_ignore_lint_response.json"))
+    Some(json!([{
+      "title": "Disable prefer-const for this line",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 3, "character": 5 },
+          "end": { "line": 3, "character": 15 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'snake_case' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 3, "character": 0 },
+              "end": { "line": 3, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore prefer-const\n"
+          }]
+        }
+      }
+    }, {
+      "title": "Disable prefer-const for the entire file",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 3, "character": 5 },
+          "end": { "line": 3, "character": 15 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'snake_case' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 1, "character": 34 },
+              "end": { "line": 1, "character": 34 }
+            },
+            "newText": " prefer-const"
+          }]
+        }
+      }
+    }, {
+      "title": "Ignore lint errors for the entire file",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 3, "character": 5 },
+          "end": { "line": 3, "character": 15 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'snake_case' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore-file\n"
+          }]
+        }
+      }
+    }]))
   );
   client.shutdown();
 }
