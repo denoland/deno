@@ -384,10 +384,7 @@ fn lsp_import_map() {
         "textDocument": {
           "uri": uri
         },
-        "position": {
-          "line": 2,
-          "character": 12
-        }
+        "position": { "line": 2, "character": 12 }
       }),
     )
     .unwrap();
@@ -403,14 +400,8 @@ fn lsp_import_map() {
         ""
       ],
       "range": {
-        "start": {
-          "line": 2,
-          "character": 12
-        },
-        "end": {
-          "line": 2,
-          "character": 13
-        }
+        "start": { "line": 2, "character": 12 },
+        "end": { "line": 2, "character": 13 }
       }
     }))
   );
@@ -496,10 +487,7 @@ fn lsp_import_map_config_file() {
         "textDocument": {
           "uri": uri
         },
-        "position": {
-          "line": 2,
-          "character": 12
-        }
+        "position": { "line": 2, "character": 12 }
       }),
     )
     .unwrap();
@@ -515,14 +503,8 @@ fn lsp_import_map_config_file() {
         ""
       ],
       "range": {
-        "start": {
-          "line": 2,
-          "character": 12
-        },
-        "end": {
-          "line": 2,
-          "character": 13
-        }
+        "start": { "line": 2, "character": 12 },
+        "end": { "line": 2, "character": 13 }
       }
     }))
   );
@@ -573,10 +555,7 @@ fn lsp_import_map_embedded_in_config_file() {
         "textDocument": {
           "uri": uri
         },
-        "position": {
-          "line": 2,
-          "character": 12
-        }
+        "position": { "line": 2, "character": 12 }
       }),
     )
     .unwrap();
@@ -592,14 +571,8 @@ fn lsp_import_map_embedded_in_config_file() {
         ""
       ],
       "range": {
-        "start": {
-          "line": 2,
-          "character": 12
-        },
-        "end": {
-          "line": 2,
-          "character": 13
-        }
+        "start": { "line": 2, "character": 12 },
+        "end": { "line": 2, "character": 13 }
       }
     }))
   );
@@ -697,14 +670,8 @@ fn lsp_import_assertions() {
     json!([
       {
         "range": {
-          "start": {
-            "line": 0,
-            "character": 14
-          },
-          "end": {
-            "line": 0,
-            "character": 27
-          }
+          "start": { "line": 0, "character": 14 },
+          "end": { "line": 0, "character": 27 }
         },
         "severity": 1,
         "code": "no-assert-type",
@@ -717,13 +684,66 @@ fn lsp_import_assertions() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_action_params_import_assertion.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/a.ts"
+        },
+        "range": {
+          "start": { "line": 0, "character": 14 },
+          "end": { "line": 0, "character": 27 }
+        },
+        "context": {
+          "diagnostics": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 14 },
+                "end": { "line": 0, "character": 27 }
+              },
+              "severity": 1,
+              "code": "no-assert-type",
+              "source": "deno",
+              "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+            }
+          ],
+          "only": [
+            "quickfix"
+          ]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_response_import_assertion.json"))
+    Some(json!([{
+      "title": "Insert import assertion.",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 14 },
+            "end": { "line": 0, "character": 27 }
+          },
+          "severity": 1,
+          "code": "no-assert-type",
+          "source": "deno",
+          "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+        }
+      ],
+      "edit": {
+        "changes": {
+          "file:///a/a.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 27 },
+                "end": { "line": 0, "character": 27 }
+              },
+              "newText": " assert { type: \"json\" }"
+            }
+          ]
+        }
+      }
+    }]))
   );
   client.shutdown();
 }
@@ -771,10 +791,7 @@ fn lsp_import_map_import_completions() {
         "textDocument": {
           "uri": uri
         },
-        "position": {
-          "line": 1,
-          "character": 20
-        },
+        "position": { "line": 1, "character": 20 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "\""
@@ -843,14 +860,8 @@ fn lsp_import_map_import_completions() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 1,
-                "character": 20
-              },
-              "end": {
-                "line": 1,
-                "character": 20
-              }
+              "start": { "line": 1, "character": 20 },
+              "end": { "line": 1, "character": 20 }
             },
             "text": "/~/"
           }
@@ -872,10 +883,7 @@ fn lsp_import_map_import_completions() {
         "textDocument": {
           "uri": uri
         },
-        "position": {
-          "line": 1,
-          "character": 23
-        },
+        "position": { "line": 1, "character": 23 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "/"
@@ -897,14 +905,8 @@ fn lsp_import_map_import_completions() {
           "filterText": "/~/b.ts",
           "textEdit": {
             "range": {
-              "start": {
-                "line": 1,
-                "character": 20
-              },
-              "end": {
-                "line": 1,
-                "character": 23
-              }
+              "start": { "line": 1, "character": 20 },
+              "end": { "line": 1, "character": 23 }
             },
             "newText": "/~/b.ts"
           },
@@ -939,10 +941,7 @@ fn lsp_hover() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -959,14 +958,8 @@ fn lsp_hover() {
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 17
-        },
-        "end": {
-          "line": 0,
-          "character": 21
-        }
+        "start": { "line": 0, "character": 17 },
+        "end": { "line": 0, "character": 21 }
       }
     }))
   );
@@ -995,10 +988,7 @@ fn lsp_hover_asset() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 14
-        }
+        "position": { "line": 0, "character": 14 }
       }),
     )
     .unwrap();
@@ -1021,10 +1011,7 @@ fn lsp_hover_asset() {
         "textDocument": {
           "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
         },
-        "position": {
-          "line": 109,
-          "character": 13
-        }
+        "position": { "line": 109, "character": 13 }
       }),
     )
     .unwrap();
@@ -1040,14 +1027,8 @@ fn lsp_hover_asset() {
         "Enables basic storage and retrieval of dates and times."
       ],
       "range": {
-        "start": {
-          "line": 109,
-          "character": 10,
-        },
-        "end": {
-          "line": 109,
-          "character": 14,
-        }
+        "start": { "line": 109, "character": 10, },
+        "end": { "line": 109, "character": 14, }
       }
     }))
   );
@@ -1084,10 +1065,7 @@ fn lsp_hover_disabled() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -1141,14 +1119,8 @@ fn lsp_inlay_hints() {
           "uri": "file:///a/file.ts",
         },
         "range": {
-          "start": {
-            "line": 0,
-            "character": 0
-          },
-          "end": {
-            "line": 19,
-            "character": 0,
-          }
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 19, "character": 0, }
         }
       }),
     )
@@ -1158,90 +1130,60 @@ fn lsp_inlay_hints() {
     json!(maybe_res),
     json!([
       {
-        "position": {
-          "line": 0,
-          "character": 21
-        },
+        "position": { "line": 0, "character": 21 },
         "label": ": string",
         "kind": 1,
         "paddingLeft": true
       },
       {
-        "position": {
-          "line": 4,
-          "character": 10
-        },
+        "position": { "line": 4, "character": 10 },
         "label": "b:",
         "kind": 2,
         "paddingRight": true
       },
       {
-        "position": {
-          "line": 7,
-          "character": 11
-        },
+        "position": { "line": 7, "character": 11 },
         "label": "= 0",
         "paddingLeft": true
       },
       {
-        "position": {
-          "line": 10,
-          "character": 17
-        },
+        "position": { "line": 10, "character": 17 },
         "label": "string:",
         "kind": 2,
         "paddingRight": true
       },
       {
-        "position": {
-          "line": 10,
-          "character": 24
-        },
+        "position": { "line": 10, "character": 24 },
         "label": "radix:",
         "kind": 2,
         "paddingRight": true
       },
       {
-        "position": {
-          "line": 12,
-          "character": 15
-        },
+        "position": { "line": 12, "character": 15 },
         "label": ": number",
         "kind": 1,
         "paddingLeft": true
       },
       {
-        "position": {
-          "line": 15,
-          "character": 11
-        },
+        "position": { "line": 15, "character": 11 },
         "label": ": number",
         "kind": 1,
         "paddingLeft": true
       },
       {
-        "position": {
-          "line": 18,
-          "character": 18
-        },
+        "position": { "line": 18, "character": 18 },
         "label": "callbackfn:",
         "kind": 2,
         "paddingRight": true
       },
       {
-        "position": {
-          "line": 18,
-          "character": 20
-        },
+        "position": { "line": 18, "character": 20 },
         "label": ": string",
         "kind": 1,
         "paddingLeft": true
       },
       {
-        "position": {
-          "line": 18,
-          "character": 21
-        },
+        "position": { "line": 18, "character": 21 },
         "label": ": string",
         "kind": 1,
         "paddingLeft": true
@@ -1292,14 +1234,8 @@ fn lsp_inlay_hints_not_enabled() {
           "uri": "file:///a/file.ts",
         },
         "range": {
-          "start": {
-            "line": 0,
-            "character": 0
-          },
-          "end": {
-            "line": 19,
-            "character": 0,
-          }
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 19, "character": 0, }
         }
       }),
     )
@@ -1395,10 +1331,7 @@ fn lsp_workspace_enable_paths() {
         "textDocument": {
           "uri": root_specifier.join("./file.ts").unwrap(),
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -1412,10 +1345,7 @@ fn lsp_workspace_enable_paths() {
         "textDocument": {
           "uri": root_specifier.join("./other/file.ts").unwrap(),
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -1429,10 +1359,7 @@ fn lsp_workspace_enable_paths() {
         "textDocument": {
           "uri": root_specifier.join("./worker/file.ts").unwrap(),
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -1448,14 +1375,8 @@ fn lsp_workspace_enable_paths() {
         "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 17,
-        },
-        "end": {
-          "line": 0,
-          "character": 20,
-        }
+        "start": { "line": 0, "character": 17, },
+        "end": { "line": 0, "character": 20, }
       }
     }))
   );
@@ -1467,10 +1388,7 @@ fn lsp_workspace_enable_paths() {
         "textDocument": {
           "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -1486,14 +1404,8 @@ fn lsp_workspace_enable_paths() {
         "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 17,
-        },
-        "end": {
-          "line": 0,
-          "character": 20,
-        }
+        "start": { "line": 0, "character": 17, },
+        "end": { "line": 0, "character": 20, }
       }
     }))
   );
@@ -1523,10 +1435,7 @@ fn lsp_hover_unstable_disabled() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -1541,14 +1450,8 @@ fn lsp_hover_unstable_disabled() {
         }
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 17
-        },
-        "end": {
-          "line": 0,
-          "character": 23
-        }
+        "start": { "line": 0, "character": 17 },
+        "end": { "line": 0, "character": 23 }
       }
     }))
   );
@@ -1579,10 +1482,7 @@ fn lsp_hover_unstable_enabled() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -1599,14 +1499,8 @@ fn lsp_hover_unstable_enabled() {
         "\n\n*@category* - Runtime Environment",
       ],
       "range":{
-        "start":{
-          "line":0,
-          "character":17
-        },
-        "end":{
-          "line":0,
-          "character":21
-        }
+        "start":{ "line":0, "character":17 },
+        "end":{ "line":0, "character":21 }
       }
     }))
   );
@@ -1639,10 +1533,7 @@ fn lsp_hover_change_mbc() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 1,
-                "character": 11
-              },
+              "start": { "line": 1, "character": 11 },
               "end": {
                 "line": 1,
                 // the LSP uses utf16 encoded characters indexes, so
@@ -1669,10 +1560,7 @@ fn lsp_hover_change_mbc() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 2,
-          "character": 15
-        }
+        "position": { "line": 2, "character": 15 }
       }),
     )
     .unwrap();
@@ -1688,14 +1576,8 @@ fn lsp_hover_change_mbc() {
         "",
       ],
       "range": {
-        "start": {
-          "line": 2,
-          "character": 15,
-        },
-        "end": {
-          "line": 2,
-          "character": 16,
-        },
+        "start": { "line": 2, "character": 15, },
+        "end": { "line": 2, "character": 16, },
       }
     }))
   );
@@ -1766,10 +1648,7 @@ fn lsp_hover_closed_document() {
         "textDocument": {
           "uri": c_specifier,
         },
-        "position": {
-          "line": 0,
-          "character": 10
-        }
+        "position": { "line": 0, "character": 10 }
       }),
     )
     .unwrap();
@@ -1785,14 +1664,8 @@ fn lsp_hover_closed_document() {
         ""
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 9
-        },
-        "end": {
-          "line": 0,
-          "character": 10
-        }
+        "start": { "line": 0, "character": 9 },
+        "end": { "line": 0, "character": 10 }
       }
     }))
   );
@@ -1813,10 +1686,7 @@ fn lsp_hover_closed_document() {
         "textDocument": {
           "uri": c_specifier,
         },
-        "position": {
-          "line": 0,
-          "character": 10
-        }
+        "position": { "line": 0, "character": 10 }
       }),
     )
     .unwrap();
@@ -1832,14 +1702,8 @@ fn lsp_hover_closed_document() {
         ""
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 9
-        },
-        "end": {
-          "line": 0,
-          "character": 10
-        }
+        "start": { "line": 0, "character": 9 },
+        "end": { "line": 0, "character": 10 }
       }
     }))
   );
@@ -1864,7 +1728,14 @@ fn lsp_hover_dependency() {
   );
   did_open(
     &mut client,
-    load_fixture("did_open_params_import_hover.json"),
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+      }
+    }),
   );
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
@@ -1886,10 +1757,7 @@ fn lsp_hover_dependency() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 0,
-          "character": 28
-        }
+        "position": { "line": 0, "character": 28 }
       }),
     )
     .unwrap();
@@ -1902,14 +1770,8 @@ fn lsp_hover_dependency() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
       },
       "range": {
-        "start": {
-          "line": 0,
-          "character": 19
-        },
-        "end":{
-          "line": 0,
-          "character": 62
-        }
+        "start": { "line": 0, "character": 19 },
+        "end":{ "line": 0, "character": 62 }
       }
     }))
   );
@@ -1920,10 +1782,7 @@ fn lsp_hover_dependency() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 3,
-          "character": 28
-        }
+        "position": { "line": 3, "character": 28 }
       }),
     )
     .unwrap();
@@ -1936,14 +1795,8 @@ fn lsp_hover_dependency() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/type_reference.js\n\n**Types**: http&#8203;://127.0.0.1:4545/subdir/type_reference.d.ts\n"
       },
       "range": {
-        "start": {
-          "line": 3,
-          "character": 19
-        },
-        "end":{
-          "line": 3,
-          "character": 67
-        }
+        "start": { "line": 3, "character": 19 },
+        "end":{ "line": 3, "character": 67 }
       }
     }))
   );
@@ -1954,10 +1807,7 @@ fn lsp_hover_dependency() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 4,
-          "character": 28
-        }
+        "position": { "line": 4, "character": 28 }
       }),
     )
     .unwrap();
@@ -1970,14 +1820,8 @@ fn lsp_hover_dependency() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/mod1.ts\n"
       },
       "range": {
-        "start": {
-          "line": 4,
-          "character": 19
-        },
-        "end":{
-          "line": 4,
-          "character": 57
-        }
+        "start": { "line": 4, "character": 19 },
+        "end":{ "line": 4, "character": 57 }
       }
     }))
   );
@@ -1988,10 +1832,7 @@ fn lsp_hover_dependency() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 5,
-          "character": 28
-        }
+        "position": { "line": 5, "character": 28 }
       }),
     )
     .unwrap();
@@ -2004,14 +1845,8 @@ fn lsp_hover_dependency() {
         "value": "**Resolved Dependency**\n\n**Code**: _(a data url)_\n"
       },
       "range": {
-        "start": {
-          "line": 5,
-          "character": 19
-        },
-        "end":{
-          "line": 5,
-          "character": 132
-        }
+        "start": { "line": 5, "character": 19 },
+        "end":{ "line": 5, "character": 132 }
       }
     }))
   );
@@ -2022,10 +1857,7 @@ fn lsp_hover_dependency() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 6,
-          "character": 28
-        }
+        "position": { "line": 6, "character": 28 }
       }),
     )
     .unwrap();
@@ -2038,14 +1870,8 @@ fn lsp_hover_dependency() {
         "value": "**Resolved Dependency**\n\n**Code**: file&#8203;:///a/file_01.ts\n"
       },
       "range": {
-        "start": {
-          "line": 6,
-          "character": 19
-        },
-        "end":{
-          "line": 6,
-          "character": 33
-        }
+        "start": { "line": 6, "character": 19 },
+        "end":{ "line": 6, "character": 33 }
       }
     }))
   );
@@ -2086,10 +1912,7 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
         "textDocument": {
           "uri": "file:///a/file2.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 56
-        }
+        "position": { "line": 0, "character": 56 }
       }),
     )
     .unwrap();
@@ -2105,14 +1928,8 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
         ""
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 56,
-        },
-        "end": {
-          "line": 0,
-          "character": 57,
-        }
+        "start": { "line": 0, "character": 56, },
+        "end": { "line": 0, "character": 57, }
       }
     }))
   );
@@ -2127,14 +1944,8 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 0,
-                "character": 57
-              },
-              "end": {
-                "line": 0,
-                "character": 58
-              }
+              "start": { "line": 0, "character": 57 },
+              "end": { "line": 0, "character": 58 }
             },
             "text": "."
           }
@@ -2149,10 +1960,7 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
         "textDocument": {
           "uri": "file:///a/file2.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 56
-        }
+        "position": { "line": 0, "character": 56 }
       }),
     )
     .unwrap();
@@ -2168,14 +1976,8 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
         ""
       ],
       "range": {
-        "start": {
-          "line": 0,
-          "character": 56,
-        },
-        "end": {
-          "line": 0,
-          "character": 57,
-        }
+        "start": { "line": 0, "character": 56, },
+        "end": { "line": 0, "character": 57, }
       }
     }))
   );
@@ -2222,10 +2024,7 @@ fn lsp_hover_typescript_types() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 24
-        }
+        "position": { "line": 0, "character": 24 }
       }),
     )
     .unwrap();
@@ -2239,14 +2038,8 @@ fn lsp_hover_typescript_types() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
       },
       "range": {
-        "start": {
-          "line": 0,
-          "character": 19
-        },
-        "end": {
-          "line": 0,
-          "character": 62
-        }
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 62 }
       }
     })
   );
@@ -2286,10 +2079,7 @@ fn lsp_hover_jsdoc_symbol_link() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 7,
-          "character": 10
-        }
+        "position": { "line": 7, "character": 10 }
       }),
     )
     .unwrap();
@@ -2305,14 +2095,8 @@ fn lsp_hover_jsdoc_symbol_link() {
         "JSDoc [hello](file:///a/file.ts#L1,10) and [`b`](file:///a/file.ts#L5,7)"
       ],
       "range": {
-        "start": {
-          "line": 7,
-          "character": 9
-        },
-        "end": {
-          "line": 7,
-          "character": 10
-        }
+        "start": { "line": 7, "character": 9 },
+        "end": { "line": 7, "character": 10 }
       }
     }))
   );
@@ -2341,10 +2125,7 @@ fn lsp_goto_type_definition() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 12,
-          "character": 1
-        }
+        "position": { "line": 12, "character": 1 }
       }),
     )
     .unwrap();
@@ -2355,24 +2136,12 @@ fn lsp_goto_type_definition() {
       {
         "targetUri": "file:///a/file.ts",
         "targetRange": {
-          "start": {
-            "line": 4,
-            "character": 0
-          },
-          "end": {
-            "line": 9,
-            "character": 1
-          }
+          "start": { "line": 4, "character": 0 },
+          "end": { "line": 9, "character": 1 }
         },
         "targetSelectionRange": {
-          "start": {
-            "line": 4,
-            "character": 13
-          },
-          "end": {
-            "line": 4,
-            "character": 14
-          }
+          "start": { "line": 4, "character": 13 },
+          "end": { "line": 4, "character": 14 }
         }
       }
     ]))
@@ -2402,9 +2171,45 @@ fn lsp_call_hierarchy() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 5,
-          "character": 3
+        "position": { "line": 5, "character": 3 }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_error.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([{
+      "name": "baz",
+      "kind": 6,
+      "detail": "Bar",
+      "uri": "file:///a/file.ts",
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 7, "character": 3 }
+      },
+      "selectionRange": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 5 }
+      }
+    }]))
+  );
+  let (maybe_res, maybe_error) = client
+    .write_request(
+      "callHierarchy/incomingCalls",
+      json!({
+        "item": {
+          "name": "baz",
+          "kind": 6,
+          "detail": "Bar",
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": { "line": 5, "character": 2 },
+            "end": { "line": 7, "character": 3 }
+          },
+          "selectionRange": {
+            "start": { "line": 5, "character": 2 },
+            "end": { "line": 5, "character": 5 }
+          }
         }
       }),
     )
@@ -2412,29 +2217,73 @@ fn lsp_call_hierarchy() {
   assert!(maybe_error.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("prepare_call_hierarchy_response.json"))
-  );
-  let (maybe_res, maybe_error) = client
-    .write_request(
-      "callHierarchy/incomingCalls",
-      load_fixture("incoming_calls_params.json"),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
-  assert_eq!(
-    maybe_res,
-    Some(load_fixture("incoming_calls_response.json"))
+    Some(json!([{
+      "from": {
+        "name": "main",
+        "kind": 12,
+        "detail": "",
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 10, "character": 0 },
+          "end": { "line": 13, "character": 1 }
+        },
+        "selectionRange": {
+          "start": { "line": 10, "character": 9 },
+          "end": { "line": 10, "character": 13 }
+        }
+      },
+      "fromRanges": [
+        {
+          "start": { "line": 12, "character": 6 },
+          "end": { "line": 12, "character": 9 }
+        }
+      ]
+    }]))
   );
   let (maybe_res, maybe_error) = client
     .write_request(
       "callHierarchy/outgoingCalls",
-      load_fixture("outgoing_calls_params.json"),
+      json!({
+        "item": {
+          "name": "baz",
+          "kind": 6,
+          "detail": "Bar",
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": { "line": 5, "character": 2 },
+            "end": { "line": 7, "character": 3 }
+          },
+          "selectionRange": {
+            "start": { "line": 5, "character": 2 },
+            "end": { "line": 5, "character": 5 }
+          }
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_error.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("outgoing_calls_response.json"))
+    Some(json!([{
+      "to": {
+        "name": "foo",
+        "kind": 12,
+        "detail": "",
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 2, "character": 1 }
+        },
+        "selectionRange": {
+          "start": { "line": 0, "character": 9 },
+          "end": { "line": 0, "character": 12 }
+        }
+      },
+      "fromRanges": [{
+        "start": { "line": 6, "character": 11 },
+        "end": { "line": 6, "character": 14 }
+      }]
+    }]))
   );
   client.shutdown();
 }
@@ -2455,14 +2304,8 @@ fn lsp_large_doc_changes() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 444,
-                "character": 11
-              },
-              "end": {
-                "line": 444,
-                "character": 14
-              }
+              "start": { "line": 444, "character": 11 },
+              "end": { "line": 444, "character": 14 }
             },
             "text": "+++"
           }
@@ -2481,14 +2324,8 @@ fn lsp_large_doc_changes() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 445,
-                "character": 4
-              },
-              "end": {
-                "line": 445,
-                "character": 4
-              }
+              "start": { "line": 445, "character": 4 },
+              "end": { "line": 445, "character": 4 }
             },
             "text": "// "
           }
@@ -2507,14 +2344,8 @@ fn lsp_large_doc_changes() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 477,
-                "character": 4
-              },
-              "end": {
-                "line": 477,
-                "character": 9
-              }
+              "start": { "line": 477, "character": 4 },
+              "end": { "line": 477, "character": 9 }
             },
             "text": "error"
           }
@@ -2529,10 +2360,7 @@ fn lsp_large_doc_changes() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 421,
-          "character": 30
-        }
+        "position": { "line": 421, "character": 30 }
       }),
     )
     .unwrap();
@@ -2545,10 +2373,7 @@ fn lsp_large_doc_changes() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 444,
-          "character": 6
-        }
+        "position": { "line": 444, "character": 6 }
       }),
     )
     .unwrap();
@@ -2561,10 +2386,7 @@ fn lsp_large_doc_changes() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 461,
-          "character": 34
-        }
+        "position": { "line": 461, "character": 34 }
       }),
     )
     .unwrap();
@@ -2579,7 +2401,17 @@ fn lsp_large_doc_changes() {
 fn lsp_document_symbol() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(&mut client, load_fixture("did_open_params_doc_symbol.json"));
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "interface IFoo {\n  foo(): boolean;\n}\n\nclass Bar implements IFoo {\n  constructor(public x: number) { }\n  foo() { return true; }\n  /** @deprecated */\n  baz() { return false; }\n  get value(): number { return 0; }\n  set value(newVavlue: number) { return; }\n  static staticBar = new Bar(0);\n  private static getStaticBar() { return Bar.staticBar; }\n}\n\nenum Values { value1, value2 }\n\nvar bar: IFoo = new Bar(3);"
+      }
+    }),
+  );
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/documentSymbol",
@@ -2593,7 +2425,179 @@ fn lsp_document_symbol() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("document_symbol_response.json"))
+    Some(json!([{
+      "name": "bar",
+      "kind": 13,
+      "range": {
+        "start": { "line": 17, "character": 4 },
+        "end": { "line": 17, "character": 26 }
+      },
+      "selectionRange": {
+        "start": { "line": 17, "character": 4 },
+        "end": { "line": 17, "character": 7 }
+      }
+    }, {
+      "name": "Bar",
+      "kind": 5,
+      "range": {
+        "start": { "line": 4, "character": 0 },
+        "end": { "line": 13, "character": 1 }
+      },
+      "selectionRange": {
+        "start": { "line": 4, "character": 6 },
+        "end": { "line": 4, "character": 9 }
+      },
+      "children": [{
+        "name": "constructor",
+        "kind": 9,
+        "range": {
+          "start": { "line": 5, "character": 2 },
+          "end": { "line": 5, "character": 35 }
+        },
+        "selectionRange": {
+          "start": { "line": 5, "character": 2 },
+          "end": { "line": 5, "character": 35 }
+        }
+      }, {
+        "name": "baz",
+        "kind": 6,
+        "tags": [
+          1
+        ],
+        "range": {
+          "start": { "line": 8, "character": 2 },
+          "end": { "line": 8, "character": 25 }
+        },
+        "selectionRange": {
+          "start": { "line": 8, "character": 2 },
+          "end": { "line": 8, "character": 5 }
+        }
+      }, {
+        "name": "foo",
+        "kind": 6,
+        "range": {
+          "start": { "line": 6, "character": 2 },
+          "end": { "line": 6, "character": 24 }
+        },
+        "selectionRange": {
+          "start": { "line": 6, "character": 2 },
+          "end": { "line": 6, "character": 5 }
+        }
+      }, {
+        "name": "getStaticBar",
+        "kind": 6,
+        "range": {
+          "start": { "line": 12, "character": 2 },
+          "end": { "line": 12, "character": 57 }
+        },
+        "selectionRange": {
+          "start": { "line": 12, "character": 17 },
+          "end": { "line": 12, "character": 29 }
+        }
+      }, {
+        "name": "staticBar",
+        "kind": 8,
+        "range": {
+          "start": { "line": 11, "character": 2 },
+          "end": { "line": 11, "character": 32 }
+        },
+        "selectionRange": {
+          "start": { "line": 11, "character": 9 },
+          "end": { "line": 11, "character": 18 }
+        }
+      }, {
+        "name": "(get) value",
+        "kind": 8,
+        "range": {
+          "start": { "line": 9, "character": 2 },
+          "end": { "line": 9, "character": 35 }
+        },
+        "selectionRange": {
+          "start": { "line": 9, "character": 6 },
+          "end": { "line": 9, "character": 11 }
+        }
+      }, {
+        "name": "(set) value",
+        "kind": 8,
+        "range": {
+          "start": { "line": 10, "character": 2 },
+          "end": { "line": 10, "character": 42 }
+        },
+        "selectionRange": {
+          "start": { "line": 10, "character": 6 },
+          "end": { "line": 10, "character": 11 }
+        }
+      }, {
+        "name": "x",
+        "kind": 8,
+        "range": {
+          "start": { "line": 5, "character": 14 },
+          "end": { "line": 5, "character": 30 }
+        },
+        "selectionRange": {
+          "start": { "line": 5, "character": 21 },
+          "end": { "line": 5, "character": 22 }
+        }
+      }]
+    }, {
+      "name": "IFoo",
+      "kind": 11,
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 2, "character": 1 }
+      },
+      "selectionRange": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 14 }
+      },
+      "children": [{
+        "name": "foo",
+        "kind": 6,
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 17 }
+        },
+        "selectionRange": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 5 }
+        }
+      }]
+    }, {
+      "name": "Values",
+      "kind": 10,
+      "range": {
+        "start": { "line": 15, "character": 0 },
+        "end": { "line": 15, "character": 30 }
+      },
+      "selectionRange": {
+        "start": { "line": 15, "character": 5 },
+        "end": { "line": 15, "character": 11 }
+      },
+      "children": [{
+        "name": "value1",
+        "kind": 22,
+        "range": {
+          "start": { "line": 15, "character": 14 },
+          "end": { "line": 15, "character": 20 }
+        },
+        "selectionRange": {
+          "start": { "line": 15, "character": 14 },
+          "end": { "line": 15, "character": 20 }
+        }
+      }, {
+        "name": "value2",
+        "kind": 22,
+        "range": {
+          "start": { "line": 15, "character": 22 },
+          "end": { "line": 15, "character": 28 }
+        },
+        "selectionRange": {
+          "start": { "line": 15, "character": 22 },
+          "end": { "line": 15, "character": 28 }
+        }
+      }]
+    }]
+    ))
   );
   client.shutdown();
 }
@@ -2626,30 +2630,24 @@ fn lsp_folding_range() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(json!([
-      {
-        "startLine": 0,
-        "endLine": 12,
-        "kind": "region"
-      },
-      {
-        "startLine": 1,
-        "endLine": 3,
-        "kind": "comment"
-      },
-      {
-        "startLine": 4,
-        "endLine": 10
-      },
-      {
-        "startLine": 5,
-        "endLine": 9
-      },
-      {
-        "startLine": 6,
-        "endLine": 7
-      }
-    ]))
+    Some(json!([{
+      "startLine": 0,
+      "endLine": 12,
+      "kind": "region"
+    }, {
+      "startLine": 1,
+      "endLine": 3,
+      "kind": "comment"
+    }, {
+      "startLine": 4,
+      "endLine": 10
+    }, {
+      "startLine": 5,
+      "endLine": 9
+    }, {
+      "startLine": 6,
+      "endLine": 7
+    }]))
   );
   client.shutdown();
 }
@@ -2677,16 +2675,36 @@ fn lsp_rename() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 4
-        },
+        "position": { "line": 0, "character": 4 },
         "newName": "variable_modified"
       }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
-  assert_eq!(maybe_res, Some(load_fixture("rename_response.json")));
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "documentChanges": [{
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 1
+        },
+        "edits": [{
+          "range": {
+            "start": { "line": 0, "character": 4 },
+            "end": { "line": 0, "character": 12 }
+          },
+          "newText": "variable_modified"
+        }, {
+          "range": {
+            "start": { "line": 1, "character": 12 },
+            "end": { "line": 1, "character": 20 }
+          },
+          "newText": "variable_modified"
+        }]
+      }]
+    }))
+  );
   client.shutdown();
 }
 
@@ -2712,19 +2730,61 @@ fn lsp_selection_range() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "positions": [
-          {
-            "line": 2,
-            "character": 8
-          }
-        ]
+        "positions": [{ "line": 2, "character": 8 }]
       }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("selection_range_response.json"))
+    Some(json!([{
+      "range": {
+        "start": { "line": 2, "character": 8 },
+        "end": { "line": 2, "character": 9 }
+      },
+      "parent": {
+        "range": {
+          "start": { "line": 2, "character": 8 },
+          "end": { "line": 2, "character": 15 }
+        },
+        "parent": {
+          "range": {
+            "start": { "line": 2, "character": 4 },
+            "end": { "line": 4, "character": 5 }
+          },
+          "parent": {
+            "range": {
+              "start": { "line": 1, "character": 13 },
+              "end": { "line": 6, "character": 2 }
+            },
+            "parent": {
+              "range": {
+                "start": { "line": 1, "character": 12 },
+                "end": { "line": 6, "character": 3 }
+              },
+              "parent": {
+                "range": {
+                  "start": { "line": 1, "character": 2 },
+                  "end": { "line": 6, "character": 3 }
+                },
+                "parent": {
+                  "range": {
+                    "start": { "line": 0, "character": 11 },
+                    "end": { "line": 7, "character": 0 }
+                  },
+                  "parent": {
+                    "range": {
+                      "start": { "line": 0, "character": 0 },
+                      "end": { "line": 7, "character": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }]))
   );
   client.shutdown();
 }
@@ -2735,7 +2795,14 @@ fn lsp_semantic_tokens() {
   client.initialize_default();
   did_open(
     &mut client,
-    load_fixture("did_open_params_semantic_tokens.json"),
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "enum Values { value1, value2 }\n\nasync function baz(s: string): Promise<string> {\n  const r = s.slice(0);\n  return r;\n}\n\ninterface IFoo {\n  readonly x: number;\n  foo(): boolean;\n}\n\nclass Bar implements IFoo {\n  constructor(public readonly x: number) { }\n  foo() { return true; }\n  static staticBar = new Bar(0);\n  private static getStaticBar() { return Bar.staticBar; }\n}\n"
+      }
+    }),
   );
   let (maybe_res, maybe_err) = client
     .write_request(
@@ -2768,14 +2835,8 @@ fn lsp_semantic_tokens() {
           "uri": "file:///a/file.ts"
         },
         "range": {
-          "start": {
-            "line": 0,
-            "character": 0
-          },
-          "end": {
-            "line": 6,
-            "character": 0
-          }
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 6, "character": 0 }
         }
       }),
     )
@@ -2820,20 +2881,35 @@ fn lsp_code_lens() {
     )
     .unwrap();
   assert!(maybe_err.is_none());
-  assert_eq!(maybe_res, Some(load_fixture("code_lens_response.json")));
+  assert_eq!(
+    maybe_res,
+    Some(json!([{
+      "range": {
+        "start": { "line": 0, "character": 6 },
+        "end": { "line": 0, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }]))
+  );
   let (maybe_res, maybe_err) = client
     .write_request(
       "codeLens/resolve",
       json!({
         "range": {
-          "start": {
-            "line": 0,
-            "character": 6
-          },
-          "end": {
-            "line": 0,
-            "character": 7
-          }
+          "start": { "line": 0, "character": 6 },
+          "end": { "line": 0, "character": 7 }
         },
         "data": {
           "specifier": "file:///a/file.ts",
@@ -2845,7 +2921,33 @@ fn lsp_code_lens() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_lens_resolve_response.json"))
+    Some(json!({
+      "range": {
+        "start": { "line": 0, "character": 6 },
+        "end": { "line": 0, "character": 7 }
+      },
+      "command": {
+        "title": "2 references",
+        "command": "deno.showReferences",
+        "arguments": [
+          "file:///a/file.ts",
+          { "line": 0, "character": 6 },
+          [{
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 0, "character": 6 },
+              "end": { "line": 0, "character": 7 }
+            }
+          }, {
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 12, "character": 14 },
+              "end": { "line": 12, "character": 15 }
+            }
+          }]
+        ]
+      }
+    }))
   );
   client.shutdown();
 }
@@ -2885,14 +2987,8 @@ fn lsp_code_lens_impl() {
       "codeLens/resolve",
       json!({
         "range": {
-          "start": {
-            "line": 0,
-            "character": 10
-          },
-          "end": {
-            "line": 0,
-            "character": 11
-          }
+          "start": { "line": 0, "character": 10 },
+          "end": { "line": 0, "character": 11 }
         },
         "data": {
           "specifier": "file:///a/file.ts",
@@ -2911,14 +3007,8 @@ fn lsp_code_lens_impl() {
       "codeLens/resolve",
       json!({
         "range": {
-          "start": {
-            "line": 10,
-            "character": 10
-          },
-          "end": {
-            "line": 10,
-            "character": 11
-          }
+          "start": { "line": 10, "character": 10 },
+          "end": { "line": 10, "character": 11 }
         },
         "data": {
           "specifier": "file:///a/file.ts",
@@ -2932,14 +3022,8 @@ fn lsp_code_lens_impl() {
     maybe_res,
     Some(json!({
       "range": {
-        "start": {
-          "line": 10,
-          "character": 10
-        },
-        "end": {
-          "line": 10,
-          "character": 11
-        }
+        "start": { "line": 10, "character": 10 },
+        "end": { "line": 10, "character": 11 }
       },
       "command": {
         "title": "0 implementations",
@@ -3052,10 +3136,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 3
-        },
+        "position": { "line": 0, "character": 3 },
         "context": {
           "includeDeclaration": true
         }
@@ -3095,14 +3176,8 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "codeLens/resolve",
       json!({
         "range": {
-          "start": {
-            "line": 416,
-            "character": 12
-          },
-          "end": {
-            "line": 416,
-            "character": 19
-          }
+          "start": { "line": 416, "character": 12 },
+          "end": { "line": 416, "character": 19 }
         },
         "data": {
           "specifier": "asset:///lib.deno.shared_globals.d.ts",
@@ -3157,14 +3232,8 @@ fn lsp_nav_tree_updates() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 10,
-                "character": 0
-              },
-              "end": {
-                "line": 13,
-                "character": 0
-              }
+              "start": { "line": 10, "character": 0 },
+              "end": { "line": 13, "character": 0 }
             },
             "text": ""
           }
@@ -3212,10 +3281,7 @@ fn lsp_signature_help() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "character": 4,
-          "line": 9
-        },
+        "position": { "character": 4, "line": 9 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "(",
@@ -3268,14 +3334,8 @@ fn lsp_signature_help() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 9,
-                "character": 4
-              },
-              "end": {
-                "line": 9,
-                "character": 4
-              }
+              "start": { "line": 9, "character": 4 },
+              "end": { "line": 9, "character": 4 }
             },
             "text": "123, "
           }
@@ -3290,10 +3350,7 @@ fn lsp_signature_help() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "character": 8,
-          "line": 9
-        }
+        "position": { "character": 8, "line": 9 }
       }),
     )
     .unwrap();
@@ -3584,14 +3641,8 @@ fn lsp_code_actions_refactor_no_disabled_support() {
           "uri": "file:///a/file.ts"
         },
         "range": {
-          "start": {
-            "line": 0,
-            "character": 0
-          },
-          "end": {
-            "line": 14,
-            "character": 0
-          }
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 14, "character": 0 }
         },
         "context": {
           "diagnostics": [],
@@ -3649,14 +3700,8 @@ fn lsp_code_actions_deadlock() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 444,
-                "character": 11
-              },
-              "end": {
-                "line": 444,
-                "character": 14
-              }
+              "start": { "line": 444, "character": 11 },
+              "end": { "line": 444, "character": 14 }
             },
             "text": "+++"
           }
@@ -3675,14 +3720,8 @@ fn lsp_code_actions_deadlock() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 445,
-                "character": 4
-              },
-              "end": {
-                "line": 445,
-                "character": 4
-              }
+              "start": { "line": 445, "character": 4 },
+              "end": { "line": 445, "character": 4 }
             },
             "text": "// "
           }
@@ -3701,14 +3740,8 @@ fn lsp_code_actions_deadlock() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 477,
-                "character": 4
-              },
-              "end": {
-                "line": 477,
-                "character": 9
-              }
+              "start": { "line": 477, "character": 4 },
+              "end": { "line": 477, "character": 9 }
             },
             "text": "error"
           }
@@ -3727,10 +3760,7 @@ fn lsp_code_actions_deadlock() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 609,
-          "character": 33,
-        }
+        "position": { "line": 609, "character": 33, }
       }),
     )
     .unwrap();
@@ -3772,10 +3802,7 @@ fn lsp_completions() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 5
-        },
+        "position": { "line": 0, "character": 5 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "."
@@ -3826,10 +3853,7 @@ fn lsp_completions_private_fields() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 57
-        },
+        "position": { "line": 0, "character": 57 },
         "context": {
           "triggerKind": 1
         }
@@ -3897,7 +3921,21 @@ fn lsp_completions_optional() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "completionItem/resolve",
-      load_fixture("completion_resolve_params_optional.json"),
+      json!({
+        "label": "b?",
+        "kind": 5,
+        "sortText": "1",
+        "filterText": "b",
+        "insertText": "b",
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/file.ts",
+            "position": 79,
+            "name": "b",
+            "useCodeSnippet": false
+          }
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
@@ -3952,10 +3990,7 @@ fn lsp_completions_auto_import() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 2,
-          "character": 0,
-        },
+        "position": { "line": 2, "character": 0, },
         "context": {
           "triggerKind": 1,
         }
@@ -4016,14 +4051,8 @@ fn lsp_completions_auto_import() {
       "additionalTextEdits": [
         {
           "range": {
-            "start": {
-              "line": 0,
-              "character": 0
-            },
-            "end": {
-              "line": 0,
-              "character": 0
-            }
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
           },
           "newText": "import { foo } from \"./b.ts\";\n\n"
         }
@@ -4054,10 +4083,7 @@ fn lsp_completions_snippet() {
         "textDocument": {
           "uri": "file:///a/a.tsx"
         },
-        "position": {
-          "line": 5,
-          "character": 13,
-        },
+        "position": { "line": 5, "character": 13, },
         "context": {
           "triggerKind": 1,
         }
@@ -4173,10 +4199,7 @@ fn lsp_completions_no_snippet() {
         "textDocument": {
           "uri": "file:///a/a.tsx"
         },
-        "position": {
-          "line": 5,
-          "character": 13,
-        },
+        "position": { "line": 5, "character": 13, },
         "context": {
           "triggerKind": 1,
         }
@@ -4267,14 +4290,8 @@ fn lsp_completions_npm() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 2,
-                "character": 0
-              },
-              "end": {
-                "line": 2,
-                "character": 0
-              }
+              "start": { "line": 2, "character": 0 },
+              "end": { "line": 2, "character": 0 }
             },
             "text": "cjsDefault."
           }
@@ -4291,10 +4308,7 @@ fn lsp_completions_npm() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 2,
-          "character": 11
-        },
+        "position": { "line": 2, "character": 11 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "."
@@ -4314,13 +4328,39 @@ fn lsp_completions_npm() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "completionItem/resolve",
-      load_fixture("completions/npm/resolve_params.json"),
+      json!({
+        "label": "MyClass",
+        "kind": 6,
+        "sortText": "1",
+        "insertTextFormat": 1,
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/file.ts",
+            "position": 69,
+            "name": "MyClass",
+            "useCodeSnippet": false
+          }
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("completions/npm/resolve_response.json"))
+    Some(json!({
+      "label": "MyClass",
+      "kind": 6,
+      "sortText": "1",
+      "insertTextFormat": 1,
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 69,
+          "name": "MyClass",
+          "useCodeSnippet": false
+        }
+      }
+    }))
   );
 
   // now check chalk, which is esm
@@ -4335,14 +4375,8 @@ fn lsp_completions_npm() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 2,
-                "character": 0
-              },
-              "end": {
-                "line": 2,
-                "character": 11
-              }
+              "start": { "line": 2, "character": 0 },
+              "end": { "line": 2, "character": 11 }
             },
             "text": "chalk."
           }
@@ -4359,10 +4393,7 @@ fn lsp_completions_npm() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 2,
-          "character": 6
-        },
+        "position": { "line": 2, "character": 6 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "."
@@ -4441,14 +4472,8 @@ fn lsp_npm_specifier_unopened_file() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 2,
-                "character": 0
-              },
-              "end": {
-                "line": 2,
-                "character": 0
-              }
+              "start": { "line": 2, "character": 0 },
+              "end": { "line": 2, "character": 0 }
             },
             "text": "chalk."
           }
@@ -4466,10 +4491,7 @@ fn lsp_npm_specifier_unopened_file() {
         "textDocument": {
           "uri": main_url
         },
-        "position": {
-          "line": 2,
-          "character": 6
-        },
+        "position": { "line": 2, "character": 6 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "."
@@ -4763,10 +4785,7 @@ fn lsp_completions_registry() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 46
-        },
+        "position": { "line": 0, "character": 46 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "@"
@@ -4784,13 +4803,39 @@ fn lsp_completions_registry() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "completionItem/resolve",
-      load_fixture("completion_resolve_params_registry.json"),
+      json!({
+        "label": "v2.0.0",
+        "kind": 19,
+        "detail": "(version)",
+        "sortText": "0000000003",
+        "filterText": "http://localhost:4545/x/a@v2.0.0",
+        "textEdit": {
+          "range": {
+            "start": { "line": 0, "character": 20 },
+            "end": { "line": 0, "character": 46 }
+          },
+          "newText": "http://localhost:4545/x/a@v2.0.0"
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("completion_resolve_response_registry.json"))
+    Some(json!({
+      "label": "v2.0.0",
+      "kind": 19,
+      "detail": "(version)",
+      "sortText": "0000000003",
+      "filterText": "http://localhost:4545/x/a@v2.0.0",
+      "textEdit": {
+        "range": {
+          "start": { "line": 0, "character": 20 },
+          "end": { "line": 0, "character": 46 }
+        },
+        "newText": "http://localhost:4545/x/a@v2.0.0"
+      }
+    }))
   );
   client.shutdown();
 }
@@ -4820,10 +4865,7 @@ fn lsp_completions_registry_empty() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 20
-        },
+        "position": { "line": 0, "character": 20 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "\""
@@ -4834,7 +4876,37 @@ fn lsp_completions_registry_empty() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("completion_request_response_empty.json"))
+    Some(json!({
+      "isIncomplete": false,
+      "items": [{
+        "label": ".",
+        "kind": 19,
+        "detail": "(local)",
+        "sortText": "1",
+        "insertText": ".",
+        "commitCharacters": ["\"", "'"]
+      }, {
+        "label": "..",
+        "kind": 19,
+        "detail": "(local)",
+        "sortText": "1",
+        "insertText": "..",
+        "commitCharacters": ["\"", "'" ]
+      }, {
+        "label": "http://localhost:4545",
+        "kind": 19,
+        "detail": "(registry)",
+        "sortText": "2",
+        "textEdit": {
+          "range": {
+            "start": { "line": 0, "character": 20 },
+            "end": { "line": 0, "character": 20 }
+          },
+          "newText": "http://localhost:4545"
+        },
+        "commitCharacters": ["\"", "'", "/"]
+      }]
+    }))
   );
   client.shutdown();
 }
@@ -4862,10 +4934,7 @@ fn lsp_auto_discover_registry() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 46
-        },
+        "position": { "line": 0, "character": 46 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "@"
@@ -4906,7 +4975,14 @@ fn lsp_cache_location() {
     }
   }));
   let diagnostics =
-    session.did_open(load_fixture("did_open_params_import_hover.json"));
+    session.did_open(json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+      }
+    }));
   assert_eq!(diagnostics.viewed().len(), 7);
   let (maybe_res, maybe_err) = session
     .client
@@ -4930,10 +5006,7 @@ fn lsp_cache_location() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 0,
-          "character": 28
-        }
+        "position": { "line": 0, "character": 28 }
       }),
     )
     .unwrap();
@@ -4946,14 +5019,8 @@ fn lsp_cache_location() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
       },
       "range": {
-        "start": {
-          "line": 0,
-          "character": 19
-        },
-        "end":{
-          "line": 0,
-          "character": 62
-        }
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 62 }
       }
     }))
   );
@@ -4965,10 +5032,7 @@ fn lsp_cache_location() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 7,
-          "character": 28
-        }
+        "position": { "line": 7, "character": 28 }
       }),
     )
     .unwrap();
@@ -4981,14 +5045,8 @@ fn lsp_cache_location() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/x/a/mod.ts\n\n\n---\n\n**a**\n\nmod.ts"
       },
       "range": {
-        "start": {
-          "line": 7,
-          "character": 19
-        },
-        "end": {
-          "line": 7,
-          "character": 53
-        }
+        "start": { "line": 7, "character": 19 },
+        "end": { "line": 7, "character": 53 }
       }
     }))
   );
@@ -5024,8 +5082,14 @@ fn lsp_tls_cert() {
       "text": "export const a = \"a\";\n",
     }
   }));
-  let diagnostics =
-    session.did_open(load_fixture("did_open_params_tls_cert.json"));
+  let diagnostics = session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @deno-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
+    }
+  }));
   let diagnostics = diagnostics.viewed();
   assert_eq!(diagnostics.len(), 7);
   let (maybe_res, maybe_err) = session
@@ -5050,10 +5114,7 @@ fn lsp_tls_cert() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 0,
-          "character": 28
-        }
+        "position": { "line": 0, "character": 28 }
       }),
     )
     .unwrap();
@@ -5066,14 +5127,8 @@ fn lsp_tls_cert() {
         "value": "**Resolved Dependency**\n\n**Code**: https&#8203;://localhost:5545/xTypeScriptTypes.js\n"
       },
       "range": {
-        "start": {
-          "line": 0,
-          "character": 19
-        },
-        "end":{
-          "line": 0,
-          "character": 63
-        }
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 63 }
       }
     }))
   );
@@ -5085,10 +5140,7 @@ fn lsp_tls_cert() {
         "textDocument": {
           "uri": "file:///a/file.ts",
         },
-        "position": {
-          "line": 7,
-          "character": 28
-        }
+        "position": { "line": 7, "character": 28 }
       }),
     )
     .unwrap();
@@ -5101,14 +5153,8 @@ fn lsp_tls_cert() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/x/a/mod.ts\n\n\n---\n\n**a**\n\nmod.ts"
       },
       "range": {
-        "start": {
-          "line": 7,
-          "character": 19
-        },
-        "end": {
-          "line": 7,
-          "character": 53
-        }
+        "start": { "line": 7, "character": 19 },
+        "end": { "line": 7, "character": 53 }
       }
     }))
   );
@@ -5240,14 +5286,8 @@ fn lsp_redirect_quick_fix() {
           "uri": "file:///a/file.ts"
         },
         "range": {
-          "start": {
-            "line": 0,
-            "character": 19
-          },
-          "end": {
-            "line": 0,
-            "character": 60
-          }
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 60 }
         },
         "context": {
           "diagnostics": diagnostics,
@@ -5261,7 +5301,39 @@ fn lsp_redirect_quick_fix() {
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("code_action_redirect_response.json"))
+    Some(json!([{
+      "title": "Update specifier to its redirected specifier.",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 19 },
+            "end": { "line": 0, "character": 60 }
+          },
+          "severity": 3,
+          "code": "redirect",
+          "source": "deno",
+          "message": "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".",
+          "data": {
+            "specifier": "http://127.0.0.1:4545/x_deno_warning.js",
+            "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"
+          }
+        }
+      ],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 19 },
+                "end": { "line": 0, "character": 60 }
+              },
+              "newText": "\"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\""
+            }
+          ]
+        }
+      }
+    }]))
   );
   client.shutdown();
 }
@@ -5299,14 +5371,8 @@ fn lsp_diagnostics_deprecated() {
         "diagnostics": [
           {
             "range": {
-              "start": {
-                "line": 3,
-                "character": 0
-              },
-              "end": {
-                "line": 3,
-                "character": 1
-              }
+              "start": { "line": 3, "character": 0 },
+              "end": { "line": 3, "character": 1 }
             },
             "severity": 4,
             "code": 6385,
@@ -5332,7 +5398,14 @@ fn lsp_diagnostics_deno_types() {
   client
     .write_notification(
       "textDocument/didOpen",
-      load_fixture("did_open_params_deno_types.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @deno-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @deno-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
+        }
+      }),
     )
     .unwrap();
   let (id, method, _) = client.read_request::<Value>().unwrap();
@@ -5393,14 +5466,8 @@ fn lsp_diagnostics_refresh_dependents() {
       "diagnostics": [
         {
           "range": {
-            "start": {
-              "line": 0,
-              "character": 12
-            },
-            "end": {
-              "line": 0,
-              "character": 13
-            }
+            "start": { "line": 0, "character": 12 },
+            "end": { "line": 0, "character": 13 }
           },
           "severity": 1,
           "code": 2305,
@@ -5425,14 +5492,8 @@ fn lsp_diagnostics_refresh_dependents() {
         "contentChanges": [
           {
             "range": {
-              "start": {
-                "line": 1,
-                "character": 0
-              },
-              "end": {
-                "line": 1,
-                "character": 0
-              }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 }
             },
             "text": "export const b = \"b\";\n"
           }
@@ -5483,10 +5544,7 @@ fn lsp_performance() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 19
-        }
+        "position": { "line": 0, "character": 19 }
       }),
     )
     .unwrap();
@@ -5773,14 +5831,8 @@ fn lsp_format_json() {
     Some(json!([
       {
         "range": {
-          "start": {
-            "line": 0,
-            "character": 1
-          },
-          "end": {
-            "line": 0,
-            "character": 1
-          }
+          "start": { "line": 0, "character": 1 },
+          "end": { "line": 0, "character": 1 }
         },
         "newText": " "
       },
@@ -5841,10 +5893,7 @@ fn lsp_json_no_diagnostics() {
         "textDocument": {
           "uri": "file:///a/file.json"
         },
-        "position": {
-          "line": 0,
-          "character": 3
-        }
+        "position": { "line": 0, "character": 3 }
       }),
     )
     .unwrap();
@@ -5970,105 +6019,57 @@ fn lsp_format_with_config() {
     maybe_res,
     Some(json!([{
         "range": {
-          "start": {
-            "line": 1,
-            "character": 0
-          },
-          "end": {
-            "line": 1,
-            "character": 0
-          }
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 0 }
         },
         "newText": "\t"
       },
       {
         "range": {
-          "start": {
-            "line": 1,
-            "character": 23
-          },
-          "end": {
-            "line": 1,
-            "character": 24
-          }
+          "start": { "line": 1, "character": 23 },
+          "end": { "line": 1, "character": 24 }
         },
         "newText": "\n\t\t'"
       },
       {
         "range": {
-          "start": {
-            "line": 1,
-            "character": 73
-          },
-          "end": {
-            "line": 1,
-            "character": 74
-          }
+          "start": { "line": 1, "character": 73 },
+          "end": { "line": 1, "character": 74 }
         },
         "newText": "',\n\t"
       },
       {
         "range": {
-          "start": {
-            "line": 2,
-            "character": 0
-          },
-          "end": {
-            "line": 2,
-            "character": 0
-          }
+          "start": { "line": 2, "character": 0 },
+          "end": { "line": 2, "character": 0 }
         },
         "newText": "\t"
       },
       {
         "range": {
-          "start": {
-            "line": 3,
-            "character": 0
-          },
-          "end": {
-            "line": 3,
-            "character": 0
-          }
+          "start": { "line": 3, "character": 0 },
+          "end": { "line": 3, "character": 0 }
         },
         "newText": "\t"
       },
       {
         "range": {
-          "start": {
-            "line": 3,
-            "character": 12
-          },
-          "end": {
-            "line": 3,
-            "character": 13
-          }
+          "start": { "line": 3, "character": 12 },
+          "end": { "line": 3, "character": 13 }
         },
         "newText": "'"
       },
       {
         "range": {
-          "start": {
-            "line": 3,
-            "character": 22
-          },
-          "end": {
-            "line": 3,
-            "character": 24
-          }
+          "start": { "line": 3, "character": 22 },
+          "end": { "line": 3, "character": 24 }
         },
         "newText": "');"
       },
       {
         "range": {
-          "start": {
-            "line": 4,
-            "character": 1
-          },
-          "end": {
-            "line": 4,
-            "character": 1
-          }
+          "start": { "line": 4, "character": 1 },
+          "end": { "line": 4, "character": 1 }
         },
         "newText": "\n"
       }]
@@ -6115,10 +6116,7 @@ fn lsp_markdown_no_diagnostics() {
         "textDocument": {
           "uri": "file:///a/file.md"
         },
-        "position": {
-          "line": 0,
-          "character": 3
-        }
+        "position": { "line": 0, "character": 3 }
       }),
     )
     .unwrap();
@@ -6187,10 +6185,7 @@ fn lsp_configuration_did_change() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "position": {
-          "line": 0,
-          "character": 46
-        },
+        "position": { "line": 0, "character": 46 },
         "context": {
           "triggerKind": 2,
           "triggerCharacter": "@"
@@ -6208,13 +6203,39 @@ fn lsp_configuration_did_change() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "completionItem/resolve",
-      load_fixture("completion_resolve_params_registry.json"),
+      json!({
+        "label": "v2.0.0",
+        "kind": 19,
+        "detail": "(version)",
+        "sortText": "0000000003",
+        "filterText": "http://localhost:4545/x/a@v2.0.0",
+        "textEdit": {
+          "range": {
+            "start": { "line": 0, "character": 20 },
+            "end": { "line": 0, "character": 46 }
+          },
+          "newText": "http://localhost:4545/x/a@v2.0.0"
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(load_fixture("completion_resolve_response_registry.json"))
+    Some(json!({
+      "label": "v2.0.0",
+      "kind": 19,
+      "detail": "(version)",
+      "sortText": "0000000003",
+      "filterText": "http://localhost:4545/x/a@v2.0.0",
+      "textEdit": {
+        "range": {
+          "start": { "line": 0, "character": 20 },
+          "end": { "line": 0, "character": 46 }
+        },
+        "newText": "http://localhost:4545/x/a@v2.0.0"
+      }
+    }))
   );
   client.shutdown();
 }
@@ -6263,14 +6284,8 @@ fn lsp_workspace_symbol() {
         "location": {
           "uri": "file:///a/file.ts",
           "range": {
-            "start": {
-              "line": 1,
-              "character": 2
-            },
-            "end": {
-              "line": 1,
-              "character": 17
-            }
+            "start": { "line": 1, "character": 2 },
+            "end": { "line": 1, "character": 17 }
           }
         },
         "containerName": "A"
@@ -6281,14 +6296,8 @@ fn lsp_workspace_symbol() {
         "location": {
           "uri": "file:///a/file.ts",
           "range": {
-            "start": {
-              "line": 2,
-              "character": 2
-            },
-            "end": {
-              "line": 2,
-              "character": 17
-            }
+            "start": { "line": 2, "character": 2 },
+            "end": { "line": 2, "character": 17 }
           }
         },
         "containerName": "A"
@@ -6299,14 +6308,8 @@ fn lsp_workspace_symbol() {
         "location": {
           "uri": "file:///a/file_01.ts",
           "range": {
-            "start": {
-              "line": 1,
-              "character": 2
-            },
-            "end": {
-              "line": 1,
-              "character": 17
-            }
+            "start": { "line": 1, "character": 2 },
+            "end": { "line": 1, "character": 17 }
           }
         },
         "containerName": "B"
@@ -6317,14 +6320,8 @@ fn lsp_workspace_symbol() {
         "location": {
           "uri": "file:///a/file_01.ts",
           "range": {
-            "start": {
-              "line": 2,
-              "character": 2
-            },
-            "end": {
-              "line": 2,
-              "character": 17
-            }
+            "start": { "line": 2, "character": 2 },
+            "end": { "line": 2, "character": 17 }
           }
         },
         "containerName": "B"
@@ -6352,7 +6349,33 @@ fn lsp_code_actions_ignore_lint() {
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/codeAction",
-      load_fixture("code_action_ignore_lint_params.json"),
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "context": {
+          "diagnostics": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 5 },
+                "end": { "line": 1, "character": 12 }
+              },
+              "severity": 1,
+              "code": "prefer-const",
+              "source": "deno-lint",
+              "message": "'message' is never reassigned\nUse 'const' instead",
+              "relatedInformation": []
+            }
+          ],
+          "only": [
+            "quickfix"
+          ]
+        }
+      }),
     )
     .unwrap();
   assert!(maybe_err.is_none());
@@ -6428,7 +6451,14 @@ fn lsp_lint_with_config() {
 
   let mut session = TestSession::from_client(client);
 
-  let diagnostics = session.did_open(load_fixture("did_open_lint.json"));
+  let diagnostics = session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
+    }
+  }));
   let diagnostics = diagnostics.viewed();
   assert_eq!(diagnostics.len(), 1);
   assert_eq!(
@@ -6539,10 +6569,7 @@ export function B() {
         "textDocument": {
           "uri": "file:///a/file.tsx"
         },
-        "position": {
-          "line": 0,
-          "character": 25
-        }
+        "position": { "line": 0, "character": 25 }
       }),
     )
     .unwrap();
@@ -6555,14 +6582,8 @@ export function B() {
         "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/jsx/jsx-runtime\n",
       },
       "range": {
-        "start": {
-          "line": 0,
-          "character": 21
-        },
-        "end": {
-          "line": 0,
-          "character": 46
-        }
+        "start": { "line": 0, "character": 21 },
+        "end": { "line": 0, "character": 46 }
       }
     }))
   );
