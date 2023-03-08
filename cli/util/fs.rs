@@ -513,7 +513,6 @@ impl LaxSingleProcessFsFlag {
     use fs3::FileExt;
     let last_updated_path = file_path.with_extension("lock.poll");
     let start_instant = std::time::Instant::now();
-    let progress_bars = ProgressBar::new(ProgressBarStyle::TextOnly);
     let open_result = std::fs::OpenOptions::new()
       .read(true)
       .write(true)
@@ -569,10 +568,12 @@ impl LaxSingleProcessFsFlag {
               if pb_update_guard.is_none()
                 && start_instant.elapsed().as_millis() > 1_000
               {
-                pb_update_guard = Some(progress_bars.update_with_prompt(
+                let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
+                let guard = pb.update_with_prompt(
                   ProgressMessagePrompt::Blocking,
                   long_wait_message,
-                ));
+                );
+                pb_update_guard = Some((guard, pb));
               }
 
               // sleep for a little bit
