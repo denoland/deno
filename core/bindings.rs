@@ -24,20 +24,21 @@ pub fn external_references(
   ops: &[OpCtx],
   snapshot_loaded: bool,
 ) -> v8::ExternalReferences {
-  let mut references = vec![
-    v8::ExternalReference {
-      function: call_console.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: import_meta_resolve.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: catch_dynamic_import_promise_error.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: empty_fn.map_fn_to(),
-    },
-  ];
+  // We're over-allocating here a bit (because some ops don't have fast_fn),
+  // but that's better than having to grow the vector several times.
+  let mut references = Vec::with_capacity(4 + (ops.len() * 3));
+  references.push(v8::ExternalReference {
+    function: call_console.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: import_meta_resolve.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: catch_dynamic_import_promise_error.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: empty_fn.map_fn_to(),
+  });
 
   for ctx in ops {
     let ctx_ptr = ctx as *const OpCtx as _;
