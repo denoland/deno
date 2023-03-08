@@ -21,6 +21,7 @@
     PromisePrototypeThen,
     RangeError,
     ReferenceError,
+    SafeArrayIterator,
     SafePromisePrototypeFinally,
     setQueueMicrotask,
     StringPrototypeSlice,
