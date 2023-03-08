@@ -1310,6 +1310,22 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
 
 #[cfg(windows)]
 fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
+  use std::os::windows::prelude::OsStrExt;
+
+  use winapi::shared::minwindef::DWORD;
+  use winapi::um::fileapi::CreateFileW;
+  use winapi::um::fileapi::OPEN_EXISTING;
+  use winapi::um::handleapi::CloseHandle;
+  use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+  use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
+  use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+  use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
+  use winapi::um::winnt::FILE_ATTRIBUTE_READONLY;
+  use winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT;
+  use winapi::um::winnt::FILE_SHARE_DELETE;
+  use winapi::um::winnt::FILE_SHARE_READ;
+  use winapi::um::winnt::FILE_SHARE_WRITE;
+
   let err_mapper =
     |err| default_err_mapper(err, format!("stat '{}'", path.display()));
   let metadata = if lstat {
@@ -1318,11 +1334,33 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
 
-  let file = std::fs::File::open(&path)?;
+  eprintln!("PATH: {}", path.display());
+  unsafe {
+    let mut path: Vec<_> = path.as_os_str().encode_wide().collect();
+    path.push(0);
+    let file_handle = CreateFileW(
+      path.as_ptr(),
+      0,
+      FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE,
+      std::ptr::null_mut(),
+      OPEN_EXISTING,
+      FILE_ATTRIBUTE_DIRECTORY,
+      std::ptr::null_mut(),
+    );
+    if file_handle == INVALID_HANDLE_VALUE {
+      eprintln!("SSDFSDFSDF");
+      return Err(std::io::Error::last_os_error().into());
+    }
 
-  let dev = unsafe { get_dev(&file) }?;
+    let result = get_dev(file_handle);
+    eprintln!("HERE1");
+    CloseHandle(file_handle);
+    eprintln!("HERE2");
+    let dev = result?;
+    eprintln!("HERE3");
 
-  Ok(get_stat2(metadata, dev))
+    Ok(get_stat2(metadata, dev))
+  }
 }
 
 #[cfg(windows)]
@@ -1333,13 +1371,15 @@ use winapi::um::fileapi::GetFileInformationByHandle;
 use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
 
 #[cfg(windows)]
-unsafe fn get_dev<T: AsRawHandle>(handle: &T) -> std::io::Result<u64> {
+unsafe fn get_dev(
+  handle: winapi::shared::ntdef::HANDLE,
+) -> std::io::Result<u64> {
+  use winapi::shared::minwindef::FALSE;
+
   let info = {
     let mut info =
-      std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
-    if GetFileInformationByHandle(handle.as_raw_handle(), info.as_mut_ptr())
-      == 0
-    {
+      std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+    if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
       return Err(std::io::Error::last_os_error());
     }
 
