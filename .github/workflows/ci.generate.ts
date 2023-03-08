@@ -42,6 +42,8 @@ sudo mount --rbind /dev /sysroot/dev
 sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
+sudo ln -s /usr/lib/libdl.so.2 /usr/lib/libdl.so
+sudo ln -s /usr/lib32/libdl.so.2 /usr/lib32/libdl.so
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
@@ -55,7 +57,6 @@ RUSTFLAGS<<__1
   -C linker=clang-16
   -C link-arg=-fuse-ld=lld-16
   -C link-arg=--sysroot=/sysroot
-  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -66,7 +67,6 @@ RUSTDOCFLAGS<<__1
   -C linker=clang-16
   -C link-arg=-fuse-ld=lld-16
   -C link-arg=--sysroot=/sysroot
-  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
