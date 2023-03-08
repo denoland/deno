@@ -35,7 +35,7 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 # \`file\` and \`make\` are needed to build libffi-sys.
 # \`curl\` is needed to build rusty_v8.
 sudo debootstrap                                     \\
-  --include=ca-certificates,curl,file,libc6-dev,make \\
+  --include=ca-certificates,curl,file,libc6,libc6-dev,make \\
   --no-merged-usr --variant=minbase xenial /sysroot  \\
   http://azure.archive.ubuntu.com/ubuntu
 sudo mount --rbind /dev /sysroot/dev
