@@ -32,6 +32,7 @@ use tokio::sync::mpsc;
 pub fn init() -> Extension {
   Extension::builder("deno_fs_events")
     .ops(vec![op_fs_events_open::decl(), op_fs_events_poll::decl()])
+    .force_op_registration()
     .build()
 }
 

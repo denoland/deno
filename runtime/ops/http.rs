@@ -35,6 +35,7 @@ pub fn init() -> Extension {
       op_http_upgrade::decl(),
       op_flash_upgrade_http::decl(),
     ])
+    .force_op_registration()
     .build()
 }
 

@@ -19,6 +19,7 @@ pub fn init() -> Extension {
       op_revoke_permission::decl(),
       op_request_permission::decl(),
     ])
+    .force_op_registration()
     .build()
 }
 

@@ -40,6 +40,7 @@ pub fn init(
       op_dispatch_test_event::decl(),
       op_tests_should_stop::decl(),
     ])
+    .force_op_registration()
     .state(move |state| {
       state.put(sender.clone());
       state.put(fail_fast_tracker.clone());

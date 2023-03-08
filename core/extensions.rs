@@ -53,6 +53,7 @@ pub struct OpDecl {
   pub is_unstable: bool,
   pub is_v8: bool,
   pub fast_fn: Option<Box<dyn FastFunction>>,
+  pub force_registration: bool,
 }
 
 impl OpDecl {
@@ -143,6 +144,7 @@ impl Extension {
     let mut ops = self.ops.take()?;
     for op in ops.iter_mut() {
       op.enabled = self.enabled && op.enabled;
+      op.force_registration = self.force_op_registration;
     }
     Some(ops)
   }
@@ -266,6 +268,10 @@ impl ExtensionBuilder {
     self
   }
 
+  /// Mark that ops from this extension should be added to `Deno.core.ops`
+  /// unconditionally. This is useful is some ops are not available
+  /// during snapshotting, as ops are not registered by default when a
+  /// `JsRuntime` is created with an existing snapshot.
   pub fn force_op_registration(&mut self) -> &mut Self {
     self.force_op_registration = true;
     self

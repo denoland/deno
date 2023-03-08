@@ -26,6 +26,7 @@ pub fn init() -> Extension {
       op_worker_get_type::decl(),
       op_worker_sync_fetch::decl(),
     ])
+    .force_op_registration()
     .build()
 }
 

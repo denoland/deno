@@ -177,6 +177,7 @@ pub fn initialize_context_from_existing_snapshot<'s>(
     .expect("Deno.core.ops to exist")
     .try_into()
     .unwrap();
+
   initialize_ops_from_existing_snapshot(
     scope,
     ops_obj,
@@ -229,9 +230,15 @@ fn initialize_ops_from_existing_snapshot(
   // TODO(bartlomieju): remove this option
   snapshot_options: SnapshotOptions,
 ) {
-  for ctx in op_ctxs {
+  // Only register ops that have `force_registration` flag set to true,
+  // the remaining ones should already be in the snapshot.
+  for ctx in op_ctxs
+    .iter()
+    .filter(|op_ctx| op_ctx.decl.force_registration)
+  {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
+    // TODO(bartlomieju): move to a helper function?
     // If this is a fast op, we don't want it to be in the snapshot.
     // Only initialize once snapshot is loaded.
     if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {

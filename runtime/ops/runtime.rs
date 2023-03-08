@@ -13,6 +13,7 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
     .state(move |state| {
       state.put::<ModuleSpecifier>(main_module.clone());
     })
+    .force_op_registration()
     .build()
 }
 

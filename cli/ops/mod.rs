@@ -16,6 +16,7 @@ pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
 fn init_proc_state(ps: ProcState) -> Extension {
   Extension::builder("deno_cli")
     .ops(vec![op_npm_process_state::decl()])
+    .force_op_registration()
     .state(move |state| {
       state.put(ps.clone());
     })

@@ -119,6 +119,7 @@ pub fn init(
       op_host_recv_ctrl::decl(),
       op_host_recv_message::decl(),
     ])
+    .force_op_registration()
     .build()
 }
 

@@ -109,6 +109,7 @@ pub fn init_ops() -> Extension {
       deprecated::op_run_status::decl(),
       deprecated::op_kill::decl(),
     ])
+    .force_op_registration()
     .build()
 }
 

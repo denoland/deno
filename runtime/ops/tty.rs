@@ -40,6 +40,7 @@ pub fn init() -> Extension {
       op_isatty::decl(),
       op_console_size::decl(),
     ])
+    .force_op_registration()
     .build()
 }
 

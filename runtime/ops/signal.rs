@@ -37,6 +37,7 @@ pub fn init() -> Extension {
       op_signal_unbind::decl(),
       op_signal_poll::decl(),
     ])
+    .force_op_registration()
     .build()
 }
 

@@ -1120,18 +1120,6 @@ impl JsRuntime {
   ///
   /// `Error` can usually be downcast to `JsError`.
   pub fn snapshot(mut self) -> v8::StartupData {
-    // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
-    // TODO(@AaronO): make ops stable across snapshots
-    {
-      let scope = &mut self.handle_scope();
-      let o = Self::eval::<v8::Object>(scope, "Deno.core.ops").unwrap();
-      let names = o.get_own_property_names(scope, Default::default()).unwrap();
-      for i in 0..names.length() {
-        let key = names.get_index(scope, i).unwrap();
-        o.delete(scope, key);
-      }
-    }
-
     self.state.borrow_mut().inspector.take();
 
     // Serialize the module map and store its data in the snapshot.
@@ -3751,10 +3739,18 @@ pub mod tests {
       }
     }
 
+    #[op]
+    fn op_test() -> Result<String, Error> {
+      Ok(String::from("test"))
+    }
+
     let loader = Rc::new(ModsLoader::default());
     let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader.clone()),
       will_snapshot: true,
+      extensions: vec![Extension::builder("text_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       ..Default::default()
     });
 
@@ -3789,6 +3785,9 @@ pub mod tests {
       module_loader: Some(loader.clone()),
       will_snapshot: true,
       startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
+      extensions: vec![Extension::builder("text_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       ..Default::default()
     });
 
@@ -3804,6 +3803,9 @@ pub mod tests {
     let mut runtime3 = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       startup_snapshot: Some(Snapshot::JustCreated(snapshot2)),
+      extensions: vec![Extension::builder("text_ext")
+        .ops(vec![op_test::decl()])
+        .build()],
       ..Default::default()
     });
 
@@ -3811,7 +3813,7 @@ pub mod tests {
 
     let source_code = r#"(async () => {
       const mod = await import("file:///400.js");
-      return mod.f400();
+      return mod.f400() + " " + Deno.core.ops.op_test();
     })();"#
       .to_string();
     let val = runtime3.execute_script(".", &source_code).unwrap();
@@ -3820,7 +3822,7 @@ pub mod tests {
       let scope = &mut runtime3.handle_scope();
       let value = v8::Local::new(scope, val);
       let str_ = value.to_string(scope).unwrap().to_rust_string_lossy(scope);
-      assert_eq!(str_, "hello world");
+      assert_eq!(str_, "hello world test");
     }
   }
 
@@ -4819,6 +4821,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       startup_snapshot: Some(Snapshot::Boxed(snapshot)),
       extensions: vec![Extension::builder("test_ext")
         .ops(vec![op_test::decl()])
+        .force_op_registration()
         .build()],
       ..Default::default()
     });

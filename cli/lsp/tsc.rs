@@ -2821,6 +2821,7 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
       op_script_names::decl(),
       op_script_version::decl(),
     ])
+    .force_op_registration()
     .state(move |state| {
       state.put(State::new(
         Arc::new(StateSnapshot::default()),

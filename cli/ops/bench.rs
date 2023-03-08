@@ -35,6 +35,7 @@ pub fn init(
       op_dispatch_bench_event::decl(),
       op_bench_now::decl(),
     ])
+    .force_op_registration()
     .state(move |state| {
       state.put(sender.clone());
       state.put(filter.clone());

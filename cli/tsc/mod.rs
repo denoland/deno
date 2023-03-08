@@ -119,6 +119,7 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder("deno_cli_tsc")
       .ops(get_tsc_ops())
+      .force_op_registration()
       .build()],
     ..Default::default()
   });
@@ -862,6 +863,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder("deno_cli_tsc")
       .ops(get_tsc_ops())
+      .force_op_registration()
       .state(move |state| {
         state.put(State::new(
           request.graph.clone(),
