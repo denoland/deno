@@ -1226,6 +1226,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_native_certs"
+version = "0.1.0"
+dependencies = [
+ "dlopen",
+ "dlopen_derive",
+ "rustls-pemfile",
+]
+
+[[package]]
 name = "deno_net"
 version = "0.83.0"
 dependencies = [
@@ -1353,9 +1362,9 @@ name = "deno_tls"
 version = "0.78.0"
 dependencies = [
  "deno_core",
+ "deno_native_certs",
  "once_cell",
  "rustls",
- "rustls-native-certs",
  "rustls-pemfile",
  "serde",
  "webpki",
@@ -3211,12 +3220,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
-name = "openssl-probe"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
-
-[[package]]
 name = "ordered-float"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3944,18 +3947,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustls-native-certs"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0167bac7a9f490495f3c33013e7722b53cb087ecbe082fb0c6387c96f634ea50"
-dependencies = [
- "openssl-probe",
- "rustls-pemfile",
- "schannel",
- "security-framework",
-]
-
-[[package]]
 name = "rustls-pemfile"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4019,15 +4010,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "schannel"
-version = "0.1.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "713cfb06c7059f3588fb8044c0fad1d09e3c01d225e25b9220dbfdcf16dbb1b3"
-dependencies = [
- "windows-sys 0.42.0",
-]
-
-[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4067,29 +4049,6 @@ dependencies = [
  "pkcs8",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "security-framework"
-version = "2.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a332be01508d814fed64bf28f798a146d73792121129962fdf335bb3c49a4254"
-dependencies = [
- "bitflags",
- "core-foundation",
- "core-foundation-sys",
- "libc",
- "security-framework-sys",
-]
-
-[[package]]
-name = "security-framework-sys"
-version = "2.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31c9bb296072e961fcbd8853511dd39c2d8be2deb1e17c6860b1d30732b323b4"
-dependencies = [
- "core-foundation-sys",
- "libc",
 ]
 
 [[package]]

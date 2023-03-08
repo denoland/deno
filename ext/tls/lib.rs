@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub use rustls;
-pub use rustls_native_certs;
+pub use deno_native_certs;
 pub use rustls_pemfile;
 pub use webpki;
 pub use webpki_roots;

@@ -43,7 +43,7 @@ use deno_runtime::colors;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
+use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
