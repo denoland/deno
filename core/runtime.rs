@@ -347,6 +347,11 @@ impl Drop for JsRuntime {
     }
     if self.leak_isolate {
       if let Some(v8_isolate) = self.v8_isolate.take() {
+        // Clear the GothamState. This allows final env cleanup hooks to run.
+        // Note: that OpState is cloned for every OpCtx, so we can't just drop
+        // one reference to it.
+        let rc_state = self.op_state();
+        rc_state.borrow_mut().clear_state();
         std::mem::forget(v8_isolate);
       }
     }
