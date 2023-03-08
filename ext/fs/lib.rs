@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::utils::into_string;
-use crate::fs_util::canonicalize_path;
+
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -35,6 +35,70 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+/// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
+fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
+  let mut canonicalized_path = path.canonicalize()?;
+  if cfg!(windows) {
+    canonicalized_path = PathBuf::from(
+      canonicalized_path
+        .display()
+        .to_string()
+        .trim_start_matches("\\\\?\\"),
+    );
+  }
+  Ok(canonicalized_path)
+}
+
+/// A utility function to map OsStrings to Strings
+fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
+  s.into_string().map_err(|s| {
+    let message = format!("File name or path {s:?} is not valid UTF-8");
+    custom_error("InvalidData", message)
+  })
+}
+
+#[cfg(unix)]
+pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
+  match error {
+    nix::Error::ECHILD => "NotFound",
+    nix::Error::EINVAL => "TypeError",
+    nix::Error::ENOENT => "NotFound",
+    nix::Error::ENOTTY => "BadResource",
+    nix::Error::EPERM => "PermissionDenied",
+    nix::Error::ESRCH => "NotFound",
+    nix::Error::UnknownErrno => "Error",
+    &nix::Error::ENOTSUP => unreachable!(),
+    _ => "Error",
+  }
+}
+
+struct UnstableChecker {
+  pub unstable: bool,
+}
+
+impl UnstableChecker {
+  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
+  pub fn check_unstable(&self, api_name: &str) {
+    if !self.unstable {
+      eprintln!(
+        "Unstable API '{api_name}'. The --unstable flag must be provided."
+      );
+      std::process::exit(70);
+    }
+  }
+}
+
+/// Helper for checking unstable features. Used for sync ops.
+fn check_unstable(state: &OpState, api_name: &str) {
+  state.borrow::<UnstableChecker>().check_unstable(api_name)
+}
+
+/// Helper for checking unstable features. Used for async ops.
+fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
+  let state = state.borrow();
+  state.borrow::<UnstableChecker>().check_unstable(api_name)
+}
+
 pub trait FsPermissions {
   fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
@@ -53,8 +117,12 @@ use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-pub fn init<P: FsPermissions + 'static>() -> Extension {
+pub fn init<P: FsPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder("deno_fs")
+    .esm(include_js_files!("30_fs.js",))
+    .state(move |state| {
+      state.put(UnstableChecker { unstable });
+    })
     .ops(vec![
       op_open_sync::decl::<P>(),
       op_open_async::decl::<P>(),
@@ -474,7 +542,7 @@ fn op_flock_sync(
   exclusive: bool,
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
-  super::check_unstable(state, "Deno.flockSync");
+  check_unstable(state, "Deno.flockSync");
 
   StdFileResource::with_file(state, rid, |std_file| {
     if exclusive {
@@ -493,7 +561,7 @@ async fn op_flock_async(
   exclusive: bool,
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
-  super::check_unstable2(&state, "Deno.flock");
+  check_unstable2(&state, "Deno.flock");
 
   StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     if exclusive {
@@ -512,7 +580,7 @@ fn op_funlock_sync(
   rid: ResourceId,
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
-  super::check_unstable(state, "Deno.funlockSync");
+  check_unstable(state, "Deno.funlockSync");
 
   StdFileResource::with_file(state, rid, |std_file| {
     std_file.unlock()?;
@@ -526,7 +594,7 @@ async fn op_funlock_async(
   rid: ResourceId,
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
-  super::check_unstable2(&state, "Deno.funlock");
+  check_unstable2(&state, "Deno.funlock");
 
   StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     std_file.unlock()?;
@@ -537,7 +605,7 @@ async fn op_funlock_async(
 
 #[op]
 fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError> {
-  super::check_unstable(state, "Deno.umask");
+  check_unstable(state, "Deno.umask");
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
   // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
@@ -727,7 +795,6 @@ where
     .check_write(&path, "Deno.chownSync()")?;
   #[cfg(unix)]
   {
-    use crate::errors::get_nix_error_class;
     use nix::unistd::chown;
     use nix::unistd::Gid;
     use nix::unistd::Uid;
@@ -768,7 +835,6 @@ where
   tokio::task::spawn_blocking(move || {
     #[cfg(unix)]
     {
-      use crate::errors::get_nix_error_class;
       use nix::unistd::chown;
       use nix::unistd::Gid;
       use nix::unistd::Uid;

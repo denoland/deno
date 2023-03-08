@@ -1915,7 +1915,7 @@ impl deno_websocket::WebSocketPermissions for PermissionsContainer {
   }
 }
 
-impl crate::ops::fs::FsPermissions for PermissionsContainer {
+impl deno_fs::FsPermissions for PermissionsContainer {
   fn check_read(
     &mut self,
     path: &Path,

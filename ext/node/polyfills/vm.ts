@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export class Script {
   code: string;

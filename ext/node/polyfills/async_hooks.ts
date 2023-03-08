@@ -4,8 +4,8 @@
 // This implementation is inspired by "workerd" AsyncLocalStorage implementation:
 // https://github.com/cloudflare/workerd/blob/77fd0ed6ddba184414f0216508fc62b06e716cab/src/workerd/api/node/async-hooks.c++#L9
 
-import { validateFunction } from "internal:deno_node/internal/validators.mjs";
-import { core } from "internal:deno_node/_core.ts";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { core } from "ext:deno_node/_core.ts";
 
 function assert(cond: boolean) {
   if (!cond) throw new Error("Assertion failed");

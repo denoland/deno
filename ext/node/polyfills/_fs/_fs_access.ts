@@ -3,15 +3,15 @@
 import {
   type CallbackWithError,
   makeCallback,
-} from "internal:deno_node/_fs/_fs_common.ts";
-import { fs } from "internal:deno_node/internal_binding/constants.ts";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
+} from "ext:deno_node/_fs/_fs_common.ts";
+import { fs } from "ext:deno_node/internal_binding/constants.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   getValidatedPath,
   getValidMode,
-} from "internal:deno_node/internal/fs/utils.mjs";
-import type { Buffer } from "internal:deno_node/buffer.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/internal/fs/utils.mjs";
+import type { Buffer } from "ext:deno_node/buffer.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function access(
   path: string | Buffer | URL,

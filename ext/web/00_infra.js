@@ -32,7 +32,7 @@ const {
   StringPrototypeToUpperCase,
   TypeError,
 } = primordials;
-import { URLPrototype } from "internal:deno_url/00_url.js";
+import { URLPrototype } from "ext:deno_url/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
 const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];

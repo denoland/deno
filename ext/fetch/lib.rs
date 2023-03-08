@@ -124,7 +124,6 @@ where
         )
         .unwrap()
       });
-      Ok(())
     })
     .build()
 }

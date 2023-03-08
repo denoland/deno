@@ -2,8 +2,8 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { pathFromURL } from "internal:deno_web/00_infra.js";
-import { Event, EventTarget } from "internal:deno_web/02_event.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,

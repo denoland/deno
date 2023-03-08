@@ -269,8 +269,6 @@ mod ts {
         state.put(op_crate_libs.clone());
         state.put(build_libs.clone());
         state.put(path_dts.clone());
-
-        Ok(())
       })
       .build();
 
@@ -343,8 +341,9 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       false, // No --unstable.
     ),
     deno_io::init(Default::default()),
+    deno_fs::init::<PermissionsContainer>(false),
     deno_node::init::<PermissionsContainer>(None), // No --unstable.
-    deno_node::init_polyfill(),
+    deno_node::init_polyfill_ops_and_esm(),
     deno_ffi::init::<PermissionsContainer>(false),
     deno_net::init::<PermissionsContainer>(
       None, false, // No --unstable.

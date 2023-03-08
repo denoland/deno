@@ -1,21 +1,21 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateObject,
-} from "internal:deno_node/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import type { TransformOptions } from "internal:deno_node/_stream.d.ts";
-import { Transform } from "internal:deno_node/_stream.mjs";
-import { KeyObject } from "internal:deno_node/internal/crypto/keys.ts";
-import type { BufferEncoding } from "internal:deno_node/_global.d.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { Transform } from "ext:deno_node/_stream.mjs";
+import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
-} from "internal:deno_node/internal/crypto/types.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 

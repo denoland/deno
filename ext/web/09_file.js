@@ -12,7 +12,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
@@ -39,7 +39,7 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.

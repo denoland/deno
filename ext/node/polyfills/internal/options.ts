@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { getOptions } from "internal:deno_node/internal_binding/node_options.ts";
+import { getOptions } from "ext:deno_node/internal_binding/node_options.ts";
 
 let optionsMap: Map<string, { value: string }>;
 

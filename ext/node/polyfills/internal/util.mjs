@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { validateFunction } from "internal:deno_node/internal/validators.mjs";
-import { normalizeEncoding, slowCases } from "internal:deno_node/internal/normalize_encoding.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { normalizeEncoding, slowCases } from "ext:deno_node/internal/normalize_encoding.mjs";
 export { normalizeEncoding, slowCases };
-import { ObjectCreate, StringPrototypeToUpperCase } from "internal:deno_node/internal/primordials.mjs";
-import { ERR_UNKNOWN_SIGNAL } from "internal:deno_node/internal/errors.ts";
-import { os } from "internal:deno_node/internal_binding/constants.ts";
+import { ObjectCreate, StringPrototypeToUpperCase } from "ext:deno_node/internal/primordials.mjs";
+import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
 
 export const customInspectSymbol = Symbol.for("nodejs.util.inspect.custom");
 export const kEnumerableProperty = Object.create(null);

@@ -38,7 +38,6 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
       if let Some(origin_storage_dir) = &origin_storage_dir {
         state.put(OriginStorageDir(origin_storage_dir.clone()));
       }
-      Ok(())
     })
     .build()
 }

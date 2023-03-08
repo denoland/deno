@@ -95,7 +95,19 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
-pub fn init_polyfill() -> Extension {
+pub fn init_polyfill_ops() -> Extension {
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .ops(vec![
+      crypto::op_node_create_hash::decl(),
+      crypto::op_node_hash_update::decl(),
+      crypto::op_node_hash_digest::decl(),
+      crypto::op_node_hash_clone::decl(),
+      op_node_build_os::decl(),
+    ])
+    .build()
+}
+
+pub fn init_polyfill_ops_and_esm() -> Extension {
   let esm_files = include_js_files!(
     dir "polyfills",
     "_core.ts",
@@ -322,8 +334,8 @@ pub fn init_polyfill() -> Extension {
 
   Extension::builder(env!("CARGO_PKG_NAME"))
     .esm(esm_files)
-    .esm_entry_point("internal:deno_node/module_all.ts")
-    .dependencies(vec!["deno_io"])
+    .esm_entry_point("ext:deno_node/module_all.ts")
+    .dependencies(vec!["deno_io", "deno_fs"])
     .ops(vec![
       crypto::op_node_create_hash::decl(),
       crypto::op_node_hash_update::decl(),
@@ -383,7 +395,6 @@ pub fn init<P: NodePermissions + 'static>(
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
         state.put(npm_resolver);
       }
-      Ok(())
     })
     .build()
 }

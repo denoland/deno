@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { codes } from "internal:deno_node/internal/error_codes.ts";
-import { hideStackFrames } from "internal:deno_node/internal/hide_stack_frames.ts";
-import { isArrayBufferView } from "internal:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "internal:deno_node/internal/normalize_encoding.mjs";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
+import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
 
 /**
  * @param {number} value
