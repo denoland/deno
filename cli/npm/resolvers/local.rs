@@ -10,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::util::fs::symlink_dir;
+use crate::util::fs::LaxSingleProcessFsFlag;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -236,6 +237,13 @@ async fn sync_resolution_with_fs(
     format!("Creating '{}'", deno_local_registry_dir.display())
   })?;
 
+  let single_process_lock = LaxSingleProcessFsFlag::lock(
+    deno_local_registry_dir.join(".deno.lock"),
+    // similar message used by cargo build
+    "waiting for file lock on node_modules directory",
+  )
+  .await;
+
   // 1. Write all the packages out the .deno directory.
   //
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
@@ -393,6 +401,8 @@ async fn sync_resolution_with_fs(
       pending_packages.push_back((id.clone(), false));
     }
   }
+
+  drop(single_process_lock);
 
   Ok(())
 }
