@@ -55,6 +55,7 @@ RUSTFLAGS<<__1
   -C linker=clang-16
   -C link-arg=-fuse-ld=lld-16
   -C link-arg=--sysroot=/sysroot
+  -C link-arg=-Wl,--no-as-needed
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -65,6 +66,7 @@ RUSTDOCFLAGS<<__1
   -C linker=clang-16
   -C link-arg=-fuse-ld=lld-16
   -C link-arg=--sysroot=/sysroot
+  -C link-arg=-Wl,--no-as-needed
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
