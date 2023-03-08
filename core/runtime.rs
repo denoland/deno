@@ -536,8 +536,15 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
+        let context = if snapshot_options.loaded() {
+          bindings::initialize_context_from_existing_snapshot(
+            scope,
+            &op_ctxs,
+            snapshot_options,
+          )
+        } else {
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options)
+        };
 
         // Get module map data from the snapshot
         if has_startup_snapshot {
@@ -585,8 +592,15 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
+        let context = if snapshot_options.loaded() {
+          bindings::initialize_context_from_existing_snapshot(
+            scope,
+            &op_ctxs,
+            snapshot_options,
+          )
+        } else {
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options)
+        };
 
         // Get module map data from the snapshot
         if has_startup_snapshot {
@@ -779,8 +793,15 @@ impl JsRuntime {
       let scope = &mut v8::HandleScope::new(unsafe {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
-      let context =
-        bindings::initialize_context(scope, &op_ctxs, self.snapshot_options);
+      let context = if self.snapshot_options.loaded() {
+        bindings::initialize_context_from_existing_snapshot(
+          scope,
+          &op_ctxs,
+          self.snapshot_options,
+        )
+      } else {
+        bindings::initialize_context(scope, &op_ctxs, self.snapshot_options)
+      };
       context.set_slot(
         scope,
         Rc::new(RefCell::new(ContextState {

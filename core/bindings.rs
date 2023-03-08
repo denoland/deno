@@ -102,6 +102,7 @@ pub fn module_origin<'a>(
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
+  // TODO(bartlomieju): remove this option
   snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let context = v8::Context::new(scope);
@@ -115,30 +116,7 @@ pub fn initialize_context<'s>(
     v8::String::new_external_onebyte_static(scope, b"core").unwrap();
   let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
 
-  // Snapshot already registered `Deno.core.ops` but
-  // extensions may provide ops that aren't part of the snapshot.
-  if snapshot_options.loaded() {
-    // Grab the Deno.core.ops object & init it
-    let deno_obj: v8::Local<v8::Object> = global
-      .get(scope, deno_str.into())
-      .unwrap()
-      .try_into()
-      .unwrap();
-    let core_obj: v8::Local<v8::Object> = deno_obj
-      .get(scope, core_str.into())
-      .unwrap()
-      .try_into()
-      .unwrap();
-    let ops_obj: v8::Local<v8::Object> = core_obj
-      .get(scope, ops_str.into())
-      .expect("Deno.core.ops to exist")
-      .try_into()
-      .unwrap();
-    initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
-    return context;
-  }
-
-  // global.Deno = { core: { } };
+  // globalThis.Deno = { core: { } };
   let deno_obj = v8::Object::new(scope);
   global.set(scope, deno_str.into(), deno_obj.into());
 
@@ -158,8 +136,52 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
-
   initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
+
+  context
+}
+
+pub fn initialize_context_from_existing_snapshot<'s>(
+  scope: &mut v8::HandleScope<'s, ()>,
+  op_ctxs: &[OpCtx],
+  // TODO(bartlomieju): remove this option
+  snapshot_options: SnapshotOptions,
+) -> v8::Local<'s, v8::Context> {
+  let context = v8::Context::new(scope);
+  let global = context.global(scope);
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let deno_str =
+    v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
+  let core_str =
+    v8::String::new_external_onebyte_static(scope, b"core").unwrap();
+  let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
+
+  // Snapshot already registered `Deno.core.ops` but
+  // extensions may provide ops that aren't part of the snapshot.
+  // Grab the Deno.core.ops object & init it
+  let deno_obj: v8::Local<v8::Object> = global
+    .get(scope, deno_str.into())
+    .unwrap()
+    .try_into()
+    .unwrap();
+  let core_obj: v8::Local<v8::Object> = deno_obj
+    .get(scope, core_str.into())
+    .unwrap()
+    .try_into()
+    .unwrap();
+  let ops_obj: v8::Local<v8::Object> = core_obj
+    .get(scope, ops_str.into())
+    .expect("Deno.core.ops to exist")
+    .try_into()
+    .unwrap();
+  initialize_ops_from_existing_snapshot(
+    scope,
+    ops_obj,
+    op_ctxs,
+    snapshot_options,
+  );
   context
 }
 
@@ -167,6 +189,43 @@ fn initialize_ops(
   scope: &mut v8::HandleScope,
   ops_obj: v8::Local<v8::Object>,
   op_ctxs: &[OpCtx],
+  // TODO(bartlomieju): remove this option
+  snapshot_options: SnapshotOptions,
+) {
+  for ctx in op_ctxs {
+    let ctx_ptr = ctx as *const OpCtx as *const c_void;
+
+    // If this is a fast op, we don't want it to be in the snapshot.
+    // Only initialize once snapshot is loaded.
+    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
+      set_func_raw(
+        scope,
+        ops_obj,
+        ctx.decl.name,
+        ctx.decl.v8_fn_ptr,
+        ctx_ptr,
+        &ctx.decl.fast_fn,
+        snapshot_options,
+      );
+    } else {
+      set_func_raw(
+        scope,
+        ops_obj,
+        ctx.decl.name,
+        ctx.decl.v8_fn_ptr,
+        ctx_ptr,
+        &None,
+        snapshot_options,
+      );
+    }
+  }
+}
+
+fn initialize_ops_from_existing_snapshot(
+  scope: &mut v8::HandleScope,
+  ops_obj: v8::Local<v8::Object>,
+  op_ctxs: &[OpCtx],
+  // TODO(bartlomieju): remove this option
   snapshot_options: SnapshotOptions,
 ) {
   for ctx in op_ctxs {
