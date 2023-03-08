@@ -430,7 +430,8 @@ fn q_fast_ty(v: &FastValue) -> Quote {
     FastValue::V8Value => q!({ v8::Local<v8::Value> }),
     FastValue::Uint8Array
     | FastValue::Uint32Array
-    | FastValue::Float64Array => unreachable!(),
+    | FastValue::Float64Array
+    | FastValue::SeqOneByteString => unreachable!(),
   }
 }
 
@@ -450,6 +451,7 @@ fn q_fast_ty_variant(v: &FastValue) -> Quote {
     FastValue::Uint8Array => q!({ TypedArray(CType::Uint8) }),
     FastValue::Uint32Array => q!({ TypedArray(CType::Uint32) }),
     FastValue::Float64Array => q!({ TypedArray(CType::Float64) }),
+    FastValue::SeqOneByteString => q!({ SeqOneByteString }),
   }
 }
 

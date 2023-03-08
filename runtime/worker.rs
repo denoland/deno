@@ -28,6 +28,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_io::Stdio;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
@@ -35,7 +36,6 @@ use log::debug;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 
@@ -206,7 +206,6 @@ impl MainWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
@@ -215,8 +214,7 @@ impl MainWorker {
       CreateCache(Arc::new(create_cache_fn))
     });
 
-    // Internal modules
-    let mut extensions: Vec<Extension> = vec![
+    let mut extensions = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
@@ -254,11 +252,9 @@ impl MainWorker {
         options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::spawn::init(),
       ops::fs_events::init(),
-      ops::fs::init(),
-      ops::io::init(),
-      ops::io::init_stdio(options.stdio),
+      deno_fs::init::<PermissionsContainer>(unstable),
+      deno_io::init(options.stdio),
       deno_tls::init(),
       deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
@@ -266,19 +262,27 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
-      ops::process::init(),
+      ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
       deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
-      // Permissions ext (worker specific state)
-      perm_ext,
     ];
+
+    // TODO(bartlomieju): finish this work, currently only `deno_node` is different
+    // as it has the most files
+    #[cfg(feature = "dont_create_runtime_snapshot")]
+    extensions.push(deno_node::init_polyfill_ops_and_esm());
+
+    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
+    extensions.push(deno_node::init_polyfill_ops());
+
+    extensions.push(perm_ext);
+
     extensions.extend(std::mem::take(&mut options.extensions));
 
     #[cfg(not(feature = "dont_create_runtime_snapshot"))]
@@ -323,13 +327,15 @@ impl MainWorker {
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let bootstrap_str = v8::String::new(scope, "bootstrap").unwrap();
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
       let bootstrap_ns: v8::Local<v8::Object> = global_obj
         .get(scope, bootstrap_str.into())
         .unwrap()
         .try_into()
         .unwrap();
-      let main_runtime_str = v8::String::new(scope, "mainRuntime").unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"mainRuntime").unwrap();
       let bootstrap_fn =
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =

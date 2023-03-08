@@ -6,7 +6,7 @@
 // Note: deno_std shouldn't use Deno.core namespace. We should minimize these
 // usages.
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 
 // deno-lint-ignore no-explicit-any
 let DenoCore: any;

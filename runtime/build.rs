@@ -165,6 +165,41 @@ mod startup_snapshot {
     }
   }
 
+  impl deno_fs::FsPermissions for Permissions {
+    fn check_read(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read_blind(
+      &mut self,
+      _path: &Path,
+      _display: &str,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   fn create_runtime_snapshot(
     snapshot_path: PathBuf,
     maybe_additional_extension: Option<Extension>,
@@ -190,29 +225,23 @@ mod startup_snapshot {
         "deno_napi",
         "deno_http",
         "deno_flash",
+        "deno_io",
+        "deno_fs",
       ])
       .esm(include_js_files!(
         dir "js",
-        "01_build.js",
         "01_errors.js",
         "01_version.ts",
         "06_util.js",
         "10_permissions.js",
         "11_workers.js",
-        "12_io.js",
         "13_buffer.js",
-        "30_fs.js",
         "30_os.js",
-        "40_diagnostics.js",
-        "40_files.js",
         "40_fs_events.js",
         "40_http.js",
         "40_process.js",
-        "40_read_file.js",
         "40_signals.js",
-        "40_spawn.js",
         "40_tty.js",
-        "40_write_file.js",
         "41_prompt.js",
         "90_deno_ns.js",
         "98_global_scope.js",
@@ -245,12 +274,14 @@ mod startup_snapshot {
       ),
       deno_napi::init::<Permissions>(),
       deno_http::init(),
+      deno_io::init(Default::default()),
+      deno_fs::init::<Permissions>(false),
       deno_flash::init::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
       deno_node::init::<Permissions>(None),
-      deno_node::init_polyfill(),
+      deno_node::init_polyfill_ops_and_esm(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
@@ -263,14 +294,7 @@ mod startup_snapshot {
       startup_snapshot: None,
       extensions: vec![],
       extensions_with_js,
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        lzzzz::lz4_hc::compress_to_vec(
-          snapshot_slice,
-          vec,
-          lzzzz::lz4_hc::CLEVEL_MAX,
-        )
-        .expect("snapshot compression failed");
-      })),
+      compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
   }

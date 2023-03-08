@@ -2,8 +2,8 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { inspect } from "internal:deno_node/polyfills/internal/util/inspect.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 
 class BufferList {
   constructor() {

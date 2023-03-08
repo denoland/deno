@@ -6,6 +6,7 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::args::package_json;
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::CachedUrlMetadata;
@@ -14,7 +15,6 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::lsp::logging::lsp_log;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -44,7 +44,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -1171,7 +1170,7 @@ impl Documents {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
-      maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
+      maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       if let Some(import_map) = maybe_import_map {
@@ -1187,14 +1186,8 @@ impl Documents {
       hasher.finish()
     }
 
-    let maybe_package_json_deps = maybe_package_json.and_then(|package_json| {
-      match package_json::get_local_package_json_version_reqs(package_json) {
-        Ok(deps) => Some(deps),
-        Err(err) => {
-          lsp_log!("Error parsing package.json deps: {err:#}");
-          None
-        }
-      }
+    let maybe_package_json_deps = maybe_package_json.map(|package_json| {
+      package_json::get_local_package_json_version_reqs(package_json)
     });
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
@@ -1206,7 +1199,11 @@ impl Documents {
     self.npm_package_json_reqs = Arc::new({
       match &maybe_package_json_deps {
         Some(deps) => {
-          let mut reqs = deps.values().cloned().collect::<Vec<_>>();
+          let mut reqs = deps
+            .values()
+            .filter_map(|r| r.as_ref().ok())
+            .cloned()
+            .collect::<Vec<_>>();
           reqs.sort();
           reqs
         }

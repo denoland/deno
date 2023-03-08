@@ -12,13 +12,13 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
-import { forgivingBase64Encode } from "internal:deno_web/00_infra.js";
-import { EventTarget, ProgressEvent } from "internal:deno_web/02_event.js";
-import { decode, TextDecoder } from "internal:deno_web/08_text_encoding.js";
-import { parseMimeType } from "internal:deno_web/01_mimesniff.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
+import { forgivingBase64Encode } from "ext:deno_web/00_infra.js";
+import { EventTarget, ProgressEvent } from "ext:deno_web/02_event.js";
+import { decode, TextDecoder } from "ext:deno_web/08_text_encoding.js";
+import { parseMimeType } from "ext:deno_web/01_mimesniff.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,

@@ -10,13 +10,13 @@
 /// <reference lib="esnext" />
 
 const core = globalThis.Deno.core;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   Blob,
   BlobPrototype,
   File,
   FilePrototype,
-} from "internal:deno_web/09_file.js";
+} from "ext:deno_web/09_file.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,

@@ -42,7 +42,7 @@ pub struct ExtensionFileSource {
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
-pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
+pub type OpStateFn = dyn Fn(&mut OpState);
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
 pub struct OpDecl {
@@ -51,9 +51,6 @@ pub struct OpDecl {
   pub enabled: bool,
   pub is_async: bool,
   pub is_unstable: bool,
-  /// V8 argument count. Used as an optimization
-  /// hint by `core.initalizeAsyncOps`.
-  pub argc: usize,
   pub is_v8: bool,
   pub fast_fn: Option<Box<dyn FastFunction>>,
 }
@@ -150,10 +147,9 @@ impl Extension {
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
-  pub fn init_state(&self, state: &mut OpState) -> Result<(), Error> {
-    match &self.opstate_fn {
-      Some(ofn) => ofn(state),
-      None => Ok(()),
+  pub fn init_state(&self, state: &mut OpState) {
+    if let Some(op_fn) = &self.opstate_fn {
+      op_fn(state);
     }
   }
 
@@ -213,7 +209,7 @@ impl ExtensionBuilder {
       // use a different result struct that `ExtensionFileSource` as it's confusing
       // when (and why) the remapping happens.
       js_files.into_iter().map(|file_source| ExtensionFileSource {
-        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
       });
     self.js.extend(js_files);
@@ -227,7 +223,7 @@ impl ExtensionBuilder {
       // use a different result struct that `ExtensionFileSource` as it's confusing
       // when (and why) the remapping happens.
       .map(|file_source| ExtensionFileSource {
-        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
       });
     self.esm.extend(esm_files);
@@ -246,7 +242,7 @@ impl ExtensionBuilder {
 
   pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
   where
-    F: Fn(&mut OpState) -> Result<(), Error> + 'static,
+    F: Fn(&mut OpState) + 'static,
   {
     self.state = Some(Box::new(opstate_fn));
     self
@@ -291,7 +287,7 @@ impl ExtensionBuilder {
 
 /// Helps embed JS files in an extension. Returns a vector of
 /// `ExtensionFileSource`, that represent the filename and source code. All
-/// specified files are rewritten into "internal:<extension_name>/<file_name>".
+/// specified files are rewritten into "ext:<extension_name>/<file_name>".
 ///
 /// An optional "dir" option can be specified to prefix all files with a
 /// directory name.
@@ -303,8 +299,8 @@ impl ExtensionBuilder {
 ///   "02_goodbye.js",
 /// )
 /// // Produces following specifiers:
-/// - "internal:my_extension/01_hello.js"
-/// - "internal:my_extension/02_goodbye.js"
+/// - "ext:my_extension/01_hello.js"
+/// - "ext:my_extension/02_goodbye.js"
 ///
 /// /// Example with "dir" option (for "my_extension"):
 /// ```ignore
@@ -314,8 +310,8 @@ impl ExtensionBuilder {
 ///   "02_goodbye.js",
 /// )
 /// // Produces following specifiers:
-/// - "internal:my_extension/js/01_hello.js"
-/// - "internal:my_extension/js/02_goodbye.js"
+/// - "ext:my_extension/js/01_hello.js"
+/// - "ext:my_extension/js/02_goodbye.js"
 /// ```
 #[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]
@@ -323,7 +319,7 @@ macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($dir, "/", $file).to_string(),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!(concat!($dir, "/", $file)
         )),
@@ -349,7 +345,7 @@ macro_rules! include_js_files {
   (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($dir, "/", $file).to_string(),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),

@@ -44,7 +44,6 @@ pub fn init(
       state.put(sender.clone());
       state.put(fail_fast_tracker.clone());
       state.put(filter.clone());
-      Ok(())
     })
     .build()
 }
