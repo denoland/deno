@@ -330,6 +330,13 @@ impl SnapshotOptions {
     )
   }
 
+  pub fn will_snapshot(&self) -> bool {
+    matches!(
+      self,
+      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
+    )
+  }
+
   fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
     match (snapshot_loaded, will_snapshot) {
       (true, true) => SnapshotOptions::CreateFromExisting,
