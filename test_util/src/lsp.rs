@@ -286,9 +286,65 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn enable_inlay_hints(&mut self) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert(
+      "inlayHints".to_string(),
+      json!({
+        "parameterNames": {
+          "enabled": "all"
+        },
+        "parameterTypes": {
+          "enabled": true
+        },
+        "variableTypes": {
+          "enabled": true
+        },
+        "propertyDeclarationTypes": {
+          "enabled": true
+        },
+        "functionLikeReturnTypes": {
+          "enabled": true
+        },
+        "enumMemberValues": {
+          "enabled": true
+        }
+      }),
+    );
+    self
+  }
+
+  pub fn disable_testing_api(&mut self) -> &mut Self {
+    let obj = self
+      .params
+      .capabilities
+      .experimental
+      .as_mut()
+      .unwrap()
+      .as_object_mut()
+      .unwrap();
+    obj.insert("testingApi".to_string(), false.into());
+    let options = self.initialization_options_mut();
+    options.remove("testing");
+    self
+  }
+
   pub fn set_cache(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("cache".to_string(), value.as_ref().to_string().into());
+    self
+  }
+
+  pub fn set_code_lens(
+    &mut self,
+    value: Option<serde_json::Value>,
+  ) -> &mut Self {
+    let options = self.initialization_options_mut();
+    if let Some(value) = value {
+      options.insert("codeLens".to_string(), value);
+    } else {
+      options.remove("codeLens");
+    }
     self
   }
 
@@ -313,6 +369,21 @@ impl InitializeParamsBuilder {
   pub fn set_import_map(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("importMap".to_string(), value.as_ref().to_string().into());
+    self
+  }
+
+  pub fn set_tls_certificate(&mut self, value: impl AsRef<str>) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert(
+      "tlsCertificate".to_string(),
+      value.as_ref().to_string().into(),
+    );
+    self
+  }
+
+  pub fn set_unstable(&mut self, value: bool) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("unstable".to_string(), value.into());
     self
   }
 

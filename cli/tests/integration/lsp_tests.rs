@@ -1113,7 +1113,11 @@ fn lsp_hover_disabled() {
 
 #[test]
 fn lsp_inlay_hints() {
-  let mut client = init("initialize_params_hints.json");
+  let context = TestContextBuilder::new().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.enable_inlay_hints();
+  });
   did_open(
     &mut client,
     json!({
@@ -1568,7 +1572,10 @@ fn lsp_hover_unstable_disabled() {
 
 #[test]
 fn lsp_hover_unstable_enabled() {
-  let mut client = init("initialize_params_unstable.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize(|builder| {
+    builder.set_unstable(true);
+  });
   did_open(
     &mut client,
     json!({
@@ -2960,7 +2967,10 @@ fn lsp_code_lens_impl() {
 
 #[test]
 fn lsp_code_lens_test() {
-  let mut client = init("initialize_params_code_lens_test.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize(|builder| {
+    builder.disable_testing_api().set_code_lens(None);
+  });
   did_open(
     &mut client,
     load_fixture("did_open_params_test_code_lens.json"),
@@ -2985,7 +2995,14 @@ fn lsp_code_lens_test() {
 
 #[test]
 fn lsp_code_lens_test_disabled() {
-  let mut client = init("initialize_params_code_lens_test_disabled.json");
+  let mut client = LspClientBuilder::new().build();
+  client.initialize(|builder| {
+    builder.disable_testing_api().set_code_lens(Some(json!({
+      "implementations": true,
+      "references": true,
+      "test": false
+    })));
+  });
   client
     .write_notification(
       "textDocument/didOpen",
@@ -4982,18 +4999,17 @@ fn lsp_cache_location() {
 /// and cache files.
 #[test]
 fn lsp_tls_cert() {
-  let _g = http_server();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params_tls_cert.json"))
-      .unwrap();
+  let context = TestContextBuilder::new().use_http_server().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder
+      .set_suggest_imports_hosts(vec![
+        ("http://localhost:4545/".to_string(), true),
+        ("https://localhost:5545/".to_string(), true),
+      ])
+      .set_tls_certificate("");
+  });
 
-  params.root_uri = Some(Url::from_file_path(testdata_path()).unwrap());
-
-  let mut client = LspClientBuilder::new().build();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-  client.write_notification("initialized", json!({})).unwrap();
   let mut session = TestSession::from_client(client);
 
   session.did_open(json!({
