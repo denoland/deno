@@ -9,15 +9,13 @@ use deno_core::url::Url;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
-use test_util::lsp::LspClient;
+use test_util::lsp::LspClientBuilder;
 use test_util::lsp::LspResponseError;
 use tower_lsp::lsp_types as lsp;
 
 static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");
 static FIXTURE_DB_TS: &str = include_str!("testdata/db.ts");
 static FIXTURE_DB_MESSAGES: &[u8] = include_bytes!("testdata/db_messages.json");
-static FIXTURE_INIT_JSON: &[u8] =
-  include_bytes!("testdata/initialize_params.json");
 
 #[derive(Debug, Deserialize)]
 enum FixtureType {
@@ -44,14 +42,8 @@ struct FixtureMessage {
 /// the end of the document and does a level of hovering and gets quick fix
 /// code actions.
 fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe, false)?;
-
-  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
-  let (_, response_error): (Option<Value>, Option<LspResponseError>) =
-    client.write_request("initialize", params)?;
-  assert!(response_error.is_none());
-
-  client.write_notification("initialized", json!({}))?;
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  client.initialize_default();
 
   client.write_notification(
     "textDocument/didOpen",
@@ -125,13 +117,8 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe, false)?;
-
-  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
-  let (_, maybe_err) =
-    client.write_request::<_, _, Value>("initialize", params)?;
-  assert!(maybe_err.is_none());
-  client.write_notification("initialized", json!({}))?;
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  client.initialize_default();
 
   client.write_notification(
     "textDocument/didOpen",
@@ -189,13 +176,8 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe, false)?;
-
-  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
-  let (_, maybe_err) =
-    client.write_request::<_, _, Value>("initialize", params)?;
-  assert!(maybe_err.is_none());
-  client.write_notification("initialized", json!({}))?;
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  client.initialize_default();
 
   for i in 0..10 {
     client.write_notification(
@@ -285,14 +267,8 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
 
 /// A test that starts up the LSP, opens a single line document, and exits.
 fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe, false)?;
-
-  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
-  let (_, response_error) =
-    client.write_request::<_, _, Value>("initialize", params)?;
-  assert!(response_error.is_none());
-
-  client.write_notification("initialized", json!({}))?;
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  client.initialize_default();
 
   client.write_notification(
     "textDocument/didOpen",
