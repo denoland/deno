@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Buffer } from "internal:deno_node/buffer.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 
 function assert(cond) {
   if (!cond) {

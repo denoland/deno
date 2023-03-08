@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { createHash } from "internal:deno_node/internal/crypto/hash.ts";
-import { HASH_DATA } from "internal:deno_node/internal/crypto/types.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
+import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 
 export const MAX_ALLOC = Math.pow(2, 30) - 1;
 

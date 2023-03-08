@@ -34,8 +34,6 @@ fn main() {
       let (tx, rx) = mpsc::unbounded::<Task>();
       state.put(tx);
       state.put(rx);
-
-      Ok(())
     })
     .build();
 

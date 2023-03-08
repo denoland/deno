@@ -12,19 +12,16 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { byteLowerCase } from "internal:deno_web/00_infra.js";
-import { BlobPrototype } from "internal:deno_web/09_file.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { byteLowerCase } from "ext:deno_web/00_infra.js";
+import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
   errorReadableStream,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "internal:deno_web/06_streams.js";
-import { extractBody, InnerBody } from "internal:deno_fetch/22_body.js";
-import {
-  processUrlList,
-  toInnerRequest,
-} from "internal:deno_fetch/23_request.js";
+} from "ext:deno_web/06_streams.js";
+import { extractBody, InnerBody } from "ext:deno_fetch/22_body.js";
+import { processUrlList, toInnerRequest } from "ext:deno_fetch/23_request.js";
 import {
   abortedNetworkError,
   fromInnerResponse,
@@ -32,8 +29,8 @@ import {
   nullBodyStatus,
   redirectStatus,
   toInnerResponse,
-} from "internal:deno_fetch/23_response.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+} from "ext:deno_fetch/23_response.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,

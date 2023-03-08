@@ -33,7 +33,7 @@ const {
   SymbolFor,
   WeakMap,
 } = primordials;
-import { pathFromURL } from "internal:deno_web/00_infra.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 /**
  * @param {BufferSource} source

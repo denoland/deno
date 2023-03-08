@@ -97,7 +97,7 @@ impl Serialize for WorkerControlEvent {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("internal:"),
+              Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
             });
             json!({
@@ -376,7 +376,6 @@ impl WebWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
@@ -434,7 +433,10 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
+      // TODO(bartlomieju): this should be conditional on `dont_create_runtime_snapshot`
+      // cargo feature and should use `init_polyfill_ops` or `init_polyfill_ops_and_esm`
+      // if the feature is enabled
+      deno_node::init_polyfill_ops(),
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),

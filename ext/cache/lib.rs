@@ -40,7 +40,6 @@ pub fn init<CA: Cache + 'static>(
       if let Some(create_cache) = maybe_create_cache.clone() {
         state.put(create_cache);
       }
-      Ok(())
     })
     .build()
 }

@@ -872,7 +872,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           root_map.clone(),
           remapped_specifiers.clone(),
         ));
-        Ok(())
       })
       .build()],
     ..Default::default()

@@ -14,7 +14,7 @@ fn setup() -> Vec<Extension> {
     deno_webidl::init(),
     Extension::builder("deno_webidl_bench")
       .esm(vec![ExtensionFileSource {
-        specifier: "internal:setup".to_string(),
+        specifier: "ext:setup".to_string(),
         code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
           "dict.js"
         )),

@@ -1,13 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import {
   intoCallbackAPIWithIntercept,
   MaybeEmpty,
   notImplemented,
-} from "internal:deno_node/_utils.ts";
-import { fromFileUrl } from "internal:deno_node/path.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/_utils.ts";
+import { fromFileUrl } from "ext:deno_node/path.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,

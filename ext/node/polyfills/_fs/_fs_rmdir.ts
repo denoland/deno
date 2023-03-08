@@ -5,14 +5,14 @@ import {
   validateRmdirOptions,
   validateRmOptions,
   validateRmOptionsSync,
-} from "internal:deno_node/internal/fs/utils.mjs";
-import { toNamespacedPath } from "internal:deno_node/path.ts";
+} from "ext:deno_node/internal/fs/utils.mjs";
+import { toNamespacedPath } from "ext:deno_node/path.ts";
 import {
   denoErrorToNodeError,
   ERR_FS_RMDIR_ENOTDIR,
-} from "internal:deno_node/internal/errors.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/internal/errors.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 type rmdirOptions = {
   maxRetries?: number;

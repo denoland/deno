@@ -5,9 +5,9 @@
 // They have to be split this way to prevent a circular dependency
 
 const core = globalThis.Deno.core;
-import { nextTick as _nextTick } from "internal:deno_node/_next_tick.ts";
-import { _exiting } from "internal:deno_node/_process/exiting.ts";
-import * as fs from "internal:deno_fs/30_fs.js";
+import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
+import { _exiting } from "ext:deno_node/_process/exiting.ts";
+import * as fs from "ext:deno_fs/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {

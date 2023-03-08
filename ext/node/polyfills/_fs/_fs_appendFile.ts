@@ -4,17 +4,11 @@ import {
   isFd,
   maybeCallback,
   WriteFileOptions,
-} from "internal:deno_node/_fs/_fs_common.ts";
-import { Encodings } from "internal:deno_node/_utils.ts";
-import {
-  copyObject,
-  getOptions,
-} from "internal:deno_node/internal/fs/utils.mjs";
-import {
-  writeFile,
-  writeFileSync,
-} from "internal:deno_node/_fs/_fs_writeFile.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/_fs/_fs_common.ts";
+import { Encodings } from "ext:deno_node/_utils.ts";
+import { copyObject, getOptions } from "ext:deno_node/internal/fs/utils.mjs";
+import { writeFile, writeFileSync } from "ext:deno_node/_fs/_fs_writeFile.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 /**
  * TODO: Also accept 'data' parameter as a Node polyfill Buffer type once these

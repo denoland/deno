@@ -12,19 +12,19 @@
 /// <reference lib="esnext" />
 
 const core = globalThis.Deno.core;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "internal:deno_url/00_url.js";
+} from "ext:deno_url/00_url.js";
 import {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
-} from "internal:deno_fetch/21_formdata.js";
-import * as mimesniff from "internal:deno_web/01_mimesniff.js";
-import { BlobPrototype } from "internal:deno_web/09_file.js";
+} from "ext:deno_fetch/21_formdata.js";
+import * as mimesniff from "ext:deno_web/01_mimesniff.js";
+import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
   createProxy,
   errorReadableStream,
@@ -34,7 +34,7 @@ import {
   readableStreamDisturb,
   ReadableStreamPrototype,
   readableStreamThrowIfErrored,
-} from "internal:deno_web/06_streams.js";
+} from "ext:deno_web/06_streams.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,

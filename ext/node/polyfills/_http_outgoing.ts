@@ -1,27 +1,27 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { getDefaultHighWaterMark } from "internal:deno_node/internal/streams/state.mjs";
-import assert from "internal:deno_node/internal/assert.mjs";
-import EE from "internal:deno_node/events.ts";
-import { Stream } from "internal:deno_node/stream.ts";
-import { deprecate } from "internal:deno_node/util.ts";
-import type { Socket } from "internal:deno_node/net.ts";
+import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.mjs";
+import assert from "ext:deno_node/internal/assert.mjs";
+import EE from "ext:deno_node/events.ts";
+import { Stream } from "ext:deno_node/stream.ts";
+import { deprecate } from "ext:deno_node/util.ts";
+import type { Socket } from "ext:deno_node/net.ts";
 import {
   kNeedDrain,
   kOutHeaders,
   utcDate,
-} from "internal:deno_node/internal/http.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
+} from "ext:deno_node/internal/http.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
   chunkExpression as RE_TE_CHUNKED,
-} from "internal:deno_node/_http_common.ts";
+} from "ext:deno_node/_http_common.ts";
 import {
   defaultTriggerAsyncIdScope,
   symbols,
-} from "internal:deno_node/internal/async_hooks.ts";
+} from "ext:deno_node/internal/async_hooks.ts";
 // deno-lint-ignore camelcase
 const { async_id_symbol } = symbols;
 import {
@@ -39,11 +39,11 @@ import {
   ERR_STREAM_NULL_VALUES,
   ERR_STREAM_WRITE_AFTER_END,
   hideStackFrames,
-} from "internal:deno_node/internal/errors.ts";
-import { validateString } from "internal:deno_node/internal/validators.mjs";
-import { isUint8Array } from "internal:deno_node/internal/util/types.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 
-import { debuglog } from "internal:deno_node/internal/util/debuglog.ts";
+import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {
   debug = fn;
 });

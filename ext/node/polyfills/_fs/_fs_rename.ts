@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { fromFileUrl } from "internal:deno_node/path.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+import { fromFileUrl } from "ext:deno_node/path.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function rename(
   oldPath: string | URL,

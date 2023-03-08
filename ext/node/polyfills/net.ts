@@ -20,21 +20,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { EventEmitter } from "internal:deno_node/events.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
 import {
   isIP,
   isIPv4,
   isIPv6,
   normalizedArgsSymbol,
-} from "internal:deno_node/internal/net.ts";
-import { Duplex } from "internal:deno_node/stream.ts";
+} from "ext:deno_node/internal/net.ts";
+import { Duplex } from "ext:deno_node/stream.ts";
 import {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   newAsyncId,
   ownerSymbol,
-} from "internal:deno_node/internal/async_hooks.ts";
+} from "ext:deno_node/internal/async_hooks.ts";
 import {
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
@@ -49,10 +49,10 @@ import {
   exceptionWithHostPort,
   genericNodeError,
   uvExceptionWithHostPort,
-} from "internal:deno_node/internal/errors.ts";
-import type { ErrnoException } from "internal:deno_node/internal/errors.ts";
-import { Encodings } from "internal:deno_node/_utils.ts";
-import { isUint8Array } from "internal:deno_node/internal/util/types.ts";
+} from "ext:deno_node/internal/errors.ts";
+import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+import { Encodings } from "ext:deno_node/_utils.ts";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import {
   kAfterAsyncWrite,
   kBuffer,
@@ -64,15 +64,15 @@ import {
   setStreamTimeout,
   writeGeneric,
   writevGeneric,
-} from "internal:deno_node/internal/stream_base_commons.ts";
-import { kTimeout } from "internal:deno_node/internal/timers.mjs";
-import { nextTick } from "internal:deno_node/_next_tick.ts";
+} from "ext:deno_node/internal/stream_base_commons.ts";
+import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
-} from "internal:deno_node/internal/dtrace.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import type { LookupOneOptions } from "internal:deno_node/internal/dns/utils.ts";
+} from "ext:deno_node/internal/dtrace.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 import {
   validateAbortSignal,
   validateFunction,
@@ -80,28 +80,28 @@ import {
   validateNumber,
   validatePort,
   validateString,
-} from "internal:deno_node/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 import {
   constants as TCPConstants,
   TCP,
   TCPConnectWrap,
-} from "internal:deno_node/internal_binding/tcp_wrap.ts";
+} from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import {
   constants as PipeConstants,
   Pipe,
   PipeConnectWrap,
-} from "internal:deno_node/internal_binding/pipe_wrap.ts";
-import { ShutdownWrap } from "internal:deno_node/internal_binding/stream_wrap.ts";
-import { assert } from "internal:deno_node/_util/asserts.ts";
-import { isWindows } from "internal:deno_node/_util/os.ts";
-import { ADDRCONFIG, lookup as dnsLookup } from "internal:deno_node/dns.ts";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
-import { guessHandleType } from "internal:deno_node/internal_binding/util.ts";
-import { debuglog } from "internal:deno_node/internal/util/debuglog.ts";
-import type { DuplexOptions } from "internal:deno_node/_stream.d.ts";
-import type { BufferEncoding } from "internal:deno_node/_global.d.ts";
-import type { Abortable } from "internal:deno_node/_events.d.ts";
-import { channel } from "internal:deno_node/diagnostics_channel.ts";
+} from "ext:deno_node/internal_binding/pipe_wrap.ts";
+import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { ADDRCONFIG, lookup as dnsLookup } from "ext:deno_node/dns.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
+import type { Abortable } from "ext:deno_node/_events.d.ts";
+import { channel } from "ext:deno_node/diagnostics_channel.ts";
 
 let debug = debuglog("net", (fn) => {
   debug = fn;

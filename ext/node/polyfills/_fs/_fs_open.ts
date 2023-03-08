@@ -6,13 +6,13 @@ import {
   O_RDWR,
   O_TRUNC,
   O_WRONLY,
-} from "internal:deno_node/_fs/_fs_constants.ts";
-import { getOpenOptions } from "internal:deno_node/_fs/_fs_common.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
-import { parseFileMode } from "internal:deno_node/internal/validators.mjs";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
-import { getValidatedPath } from "internal:deno_node/internal/fs/utils.mjs";
-import type { Buffer } from "internal:deno_node/buffer.ts";
+} from "ext:deno_node/_fs/_fs_constants.ts";
+import { getOpenOptions } from "ext:deno_node/_fs/_fs_common.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
+import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import type { Buffer } from "ext:deno_node/buffer.ts";
 
 function existsSync(filePath: string | URL): boolean {
   try {

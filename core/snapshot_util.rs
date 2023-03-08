@@ -4,8 +4,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::ExtModuleLoaderCb;
 use crate::Extension;
-use crate::InternalModuleLoaderCb;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::Snapshot;
@@ -19,7 +19,7 @@ pub struct CreateSnapshotOptions {
   pub extensions: Vec<Extension>,
   pub extensions_with_js: Vec<Extension>,
   pub compression_cb: Option<Box<CompressionCb>>,
-  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
+  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {

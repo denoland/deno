@@ -269,8 +269,6 @@ mod ts {
         state.put(op_crate_libs.clone());
         state.put(build_libs.clone());
         state.put(path_dts.clone());
-
-        Ok(())
       })
       .build();
 
@@ -345,7 +343,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_io::init(Default::default()),
     deno_fs::init::<PermissionsContainer>(false),
     deno_node::init::<PermissionsContainer>(None), // No --unstable.
-    deno_node::init_polyfill(),
+    deno_node::init_polyfill_ops_and_esm(),
     deno_ffi::init::<PermissionsContainer>(false),
     deno_net::init::<PermissionsContainer>(
       None, false, // No --unstable.
@@ -380,14 +378,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
     extensions_with_js,
-    compression_cb: Some(Box::new(|vec, snapshot_slice| {
-      lzzzz::lz4_hc::compress_to_vec(
-        snapshot_slice,
-        vec,
-        lzzzz::lz4_hc::CLEVEL_MAX,
-      )
-      .expect("snapshot compression failed");
-    })),
+    compression_cb: None,
     snapshot_module_load_cb: None,
   })
 }

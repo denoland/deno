@@ -281,7 +281,7 @@ mod startup_snapshot {
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
       deno_node::init::<Permissions>(None),
-      deno_node::init_polyfill(),
+      deno_node::init_polyfill_ops_and_esm(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
@@ -294,14 +294,7 @@ mod startup_snapshot {
       startup_snapshot: None,
       extensions: vec![],
       extensions_with_js,
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        lzzzz::lz4_hc::compress_to_vec(
-          snapshot_slice,
-          vec,
-          lzzzz::lz4_hc::CLEVEL_MAX,
-        )
-        .expect("snapshot compression failed");
-      })),
+      compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
   }

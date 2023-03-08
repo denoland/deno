@@ -121,7 +121,6 @@ pub fn init<P: TimersPermission + 'static>(
         state.put(Location(location));
       }
       state.put(StartTime::now());
-      Ok(())
     })
     .build()
 }

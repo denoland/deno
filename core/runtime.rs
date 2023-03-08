@@ -8,7 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
-use crate::modules::InternalModuleLoaderCb;
+use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -275,7 +275,7 @@ pub struct RuntimeOptions {
   /// An optional callback that will be called for each module that is loaded
   /// during snapshotting. This callback can be used to transpile source on the
   /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
-  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
+  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -620,7 +620,7 @@ impl JsRuntime {
         }
       }
 
-      Rc::new(crate::modules::InternalModuleLoader::new(
+      Rc::new(crate::modules::ExtModuleLoader::new(
         options.module_loader,
         esm_sources,
         options.snapshot_module_load_cb,
@@ -939,7 +939,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -957,7 +957,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -2887,7 +2887,6 @@ pub mod tests {
           mode,
           dispatch_count: dispatch_count2.clone(),
         });
-        Ok(())
       })
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3985,8 +3984,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap_err();
     let error_string = error.to_string();
-    // Test that the script specifier is a URL: `internal:<repo-relative path>`.
-    assert!(error_string.contains("internal:core/01_core.js"));
+    // Test that the script specifier is a URL: `ext:<repo-relative path>`.
+    assert!(error_string.contains("ext:core/01_core.js"));
   }
 
   #[test]
@@ -4045,7 +4044,6 @@ assertEquals(1, notify_return_value);
       .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
-        Ok(())
       })
       .build();
 
@@ -5020,8 +5018,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ) -> Pin<Box<ModuleSourceFuture>> {
         let source = r#"
         // This module doesn't really exist, just verifying that we'll get
-        // an error when specifier starts with "internal:".
-        import { core } from "internal:core.js";
+        // an error when specifier starts with "ext:".
+        import { core } from "ext:core.js";
         "#;
 
         async move {
@@ -5057,7 +5055,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .unwrap_err();
     assert_eq!(
       err.to_string(),
-      "Cannot load internal module from external code"
+      "Cannot load extension module from external code"
     );
   }
 }

@@ -132,7 +132,6 @@ pub fn init(stdio: Stdio) -> Extension {
         "stderr",
       ));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
-      Ok(())
     })
     .build()
 }

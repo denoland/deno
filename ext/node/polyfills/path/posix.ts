@@ -5,12 +5,9 @@
 import type {
   FormatInputPathObject,
   ParsedPath,
-} from "internal:deno_node/path/_interface.ts";
-import {
-  CHAR_DOT,
-  CHAR_FORWARD_SLASH,
-} from "internal:deno_node/path/_constants.ts";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/path/_interface.ts";
+import { CHAR_DOT, CHAR_FORWARD_SLASH } from "ext:deno_node/path/_constants.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 import {
   _format,
@@ -18,7 +15,7 @@ import {
   encodeWhitespace,
   isPosixPathSeparator,
   normalizeString,
-} from "internal:deno_node/path/_util.ts";
+} from "ext:deno_node/path/_util.ts";
 
 export const sep = "/";
 export const delimiter = ":";

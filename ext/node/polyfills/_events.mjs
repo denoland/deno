@@ -24,21 +24,21 @@
 
 const kRejection = Symbol.for("nodejs.rejection");
 
-import { inspect } from "internal:deno_node/internal/util/inspect.mjs";
+import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   AbortError,
   // kEnhanceStackBeforeInspector,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   ERR_UNHANDLED_ERROR,
-} from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 
 import {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
-} from "internal:deno_node/internal/validators.mjs";
-import { spliceOne } from "internal:deno_node/_utils.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { spliceOne } from "ext:deno_node/_utils.ts";
 
 const kCapture = Symbol("kCapture");
 const kErrorMonitor = Symbol("events.errorMonitor");

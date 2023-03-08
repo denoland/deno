@@ -1,18 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as asyncWrap from "internal:deno_node/internal_binding/async_wrap.ts";
-import * as buffer from "internal:deno_node/internal_binding/buffer.ts";
-import * as caresWrap from "internal:deno_node/internal_binding/cares_wrap.ts";
-import * as constants from "internal:deno_node/internal_binding/constants.ts";
-import * as crypto from "internal:deno_node/internal_binding/crypto.ts";
-import * as pipeWrap from "internal:deno_node/internal_binding/pipe_wrap.ts";
-import * as streamWrap from "internal:deno_node/internal_binding/stream_wrap.ts";
-import * as stringDecoder from "internal:deno_node/internal_binding/string_decoder.ts";
-import * as symbols from "internal:deno_node/internal_binding/symbols.ts";
-import * as tcpWrap from "internal:deno_node/internal_binding/tcp_wrap.ts";
-import * as types from "internal:deno_node/internal_binding/types.ts";
-import * as udpWrap from "internal:deno_node/internal_binding/udp_wrap.ts";
-import * as util from "internal:deno_node/internal_binding/util.ts";
-import * as uv from "internal:deno_node/internal_binding/uv.ts";
+import * as asyncWrap from "ext:deno_node/internal_binding/async_wrap.ts";
+import * as buffer from "ext:deno_node/internal_binding/buffer.ts";
+import * as caresWrap from "ext:deno_node/internal_binding/cares_wrap.ts";
+import * as constants from "ext:deno_node/internal_binding/constants.ts";
+import * as crypto from "ext:deno_node/internal_binding/crypto.ts";
+import * as pipeWrap from "ext:deno_node/internal_binding/pipe_wrap.ts";
+import * as streamWrap from "ext:deno_node/internal_binding/stream_wrap.ts";
+import * as stringDecoder from "ext:deno_node/internal_binding/string_decoder.ts";
+import * as symbols from "ext:deno_node/internal_binding/symbols.ts";
+import * as tcpWrap from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import * as types from "ext:deno_node/internal_binding/types.ts";
+import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
+import * as util from "ext:deno_node/internal_binding/util.ts";
+import * as uv from "ext:deno_node/internal_binding/uv.ts";
 
 const modules = {
   "async_wrap": asyncWrap,
