@@ -15,9 +15,9 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_native_certs = "0.1.0"
 once_cell.workspace = true
 rustls = { workspace = true, features = ["dangerous_configuration"] }
-deno_native_certs = { version = "0.1.0", path = "../../../deno_native_certs" }
 rustls-pemfile.workspace = true
 serde.workspace = true
 webpki = "0.22"
