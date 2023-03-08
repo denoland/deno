@@ -78,6 +78,7 @@ pub struct Extension {
   enabled: bool,
   name: &'static str,
   deps: Option<Vec<&'static str>>,
+  force_op_registration: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -195,6 +196,7 @@ pub struct ExtensionBuilder {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   name: &'static str,
   deps: Vec<&'static str>,
+  force_op_registration: bool,
 }
 
 impl ExtensionBuilder {
@@ -264,6 +266,11 @@ impl ExtensionBuilder {
     self
   }
 
+  pub fn force_op_registration(&mut self) -> &mut Self {
+    self.force_op_registration = true;
+    self
+  }
+
   pub fn build(&mut self) -> Extension {
     let js_files = Some(std::mem::take(&mut self.js));
     let esm_files = Some(std::mem::take(&mut self.esm));
@@ -281,6 +288,7 @@ impl ExtensionBuilder {
       enabled: true,
       name: self.name,
       deps,
+      force_op_registration: self.force_op_registration,
     }
   }
 }
