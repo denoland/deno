@@ -404,7 +404,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
-
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -450,15 +449,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   event.defineEventHandler(globalThis, "unhandledrejection");
 
   core.setPromiseRejectCallback(promiseRejectCallback);
-
-  const isUnloadDispatched = SymbolFor("isUnloadDispatched");
-  // Stores the flag for checking whether unload is dispatched or not.
-  // This prevents the recursive dispatches of unload events.
-  // See https://github.com/denoland/deno/issues/9201.
-  globalThis[isUnloadDispatched] = false;
-  globalThis.addEventListener("unload", () => {
-    globalThis_[isUnloadDispatched] = true;
-  });
 
   runtimeStart(runtimeOptions);
 
