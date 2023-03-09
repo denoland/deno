@@ -672,7 +672,6 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
           false
         }
       })
-      .into_iter()
       .collect::<Vec<_>>();
     frames.reverse();
     js_error.frames = frames;
