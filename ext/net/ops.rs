@@ -491,11 +491,8 @@ where
   socket_tmp.set_broadcast(true)?;
 
   if domain == Domain::IPV4 {
-    println!("ipv4 loopback {}", loopback);
-
     socket_tmp.set_multicast_loop_v4(loopback)?;
   } else {
-    println!("ipv6 loopback {}", loopback);
     socket_tmp.set_multicast_loop_v6(loopback)?;
   }
 
