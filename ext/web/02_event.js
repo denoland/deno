@@ -1056,6 +1056,15 @@ class EventTarget {
       prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
     });
 
+    // This is an optimization to avoid creating an event listener
+    // on each startup.
+    // Stores the flag for checking whether unload is dispatched or not.
+    // This prevents the recursive dispatches of unload events.
+    // See https://github.com/denoland/deno/issues/9201.
+    if (event.type === "unload" && self === globalThis_) {
+      globalThis_[SymbolFor("isUnloadDispatched")] = true;
+    }
+
     const { listeners } = self[eventTargetData];
     if (!ReflectHas(listeners, event.type)) {
       setTarget(event, this);
