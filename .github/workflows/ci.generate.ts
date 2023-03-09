@@ -42,6 +42,7 @@ sudo mount --rbind /dev /sysroot/dev
 sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
+ldconfig -v
 sudo ls /sysroot/lib/x86_64-linux-gnu/libdl.so.2 || echo "no libdl.so.2"
 sudo ln -s /lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/libdl.so
 sudo ls /sysroot/lib/libdl.so || echo "no libdl.so"
