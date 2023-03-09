@@ -58,7 +58,7 @@ atty.workspace = true
 base32 = "=0.4.0"
 base64.workspace = true
 cache_control.workspace = true
-chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
+chrono = { version = "=0.4.22", default-features = false, features = ["std"] }
 clap = "=3.1.12"
 clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
