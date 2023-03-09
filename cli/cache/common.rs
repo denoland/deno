@@ -2,9 +2,6 @@
 
 use std::hash::Hasher;
 
-use deno_core::error::AnyError;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
-
 /// A very fast insecure hasher that uses the xxHash algorithm.
 #[derive(Default)]
 pub struct FastInsecureHasher(twox_hash::XxHash64);
@@ -47,19 +44,13 @@ impl FastInsecureHasher {
   }
 }
 
-/// Runs the common sqlite pragma.
-pub fn run_sqlite_pragma(conn: &Connection) -> Result<(), AnyError> {
-  // Disable write-ahead-logging and tweak some other stuff
-  let initial_pragmas = "
-    -- Disable write-ahead-logging mode
-    PRAGMA journal_mode=Off;
-    PRAGMA synchronous=NORMAL;
-    PRAGMA temp_store=memory;
-    PRAGMA page_size=4096;
-    PRAGMA mmap_size=6000000;
-    PRAGMA optimize;
-  ";
-
-  conn.execute_batch(initial_pragmas)?;
-  Ok(())
-}
+// Disable write-ahead-logging and tweak some other stuff
+pub static INITIAL_PRAGMAS: &str = "
+  -- disable write-ahead-logging mode
+  PRAGMA journal_mode=OFF;
+  PRAGMA synchronous=NORMAL;
+  PRAGMA temp_store=memory;
+  PRAGMA page_size=4096;
+  PRAGMA mmap_size=6000000;
+  PRAGMA optimize;
+";

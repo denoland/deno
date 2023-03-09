@@ -7,7 +7,7 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 
-use super::common::run_sqlite_pragma;
+use super::common::INITIAL_PRAGMAS;
 
 /// The cache used to tell whether type checking should occur again.
 ///
@@ -60,7 +60,6 @@ impl TypeCheckCache {
     conn: Connection,
     cli_version: String,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
     create_tables(&conn, cli_version)?;
 
     Ok(Self(Some(conn)))
@@ -162,27 +161,23 @@ fn create_tables(
   conn: &Connection,
   cli_version: String,
 ) -> Result<(), AnyError> {
-  // INT doesn't store up to u64, so use TEXT
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS checkcache (
-      check_hash TEXT PRIMARY KEY
-    )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS tsbuildinfo (
-        specifier TEXT PRIMARY KEY,
-        text TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )",
-    [],
-  )?;
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  -- INT doesn't store up to u64, so use TEXT
+  CREATE TABLE IF NOT EXISTS checkcache (
+    check_hash TEXT PRIMARY KEY
+  );
+  CREATE TABLE IF NOT EXISTS tsbuildinfo (
+    specifier TEXT PRIMARY KEY,
+    text TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  ",
+  );
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn
