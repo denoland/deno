@@ -1129,7 +1129,8 @@ impl ModuleMap {
 
       let info_arr: v8::Local<v8::Array> = info_val.try_into().unwrap();
       let len = info_arr.length() as usize;
-      let mut info = Vec::with_capacity(len);
+      // Over allocate so executing a few scripts doesn't have to resize this vec.
+      let mut info = Vec::with_capacity(len + 16);
 
       for i in 0..len {
         let module_info_arr: v8::Local<v8::Array> = info_arr
