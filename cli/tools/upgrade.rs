@@ -49,13 +49,13 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 // Identical to chrono::Utc::now() but without the system "clock"
 // feature flag.
-fn utc_now() -> chrono::DateTime<chrono::Utc> {
+pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
   let now = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .expect("system time before Unix epoch");
   let naive = chrono::NaiveDateTime::from_timestamp(
     now.as_secs() as i64,
-    now.subsec_nanos() as u32,
+    now.subsec_nanos(),
   );
   chrono::DateTime::from_utc(naive, chrono::Utc)
 }
@@ -715,7 +715,7 @@ mod test {
         file_text: Default::default(),
         current_version: Default::default(),
         latest_version: Arc::new(Mutex::new(Ok("".to_string()))),
-        time: Arc::new(Mutex::new(chrono::Utc::now())),
+        time: Arc::new(Mutex::new(utc_now())),
       }
     }
 

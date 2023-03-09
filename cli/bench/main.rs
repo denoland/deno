@@ -400,6 +400,17 @@ struct BenchResult {
   thread_count: HashMap<String, i64>,
 }
 
+pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
+  let now = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .expect("system time before Unix epoch");
+  let naive = chrono::NaiveDateTime::from_timestamp(
+    now.as_secs() as i64,
+    now.subsec_nanos(),
+  );
+  chrono::DateTime::from_utc(naive, chrono::Utc)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
   let mut args = env::args();
@@ -436,8 +447,7 @@ async fn main() -> Result<()> {
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: chrono::Utc::now()
-      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
