@@ -135,7 +135,6 @@ pub fn op_webstorage_key(
 }
 
 #[inline]
-#[must_use]
 fn size_check(input: usize) -> Result<(), AnyError> {
   if input >= MAX_STORAGE_BYTES {
     return Err(
