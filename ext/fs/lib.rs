@@ -1312,16 +1312,11 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
 fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
   use std::os::windows::prelude::OsStrExt;
 
-  use winapi::shared::minwindef::DWORD;
   use winapi::um::fileapi::CreateFileW;
   use winapi::um::fileapi::OPEN_EXISTING;
   use winapi::um::handleapi::CloseHandle;
   use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-  use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
-  use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
-  use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
-  use winapi::um::winnt::FILE_ATTRIBUTE_READONLY;
-  use winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT;
+  use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   use winapi::um::winnt::FILE_SHARE_DELETE;
   use winapi::um::winnt::FILE_SHARE_READ;
   use winapi::um::winnt::FILE_SHARE_WRITE;
@@ -1344,7 +1339,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
       FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE,
       std::ptr::null_mut(),
       OPEN_EXISTING,
-      FILE_ATTRIBUTE_DIRECTORY,
+      FILE_FLAG_BACKUP_SEMANTICS,
       std::ptr::null_mut(),
     );
     if file_handle == INVALID_HANDLE_VALUE {
@@ -1363,8 +1358,6 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
   }
 }
 
-#[cfg(windows)]
-use std::os::windows::prelude::AsRawHandle;
 #[cfg(windows)]
 use winapi::um::fileapi::GetFileInformationByHandle;
 #[cfg(windows)]
