@@ -286,29 +286,26 @@ class Datagram {
     );
 
     return {
-      leave: () => {
-        return core.opAsync(
+      leave: () =>
+        core.opAsync(
           "op_net_leave_multi_v4_udp",
           this.rid,
           addr,
           multiInterface,
-        );
-      },
-      setLoopback: (loopback) => {
-        return core.opAsync(
+        ),
+      setLoopback: (loopback) =>
+        core.opAsync(
           "op_net_set_multi_loopback_udp",
           this.rid,
           true,
           loopback,
-        );
-      },
-      setTTL: (ttl) => {
-        return core.opAsync(
+        ),
+      setTTL: (ttl) =>
+        core.opAsync(
           "op_net_set_multi_ttl_udp",
           this.rid,
           ttl,
-        );
-      },
+        ),
     };
   }
 
@@ -321,22 +318,20 @@ class Datagram {
     );
 
     return {
-      leave: () => {
-        return core.opAsync(
+      leave: () =>
+        core.opAsync(
           "op_net_leave_multi_v6_udp",
           this.rid,
           addr,
           multiInterface,
-        );
-      },
-      setLoopback: (loopback) => {
-        return core.opAsync(
+        ),
+      setLoopback: (loopback) =>
+        core.opAsync(
           "op_net_set_multi_loopback_udp",
           this.rid,
           false,
           loopback,
-        );
-      },
+        ),
     };
   }
 
