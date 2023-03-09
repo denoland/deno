@@ -42,7 +42,7 @@ sudo mount --rbind /dev /sysroot/dev
 sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
-sudo ln -s /lib/x86_64-linux-gnu/libdl.so.2 /sysroot/usr/lib/libdl.so
+sudo ln -s /lib/x86_64-linux-gnu/libdl.so.2 /sysroot/libdl.so
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
