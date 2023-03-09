@@ -570,9 +570,7 @@ impl LspClient {
     let mut builder = InitializeParamsBuilder::new();
     builder.set_root_uri(self.context.deno_dir().uri());
     do_build(&mut builder);
-    self
-      .write_request::<_, _, Value>("initialize", builder.build())
-      .unwrap();
+    self.write_request("initialize", builder.build());
     self.write_notification("initialized", json!({}));
   }
 
@@ -631,9 +629,7 @@ impl LspClient {
   }
 
   pub fn shutdown(&mut self) {
-    self
-      .write_request::<_, _, Value>("shutdown", json!(null))
-      .unwrap();
+    self.write_request("shutdown", json!(null));
     self.write_notification("exit", json!(null));
   }
 
@@ -704,12 +700,23 @@ impl LspClient {
     self.writer.flush().unwrap();
   }
 
-  pub fn write_request<S, V, R>(&mut self, method: S, params: V) -> Option<R>
+  pub fn write_request_with_res_as<R>(
+    &mut self,
+    method: impl AsRef<str>,
+    params: impl Serialize,
+  ) -> R
   where
-    S: AsRef<str>,
-    V: Serialize,
     R: de::DeserializeOwned,
   {
+    let result = self.write_request(method, params);
+    serde_json::from_value(result).unwrap()
+  }
+
+  pub fn write_request(
+    &mut self,
+    method: impl AsRef<str>,
+    params: impl Serialize,
+  ) -> Value {
     let value = if to_value(&params).unwrap().is_null() {
       json!({
         "jsonrpc": "2.0",
@@ -733,10 +740,7 @@ impl LspClient {
         if let Some(error) = maybe_error {
           panic!("LSP ERROR: {:?}", error);
         }
-        let maybe_result = maybe_result
-          .clone()
-          .map(|result| serde_json::from_value(result).unwrap());
-        Some(maybe_result)
+        Some(maybe_result.clone().unwrap())
       }
       _ => None,
     })
