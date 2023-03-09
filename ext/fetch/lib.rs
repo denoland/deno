@@ -95,37 +95,39 @@ pub fn init<FP>(options: Options) -> Extension
 where
   FP: FetchPermissions + 'static,
 {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
-    .esm(include_js_files!(
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
-    .ops(vec![
-      op_fetch::decl::<FP>(),
-      op_fetch_send::decl(),
-      op_fetch_custom_client::decl::<FP>(),
-    ])
-    .state(move |state| {
-      state.put::<Options>(options.clone());
-      state.put::<reqwest::Client>({
-        create_http_client(
-          options.user_agent.clone(),
-          options.root_cert_store.clone(),
-          vec![],
-          options.proxy.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-          options.client_cert_chain_and_key.clone(),
-        )
-        .unwrap()
-      });
-    })
-    .build()
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web", "deno_url", "deno_console"],
+  )
+  .esm(include_js_files!(
+    "20_headers.js",
+    "21_formdata.js",
+    "22_body.js",
+    "22_http_client.js",
+    "23_request.js",
+    "23_response.js",
+    "26_fetch.js",
+  ))
+  .ops(vec![
+    op_fetch::decl::<FP>(),
+    op_fetch_send::decl(),
+    op_fetch_custom_client::decl::<FP>(),
+  ])
+  .state(move |state| {
+    state.put::<Options>(options.clone());
+    state.put::<reqwest::Client>({
+      create_http_client(
+        options.user_agent.clone(),
+        options.root_cert_store.clone(),
+        vec![],
+        options.proxy.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
+        options.client_cert_chain_and_key.clone(),
+      )
+      .unwrap()
+    });
+  })
+  .build()
 }
 
 pub type CancelableResponseFuture =

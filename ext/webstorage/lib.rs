@@ -22,8 +22,7 @@ struct OriginStorageDir(PathBuf);
 const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
 
 pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl"])
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_webidl"])
     .esm(include_js_files!("01_webstorage.js",))
     .ops(vec![
       op_webstorage_length::decl(),

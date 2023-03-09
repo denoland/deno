@@ -110,20 +110,22 @@ pub fn init<BC: BroadcastChannel + 'static>(
   bc: BC,
   unstable: bool,
 ) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web"])
-    .esm(include_js_files!("01_broadcast_channel.js",))
-    .ops(vec![
-      op_broadcast_subscribe::decl::<BC>(),
-      op_broadcast_unsubscribe::decl::<BC>(),
-      op_broadcast_send::decl::<BC>(),
-      op_broadcast_recv::decl::<BC>(),
-    ])
-    .state(move |state| {
-      state.put(bc.clone());
-      state.put(Unstable(unstable));
-    })
-    .build()
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web"],
+  )
+  .esm(include_js_files!("01_broadcast_channel.js",))
+  .ops(vec![
+    op_broadcast_subscribe::decl::<BC>(),
+    op_broadcast_unsubscribe::decl::<BC>(),
+    op_broadcast_send::decl::<BC>(),
+    op_broadcast_recv::decl::<BC>(),
+  ])
+  .state(move |state| {
+    state.put(bc.clone());
+    state.put(Unstable(unstable));
+  })
+  .build()
 }
 
 pub fn get_declaration() -> PathBuf {

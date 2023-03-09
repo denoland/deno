@@ -25,23 +25,25 @@ pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
 pub fn init<CA: Cache + 'static>(
   maybe_create_cache: Option<CreateCache<CA>>,
 ) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_fetch"])
-    .esm(include_js_files!("01_cache.js",))
-    .ops(vec![
-      op_cache_storage_open::decl::<CA>(),
-      op_cache_storage_has::decl::<CA>(),
-      op_cache_storage_delete::decl::<CA>(),
-      op_cache_put::decl::<CA>(),
-      op_cache_match::decl::<CA>(),
-      op_cache_delete::decl::<CA>(),
-    ])
-    .state(move |state| {
-      if let Some(create_cache) = maybe_create_cache.clone() {
-        state.put(create_cache);
-      }
-    })
-    .build()
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web", "deno_url", "deno_fetch"],
+  )
+  .esm(include_js_files!("01_cache.js",))
+  .ops(vec![
+    op_cache_storage_open::decl::<CA>(),
+    op_cache_storage_has::decl::<CA>(),
+    op_cache_storage_delete::decl::<CA>(),
+    op_cache_put::decl::<CA>(),
+    op_cache_match::decl::<CA>(),
+    op_cache_delete::decl::<CA>(),
+  ])
+  .state(move |state| {
+    if let Some(create_cache) = maybe_create_cache.clone() {
+      state.put(create_cache);
+    }
+  })
+  .build()
 }
 
 pub fn get_declaration() -> PathBuf {
