@@ -220,12 +220,12 @@ impl MainWorker {
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
+      deno_url::init_ops(),
+      deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
+      deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -234,18 +234,21 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
+      deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init(options.origin_storage_dir.clone()),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
+      deno_webstorage::init_ops(options.origin_storage_dir.clone()),
+      deno_broadcast_channel::init_ops(
+        options.broadcast_channel.clone(),
+        unstable,
+      ),
+      deno_crypto::init_ops(options.seed),
+      deno_webgpu::init_ops(unstable),
       // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
+      deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
@@ -255,10 +258,10 @@ impl MainWorker {
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::init(),
-      deno_fs::init::<PermissionsContainer>(unstable),
-      deno_io::init(options.stdio),
+      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_io::init_ops(options.stdio),
       deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
+      deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
@@ -270,8 +273,8 @@ impl MainWorker {
       ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
+      deno_http::init_ops(),
+      deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
     ];
 

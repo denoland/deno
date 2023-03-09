@@ -17,6 +17,7 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
@@ -1526,7 +1527,7 @@ pub trait FlashPermissions {
   ) -> Result<(), AnyError>;
 }
 
-pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
+fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(
     env!("CARGO_PKG_NAME"),
     &[
@@ -1537,38 +1538,55 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       "deno_http",
     ],
   )
-  .esm(deno_core::include_js_files!("01_http.js",))
-  .ops(vec![
-    op_flash_serve::decl::<P>(),
-    op_node_unstable_flash_serve::decl::<P>(),
-    op_flash_respond::decl(),
-    op_flash_respond_async::decl(),
-    op_flash_respond_chunked::decl(),
-    op_flash_method::decl(),
-    op_flash_path::decl(),
-    op_flash_headers::decl(),
-    op_flash_addr::decl(),
-    op_flash_next::decl(),
-    op_flash_next_server::decl(),
-    op_flash_next_async::decl(),
-    op_flash_read_body::decl(),
-    op_flash_upgrade_websocket::decl(),
-    op_flash_drive_server::decl(),
-    op_flash_wait_for_listening::decl(),
-    op_flash_first_packet::decl(),
-    op_flash_has_body_stream::decl(),
-    op_flash_close_server::decl(),
-    op_flash_make_request::decl(),
-    op_flash_write_resource::decl(),
-    op_try_flash_respond_chunked::decl(),
-  ])
-  .state(move |op_state| {
-    op_state.put(Unstable(unstable));
-    op_state.put(FlashContext {
-      next_server_id: 0,
-      join_handles: HashMap::default(),
-      servers: HashMap::default(),
-    });
-  })
-  .build()
+}
+
+fn ops<P: FlashPermissions + 'static>(
+  ext: &mut ExtensionBuilder,
+  unstable: bool,
+) -> &mut ExtensionBuilder {
+  ext
+    .ops(vec![
+      op_flash_serve::decl::<P>(),
+      op_node_unstable_flash_serve::decl::<P>(),
+      op_flash_respond::decl(),
+      op_flash_respond_async::decl(),
+      op_flash_respond_chunked::decl(),
+      op_flash_method::decl(),
+      op_flash_path::decl(),
+      op_flash_headers::decl(),
+      op_flash_addr::decl(),
+      op_flash_next::decl(),
+      op_flash_next_server::decl(),
+      op_flash_next_async::decl(),
+      op_flash_read_body::decl(),
+      op_flash_upgrade_websocket::decl(),
+      op_flash_drive_server::decl(),
+      op_flash_wait_for_listening::decl(),
+      op_flash_first_packet::decl(),
+      op_flash_has_body_stream::decl(),
+      op_flash_close_server::decl(),
+      op_flash_make_request::decl(),
+      op_flash_write_resource::decl(),
+      op_try_flash_respond_chunked::decl(),
+    ])
+    .state(move |op_state| {
+      op_state.put(Unstable(unstable));
+      op_state.put(FlashContext {
+        next_server_id: 0,
+        join_handles: HashMap::default(),
+        servers: HashMap::default(),
+      });
+    })
+}
+
+pub fn init_ops_and_esm<P: FlashPermissions + 'static>(
+  unstable: bool,
+) -> Extension {
+  ops::<P>(&mut ext(), unstable)
+    .esm(deno_core::include_js_files!("01_http.js",))
+    .build()
+}
+
+pub fn init_ops<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
+  ops::<P>(&mut ext(), unstable).build()
 }

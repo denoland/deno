@@ -251,34 +251,38 @@ mod startup_snapshot {
     .build();
 
     let mut extensions_with_js: Vec<Extension> = vec![
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init(),
+      deno_webidl::init_esm(),
+      deno_console::init_esm(),
+      deno_url::init_ops_and_esm(),
       deno_tls::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
       ),
-      deno_fetch::init::<Permissions>(Default::default()),
-      deno_cache::init::<SqliteBackedCache>(None),
-      deno_websocket::init::<Permissions>("".to_owned(), None, None),
-      deno_webstorage::init(None),
-      deno_crypto::init(None),
-      deno_webgpu::init(false),
-      deno_broadcast_channel::init(
+      deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
+      deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+      deno_websocket::init_ops_and_esm::<Permissions>(
+        "".to_owned(),
+        None,
+        None,
+      ),
+      deno_webstorage::init_ops_and_esm(None),
+      deno_crypto::init_ops_and_esm(None),
+      deno_webgpu::init_ops_and_esm(false),
+      deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_ffi::init::<Permissions>(false),
-      deno_net::init::<Permissions>(
+      deno_ffi::init_ops_and_esm::<Permissions>(false),
+      deno_net::init_ops_and_esm::<Permissions>(
         None, false, // No --unstable.
         None,
       ),
       deno_napi::init::<Permissions>(),
-      deno_http::init(),
-      deno_io::init(Default::default()),
-      deno_fs::init::<Permissions>(false),
-      deno_flash::init::<Permissions>(false), // No --unstable
+      deno_http::init_ops_and_esm(),
+      deno_io::init_ops_and_esm(Default::default()),
+      deno_fs::init_ops_and_esm::<Permissions>(false),
+      deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around

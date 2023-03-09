@@ -13,6 +13,7 @@ use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::BufView;
+use deno_core::ExtensionBuilder;
 use deno_core::WriteOutcome;
 
 use deno_core::url::Url;
@@ -91,43 +92,74 @@ impl Default for Options {
   }
 }
 
-pub fn init<FP>(options: Options) -> Extension
-where
-  FP: FetchPermissions + 'static,
-{
+fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(
     env!("CARGO_PKG_NAME"),
     &["deno_webidl", "deno_web", "deno_url", "deno_console"],
   )
-  .esm(include_js_files!(
-    "20_headers.js",
-    "21_formdata.js",
-    "22_body.js",
-    "22_http_client.js",
-    "23_request.js",
-    "23_response.js",
-    "26_fetch.js",
-  ))
-  .ops(vec![
-    op_fetch::decl::<FP>(),
-    op_fetch_send::decl(),
-    op_fetch_custom_client::decl::<FP>(),
-  ])
-  .state(move |state| {
-    state.put::<Options>(options.clone());
-    state.put::<reqwest::Client>({
-      create_http_client(
-        options.user_agent.clone(),
-        options.root_cert_store.clone(),
-        vec![],
-        options.proxy.clone(),
-        options.unsafely_ignore_certificate_errors.clone(),
-        options.client_cert_chain_and_key.clone(),
-      )
-      .unwrap()
-    });
-  })
-  .build()
+}
+
+fn ops<FP>(
+  ext: &mut ExtensionBuilder,
+  options: Options,
+) -> &mut ExtensionBuilder
+where
+  FP: FetchPermissions + 'static,
+{
+  ext
+    .ops(vec![
+      op_fetch::decl::<FP>(),
+      op_fetch_send::decl(),
+      op_fetch_custom_client::decl::<FP>(),
+    ])
+    .state(move |state| {
+      state.put::<Options>(options.clone());
+      state.put::<reqwest::Client>({
+        create_http_client(
+          options.user_agent.clone(),
+          options.root_cert_store.clone(),
+          vec![],
+          options.proxy.clone(),
+          options.unsafely_ignore_certificate_errors.clone(),
+          options.client_cert_chain_and_key.clone(),
+        )
+        .unwrap()
+      });
+    })
+}
+
+pub fn init_ops_and_esm<FP>(options: Options) -> Extension
+where
+  FP: FetchPermissions + 'static,
+{
+  ops::<FP>(&mut ext(), options)
+    .esm(include_js_files!(
+      "20_headers.js",
+      "21_formdata.js",
+      "22_body.js",
+      "22_http_client.js",
+      "23_request.js",
+      "23_response.js",
+      "26_fetch.js",
+    ))
+    .build()
+}
+
+pub fn init_ops<FP>(options: Options) -> Extension
+where
+  FP: FetchPermissions + 'static,
+{
+  ops::<FP>(&mut ext(), options)
+    .esm(include_js_files!(
+      "20_headers.js",
+      "21_formdata.js",
+      "22_body.js",
+      "22_http_client.js",
+      "23_request.js",
+      "23_response.js",
+      "26_fetch.js",
+    ))
+    .build()
 }
 
 pub type CancelableResponseFuture =
