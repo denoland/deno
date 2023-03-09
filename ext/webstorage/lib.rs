@@ -135,6 +135,7 @@ pub fn op_webstorage_key(
 }
 
 #[inline]
+#[must_use]
 fn size_check(input: usize) -> Result<(), AnyError> {
   if input >= MAX_STORAGE_BYTES {
     return Err(
@@ -163,7 +164,7 @@ pub fn op_webstorage_set(
     .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  size_check(size as usize);
+  size_check(size as usize)?;
 
   let mut stmt = conn
     .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
