@@ -254,7 +254,7 @@ mod startup_snapshot {
       deno_webidl::init_esm(),
       deno_console::init_esm(),
       deno_url::init_ops_and_esm(),
-      deno_tls::init(),
+      deno_tls::init_ops(),
       deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
@@ -278,7 +278,7 @@ mod startup_snapshot {
         None, false, // No --unstable.
         None,
       ),
-      deno_napi::init::<Permissions>(),
+      deno_napi::init_ops::<Permissions>(),
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),
       deno_fs::init_ops_and_esm::<Permissions>(false),

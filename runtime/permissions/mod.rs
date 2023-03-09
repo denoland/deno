@@ -38,9 +38,12 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
-#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
+#[derive(
+  Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
+)]
 pub enum PermissionState {
   Granted = 0,
+  #[default]
   Prompt = 1,
   Denied = 2,
 }
@@ -137,12 +140,6 @@ impl fmt::Display for PermissionState {
       PermissionState::Prompt => f.pad("prompt"),
       PermissionState::Denied => f.pad("denied"),
     }
-  }
-}
-
-impl Default for PermissionState {
-  fn default() -> Self {
-    PermissionState::Prompt
   }
 }
 

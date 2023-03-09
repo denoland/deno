@@ -324,7 +324,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_webidl::init(),
     deno_console::init(),
     deno_url::init_ops(),
-    deno_tls::init(),
+    deno_tls::init_ops(),
     deno_web::init_ops::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
@@ -348,7 +348,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::init::<PermissionsContainer>(),
+    deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::init_ops(),
     deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
   ];
