@@ -1329,7 +1329,6 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
 
-  eprintln!("PATH: {}", path.display());
   unsafe {
     let mut path: Vec<_> = path.as_os_str().encode_wide().collect();
     path.push(0);
@@ -1343,16 +1342,12 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
       std::ptr::null_mut(),
     );
     if file_handle == INVALID_HANDLE_VALUE {
-      eprintln!("SSDFSDFSDF");
       return Err(std::io::Error::last_os_error().into());
     }
 
     let result = get_dev(file_handle);
-    eprintln!("HERE1");
     CloseHandle(file_handle);
-    eprintln!("HERE2");
     let dev = result?;
-    eprintln!("HERE3");
 
     Ok(get_stat2(metadata, dev))
   }
