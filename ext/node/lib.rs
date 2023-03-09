@@ -5,6 +5,7 @@ use deno_core::include_js_files;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
@@ -95,16 +96,34 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
+fn ext_polyfill() -> ExtensionBuilder {
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_io", "deno_fs"])
+}
+
+fn ops_polyfill(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
+  ext.ops(vec![
+    crypto::op_node_create_hash::decl(),
+    crypto::op_node_hash_update::decl(),
+    crypto::op_node_hash_update_str::decl(),
+    crypto::op_node_hash_digest::decl(),
+    crypto::op_node_hash_digest_hex::decl(),
+    crypto::op_node_hash_clone::decl(),
+    crypto::op_node_private_encrypt::decl(),
+    crypto::op_node_private_decrypt::decl(),
+    crypto::op_node_public_encrypt::decl(),
+    winerror::op_node_sys_to_uv_error::decl(),
+    v8::op_v8_cached_data_version_tag::decl(),
+    v8::op_v8_get_heap_statistics::decl(),
+    idna::op_node_idna_domain_to_ascii::decl(),
+    idna::op_node_idna_domain_to_unicode::decl(),
+    idna::op_node_idna_punycode_decode::decl(),
+    idna::op_node_idna_punycode_encode::decl(),
+    op_node_build_os::decl(),
+  ])
+}
+
 pub fn init_polyfill_ops() -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .ops(vec![
-      crypto::op_node_create_hash::decl(),
-      crypto::op_node_hash_update::decl(),
-      crypto::op_node_hash_digest::decl(),
-      crypto::op_node_hash_clone::decl(),
-      op_node_build_os::decl(),
-    ])
-    .build()
+  ops_polyfill(&mut ext_polyfill()).build()
 }
 
 pub fn init_polyfill_ops_and_esm() -> Extension {
@@ -332,40 +351,21 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "zlib.ts",
   );
 
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_io", "deno_fs"])
+  ops_polyfill(&mut ext_polyfill())
     .esm(esm_files)
     .esm_entry_point("ext:deno_node/module_all.ts")
-    .ops(vec![
-      crypto::op_node_create_hash::decl(),
-      crypto::op_node_hash_update::decl(),
-      crypto::op_node_hash_update_str::decl(),
-      crypto::op_node_hash_digest::decl(),
-      crypto::op_node_hash_digest_hex::decl(),
-      crypto::op_node_hash_clone::decl(),
-      crypto::op_node_private_encrypt::decl(),
-      crypto::op_node_private_decrypt::decl(),
-      crypto::op_node_public_encrypt::decl(),
-      winerror::op_node_sys_to_uv_error::decl(),
-      v8::op_v8_cached_data_version_tag::decl(),
-      v8::op_v8_get_heap_statistics::decl(),
-      idna::op_node_idna_domain_to_ascii::decl(),
-      idna::op_node_idna_domain_to_unicode::decl(),
-      idna::op_node_idna_punycode_decode::decl(),
-      idna::op_node_idna_punycode_encode::decl(),
-      op_node_build_os::decl(),
-    ])
     .build()
 }
 
-pub fn init<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
+fn ext() -> ExtensionBuilder {
   Extension::builder("deno_node_loading")
-    .esm(include_js_files!(
-      "01_node.js",
-      "02_require.js",
-      "module_es_shim.js",
-    ))
+}
+
+fn ops<P: NodePermissions + 'static>(
+  ext: &mut ExtensionBuilder,
+  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       ops::op_require_init_paths::decl(),
       ops::op_require_node_module_paths::decl::<P>(),
@@ -395,7 +395,24 @@ pub fn init<P: NodePermissions + 'static>(
         state.put(npm_resolver);
       }
     })
+}
+
+pub fn init_ops_and_esm<P: NodePermissions + 'static>(
+  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+) -> Extension {
+  ops::<P>(&mut ext(), maybe_npm_resolver)
+    .esm(include_js_files!(
+      "01_node.js",
+      "02_require.js",
+      "module_es_shim.js",
+    ))
     .build()
+}
+
+pub fn init_ops<P: NodePermissions + 'static>(
+  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+) -> Extension {
+  ops::<P>(&mut ext(), maybe_npm_resolver).build()
 }
 
 pub async fn initialize_runtime(
