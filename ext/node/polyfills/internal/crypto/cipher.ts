@@ -124,15 +124,18 @@ export interface DecipherOCB extends Decipher {
 }
 
 export class Cipheriv extends Transform implements Cipher {
-  constructor(
-    _cipher: string,
-    _key: CipherKey,
-    _iv: BinaryLike | null,
-    _options?: TransformOptions,
-  ) {
-    super();
+  /** The resource id of CipherContext Resource */
+  context: number;
 
-    notImplemented("crypto.Cipheriv");
+  constructor(
+    cipher: string,
+    key: CipherKey,
+    iv: BinaryLike | null,
+    options?: TransformOptions,
+  ) {
+    super(options);
+
+    this.context = ops.op_node_create_cipheriv(cipher, key, iv);
   }
 
   final(): Buffer;
@@ -152,10 +155,12 @@ export class Cipheriv extends Transform implements Cipher {
     },
   ): this {
     notImplemented("crypto.Cipheriv.prototype.setAAD");
+    return this;
   }
 
   setAutoPadding(_autoPadding?: boolean): this {
     notImplemented("crypto.Cipheriv.prototype.setAutoPadding");
+    return this;
   }
 
   update(data: BinaryLike): Buffer;
@@ -176,6 +181,20 @@ export class Cipheriv extends Transform implements Cipher {
     _outputEncoding?: Encoding,
   ): Buffer | string {
     notImplemented("crypto.Cipheriv.prototype.update");
+  }
+}
+
+// WIP
+export class BlockCipheriv extends Cipheriv {
+  #cache: Uint8Array;
+
+  override update(
+    _data: string | BinaryLike | ArrayBufferView,
+    _inputEncoding?: Encoding,
+    _outputEncoding?: Encoding,
+  ): Buffer | string {
+    this.#cache;
+    ops.op_node_cipheriv_encrypt(this.context, data, output);
   }
 }
 
