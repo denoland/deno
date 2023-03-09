@@ -20,8 +20,8 @@ const sysRootStep = {
 sudo apt-get remove --purge -y man-db
 
 # Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
