@@ -49,10 +49,10 @@ impl FastInsecureHasher {
 
 /// Runs the common sqlite pragma.
 pub fn run_sqlite_pragma(conn: &Connection) -> Result<(), AnyError> {
-  // Enable write-ahead-logging and tweak some other stuff
+  // Disable write-ahead-logging and tweak some other stuff
   let initial_pragmas = "
-    -- enable write-ahead-logging mode
-    PRAGMA journal_mode=WAL;
+    -- Disable write-ahead-logging mode
+    PRAGMA journal_mode=Off;
     PRAGMA synchronous=NORMAL;
     PRAGMA temp_store=memory;
     PRAGMA page_size=4096;
