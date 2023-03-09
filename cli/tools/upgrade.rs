@@ -49,7 +49,7 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 // Identical to chrono::Utc::now() but without the system "clock"
 // feature flag.
-fn utc_now() {
+fn utc_now() -> chrono::DateTime<chrono::Utc> {
   let now = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .expect("system time before Unix epoch");
