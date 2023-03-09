@@ -1227,12 +1227,13 @@ dependencies = [
 
 [[package]]
 name = "deno_native_certs"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "853d2dd52d7481caaf1eb6bea13739d0ddafd5453c655ffdbe8e9c57c60b18d4"
+checksum = "f9c7c5a7f03be0fccb523765d76aa6758760f3163459ce777ba3979596db0998"
 dependencies = [
  "dlopen",
  "dlopen_derive",
+ "once_cell",
  "rustls-native-certs",
  "rustls-pemfile",
 ]
@@ -3212,9 +3213,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.16.0"
+version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
+checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 
 [[package]]
 name = "opaque-debug"
