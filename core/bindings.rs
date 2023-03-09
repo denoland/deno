@@ -20,10 +20,7 @@ use crate::runtime::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
-pub fn external_references(
-  ops: &[OpCtx],
-  snapshot_loaded: bool,
-) -> v8::ExternalReferences {
+pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
   // We're over-allocating here a bit (because some ops don't have fast_fn),
   // but that's better than having to grow the vector several times.
   let mut references = Vec::with_capacity(4 + (ops.len() * 3));
@@ -41,18 +38,20 @@ pub fn external_references(
   });
 
   for ctx in ops {
-    eprintln!("external references {}", ctx.decl.name);
+    eprintln!(
+      "{} {}",
+      if ctx.decl.fast_fn.is_some() { 3 } else { 2 },
+      ctx.decl.name,
+    );
     let ctx_ptr = ctx as *const OpCtx as _;
     references.push(v8::ExternalReference { pointer: ctx_ptr });
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
-    if snapshot_loaded {
-      if let Some(fast_fn) = &ctx.decl.fast_fn {
-        references.push(v8::ExternalReference {
-          pointer: fast_fn.function() as _,
-        });
-      }
+    if let Some(fast_fn) = &ctx.decl.fast_fn {
+      references.push(v8::ExternalReference {
+        pointer: fast_fn.function() as _,
+      });
     }
   }
 
@@ -200,29 +199,15 @@ fn initialize_ops(
     eprintln!("register {}", ctx.decl.name);
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
-    // If this is a fast op, we don't want it to be in the snapshot.
-    // Only initialize once snapshot is loaded.
-    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
-      set_func_raw(
-        scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &ctx.decl.fast_fn,
-        snapshot_options,
-      );
-    } else {
-      set_func_raw(
-        scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &None,
-        snapshot_options,
-      );
-    }
+    set_func_raw(
+      scope,
+      ops_obj,
+      ctx.decl.name,
+      ctx.decl.v8_fn_ptr,
+      ctx_ptr,
+      &ctx.decl.fast_fn,
+      snapshot_options,
+    );
   }
 }
 
@@ -243,30 +228,15 @@ fn initialize_ops_from_existing_snapshot(
     eprintln!("register {}", ctx.decl.name);
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
-    // TODO(bartlomieju): move to a helper function?
-    // If this is a fast op, we don't want it to be in the snapshot.
-    // Only initialize once snapshot is loaded.
-    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
-      set_func_raw(
-        scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &ctx.decl.fast_fn,
-        snapshot_options,
-      );
-    } else {
-      set_func_raw(
-        scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &None,
-        snapshot_options,
-      );
-    }
+    set_func_raw(
+      scope,
+      ops_obj,
+      ctx.decl.name,
+      ctx.decl.v8_fn_ptr,
+      ctx_ptr,
+      &ctx.decl.fast_fn,
+      snapshot_options,
+    );
   }
 }
 
