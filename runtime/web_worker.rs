@@ -346,7 +346,6 @@ pub struct WebWorkerOptions {
   pub stdio: Stdio,
 }
 
-#[cfg(feature = "dont_create_runtime_snapshot")]
 fn get_extensions(
   options: &mut WebWorkerOptions,
   unstable: bool,
@@ -422,88 +421,6 @@ fn get_extensions(
     ops::tty::init(),
     deno_http::init_ops(),
     deno_flash::init_ops::<PermissionsContainer>(unstable),
-    ops::http::init(),
-  ]
-}
-
-#[cfg(not(feature = "dont_create_runtime_snapshot"))]
-fn get_extensions(
-  options: &mut WebWorkerOptions,
-  unstable: bool,
-  main_module: ModuleSpecifier,
-) -> Vec<Extension> {
-  let create_cache = options.cache_storage_dir.take().map(|storage_dir| {
-    let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
-    CreateCache(Arc::new(create_cache_fn))
-  });
-
-  vec![
-    // Web APIs
-    deno_webidl::init_esm(),
-    deno_console::init_esm(),
-    deno_url::init_ops_and_esm(),
-    deno_web::init_ops_and_esm::<PermissionsContainer>(
-      options.blob_store.clone(),
-      Some(main_module.clone()),
-    ),
-    deno_fetch::init_ops_and_esm::<PermissionsContainer>(deno_fetch::Options {
-      user_agent: options.bootstrap.user_agent.clone(),
-      root_cert_store: options.root_cert_store.clone(),
-      unsafely_ignore_certificate_errors: options
-        .unsafely_ignore_certificate_errors
-        .clone(),
-      file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-      ..Default::default()
-    }),
-    deno_cache::init_ops_and_esm::<SqliteBackedCache>(create_cache),
-    deno_websocket::init_ops_and_esm::<PermissionsContainer>(
-      options.bootstrap.user_agent.clone(),
-      options.root_cert_store.clone(),
-      options.unsafely_ignore_certificate_errors.clone(),
-    ),
-    deno_webstorage::init_ops_and_esm(None).disable(),
-    deno_broadcast_channel::init_ops_and_esm(
-      options.broadcast_channel.clone(),
-      unstable,
-    ),
-    deno_crypto::init_ops_and_esm(options.seed),
-    deno_webgpu::init_ops_and_esm(unstable),
-    // ffi
-    deno_ffi::init_ops_and_esm::<PermissionsContainer>(unstable),
-    // Runtime ops that are always initialized for WebWorkers
-    ops::web_worker::init(),
-    ops::runtime::init(main_module),
-    ops::worker_host::init(
-      options.create_web_worker_cb.clone(),
-      options.preload_module_cb.clone(),
-      options.pre_execute_module_cb.clone(),
-      options.format_js_error_fn.clone(),
-    ),
-    // Extensions providing Deno.* features
-    ops::fs_events::init(),
-    deno_fs::init_ops_and_esm::<PermissionsContainer>(unstable),
-    deno_io::init_ops_and_esm(std::mem::take(&mut options.stdio)),
-    deno_tls::init(),
-    deno_net::init_ops_and_esm::<PermissionsContainer>(
-      options.root_cert_store.clone(),
-      unstable,
-      options.unsafely_ignore_certificate_errors.clone(),
-    ),
-    deno_napi::init::<PermissionsContainer>(),
-    // TODO(bartlomieju): thes two should be conditional on `dont_create_runtime_snapshot`
-    // cargo feature and should use `init_polyfill_ops` or `init_polyfill_ops_and_esm`
-    // if the feature is enabled
-    deno_node::init_polyfill_ops_and_esm(),
-    deno_node::init_ops_and_esm::<PermissionsContainer>(
-      options.npm_resolver.take(),
-    ),
-    ops::os::init_for_worker(),
-    ops::permissions::init(),
-    ops::process::init_ops(),
-    ops::signal::init(),
-    ops::tty::init(),
-    deno_http::init_ops_and_esm(),
-    deno_flash::init_ops_and_esm::<PermissionsContainer>(unstable),
     ops::http::init(),
   ]
 }

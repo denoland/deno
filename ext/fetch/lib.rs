@@ -149,17 +149,7 @@ pub fn init_ops<FP>(options: Options) -> Extension
 where
   FP: FetchPermissions + 'static,
 {
-  ops::<FP>(&mut ext(), options)
-    .esm(include_js_files!(
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
-    .build()
+  ops::<FP>(&mut ext(), options).build()
 }
 
 pub type CancelableResponseFuture =

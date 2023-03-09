@@ -524,7 +524,6 @@ async fn create_main_worker_internal(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
-    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
@@ -758,7 +757,6 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
-      extensions_with_js: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
