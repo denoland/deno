@@ -30,7 +30,6 @@ const {
   ObjectSetPrototypeOf,
   PromiseResolve,
   Symbol,
-  SymbolFor,
   SymbolIterator,
   PromisePrototypeThen,
   SafeWeakMap,
