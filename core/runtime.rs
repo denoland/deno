@@ -463,7 +463,6 @@ impl JsRuntime {
         }
       }
 
-      let mut module_handles = vec![];
       let mut scope = v8::ContextScope::new(scope, context);
       // The 0th element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
@@ -476,6 +475,9 @@ impl JsRuntime {
             info_data.length()
           };
 
+          // Over allocate so executing a few scripts doesn't have to resize this vec.
+          let mut module_handles =
+            Vec::with_capacity(next_module_id as usize + 16);
           for i in 1..=next_module_id {
             match scope
               .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
