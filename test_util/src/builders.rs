@@ -18,6 +18,7 @@ use crate::copy_dir_recursive;
 use crate::deno_exe_path;
 use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::http_server;
+use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -35,6 +36,7 @@ pub struct TestContextBuilder {
   copy_temp_dir: Option<String>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
+  deno_exe: Option<PathBuf>,
 }
 
 impl TestContextBuilder {
@@ -110,7 +112,7 @@ impl TestContextBuilder {
       testdata_path()
     };
 
-    let deno_exe = deno_exe_path();
+    let deno_exe = self.deno_exe.clone().unwrap_or_else(deno_exe_path);
     println!("deno_exe path {}", deno_exe.display());
 
     let http_server_guard = if self.use_http_server {
@@ -121,6 +123,7 @@ impl TestContextBuilder {
 
     TestContext {
       cwd: self.cwd.clone(),
+      deno_exe,
       envs: self.envs.clone(),
       use_temp_cwd: self.use_temp_cwd,
       _http_server_guard: http_server_guard,
@@ -132,6 +135,7 @@ impl TestContextBuilder {
 
 #[derive(Clone)]
 pub struct TestContext {
+  deno_exe: PathBuf,
   envs: HashMap<String, String>,
   use_temp_cwd: bool,
   cwd: Option<String>,
@@ -161,7 +165,7 @@ impl TestContext {
 
   pub fn new_command(&self) -> TestCommandBuilder {
     TestCommandBuilder {
-      command_name: Default::default(),
+      command_name: self.deno_exe.to_string_lossy().to_string(),
       args: Default::default(),
       args_vec: Default::default(),
       stdin: Default::default(),
@@ -172,10 +176,16 @@ impl TestContext {
       context: self.clone(),
     }
   }
+
+  pub fn new_lsp_command(&self) -> LspClientBuilder {
+    let mut builder = LspClientBuilder::new();
+    builder.deno_exe(&self.deno_exe).set_test_context(self);
+    builder
+  }
 }
 
 pub struct TestCommandBuilder {
-  command_name: Option<String>,
+  command_name: String,
   args: String,
   args_vec: Vec<String>,
   stdin: Option<String>,
@@ -188,7 +198,7 @@ pub struct TestCommandBuilder {
 
 impl TestCommandBuilder {
   pub fn command_name(&mut self, name: impl AsRef<str>) -> &mut Self {
-    self.command_name = Some(name.as_ref().to_string());
+    self.command_name = name.as_ref().to_string();
     self
   }
 
@@ -284,15 +294,11 @@ impl TestCommandBuilder {
       arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
     .collect::<Vec<_>>();
-    let command_name = self
-      .command_name
-      .as_ref()
-      .cloned()
-      .unwrap_or("deno".to_string());
+    let command_name = &self.command_name;
     let mut command = if command_name == "deno" {
       Command::new(deno_exe_path())
     } else {
-      Command::new(&command_name)
+      Command::new(command_name)
     };
     command.env("DENO_DIR", self.context.deno_dir.path());
 

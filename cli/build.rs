@@ -324,34 +324,34 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   let extensions: Vec<Extension> = vec![
     deno_webidl::init(),
     deno_console::init(),
-    deno_url::init(),
-    deno_tls::init(),
-    deno_web::init::<PermissionsContainer>(
+    deno_url::init_ops(),
+    deno_tls::init_ops(),
+    deno_web::init_ops::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::init::<PermissionsContainer>(Default::default()),
-    deno_cache::init::<SqliteBackedCache>(None),
-    deno_websocket::init::<PermissionsContainer>("".to_owned(), None, None),
-    deno_webstorage::init(None),
-    deno_crypto::init(None),
-    deno_webgpu::init(false),
-    deno_broadcast_channel::init(
+    deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
+    deno_cache::init_ops::<SqliteBackedCache>(None),
+    deno_websocket::init_ops::<PermissionsContainer>("".to_owned(), None, None),
+    deno_webstorage::init_ops(None),
+    deno_crypto::init_ops(None),
+    deno_webgpu::init_ops(false),
+    deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_io::init(Default::default()),
-    deno_fs::init::<PermissionsContainer>(false),
-    deno_node::init::<PermissionsContainer>(None), // No --unstable.
-    deno_node::init_polyfill_ops_and_esm(),
-    deno_ffi::init::<PermissionsContainer>(false),
-    deno_net::init::<PermissionsContainer>(
+    deno_io::init_ops(Default::default()),
+    deno_fs::init_ops::<PermissionsContainer>(false),
+    deno_node::init_ops::<PermissionsContainer>(None), // No --unstable.
+    deno_node::init_polyfill_ops(),
+    deno_ffi::init_ops::<PermissionsContainer>(false),
+    deno_net::init_ops::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::init::<PermissionsContainer>(),
-    deno_http::init(),
-    deno_flash::init::<PermissionsContainer>(false), // No --unstable
+    deno_napi::init_ops::<PermissionsContainer>(),
+    deno_http::init_ops(),
+    deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
   ];
 
   let mut esm_files = include_js_files!(
@@ -378,7 +378,14 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
     extensions_with_js,
-    compression_cb: None,
+    compression_cb: Some(Box::new(|vec, snapshot_slice| {
+      lzzzz::lz4_hc::compress_to_vec(
+        snapshot_slice,
+        vec,
+        lzzzz::lz4_hc::CLEVEL_MAX,
+      )
+      .expect("snapshot compression failed");
+    })),
     snapshot_module_load_cb: None,
   })
 }

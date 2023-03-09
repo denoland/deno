@@ -344,15 +344,12 @@ async fn run_ws_close_server(addr: &SocketAddr) {
   }
 }
 
+#[derive(Default)]
 enum SupportedHttpVersions {
+  #[default]
   All,
   Http1Only,
   Http2Only,
-}
-impl Default for SupportedHttpVersions {
-  fn default() -> SupportedHttpVersions {
-    SupportedHttpVersions::All
-  }
 }
 
 async fn get_tls_config(

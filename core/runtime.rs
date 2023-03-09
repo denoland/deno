@@ -93,6 +93,9 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
+  // Marks if it's OK to leak the current isolate. Use only by the
+  // CLI main worker.
+  leak_isolate: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -305,6 +308,10 @@ pub struct RuntimeOptions {
   /// Describe if this is the main runtime instance, used by debuggers in some
   /// situation - like disconnecting when program finishes running.
   pub is_main: bool,
+
+  /// Whether it is OK to leak the V8 isolate. Only to be used by CLI
+  /// top-level runtime.
+  pub leak_isolate: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -337,6 +344,16 @@ impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
+    }
+    if self.leak_isolate {
+      if let Some(v8_isolate) = self.v8_isolate.take() {
+        // Clear the GothamState. This allows final env cleanup hooks to run.
+        // Note: that OpState is cloned for every OpCtx, so we can't just drop
+        // one reference to it.
+        let rc_state = self.op_state();
+        rc_state.borrow_mut().clear_state();
+        std::mem::forget(v8_isolate);
+      }
     }
   }
 }
@@ -446,7 +463,6 @@ impl JsRuntime {
         }
       }
 
-      let mut module_handles = vec![];
       let mut scope = v8::ContextScope::new(scope, context);
       // The 0th element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
@@ -459,6 +475,9 @@ impl JsRuntime {
             info_data.length()
           };
 
+          // Over allocate so executing a few scripts doesn't have to resize this vec.
+          let mut module_handles =
+            Vec::with_capacity(next_module_id as usize + 16);
           for i in 1..=next_module_id {
             match scope
               .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
@@ -674,6 +693,7 @@ impl JsRuntime {
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
+      leak_isolate: options.leak_isolate,
     };
 
     // Init resources and ops before extensions to make sure they are
