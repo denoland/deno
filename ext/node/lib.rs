@@ -332,10 +332,9 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "zlib.ts",
   );
 
-  Extension::builder(env!("CARGO_PKG_NAME"))
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_io", "deno_fs"])
     .esm(esm_files)
     .esm_entry_point("ext:deno_node/module_all.ts")
-    .dependencies(vec!["deno_io", "deno_fs"])
     .ops(vec![
       crypto::op_node_create_hash::decl(),
       crypto::op_node_hash_update::decl(),

@@ -73,46 +73,48 @@ use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web"])
-    .esm(include_js_files!("00_crypto.js", "01_webidl.js",))
-    .ops(vec![
-      op_crypto_get_random_values::decl(),
-      op_crypto_generate_key::decl(),
-      op_crypto_sign_key::decl(),
-      op_crypto_verify_key::decl(),
-      op_crypto_derive_bits::decl(),
-      op_crypto_import_key::decl(),
-      op_crypto_export_key::decl(),
-      op_crypto_encrypt::decl(),
-      op_crypto_decrypt::decl(),
-      op_crypto_subtle_digest::decl(),
-      op_crypto_random_uuid::decl(),
-      op_crypto_wrap_key::decl(),
-      op_crypto_unwrap_key::decl(),
-      op_crypto_base64url_decode::decl(),
-      op_crypto_base64url_encode::decl(),
-      x25519::op_generate_x25519_keypair::decl(),
-      x25519::op_derive_bits_x25519::decl(),
-      x25519::op_import_spki_x25519::decl(),
-      x25519::op_import_pkcs8_x25519::decl(),
-      ed25519::op_generate_ed25519_keypair::decl(),
-      ed25519::op_import_spki_ed25519::decl(),
-      ed25519::op_import_pkcs8_ed25519::decl(),
-      ed25519::op_sign_ed25519::decl(),
-      ed25519::op_verify_ed25519::decl(),
-      ed25519::op_export_spki_ed25519::decl(),
-      ed25519::op_export_pkcs8_ed25519::decl(),
-      ed25519::op_jwk_x_ed25519::decl(),
-      x25519::op_export_spki_x25519::decl(),
-      x25519::op_export_pkcs8_x25519::decl(),
-    ])
-    .state(move |state| {
-      if let Some(seed) = maybe_seed {
-        state.put(StdRng::seed_from_u64(seed));
-      }
-    })
-    .build()
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web"],
+  )
+  .esm(include_js_files!("00_crypto.js", "01_webidl.js",))
+  .ops(vec![
+    op_crypto_get_random_values::decl(),
+    op_crypto_generate_key::decl(),
+    op_crypto_sign_key::decl(),
+    op_crypto_verify_key::decl(),
+    op_crypto_derive_bits::decl(),
+    op_crypto_import_key::decl(),
+    op_crypto_export_key::decl(),
+    op_crypto_encrypt::decl(),
+    op_crypto_decrypt::decl(),
+    op_crypto_subtle_digest::decl(),
+    op_crypto_random_uuid::decl(),
+    op_crypto_wrap_key::decl(),
+    op_crypto_unwrap_key::decl(),
+    op_crypto_base64url_decode::decl(),
+    op_crypto_base64url_encode::decl(),
+    x25519::op_generate_x25519_keypair::decl(),
+    x25519::op_derive_bits_x25519::decl(),
+    x25519::op_import_spki_x25519::decl(),
+    x25519::op_import_pkcs8_x25519::decl(),
+    ed25519::op_generate_ed25519_keypair::decl(),
+    ed25519::op_import_spki_ed25519::decl(),
+    ed25519::op_import_pkcs8_ed25519::decl(),
+    ed25519::op_sign_ed25519::decl(),
+    ed25519::op_verify_ed25519::decl(),
+    ed25519::op_export_spki_ed25519::decl(),
+    ed25519::op_export_pkcs8_ed25519::decl(),
+    ed25519::op_jwk_x_ed25519::decl(),
+    x25519::op_export_spki_x25519::decl(),
+    x25519::op_export_pkcs8_x25519::decl(),
+  ])
+  .state(move |state| {
+    if let Some(seed) = maybe_seed {
+      state.put(StdRng::seed_from_u64(seed));
+    }
+  })
+  .build()
 }
 
 #[op]

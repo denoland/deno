@@ -502,27 +502,29 @@ pub fn init<P: WebSocketPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_url", "deno_webidl"])
-    .esm(include_js_files!(
-      "01_websocket.js",
-      "02_websocketstream.js",
-    ))
-    .ops(vec![
-      op_ws_check_permission_and_cancel_handle::decl::<P>(),
-      op_ws_create::decl::<P>(),
-      op_ws_send::decl(),
-      op_ws_close::decl(),
-      op_ws_next_event::decl(),
-    ])
-    .state(move |state| {
-      state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-      state.put(UnsafelyIgnoreCertificateErrors(
-        unsafely_ignore_certificate_errors.clone(),
-      ));
-      state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
-    })
-    .build()
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_url", "deno_webidl"],
+  )
+  .esm(include_js_files!(
+    "01_websocket.js",
+    "02_websocketstream.js",
+  ))
+  .ops(vec![
+    op_ws_check_permission_and_cancel_handle::decl::<P>(),
+    op_ws_create::decl::<P>(),
+    op_ws_send::decl(),
+    op_ws_close::decl(),
+    op_ws_next_event::decl(),
+  ])
+  .state(move |state| {
+    state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
+    state.put(UnsafelyIgnoreCertificateErrors(
+      unsafely_ignore_certificate_errors.clone(),
+    ));
+    state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
+  })
+  .build()
 }
 
 pub fn get_declaration() -> PathBuf {

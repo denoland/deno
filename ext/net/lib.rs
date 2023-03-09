@@ -84,8 +84,7 @@ pub fn init<P: NetPermissions + 'static>(
 ) -> Extension {
   let mut ops = ops::init::<P>();
   ops.extend(ops_tls::init::<P>());
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_web"])
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
     .esm(include_js_files!("01_net.js", "02_tls.js",))
     .ops(ops)
     .state(move |state| {

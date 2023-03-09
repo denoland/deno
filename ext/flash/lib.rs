@@ -1527,46 +1527,48 @@ pub trait FlashPermissions {
 }
 
 pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec![
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &[
       "deno_web",
       "deno_net",
       "deno_fetch",
       "deno_websocket",
       "deno_http",
-    ])
-    .esm(deno_core::include_js_files!("01_http.js",))
-    .ops(vec![
-      op_flash_serve::decl::<P>(),
-      op_node_unstable_flash_serve::decl::<P>(),
-      op_flash_respond::decl(),
-      op_flash_respond_async::decl(),
-      op_flash_respond_chunked::decl(),
-      op_flash_method::decl(),
-      op_flash_path::decl(),
-      op_flash_headers::decl(),
-      op_flash_addr::decl(),
-      op_flash_next::decl(),
-      op_flash_next_server::decl(),
-      op_flash_next_async::decl(),
-      op_flash_read_body::decl(),
-      op_flash_upgrade_websocket::decl(),
-      op_flash_drive_server::decl(),
-      op_flash_wait_for_listening::decl(),
-      op_flash_first_packet::decl(),
-      op_flash_has_body_stream::decl(),
-      op_flash_close_server::decl(),
-      op_flash_make_request::decl(),
-      op_flash_write_resource::decl(),
-      op_try_flash_respond_chunked::decl(),
-    ])
-    .state(move |op_state| {
-      op_state.put(Unstable(unstable));
-      op_state.put(FlashContext {
-        next_server_id: 0,
-        join_handles: HashMap::default(),
-        servers: HashMap::default(),
-      });
-    })
-    .build()
+    ],
+  )
+  .esm(deno_core::include_js_files!("01_http.js",))
+  .ops(vec![
+    op_flash_serve::decl::<P>(),
+    op_node_unstable_flash_serve::decl::<P>(),
+    op_flash_respond::decl(),
+    op_flash_respond_async::decl(),
+    op_flash_respond_chunked::decl(),
+    op_flash_method::decl(),
+    op_flash_path::decl(),
+    op_flash_headers::decl(),
+    op_flash_addr::decl(),
+    op_flash_next::decl(),
+    op_flash_next_server::decl(),
+    op_flash_next_async::decl(),
+    op_flash_read_body::decl(),
+    op_flash_upgrade_websocket::decl(),
+    op_flash_drive_server::decl(),
+    op_flash_wait_for_listening::decl(),
+    op_flash_first_packet::decl(),
+    op_flash_has_body_stream::decl(),
+    op_flash_close_server::decl(),
+    op_flash_make_request::decl(),
+    op_flash_write_resource::decl(),
+    op_try_flash_respond_chunked::decl(),
+  ])
+  .state(move |op_state| {
+    op_state.put(Unstable(unstable));
+    op_state.put(FlashContext {
+      next_server_id: 0,
+      join_handles: HashMap::default(),
+      servers: HashMap::default(),
+    });
+  })
+  .build()
 }

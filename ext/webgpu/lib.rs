@@ -117,18 +117,20 @@ impl Resource for WebGpuQuerySet {
 }
 
 pub fn init(unstable: bool) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web"])
-    .esm(include_js_files!("01_webgpu.js", "02_idl_types.js",))
-    .ops(declare_webgpu_ops())
-    .state(move |state| {
-      // TODO: check & possibly streamline this
-      // Unstable might be able to be OpMiddleware
-      // let unstable_checker = state.borrow::<super::UnstableChecker>();
-      // let unstable = unstable_checker.unstable;
-      state.put(Unstable(unstable));
-    })
-    .build()
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web"],
+  )
+  .esm(include_js_files!("01_webgpu.js", "02_idl_types.js",))
+  .ops(declare_webgpu_ops())
+  .state(move |state| {
+    // TODO: check & possibly streamline this
+    // Unstable might be able to be OpMiddleware
+    // let unstable_checker = state.borrow::<super::UnstableChecker>();
+    // let unstable = unstable_checker.unstable;
+    state.put(Unstable(unstable));
+  })
+  .build()
 }
 
 fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
