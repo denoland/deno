@@ -5,6 +5,7 @@ use deno_core::futures::channel::mpsc;
 use deno_core::include_js_files;
 use deno_core::v8;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 
 use std::cell::RefCell;
@@ -81,10 +82,15 @@ pub(crate) struct FfiState {
   pub(crate) async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
 }
 
-pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_web"])
-    .esm(include_js_files!("00_ffi.js",))
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
+}
+
+fn ops<P: FfiPermissions + 'static>(
+  ext: &mut ExtensionBuilder,
+  unstable: bool,
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       op_ffi_load::decl::<P>(),
       op_ffi_get_static::decl(),
@@ -152,5 +158,16 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
         async_work_sender,
       });
     })
+}
+
+pub fn init_ops_and_esm<P: FfiPermissions + 'static>(
+  unstable: bool,
+) -> Extension {
+  ops::<P>(&mut ext(), unstable)
+    .esm(include_js_files!("00_ffi.js",))
     .build()
+}
+
+pub fn init_ops<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
+  ops::<P>(&mut ext(), unstable).build()
 }

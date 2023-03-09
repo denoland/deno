@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
@@ -19,12 +20,17 @@ pub use rusqlite;
 #[derive(Clone)]
 struct OriginStorageDir(PathBuf);
 
-const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
+const MAX_STORAGE_BYTES: usize = 10 * 1024 * 1024;
 
-pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl"])
-    .esm(include_js_files!("01_webstorage.js",))
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_webidl"])
+}
+
+fn ops(
+  ext: &mut ExtensionBuilder,
+  origin_storage_dir: Option<PathBuf>,
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       op_webstorage_length::decl(),
       op_webstorage_key::decl(),
@@ -39,7 +45,16 @@ pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
         state.put(OriginStorageDir(origin_storage_dir.clone()));
       }
     })
+}
+
+pub fn init_ops_and_esm(origin_storage_dir: Option<PathBuf>) -> Extension {
+  ops(&mut ext(), origin_storage_dir)
+    .esm(include_js_files!("01_webstorage.js",))
     .build()
+}
+
+pub fn init_ops(origin_storage_dir: Option<PathBuf>) -> Extension {
+  ops(&mut ext(), origin_storage_dir).build()
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -134,6 +149,20 @@ pub fn op_webstorage_key(
   Ok(key)
 }
 
+#[inline]
+fn size_check(input: usize) -> Result<(), AnyError> {
+  if input >= MAX_STORAGE_BYTES {
+    return Err(
+      deno_web::DomExceptionQuotaExceededError::new(
+        "Exceeded maximum storage size",
+      )
+      .into(),
+    );
+  }
+
+  Ok(())
+}
+
 #[op]
 pub fn op_webstorage_set(
   state: &mut OpState,
@@ -143,18 +172,13 @@ pub fn op_webstorage_set(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
+  size_check(key.len() + value.len())?;
+
   let mut stmt = conn
     .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  if size >= MAX_STORAGE_BYTES {
-    return Err(
-      deno_web::DomExceptionQuotaExceededError::new(
-        "Exceeded maximum storage size",
-      )
-      .into(),
-    );
-  }
+  size_check(size as usize)?;
 
   let mut stmt = conn
     .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
