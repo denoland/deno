@@ -63,7 +63,7 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
-/// binary by checking for the magic trailer string `D3N0` at EOF-12.
+/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-24.
 /// The magic trailer is followed by:
 /// - a u64 pointer to the JS bundle embedded in the binary
 /// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
