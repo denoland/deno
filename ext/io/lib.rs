@@ -82,9 +82,8 @@ pub fn init(stdio: Stdio) -> Extension {
   // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
   let stdio = Rc::new(RefCell::new(Some(stdio)));
 
-  Extension::builder("deno_io")
+  Extension::builder_with_deps("deno_io", &["deno_web"])
     .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
-    .dependencies(vec!["deno_web"])
     .esm(include_js_files!("12_io.js",))
     .middleware(|op| match op.name {
       "op_print" => op_print::decl(),

@@ -82,8 +82,7 @@ pub(crate) struct FfiState {
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_web"])
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
     .esm(include_js_files!("00_ffi.js",))
     .ops(vec![
       op_ffi_load::decl::<P>(),

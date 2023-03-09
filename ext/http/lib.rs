@@ -78,20 +78,22 @@ pub mod compressible;
 mod reader_stream;
 
 pub fn init() -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_web", "deno_net", "deno_fetch", "deno_websocket"])
-    .esm(include_js_files!("01_http.js",))
-    .ops(vec![
-      op_http_accept::decl(),
-      op_http_write_headers::decl(),
-      op_http_headers::decl(),
-      op_http_write::decl(),
-      op_http_write_resource::decl(),
-      op_http_shutdown::decl(),
-      op_http_websocket_accept_header::decl(),
-      op_http_upgrade_websocket::decl(),
-    ])
-    .build()
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_web", "deno_net", "deno_fetch", "deno_websocket"],
+  )
+  .esm(include_js_files!("01_http.js",))
+  .ops(vec![
+    op_http_accept::decl(),
+    op_http_write_headers::decl(),
+    op_http_headers::decl(),
+    op_http_write::decl(),
+    op_http_write_resource::decl(),
+    op_http_shutdown::decl(),
+    op_http_websocket_accept_header::decl(),
+    op_http_upgrade_websocket::decl(),
+  ])
+  .build()
 }
 
 pub enum HttpSocketAddr {

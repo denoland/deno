@@ -77,7 +77,7 @@ pub struct Extension {
   initialized: bool,
   enabled: bool,
   name: &'static str,
-  deps: Option<Vec<&'static str>>,
+  deps: Option<&'static [&'static str]>,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -90,11 +90,22 @@ impl Extension {
     }
   }
 
+  pub fn builder_with_deps(
+    name: &'static str,
+    deps: &'static [&'static str],
+  ) -> ExtensionBuilder {
+    ExtensionBuilder {
+      name,
+      deps,
+      ..Default::default()
+    }
+  }
+
   /// Check if dependencies have been loaded, and errors if either:
   /// - The extension is depending on itself or an extension with the same name.
   /// - A dependency hasn't been loaded yet.
   pub fn check_dependencies(&self, previous_exts: &[&mut Extension]) {
-    if let Some(deps) = &self.deps {
+    if let Some(deps) = self.deps {
       'dep_loop: for dep in deps {
         if dep == &self.name {
           panic!("Extension '{}' is either depending on itself or there is another extension with the same name", self.name);
@@ -194,15 +205,10 @@ pub struct ExtensionBuilder {
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   name: &'static str,
-  deps: Vec<&'static str>,
+  deps: &'static [&'static str],
 }
 
 impl ExtensionBuilder {
-  pub fn dependencies(&mut self, dependencies: Vec<&'static str>) -> &mut Self {
-    self.deps.extend(dependencies);
-    self
-  }
-
   pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
     let js_files =
       // TODO(bartlomieju): if we're automatically remapping here, then we should

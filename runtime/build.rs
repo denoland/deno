@@ -204,8 +204,9 @@ mod startup_snapshot {
     snapshot_path: PathBuf,
     maybe_additional_extension: Option<Extension>,
   ) {
-    let runtime_extension = Extension::builder("runtime")
-      .dependencies(vec![
+    let runtime_extension = Extension::builder_with_deps(
+      "runtime",
+      &[
         "deno_webidl",
         "deno_console",
         "deno_url",
@@ -227,26 +228,27 @@ mod startup_snapshot {
         "deno_flash",
         "deno_io",
         "deno_fs",
-      ])
-      .esm(include_js_files!(
-        dir "js",
-        "01_errors.js",
-        "01_version.ts",
-        "06_util.js",
-        "10_permissions.js",
-        "11_workers.js",
-        "13_buffer.js",
-        "30_os.js",
-        "40_fs_events.js",
-        "40_http.js",
-        "40_process.js",
-        "40_signals.js",
-        "40_tty.js",
-        "41_prompt.js",
-        "90_deno_ns.js",
-        "98_global_scope.js",
-      ))
-      .build();
+      ],
+    )
+    .esm(include_js_files!(
+      dir "js",
+      "01_errors.js",
+      "01_version.ts",
+      "06_util.js",
+      "10_permissions.js",
+      "11_workers.js",
+      "13_buffer.js",
+      "30_os.js",
+      "40_fs_events.js",
+      "40_http.js",
+      "40_process.js",
+      "40_signals.js",
+      "40_tty.js",
+      "41_prompt.js",
+      "90_deno_ns.js",
+      "98_global_scope.js",
+    ))
+    .build();
 
     let mut extensions_with_js: Vec<Extension> = vec![
       deno_webidl::init(),
