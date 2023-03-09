@@ -411,7 +411,6 @@ impl WebWorker {
       deno_webstorage::init(None).disable(),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
       // ffi
       deno_ffi::init::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers

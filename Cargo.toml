@@ -25,7 +25,6 @@ members = [
   "ext/node",
   "ext/url",
   "ext/web",
-  "ext/webgpu",
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
@@ -67,7 +66,6 @@ deno_node = { version = "0.27.0", path = "./ext/node" }
 deno_tls = { version = "0.77.0", path = "./ext/tls" }
 deno_url = { version = "0.90.0", path = "./ext/url" }
 deno_web = { version = "0.121.0", path = "./ext/web" }
-deno_webgpu = { version = "0.91.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.90.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.95.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.85.0", path = "./ext/webstorage" }
@@ -123,11 +121,6 @@ zstd = "=0.11.2"
 
 # crypto
 rsa = { version = "0.7.0", default-features = false, features = ["std", "pem"] }
-
-# webgpu
-raw-window-handle = "0.5.0"
-wgpu-core = "0.15"
-wgpu-types = "0.15"
 
 # macros
 proc-macro2 = "1"
