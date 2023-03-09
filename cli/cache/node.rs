@@ -155,7 +155,7 @@ impl NodeAnalysisCacheInner {
     conn: Connection,
     version: String,
   ) -> Result<Self, AnyError> {
-    create_tables(&conn, &version)?;
+    initialize(&conn, &version)?;
 
     Ok(Self { conn })
   }
@@ -259,10 +259,10 @@ impl NodeAnalysisCacheInner {
   }
 }
 
-fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
+fn initialize(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
+  // INT doesn't store up to u64, so use TEXT for source_hash
   let query = format!(
     "{INITIAL_PRAGMAS}
-  -- // INT doesn't store up to u64, so use TEXT for source_hash
   CREATE TABLE IF NOT EXISTS cjsanalysiscache (
     specifier TEXT PRIMARY KEY,
     source_hash TEXT NOT NULL,

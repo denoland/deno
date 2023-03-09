@@ -174,7 +174,7 @@ impl SqlIncrementalCache {
     state_hash: u64,
     cli_version: String,
   ) -> Result<Self, AnyError> {
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self { conn, state_hash })
   }
@@ -237,13 +237,10 @@ impl SqlIncrementalCache {
   }
 }
 
-fn create_tables(
-  conn: &Connection,
-  cli_version: String,
-) -> Result<(), AnyError> {
+fn initialize(conn: &Connection, cli_version: String) -> Result<(), AnyError> {
+  // INT doesn't store up to u64, so use TEXT for source_hash
   let query = format!(
     "{INITIAL_PRAGMAS}
-  -- // INT doesn't store up to u64, so use TEXT
   CREATE TABLE IF NOT EXISTS incrementalcache (
     file_path TEXT PRIMARY KEY,
     state_hash TEXT NOT NULL,

@@ -60,7 +60,7 @@ impl TypeCheckCache {
     conn: Connection,
     cli_version: String,
   ) -> Result<Self, AnyError> {
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self(Some(conn)))
   }
@@ -157,13 +157,10 @@ impl TypeCheckCache {
   }
 }
 
-fn create_tables(
-  conn: &Connection,
-  cli_version: String,
-) -> Result<(), AnyError> {
+fn initialize(conn: &Connection, cli_version: String) -> Result<(), AnyError> {
+  // INT doesn't store up to u64, so use TEXT for check_hash
   let query = format!(
     "{INITIAL_PRAGMAS}
-  -- INT doesn't store up to u64, so use TEXT
   CREATE TABLE IF NOT EXISTS checkcache (
     check_hash TEXT PRIMARY KEY
   );

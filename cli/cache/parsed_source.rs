@@ -162,7 +162,7 @@ impl ParsedSourceCacheModuleAnalyzer {
     cli_version: String,
     sources: ParsedSourceCacheSources,
   ) -> Result<Self, AnyError> {
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self { conn, sources })
   }
@@ -287,10 +287,7 @@ impl deno_graph::ModuleAnalyzer for ParsedSourceCacheModuleAnalyzer {
   }
 }
 
-fn create_tables(
-  conn: &Connection,
-  cli_version: String,
-) -> Result<(), AnyError> {
+fn initialize(conn: &Connection, cli_version: String) -> Result<(), AnyError> {
   let query = format!(
     "{INITIAL_PRAGMAS}
   -- INT doesn't store up to u64, so use TEXT for source_hash
