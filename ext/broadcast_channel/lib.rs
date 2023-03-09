@@ -2,6 +2,7 @@
 
 mod in_memory_broadcast_channel;
 
+use deno_core::ExtensionBuilder;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 
@@ -106,26 +107,45 @@ where
   bc.recv(&resource).await
 }
 
-pub fn init<BC: BroadcastChannel + 'static>(
-  bc: BC,
-  unstable: bool,
-) -> Extension {
+fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(
     env!("CARGO_PKG_NAME"),
     &["deno_webidl", "deno_web"],
   )
-  .esm(include_js_files!("01_broadcast_channel.js",))
-  .ops(vec![
-    op_broadcast_subscribe::decl::<BC>(),
-    op_broadcast_unsubscribe::decl::<BC>(),
-    op_broadcast_send::decl::<BC>(),
-    op_broadcast_recv::decl::<BC>(),
-  ])
-  .state(move |state| {
-    state.put(bc.clone());
-    state.put(Unstable(unstable));
-  })
-  .build()
+}
+
+fn ops<BC: BroadcastChannel + 'static>(
+  ext: &mut ExtensionBuilder,
+  bc: BC,
+  unstable: bool,
+) -> &mut ExtensionBuilder {
+  ext
+    .ops(vec![
+      op_broadcast_subscribe::decl::<BC>(),
+      op_broadcast_unsubscribe::decl::<BC>(),
+      op_broadcast_send::decl::<BC>(),
+      op_broadcast_recv::decl::<BC>(),
+    ])
+    .state(move |state| {
+      state.put(bc.clone());
+      state.put(Unstable(unstable));
+    })
+}
+
+pub fn init_ops_and_esm<BC: BroadcastChannel + 'static>(
+  bc: BC,
+  unstable: bool,
+) -> Extension {
+  ops::<BC>(&mut ext(), bc, unstable)
+    .esm(include_js_files!("01_broadcast_channel.js",))
+    .build()
+}
+
+pub fn init_ops<BC: BroadcastChannel + 'static>(
+  bc: BC,
+  unstable: bool,
+) -> Extension {
+  ops::<BC>(&mut ext(), bc, unstable).build()
 }
 
 pub fn get_declaration() -> PathBuf {

@@ -9,6 +9,7 @@ use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::ExtensionBuilder;
 
 use deno_core::url;
 use deno_core::AsyncRefCell;
@@ -497,33 +498,65 @@ pub async fn op_ws_next_event(
   Ok(res)
 }
 
-pub fn init<P: WebSocketPermissions + 'static>(
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_url", "deno_webidl"],
+  )
+}
+
+fn ops<P: WebSocketPermissions + 'static>(
+  ext: &mut ExtensionBuilder,
+  user_agent: String,
+  root_cert_store: Option<RootCertStore>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+) -> &mut ExtensionBuilder {
+  ext
+    .ops(vec![
+      op_ws_check_permission_and_cancel_handle::decl::<P>(),
+      op_ws_create::decl::<P>(),
+      op_ws_send::decl(),
+      op_ws_close::decl(),
+      op_ws_next_event::decl(),
+    ])
+    .state(move |state| {
+      state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
+      state.put(UnsafelyIgnoreCertificateErrors(
+        unsafely_ignore_certificate_errors.clone(),
+      ));
+      state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
+    })
+}
+
+pub fn init_ops_and_esm<P: WebSocketPermissions + 'static>(
   user_agent: String,
   root_cert_store: Option<RootCertStore>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_url", "deno_webidl"],
+  ops::<P>(
+    &mut ext(),
+    user_agent,
+    root_cert_store,
+    unsafely_ignore_certificate_errors,
   )
   .esm(include_js_files!(
     "01_websocket.js",
     "02_websocketstream.js",
   ))
-  .ops(vec![
-    op_ws_check_permission_and_cancel_handle::decl::<P>(),
-    op_ws_create::decl::<P>(),
-    op_ws_send::decl(),
-    op_ws_close::decl(),
-    op_ws_next_event::decl(),
-  ])
-  .state(move |state| {
-    state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-    state.put(UnsafelyIgnoreCertificateErrors(
-      unsafely_ignore_certificate_errors.clone(),
-    ));
-    state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
-  })
+  .build()
+}
+
+pub fn init_ops<P: WebSocketPermissions + 'static>(
+  user_agent: String,
+  root_cert_store: Option<RootCertStore>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+) -> Extension {
+  ops::<P>(
+    &mut ext(),
+    user_agent,
+    root_cert_store,
+    unsafely_ignore_certificate_errors,
+  )
   .build()
 }
 

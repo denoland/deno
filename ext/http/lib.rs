@@ -30,6 +30,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -77,13 +78,15 @@ use crate::reader_stream::ShutdownHandle;
 pub mod compressible;
 mod reader_stream;
 
-pub fn init() -> Extension {
+fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(
     env!("CARGO_PKG_NAME"),
     &["deno_web", "deno_net", "deno_fetch", "deno_websocket"],
   )
-  .esm(include_js_files!("01_http.js",))
-  .ops(vec![
+}
+
+fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
+  ext.ops(vec![
     op_http_accept::decl(),
     op_http_write_headers::decl(),
     op_http_headers::decl(),
@@ -93,7 +96,16 @@ pub fn init() -> Extension {
     op_http_websocket_accept_header::decl(),
     op_http_upgrade_websocket::decl(),
   ])
-  .build()
+}
+
+pub fn init_ops_and_esm() -> Extension {
+  ops(&mut ext())
+    .esm(include_js_files!("01_http.js",))
+    .build()
+}
+
+pub fn init_ops() -> Extension {
+  ops(&mut ext()).build()
 }
 
 pub enum HttpSocketAddr {
