@@ -73,7 +73,7 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-16
+CC=clang-15
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
