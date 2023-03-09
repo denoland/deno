@@ -175,17 +175,15 @@ fn lsp_import_map() {
 
   assert_eq!(diagnostics.viewed().len(), 0);
 
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": uri
-        },
-        "position": { "line": 2, "character": 12 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 2, "character": 12 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -269,17 +267,15 @@ fn lsp_import_map_config_file() {
 
   assert_eq!(diagnostics.viewed().len(), 0);
 
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": uri
-        },
-        "position": { "line": 2, "character": 12 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 2, "character": 12 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -332,17 +328,15 @@ fn lsp_import_map_embedded_in_config_file() {
 
   assert_eq!(diagnostics.viewed().len(), 0);
 
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": uri
-        },
-        "position": { "line": 2, "character": 12 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 2, "character": 12 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -381,9 +375,7 @@ fn lsp_deno_task() {
     builder.set_config("./deno.jsonc");
   });
 
-  let maybe_res = client
-    .write_request::<_, _, Value>("deno/task", json!(null))
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>("deno/task", json!(null));
 
   assert_eq!(
     maybe_res,
@@ -454,8 +446,7 @@ fn lsp_import_assertions() {
   );
 
   let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
+    .write_request(      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/a.ts"
@@ -479,7 +470,7 @@ fn lsp_import_assertions() {
         }
       }),
     )
-    .unwrap();
+    ;
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -548,21 +539,19 @@ fn lsp_import_map_import_completions() {
     }
   }));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": uri
-        },
-        "position": { "line": 1, "character": 20 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "\""
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 1, "character": 20 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "\""
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -627,21 +616,19 @@ fn lsp_import_map_import_completions() {
     }),
   );
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": uri
-        },
-        "position": { "line": 1, "character": 23 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "/"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 1, "character": 23 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "/"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -681,17 +668,15 @@ fn lsp_hover() {
       "text": "console.log(Deno.args);\n"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -724,40 +709,32 @@ fn lsp_hover_asset() {
       "text": "console.log(Date.now());\n"
     }
   }));
-  let (_, maybe_error) = client
-    .write_request::<_, _, Value>(
-      "textDocument/definition",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 14 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
-  let (_, maybe_error) = client
-    .write_request::<_, _, Value>(
-      "deno/virtualTextDocument",
-      json!({
-        "textDocument": {
-          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
-        },
-        "position": { "line": 109, "character": 13 }
-      }),
-    )
-    .unwrap();
+  client.write_request::<_, _, Value>(
+    "textDocument/definition",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 14 }
+    }),
+  );
+  client.write_request::<_, _, Value>(
+    "deno/virtualTextDocument",
+    json!({
+      "textDocument": {
+        "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
+      }
+    }),
+  );
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
+      },
+      "position": { "line": 109, "character": 13 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -796,17 +773,15 @@ fn lsp_hover_disabled() {
     json!([{ "enable": false }]),
   );
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -845,20 +820,18 @@ fn lsp_inlay_hints() {
         "#
     }
   }));
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/inlayHint",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 19, "character": 0, }
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/inlayHint",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 19, "character": 0, }
+      }
+    }),
+  );
   assert_eq!(
     json!(maybe_res),
     json!([
@@ -947,20 +920,18 @@ fn lsp_inlay_hints_not_enabled() {
         "#
     }
   }));
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/inlayHint",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 19, "character": 0, }
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/inlayHint",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 19, "character": 0, }
+      }
+    }),
+  );
   assert_eq!(json!(maybe_res), json!(null));
 }
 
@@ -1027,43 +998,37 @@ fn lsp_workspace_enable_paths() {
     }
   }));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": root_specifier.join("./file.ts").unwrap(),
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": root_specifier.join("./other/file.ts").unwrap(),
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./other/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": root_specifier.join("./worker/file.ts").unwrap(),
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1081,17 +1046,15 @@ fn lsp_workspace_enable_paths() {
     }))
   );
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1124,17 +1087,15 @@ fn lsp_hover_unstable_disabled() {
       "text": "console.log(Deno.dlopen);\n"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1167,17 +1128,15 @@ fn lsp_hover_unstable_enabled() {
       "text": "console.log(Deno.ppid);\n"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1235,17 +1194,15 @@ fn lsp_hover_change_mbc() {
       ]
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 2, "character": 15 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 2, "character": 15 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1296,17 +1253,15 @@ fn lsp_hover_closed_document() {
     }
   }));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": c_specifier,
-        },
-        "position": { "line": 0, "character": 10 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": c_specifier,
+      },
+      "position": { "line": 0, "character": 10 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1331,17 +1286,15 @@ fn lsp_hover_closed_document() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": c_specifier,
-        },
-        "position": { "line": 0, "character": 10 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": c_specifier,
+      },
+      "position": { "line": 0, "character": 10 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1394,17 +1347,15 @@ fn lsp_hover_dependency() {
     }),
   );
   assert!(maybe_res.is_some());
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 0, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 0, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1418,17 +1369,15 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 3, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 3, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1442,17 +1391,15 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 4, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 4, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1466,17 +1413,15 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 5, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 5, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1490,17 +1435,15 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 6, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 6, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1538,18 +1481,15 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
       "text": "import { Foo } from './file1.ts'; declare const f: Foo; f\n"
     }
   }));
-  let (maybe_res, maybe_error) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file2.ts"
-        },
-        "position": { "line": 0, "character": 56 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file2.ts"
+      },
+      "position": { "line": 0, "character": 56 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1584,18 +1524,15 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
       ]
     }),
   );
-  let (maybe_res, maybe_error) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file2.ts"
-        },
-        "position": { "line": 0, "character": 56 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file2.ts"
+      },
+      "position": { "line": 0, "character": 56 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1691,17 +1628,15 @@ fn lsp_hover_jsdoc_symbol_link() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 7, "character": 10 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 7, "character": 10 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1735,18 +1670,15 @@ fn lsp_goto_type_definition() {
       }
     }),
   );
-  let (maybe_res, maybe_error) = client
-    .write_request::<_, _, Value>(
-      "textDocument/typeDefinition",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 12, "character": 1 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/typeDefinition",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 12, "character": 1 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([
@@ -1780,18 +1712,15 @@ fn lsp_call_hierarchy() {
       }
     }),
   );
-  let (maybe_res, maybe_error) = client
-    .write_request(
-      "textDocument/prepareCallHierarchy",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 5, "character": 3 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
+  let maybe_res = client.write_request(
+    "textDocument/prepareCallHierarchy",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 5, "character": 3 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -1809,28 +1738,25 @@ fn lsp_call_hierarchy() {
       }
     }]))
   );
-  let (maybe_res, maybe_error) = client
-    .write_request(
-      "callHierarchy/incomingCalls",
-      json!({
-        "item": {
-          "name": "baz",
-          "kind": 6,
-          "detail": "Bar",
-          "uri": "file:///a/file.ts",
-          "range": {
-            "start": { "line": 5, "character": 2 },
-            "end": { "line": 7, "character": 3 }
-          },
-          "selectionRange": {
-            "start": { "line": 5, "character": 2 },
-            "end": { "line": 5, "character": 5 }
-          }
+  let maybe_res = client.write_request(
+    "callHierarchy/incomingCalls",
+    json!({
+      "item": {
+        "name": "baz",
+        "kind": 6,
+        "detail": "Bar",
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 5, "character": 2 },
+          "end": { "line": 7, "character": 3 }
+        },
+        "selectionRange": {
+          "start": { "line": 5, "character": 2 },
+          "end": { "line": 5, "character": 5 }
         }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -1856,28 +1782,25 @@ fn lsp_call_hierarchy() {
       ]
     }]))
   );
-  let (maybe_res, maybe_error) = client
-    .write_request(
-      "callHierarchy/outgoingCalls",
-      json!({
-        "item": {
-          "name": "baz",
-          "kind": 6,
-          "detail": "Bar",
-          "uri": "file:///a/file.ts",
-          "range": {
-            "start": { "line": 5, "character": 2 },
-            "end": { "line": 7, "character": 3 }
-          },
-          "selectionRange": {
-            "start": { "line": 5, "character": 2 },
-            "end": { "line": 5, "character": 5 }
-          }
+  let maybe_res = client.write_request(
+    "callHierarchy/outgoingCalls",
+    json!({
+      "item": {
+        "name": "baz",
+        "kind": 6,
+        "detail": "Bar",
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 5, "character": 2 },
+          "end": { "line": 7, "character": 3 }
+        },
+        "selectionRange": {
+          "start": { "line": 5, "character": 2 },
+          "end": { "line": 5, "character": 5 }
         }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_error.is_none());
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2022,16 +1945,14 @@ fn lsp_document_symbol() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/documentSymbol",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/documentSymbol",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2223,16 +2144,14 @@ fn lsp_folding_range() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/foldingRange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/foldingRange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2272,18 +2191,16 @@ fn lsp_rename() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/rename",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 4 },
-        "newName": "variable_modified"
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/rename",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 4 },
+      "newName": "variable_modified"
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2325,17 +2242,15 @@ fn lsp_selection_range() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/selectionRange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "positions": [{ "line": 2, "character": 8 }]
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/selectionRange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "positions": [{ "line": 2, "character": 8 }]
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2404,16 +2319,14 @@ fn lsp_semantic_tokens() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/semanticTokens/full",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2426,20 +2339,18 @@ fn lsp_semantic_tokens() {
       ]
     }))
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/semanticTokens/range",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 6, "character": 0 }
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/semanticTokens/range",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 6, "character": 0 }
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2467,16 +2378,14 @@ fn lsp_code_lens() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeLens",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeLens",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2499,21 +2408,19 @@ fn lsp_code_lens() {
       }
     }]))
   );
-  let maybe_res = client
-    .write_request(
-      "codeLens/resolve",
-      json!({
-        "range": {
-          "start": { "line": 0, "character": 6 },
-          "end": { "line": 0, "character": 7 }
-        },
-        "data": {
-          "specifier": "file:///a/file.ts",
-          "source": "references"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 0, "character": 6 },
+        "end": { "line": 0, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2561,16 +2468,14 @@ fn lsp_code_lens_impl() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeLens",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeLens",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([ {
@@ -2629,21 +2534,19 @@ fn lsp_code_lens_impl() {
       }
     }]))
   );
-  let maybe_res = client
-    .write_request(
-      "codeLens/resolve",
-      json!({
-        "range": {
-          "start": { "line": 0, "character": 10 },
-          "end": { "line": 0, "character": 11 }
-        },
-        "data": {
-          "specifier": "file:///a/file.ts",
-          "source": "implementations"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 0, "character": 10 },
+        "end": { "line": 0, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "implementations"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2668,21 +2571,19 @@ fn lsp_code_lens_impl() {
       }
     }))
   );
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "codeLens/resolve",
-      json!({
-        "range": {
-          "start": { "line": 10, "character": 10 },
-          "end": { "line": 10, "character": 11 }
-        },
-        "data": {
-          "specifier": "file:///a/file.ts",
-          "source": "implementations"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 10, "character": 10 },
+        "end": { "line": 10, "character": 11 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "implementations"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2715,16 +2616,14 @@ fn lsp_code_lens_test() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeLens",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeLens",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2984,16 +2883,14 @@ fn lsp_code_lens_test_disabled() {
         }
       }]),
     );
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeLens",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeLens",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!([])));
   client.shutdown();
 }
@@ -3073,16 +2970,14 @@ fn lsp_nav_tree_updates() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeLens",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeLens",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(Some(json!([ {
@@ -3159,16 +3054,14 @@ fn lsp_nav_tree_updates() {
       ]
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeLens",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeLens",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3217,22 +3110,20 @@ fn lsp_signature_help() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/signatureHelp",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "character": 4, "line": 9 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "(",
-          "isRetrigger": false
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/signatureHelp",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "character": 4, "line": 9 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "(",
+        "isRetrigger": false
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3282,17 +3173,15 @@ fn lsp_signature_help() {
       ]
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/signatureHelp",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "character": 8, "line": 9 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/signatureHelp",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "character": 8, "line": 9 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3342,8 +3231,7 @@ fn lsp_code_actions() {
     }),
   );
   let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
+    .write_request(      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts"
@@ -3368,7 +3256,7 @@ fn lsp_code_actions() {
         }
       }),
     )
-    .unwrap();
+    ;
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3427,8 +3315,7 @@ fn lsp_code_actions() {
     }]))
   );
   let maybe_res = client
-    .write_request(
-      "codeAction/resolve",
+    .write_request(      "codeAction/resolve",
       json!({
         "title": "Add all missing 'async' modifiers",
         "kind": "quickfix",
@@ -3449,7 +3336,7 @@ fn lsp_code_actions() {
         }
       }),
     )
-    .unwrap();
+    ;
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3549,8 +3436,7 @@ fn lsp_code_actions_deno_cache() {
 
   let maybe_res =
     client
-    .write_request(
-      "textDocument/codeAction",
+    .write_request(      "textDocument/codeAction",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts"
@@ -3577,7 +3463,7 @@ fn lsp_code_actions_deno_cache() {
         }
       }),
     )
-    .unwrap();
+    ;
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3638,34 +3524,32 @@ fn lsp_code_actions_deno_cache_npm() {
     .unwrap()
   );
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 0, "character": 18 },
-          "end": { "line": 0, "character": 29 }
-        },
-        "context": {
-          "diagnostics": [{
-            "range": {
-              "start": { "line": 0, "character": 18 },
-              "end": { "line": 0, "character": 29 }
-            },
-            "severity": 1,
-            "code": "no-cache-npm",
-            "source": "deno",
-            "message": "Uncached or missing npm package: \"chalk\".",
-            "data": { "specifier": "npm:chalk" }
-          }],
-          "only": ["quickfix"]
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 18 },
+        "end": { "line": 0, "character": 29 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 18 },
+            "end": { "line": 0, "character": 29 }
+          },
+          "severity": 1,
+          "code": "no-cache-npm",
+          "source": "deno",
+          "message": "Uncached or missing npm package: \"chalk\".",
+          "data": { "specifier": "npm:chalk" }
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3742,42 +3626,40 @@ export class DuckConfig {
     }
   }));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file00.ts"
-        },
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 6, "character": 0 }
-        },
-        "context": {
-          "diagnostics": [{
-            "range": {
-              "start": { "line": 0, "character": 50 },
-              "end": { "line": 0, "character": 67 }
-            },
-            "severity": 1,
-            "code": 2304,
-            "source": "deno-ts",
-            "message": "Cannot find name 'DuckConfigOptions'."
-          }, {
-            "range": {
-              "start": { "line": 4, "character": 39 },
-              "end": { "line": 4, "character": 49 }
-            },
-            "severity": 1,
-            "code": 2304,
-            "source": "deno-ts",
-            "message": "Cannot find name 'DuckConfig'."
-          }],
-          "only": ["quickfix"]
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file00.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 6, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 0, "character": 50 },
+            "end": { "line": 0, "character": 67 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'DuckConfigOptions'."
+        }, {
+          "range": {
+            "start": { "line": 4, "character": 39 },
+            "end": { "line": 4, "character": 49 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'DuckConfig'."
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3855,38 +3737,36 @@ export class DuckConfig {
       }
     }]))
   );
-  let maybe_res = client
-    .write_request(
-      "codeAction/resolve",
-      json!({
-        "title": "Add all missing imports",
-        "kind": "quickfix",
-        "diagnostics": [{
-          "range": {
-            "start": { "line": 0, "character": 50 },
-            "end": { "line": 0, "character": 67 }
-          },
-          "severity": 1,
-          "code": 2304,
-          "source": "deno-ts",
-          "message": "Cannot find name 'DuckConfigOptions'."
-        }, {
-          "range": {
-            "start": { "line": 4, "character": 39 },
-            "end": { "line": 4, "character": 49 }
-          },
-          "severity": 1,
-          "code": 2304,
-          "source": "deno-ts",
-          "message": "Cannot find name 'DuckConfig'."
-        }],
-        "data": {
-          "specifier": "file:///a/file00.ts",
-          "fixId": "fixMissingImport"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "codeAction/resolve",
+    json!({
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }, {
+        "range": {
+          "start": { "line": 4, "character": 39 },
+          "end": { "line": 4, "character": 49 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfig'."
+      }],
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3948,24 +3828,22 @@ fn lsp_code_actions_refactor() {
       "text": "var x: { a?: number; b?: string } = {};\n"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 }
-        },
-        "context": {
-          "diagnostics": [],
-          "only": ["refactor"]
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["refactor"]
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -4089,25 +3967,23 @@ fn lsp_code_actions_refactor() {
       }
     }]))
   );
-  let maybe_res = client
-    .write_request(
-      "codeAction/resolve",
-      json!({
-        "title": "Extract to interface",
-        "kind": "refactor.extract.interface",
-        "isPreferred": true,
-        "data": {
-          "specifier": "file:///a/file.ts",
-          "range": {
-            "start": { "line": 0, "character": 7 },
-            "end": { "line": 0, "character": 33 }
-          },
-          "refactorName": "Extract type",
-          "actionName": "Extract to interface"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "codeAction/resolve",
+    json!({
+      "title": "Extract to interface",
+      "kind": "refactor.extract.interface",
+      "isPreferred": true,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 33 }
+        },
+        "refactorName": "Extract type",
+        "actionName": "Extract to interface"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4169,24 +4045,22 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 14, "character": 0 }
-        },
-        "context": {
-          "diagnostics": [],
-          "only": ["refactor"]
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 14, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["refactor"]
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -4358,46 +4232,42 @@ fn lsp_completions() {
       "text": "Deno."
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 5 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "."
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 5 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "."
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert!(list.items.len() > 90);
   } else {
     panic!("unexpected response");
   }
-  let maybe_res = client
-    .write_request(
-      "completionItem/resolve",
-      json!({
-        "label": "build",
-        "kind": 6,
-        "sortText": "1",
-        "insertTextFormat": 1,
-        "data": {
-          "tsc": {
-            "specifier": "file:///a/file.ts",
-            "position": 5,
-            "name": "build",
-            "useCodeSnippet": false
-          }
+  let maybe_res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "build",
+      "kind": 6,
+      "sortText": "1",
+      "insertTextFormat": 1,
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 5,
+          "name": "build",
+          "useCodeSnippet": false
         }
-      }),
-    )
-    .unwrap();
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4427,20 +4297,18 @@ fn lsp_completions_private_fields() {
       "text": r#"class Foo { #myProperty = "value"; constructor() { this.# } }"#
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 57 },
-        "context": {
-          "triggerKind": 1
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 57 },
+      "context": {
+        "triggerKind": 1
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert_eq!(list.items.len(), 1);
     let item = &list.items[0];
@@ -4466,21 +4334,19 @@ fn lsp_completions_optional() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 8, "character": 4 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "."
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 8, "character": 4 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "."
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4505,26 +4371,24 @@ fn lsp_completions_optional() {
       ]
     }))
   );
-  let maybe_res = client
-    .write_request(
-      "completionItem/resolve",
-      json!({
-        "label": "b?",
-        "kind": 5,
-        "sortText": "1",
-        "filterText": "b",
-        "insertText": "b",
-        "data": {
-          "tsc": {
-            "specifier": "file:///a/file.ts",
-            "position": 79,
-            "name": "b",
-            "useCodeSnippet": false
-          }
+  let maybe_res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "b?",
+      "kind": 5,
+      "sortText": "1",
+      "filterText": "b",
+      "insertText": "b",
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 79,
+          "name": "b",
+          "useCodeSnippet": false
         }
-      }),
-    )
-    .unwrap();
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4563,20 +4427,18 @@ fn lsp_completions_auto_import() {
       "text": "export {};\n\n",
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 2, "character": 0, },
-        "context": {
-          "triggerKind": 1,
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 2, "character": 0, },
+      "context": {
+        "triggerKind": 1,
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     if !list.items.iter().any(|item| item.label == "foo") {
@@ -4585,36 +4447,34 @@ fn lsp_completions_auto_import() {
   } else {
     panic!("unexpected completion response");
   }
-  let maybe_res = client
-    .write_request(
-      "completionItem/resolve",
-      json!({
-        "label": "foo",
-        "kind": 6,
-        "sortText": "￿16",
-        "commitCharacters": [
-          ".",
-          ",",
-          ";",
-          "("
-        ],
-        "data": {
-          "tsc": {
-            "specifier": "file:///a/file.ts",
-            "position": 12,
-            "name": "foo",
-            "source": "./b",
-            "data": {
-              "exportName": "foo",
-              "moduleSpecifier": "./b",
-              "fileName": "file:///a/b.ts"
-            },
-            "useCodeSnippet": false
-          }
+  let maybe_res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "foo",
+      "kind": 6,
+      "sortText": "￿16",
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ],
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 12,
+          "name": "foo",
+          "source": "./b",
+          "data": {
+            "exportName": "foo",
+            "moduleSpecifier": "./b",
+            "fileName": "file:///a/b.ts"
+          },
+          "useCodeSnippet": false
         }
-      }),
-    )
-    .unwrap();
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4653,20 +4513,18 @@ fn lsp_completions_snippet() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/a.tsx"
-        },
-        "position": { "line": 5, "character": 13, },
-        "context": {
-          "triggerKind": 1,
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx"
+      },
+      "position": { "line": 5, "character": 13, },
+      "context": {
+        "triggerKind": 1,
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(
@@ -4702,33 +4560,31 @@ fn lsp_completions_snippet() {
   } else {
     panic!("unexpected completion response");
   }
-  let maybe_res = client
-    .write_request(
-      "completionItem/resolve",
-      json!({
-        "label": "type",
-        "kind": 5,
-        "sortText": "11",
-        "filterText": "type=\"$1\"",
-        "insertText": "type=\"$1\"",
-        "insertTextFormat": 2,
-        "commitCharacters": [
-          ".",
-          ",",
-          ";",
-          "("
-        ],
-        "data": {
-          "tsc": {
-            "specifier": "file:///a/a.tsx",
-            "position": 87,
-            "name": "type",
-            "useCodeSnippet": false
-          }
+  let maybe_res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "type",
+      "kind": 5,
+      "sortText": "11",
+      "filterText": "type=\"$1\"",
+      "insertText": "type=\"$1\"",
+      "insertTextFormat": 2,
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ],
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/a.tsx",
+          "position": 87,
+          "name": "type",
+          "useCodeSnippet": false
         }
-      }),
-    )
-    .unwrap();
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4766,20 +4622,18 @@ fn lsp_completions_no_snippet() {
       }
     }),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/a.tsx"
-        },
-        "position": { "line": 5, "character": 13, },
-        "context": {
-          "triggerKind": 1,
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx"
+      },
+      "position": { "line": 5, "character": 13, },
+      "context": {
+        "triggerKind": 1,
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(
@@ -4867,21 +4721,19 @@ fn lsp_completions_npm() {
   );
   client.read_diagnostics();
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 2, "character": 11 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "."
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 2, "character": 11 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "."
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
@@ -4890,25 +4742,23 @@ fn lsp_completions_npm() {
   } else {
     panic!("unexpected response");
   }
-  let maybe_res = client
-    .write_request(
-      "completionItem/resolve",
-      json!({
-        "label": "MyClass",
-        "kind": 6,
-        "sortText": "1",
-        "insertTextFormat": 1,
-        "data": {
-          "tsc": {
-            "specifier": "file:///a/file.ts",
-            "position": 69,
-            "name": "MyClass",
-            "useCodeSnippet": false
-          }
+  let maybe_res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "MyClass",
+      "kind": 6,
+      "sortText": "1",
+      "insertTextFormat": 1,
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 69,
+          "name": "MyClass",
+          "useCodeSnippet": false
         }
-      }),
-    )
-    .unwrap();
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4948,21 +4798,19 @@ fn lsp_completions_npm() {
   );
   client.read_diagnostics();
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 2, "character": 6 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "."
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 2, "character": 6 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "."
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert!(list.items.iter().any(|i| i.label == "green"));
@@ -5040,21 +4888,19 @@ fn lsp_npm_specifier_unopened_file() {
   client.read_diagnostics();
 
   // now ensure completions work
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": main_url
-        },
-        "position": { "line": 2, "character": 6 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "."
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": main_url
+      },
+      "position": { "line": 2, "character": 6 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "."
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 63);
@@ -5135,24 +4981,22 @@ fn lsp_completions_node_specifier() {
     .collect::<Vec<_>>();
 
   // get the quick fixes
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 0, "character": 16 },
-          "end": { "line": 0, "character": 18 },
-        },
-        "context": {
-          "diagnostics": json!(diagnostics),
-          "only": ["quickfix"]
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 16 },
+        "end": { "line": 0, "character": 18 },
+      },
+      "context": {
+        "diagnostics": json!(diagnostics),
+        "only": ["quickfix"]
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -5273,21 +5117,19 @@ fn lsp_completions_node_specifier() {
   );
   client.read_diagnostics();
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 2, "character": 3 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "."
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 2, "character": 3 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "."
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert!(list.items.iter().any(|i| i.label == "writeFile"));
@@ -5314,46 +5156,42 @@ fn lsp_completions_registry() {
       "text": "import * as a from \"http://localhost:4545/x/a@\""
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 46 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "@"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 46 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "@"
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
   } else {
     panic!("unexpected response");
   }
-  let maybe_res = client
-    .write_request(
-      "completionItem/resolve",
-      json!({
-        "label": "v2.0.0",
-        "kind": 19,
-        "detail": "(version)",
-        "sortText": "0000000003",
-        "filterText": "http://localhost:4545/x/a@v2.0.0",
-        "textEdit": {
-          "range": {
-            "start": { "line": 0, "character": 20 },
-            "end": { "line": 0, "character": 46 }
-          },
-          "newText": "http://localhost:4545/x/a@v2.0.0"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "v2.0.0",
+      "kind": 19,
+      "detail": "(version)",
+      "sortText": "0000000003",
+      "filterText": "http://localhost:4545/x/a@v2.0.0",
+      "textEdit": {
+        "range": {
+          "start": { "line": 0, "character": 20 },
+          "end": { "line": 0, "character": 46 }
+        },
+        "newText": "http://localhost:4545/x/a@v2.0.0"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5389,21 +5227,19 @@ fn lsp_completions_registry_empty() {
       "text": "import * as a from \"\""
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 20 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "\""
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 20 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "\""
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5517,17 +5353,15 @@ fn lsp_cache_location() {
     }),
   );
   assert!(maybe_res.is_some());
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 0, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 0, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5541,17 +5375,15 @@ fn lsp_cache_location() {
       }
     }))
   );
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 7, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 7, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5615,17 +5447,15 @@ fn lsp_tls_cert() {
     }),
   );
   assert!(maybe_res.is_some());
-  let maybe_res = client
-    .write_request(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 0, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 0, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5639,17 +5469,15 @@ fn lsp_tls_cert() {
       }
     }))
   );
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 7, "character": 28 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 7, "character": 28 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5773,24 +5601,22 @@ fn lsp_redirect_quick_fix() {
   );
   assert!(maybe_res.is_some());
   let diagnostics = client.read_diagnostics().with_source("deno").diagnostics;
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
-      json!(json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 0, "character": 19 },
-          "end": { "line": 0, "character": 60 }
-        },
-        "context": {
-          "diagnostics": diagnostics,
-          "only": ["quickfix"]
-        }
-      })),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 19 },
+        "end": { "line": 0, "character": 60 }
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"]
+      }
+    })),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -6014,9 +5840,10 @@ fn lsp_performance() {
     }),
   );
   assert!(maybe_res.is_some());
-  let maybe_res = client
-    .write_request::<_, _, PerformanceAverages>("deno/performance", json!(null))
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, PerformanceAverages>(
+    "deno/performance",
+    json!(null),
+  );
   if let Some(res) = maybe_res {
     assert_eq!(res.averages.len(), 13);
   } else {
@@ -6037,20 +5864,18 @@ fn lsp_format_no_changes() {
       "text": "console;\n"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
   client.assert_no_notification("window/showMessage");
   client.shutdown();
@@ -6068,20 +5893,18 @@ fn lsp_format_error() {
       "text": "console test test\n"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -6098,20 +5921,18 @@ fn lsp_format_mbc() {
       "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -6180,20 +6001,18 @@ fn lsp_format_exclude_with_config() {
       "text": "function   myFunc(){}"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": file_uri
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": file_uri
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -6235,20 +6054,18 @@ fn lsp_format_exclude_default_config() {
       "text": "function   myFunc(){}"
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": file_uri
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": file_uri
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -6268,20 +6085,18 @@ fn lsp_format_json() {
     }
   }));
 
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/formatting",
-      json!({
-          "textDocument": {
-            "uri": "file:///a/file.lock"
-          },
-          "options": {
-            "tabSize": 2,
-            "insertSpaces": true
-          }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/formatting",
+    json!({
+        "textDocument": {
+          "uri": "file:///a/file.lock"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+    }),
+  );
 
   assert_eq!(
     maybe_res,
@@ -6323,29 +6138,25 @@ fn lsp_json_no_diagnostics() {
     }
   }));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/semanticTokens/full",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.json"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.json"
+      }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.json"
-        },
-        "position": { "line": 0, "character": 3 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.json"
+      },
+      "position": { "line": 0, "character": 3 }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
 
   client.shutdown();
@@ -6364,20 +6175,18 @@ fn lsp_format_markdown() {
     }
   }));
 
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.md"
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.md"
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
+    }),
+  );
 
   assert_eq!(
     maybe_res,
@@ -6438,20 +6247,18 @@ fn lsp_format_with_config() {
     );
 
   // The options below should be ignored in favor of configuration from config file.
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
+    }),
+  );
 
   assert_eq!(
     maybe_res,
@@ -6522,29 +6329,25 @@ fn lsp_markdown_no_diagnostics() {
     }
   }));
 
-  let maybe_res = client
-    .write_request(
-      "textDocument/semanticTokens/full",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.md"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.md"
+      }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let maybe_res = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.md"
-        },
-        "position": { "line": 0, "character": 3 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.md"
+      },
+      "position": { "line": 0, "character": 3 }
+    }),
+  );
   assert_eq!(maybe_res, Some(json!(null)));
 
   client.shutdown();
@@ -6595,46 +6398,42 @@ fn lsp_configuration_did_change() {
       "unstable": false
     }]),
   );
-  let maybe_res = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 46 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "@"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/completion",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 46 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "@"
+      }
+    }),
+  );
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
   } else {
     panic!("unexpected response");
   }
-  let maybe_res = client
-    .write_request(
-      "completionItem/resolve",
-      json!({
-        "label": "v2.0.0",
-        "kind": 19,
-        "detail": "(version)",
-        "sortText": "0000000003",
-        "filterText": "http://localhost:4545/x/a@v2.0.0",
-        "textEdit": {
-          "range": {
-            "start": { "line": 0, "character": 20 },
-            "end": { "line": 0, "character": 46 }
-          },
-          "newText": "http://localhost:4545/x/a@v2.0.0"
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "v2.0.0",
+      "kind": 19,
+      "detail": "(version)",
+      "sortText": "0000000003",
+      "filterText": "http://localhost:4545/x/a@v2.0.0",
+      "textEdit": {
+        "range": {
+          "start": { "line": 0, "character": 20 },
+          "end": { "line": 0, "character": 46 }
+        },
+        "newText": "http://localhost:4545/x/a@v2.0.0"
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -6675,14 +6474,12 @@ fn lsp_workspace_symbol() {
       "text": "export class B {\n  fieldC: string;\n  fieldD: string;\n}\n",
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "workspace/symbol",
-      json!({
-        "query": "field"
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "workspace/symbol",
+    json!({
+      "query": "field"
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([
@@ -6876,34 +6673,32 @@ console.log(snake_case);
 ",
     }
   }));
-  let maybe_res = client
-    .write_request(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 3, "character": 5 },
-          "end": { "line": 3, "character": 15 }
-        },
-        "context": {
-          "diagnostics": [{
-            "range": {
-              "start": { "line": 3, "character": 5 },
-              "end": { "line": 3, "character": 15 }
-            },
-            "severity": 1,
-            "code": "prefer-const",
-            "source": "deno-lint",
-            "message": "'snake_case' is never reassigned\nUse 'const' instead",
-            "relatedInformation": []
-          }],
-          "only": ["quickfix"]
-        }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 3, "character": 5 },
+        "end": { "line": 3, "character": 15 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 3, "character": 5 },
+            "end": { "line": 3, "character": 15 }
+          },
+          "severity": 1,
+          "code": "prefer-const",
+          "source": "deno-lint",
+          "message": "'snake_case' is never reassigned\nUse 'const' instead",
+          "relatedInformation": []
+        }],
+        "only": ["quickfix"]
+      }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!([{
