@@ -261,17 +261,12 @@ impl TestOptions {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Default, Debug)]
 pub enum LintReporterKind {
+  #[default]
   Pretty,
   Json,
   Compact,
-}
-
-impl Default for LintReporterKind {
-  fn default() -> Self {
-    LintReporterKind::Pretty
-  }
 }
 
 #[derive(Clone, Debug, Default)]
