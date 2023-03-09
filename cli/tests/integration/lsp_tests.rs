@@ -2,180 +2,19 @@
 
 use deno_ast::ModuleSpecifier;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use pretty_assertions::assert_eq;
-use std::collections::HashSet;
 use std::fs;
 use std::process::Stdio;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
-use test_util::lsp::LspClient;
 use test_util::lsp::LspClientBuilder;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
-
-fn did_open<V>(
-  client: &mut LspClient,
-  params: V,
-) -> Vec<lsp::PublishDiagnosticsParams>
-where
-  V: Serialize,
-{
-  client
-    .write_notification("textDocument/didOpen", params)
-    .unwrap();
-
-  handle_configuration_request(
-    client,
-    json!([{
-      "enable": true,
-      "codeLens": {
-        "test": true
-      }
-    }]),
-  );
-  read_diagnostics(client).0
-}
-
-fn handle_configuration_request(client: &mut LspClient, result: Value) {
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client.write_response(id, result).unwrap();
-}
-
-fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
-  // diagnostics come in batches of three unless they're cancelled
-  let mut diagnostics = vec![];
-  for _ in 0..3 {
-    let (method, response) = client
-      .read_notification::<lsp::PublishDiagnosticsParams>()
-      .unwrap();
-    assert_eq!(method, "textDocument/publishDiagnostics");
-    diagnostics.push(response.unwrap());
-  }
-  CollectedDiagnostics(diagnostics)
-}
-
-// todo(dsherret): get rid of this in favour of LspClient
-struct TestSession {
-  client: LspClient,
-  open_file_count: usize,
-}
-
-impl TestSession {
-  pub fn from_client(client: LspClient) -> Self {
-    Self {
-      client,
-      open_file_count: 0,
-    }
-  }
-
-  pub fn did_open<V>(&mut self, params: V) -> CollectedDiagnostics
-  where
-    V: Serialize,
-  {
-    self
-      .client
-      .write_notification("textDocument/didOpen", params)
-      .unwrap();
-
-    let (id, method, _) = self.client.read_request::<Value>().unwrap();
-    assert_eq!(method, "workspace/configuration");
-    self
-      .client
-      .write_response(
-        id,
-        json!([{
-          "enable": true,
-          "codeLens": {
-            "test": true
-          }
-        }]),
-      )
-      .unwrap();
-
-    self.open_file_count += 1;
-    self.read_diagnostics()
-  }
-
-  pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
-    let mut all_diagnostics = Vec::new();
-    for _ in 0..self.open_file_count {
-      all_diagnostics.extend(read_diagnostics(&mut self.client).0);
-    }
-    CollectedDiagnostics(all_diagnostics)
-  }
-
-  pub fn shutdown_and_exit(&mut self) {
-    self.client.shutdown();
-  }
-}
-
-#[derive(Debug, Clone)]
-struct CollectedDiagnostics(Vec<lsp::PublishDiagnosticsParams>);
-
-impl CollectedDiagnostics {
-  /// Gets the diagnostics that the editor will see after all the publishes.
-  pub fn viewed(&self) -> Vec<lsp::Diagnostic> {
-    self
-      .viewed_messages()
-      .into_iter()
-      .flat_map(|m| m.diagnostics)
-      .collect()
-  }
-
-  /// Gets the messages that the editor will see after all the publishes.
-  pub fn viewed_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
-    // go over the publishes in reverse order in order to get
-    // the final messages that will be shown in the editor
-    let mut messages = Vec::new();
-    let mut had_specifier = HashSet::new();
-    for message in self.0.iter().rev() {
-      if had_specifier.insert(message.uri.clone()) {
-        messages.insert(0, message.clone());
-      }
-    }
-    messages
-  }
-
-  pub fn with_source(&self, source: &str) -> lsp::PublishDiagnosticsParams {
-    self
-      .viewed_messages()
-      .iter()
-      .find(|p| {
-        p.diagnostics
-          .iter()
-          .any(|d| d.source == Some(source.to_string()))
-      })
-      .map(ToOwned::to_owned)
-      .unwrap()
-  }
-
-  pub fn with_file_and_source(
-    &self,
-    specifier: &str,
-    source: &str,
-  ) -> lsp::PublishDiagnosticsParams {
-    let specifier = ModuleSpecifier::parse(specifier).unwrap();
-    self
-      .viewed_messages()
-      .iter()
-      .find(|p| {
-        p.uri == specifier
-          && p
-            .diagnostics
-            .iter()
-            .any(|d| d.source == Some(source.to_string()))
-      })
-      .map(ToOwned::to_owned)
-      .unwrap()
-  }
-}
 
 #[test]
 fn lsp_startup_shutdown() {
@@ -203,20 +42,16 @@ fn lsp_init_tsconfig() {
     builder.set_config("lib.tsconfig.json");
   });
 
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "location.pathname;\n"
-      }
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "location.pathname;\n"
+    }
+  }));
 
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 0);
+  assert_eq!(diagnostics.viewed().len(), 0);
 
   client.shutdown();
 }
@@ -247,20 +82,16 @@ fn lsp_tsconfig_types() {
     builder.set_config("types.tsconfig.json");
   });
 
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(a);\n"
-      }
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(a);\n"
+    }
+  }));
 
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 0);
+  assert_eq!(diagnostics.viewed().len(), 0);
 
   client.shutdown();
 }
@@ -273,25 +104,21 @@ fn lsp_tsconfig_bad_config_path() {
       .set_config("bad_tsconfig.json")
       .set_maybe_root_uri(None);
   });
-  let (method, maybe_params) = client.read_notification().unwrap();
+  let (method, maybe_params) = client.read_notification();
   assert_eq!(method, "window/showMessage");
   assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
     typ: lsp::MessageType::WARNING,
     message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
   }));
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Deno.args);\n"
-      }
-    }),
-  );
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 0);
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Deno.args);\n"
+    }
+  }));
+  assert_eq!(diagnostics.viewed().len(), 0);
 }
 
 #[test]
@@ -303,20 +130,16 @@ fn lsp_triple_slash_types() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": temp_dir.uri().join("test.ts").unwrap(),
-        "languageId": "typescript",
-        "version": 1,
-        "text": "/// <reference types=\"./a.d.ts\" />\n\nconsole.log(a);\n"
-      }
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("test.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "/// <reference types=\"./a.d.ts\" />\n\nconsole.log(a);\n"
+    }
+  }));
 
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 0);
+  assert_eq!(diagnostics.viewed().len(), 0);
 
   client.shutdown();
 }
@@ -341,22 +164,18 @@ fn lsp_import_map() {
 
   let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
 
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
-      }
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+    }
+  }));
 
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 0);
+  assert_eq!(diagnostics.viewed().len(), 0);
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -367,7 +186,6 @@ fn lsp_import_map() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -394,21 +212,17 @@ fn lsp_import_map_data_url() {
   client.initialize(|builder| {
     builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
   });
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import example from \"example\";\n"
-      }
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import example from \"example\";\n"
+    }
+  }));
 
-  let mut diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
   // This indicates that the import map is applied correctly.
-  assert!(diagnostics.any(|diagnostic| diagnostic.code
+  assert!(diagnostics.viewed().iter().any(|diagnostic| diagnostic.code
     == Some(lsp::NumberOrString::String("no-cache".to_string()))
     && diagnostic
       .message
@@ -444,22 +258,18 @@ fn lsp_import_map_config_file() {
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
 
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
-      }
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+    }
+  }));
 
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 0);
+  assert_eq!(diagnostics.viewed().len(), 0);
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -470,7 +280,6 @@ fn lsp_import_map_config_file() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -512,22 +321,18 @@ fn lsp_import_map_embedded_in_config_file() {
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
 
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
-      }
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+    }
+  }));
 
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 0);
+  assert_eq!(diagnostics.viewed().len(), 0);
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -538,7 +343,6 @@ fn lsp_import_map_embedded_in_config_file() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -577,11 +381,10 @@ fn lsp_deno_task() {
     builder.set_config("./deno.jsonc");
   });
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>("deno/task", json!(null))
     .unwrap();
 
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([
@@ -604,21 +407,15 @@ fn lsp_import_assertions() {
     builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
   });
 
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/test.json",
-          "languageId": "json",
-          "version": 1,
-          "text": "{\"a\":1}"
-        }
-      }),
-    )
-    .unwrap();
-  handle_configuration_request(
-    &mut client,
+  client.did_open_with_config(
+    json!({
+      "textDocument": {
+        "uri": "file:///a/test.json",
+        "languageId": "json",
+        "version": 1,
+        "text": "{\"a\":1}"
+      }
+    }),
     json!([{
       "enable": true,
       "codeLens": {
@@ -627,17 +424,14 @@ fn lsp_import_assertions() {
     }]),
   );
 
-  let diagnostics = CollectedDiagnostics(did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/a.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import a from \"./test.json\";\n\nconsole.log(a);\n"
-      }
-    }),
-  ));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/a.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import a from \"./test.json\";\n\nconsole.log(a);\n"
+    }
+  }));
 
   assert_eq!(
     json!(
@@ -659,7 +453,7 @@ fn lsp_import_assertions() {
     ])
   );
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -686,7 +480,6 @@ fn lsp_import_assertions() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -746,19 +539,16 @@ fn lsp_import_map_import_completions() {
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
 
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import * as a from \"/~/b.ts\";\nimport * as b from \"\""
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"/~/b.ts\";\nimport * as b from \"\""
+    }
+  }));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -773,7 +563,6 @@ fn lsp_import_map_import_completions() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -819,34 +608,26 @@ fn lsp_import_map_import_completions() {
     }))
   );
 
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": uri,
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 1, "character": 20 },
-              "end": { "line": 1, "character": 20 }
-            },
-            "text": "/~/"
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": uri,
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 1, "character": 20 },
+            "end": { "line": 1, "character": 20 }
+          },
+          "text": "/~/"
+        }
+      ]
+    }),
+  );
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -861,7 +642,6 @@ fn lsp_import_map_import_completions() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -893,18 +673,15 @@ fn lsp_import_map_import_completions() {
 fn lsp_hover() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Deno.args);\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Deno.args);\n"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -915,7 +692,6 @@ fn lsp_hover() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -940,17 +716,14 @@ fn lsp_hover() {
 fn lsp_hover_asset() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Date.now());\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
   let (_, maybe_error) = client
     .write_request::<_, _, Value>(
       "textDocument/definition",
@@ -974,7 +747,7 @@ fn lsp_hover_asset() {
     )
     .unwrap();
   assert!(maybe_error.is_none());
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -985,7 +758,6 @@ fn lsp_hover_asset() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1012,23 +784,19 @@ fn lsp_hover_disabled() {
   client.initialize(|builder| {
     builder.set_deno_enable(false);
   });
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "languageId": "typescript",
-          "version": 1,
-          "text": "console.log(Date.now());\n"
-        }
-      }),
-    )
-    .unwrap();
+  client.did_open_with_config(
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }),
+    json!([{ "enable": false }]),
+  );
 
-  handle_configuration_request(&mut client, json!([{ "enable": false }]));
-
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1039,7 +807,6 @@ fn lsp_hover_disabled() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -1051,14 +818,12 @@ fn lsp_inlay_hints() {
   client.initialize(|builder| {
     builder.enable_inlay_hints();
   });
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": r#"function a(b: string) {
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"function a(b: string) {
           return b;
         }
 
@@ -1078,10 +843,9 @@ fn lsp_inlay_hints() {
 
         ["a"].map((v) => v + v);
         "#
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+    }
+  }));
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/inlayHint",
       json!({
@@ -1095,7 +859,6 @@ fn lsp_inlay_hints() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     json!(maybe_res),
     json!([
@@ -1157,14 +920,12 @@ fn lsp_inlay_hints() {
 fn lsp_inlay_hints_not_enabled() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": r#"function a(b: string) {
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"function a(b: string) {
           return b;
         }
 
@@ -1184,10 +945,9 @@ fn lsp_inlay_hints_not_enabled() {
 
         ["a"].map((v) => v + v);
         "#
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+    }
+  }));
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/inlayHint",
       json!({
@@ -1201,7 +961,6 @@ fn lsp_inlay_hints_not_enabled() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(json!(maybe_res), json!(null));
 }
 
@@ -1227,63 +986,48 @@ fn lsp_workspace_enable_paths() {
       .set_deno_enable(false);
   });
 
-  handle_configuration_request(
-    &mut client,
-    json!([{
-      "enable": false,
-      "enablePaths": ["./worker"],
-    }]),
-  );
+  client.handle_configuration_request(json!([{
+    "enable": false,
+    "enablePaths": ["./worker"],
+  }]));
 
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": root_specifier.join("./file.ts").unwrap(),
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Date.now());\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
 
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": root_specifier.join("./other/file.ts").unwrap(),
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Date.now());\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./other/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
 
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": root_specifier.join("./worker/file.ts").unwrap(),
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Date.now());\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
 
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Date.now());\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1294,10 +1038,9 @@ fn lsp_workspace_enable_paths() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1308,10 +1051,9 @@ fn lsp_workspace_enable_paths() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1322,7 +1064,6 @@ fn lsp_workspace_enable_paths() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1340,7 +1081,7 @@ fn lsp_workspace_enable_paths() {
     }))
   );
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1351,7 +1092,6 @@ fn lsp_workspace_enable_paths() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1376,18 +1116,15 @@ fn lsp_workspace_enable_paths() {
 fn lsp_hover_unstable_disabled() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Deno.dlopen);\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Deno.dlopen);\n"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1398,7 +1135,6 @@ fn lsp_hover_unstable_disabled() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1423,18 +1159,15 @@ fn lsp_hover_unstable_enabled() {
   client.initialize(|builder| {
     builder.set_unstable(true);
   });
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Deno.ppid);\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Deno.ppid);\n"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1445,7 +1178,6 @@ fn lsp_hover_unstable_enabled() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1470,8 +1202,7 @@ fn lsp_hover_unstable_enabled() {
 fn lsp_hover_change_mbc() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -1481,38 +1212,30 @@ fn lsp_hover_change_mbc() {
       }
     }),
   );
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 1, "character": 11 },
-              "end": {
-                "line": 1,
-                // the LSP uses utf16 encoded characters indexes, so
-                // after the deno emoiji is character index 15
-                "character": 15
-              }
-            },
-            "text": ""
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (maybe_res, maybe_err) = client
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 1, "character": 11 },
+            "end": {
+              "line": 1,
+              // the LSP uses utf16 encoded characters indexes, so
+              // after the deno emoiji is character index 15
+              "character": 15
+            }
+          },
+          "text": ""
+        }
+      ]
+    }),
+  );
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1523,7 +1246,6 @@ fn lsp_hover_change_mbc() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1556,51 +1278,25 @@ fn lsp_hover_closed_document() {
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": b_specifier,
-          "languageId": "typescript",
-          "version": 1,
-          "text": r#"export * from "./a.ts";"#
-        }
-      }),
-    )
-    .unwrap();
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": true }]))
-    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": b_specifier,
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export * from "./a.ts";"#
+    }
+  }));
 
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": c_specifier,
-          "languageId": "typescript",
-          "version": 1,
-          "text": "import { a } from \"./b.ts\";\nconsole.log(a);\n",
-        }
-      }),
-    )
-    .unwrap();
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": true }]))
-    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": c_specifier,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { a } from \"./b.ts\";\nconsole.log(a);\n",
+    }
+  }));
 
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1611,7 +1307,6 @@ fn lsp_hover_closed_document() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1628,17 +1323,15 @@ fn lsp_hover_closed_document() {
       }
     }))
   );
-  client
-    .write_notification(
-      "textDocument/didClose",
-      json!({
-        "textDocument": {
-          "uri": b_specifier,
-        }
-      }),
-    )
-    .unwrap();
-  let (maybe_res, maybe_err) = client
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": b_specifier,
+      }
+    }),
+  );
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1649,7 +1342,6 @@ fn lsp_hover_closed_document() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1674,19 +1366,15 @@ fn lsp_hover_dependency() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const a = \"a\";\n",
-      }
-    }),
-  );
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const a = \"a\";\n",
+    }
+  }));
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -1696,20 +1384,17 @@ fn lsp_hover_dependency() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [],
+    }),
+  );
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1720,7 +1405,6 @@ fn lsp_hover_dependency() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1734,7 +1418,7 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1745,7 +1429,6 @@ fn lsp_hover_dependency() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1759,7 +1442,7 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1770,7 +1453,6 @@ fn lsp_hover_dependency() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1784,7 +1466,7 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1795,7 +1477,6 @@ fn lsp_hover_dependency() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1809,7 +1490,7 @@ fn lsp_hover_dependency() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -1820,7 +1501,6 @@ fn lsp_hover_dependency() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -1842,28 +1522,22 @@ fn lsp_hover_dependency() {
 fn lsp_hover_deps_preserved_when_invalid_parse() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file1.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export type Foo = { bar(): string };\n"
-      }
-    }),
-  );
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file2.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import { Foo } from './file1.ts'; declare const f: Foo; f\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file1.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export type Foo = { bar(): string };\n"
+    }
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file2.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { Foo } from './file1.ts'; declare const f: Foo; f\n"
+    }
+  }));
   let (maybe_res, maybe_error) = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
@@ -1892,26 +1566,24 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
       }
     }))
   );
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file2.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 0, "character": 57 },
-              "end": { "line": 0, "character": 58 }
-            },
-            "text": "."
-          }
-        ]
-      }),
-    )
-    .unwrap();
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file2.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 57 },
+            "end": { "line": 0, "character": 58 }
+          },
+          "text": "."
+        }
+      ]
+    }),
+  );
   let (maybe_res, maybe_error) = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
@@ -1948,8 +1620,7 @@ fn lsp_hover_typescript_types() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -1959,36 +1630,29 @@ fn lsp_hover_typescript_types() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [
-          {
-            "uri": "http://127.0.0.1:4545/xTypeScriptTypes.js",
-          }
-        ],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [
+        {
+          "uri": "http://127.0.0.1:4545/xTypeScriptTypes.js",
+        }
+      ],
+    }),
+  );
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 24 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_res.is_some());
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 24 }
+    }),
+  );
   assert_eq!(
     json!(maybe_res.unwrap()),
     json!({
@@ -2009,19 +1673,15 @@ fn lsp_hover_typescript_types() {
 fn lsp_hover_jsdoc_symbol_link() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/b.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export function hello() {}\n"
-      }
-    }),
-  );
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/b.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export function hello() {}\n"
+    }
+  }));
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2031,7 +1691,7 @@ fn lsp_hover_jsdoc_symbol_link() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -2042,7 +1702,6 @@ fn lsp_hover_jsdoc_symbol_link() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2066,8 +1725,7 @@ fn lsp_hover_jsdoc_symbol_link() {
 fn lsp_goto_type_definition() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2112,8 +1770,7 @@ fn lsp_goto_type_definition() {
 fn lsp_call_hierarchy() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2254,116 +1911,98 @@ fn lsp_large_doc_changes() {
   let large_file_text =
     fs::read_to_string(testdata_path().join("lsp").join("large_file.txt"))
       .unwrap();
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "javascript",
+      "version": 1,
+      "text": large_file_text,
+    }
+  }));
+  client.write_notification(
+    "textDocument/didChange",
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
-        "languageId": "javascript",
-        "version": 1,
-        "text": large_file_text,
-      }
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 444, "character": 11 },
+            "end": { "line": 444, "character": 14 }
+          },
+          "text": "+++"
+        }
+      ]
     }),
   );
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 444, "character": 11 },
-              "end": { "line": 444, "character": 14 }
-            },
-            "text": "+++"
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 445, "character": 4 },
-              "end": { "line": 445, "character": 4 }
-            },
-            "text": "// "
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 477, "character": 4 },
-              "end": { "line": 477, "character": 9 }
-            },
-            "text": "error"
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 421, "character": 30 }
-      }),
-    )
-    .unwrap();
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 445, "character": 4 },
+            "end": { "line": 445, "character": 4 }
+          },
+          "text": "// "
+        }
+      ]
+    }),
+  );
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 477, "character": 4 },
+            "end": { "line": 477, "character": 9 }
+          },
+          "text": "error"
+        }
+      ]
+    }),
+  );
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 421, "character": 30 }
+    }),
+  );
   assert!(maybe_res.is_some());
-  assert!(maybe_err.is_none());
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 444, "character": 6 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 444, "character": 6 }
+    }),
+  );
   assert!(maybe_res.is_some());
-  assert!(maybe_err.is_none());
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 461, "character": 34 }
-      }),
-    )
-    .unwrap();
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 461, "character": 34 }
+    }),
+  );
   assert!(maybe_res.is_some());
-  assert!(maybe_err.is_none());
   client.shutdown();
 
   assert!(client.duration().as_millis() <= 15000);
@@ -2373,8 +2012,7 @@ fn lsp_large_doc_changes() {
 fn lsp_document_symbol() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2384,7 +2022,7 @@ fn lsp_document_symbol() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/documentSymbol",
       json!({
@@ -2394,7 +2032,6 @@ fn lsp_document_symbol() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2576,8 +2213,7 @@ fn lsp_document_symbol() {
 fn lsp_folding_range() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2587,7 +2223,7 @@ fn lsp_folding_range() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/foldingRange",
       json!({
@@ -2597,7 +2233,6 @@ fn lsp_folding_range() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2626,8 +2261,7 @@ fn lsp_folding_range() {
 fn lsp_rename() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2638,7 +2272,7 @@ fn lsp_rename() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/rename",
       json!({
@@ -2650,7 +2284,6 @@ fn lsp_rename() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2682,8 +2315,7 @@ fn lsp_rename() {
 fn lsp_selection_range() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2693,7 +2325,7 @@ fn lsp_selection_range() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/selectionRange",
       json!({
@@ -2704,7 +2336,6 @@ fn lsp_selection_range() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2763,8 +2394,7 @@ fn lsp_selection_range() {
 fn lsp_semantic_tokens() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2774,7 +2404,7 @@ fn lsp_semantic_tokens() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/semanticTokens/full",
       json!({
@@ -2784,7 +2414,6 @@ fn lsp_semantic_tokens() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2797,7 +2426,7 @@ fn lsp_semantic_tokens() {
       ]
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/semanticTokens/range",
       json!({
@@ -2811,7 +2440,6 @@ fn lsp_semantic_tokens() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2829,8 +2457,7 @@ fn lsp_semantic_tokens() {
 fn lsp_code_lens() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2840,7 +2467,7 @@ fn lsp_code_lens() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeLens",
       json!({
@@ -2850,7 +2477,6 @@ fn lsp_code_lens() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -2873,7 +2499,7 @@ fn lsp_code_lens() {
       }
     }]))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "codeLens/resolve",
       json!({
@@ -2888,7 +2514,6 @@ fn lsp_code_lens() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -2926,8 +2551,7 @@ fn lsp_code_lens() {
 fn lsp_code_lens_impl() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -2937,7 +2561,7 @@ fn lsp_code_lens_impl() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeLens",
       json!({
@@ -2947,7 +2571,6 @@ fn lsp_code_lens_impl() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([ {
@@ -3006,7 +2629,7 @@ fn lsp_code_lens_impl() {
       }
     }]))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "codeLens/resolve",
       json!({
@@ -3021,7 +2644,6 @@ fn lsp_code_lens_impl() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3046,7 +2668,7 @@ fn lsp_code_lens_impl() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "codeLens/resolve",
       json!({
@@ -3061,7 +2683,6 @@ fn lsp_code_lens_impl() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3084,8 +2705,7 @@ fn lsp_code_lens_test() {
   client.initialize(|builder| {
     builder.disable_testing_api().set_code_lens(None);
   });
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -3095,7 +2715,7 @@ fn lsp_code_lens_test() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeLens",
       json!({
@@ -3105,7 +2725,6 @@ fn lsp_code_lens_test() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3348,8 +2967,7 @@ fn lsp_code_lens_test_disabled() {
     })));
   });
   client
-    .write_notification(
-      "textDocument/didOpen",
+    .did_open_with_config(
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
@@ -3358,30 +2976,15 @@ fn lsp_code_lens_test_disabled() {
           "text": "const { test } = Deno;\nconst { test: test2 } = Deno;\nconst test3 = Deno.test;\n\nDeno.test(\"test a\", () => {});\nDeno.test({\n  name: \"test b\",\n  fn() {},\n});\ntest({\n  name: \"test c\",\n  fn() {},\n});\ntest(\"test d\", () => {});\ntest2({\n  name: \"test e\",\n  fn() {},\n});\ntest2(\"test f\", () => {});\ntest3({\n  name: \"test g\",\n  fn() {},\n});\ntest3(\"test h\", () => {});\n"
         }
       }),
-    )
-    .unwrap();
-
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(
-      id,
+      // diable test code lens
       json!([{
         "enable": true,
         "codeLens": {
           "test": false
         }
       }]),
-    )
-    .unwrap();
-
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (maybe_res, maybe_err) = client
+    );
+  let maybe_res = client
     .write_request(
       "textDocument/codeLens",
       json!({
@@ -3391,7 +2994,6 @@ fn lsp_code_lens_test_disabled() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!([])));
   client.shutdown();
 }
@@ -3400,75 +3002,59 @@ fn lsp_code_lens_test_disabled() {
 fn lsp_code_lens_non_doc_nav_tree() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/references",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Date.now());\n"
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 3 },
+      "context": {
+        "includeDeclaration": true
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/references",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 3 },
-        "context": {
-          "includeDeclaration": true
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/virtualTextDocument",
-      json!({
-        "textDocument": {
-          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/virtualTextDocument",
+    json!({
+      "textDocument": {
+        "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
+      }
+    }),
+  );
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Vec<lsp::CodeLens>>(
-      "textDocument/codeLens",
-      json!({
-        "textDocument": {
-          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert!(maybe_res.is_some());
+  let maybe_res = client.write_request::<_, _, Vec<lsp::CodeLens>>(
+    "textDocument/codeLens",
+    json!({
+      "textDocument": {
+        "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
+      }
+    }),
+  );
   let res = maybe_res.unwrap();
   assert!(res.len() > 50);
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, lsp::CodeLens>(
-      "codeLens/resolve",
-      json!({
-        "range": {
-          "start": { "line": 416, "character": 12 },
-          "end": { "line": 416, "character": 19 }
-        },
-        "data": {
-          "specifier": "asset:///lib.deno.shared_globals.d.ts",
-          "source": "references"
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, lsp::CodeLens>(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 416, "character": 12 },
+        "end": { "line": 416, "character": 19 }
+      },
+      "data": {
+        "specifier": "asset:///lib.deno.shared_globals.d.ts",
+        "source": "references"
+      }
+    }),
+  );
   assert!(maybe_res.is_some());
   client.shutdown();
 }
@@ -3477,8 +3063,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
 fn lsp_nav_tree_updates() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -3488,7 +3073,7 @@ fn lsp_nav_tree_updates() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeLens",
       json!({
@@ -3498,7 +3083,6 @@ fn lsp_nav_tree_updates() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(Some(json!([ {
@@ -3557,27 +3141,25 @@ fn lsp_nav_tree_updates() {
       }
     }])))
   );
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 10, "character": 0 },
-              "end": { "line": 13, "character": 0 }
-            },
-            "text": ""
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  let (maybe_res, maybe_err) = client
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 10, "character": 0 },
+            "end": { "line": 13, "character": 0 }
+          },
+          "text": ""
+        }
+      ]
+    }),
+  );
+  let maybe_res = client
     .write_request(
       "textDocument/codeLens",
       json!({
@@ -3587,7 +3169,6 @@ fn lsp_nav_tree_updates() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3626,8 +3207,7 @@ fn lsp_nav_tree_updates() {
 fn lsp_signature_help() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -3637,7 +3217,7 @@ fn lsp_signature_help() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/signatureHelp",
       json!({
@@ -3653,7 +3233,6 @@ fn lsp_signature_help() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3685,27 +3264,25 @@ fn lsp_signature_help() {
       "activeParameter": 0
     }))
   );
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 9, "character": 4 },
-              "end": { "line": 9, "character": 4 }
-            },
-            "text": "123, "
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  let (maybe_res, maybe_err) = client
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 9, "character": 4 },
+            "end": { "line": 9, "character": 4 }
+          },
+          "text": "123, "
+        }
+      ]
+    }),
+  );
+  let maybe_res = client
     .write_request(
       "textDocument/signatureHelp",
       json!({
@@ -3716,7 +3293,6 @@ fn lsp_signature_help() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3755,8 +3331,7 @@ fn lsp_signature_help() {
 fn lsp_code_actions() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -3766,7 +3341,7 @@ fn lsp_code_actions() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -3794,7 +3369,6 @@ fn lsp_code_actions() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -3852,7 +3426,7 @@ fn lsp_code_actions() {
       }
     }]))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "codeAction/resolve",
       json!({
@@ -3876,7 +3450,6 @@ fn lsp_code_actions() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -3947,8 +3520,7 @@ fn lsp_code_actions() {
 fn lsp_code_actions_deno_cache() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  let mut session = TestSession::from_client(client);
-  let diagnostics = session.did_open(json!({
+  let diagnostics = client.did_open(json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
@@ -3975,8 +3547,8 @@ fn lsp_code_actions_deno_cache() {
     })).unwrap()
   );
 
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res =
+    client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -4006,7 +3578,6 @@ fn lsp_code_actions_deno_cache() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -4032,15 +3603,14 @@ fn lsp_code_actions_deno_cache() {
       }
     }]))
   );
-  session.shutdown_and_exit();
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_actions_deno_cache_npm() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  let mut session = TestSession::from_client(client);
-  let diagnostics = session.did_open(json!({
+  let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
@@ -4068,8 +3638,7 @@ fn lsp_code_actions_deno_cache_npm() {
     .unwrap()
   );
 
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -4097,7 +3666,6 @@ fn lsp_code_actions_deno_cache_npm() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -4121,15 +3689,14 @@ fn lsp_code_actions_deno_cache_npm() {
       }
     }]))
   );
-  session.shutdown_and_exit();
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_actions_imports() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  let mut session = TestSession::from_client(client);
-  session.did_open(json!({
+  client.did_open(json!({
       "textDocument": {
         "uri": "file:///a/file00.ts",
         "languageId": "typescript",
@@ -4146,7 +3713,7 @@ export class MallardDuckConfig extends DuckConfig {
 "#
       }
     }));
-  session.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file01.ts",
       "languageId": "typescript",
@@ -4162,7 +3729,7 @@ export class DuckConfig {
 "#
     }
   }));
-  session.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file02.ts",
       "languageId": "typescript",
@@ -4175,8 +3742,7 @@ export class DuckConfig {
     }
   }));
 
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -4212,7 +3778,6 @@ export class DuckConfig {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -4290,8 +3855,7 @@ export class DuckConfig {
       }
     }]))
   );
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res = client
     .write_request(
       "codeAction/resolve",
       json!({
@@ -4323,7 +3887,6 @@ export class DuckConfig {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4370,25 +3933,22 @@ export class DuckConfig {
     }))
   );
 
-  session.shutdown_and_exit();
+  client.shutdown();
 }
 
 #[test]
 fn lsp_code_actions_refactor() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "var x: { a?: number; b?: string } = {};\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "var x: { a?: number; b?: string } = {};\n"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -4406,7 +3966,6 @@ fn lsp_code_actions_refactor() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -4530,7 +4089,7 @@ fn lsp_code_actions_refactor() {
       }
     }]))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "codeAction/resolve",
       json!({
@@ -4549,7 +4108,6 @@ fn lsp_code_actions_refactor() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4601,8 +4159,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       code_action.disabled_support = Some(false);
     });
   });
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -4612,7 +4169,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -4630,7 +4187,6 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -4671,145 +4227,121 @@ fn lsp_code_actions_deadlock() {
   let large_file_text =
     fs::read_to_string(testdata_path().join("lsp").join("large_file.txt"))
       .unwrap();
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "languageId": "javascript",
-          "version": 1,
-          "text": large_file_text,
-        }
-      }),
-    )
-    .unwrap();
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": true }]))
-    .unwrap();
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/semanticTokens/full",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  client.did_open_raw(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "javascript",
+      "version": 1,
+      "text": large_file_text,
+    }
+  }));
+  client.handle_configuration_request(json!([{ "enable": true }]));
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert!(maybe_res.is_some());
-  read_diagnostics(&mut client);
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 444, "character": 11 },
-              "end": { "line": 444, "character": 14 }
-            },
-            "text": "+++"
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 445, "character": 4 },
-              "end": { "line": 445, "character": 4 }
-            },
-            "text": "// "
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 477, "character": 4 },
-              "end": { "line": 477, "character": 9 }
-            },
-            "text": "error"
-          }
-        ]
-      }),
-    )
-    .unwrap();
+  client.read_diagnostics();
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 444, "character": 11 },
+            "end": { "line": 444, "character": 14 }
+          },
+          "text": "+++"
+        }
+      ]
+    }),
+  );
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 445, "character": 4 },
+            "end": { "line": 445, "character": 4 }
+          },
+          "text": "// "
+        }
+      ]
+    }),
+  );
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 477, "character": 4 },
+            "end": { "line": 477, "character": 9 }
+          },
+          "text": "error"
+        }
+      ]
+    }),
+  );
   // diagnostics only trigger after changes have elapsed in a separate thread,
   // so we need to delay the next messages a little bit to attempt to create a
   // potential for a deadlock with the codeAction
   std::thread::sleep(std::time::Duration::from_millis(50));
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-        },
-        "position": { "line": 609, "character": 33, }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+      },
+      "position": { "line": 609, "character": 33, }
+    }),
+  );
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 441, "character": 33 },
-          "end": { "line": 441, "character": 42 }
-        },
-        "context": {
-          "diagnostics": [{
-            "range": {
-              "start": { "line": 441, "character": 33 },
-              "end": { "line": 441, "character": 42 }
-            },
-            "severity": 1,
-            "code": 7031,
-            "source": "deno-ts",
-            "message": "Binding element 'debugFlag' implicitly has an 'any' type."
-          }],
-          "only": [ "quickfix" ]
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 441, "character": 33 },
+        "end": { "line": 441, "character": 42 }
+      },
+      "context": {
+        "diagnostics": [{
+          "range": {
+            "start": { "line": 441, "character": 33 },
+            "end": { "line": 441, "character": 42 }
+          },
+          "severity": 1,
+          "code": 7031,
+          "source": "deno-ts",
+          "message": "Binding element 'debugFlag' implicitly has an 'any' type."
+        }],
+        "only": [ "quickfix" ]
+      }
+    }),
+  );
   assert!(maybe_res.is_some());
 
-  read_diagnostics(&mut client);
+  client.read_diagnostics();
 
   client.shutdown();
 }
@@ -4818,18 +4350,15 @@ fn lsp_code_actions_deadlock() {
 fn lsp_completions() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "Deno."
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "Deno."
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -4844,14 +4373,13 @@ fn lsp_completions() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert!(list.items.len() > 90);
   } else {
     panic!("unexpected response");
   }
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "completionItem/resolve",
       json!({
@@ -4870,7 +4398,6 @@ fn lsp_completions() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4892,18 +4419,15 @@ fn lsp_completions() {
 fn lsp_completions_private_fields() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": r#"class Foo { #myProperty = "value"; constructor() { this.# } }"#
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"class Foo { #myProperty = "value"; constructor() { this.# } }"#
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -4917,7 +4441,6 @@ fn lsp_completions_private_fields() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert_eq!(list.items.len(), 1);
     let item = &list.items[0];
@@ -4933,8 +4456,7 @@ fn lsp_completions_private_fields() {
 fn lsp_completions_optional() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -4944,7 +4466,7 @@ fn lsp_completions_optional() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -4959,7 +4481,6 @@ fn lsp_completions_optional() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -4984,7 +4505,7 @@ fn lsp_completions_optional() {
       ]
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "completionItem/resolve",
       json!({
@@ -5004,7 +4525,6 @@ fn lsp_completions_optional() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5027,29 +4547,23 @@ fn lsp_completions_optional() {
 fn lsp_completions_auto_import() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/b.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const foo = \"foo\";\n",
-      }
-    }),
-  );
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export {};\n\n",
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/b.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const foo = \"foo\";\n",
+    }
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export {};\n\n",
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5063,7 +4577,6 @@ fn lsp_completions_auto_import() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     if !list.items.iter().any(|item| item.label == "foo") {
@@ -5072,7 +4585,7 @@ fn lsp_completions_auto_import() {
   } else {
     panic!("unexpected completion response");
   }
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "completionItem/resolve",
       json!({
@@ -5102,7 +4615,6 @@ fn lsp_completions_auto_import() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5131,8 +4643,7 @@ fn lsp_completions_auto_import() {
 fn lsp_completions_snippet() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/a.tsx",
@@ -5142,7 +4653,7 @@ fn lsp_completions_snippet() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5156,7 +4667,6 @@ fn lsp_completions_snippet() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(
@@ -5192,7 +4702,7 @@ fn lsp_completions_snippet() {
   } else {
     panic!("unexpected completion response");
   }
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "completionItem/resolve",
       json!({
@@ -5219,7 +4729,6 @@ fn lsp_completions_snippet() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5247,8 +4756,7 @@ fn lsp_completions_no_snippet() {
       doc.completion = None;
     });
   });
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/a.tsx",
@@ -5258,7 +4766,7 @@ fn lsp_completions_no_snippet() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5272,7 +4780,6 @@ fn lsp_completions_no_snippet() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(
@@ -5312,8 +4819,7 @@ fn lsp_completions_npm() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -5323,50 +4829,45 @@ fn lsp_completions_npm() {
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [
-          {
-            "uri": "npm:@denotest/cjs-default-export",
-          }, {
-            "uri": "npm:chalk",
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [
+        {
+          "uri": "npm:@denotest/cjs-default-export",
+        }, {
+          "uri": "npm:chalk",
+        }
+      ]
+    }),
+  );
   assert!(maybe_res.is_some());
 
   // check importing a cjs default import
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 2, "character": 0 },
-              "end": { "line": 2, "character": 0 }
-            },
-            "text": "cjsDefault."
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  read_diagnostics(&mut client);
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 0 }
+          },
+          "text": "cjsDefault."
+        }
+      ]
+    }),
+  );
+  client.read_diagnostics();
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5381,7 +4882,6 @@ fn lsp_completions_npm() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
@@ -5390,7 +4890,7 @@ fn lsp_completions_npm() {
   } else {
     panic!("unexpected response");
   }
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "completionItem/resolve",
       json!({
@@ -5409,7 +4909,6 @@ fn lsp_completions_npm() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5429,29 +4928,27 @@ fn lsp_completions_npm() {
   );
 
   // now check chalk, which is esm
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 3
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 2, "character": 0 },
-              "end": { "line": 2, "character": 11 }
-            },
-            "text": "chalk."
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  read_diagnostics(&mut client);
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 11 }
+          },
+          "text": "chalk."
+        }
+      ]
+    }),
+  );
+  client.read_diagnostics();
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5466,7 +4963,6 @@ fn lsp_completions_npm() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert!(list.items.iter().any(|i| i.label == "green"));
@@ -5514,42 +5010,37 @@ fn lsp_npm_specifier_unopened_file() {
   let main_url =
     ModuleSpecifier::from_file_path(client.deno_dir().path().join("main.ts"))
       .unwrap();
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": main_url,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { chalk } from './other.ts';\n\n",
+    }
+  }));
+
+  client.write_notification(
+    "textDocument/didChange",
     json!({
       "textDocument": {
         "uri": main_url,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import { chalk } from './other.ts';\n\n",
-      }
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 0 }
+          },
+          "text": "chalk."
+        }
+      ]
     }),
   );
-
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": main_url,
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 2, "character": 0 },
-              "end": { "line": 2, "character": 0 }
-            },
-            "text": "chalk."
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  read_diagnostics(&mut client);
+  client.read_diagnostics();
 
   // now ensure completions work
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5564,7 +5055,6 @@ fn lsp_npm_specifier_unopened_file() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 63);
@@ -5579,17 +5069,14 @@ fn lsp_completions_node_specifier() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let diagnostics = CollectedDiagnostics(did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import fs from 'node:non-existent';\n\n",
-      }
-    }),
-  ));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import fs from 'node:non-existent';\n\n",
+    }
+  }));
 
   let non_existent_diagnostics = diagnostics
     .with_file_and_source("file:///a/file.ts", "deno")
@@ -5616,27 +5103,25 @@ fn lsp_completions_node_specifier() {
   );
 
   // update to have fs import
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 0, "character": 16 },
-              "end": { "line": 0, "character": 33 },
-            },
-            "text": "fs"
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  let diagnostics = read_diagnostics(&mut client);
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 16 },
+            "end": { "line": 0, "character": 33 },
+          },
+          "text": "fs"
+        }
+      ]
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
   let diagnostics = diagnostics
     .with_file_and_source("file:///a/file.ts", "deno")
     .diagnostics
@@ -5650,7 +5135,7 @@ fn lsp_completions_node_specifier() {
     .collect::<Vec<_>>();
 
   // get the quick fixes
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -5668,7 +5153,6 @@ fn lsp_completions_node_specifier() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -5706,28 +5190,26 @@ fn lsp_completions_node_specifier() {
   );
 
   // update to have node:fs import
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 3,
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 0, "character": 15 },
-              "end": { "line": 0, "character": 19 },
-            },
-            "text": "\"node:fs\"",
-          }
-        ]
-      }),
-    )
-    .unwrap();
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 3,
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 15 },
+            "end": { "line": 0, "character": 19 },
+          },
+          "text": "\"node:fs\"",
+        }
+      ]
+    }),
+  );
 
-  let diagnostics = read_diagnostics(&mut client);
+  let diagnostics = client.read_diagnostics();
   let cache_diagnostics = diagnostics
     .with_file_and_source("file:///a/file.ts", "deno")
     .diagnostics
@@ -5756,47 +5238,42 @@ fn lsp_completions_node_specifier() {
     ])
   );
 
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [
-          {
-            "uri": "npm:@types/node",
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [
+        {
+          "uri": "npm:@types/node",
+        }
+      ]
+    }),
+  );
   assert!(maybe_res.is_some());
 
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 4
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 2, "character": 0 },
-              "end": { "line": 2, "character": 0 }
-            },
-            "text": "fs."
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  read_diagnostics(&mut client);
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "version": 4
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 0 }
+          },
+          "text": "fs."
+        }
+      ]
+    }),
+  );
+  client.read_diagnostics();
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5811,7 +5288,6 @@ fn lsp_completions_node_specifier() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert!(list.items.iter().any(|i| i.label == "writeFile"));
@@ -5830,18 +5306,15 @@ fn lsp_completions_registry() {
   client.initialize(|builder| {
     builder.add_test_server_suggestions();
   });
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import * as a from \"http://localhost:4545/x/a@\""
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"http://localhost:4545/x/a@\""
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5856,14 +5329,13 @@ fn lsp_completions_registry() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
   } else {
     panic!("unexpected response");
   }
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "completionItem/resolve",
       json!({
@@ -5882,7 +5354,6 @@ fn lsp_completions_registry() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5910,18 +5381,15 @@ fn lsp_completions_registry_empty() {
   client.initialize(|builder| {
     builder.add_test_server_suggestions();
   });
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import * as a from \"\""
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"\""
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -5936,7 +5404,6 @@ fn lsp_completions_registry_empty() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -5979,35 +5446,29 @@ fn lsp_auto_discover_registry() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"http://localhost:4545/x/a@\""
+    }
+  }));
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/completion",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import * as a from \"http://localhost:4545/x/a@\""
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 46 },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "@"
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 46 },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "@"
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (method, maybe_res) = client.read_notification().unwrap();
+  let (method, maybe_res) = client.read_notification();
   assert_eq!(method, "deno/registryState");
   assert_eq!(
     maybe_res,
@@ -6028,8 +5489,7 @@ fn lsp_cache_location() {
     builder.set_cache(".cache").add_test_server_suggestions();
   });
 
-  let mut session = TestSession::from_client(client);
-  session.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file_01.ts",
       "languageId": "typescript",
@@ -6038,7 +5498,7 @@ fn lsp_cache_location() {
     }
   }));
   let diagnostics =
-    session.did_open(json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
@@ -6047,22 +5507,17 @@ fn lsp_cache_location() {
       }
     }));
   assert_eq!(diagnostics.viewed().len(), 7);
-  let (maybe_res, maybe_err) = session
-    .client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [],
+    }),
+  );
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -6073,7 +5528,6 @@ fn lsp_cache_location() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -6087,8 +5541,7 @@ fn lsp_cache_location() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -6099,7 +5552,6 @@ fn lsp_cache_location() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -6116,7 +5568,7 @@ fn lsp_cache_location() {
   let cache_path = temp_dir.path().join(".cache");
   assert!(cache_path.is_dir());
   assert!(cache_path.join("gen").is_dir());
-  session.shutdown_and_exit();
+  client.shutdown();
 }
 
 /// Sets the TLS root certificate on startup, which allows the LSP to connect to
@@ -6135,9 +5587,7 @@ fn lsp_tls_cert() {
       .set_tls_certificate("");
   });
 
-  let mut session = TestSession::from_client(client);
-
-  session.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file_01.ts",
       "languageId": "typescript",
@@ -6145,7 +5595,7 @@ fn lsp_tls_cert() {
       "text": "export const a = \"a\";\n",
     }
   }));
-  let diagnostics = session.did_open(json!({
+  let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
@@ -6155,22 +5605,17 @@ fn lsp_tls_cert() {
   }));
   let diagnostics = diagnostics.viewed();
   assert_eq!(diagnostics.len(), 7);
-  let (maybe_res, maybe_err) = session
-    .client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [],
+    }),
+  );
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res = client
     .write_request(
       "textDocument/hover",
       json!({
@@ -6181,7 +5626,6 @@ fn lsp_tls_cert() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -6195,8 +5639,7 @@ fn lsp_tls_cert() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = session
-    .client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -6207,7 +5650,6 @@ fn lsp_tls_cert() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -6221,7 +5663,7 @@ fn lsp_tls_cert() {
       }
     }))
   );
-  session.shutdown_and_exit();
+  client.shutdown();
 }
 
 #[test]
@@ -6229,8 +5671,7 @@ fn lsp_diagnostics_warn_redirect() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -6240,24 +5681,21 @@ fn lsp_diagnostics_warn_redirect() {
       },
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [
-          {
-            "uri": "http://127.0.0.1:4545/x_deno_warning.js",
-          }
-        ],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [
+        {
+          "uri": "http://127.0.0.1:4545/x_deno_warning.js",
+        }
+      ],
+    }),
+  );
   assert!(maybe_res.is_some());
-  let diagnostics = read_diagnostics(&mut client);
+  let diagnostics = client.read_diagnostics();
   assert_eq!(
     diagnostics.with_source("deno"),
     lsp::PublishDiagnosticsParams {
@@ -6310,8 +5748,7 @@ fn lsp_redirect_quick_fix() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(
     json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
@@ -6321,27 +5758,22 @@ fn lsp_redirect_quick_fix() {
       },
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [
-          {
-            "uri": "http://127.0.0.1:4545/x_deno_warning.js",
-          }
-        ],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [
+        {
+          "uri": "http://127.0.0.1:4545/x_deno_warning.js",
+        }
+      ],
+    }),
+  );
   assert!(maybe_res.is_some());
-  let diagnostics = read_diagnostics(&mut client)
-    .with_source("deno")
-    .diagnostics;
-  let (maybe_res, maybe_err) = client
+  let diagnostics = client.read_diagnostics().with_source("deno").diagnostics;
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!(json!({
@@ -6359,7 +5791,6 @@ fn lsp_redirect_quick_fix() {
       })),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -6403,19 +5834,16 @@ fn lsp_redirect_quick_fix() {
 fn lsp_diagnostics_deprecated() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
-      },
-    }),
-  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+    },
+  }));
   assert_eq!(
-    json!(diagnostics),
+    json!(diagnostics.0),
     json!([
       {
         "uri": "file:///a/file.ts",
@@ -6452,10 +5880,8 @@ fn lsp_diagnostics_deprecated() {
 fn lsp_diagnostics_deno_types() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
+  let diagnostics = client
+    .did_open(json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
           "languageId": "typescript",
@@ -6463,26 +5889,17 @@ fn lsp_diagnostics_deno_types() {
           "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @deno-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @deno-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
         }
       }),
-    )
-    .unwrap();
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": true }]))
-    .unwrap();
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/documentSymbol",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        }
-      }),
-    )
-    .unwrap();
+    );
+
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/documentSymbol",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
   assert!(maybe_res.is_some());
-  assert!(maybe_err.is_none());
-  let diagnostics = read_diagnostics(&mut client);
   assert_eq!(diagnostics.viewed().len(), 5);
   client.shutdown();
 }
@@ -6491,8 +5908,7 @@ fn lsp_diagnostics_deno_types() {
 fn lsp_diagnostics_refresh_dependents() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  let mut session = TestSession::from_client(client);
-  session.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file_00.ts",
       "languageId": "typescript",
@@ -6500,7 +5916,7 @@ fn lsp_diagnostics_refresh_dependents() {
       "text": "export const a = \"a\";\n",
     },
   }));
-  session.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file_01.ts",
       "languageId": "typescript",
@@ -6508,7 +5924,7 @@ fn lsp_diagnostics_refresh_dependents() {
       "text": "export * from \"./file_00.ts\";\n",
     },
   }));
-  let diagnostics = session.did_open(json!({
+  let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file_02.ts",
       "languageId": "typescript",
@@ -6537,32 +5953,29 @@ fn lsp_diagnostics_refresh_dependents() {
   );
 
   // fix the code causing the diagnostic
-  session
-    .client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file_00.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": { "line": 1, "character": 0 },
-              "end": { "line": 1, "character": 0 }
-            },
-            "text": "export const b = \"b\";\n"
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  let diagnostics = session.read_diagnostics();
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_00.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 1, "character": 0 },
+            "end": { "line": 1, "character": 0 }
+          },
+          "text": "export const b = \"b\";\n"
+        }
+      ]
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.viewed().len(), 0); // no diagnostics now
 
-  session.shutdown_and_exit();
-  assert_eq!(session.client.queue_len(), 0);
+  client.shutdown();
+  assert_eq!(client.queue_len(), 0);
 }
 
 #[derive(Deserialize)]
@@ -6583,34 +5996,27 @@ struct PerformanceAverages {
 fn lsp_performance() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Deno.args);\n"
+    }
+  }));
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console.log(Deno.args);\n"
-      }
+        "uri": "file:///a/file.ts"
+      },
+      "position": { "line": 0, "character": 19 }
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": { "line": 0, "character": 19 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, PerformanceAverages>("deno/performance", json!(null))
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
     assert_eq!(res.averages.len(), 13);
   } else {
@@ -6623,18 +6029,15 @@ fn lsp_performance() {
 fn lsp_format_no_changes() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console;\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console;\n"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/formatting",
       json!({
@@ -6648,7 +6051,6 @@ fn lsp_format_no_changes() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
   client.assert_no_notification("window/showMessage");
   client.shutdown();
@@ -6658,18 +6060,15 @@ fn lsp_format_no_changes() {
 fn lsp_format_error() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "console test test\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console test test\n"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/formatting",
       json!({
@@ -6683,7 +6082,6 @@ fn lsp_format_error() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -6692,18 +6090,15 @@ fn lsp_format_error() {
 fn lsp_format_mbc() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/formatting",
       json!({
@@ -6717,7 +6112,6 @@ fn lsp_format_mbc() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -6778,18 +6172,15 @@ fn lsp_format_exclude_with_config() {
   });
 
   let file_uri = temp_dir.uri().join("ignored.ts").unwrap();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": file_uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "function   myFunc(){}"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "function   myFunc(){}"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/formatting",
       json!({
@@ -6803,7 +6194,6 @@ fn lsp_format_exclude_with_config() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -6837,18 +6227,15 @@ fn lsp_format_exclude_default_config() {
   });
 
   let file_uri = temp_dir.uri().join("ignored.ts").unwrap();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": file_uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "function   myFunc(){}"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "function   myFunc(){}"
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/formatting",
       json!({
@@ -6862,7 +6249,6 @@ fn lsp_format_exclude_default_config() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
   client.shutdown();
 }
@@ -6871,23 +6257,18 @@ fn lsp_format_exclude_default_config() {
 fn lsp_format_json() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          // Also test out using a non-json file extension here.
-          // What should matter is the language identifier.
-          "uri": "file:///a/file.lock",
-          "languageId": "json",
-          "version": 1,
-          "text": "{\"key\":\"value\"}"
-        }
-      }),
-    )
-    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      // Also test out using a non-json file extension here.
+      // What should matter is the language identifier.
+      "uri": "file:///a/file.lock",
+      "languageId": "json",
+      "version": 1,
+      "text": "{\"key\":\"value\"}"
+    }
+  }));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/formatting",
       json!({
@@ -6902,7 +6283,6 @@ fn lsp_format_json() {
     )
     .unwrap();
 
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([
@@ -6934,21 +6314,16 @@ fn lsp_format_json() {
 fn lsp_json_no_diagnostics() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.json",
-          "languageId": "json",
-          "version": 1,
-          "text": "{\"key\":\"value\"}"
-        }
-      }),
-    )
-    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.json",
+      "languageId": "json",
+      "version": 1,
+      "text": "{\"key\":\"value\"}"
+    }
+  }));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/semanticTokens/full",
       json!({
@@ -6958,10 +6333,9 @@ fn lsp_json_no_diagnostics() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -6972,7 +6346,6 @@ fn lsp_json_no_diagnostics() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
   client.shutdown();
@@ -6982,21 +6355,16 @@ fn lsp_json_no_diagnostics() {
 fn lsp_format_markdown() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.md",
-          "languageId": "markdown",
-          "version": 1,
-          "text": "#   Hello World"
-        }
-      }),
-    )
-    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.md",
+      "languageId": "markdown",
+      "version": 1,
+      "text": "#   Hello World"
+    }
+  }));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/formatting",
       json!({
@@ -7011,7 +6379,6 @@ fn lsp_format_markdown() {
     )
     .unwrap();
 
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([
@@ -7059,8 +6426,7 @@ fn lsp_format_with_config() {
   });
 
   client
-    .write_notification(
-      "textDocument/didOpen",
+    .did_open(
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
@@ -7069,11 +6435,10 @@ fn lsp_format_with_config() {
           "text": "export async function someVeryLongFunctionName() {\nconst response = fetch(\"http://localhost:4545/some/non/existent/path.json\");\nconsole.log(response.text());\nconsole.log(\"finished!\")\n}"
         }
       }),
-    )
-    .unwrap();
+    );
 
   // The options below should be ignored in favor of configuration from config file.
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/formatting",
       json!({
@@ -7088,7 +6453,6 @@ fn lsp_format_with_config() {
     )
     .unwrap();
 
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -7149,21 +6513,16 @@ fn lsp_format_with_config() {
 fn lsp_markdown_no_diagnostics() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.md",
-          "languageId": "markdown",
-          "version": 1,
-          "text": "# Hello World"
-        }
-      }),
-    )
-    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.md",
+      "languageId": "markdown",
+      "version": 1,
+      "text": "# Hello World"
+    }
+  }));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "textDocument/semanticTokens/full",
       json!({
@@ -7173,10 +6532,9 @@ fn lsp_markdown_no_diagnostics() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -7187,7 +6545,6 @@ fn lsp_markdown_no_diagnostics() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(maybe_res, Some(json!(null)));
 
   client.shutdown();
@@ -7198,54 +6555,47 @@ fn lsp_configuration_did_change() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"http://localhost:4545/x/a@\""
+    }
+  }));
+  client.write_notification(
+    "workspace/didChangeConfiguration",
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import * as a from \"http://localhost:4545/x/a@\""
-      }
+      "settings": {}
     }),
   );
-  client
-    .write_notification(
-      "workspace/didChangeConfiguration",
-      json!({
-        "settings": {}
-      }),
-    )
-    .unwrap();
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(
-      id,
-      json!([{
-        "enable": true,
-        "codeLens": {
-          "implementations": true,
-          "references": true
-        },
-        "importMap": null,
-        "lint": true,
-        "suggest": {
-          "autoImports": true,
-          "completeFunctionCalls": false,
-          "names": true,
-          "paths": true,
-          "imports": {
-            "hosts": {
-              "http://localhost:4545/": true
-            }
+  client.write_response(
+    id,
+    json!([{
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true
+      },
+      "importMap": null,
+      "lint": true,
+      "suggest": {
+        "autoImports": true,
+        "completeFunctionCalls": false,
+        "names": true,
+        "paths": true,
+        "imports": {
+          "hosts": {
+            "http://localhost:4545/": true
           }
-        },
-        "unstable": false
-      }]),
-    )
-    .unwrap();
-  let (maybe_res, maybe_err) = client
+        }
+      },
+      "unstable": false
+    }]),
+  );
+  let maybe_res = client
     .write_request(
       "textDocument/completion",
       json!({
@@ -7260,14 +6610,13 @@ fn lsp_configuration_did_change() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
     assert_eq!(list.items.len(), 3);
   } else {
     panic!("unexpected response");
   }
-  let (maybe_res, maybe_err) = client
+  let maybe_res = client
     .write_request(
       "completionItem/resolve",
       json!({
@@ -7286,7 +6635,6 @@ fn lsp_configuration_did_change() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -7311,29 +6659,23 @@ fn lsp_configuration_did_change() {
 fn lsp_workspace_symbol() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export class A {\n  fieldA: string;\n  fieldB: string;\n}\n",
-      }
-    }),
-  );
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export class B {\n  fieldC: string;\n  fieldD: string;\n}\n",
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class A {\n  fieldA: string;\n  fieldB: string;\n}\n",
+    }
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export class B {\n  fieldC: string;\n  fieldD: string;\n}\n",
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "workspace/symbol",
       json!({
@@ -7341,7 +6683,6 @@ fn lsp_workspace_symbol() {
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([
@@ -7399,48 +6740,42 @@ fn lsp_workspace_symbol() {
 fn lsp_code_actions_ignore_lint() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "let message = 'Hello, Deno!';\nconsole.log(message);\n"
+    }
+  }));
+  let maybe_res = client.write_request(
+    "textDocument/codeAction",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "let message = 'Hello, Deno!';\nconsole.log(message);\n"
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 1, "character": 5 },
+        "end": { "line": 1, "character": 12 }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 5 },
+              "end": { "line": 1, "character": 12 }
+            },
+            "severity": 1,
+            "code": "prefer-const",
+            "source": "deno-lint",
+            "message": "'message' is never reassigned\nUse 'const' instead",
+            "relatedInformation": []
+          }
+        ],
+        "only": ["quickfix"]
       }
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/codeAction",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "range": {
-          "start": { "line": 1, "character": 5 },
-          "end": { "line": 1, "character": 12 }
-        },
-        "context": {
-          "diagnostics": [
-            {
-              "range": {
-                "start": { "line": 1, "character": 5 },
-                "end": { "line": 1, "character": 12 }
-              },
-              "severity": 1,
-              "code": "prefer-const",
-              "source": "deno-lint",
-              "message": "'message' is never reassigned\nUse 'const' instead",
-              "relatedInformation": []
-            }
-          ],
-          "only": ["quickfix"]
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -7528,23 +6863,20 @@ fn lsp_code_actions_ignore_lint() {
 fn lsp_code_actions_update_ignore_lint() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text":
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text":
 "#!/usr/bin/env -S deno run
 // deno-lint-ignore-file camelcase
 let snake_case = 'Hello, Deno!';
 console.log(snake_case);
 ",
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
+    }
+  }));
+  let maybe_res = client
     .write_request(
       "textDocument/codeAction",
       json!({
@@ -7572,7 +6904,6 @@ console.log(snake_case);
       }),
     )
     .unwrap();
-  assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
     Some(json!([{
@@ -7679,9 +7010,7 @@ fn lsp_lint_with_config() {
     builder.set_config("./deno.lint.jsonc");
   });
 
-  let mut session = TestSession::from_client(client);
-
-  let diagnostics = session.did_open(json!({
+  let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
@@ -7695,7 +7024,7 @@ fn lsp_lint_with_config() {
     diagnostics[0].code,
     Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
   );
-  session.shutdown_and_exit();
+  client.shutdown();
 }
 
 #[test]
@@ -7724,8 +7053,7 @@ fn lsp_lint_exclude_with_config() {
     builder.set_config("./deno.lint.jsonc");
   });
 
-  let diagnostics = did_open(
-    &mut client,
+  let diagnostics = client.did_open(
     json!({
       "textDocument": {
         "uri": ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts")).unwrap().to_string(),
@@ -7735,10 +7063,7 @@ fn lsp_lint_exclude_with_config() {
       }
     }),
   );
-  let diagnostics = diagnostics
-    .into_iter()
-    .flat_map(|x| x.diagnostics)
-    .collect::<Vec<_>>();
+  let diagnostics = diagnostics.viewed();
   assert_eq!(diagnostics, Vec::new());
   client.shutdown();
 }
@@ -7748,14 +7073,12 @@ fn lsp_jsx_import_source_pragma() {
   let context = TestContextBuilder::new().use_http_server().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.tsx",
-        "languageId": "typescriptreact",
-        "version": 1,
-        "text":
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.tsx",
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text":
 "/** @jsxImportSource http://localhost:4545/jsx */
 
 function A() {
@@ -7766,36 +7089,29 @@ export function B() {
   return <A></A>;
 }
 ",
-      }
+    }
+  }));
+  let maybe_res = client.write_request::<_, _, Value>(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.tsx",
+      },
+      "uris": [{
+        "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
+      }],
     }),
   );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.tsx",
-        },
-        "uris": [{
-          "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
-        }],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "textDocument/hover",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.tsx"
-        },
-        "position": { "line": 0, "character": 25 }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
+  let maybe_res = client.write_request::<_, _, Value>(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.tsx"
+      },
+      "position": { "line": 0, "character": 25 }
+    }),
+  );
   assert_eq!(
     maybe_res,
     Some(json!({
@@ -7870,80 +7186,54 @@ Deno.test({
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": specifier,
-          "languageId": "typescript",
-          "version": 1,
-          "text": contents,
-        }
-      }),
-    )
-    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": specifier,
+      "languageId": "typescript",
+      "version": 1,
+      "text": contents,
+    }
+  }));
 
-  handle_configuration_request(
-    &mut client,
-    json!([{
-      "enable": true,
-      "codeLens": {
-        "test": true
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri, specifier);
+  assert_eq!(params.kind, TestModuleNotificationKind::Replace);
+  assert_eq!(params.label, "test.ts");
+  assert_eq!(params.tests.len(), 1);
+  let test = &params.tests[0];
+  assert_eq!(test.label, "test a");
+  assert!(test.steps.is_none());
+  assert_eq!(
+    test.range,
+    Some(lsp::Range {
+      start: lsp::Position {
+        line: 1,
+        character: 5,
+      },
+      end: lsp::Position {
+        line: 1,
+        character: 9,
       }
-    }]),
+    })
   );
 
-  for _ in 0..4 {
-    let result = client.read_notification::<Value>();
-    assert!(result.is_ok());
-    let (method, notification) = result.unwrap();
-    if method.as_str() == "deno/testModule" {
-      let params: TestModuleNotificationParams =
-        serde_json::from_value(notification.unwrap()).unwrap();
-      assert_eq!(params.text_document.uri, specifier);
-      assert_eq!(params.kind, TestModuleNotificationKind::Replace);
-      assert_eq!(params.label, "test.ts");
-      assert_eq!(params.tests.len(), 1);
-      let test = &params.tests[0];
-      assert_eq!(test.label, "test a");
-      assert!(test.steps.is_none());
-      assert_eq!(
-        test.range,
-        Some(lsp::Range {
-          start: lsp::Position {
-            line: 1,
-            character: 5,
-          },
-          end: lsp::Position {
-            line: 1,
-            character: 9,
-          }
-        })
-      );
-    }
-  }
-
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, TestRunResponseParams>(
-      "deno/testRun",
-      json!({
-        "id": 1,
-        "kind": "run",
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert!(maybe_res.is_some());
+  let maybe_res = client.write_request::<_, _, TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
   let res = maybe_res.unwrap();
   assert_eq!(res.enqueued.len(), 1);
   assert_eq!(res.enqueued[0].text_document.uri, specifier);
   assert_eq!(res.enqueued[0].ids.len(), 1);
   let id = res.enqueued[0].ids[0].clone();
 
-  let res = client.read_notification::<Value>();
-  assert!(res.is_ok());
-  let (method, notification) = res.unwrap();
+  let (method, notification) = client.read_notification::<Value>();
   assert_eq!(method, "deno/testRunProgress");
   assert_eq!(
     notification,
@@ -7961,9 +7251,7 @@ Deno.test({
     }))
   );
 
-  let res = client.read_notification::<Value>();
-  assert!(res.is_ok());
-  let (method, notification) = res.unwrap();
+  let (method, notification) = client.read_notification::<Value>();
   assert_eq!(method, "deno/testRunProgress");
   let notification_value = notification
     .as_ref()
@@ -7999,9 +7287,7 @@ Deno.test({
     }))
   );
 
-  let res = client.read_notification::<Value>();
-  assert!(res.is_ok());
-  let (method, notification) = res.unwrap();
+  let (method, notification) = client.read_notification::<Value>();
   assert_eq!(method, "deno/testRunProgress");
   let notification = notification.unwrap();
   let obj = notification.as_object().unwrap();
@@ -8020,9 +7306,7 @@ Deno.test({
       );
       assert!(message.contains_key("duration"));
 
-      let res = client.read_notification::<Value>();
-      assert!(res.is_ok());
-      let (method, notification) = res.unwrap();
+      let (method, notification) = client.read_notification::<Value>();
       assert_eq!(method, "deno/testRunProgress");
       assert_eq!(
         notification,

@@ -10,6 +10,7 @@ use super::TempDir;
 
 use anyhow::Result;
 use lazy_static::lazy_static;
+use lsp_types as lsp;
 use lsp_types::ClientCapabilities;
 use lsp_types::ClientInfo;
 use lsp_types::CodeActionCapabilityResolveSupport;
@@ -33,6 +34,7 @@ use serde::Serialize;
 use serde_json::json;
 use serde_json::to_value;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::io;
 use std::io::Write;
 use std::path::Path;
@@ -496,6 +498,7 @@ impl LspClientBuilder {
         .unwrap_or_else(|| TestContextBuilder::new().build()),
       writer,
       deno_dir,
+      diagnosable_open_file_count: 0,
     })
   }
 }
@@ -508,6 +511,7 @@ pub struct LspClient {
   writer: io::BufWriter<ChildStdin>,
   deno_dir: TempDir,
   context: TestContext,
+  diagnosable_open_file_count: usize,
 }
 
 impl Drop for LspClient {
@@ -523,29 +527,6 @@ impl Drop for LspClient {
   }
 }
 
-fn notification_result<R>(
-  method: String,
-  maybe_params: Option<Value>,
-) -> Result<(String, Option<R>)>
-where
-  R: de::DeserializeOwned,
-{
-  let maybe_params = match maybe_params {
-    Some(params) => {
-      Some(serde_json::from_value(params.clone()).map_err(|err| {
-        anyhow::anyhow!(
-          "Could not deserialize message '{}': {}\n\n{:?}",
-          method,
-          err,
-          params
-        )
-      })?)
-    }
-    None => None,
-  };
-  Ok((method, maybe_params))
-}
-
 fn request_result<R>(
   id: u64,
   method: String,
@@ -559,20 +540,6 @@ where
     None => None,
   };
   Ok((id, method, maybe_params))
-}
-
-fn response_result<R>(
-  maybe_result: Option<Value>,
-  maybe_error: Option<LspResponseError>,
-) -> Result<(Option<R>, Option<LspResponseError>)>
-where
-  R: de::DeserializeOwned,
-{
-  let maybe_result = match maybe_result {
-    Some(result) => Some(serde_json::from_value(result)?),
-    None => None,
-  };
-  Ok((maybe_result, maybe_error))
 }
 
 impl LspClient {
@@ -606,14 +573,68 @@ impl LspClient {
     self
       .write_request::<_, _, Value>("initialize", builder.build())
       .unwrap();
-    self.write_notification("initialized", json!({})).unwrap();
+    self.write_notification("initialized", json!({}));
+  }
+
+  pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
+    self.did_open_with_config(
+      params,
+      json!([{
+        "enable": true,
+        "codeLens": {
+          "test": true
+        }
+      }]),
+    )
+  }
+
+  pub fn did_open_with_config(
+    &mut self,
+    params: Value,
+    config: Value,
+  ) -> CollectedDiagnostics {
+    self.did_open_raw(params);
+    self.handle_configuration_request(config);
+    self.read_diagnostics()
+  }
+
+  pub fn did_open_raw(&mut self, params: Value) {
+    let text_doc = params
+      .as_object()
+      .unwrap()
+      .get("textDocument")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    if matches!(
+      text_doc.get("languageId").unwrap().as_str().unwrap(),
+      "typescript" | "javascript"
+    ) {
+      self.diagnosable_open_file_count += 1;
+    }
+
+    self.write_notification("textDocument/didOpen", params);
+  }
+
+  pub fn handle_configuration_request(&mut self, result: Value) {
+    let (id, method, _) = self.read_request::<Value>().unwrap();
+    assert_eq!(method, "workspace/configuration");
+    self.write_response(id, result);
+  }
+
+  pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
+    let mut all_diagnostics = Vec::new();
+    for _ in 0..self.diagnosable_open_file_count {
+      all_diagnostics.extend(read_diagnostics(self).0);
+    }
+    CollectedDiagnostics(all_diagnostics)
   }
 
   pub fn shutdown(&mut self) {
     self
       .write_request::<_, _, Value>("shutdown", json!(null))
       .unwrap();
-    self.write_notification("exit", json!(null)).unwrap();
+    self.write_notification("exit", json!(null));
   }
 
   // it's flaky to assert for a notification because a notification
@@ -626,14 +647,34 @@ impl LspClient {
     }))
   }
 
-  pub fn read_notification<R>(&mut self) -> Result<(String, Option<R>)>
+  pub fn read_notification<R>(&mut self) -> (String, Option<R>)
   where
     R: de::DeserializeOwned,
   {
     self.reader.read_message(|msg| match msg {
-      LspMessage::Notification(method, maybe_params) => Some(
-        notification_result(method.to_owned(), maybe_params.to_owned()),
-      ),
+      LspMessage::Notification(method, maybe_params) => {
+        let params = serde_json::from_value(maybe_params.clone()?).ok()?;
+        Some((method.to_string(), params))
+      }
+      _ => None,
+    })
+  }
+
+  pub fn read_notification_with_method<R>(
+    &mut self,
+    expected_method: &str,
+  ) -> Option<R>
+  where
+    R: de::DeserializeOwned,
+  {
+    self.reader.read_message(|msg| match msg {
+      LspMessage::Notification(method, maybe_params) => {
+        if method != expected_method {
+          None
+        } else {
+          serde_json::from_value(maybe_params.clone()?).ok()
+        }
+      }
       _ => None,
     })
   }
@@ -652,23 +693,18 @@ impl LspClient {
     })
   }
 
-  fn write(&mut self, value: Value) -> Result<()> {
+  fn write(&mut self, value: Value) {
     let value_str = value.to_string();
     let msg = format!(
       "Content-Length: {}\r\n\r\n{}",
       value_str.as_bytes().len(),
       value_str
     );
-    self.writer.write_all(msg.as_bytes())?;
-    self.writer.flush()?;
-    Ok(())
+    self.writer.write_all(msg.as_bytes()).unwrap();
+    self.writer.flush().unwrap();
   }
 
-  pub fn write_request<S, V, R>(
-    &mut self,
-    method: S,
-    params: V,
-  ) -> Result<(Option<R>, Option<LspResponseError>)>
+  pub fn write_request<S, V, R>(&mut self, method: S, params: V) -> Option<R>
   where
     S: AsRef<str>,
     V: Serialize,
@@ -688,22 +724,25 @@ impl LspClient {
         "params": params,
       })
     };
-    self.write(value)?;
+    self.write(value);
 
     self.reader.read_message(|msg| match msg {
       LspMessage::Response(id, maybe_result, maybe_error) => {
         assert_eq!(*id, self.request_id);
         self.request_id += 1;
-        Some(response_result(
-          maybe_result.to_owned(),
-          maybe_error.to_owned(),
-        ))
+        if let Some(error) = maybe_error {
+          panic!("LSP ERROR: {:?}", error);
+        }
+        let maybe_result = maybe_result
+          .clone()
+          .map(|result| serde_json::from_value(result).unwrap());
+        Some(maybe_result)
       }
       _ => None,
     })
   }
 
-  pub fn write_response<V>(&mut self, id: u64, result: V) -> Result<()>
+  pub fn write_response<V>(&mut self, id: u64, result: V)
   where
     V: Serialize,
   {
@@ -712,10 +751,10 @@ impl LspClient {
       "id": id,
       "result": result
     });
-    self.write(value)
+    self.write(value);
   }
 
-  pub fn write_notification<S, V>(&mut self, method: S, params: V) -> Result<()>
+  pub fn write_notification<S, V>(&mut self, method: S, params: V)
   where
     S: AsRef<str>,
     V: Serialize,
@@ -725,9 +764,81 @@ impl LspClient {
       "method": method.as_ref(),
       "params": params,
     });
-    self.write(value)?;
-    Ok(())
+    self.write(value);
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct CollectedDiagnostics(pub Vec<lsp::PublishDiagnosticsParams>);
+
+impl CollectedDiagnostics {
+  /// Gets the diagnostics that the editor will see after all the publishes.
+  pub fn viewed(&self) -> Vec<lsp::Diagnostic> {
+    self
+      .viewed_messages()
+      .into_iter()
+      .flat_map(|m| m.diagnostics)
+      .collect()
+  }
+
+  /// Gets the messages that the editor will see after all the publishes.
+  pub fn viewed_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
+    // go over the publishes in reverse order in order to get
+    // the final messages that will be shown in the editor
+    let mut messages = Vec::new();
+    let mut had_specifier = HashSet::new();
+    for message in self.0.iter().rev() {
+      if had_specifier.insert(message.uri.clone()) {
+        messages.insert(0, message.clone());
+      }
+    }
+    messages
+  }
+
+  pub fn with_source(&self, source: &str) -> lsp::PublishDiagnosticsParams {
+    self
+      .viewed_messages()
+      .iter()
+      .find(|p| {
+        p.diagnostics
+          .iter()
+          .any(|d| d.source == Some(source.to_string()))
+      })
+      .map(ToOwned::to_owned)
+      .unwrap()
+  }
+
+  pub fn with_file_and_source(
+    &self,
+    specifier: &str,
+    source: &str,
+  ) -> lsp::PublishDiagnosticsParams {
+    let specifier = Url::parse(specifier).unwrap();
+    self
+      .viewed_messages()
+      .iter()
+      .find(|p| {
+        p.uri == specifier
+          && p
+            .diagnostics
+            .iter()
+            .any(|d| d.source == Some(source.to_string()))
+      })
+      .map(ToOwned::to_owned)
+      .unwrap()
+  }
+}
+
+fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
+  // diagnostics come in batches of three unless they're cancelled
+  let mut diagnostics = vec![];
+  for _ in 0..3 {
+    let (method, response) =
+      client.read_notification::<lsp::PublishDiagnosticsParams>();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    diagnostics.push(response.unwrap());
+  }
+  CollectedDiagnostics(diagnostics)
 }
 
 #[cfg(test)]
