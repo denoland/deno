@@ -3,6 +3,7 @@
 use deno_core::url::Url;
 use test_util as util;
 use util::env_vars_for_npm_tests;
+use util::TestContext;
 
 #[test]
 fn no_color() {
@@ -240,7 +241,7 @@ itest!(trace_ops_catch_error {
 // });
 
 itest!(ops_sanitizer_nexttick {
-  args: "test test/ops_sanitizer_nexttick.ts",
+  args: "test --no-check test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",
 });
 
@@ -414,13 +415,12 @@ fn file_protocol() {
       .unwrap()
       .to_string();
 
-  (util::CheckOutputIntegrationTest {
-    args_vec: vec!["test", &file_url],
-    exit_code: 0,
-    output: "test/file_protocol.out",
-    ..Default::default()
-  })
-  .run();
+  let context = TestContext::default();
+  context
+    .new_command()
+    .args(format!("test {file_url}"))
+    .run()
+    .assert_matches_file("test/file_protocol.out");
 }
 
 itest!(uncaught_errors {
@@ -456,7 +456,7 @@ itest!(parallel_output {
 
 itest!(package_json_basic {
   args: "test",
-  output: "package_json/basic/main.test.out",
+  output: "package_json/basic/lib.test.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   cwd: Some("package_json/basic"),

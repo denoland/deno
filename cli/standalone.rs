@@ -243,7 +243,7 @@ pub async fn run(
           false,
           ps.npm_resolver.api().clone(),
           ps.npm_resolver.resolution().clone(),
-          None,
+          ps.package_json_deps_installer.clone(),
         )
       },
     ),
@@ -302,6 +302,7 @@ pub async fn run(
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
     stdio: Default::default(),
+    leak_isolate: true,
   };
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),

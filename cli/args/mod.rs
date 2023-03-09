@@ -8,6 +8,7 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
+use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use indexmap::IndexMap;
 
@@ -38,7 +39,6 @@ use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReq;
 use deno_runtime::colors;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls;
@@ -49,7 +49,6 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -803,19 +802,18 @@ impl CliOptions {
     &self.maybe_package_json
   }
 
-  pub fn maybe_package_json_deps(
-    &self,
-  ) -> Result<Option<BTreeMap<String, NpmPackageReq>>, AnyError> {
+  pub fn maybe_package_json_deps(&self) -> Option<PackageJsonDeps> {
     if matches!(
       self.flags.subcommand,
       DenoSubcommand::Task(TaskFlags { task: None, .. })
     ) {
       // don't have any package json dependencies for deno task with no args
-      Ok(None)
-    } else if let Some(package_json) = self.maybe_package_json() {
-      package_json::get_local_package_json_version_reqs(package_json).map(Some)
+      None
     } else {
-      Ok(None)
+      self
+        .maybe_package_json()
+        .as_ref()
+        .map(package_json::get_local_package_json_version_reqs)
     }
   }
 

@@ -988,7 +988,7 @@ impl ModuleRegistry {
       .origins
       .keys()
       .filter_map(|k| {
-        let mut origin = k.as_str().to_string();
+        let mut origin = k.to_string();
         if origin.ends_with('/') {
           origin.pop();
         }

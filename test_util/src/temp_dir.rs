@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Context;
+use lsp_types::Url;
 use once_cell::sync::OnceCell;
 
 static TEMP_DIR_SESSION: OnceCell<TempDirSession> = OnceCell::new();
@@ -81,6 +82,10 @@ impl TempDir {
         .unwrap();
       Arc::new(TempDirInner(path))
     })
+  }
+
+  pub fn uri(&self) -> Url {
+    Url::from_directory_path(self.path()).unwrap()
   }
 
   pub fn path(&self) -> &Path {

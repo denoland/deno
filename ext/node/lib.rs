@@ -95,7 +95,19 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
-pub fn init_polyfill() -> Extension {
+pub fn init_polyfill_ops() -> Extension {
+  Extension::builder(env!("CARGO_PKG_NAME"))
+    .ops(vec![
+      crypto::op_node_create_hash::decl(),
+      crypto::op_node_hash_update::decl(),
+      crypto::op_node_hash_digest::decl(),
+      crypto::op_node_hash_clone::decl(),
+      op_node_build_os::decl(),
+    ])
+    .build()
+}
+
+pub fn init_polyfill_ops_and_esm() -> Extension {
   let esm_files = include_js_files!(
     dir "polyfills",
     "_core.ts",
@@ -146,7 +158,6 @@ pub fn init_polyfill() -> Extension {
     "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
-    "_process/stdio.mjs",
     "_process/streams.mjs",
     "_readline.mjs",
     "_stream.mjs",
@@ -180,7 +191,6 @@ pub fn init_polyfill() -> Extension {
     "events.ts",
     "fs.ts",
     "fs/promises.ts",
-    "global.ts",
     "http.ts",
     "http2.ts",
     "https.ts",
@@ -194,64 +204,29 @@ pub fn init_polyfill() -> Extension {
     "internal_binding/async_wrap.ts",
     "internal_binding/buffer.ts",
     "internal_binding/cares_wrap.ts",
-    "internal_binding/config.ts",
     "internal_binding/connection_wrap.ts",
     "internal_binding/constants.ts",
-    "internal_binding/contextify.ts",
-    "internal_binding/credentials.ts",
     "internal_binding/crypto.ts",
-    "internal_binding/errors.ts",
-    "internal_binding/fs_dir.ts",
-    "internal_binding/fs_event_wrap.ts",
-    "internal_binding/fs.ts",
     "internal_binding/handle_wrap.ts",
-    "internal_binding/heap_utils.ts",
-    "internal_binding/http_parser.ts",
-    "internal_binding/icu.ts",
-    "internal_binding/inspector.ts",
-    "internal_binding/js_stream.ts",
-    "internal_binding/messaging.ts",
     "internal_binding/mod.ts",
-    "internal_binding/module_wrap.ts",
-    "internal_binding/native_module.ts",
-    "internal_binding/natives.ts",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",
-    "internal_binding/options.ts",
-    "internal_binding/os.ts",
-    "internal_binding/performance.ts",
     "internal_binding/pipe_wrap.ts",
-    "internal_binding/process_methods.ts",
-    "internal_binding/report.ts",
-    "internal_binding/serdes.ts",
-    "internal_binding/signal_wrap.ts",
-    "internal_binding/spawn_sync.ts",
     "internal_binding/stream_wrap.ts",
     "internal_binding/string_decoder.ts",
     "internal_binding/symbols.ts",
-    "internal_binding/task_queue.ts",
     "internal_binding/tcp_wrap.ts",
-    "internal_binding/timers.ts",
-    "internal_binding/tls_wrap.ts",
-    "internal_binding/trace_events.ts",
-    "internal_binding/tty_wrap.ts",
     "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
-    "internal_binding/url.ts",
     "internal_binding/util.ts",
     "internal_binding/uv.ts",
-    "internal_binding/v8.ts",
-    "internal_binding/worker.ts",
-    "internal_binding/zlib.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
-    "internal/blob.mjs",
     "internal/buffer.mjs",
     "internal/child_process.ts",
     "internal/cli_table.ts",
     "internal/console/constructor.mjs",
     "internal/constants.ts",
-    "internal/crypto/_hex.ts",
     "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
     "internal/crypto/_randomFill.ts",
@@ -268,7 +243,6 @@ pub fn init_polyfill() -> Extension {
     "internal/crypto/random.ts",
     "internal/crypto/scrypt.ts",
     "internal/crypto/sig.ts",
-    "internal/crypto/types.ts",
     "internal/crypto/util.ts",
     "internal/crypto/x509.ts",
     "internal/dgram.ts",
@@ -279,7 +253,6 @@ pub fn init_polyfill() -> Extension {
     "internal/errors.ts",
     "internal/event_target.mjs",
     "internal/fixed_queue.ts",
-    "internal/freelist.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/hide_stack_frames.ts",
@@ -304,7 +277,6 @@ pub fn init_polyfill() -> Extension {
     "internal/streams/duplex.mjs",
     "internal/streams/end-of-stream.mjs",
     "internal/streams/lazy_transform.mjs",
-    "internal/streams/legacy.mjs",
     "internal/streams/passthrough.mjs",
     "internal/streams/readable.mjs",
     "internal/streams/state.mjs",
@@ -321,8 +293,6 @@ pub fn init_polyfill() -> Extension {
     "internal/util/types.ts",
     "internal/validators.mjs",
     "module_all.ts",
-    "module_esm.ts",
-    "module.js",
     "net.ts",
     "os.ts",
     "path.ts",
@@ -352,7 +322,6 @@ pub fn init_polyfill() -> Extension {
     "timers/promises.ts",
     "tls.ts",
     "tty.ts",
-    "upstream_modules.ts",
     "url.ts",
     "util.ts",
     "util/types.ts",
@@ -365,11 +334,14 @@ pub fn init_polyfill() -> Extension {
 
   Extension::builder(env!("CARGO_PKG_NAME"))
     .esm(esm_files)
-    .esm_entry_point("internal:deno_node/polyfills/module_all.ts")
+    .esm_entry_point("ext:deno_node/module_all.ts")
+    .dependencies(vec!["deno_io", "deno_fs"])
     .ops(vec![
       crypto::op_node_create_hash::decl(),
       crypto::op_node_hash_update::decl(),
+      crypto::op_node_hash_update_str::decl(),
       crypto::op_node_hash_digest::decl(),
+      crypto::op_node_hash_digest_hex::decl(),
       crypto::op_node_hash_clone::decl(),
       crypto::op_node_private_encrypt::decl(),
       crypto::op_node_private_decrypt::decl(),
@@ -423,7 +395,6 @@ pub fn init<P: NodePermissions + 'static>(
       if let Some(npm_resolver) = maybe_npm_resolver.clone() {
         state.put(npm_resolver);
       }
-      Ok(())
     })
     .build()
 }

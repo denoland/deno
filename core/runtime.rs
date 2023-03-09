@@ -8,7 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
-use crate::modules::InternalModuleLoaderCb;
+use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -93,6 +93,9 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
+  // Marks if it's OK to leak the current isolate. Use only by the
+  // CLI main worker.
+  leak_isolate: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -275,7 +278,7 @@ pub struct RuntimeOptions {
   /// An optional callback that will be called for each module that is loaded
   /// during snapshotting. This callback can be used to transpile source on the
   /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
-  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
+  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -305,6 +308,10 @@ pub struct RuntimeOptions {
   /// Describe if this is the main runtime instance, used by debuggers in some
   /// situation - like disconnecting when program finishes running.
   pub is_main: bool,
+
+  /// Whether it is OK to leak the V8 isolate. Only to be used by CLI
+  /// top-level runtime.
+  pub leak_isolate: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -337,6 +344,16 @@ impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
+    }
+    if self.leak_isolate {
+      if let Some(v8_isolate) = self.v8_isolate.take() {
+        // Clear the GothamState. This allows final env cleanup hooks to run.
+        // Note: that OpState is cloned for every OpCtx, so we can't just drop
+        // one reference to it.
+        let rc_state = self.op_state();
+        rc_state.borrow_mut().clear_state();
+        std::mem::forget(v8_isolate);
+      }
     }
   }
 }
@@ -446,7 +463,6 @@ impl JsRuntime {
         }
       }
 
-      let mut module_handles = vec![];
       let mut scope = v8::ContextScope::new(scope, context);
       // The 0th element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
@@ -459,6 +475,9 @@ impl JsRuntime {
             info_data.length()
           };
 
+          // Over allocate so executing a few scripts doesn't have to resize this vec.
+          let mut module_handles =
+            Vec::with_capacity(next_module_id as usize + 16);
           for i in 1..=next_module_id {
             match scope
               .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
@@ -620,7 +639,7 @@ impl JsRuntime {
         }
       }
 
-      Rc::new(crate::modules::InternalModuleLoader::new(
+      Rc::new(crate::modules::ExtModuleLoader::new(
         options.module_loader,
         esm_sources,
         options.snapshot_module_load_cb,
@@ -674,6 +693,7 @@ impl JsRuntime {
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
+      leak_isolate: options.leak_isolate,
     };
 
     // Init resources and ops before extensions to make sure they are
@@ -939,7 +959,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -957,7 +977,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -992,11 +1012,15 @@ impl JsRuntime {
       let context = realm.context();
       let context_local = v8::Local::new(scope, context);
       let global = context_local.global(scope);
-      let deno_str = v8::String::new(scope, "Deno").unwrap();
-      let core_str = v8::String::new(scope, "core").unwrap();
-      let opresolve_str = v8::String::new(scope, "opresolve").unwrap();
+      let deno_str =
+        v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
+      let core_str =
+        v8::String::new_external_onebyte_static(scope, b"core").unwrap();
+      let opresolve_str =
+        v8::String::new_external_onebyte_static(scope, b"opresolve").unwrap();
       let build_custom_error_str =
-        v8::String::new(scope, "buildCustomError").unwrap();
+        v8::String::new_external_onebyte_static(scope, b"buildCustomError")
+          .unwrap();
 
       let deno_obj: v8::Local<v8::Object> = global
         .get(scope, deno_str.into())
@@ -2883,7 +2907,6 @@ pub mod tests {
           mode,
           dispatch_count: dispatch_count2.clone(),
         });
-        Ok(())
       })
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3981,8 +4004,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap_err();
     let error_string = error.to_string();
-    // Test that the script specifier is a URL: `internal:<repo-relative path>`.
-    assert!(error_string.contains("internal:core/01_core.js"));
+    // Test that the script specifier is a URL: `ext:<repo-relative path>`.
+    assert!(error_string.contains("ext:core/01_core.js"));
   }
 
   #[test]
@@ -4041,7 +4064,6 @@ assertEquals(1, notify_return_value);
       .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
-        Ok(())
       })
       .build();
 
@@ -5016,8 +5038,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ) -> Pin<Box<ModuleSourceFuture>> {
         let source = r#"
         // This module doesn't really exist, just verifying that we'll get
-        // an error when specifier starts with "internal:".
-        import { core } from "internal:core.js";
+        // an error when specifier starts with "ext:".
+        import { core } from "ext:core.js";
         "#;
 
         async move {
@@ -5053,7 +5075,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .unwrap_err();
     assert_eq!(
       err.to_string(),
-      "Cannot load internal module from external code"
+      "Cannot load extension module from external code"
     );
   }
 }

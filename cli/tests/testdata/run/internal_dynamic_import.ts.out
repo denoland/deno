@@ -1,4 +1,0 @@
-error: Uncaught TypeError: Cannot load internal module from external code
-await import("internal:runtime/js/01_build.js");
-^
-    at [WILDCARD]/internal_dynamic_import.ts:1:1

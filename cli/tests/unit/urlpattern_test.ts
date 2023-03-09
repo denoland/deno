@@ -43,3 +43,18 @@ Deno.test(function urlPatternFromInit() {
 
   assert(pattern.test({ pathname: "/foo/x" }));
 });
+
+Deno.test(function urlPatternWithPrototypePollution() {
+  const originalExec = RegExp.prototype.exec;
+  try {
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
+    const pattern = new URLPattern({
+      pathname: "/foo/:bar",
+    });
+    assert(pattern.test("https://deno.land/foo/x"));
+  } finally {
+    RegExp.prototype.exec = originalExec;
+  }
+});

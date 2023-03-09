@@ -38,12 +38,20 @@ pub(crate) enum BailoutReason {
 }
 
 #[derive(Debug, PartialEq)]
+enum StringType {
+  Cow,
+  Ref,
+  Owned,
+}
+
+#[derive(Debug, PartialEq)]
 enum TransformKind {
   // serde_v8::Value
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
   SliceF64(bool),
+  SeqOneByteString(StringType),
   PtrU8,
   PtrVoid,
   WasmMemory,
@@ -74,6 +82,13 @@ impl Transform {
   fn slice_f64(index: usize, is_mut: bool) -> Self {
     Transform {
       kind: TransformKind::SliceF64(is_mut),
+      index,
+    }
+  }
+
+  fn seq_one_byte_string(index: usize, is_ref: StringType) -> Self {
+    Transform {
+      kind: TransformKind::SeqOneByteString(is_ref),
       index,
     }
   }
@@ -180,6 +195,21 @@ impl Transform {
           };
         })
       }
+      // &str
+      TransformKind::SeqOneByteString(str_ty) => {
+        *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
+        match str_ty {
+          StringType::Ref => q!(Vars { var: &ident }, {
+            let var = unsafe { &*var }.as_str();
+          }),
+          StringType::Cow => q!(Vars { var: &ident }, {
+            let var = ::std::borrow::Cow::Borrowed(unsafe { &*var }.as_str());
+          }),
+          StringType::Owned => q!(Vars { var: &ident }, {
+            let var = unsafe { &*var }.as_str().to_owned();
+          }),
+        }
+      }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
         // U8 slice is always byte-aligned.
@@ -217,8 +247,8 @@ fn get_fast_scalar(s: &str) -> Option<FastValue> {
     "bool" => Some(FastValue::Bool),
     "u32" => Some(FastValue::U32),
     "i32" => Some(FastValue::I32),
-    "u64" => Some(FastValue::U64),
-    "i64" => Some(FastValue::I64),
+    "u64" | "usize" => Some(FastValue::U64),
+    "i64" | "isize" => Some(FastValue::I64),
     "f32" => Some(FastValue::F32),
     "f64" => Some(FastValue::F64),
     "* const c_void" | "* mut c_void" => Some(FastValue::Pointer),
@@ -252,6 +282,17 @@ pub(crate) enum FastValue {
   Uint8Array,
   Uint32Array,
   Float64Array,
+  SeqOneByteString,
+}
+
+impl FastValue {
+  pub fn default_value(&self) -> Quote {
+    match self {
+      FastValue::Pointer => q!({ ::std::ptr::null_mut() }),
+      FastValue::Void => q!({}),
+      _ => q!({ Default::default() }),
+    }
+  }
 }
 
 impl Default for FastValue {
@@ -376,6 +417,13 @@ impl Optimizer {
     // Analyze parameters
     for (index, param) in sig.inputs.iter().enumerate() {
       self.analyze_param_type(index, param)?;
+    }
+
+    // TODO(@littledivy): https://github.com/denoland/deno/issues/17159
+    if self.returns_result
+      && self.fast_parameters.contains(&FastValue::SeqOneByteString)
+    {
+      self.fast_compatible = false;
     }
 
     Ok(())
@@ -651,10 +699,58 @@ impl Optimizer {
                 }
               }
             }
+            // Cow<'_, str>
+            PathSegment {
+              ident, arguments, ..
+            } if ident == "Cow" => {
+              if let PathArguments::AngleBracketed(
+                AngleBracketedGenericArguments { args, .. },
+              ) = arguments
+              {
+                assert_eq!(args.len(), 2);
+
+                let ty = &args[1];
+                match ty {
+                  GenericArgument::Type(Type::Path(TypePath {
+                    path: Path { segments, .. },
+                    ..
+                  })) => {
+                    let segment = single_segment(segments)?;
+                    match segment {
+                      PathSegment { ident, .. } if ident == "str" => {
+                        self.fast_parameters.push(FastValue::SeqOneByteString);
+                        assert!(self
+                          .transforms
+                          .insert(
+                            index,
+                            Transform::seq_one_byte_string(
+                              index,
+                              StringType::Cow
+                            )
+                          )
+                          .is_none());
+                      }
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
+                    }
+                  }
+                  _ => return Err(BailoutReason::FastUnsupportedParamType),
+                }
+              }
+            }
             // Is `T` a fast scalar?
             PathSegment { ident, .. } => {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
                 self.fast_parameters.push(val);
+              } else if ident == "String" {
+                // Is `T` an owned String?
+                self.fast_parameters.push(FastValue::SeqOneByteString);
+                assert!(self
+                  .transforms
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Owned)
+                  )
+                  .is_none());
               } else {
                 return Err(BailoutReason::FastUnsupportedParamType);
               }
@@ -676,6 +772,17 @@ impl Optimizer {
                 if ident == "OpState" && !self.is_async =>
               {
                 self.has_ref_opstate = true;
+              }
+              // Is `T` a str?
+              PathSegment { ident, .. } if ident == "str" => {
+                self.fast_parameters.push(FastValue::SeqOneByteString);
+                assert!(self
+                  .transforms
+                  .insert(
+                    index,
+                    Transform::seq_one_byte_string(index, StringType::Ref)
+                  )
+                  .is_none());
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),
             }

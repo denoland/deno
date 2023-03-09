@@ -27,6 +27,7 @@ use crate::node::NodeResolution;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
+use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
@@ -92,6 +93,7 @@ pub struct Inner {
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
+  pub package_json_deps_installer: PackageJsonDepsInstaller,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
 }
@@ -153,6 +155,7 @@ impl ProcState {
       node_analysis_cache: self.node_analysis_cache.clone(),
       npm_cache: self.npm_cache.clone(),
       npm_resolver: self.npm_resolver.clone(),
+      package_json_deps_installer: self.package_json_deps_installer.clone(),
       cjs_resolutions: Default::default(),
       progress_bar: self.progress_bar.clone(),
     });
@@ -228,6 +231,11 @@ impl ProcState {
       lockfile.as_ref().cloned(),
     )
     .await?;
+    let package_json_deps_installer = PackageJsonDepsInstaller::new(
+      npm_resolver.api().clone(),
+      npm_resolver.resolution().clone(),
+      cli_options.maybe_package_json_deps(),
+    );
     let maybe_import_map = cli_options
       .resolve_import_map(&file_fetcher)
       .await?
@@ -235,18 +243,13 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let maybe_package_json_deps = cli_options.maybe_package_json_deps()?;
-    // resolve the package.json npm requirements ahead of time
-    npm_resolver
-      .add_package_json_deps(maybe_package_json_deps.as_ref())
-      .await?;
     let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
       cli_options.no_npm(),
       npm_resolver.api().clone(),
       npm_resolver.resolution().clone(),
-      maybe_package_json_deps,
+      package_json_deps_installer.clone(),
     ));
 
     let maybe_file_watcher_reporter =
@@ -298,6 +301,7 @@ impl ProcState {
       node_analysis_cache,
       npm_cache,
       npm_resolver,
+      package_json_deps_installer,
       cjs_resolutions: Default::default(),
       progress_bar,
     })))
@@ -514,8 +518,10 @@ impl ProcState {
               node::resolve_builtin_node_module(&module.module_name)
             }
             Some(Module::Esm(module)) => Ok(module.specifier.clone()),
-            Some(Module::External(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
+            Some(Module::External(module)) => {
+              Ok(node::resolve_specifier_into_node_modules(&module.specifier))
+            }
             None => Ok(specifier.clone()),
           };
         }
@@ -631,18 +637,13 @@ impl ProcState {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
 
-    let maybe_package_json_deps = self.options.maybe_package_json_deps()?;
-    self
-      .npm_resolver
-      .add_package_json_deps(maybe_package_json_deps.as_ref())
-      .await?;
     let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
       self.options.no_npm(),
       self.npm_resolver.api().clone(),
       self.npm_resolver.resolution().clone(),
-      maybe_package_json_deps,
+      self.package_json_deps_installer.clone(),
     );
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();

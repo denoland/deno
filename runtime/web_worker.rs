@@ -2,7 +2,6 @@
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
 use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
@@ -33,6 +32,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_io::Stdio;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
@@ -97,7 +97,7 @@ impl Serialize for WorkerControlEvent {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("internal:"),
+              Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
             });
             json!({
@@ -376,7 +376,6 @@ impl WebWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
@@ -424,9 +423,8 @@ impl WebWorker {
       ),
       // Extensions providing Deno.* features
       ops::fs_events::init(),
-      ops::fs::init(),
-      ops::io::init(),
-      ops::io::init_stdio(options.stdio),
+      deno_fs::init::<PermissionsContainer>(unstable),
+      deno_io::init(options.stdio),
       deno_tls::init(),
       deno_net::init::<PermissionsContainer>(
         options.root_cert_store.clone(),
@@ -434,12 +432,14 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
+      // TODO(bartlomieju): this should be conditional on `dont_create_runtime_snapshot`
+      // cargo feature and should use `init_polyfill_ops` or `init_polyfill_ops_and_esm`
+      // if the feature is enabled
+      deno_node::init_polyfill_ops(),
       deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
-      ops::process::init(),
-      ops::spawn::init(),
+      ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
@@ -501,13 +501,16 @@ impl WebWorker {
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let bootstrap_str = v8::String::new(scope, "bootstrap").unwrap();
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
       let bootstrap_ns: v8::Local<v8::Object> = global_obj
         .get(scope, bootstrap_str.into())
         .unwrap()
         .try_into()
         .unwrap();
-      let main_runtime_str = v8::String::new(scope, "workerRuntime").unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"workerRuntime")
+          .unwrap();
       let bootstrap_fn =
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =

@@ -13,6 +13,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::TestContextBuilder;
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -2819,6 +2820,14 @@ itest!(package_json_auto_discovered_for_npm_binary {
   http_server: true,
 });
 
+itest!(package_json_auto_discovered_no_package_json_imports {
+  // this should not use --quiet because we should ensure no package.json install occurs
+  args: "run -A no_package_json_imports.ts",
+  output: "run/with_package_json/no_deno_json/no_package_json_imports.out",
+  cwd: Some("run/with_package_json/no_deno_json"),
+  copy_temp_dir: Some("run/with_package_json/no_deno_json"),
+});
+
 itest!(package_json_with_deno_json {
   args: "run --quiet -A main.ts",
   output: "package_json/deno_json/main.out",
@@ -2827,6 +2836,36 @@ itest!(package_json_with_deno_json {
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
 });
+
+#[test]
+fn package_json_error_dep_value_test() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/invalid_value")
+    .cwd("package_json/invalid_value")
+    .build();
+
+  // should run fine when not referencing a failing dep entry
+  context
+    .new_command()
+    .args("run ok.ts")
+    .run()
+    .assert_matches_file("package_json/invalid_value/ok.ts.out");
+
+  // should fail when referencing a failing dep entry
+  context
+    .new_command()
+    .args("run error.ts")
+    .run()
+    .assert_exit_code(1)
+    .assert_matches_file("package_json/invalid_value/error.ts.out");
+
+  // should output a warning about the failing dep entry
+  context
+    .new_command()
+    .args("task test")
+    .run()
+    .assert_matches_file("package_json/invalid_value/task.out");
+}
 
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
@@ -4009,14 +4048,14 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
-itest!(internal_import {
-  args: "run run/internal_import.ts",
-  output: "run/internal_import.ts.out",
+itest!(extension_import {
+  args: "run run/extension_import.ts",
+  output: "run/extension_import.ts.out",
   exit_code: 1,
 });
 
-itest!(internal_dynamic_import {
-  args: "run run/internal_dynamic_import.ts",
-  output: "run/internal_dynamic_import.ts.out",
+itest!(extension_dynamic_import {
+  args: "run run/extension_dynamic_import.ts",
+  output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });
