@@ -134,6 +134,20 @@ pub fn op_webstorage_key(
   Ok(key)
 }
 
+#[inline]
+fn size_check(input: u32) -> Result<(), AnyError> {
+  if input >= MAX_STORAGE_BYTES {
+    return Err(
+      deno_web::DomExceptionQuotaExceededError::new(
+        "Exceeded maximum storage size",
+      )
+      .into(),
+    );
+  }
+
+  Ok(())
+}
+
 #[op]
 pub fn op_webstorage_set(
   state: &mut OpState,
@@ -143,18 +157,13 @@ pub fn op_webstorage_set(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
+  size_check((key.len() + value.len()) as u32)?;
+
   let mut stmt = conn
     .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  if size >= MAX_STORAGE_BYTES {
-    return Err(
-      deno_web::DomExceptionQuotaExceededError::new(
-        "Exceeded maximum storage size",
-      )
-      .into(),
-    );
-  }
+  size_check(size);
 
   let mut stmt = conn
     .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
