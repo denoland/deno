@@ -183,7 +183,8 @@ fn typecheck_core() {
         util::root_path()
           .join("core/lib.deno_core.d.ts")
           .to_str()
-          .unwrap()
+          .unwrap(),
+        &std::env::current_dir().unwrap()
       )
       .unwrap()
     ),
