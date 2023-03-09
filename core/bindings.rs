@@ -4,7 +4,6 @@ use std::option::Option;
 use std::os::raw::c_void;
 
 use log::debug;
-use v8::fast_api::FastFunction;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
@@ -137,7 +136,11 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
-  initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
+
+  for op_ctx in op_ctxs {
+    eprintln!("register {}", op_ctx.decl.name);
+    add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
+  }
 
   context
 }
@@ -178,66 +181,17 @@ pub fn initialize_context_from_existing_snapshot<'s>(
     .try_into()
     .unwrap();
 
-  initialize_ops_from_existing_snapshot(
-    scope,
-    ops_obj,
-    op_ctxs,
-    snapshot_options,
-  );
-  context
-}
-
-fn initialize_ops(
-  scope: &mut v8::HandleScope,
-  ops_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-  // TODO(bartlomieju): remove this option
-  snapshot_options: SnapshotOptions,
-) {
-  eprintln!("initialize_ops");
-  for ctx in op_ctxs {
-    eprintln!("register {}", ctx.decl.name);
-    let ctx_ptr = ctx as *const OpCtx as *const c_void;
-
-    set_func_raw(
-      scope,
-      ops_obj,
-      ctx.decl.name,
-      ctx.decl.v8_fn_ptr,
-      ctx_ptr,
-      &ctx.decl.fast_fn,
-      snapshot_options,
-    );
-  }
-}
-
-fn initialize_ops_from_existing_snapshot(
-  scope: &mut v8::HandleScope,
-  ops_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-  // TODO(bartlomieju): remove this option
-  snapshot_options: SnapshotOptions,
-) {
-  eprintln!("initialize_ops_from_existing_snapshot");
   // Only register ops that have `force_registration` flag set to true,
   // the remaining ones should already be in the snapshot.
-  for ctx in op_ctxs
+  for op_ctx in op_ctxs
     .iter()
     .filter(|op_ctx| op_ctx.decl.force_registration)
   {
-    eprintln!("register {}", ctx.decl.name);
-    let ctx_ptr = ctx as *const OpCtx as *const c_void;
-
-    set_func_raw(
-      scope,
-      ops_obj,
-      ctx.decl.name,
-      ctx.decl.v8_fn_ptr,
-      ctx_ptr,
-      &ctx.decl.fast_fn,
-      snapshot_options,
-    );
+    eprintln!("register {}", op_ctx.decl.name);
+    add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
   }
+
+  context
 }
 
 pub fn set_func(
@@ -255,35 +209,35 @@ pub fn set_func(
 
 // Register a raw v8::FunctionCallback
 // with some external data.
-pub fn set_func_raw(
+pub fn add_op_to_deno_core_ops(
   scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
-  name: &'static str,
-  callback: v8::FunctionCallback,
-  external_data: *const c_void,
-  fast_function: &Option<Box<dyn FastFunction>>,
+  deno_core_ops: v8::Local<v8::Object>,
+  op_ctx: &OpCtx,
+  // TODO(bartlomieju): remove this
   snapshot_options: SnapshotOptions,
 ) {
+  let ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let key =
-    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
-  let external = v8::External::new(scope, external_data as *mut c_void);
-  let builder =
-    v8::FunctionTemplate::builder_raw(callback).data(external.into());
-  let templ = if let Some(fast_function) = fast_function {
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
+  let external = v8::External::new(scope, ctx_ptr as *mut c_void);
+  let builder = v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
+    .data(external.into());
+  let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
     // TODO(bartlomieju): remove this conditional
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    // if !snapshot_options.will_snapshot() {
-    // TODO(@littledivy): Support fast api overloads in ops.
-    builder.build_fast(scope, &**fast_function, None)
-    // } else {
-    // builder.build(scope)
-    // }
+    if !snapshot_options.will_snapshot() {
+      // TODO(@littledivy): Support fast api overloads in ops.
+      builder.build_fast(scope, &**fast_function, None)
+    } else {
+      builder.build(scope)
+    }
   } else {
     builder.build(scope)
   };
   let val = templ.get_function(scope).unwrap();
   val.set_name(key);
-  obj.set(scope, key.into(), val.into());
+  deno_core_ops.set(scope, key.into(), val.into());
 }
 
 pub extern "C" fn wasm_async_resolve_promise_callback(

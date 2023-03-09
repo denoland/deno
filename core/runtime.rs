@@ -3722,7 +3722,7 @@ pub mod tests {
         .build()],
       ..Default::default()
     });
-
+    eprintln!("after first");
     let specifier = crate::resolve_url("file:///0.js").unwrap();
     let source_code =
       r#"export function f0() { return "hello world" }"#.to_string();
@@ -3747,9 +3747,9 @@ pub mod tests {
     modules.extend((1..200).map(|i| create_module(&mut runtime, i, false)));
 
     assert_module_map(&mut runtime, &modules);
-
+    eprintln!("before snapshot");
     let snapshot = runtime.snapshot();
-
+    eprintln!("before second");
     let mut runtime2 = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader.clone()),
       will_snapshot: true,
@@ -3759,7 +3759,7 @@ pub mod tests {
         .build()],
       ..Default::default()
     });
-
+    eprintln!("after second");
     assert_module_map(&mut runtime2, &modules);
 
     modules.extend((200..400).map(|i| create_module(&mut runtime2, i, false)));
