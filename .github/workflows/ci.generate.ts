@@ -12,7 +12,7 @@ const Runners = {
 };
 
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16";
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
