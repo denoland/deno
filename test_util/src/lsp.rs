@@ -700,6 +700,38 @@ impl LspClient {
     self.writer.flush().unwrap();
   }
 
+  pub fn get_completion(
+    &mut self,
+    uri: impl AsRef<str>,
+    position: (usize, usize),
+    context: Value,
+  ) -> lsp::CompletionResponse {
+    self.write_request_with_res_as::<lsp::CompletionResponse>(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": uri.as_ref(),
+        },
+        "position": { "line": position.0, "character": position.1 },
+        "context": context,
+      }),
+    )
+  }
+
+  pub fn get_completion_list(
+    &mut self,
+    uri: impl AsRef<str>,
+    position: (usize, usize),
+    context: Value,
+  ) -> lsp::CompletionList {
+    let res = self.get_completion(uri, position, context);
+    if let lsp::CompletionResponse::List(list) = res {
+      list
+    } else {
+      panic!("unexpected response");
+    }
+  }
+
   pub fn write_request_with_res_as<R>(
     &mut self,
     method: impl AsRef<str>,

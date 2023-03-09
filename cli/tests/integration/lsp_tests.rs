@@ -540,21 +540,16 @@ fn lsp_import_map_import_completions() {
     }
   }));
 
-  let res = client.write_request(
-    "textDocument/completion",
+  let res = client.get_completion(
+    &uri,
+    (1, 20),
     json!({
-      "textDocument": {
-        "uri": uri
-      },
-      "position": { "line": 1, "character": 20 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "\""
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "\""
     }),
   );
   assert_eq!(
-    res,
+    json!(res),
     json!({
       "isIncomplete": false,
       "items": [
@@ -617,21 +612,16 @@ fn lsp_import_map_import_completions() {
     }),
   );
 
-  let res = client.write_request(
-    "textDocument/completion",
+  let res = client.get_completion(
+    uri,
+    (1, 23),
     json!({
-      "textDocument": {
-        "uri": uri
-      },
-      "position": { "line": 1, "character": 23 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "/"
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "/"
     }),
   );
   assert_eq!(
-    res,
+    json!(res),
     json!({
       "isIncomplete": false,
       "items": [
@@ -4221,25 +4211,18 @@ fn lsp_completions() {
       "text": "Deno."
     }
   }));
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 5),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 5 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "."
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "."
     }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert!(list.items.len() > 90);
-  } else {
-    panic!("unexpected response");
-  }
+  assert!(!list.is_incomplete);
+  assert!(list.items.len() > 90);
+
   let res = client.write_request(
     "completionItem/resolve",
     json!({
@@ -4286,26 +4269,15 @@ fn lsp_completions_private_fields() {
       "text": r#"class Foo { #myProperty = "value"; constructor() { this.# } }"#
     }
   }));
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 57 },
-      "context": {
-        "triggerKind": 1
-      }
-    }),
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 57),
+    json!({ "triggerKind": 1 }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert_eq!(list.items.len(), 1);
-    let item = &list.items[0];
-    assert_eq!(item.label, "#myProperty");
-    assert!(!list.is_incomplete);
-  } else {
-    panic!("unexpected response");
-  }
+  assert_eq!(list.items.len(), 1);
+  let item = &list.items[0];
+  assert_eq!(item.label, "#myProperty");
+  assert!(!list.is_incomplete);
   client.shutdown();
 }
 
@@ -4323,21 +4295,16 @@ fn lsp_completions_optional() {
       }
     }),
   );
-  let res = client.write_request(
-    "textDocument/completion",
+  let res = client.get_completion(
+    "file:///a/file.ts",
+    (8, 4),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 8, "character": 4 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "."
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "."
     }),
   );
   assert_eq!(
-    res,
+    json!(res),
     json!({
       "isIncomplete": false,
       "items": [
@@ -4416,26 +4383,16 @@ fn lsp_completions_auto_import() {
       "text": "export {};\n\n",
     }
   }));
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 2, "character": 0, },
-      "context": {
-        "triggerKind": 1,
-      }
-    }),
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (2, 0),
+    json!({ "triggerKind": 1 }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    if !list.items.iter().any(|item| item.label == "foo") {
-      panic!("completions items missing 'foo' symbol");
-    }
-  } else {
-    panic!("unexpected completion response");
+  assert!(!list.is_incomplete);
+  if !list.items.iter().any(|item| item.label == "foo") {
+    panic!("completions items missing 'foo' symbol");
   }
+
   let res = client.write_request(
     "completionItem/resolve",
     json!({
@@ -4502,53 +4459,43 @@ fn lsp_completions_snippet() {
       }
     }),
   );
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/a.tsx"
-      },
-      "position": { "line": 5, "character": 13, },
-      "context": {
-        "triggerKind": 1,
-      }
-    }),
+  let list = client.get_completion_list(
+    "file:///a/a.tsx",
+    (5, 13),
+    json!({ "triggerKind": 1 }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert_eq!(
-      json!(list),
-      json!({
-        "isIncomplete": false,
-        "items": [
-          {
-            "label": "type",
-            "kind": 5,
-            "sortText": "11",
-            "filterText": "type=\"$1\"",
-            "insertText": "type=\"$1\"",
-            "insertTextFormat": 2,
-            "commitCharacters": [
-              ".",
-              ",",
-              ";",
-              "("
-            ],
-            "data": {
-              "tsc": {
-                "specifier": "file:///a/a.tsx",
-                "position": 87,
-                "name": "type",
-                "useCodeSnippet": false
-              }
+  assert!(!list.is_incomplete);
+  assert_eq!(
+    json!(list),
+    json!({
+      "isIncomplete": false,
+      "items": [
+        {
+          "label": "type",
+          "kind": 5,
+          "sortText": "11",
+          "filterText": "type=\"$1\"",
+          "insertText": "type=\"$1\"",
+          "insertTextFormat": 2,
+          "commitCharacters": [
+            ".",
+            ",",
+            ";",
+            "("
+          ],
+          "data": {
+            "tsc": {
+              "specifier": "file:///a/a.tsx",
+              "position": 87,
+              "name": "type",
+              "useCodeSnippet": false
             }
           }
-        ]
-      })
-    );
-  } else {
-    panic!("unexpected completion response");
-  }
+        }
+      ]
+    })
+  );
+
   let res = client.write_request(
     "completionItem/resolve",
     json!({
@@ -4611,50 +4558,39 @@ fn lsp_completions_no_snippet() {
       }
     }),
   );
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
-    json!({
-      "textDocument": {
-        "uri": "file:///a/a.tsx"
-      },
-      "position": { "line": 5, "character": 13, },
-      "context": {
-        "triggerKind": 1,
-      }
-    }),
+  let list = client.get_completion_list(
+    "file:///a/a.tsx",
+    (5, 13),
+    json!({ "triggerKind": 1 }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert_eq!(
-      json!(list),
-      json!({
-        "isIncomplete": false,
-        "items": [
-          {
-            "label": "type",
-            "kind": 5,
-            "sortText": "11",
-            "commitCharacters": [
-              ".",
-              ",",
-              ";",
-              "("
-            ],
-            "data": {
-              "tsc": {
-                "specifier": "file:///a/a.tsx",
-                "position": 87,
-                "name": "type",
-                "useCodeSnippet": false
-              }
+  assert!(!list.is_incomplete);
+  assert_eq!(
+    json!(list),
+    json!({
+      "isIncomplete": false,
+      "items": [
+        {
+          "label": "type",
+          "kind": 5,
+          "sortText": "11",
+          "commitCharacters": [
+            ".",
+            ",",
+            ";",
+            "("
+          ],
+          "data": {
+            "tsc": {
+              "specifier": "file:///a/a.tsx",
+              "position": 87,
+              "name": "type",
+              "useCodeSnippet": false
             }
           }
-        ]
-      })
-    );
-  } else {
-    panic!("unexpected completion response");
-  }
+        }
+      ]
+    })
+  );
 }
 
 #[test]
@@ -4709,27 +4645,19 @@ fn lsp_completions_npm() {
   );
   client.read_diagnostics();
 
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (2, 11),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 2, "character": 11 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "."
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "."
     }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert_eq!(list.items.len(), 3);
-    assert!(list.items.iter().any(|i| i.label == "default"));
-    assert!(list.items.iter().any(|i| i.label == "MyClass"));
-  } else {
-    panic!("unexpected response");
-  }
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 3);
+  assert!(list.items.iter().any(|i| i.label == "default"));
+  assert!(list.items.iter().any(|i| i.label == "MyClass"));
+
   let res = client.write_request(
     "completionItem/resolve",
     json!({
@@ -4786,26 +4714,17 @@ fn lsp_completions_npm() {
   );
   client.read_diagnostics();
 
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (2, 6),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 2, "character": 6 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "."
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "."
     }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert!(list.items.iter().any(|i| i.label == "green"));
-    assert!(list.items.iter().any(|i| i.label == "red"));
-  } else {
-    panic!("unexpected response");
-  }
+  assert!(!list.is_incomplete);
+  assert!(list.items.iter().any(|i| i.label == "green"));
+  assert!(list.items.iter().any(|i| i.label == "red"));
 
   client.shutdown();
 }
@@ -4876,26 +4795,17 @@ fn lsp_npm_specifier_unopened_file() {
   client.read_diagnostics();
 
   // now ensure completions work
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
+  let list = client.get_completion_list(
+    main_url,
+    (2, 6),
     json!({
-      "textDocument": {
-        "uri": main_url
-      },
-      "position": { "line": 2, "character": 6 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "."
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "."
     }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert_eq!(list.items.len(), 63);
-    assert!(list.items.iter().any(|i| i.label == "ansi256"));
-  } else {
-    panic!("unexpected response");
-  }
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 63);
+  assert!(list.items.iter().any(|i| i.label == "ansi256"));
 }
 
 #[test]
@@ -5104,26 +5014,17 @@ fn lsp_completions_node_specifier() {
   );
   client.read_diagnostics();
 
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (2, 3),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 2, "character": 3 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "."
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "."
     }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert!(list.items.iter().any(|i| i.label == "writeFile"));
-    assert!(list.items.iter().any(|i| i.label == "writeFileSync"));
-  } else {
-    panic!("unexpected response");
-  }
+  assert!(!list.is_incomplete);
+  assert!(list.items.iter().any(|i| i.label == "writeFile"));
+  assert!(list.items.iter().any(|i| i.label == "writeFileSync"));
 
   client.shutdown();
 }
@@ -5143,25 +5044,17 @@ fn lsp_completions_registry() {
       "text": "import * as a from \"http://localhost:4545/x/a@\""
     }
   }));
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 46),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 46 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "@"
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "@"
     }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert_eq!(list.items.len(), 3);
-  } else {
-    panic!("unexpected response");
-  }
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 3);
+
   let res = client.write_request(
     "completionItem/resolve",
     json!({
@@ -5214,21 +5107,16 @@ fn lsp_completions_registry_empty() {
       "text": "import * as a from \"\""
     }
   }));
-  let res = client.write_request(
-    "textDocument/completion",
+  let res = client.get_completion(
+    "file:///a/file.ts",
+    (0, 20),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 20 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "\""
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "\""
     }),
   );
   assert_eq!(
-    res,
+    json!(res),
     json!({
       "isIncomplete": false,
       "items": [{
@@ -5277,17 +5165,12 @@ fn lsp_auto_discover_registry() {
       "text": "import * as a from \"http://localhost:4545/x/a@\""
     }
   }));
-  client.write_request(
-    "textDocument/completion",
+  client.get_completion(
+    "file:///a/file.ts",
+    (0, 46),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 46 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "@"
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "@"
     }),
   );
   let (method, res) = client.read_notification();
@@ -6374,25 +6257,17 @@ fn lsp_configuration_did_change() {
       "unstable": false
     }]),
   );
-  let res = client.write_request_with_res_as::<lsp::CompletionResponse>(
-    "textDocument/completion",
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 46),
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 46 },
-      "context": {
-        "triggerKind": 2,
-        "triggerCharacter": "@"
-      }
+      "triggerKind": 2,
+      "triggerCharacter": "@"
     }),
   );
-  if let lsp::CompletionResponse::List(list) = res {
-    assert!(!list.is_incomplete);
-    assert_eq!(list.items.len(), 3);
-  } else {
-    panic!("unexpected response");
-  }
+  assert!(!list.is_incomplete);
+  assert_eq!(list.items.len(), 3);
+
   let res = client.write_request(
     "completionItem/resolve",
     json!({
