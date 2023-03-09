@@ -16,7 +16,7 @@ Deno.test(function webstorageSizeLimit() {
   localStorage.clear();
   assertThrows(
     () => {
-      localStorage.setItem("k", "v".repeat(500 * 1024 * 1024));
+      localStorage.setItem("k", "v".repeat(15 * 1024 * 1024));
     },
     Error,
     "Exceeded maximum storage size",
@@ -24,7 +24,7 @@ Deno.test(function webstorageSizeLimit() {
   assert(localStorage.getItem("k") === null);
   assertThrows(
     () => {
-      localStorage.setItem("k".repeat(500 * 1024 * 1024), "v");
+      localStorage.setItem("k".repeat(15 * 1024 * 1024), "v");
     },
     Error,
     "Exceeded maximum storage size",
