@@ -29,11 +29,17 @@ fn fmt_test() {
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
   std::fs::copy(badly_formatted_original_json, &badly_formatted_json).unwrap();
   // First, check formatting by ignoring the badly formatted file.
+  let s = testdata_fmt_dir.as_os_str().to_str().unwrap();
 
   let output = context
     .new_command()
-    .cwd("fmt")
-    .args(format!("fmt --ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str} --check {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}"))
+    .cwd(s)
+    .args_vec(
+      vec![
+        "fmt".to_string(),
+        format!("--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str} --check {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}")
+      ]
+      )
     .run();
 
   // No target files found
@@ -43,8 +49,14 @@ fn fmt_test() {
   // Check without ignore.
   let output = context
     .new_command()
-    .cwd("fmt")
-    .args(format!("fmt --check {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}"))
+    .cwd(s)
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      badly_formatted_js_str.to_string(),
+      badly_formatted_md_str.to_string(),
+      badly_formatted_json_str.to_string(),
+    ])
     .run();
 
   output.assert_exit_code(1);
@@ -53,8 +65,13 @@ fn fmt_test() {
   // Format the source file.
   let output = context
     .new_command()
-    .cwd("fmt")
-    .args(format!("fmt {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}"))
+    .cwd(s)
+    .args_vec(vec![
+      "fmt".to_string(),
+      badly_formatted_js_str.to_string(),
+      badly_formatted_md_str.to_string(),
+      badly_formatted_json_str.to_string(),
+    ])
     .run();
 
   output.assert_exit_code(0);
