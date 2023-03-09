@@ -2408,14 +2408,14 @@ fn napi_set_element(
 fn napi_set_instance_data(
   env: *mut Env,
   data: *mut c_void,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
 ) -> Result {
   let env = &mut *(env as *mut Env);
   let shared = env.shared_mut();
   shared.instance_data = data;
-  shared.data_finalize = if !(finalize_cb as *const c_void).is_null() {
-    Some(finalize_cb)
+  shared.data_finalize = if finalize_cb.is_some() {
+    finalize_cb
   } else {
     None
   };
