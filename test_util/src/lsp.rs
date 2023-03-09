@@ -527,21 +527,6 @@ impl Drop for LspClient {
   }
 }
 
-fn request_result<R>(
-  id: u64,
-  method: String,
-  maybe_params: Option<Value>,
-) -> Result<(u64, String, Option<R>)>
-where
-  R: de::DeserializeOwned,
-{
-  let maybe_params = match maybe_params {
-    Some(params) => Some(serde_json::from_value(params)?),
-    None => None,
-  };
-  Ok((id, method, maybe_params))
-}
-
 impl LspClient {
   pub fn deno_dir(&self) -> &TempDir {
     &self.deno_dir
@@ -615,7 +600,7 @@ impl LspClient {
   }
 
   pub fn handle_configuration_request(&mut self, result: Value) {
-    let (id, method, _) = self.read_request::<Value>().unwrap();
+    let (id, method, _) = self.read_request::<Value>();
     assert_eq!(method, "workspace/configuration");
     self.write_response(id, result);
   }
@@ -675,15 +660,17 @@ impl LspClient {
     })
   }
 
-  pub fn read_request<R>(&mut self) -> Result<(u64, String, Option<R>)>
+  pub fn read_request<R>(&mut self) -> (u64, String, Option<R>)
   where
     R: de::DeserializeOwned,
   {
     self.reader.read_message(|msg| match msg {
-      LspMessage::Request(id, method, maybe_params) => Some(request_result(
+      LspMessage::Request(id, method, maybe_params) => Some((
         *id,
         method.to_owned(),
-        maybe_params.to_owned(),
+        maybe_params
+          .clone()
+          .map(|p| serde_json::from_value(p).unwrap()),
       )),
       _ => None,
     })
@@ -770,7 +757,7 @@ impl LspClient {
         assert_eq!(*id, self.request_id);
         self.request_id += 1;
         if let Some(error) = maybe_error {
-          panic!("LSP ERROR: {:?}", error);
+          panic!("LSP ERROR: {error:?}");
         }
         Some(maybe_result.clone().unwrap())
       }

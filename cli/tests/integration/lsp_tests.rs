@@ -6231,7 +6231,7 @@ fn lsp_configuration_did_change() {
       "settings": {}
     }),
   );
-  let (id, method, _) = client.read_request::<Value>().unwrap();
+  let (id, method, _) = client.read_request::<Value>();
   assert_eq!(method, "workspace/configuration");
   client.write_response(
     id,
