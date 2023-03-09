@@ -910,7 +910,6 @@ mod tests {
       .state(move |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });
-        Ok(())
       })
       .build();
 

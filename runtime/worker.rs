@@ -28,6 +28,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_io::Stdio;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
@@ -35,7 +36,6 @@ use log::debug;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 
@@ -141,6 +141,7 @@ pub struct WorkerOptions {
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub leak_isolate: bool,
 }
 
 impl Default for WorkerOptions {
@@ -177,8 +178,163 @@ impl Default for WorkerOptions {
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      leak_isolate: false,
     }
   }
+}
+
+#[cfg(not(feature = "dont_create_runtime_snapshot"))]
+fn get_extensions(
+  options: &mut WorkerOptions,
+  unstable: bool,
+  exit_code: ExitCode,
+  main_module: ModuleSpecifier,
+) -> Vec<Extension> {
+  let create_cache = options.cache_storage_dir.take().map(|storage_dir| {
+    let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+    CreateCache(Arc::new(create_cache_fn))
+  });
+
+  vec![
+    // Web APIs
+    deno_webidl::init(),
+    deno_console::init(),
+    deno_url::init_ops(),
+    deno_web::init_ops::<PermissionsContainer>(
+      options.blob_store.clone(),
+      options.bootstrap.location.clone(),
+    ),
+    deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
+      user_agent: options.bootstrap.user_agent.clone(),
+      root_cert_store: options.root_cert_store.clone(),
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+      ..Default::default()
+    }),
+    deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+    deno_websocket::init_ops::<PermissionsContainer>(
+      options.bootstrap.user_agent.clone(),
+      options.root_cert_store.clone(),
+      options.unsafely_ignore_certificate_errors.clone(),
+    ),
+    deno_webstorage::init_ops(options.origin_storage_dir.clone()),
+    deno_broadcast_channel::init_ops(
+      options.broadcast_channel.clone(),
+      unstable,
+    ),
+    deno_crypto::init_ops(options.seed),
+    deno_webgpu::init_ops(unstable),
+    // ffi
+    deno_ffi::init_ops::<PermissionsContainer>(unstable),
+    // Runtime ops
+    ops::runtime::init(main_module),
+    ops::worker_host::init(
+      options.create_web_worker_cb.clone(),
+      options.web_worker_preload_module_cb.clone(),
+      options.web_worker_pre_execute_module_cb.clone(),
+      options.format_js_error_fn.clone(),
+    ),
+    ops::fs_events::init(),
+    deno_fs::init_ops::<PermissionsContainer>(unstable),
+    deno_io::init_ops(std::mem::take(&mut options.stdio)),
+    deno_tls::init(),
+    deno_net::init_ops::<PermissionsContainer>(
+      options.root_cert_store.clone(),
+      unstable,
+      options.unsafely_ignore_certificate_errors.clone(),
+    ),
+    deno_napi::init::<PermissionsContainer>(),
+    deno_node::init_ops::<PermissionsContainer>(options.npm_resolver.take()),
+    ops::os::init(exit_code),
+    ops::permissions::init(),
+    ops::process::init_ops(),
+    ops::signal::init(),
+    ops::tty::init(),
+    deno_http::init_ops(),
+    deno_flash::init_ops::<PermissionsContainer>(unstable),
+    ops::http::init(),
+    deno_node::init_polyfill_ops(),
+  ]
+}
+
+#[cfg(feature = "dont_create_runtime_snapshot")]
+fn get_extensions(
+  options: &mut WorkerOptions,
+  unstable: bool,
+  exit_code: ExitCode,
+  main_module: ModuleSpecifier,
+) -> Vec<Extension> {
+  let create_cache = options.cache_storage_dir.take().map(|storage_dir| {
+    let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+    CreateCache(Arc::new(create_cache_fn))
+  });
+
+  vec![
+    // Web APIs
+    deno_webidl::init_esm(),
+    deno_console::init_esm(),
+    deno_url::init_ops_and_esm(),
+    deno_web::init_ops_and_esm::<PermissionsContainer>(
+      options.blob_store.clone(),
+      options.bootstrap.location.clone(),
+    ),
+    deno_fetch::init_ops_and_esm::<PermissionsContainer>(deno_fetch::Options {
+      user_agent: options.bootstrap.user_agent.clone(),
+      root_cert_store: options.root_cert_store.clone(),
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+      ..Default::default()
+    }),
+    deno_cache::init_ops_and_esm::<SqliteBackedCache>(create_cache),
+    deno_websocket::init_ops_and_esm::<PermissionsContainer>(
+      options.bootstrap.user_agent.clone(),
+      options.root_cert_store.clone(),
+      options.unsafely_ignore_certificate_errors.clone(),
+    ),
+    deno_webstorage::init_ops_and_esm(options.origin_storage_dir.clone()),
+    deno_broadcast_channel::init_ops_and_esm(
+      options.broadcast_channel.clone(),
+      unstable,
+    ),
+    deno_crypto::init_ops_and_esm(options.seed),
+    deno_webgpu::init_ops_and_esm(unstable),
+    // ffi
+    deno_ffi::init_ops_and_esm::<PermissionsContainer>(unstable),
+    // Runtime ops
+    ops::runtime::init(main_module),
+    ops::worker_host::init(
+      options.create_web_worker_cb.clone(),
+      options.web_worker_preload_module_cb.clone(),
+      options.web_worker_pre_execute_module_cb.clone(),
+      options.format_js_error_fn.clone(),
+    ),
+    ops::fs_events::init(),
+    deno_fs::init_ops_and_esm::<PermissionsContainer>(unstable),
+    deno_io::init_ops_and_esm(std::mem::take(&mut options.stdio)),
+    deno_tls::init(),
+    deno_net::init_ops_and_esm::<PermissionsContainer>(
+      options.root_cert_store.clone(),
+      unstable,
+      options.unsafely_ignore_certificate_errors.clone(),
+    ),
+    deno_napi::init::<PermissionsContainer>(),
+    deno_node::init_ops_and_esm::<PermissionsContainer>(
+      options.npm_resolver.take(),
+    ),
+    ops::os::init(exit_code),
+    ops::permissions::init(),
+    ops::process::init_ops(),
+    ops::signal::init(),
+    ops::tty::init(),
+    deno_http::init_ops_and_esm(),
+    deno_flash::init_ops_and_esm::<PermissionsContainer>(unstable),
+    ops::http::init(),
+    deno_node::init_polyfill_ops_and_esm(),
+  ]
 }
 
 impl MainWorker {
@@ -206,79 +362,19 @@ impl MainWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
-    let create_cache = options.cache_storage_dir.map(|storage_dir| {
-      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
-      CreateCache(Arc::new(create_cache_fn))
-    });
 
-    // Internal modules
-    let mut extensions: Vec<Extension> = vec![
-      // Web APIs
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
-        options.blob_store.clone(),
-        options.bootstrap.location.clone(),
-      ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
-        user_agent: options.bootstrap.user_agent.clone(),
-        root_cert_store: options.root_cert_store.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-        ..Default::default()
-      }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
-        options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
-      deno_webstorage::init(options.origin_storage_dir.clone()),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
-      // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
-      // Runtime ops
-      ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(
-        options.create_web_worker_cb.clone(),
-        options.web_worker_preload_module_cb.clone(),
-        options.web_worker_pre_execute_module_cb.clone(),
-        options.format_js_error_fn.clone(),
-      ),
-      ops::spawn::init(),
-      ops::fs_events::init(),
-      ops::fs::init(),
-      ops::io::init(),
-      ops::io::init_stdio(options.stdio),
-      deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
-        options.root_cert_store.clone(),
-        unstable,
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
-      deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
-      deno_node::init::<PermissionsContainer>(options.npm_resolver),
-      ops::os::init(exit_code.clone()),
-      ops::permissions::init(),
-      ops::process::init(),
-      ops::signal::init(),
-      ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
-      ops::http::init(),
-      // Permissions ext (worker specific state)
-      perm_ext,
-    ];
+    let mut extensions = get_extensions(
+      &mut options,
+      unstable,
+      exit_code.clone(),
+      main_module.clone(),
+    );
+
+    extensions.push(perm_ext);
+
     extensions.extend(std::mem::take(&mut options.extensions));
 
     #[cfg(not(feature = "dont_create_runtime_snapshot"))]
@@ -300,6 +396,7 @@ impl MainWorker {
       extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
+      leak_isolate: options.leak_isolate,
       ..Default::default()
     });
 
@@ -323,13 +420,15 @@ impl MainWorker {
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let bootstrap_str = v8::String::new(scope, "bootstrap").unwrap();
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
       let bootstrap_ns: v8::Local<v8::Object> = global_obj
         .get(scope, bootstrap_str.into())
         .unwrap()
         .try_into()
         .unwrap();
-      let main_runtime_str = v8::String::new(scope, "mainRuntime").unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"mainRuntime").unwrap();
       let bootstrap_fn =
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =

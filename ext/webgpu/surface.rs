@@ -30,7 +30,6 @@ pub fn init_surface(unstable: bool) -> Extension {
       // let unstable_checker = state.borrow::<super::UnstableChecker>();
       // let unstable = unstable_checker.unstable;
       state.put(super::Unstable(unstable));
-      Ok(())
     })
     .build()
 }

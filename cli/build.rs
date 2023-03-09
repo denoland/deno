@@ -269,8 +269,6 @@ mod ts {
         state.put(op_crate_libs.clone());
         state.put(build_libs.clone());
         state.put(path_dts.clone());
-
-        Ok(())
       })
       .build();
 
@@ -324,34 +322,40 @@ mod ts {
 
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   let extensions: Vec<Extension> = vec![
-    deno_webidl::init(),
-    deno_console::init(),
-    deno_url::init(),
+    deno_webidl::init_esm(),
+    deno_console::init_esm(),
+    deno_url::init_ops_and_esm(),
     deno_tls::init(),
-    deno_web::init::<PermissionsContainer>(
+    deno_web::init_ops_and_esm::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::init::<PermissionsContainer>(Default::default()),
-    deno_cache::init::<SqliteBackedCache>(None),
-    deno_websocket::init::<PermissionsContainer>("".to_owned(), None, None),
-    deno_webstorage::init(None),
-    deno_crypto::init(None),
-    deno_webgpu::init(false),
-    deno_broadcast_channel::init(
+    deno_fetch::init_ops_and_esm::<PermissionsContainer>(Default::default()),
+    deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+    deno_websocket::init_ops_and_esm::<PermissionsContainer>(
+      "".to_owned(),
+      None,
+      None,
+    ),
+    deno_webstorage::init_ops_and_esm(None),
+    deno_crypto::init_ops_and_esm(None),
+    deno_webgpu::init_ops_and_esm(false),
+    deno_broadcast_channel::init_ops_and_esm(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_node::init::<PermissionsContainer>(None), // No --unstable.
-    deno_node::init_polyfill(),
-    deno_ffi::init::<PermissionsContainer>(false),
-    deno_net::init::<PermissionsContainer>(
+    deno_io::init_ops_and_esm(Default::default()),
+    deno_fs::init_ops_and_esm::<PermissionsContainer>(false),
+    deno_node::init_ops_and_esm::<PermissionsContainer>(None), // No --unstable.
+    deno_node::init_polyfill_ops_and_esm(),
+    deno_ffi::init_ops_and_esm::<PermissionsContainer>(false),
+    deno_net::init_ops_and_esm::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
     deno_napi::init::<PermissionsContainer>(),
-    deno_http::init(),
-    deno_flash::init::<PermissionsContainer>(false), // No --unstable
+    deno_http::init_ops_and_esm(),
+    deno_flash::init_ops_and_esm::<PermissionsContainer>(false), // No --unstable
   ];
 
   let mut esm_files = include_js_files!(

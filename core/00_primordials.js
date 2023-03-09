@@ -434,6 +434,15 @@
     },
   );
 
+  primordials.SafeRegExp = makeSafe(
+    RegExp,
+    class SafeRegExp extends RegExp {
+      constructor(pattern, flags) {
+        super(pattern, flags);
+      }
+    },
+  );
+
   primordials.SafeFinalizationRegistry = makeSafe(
     FinalizationRegistry,
     class SafeFinalizationRegistry extends FinalizationRegistry {

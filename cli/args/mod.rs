@@ -8,6 +8,7 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
+use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
 use deno_graph::npm::NpmPackageReqReference;
@@ -40,7 +41,6 @@ use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReq;
 use deno_runtime::colors;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls;
@@ -51,7 +51,6 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -566,7 +565,12 @@ impl CliOptions {
     let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
 
     let mut maybe_package_json = None;
-    if let Some(config_file) = &maybe_config_file {
+    if flags.config_flag == ConfigFlag::Disabled
+      || flags.no_npm
+      || has_flag_env_var("DENO_NO_PACKAGE_JSON")
+    {
+      log::debug!("package.json auto-discovery is disabled")
+    } else if let Some(config_file) = &maybe_config_file {
       let specifier = config_file.specifier.clone();
       if specifier.scheme() == "file" {
         let maybe_stop_at = specifier
@@ -580,6 +584,7 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None)?;
     }
+
     let maybe_lock_file =
       lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Self::new(
@@ -863,19 +868,18 @@ impl CliOptions {
     &self.maybe_package_json
   }
 
-  pub fn maybe_package_json_deps(
-    &self,
-  ) -> Result<Option<BTreeMap<String, NpmPackageReq>>, AnyError> {
+  pub fn maybe_package_json_deps(&self) -> Option<PackageJsonDeps> {
     if matches!(
       self.flags.subcommand,
       DenoSubcommand::Task(TaskFlags { task: None, .. })
     ) {
       // don't have any package json dependencies for deno task with no args
-      Ok(None)
-    } else if let Some(package_json) = self.maybe_package_json() {
-      package_json::get_local_package_json_version_reqs(package_json).map(Some)
+      None
     } else {
-      Ok(None)
+      self
+        .maybe_package_json()
+        .as_ref()
+        .map(package_json::get_local_package_json_version_reqs)
     }
   }
 
@@ -1198,10 +1202,12 @@ fn resolve_files(
 
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &Flags) -> bool {
-  flags.no_prompt || {
-    let value = env::var("DENO_NO_PROMPT");
-    matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
-  }
+  flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+}
+
+fn has_flag_env_var(name: &str) -> bool {
+  let value = env::var(name);
+  matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
 }
 
 #[cfg(test)]

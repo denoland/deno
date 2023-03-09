@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { fs } from "internal:deno_node/polyfills/internal_binding/constants.ts";
+import { fs } from "ext:deno_node/internal_binding/constants.ts";
 
 export const {
   F_OK,

@@ -13,6 +13,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::TestContextBuilder;
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -543,6 +544,12 @@ itest!(dynamic_import_async_error {
 itest!(dynamic_import_already_rejected {
   args: "run --allow-read run/dynamic_import_already_rejected/main.ts",
   output: "run/dynamic_import_already_rejected/main.out",
+});
+
+itest!(dynamic_import_concurrent_non_statically_analyzable {
+  args: "run --allow-read --allow-net --quiet run/dynamic_import_concurrent_non_statically_analyzable/main.ts",
+  output: "run/dynamic_import_concurrent_non_statically_analyzable/main.out",
+  http_server: true,
 });
 
 itest!(no_check_imports_not_used_as_values {
@@ -2749,9 +2756,10 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
-itest!(package_json_auto_discovered_for_local_script_log {
+itest!(package_json_auto_discovered_for_local_script_arg {
   args: "run -L debug -A no_deno_json/main.ts",
   output: "run/with_package_json/no_deno_json/main.out",
+  // notice this is not in no_deno_json
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
@@ -2762,7 +2770,7 @@ itest!(package_json_auto_discovered_for_local_script_log {
 // In this case we shouldn't discover `package.json` file, because it's in a
 // directory that is above the directory containing `deno.json` file.
 itest!(
-  package_json_auto_discovered_for_local_script_log_with_stop {
+  package_json_auto_discovered_for_local_script_arg_with_stop {
     args: "run -L debug with_stop/some/nested/dir/main.ts",
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
@@ -2772,6 +2780,25 @@ itest!(
     exit_code: 1,
   }
 );
+
+itest!(package_json_not_auto_discovered_no_config {
+  args: "run -L debug -A --no-config noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+});
+
+itest!(package_json_not_auto_discovered_no_npm {
+  args: "run -L debug -A --no-npm noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+});
+
+itest!(package_json_not_auto_discovered_env_var {
+  args: "run -L debug -A noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+  envs: vec![("DENO_NO_PACKAGE_JSON".to_string(), "1".to_string())],
+});
 
 itest!(
   package_json_auto_discovered_node_modules_relative_package_json {
@@ -2793,6 +2820,14 @@ itest!(package_json_auto_discovered_for_npm_binary {
   http_server: true,
 });
 
+itest!(package_json_auto_discovered_no_package_json_imports {
+  // this should not use --quiet because we should ensure no package.json install occurs
+  args: "run -A no_package_json_imports.ts",
+  output: "run/with_package_json/no_deno_json/no_package_json_imports.out",
+  cwd: Some("run/with_package_json/no_deno_json"),
+  copy_temp_dir: Some("run/with_package_json/no_deno_json"),
+});
+
 itest!(package_json_with_deno_json {
   args: "run --quiet -A main.ts",
   output: "package_json/deno_json/main.out",
@@ -2801,6 +2836,36 @@ itest!(package_json_with_deno_json {
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
 });
+
+#[test]
+fn package_json_error_dep_value_test() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/invalid_value")
+    .cwd("package_json/invalid_value")
+    .build();
+
+  // should run fine when not referencing a failing dep entry
+  context
+    .new_command()
+    .args("run ok.ts")
+    .run()
+    .assert_matches_file("package_json/invalid_value/ok.ts.out");
+
+  // should fail when referencing a failing dep entry
+  context
+    .new_command()
+    .args("run error.ts")
+    .run()
+    .assert_exit_code(1)
+    .assert_matches_file("package_json/invalid_value/error.ts.out");
+
+  // should output a warning about the failing dep entry
+  context
+    .new_command()
+    .args("task test")
+    .run()
+    .assert_matches_file("package_json/invalid_value/task.out");
+}
 
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
@@ -4007,14 +4072,14 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
-itest!(internal_import {
-  args: "run run/internal_import.ts",
-  output: "run/internal_import.ts.out",
+itest!(extension_import {
+  args: "run run/extension_import.ts",
+  output: "run/extension_import.ts.out",
   exit_code: 1,
 });
 
-itest!(internal_dynamic_import {
-  args: "run run/internal_dynamic_import.ts",
-  output: "run/internal_dynamic_import.ts.out",
+itest!(extension_dynamic_import {
+  args: "run run/extension_dynamic_import.ts",
+  output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });

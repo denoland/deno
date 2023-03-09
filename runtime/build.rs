@@ -165,12 +165,48 @@ mod startup_snapshot {
     }
   }
 
+  impl deno_fs::FsPermissions for Permissions {
+    fn check_read(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read_blind(
+      &mut self,
+      _path: &Path,
+      _display: &str,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   fn create_runtime_snapshot(
     snapshot_path: PathBuf,
     maybe_additional_extension: Option<Extension>,
   ) {
-    let runtime_extension = Extension::builder("runtime")
-      .dependencies(vec![
+    let runtime_extension = Extension::builder_with_deps(
+      "runtime",
+      &[
         "deno_webidl",
         "deno_console",
         "deno_url",
@@ -190,67 +226,68 @@ mod startup_snapshot {
         "deno_napi",
         "deno_http",
         "deno_flash",
-      ])
-      .esm(include_js_files!(
-        dir "js",
-        "01_build.js",
-        "01_errors.js",
-        "01_version.ts",
-        "06_util.js",
-        "10_permissions.js",
-        "11_workers.js",
-        "12_io.js",
-        "13_buffer.js",
-        "30_fs.js",
-        "30_os.js",
-        "40_diagnostics.js",
-        "40_files.js",
-        "40_fs_events.js",
-        "40_http.js",
-        "40_process.js",
-        "40_read_file.js",
-        "40_signals.js",
-        "40_spawn.js",
-        "40_tty.js",
-        "40_write_file.js",
-        "41_prompt.js",
-        "90_deno_ns.js",
-        "98_global_scope.js",
-      ))
-      .build();
+        "deno_io",
+        "deno_fs",
+      ],
+    )
+    .esm(include_js_files!(
+      dir "js",
+      "01_errors.js",
+      "01_version.ts",
+      "06_util.js",
+      "10_permissions.js",
+      "11_workers.js",
+      "13_buffer.js",
+      "30_os.js",
+      "40_fs_events.js",
+      "40_http.js",
+      "40_process.js",
+      "40_signals.js",
+      "40_tty.js",
+      "41_prompt.js",
+      "90_deno_ns.js",
+      "98_global_scope.js",
+    ))
+    .build();
 
     let mut extensions_with_js: Vec<Extension> = vec![
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init(),
+      deno_webidl::init_esm(),
+      deno_console::init_esm(),
+      deno_url::init_ops_and_esm(),
       deno_tls::init(),
-      deno_web::init::<Permissions>(
+      deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
       ),
-      deno_fetch::init::<Permissions>(Default::default()),
-      deno_cache::init::<SqliteBackedCache>(None),
-      deno_websocket::init::<Permissions>("".to_owned(), None, None),
-      deno_webstorage::init(None),
-      deno_crypto::init(None),
-      deno_webgpu::init(false),
-      deno_broadcast_channel::init(
+      deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
+      deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+      deno_websocket::init_ops_and_esm::<Permissions>(
+        "".to_owned(),
+        None,
+        None,
+      ),
+      deno_webstorage::init_ops_and_esm(None),
+      deno_crypto::init_ops_and_esm(None),
+      deno_webgpu::init_ops_and_esm(false),
+      deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_ffi::init::<Permissions>(false),
-      deno_net::init::<Permissions>(
+      deno_ffi::init_ops_and_esm::<Permissions>(false),
+      deno_net::init_ops_and_esm::<Permissions>(
         None, false, // No --unstable.
         None,
       ),
       deno_napi::init::<Permissions>(),
-      deno_http::init(),
-      deno_flash::init::<Permissions>(false), // No --unstable
+      deno_http::init_ops_and_esm(),
+      deno_io::init_ops_and_esm(Default::default()),
+      deno_fs::init_ops_and_esm::<Permissions>(false),
+      deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::init::<Permissions>(None),
-      deno_node::init_polyfill(),
+      deno_node::init_ops_and_esm::<Permissions>(None),
+      deno_node::init_polyfill_ops_and_esm(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {

@@ -293,8 +293,7 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages()
-      || self.ps.has_node_builtin_specifier()
+    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
     {
       self.initialize_main_module_for_node().await?;
     }
@@ -421,7 +420,7 @@ pub async fn create_main_worker_for_test_or_bench(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -439,7 +438,7 @@ async fn create_main_worker_internal(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
   bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
@@ -551,6 +550,7 @@ async fn create_main_worker_internal(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
+    leak_isolate: !bench_or_test && ps.options.coverage_dir().is_none(),
   };
 
   let mut worker = MainWorker::bootstrap_from_options(
@@ -643,7 +643,7 @@ fn create_web_worker_pre_execute_module_callback(
 
 fn create_web_worker_callback(
   ps: ProcState,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -781,6 +781,7 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
+      leak_isolate: false,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)

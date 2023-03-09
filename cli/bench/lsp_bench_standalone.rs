@@ -3,25 +3,16 @@
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::benchmark_main;
 use deno_bench_util::bencher::Bencher;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use test_util::lsp::LspClient;
+use test_util::lsp::LspClientBuilder;
 
 // Intended to match the benchmark in quick-lint-js
 // https://github.com/quick-lint/quick-lint-js/blob/35207e6616267c6c81be63f47ce97ec2452d60df/benchmark/benchmark-lsp/lsp-benchmarks.cpp#L223-L268
 fn incremental_change_wait(bench: &mut Bencher) {
-  let deno_exe = test_util::deno_exe_path();
-  let mut client = LspClient::new(&deno_exe, false).unwrap();
-
-  static FIXTURE_INIT_JSON: &[u8] =
-    include_bytes!("testdata/initialize_params.json");
-  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON).unwrap();
-  let (_, maybe_err) = client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-  assert!(maybe_err.is_none());
-  client.write_notification("initialized", json!({})).unwrap();
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
 
   client
     .write_notification(
