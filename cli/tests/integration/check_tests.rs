@@ -232,6 +232,12 @@ fn ts_no_recheck_on_redirect() {
   assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
 }
 
+itest!(check_dts {
+  args: "check --quiet check/check_dts.d.ts",
+  output: "check/check_dts.out",
+  exit_code: 1,
+});
+
 itest!(package_json_basic {
   args: "check main.ts",
   output: "package_json/basic/main.check.out",

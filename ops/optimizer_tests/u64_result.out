@@ -22,7 +22,6 @@ impl op_bench_now {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            argc: 0usize,
         }
     }
     #[inline]

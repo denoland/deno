@@ -514,7 +514,7 @@ impl Env {
   }
 }
 
-pub fn init<P: NapiPermissions + 'static>() -> Extension {
+pub fn init_ops<P: NapiPermissions + 'static>() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
@@ -578,7 +578,6 @@ pub fn init<P: NapiPermissions + 'static>() -> Extension {
         env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
         tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
       });
-      Ok(())
     })
     .build()
 }

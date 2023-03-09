@@ -23,6 +23,21 @@ mod renderer;
 // Inspired by Indicatif, but this custom implementation allows
 // for more control over what's going on under the hood.
 
+#[derive(Debug, Clone, Copy)]
+pub enum ProgressMessagePrompt {
+  Download,
+  Blocking,
+}
+
+impl ProgressMessagePrompt {
+  pub fn as_text(&self) -> String {
+    match self {
+      ProgressMessagePrompt::Download => colors::green("Download").to_string(),
+      ProgressMessagePrompt::Blocking => colors::cyan("Blocking").to_string(),
+    }
+  }
+}
+
 #[derive(Debug)]
 pub struct UpdateGuard {
   maybe_entry: Option<ProgressBarEntry>,
@@ -59,6 +74,7 @@ pub enum ProgressBarStyle {
 #[derive(Clone, Debug)]
 struct ProgressBarEntry {
   id: usize,
+  prompt: ProgressMessagePrompt,
   pub message: String,
   pos: Arc<AtomicU64>,
   total_size: Arc<AtomicU64>,
@@ -128,11 +144,16 @@ impl ProgressBarInner {
     }
   }
 
-  pub fn add_entry(&self, message: String) -> ProgressBarEntry {
+  pub fn add_entry(
+    &self,
+    kind: ProgressMessagePrompt,
+    message: String,
+  ) -> ProgressBarEntry {
     let mut internal_state = self.state.lock();
     let id = internal_state.total_entries;
     let entry = ProgressBarEntry {
       id,
+      prompt: kind,
       message,
       pos: Default::default(),
       total_size: Default::default(),
@@ -208,6 +229,7 @@ impl DrawThreadRenderer for ProgressBarInner {
         pending_entries: state.entries.len(),
         total_entries: state.total_entries,
         display_entry: ProgressDataDisplayEntry {
+          prompt: preferred_entry.prompt,
           message: preferred_entry.message.clone(),
           position: preferred_entry.position(),
           total_size: preferred_entry.total_size(),
@@ -255,9 +277,17 @@ impl ProgressBar {
   }
 
   pub fn update(&self, msg: &str) -> UpdateGuard {
+    self.update_with_prompt(ProgressMessagePrompt::Download, msg)
+  }
+
+  pub fn update_with_prompt(
+    &self,
+    kind: ProgressMessagePrompt,
+    msg: &str,
+  ) -> UpdateGuard {
     match &self.inner {
       Some(inner) => {
-        let entry = inner.add_entry(msg.to_string());
+        let entry = inner.add_entry(kind, msg.to_string());
         UpdateGuard {
           maybe_entry: Some(entry),
         }
@@ -265,7 +295,7 @@ impl ProgressBar {
       None => {
         // if we're not running in TTY, fallback to using logger crate
         if !msg.is_empty() {
-          log::log!(log::Level::Info, "{} {}", colors::green("Download"), msg);
+          log::log!(log::Level::Info, "{} {}", kind.as_text(), msg);
         }
         UpdateGuard { maybe_entry: None }
       }

@@ -23,16 +23,16 @@ impl deno_web::TimersPermission for Permissions {
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::init(),
-    deno_url::init(),
-    deno_console::init(),
-    deno_web::init::<Permissions>(BlobStore::default(), None),
+    deno_webidl::init_esm(),
+    deno_url::init_ops_and_esm(),
+    deno_console::init_esm(),
+    deno_web::init_ops_and_esm::<Permissions>(BlobStore::default(), None),
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
-        specifier: "internal:setup".to_string(),
+        specifier: "ext:setup".to_string(),
         code: ExtensionFileSourceCode::IncludedInBinary(
           r#"
-        import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
+        import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
         globalThis.TextDecoder = TextDecoder;
         globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
         "#,
@@ -40,7 +40,6 @@ fn setup() -> Vec<Extension> {
       }])
       .state(|state| {
         state.put(Permissions {});
-        Ok(())
       })
       .build(),
   ]

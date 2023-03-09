@@ -20,7 +20,9 @@ members = [
   "ext/fetch",
   "ext/flash",
   "ext/ffi",
+  "ext/fs",
   "ext/http",
+  "ext/io",
   "ext/net",
   "ext/node",
   "ext/url",
@@ -41,7 +43,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.63.0", default-features = false }
+v8 = { version = "0.64.0", default-features = false }
 deno_ast = { version = "0.24.0", features = ["transpiling"] }
 
 deno_core = { version = "0.173.0", path = "./core" }
@@ -61,7 +63,9 @@ deno_crypto = { version = "0.105.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.115.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.78.0", path = "./ext/ffi" }
 deno_flash = { version = "0.27.0", path = "./ext/flash" }
+deno_fs = { version = "0.1.0", path = "./ext/fs" }
 deno_http = { version = "0.86.0", path = "./ext/http" }
+deno_io = { version = "0.1.0", path = "./ext/io" }
 deno_net = { version = "0.83.0", path = "./ext/net" }
 deno_node = { version = "0.28.0", path = "./ext/node" }
 deno_tls = { version = "0.78.0", path = "./ext/tls" }
@@ -84,15 +88,17 @@ data-url = "=0.2.0"
 dlopen = "0.1.8"
 encoding_rs = "=0.8.31"
 flate2 = "=1.0.24"
+fs3 = "0.5.0"
 futures = "0.3.21"
 http = "=0.2.8"
 hyper = "0.14.18"
 indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.17"
+lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 lzzzz = "1.0"
 notify = "=5.0.0"
-once_cell = "=1.16.0"
+once_cell = "1.17.1"
 os_pipe = "=1.0.1"
 parking_lot = "0.12.0"
 percent-encoding = "=2.2.0"
@@ -117,6 +123,7 @@ tokio = { version = "=1.25.0", features = ["full"] }
 tokio-rustls = "0.23.3"
 tokio-tungstenite = "0.16.1"
 tokio-util = "0.7.4"
+tower-lsp = { version = "=0.17.0", features = ["proposed"] }
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 zstd = "=0.11.2"
@@ -203,6 +210,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_crypto]
 opt-level = 3
+[profile.bench.package.deno_node]
+opt-level = 3
 [profile.bench.package.num-bigint-dig]
 opt-level = 3
 [profile.bench.package.v8]
@@ -260,6 +269,8 @@ opt-level = 3
 [profile.release.package.deno_web]
 opt-level = 3
 [profile.release.package.deno_crypto]
+opt-level = 3
+[profile.release.package.deno_node]
 opt-level = 3
 [profile.release.package.deno_broadcast_channel]
 opt-level = 3

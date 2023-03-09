@@ -800,9 +800,9 @@ pub fn resolve_npm_package_reference_types(
 }
 
 #[op]
-fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
       .maybe_npm_resolver
       .as_ref()
@@ -872,7 +872,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           root_map.clone(),
           remapped_specifiers.clone(),
         ));
-        Ok(())
       })
       .build()],
     ..Default::default()

@@ -35,7 +35,7 @@ type WithImplicitCoercion<T> =
  * recommended to explicitly reference it via an import or require statement.
  *
  * ```js
- * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+ * import { Buffer } from "ext:deno_node/internal/buffer";
  *
  * // Creates a zero-filled Buffer of length 10.
  * const buf1 = Buffer.alloc(10);
@@ -118,7 +118,7 @@ export class Buffer extends Uint8Array {
    * Array entries outside that range will be truncated to fit into it.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Creates a new Buffer containing the UTF-8 bytes of the string 'buffer'.
    * const buf = Buffer.from([0x62, 0x75, 0x66, 0x66, 0x65, 0x72]);
@@ -165,7 +165,7 @@ export class Buffer extends Uint8Array {
    * Returns `true` if `obj` is a `Buffer`, `false` otherwise.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * Buffer.isBuffer(Buffer.alloc(10)); // true
    * Buffer.isBuffer(Buffer.from('foo')); // true
@@ -181,7 +181,7 @@ export class Buffer extends Uint8Array {
    * or `false` otherwise.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * console.log(Buffer.isEncoding('utf8'));
    * // Prints: true
@@ -210,7 +210,7 @@ export class Buffer extends Uint8Array {
    * string.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const str = '\u00bd + \u00bc = \u00be';
    *
@@ -249,7 +249,7 @@ export class Buffer extends Uint8Array {
    * truncated to `totalLength`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Create a single `Buffer` from a list of three `Buffer` instances.
    *
@@ -282,7 +282,7 @@ export class Buffer extends Uint8Array {
    * Compares `buf1` to `buf2`, typically for the purpose of sorting arrays of`Buffer` instances. This is equivalent to calling `buf1.compare(buf2)`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.from('1234');
    * const buf2 = Buffer.from('0123');
@@ -300,7 +300,7 @@ export class Buffer extends Uint8Array {
    * Allocates a new `Buffer` of `size` bytes. If `fill` is `undefined`, the`Buffer` will be zero-filled.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.alloc(5);
    *
@@ -313,7 +313,7 @@ export class Buffer extends Uint8Array {
    * If `fill` is specified, the allocated `Buffer` will be initialized by calling `buf.fill(fill)`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.alloc(5, 'a');
    *
@@ -325,7 +325,7 @@ export class Buffer extends Uint8Array {
    * initialized by calling `buf.fill(fill, encoding)`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.alloc(11, 'aGVsbG8gd29ybGQ=', 'base64');
    *
@@ -355,7 +355,7 @@ export class Buffer extends Uint8Array {
    * _initialized_. The contents of the newly created `Buffer` are unknown and_may contain sensitive data_. Use `Buffer.alloc()` instead to initialize`Buffer` instances with zeroes.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(10);
    *
@@ -406,7 +406,7 @@ export class Buffer extends Uint8Array {
    * then copying out the relevant bits.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Need to keep around a few small chunks of memory.
    * const store = [];
@@ -443,7 +443,7 @@ export class Buffer extends Uint8Array {
    * written. However, partially encoded characters will not be written.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.alloc(256);
    *
@@ -484,7 +484,7 @@ export class Buffer extends Uint8Array {
    * as {@link constants.MAX_STRING_LENGTH}.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.allocUnsafe(26);
    *
@@ -521,7 +521,7 @@ export class Buffer extends Uint8Array {
    * In particular, `Buffer.from(buf.toJSON())` works like `Buffer.from(buf)`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x1, 0x2, 0x3, 0x4, 0x5]);
    * const json = JSON.stringify(buf);
@@ -548,7 +548,7 @@ export class Buffer extends Uint8Array {
    * Returns `true` if both `buf` and `otherBuffer` have exactly the same bytes,`false` otherwise. Equivalent to `buf.compare(otherBuffer) === 0`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.from('ABC');
    * const buf2 = Buffer.from('414243', 'hex');
@@ -572,7 +572,7 @@ export class Buffer extends Uint8Array {
    * * `-1` is returned if `target` should come _after_`buf` when sorted.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.from('ABC');
    * const buf2 = Buffer.from('BCD');
@@ -596,7 +596,7 @@ export class Buffer extends Uint8Array {
    * The optional `targetStart`, `targetEnd`, `sourceStart`, and `sourceEnd`arguments can be used to limit the comparison to specific ranges within `target`and `buf` respectively.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9]);
    * const buf2 = Buffer.from([5, 6, 7, 8, 9, 1, 2, 3, 4]);
@@ -632,7 +632,7 @@ export class Buffer extends Uint8Array {
    * different function arguments.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Create two `Buffer` instances.
    * const buf1 = Buffer.allocUnsafe(26);
@@ -653,7 +653,7 @@ export class Buffer extends Uint8Array {
    * ```
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Create a `Buffer` and copy data from one region to an overlapping region
    * // within the same `Buffer`.
@@ -693,7 +693,7 @@ export class Buffer extends Uint8Array {
    * which is a superclass of `Buffer`. To copy the slice, use`Uint8Array.prototype.slice()`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('buffer');
    *
@@ -722,7 +722,7 @@ export class Buffer extends Uint8Array {
    * Modifying the new `Buffer` slice will modify the memory in the original `Buffer`because the allocated memory of the two objects overlap.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Create a `Buffer` with the ASCII alphabet, take a slice, and modify one byte
    * // from the original `Buffer`.
@@ -749,7 +749,7 @@ export class Buffer extends Uint8Array {
    * end of `buf` rather than the beginning.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('buffer');
    *
@@ -776,7 +776,7 @@ export class Buffer extends Uint8Array {
    * `value` is interpreted and written as a two's complement signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(8);
    *
@@ -797,7 +797,7 @@ export class Buffer extends Uint8Array {
    * `value` is interpreted and written as a two's complement signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(8);
    *
@@ -818,7 +818,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeBigUint64BE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(8);
    *
@@ -837,7 +837,7 @@ export class Buffer extends Uint8Array {
    * Writes `value` to `buf` at the specified `offset` as little-endian
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(8);
    *
@@ -861,7 +861,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeUintLE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(6);
    *
@@ -884,7 +884,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeUintBE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(6);
    *
@@ -905,7 +905,7 @@ export class Buffer extends Uint8Array {
    * when `value` is anything other than a signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(6);
    *
@@ -926,7 +926,7 @@ export class Buffer extends Uint8Array {
    * signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(6);
    *
@@ -948,7 +948,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readBigUint64BE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff]);
    *
@@ -965,7 +965,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readBigUint64LE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff]);
    *
@@ -1001,7 +1001,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readUintLE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]);
    *
@@ -1020,7 +1020,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readUintBE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]);
    *
@@ -1039,7 +1039,7 @@ export class Buffer extends Uint8Array {
    * supporting up to 48 bits of accuracy.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]);
    *
@@ -1056,7 +1056,7 @@ export class Buffer extends Uint8Array {
    * supporting up to 48 bits of accuracy.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]);
    *
@@ -1078,7 +1078,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readUint8` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([1, -2]);
    *
@@ -1099,7 +1099,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readUint16LE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56]);
    *
@@ -1120,7 +1120,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readUint16BE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56]);
    *
@@ -1139,7 +1139,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readUint32LE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56, 0x78]);
    *
@@ -1158,7 +1158,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `readUint32BE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0x12, 0x34, 0x56, 0x78]);
    *
@@ -1175,7 +1175,7 @@ export class Buffer extends Uint8Array {
    * Integers read from a `Buffer` are interpreted as two's complement signed values.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([-1, 5]);
    *
@@ -1196,7 +1196,7 @@ export class Buffer extends Uint8Array {
    * Integers read from a `Buffer` are interpreted as two's complement signed values.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0, 5]);
    *
@@ -1215,7 +1215,7 @@ export class Buffer extends Uint8Array {
    * Integers read from a `Buffer` are interpreted as two's complement signed values.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0, 5]);
    *
@@ -1232,7 +1232,7 @@ export class Buffer extends Uint8Array {
    * Integers read from a `Buffer` are interpreted as two's complement signed values.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0, 0, 0, 5]);
    *
@@ -1251,7 +1251,7 @@ export class Buffer extends Uint8Array {
    * Integers read from a `Buffer` are interpreted as two's complement signed values.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([0, 0, 0, 5]);
    *
@@ -1266,7 +1266,7 @@ export class Buffer extends Uint8Array {
    * Reads a 32-bit, little-endian float from `buf` at the specified `offset`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([1, 2, 3, 4]);
    *
@@ -1283,7 +1283,7 @@ export class Buffer extends Uint8Array {
    * Reads a 32-bit, big-endian float from `buf` at the specified `offset`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([1, 2, 3, 4]);
    *
@@ -1298,7 +1298,7 @@ export class Buffer extends Uint8Array {
    * Reads a 64-bit, little-endian double from `buf` at the specified `offset`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]);
    *
@@ -1315,7 +1315,7 @@ export class Buffer extends Uint8Array {
    * Reads a 64-bit, big-endian double from `buf` at the specified `offset`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]);
    *
@@ -1332,7 +1332,7 @@ export class Buffer extends Uint8Array {
    * byte order _in-place_. Throws `ERR_INVALID_BUFFER_SIZE` if `buf.length` is not a multiple of 2.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.from([0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]);
    *
@@ -1354,7 +1354,7 @@ export class Buffer extends Uint8Array {
    * between UTF-16 little-endian and UTF-16 big-endian:
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('This is little-endian UTF-16', 'utf16le');
    * buf.swap16(); // Convert to big-endian UTF-16 text.
@@ -1368,7 +1368,7 @@ export class Buffer extends Uint8Array {
    * byte order _in-place_. Throws `ERR_INVALID_BUFFER_SIZE` if `buf.length` is not a multiple of 4.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.from([0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]);
    *
@@ -1394,7 +1394,7 @@ export class Buffer extends Uint8Array {
    * Throws `ERR_INVALID_BUFFER_SIZE` if `buf.length` is not a multiple of 8.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf1 = Buffer.from([0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]);
    *
@@ -1423,7 +1423,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeUint8` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1448,7 +1448,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeUint16LE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1471,7 +1471,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeUint16BE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1494,7 +1494,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeUint32LE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1516,7 +1516,7 @@ export class Buffer extends Uint8Array {
    * This function is also available under the `writeUint32BE` alias.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1539,7 +1539,7 @@ export class Buffer extends Uint8Array {
    * `value` is interpreted and written as a two's complement signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(2);
    *
@@ -1562,7 +1562,7 @@ export class Buffer extends Uint8Array {
    * The `value` is interpreted and written as a two's complement signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(2);
    *
@@ -1584,7 +1584,7 @@ export class Buffer extends Uint8Array {
    * The `value` is interpreted and written as a two's complement signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(2);
    *
@@ -1606,7 +1606,7 @@ export class Buffer extends Uint8Array {
    * The `value` is interpreted and written as a two's complement signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1628,7 +1628,7 @@ export class Buffer extends Uint8Array {
    * The `value` is interpreted and written as a two's complement signed integer.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1648,7 +1648,7 @@ export class Buffer extends Uint8Array {
    * undefined when `value` is anything other than a JavaScript number.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1668,7 +1668,7 @@ export class Buffer extends Uint8Array {
    * undefined when `value` is anything other than a JavaScript number.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(4);
    *
@@ -1688,7 +1688,7 @@ export class Buffer extends Uint8Array {
    * other than a JavaScript number.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(8);
    *
@@ -1708,7 +1708,7 @@ export class Buffer extends Uint8Array {
    * other than a JavaScript number.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(8);
    *
@@ -1728,7 +1728,7 @@ export class Buffer extends Uint8Array {
    * the entire `buf` will be filled:
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Fill a `Buffer` with the ASCII character 'h'.
    *
@@ -1746,7 +1746,7 @@ export class Buffer extends Uint8Array {
    * then only the bytes of that character that fit into `buf` are written:
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Fill a `Buffer` with character that takes up two bytes in UTF-8.
    *
@@ -1758,7 +1758,7 @@ export class Buffer extends Uint8Array {
    * fill data remains, an exception is thrown:
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.allocUnsafe(5);
    *
@@ -1792,7 +1792,7 @@ export class Buffer extends Uint8Array {
    * value between `0` and `255`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('this is a buffer');
    *
@@ -1825,7 +1825,7 @@ export class Buffer extends Uint8Array {
    * behavior matches [`String.prototype.indexOf()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/indexOf).
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const b = Buffer.from('abcdef');
    *
@@ -1860,7 +1860,7 @@ export class Buffer extends Uint8Array {
    * rather than the first occurrence.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('this buffer is a buffer');
    *
@@ -1895,7 +1895,7 @@ export class Buffer extends Uint8Array {
    * This behavior matches [`String.prototype.lastIndexOf()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/lastIndexOf).
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const b = Buffer.from('abcdef');
    *
@@ -1932,7 +1932,7 @@ export class Buffer extends Uint8Array {
    * of `buf`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * // Log the entire contents of a `Buffer`.
    *
@@ -1956,7 +1956,7 @@ export class Buffer extends Uint8Array {
    * Equivalent to `buf.indexOf() !== -1`.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('this is a buffer');
    *
@@ -1990,7 +1990,7 @@ export class Buffer extends Uint8Array {
    * Creates and returns an [iterator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols) of `buf` keys (indices).
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('buffer');
    *
@@ -2013,7 +2013,7 @@ export class Buffer extends Uint8Array {
    * called automatically when a `Buffer` is used in a `for..of` statement.
    *
    * ```js
-   * import { Buffer } from "internal:deno_node/polyfills/internal/buffer";
+   * import { Buffer } from "ext:deno_node/internal/buffer";
    *
    * const buf = Buffer.from('buffer');
    *
