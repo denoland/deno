@@ -104,7 +104,7 @@ impl Extension {
   /// Check if dependencies have been loaded, and errors if either:
   /// - The extension is depending on itself or an extension with the same name.
   /// - A dependency hasn't been loaded yet.
-  pub fn check_dependencies(&self, previous_exts: &[&mut Extension]) {
+  pub fn check_dependencies(&self, previous_exts: &[Extension]) {
     if let Some(deps) = self.deps {
       'dep_loop: for dep in deps {
         if dep == &self.name {
@@ -124,18 +124,12 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn get_js_sources(&self) -> &[ExtensionFileSource] {
-    match &self.js_files {
-      Some(files) => files,
-      None => &[],
-    }
+  pub fn get_js_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
+    self.js_files.as_ref()
   }
 
-  pub fn get_esm_sources(&self) -> &[ExtensionFileSource] {
-    match &self.esm_files {
-      Some(files) => files,
-      None => &[],
-    }
+  pub fn get_esm_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
+    self.esm_files.as_ref()
   }
 
   pub fn get_esm_entry_point(&self) -> Option<&'static str> {

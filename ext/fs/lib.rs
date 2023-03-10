@@ -202,9 +202,7 @@ pub fn init_ops_and_esm<P: FsPermissions + 'static>(
 }
 
 pub fn init_ops<P: FsPermissions + 'static>(unstable: bool) -> Extension {
-  ops::<P>(&mut ext(), unstable)
-    .esm(include_js_files!("30_fs.js",))
-    .build()
+  ops::<P>(&mut ext(), unstable).build()
 }
 
 fn default_err_mapper(err: Error, desc: String) -> Error {
