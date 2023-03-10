@@ -2768,14 +2768,23 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
   let open_docs = documents.documents(true, true);
+  let module_graph_imports = documents
+    .module_graph_imports()
+    .map(|s| s.to_string())
+    .collect::<Vec<_>>();
 
-  let mut result = Vec::with_capacity(open_docs.len() + 1);
+  let mut result =
+    Vec::with_capacity(open_docs.len() + module_graph_imports.len() + 1);
 
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
     result.push("asset:///node_types.d.ts".to_string());
   }
 
+  // inject these next because they're global
+  result.extend(module_graph_imports);
+
+  // finally include the documents
   result.extend(open_docs.into_iter().map(|d| d.specifier().to_string()));
   result
 }
