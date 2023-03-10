@@ -14,7 +14,6 @@ use deno_core::futures::future::Pending;
 use deno_core::futures::future::RemoteHandle;
 use deno_core::futures::future::Shared;
 use deno_core::futures::never::Never;
-use deno_core::futures::pin_mut;
 use deno_core::futures::ready;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
@@ -62,6 +61,7 @@ use std::io;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
+use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -156,8 +156,8 @@ impl HttpConnResource {
 
     // A local task that polls the hyper connection future to completion.
     let task_fut = async move {
-      pin_mut!(shutdown_fut);
-      pin_mut!(conn_fut);
+      let conn_fut = pin!(conn_fut);
+      let shutdown_fut = pin!(shutdown_fut);
       let result = match select(conn_fut, shutdown_fut).await {
         Either::Left((result, _)) => result,
         Either::Right((_, mut conn_fut)) => {
