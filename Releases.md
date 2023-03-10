@@ -20,17 +20,21 @@ https://github.com/denoland/deno_install
 - fix(cli,ext/web): Upgrading uuid from =1.1.2 to 1.3.0 (#17963)
 - fix(core): introduce `SafeRegExp` to primordials (#17592)
 - fix(ext/crypto): correctly limit ECDSA and hash algorithms (#18030)
-- fix(ext/ffi): Remove deno_core::OpState qualifiers, fix ops returning pointer defaults (#17959)
+- fix(ext/ffi): Remove deno_core::OpState qualifiers, fix ops returning pointer
+  defaults (#17959)
 - fix(ext/node): remove unused _hex module (#18045)
 - fix(ext/node): util.types.isSharedArrayBuffer (#17836)
 - fix(ext/webstorage): check size of inputs before insert (#18087)
 - fix(lockfile): don't touch lockfile is npm specifiers are identical (#17973)
-- fix(npm): improve peer dependency resolution with circular dependencies (#18069)
+- fix(npm): improve peer dependency resolution with circular dependencies
+  (#18069)
 - fix(prompt): better output with control chars (#18108)
 - fix(rumtime): Add `Deno.` prefix for registered symbols (#18086)
-- fix(runtime/windows): ensure `Deno.stdin.setRaw(false)` properly disables raw mode (#17983)
+- fix(runtime/windows): ensure `Deno.stdin.setRaw(false)` properly disables raw
+  mode (#17983)
 - fix: Split extension registration and snapshotting (#18098)
-- fix: attempt to only allow one deno process to update the node_modules folder at a time (#18058)
+- fix: attempt to only allow one deno process to update the node_modules folder
+  at a time (#18058)
 - fix: lazily surface errors in package.json deps parsing (#17974)
 - perf(core): over-allocate in ModuleMap when running from snapshot (#18083)
 - perf(ext/node): improve createHash performance (#18033)
