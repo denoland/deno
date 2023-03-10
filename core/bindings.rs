@@ -22,7 +22,16 @@ use crate::JsRuntime;
 pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
   // We're over-allocating here a bit (because some ops don't have fast_fn),
   // but that's better than having to grow the vector several times.
-  let mut references = Vec::with_capacity(4 + (ops.len() * 3));
+  let mut no_of_elemenst_for_ops = 4;
+  for op in ops {
+    if op.decl.fast_fn.is_some() {
+      no_of_elemenst_for_ops += 4;
+    } else {
+      no_of_elemenst_for_ops += 2;
+    };
+  }
+
+  let mut references = Vec::with_capacity(no_of_elemenst_for_ops);
   references.push(v8::ExternalReference {
     function: call_console.map_fn_to(),
   });
@@ -36,28 +45,42 @@ pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
     function: empty_fn.map_fn_to(),
   });
 
-  for ctx in ops {
-    eprintln!(
-      "{} {}",
-      if ctx.decl.fast_fn.is_some() { 3 } else { 2 },
-      ctx.decl.name,
-    );
+  for ctx in ops.iter().filter(|ctx| ctx.decl.fast_fn.is_none()) {
     let ctx_ptr = ctx as *const OpCtx as _;
     references.push(v8::ExternalReference { pointer: ctx_ptr });
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
+  }
+
+  for ctx in ops.iter().filter(|ctx| ctx.decl.fast_fn.is_some()) {
+    let ctx_ptr = ctx as *const OpCtx as _;
+    eprintln!(
+      "{} {} {:?}",
+      if ctx.decl.fast_fn.is_some() { 3 } else { 2 },
+      ctx.decl.name,
+      ctx_ptr,
+    );
+    references.push(v8::ExternalReference { pointer: ctx_ptr });
+    references.push(v8::ExternalReference {
+      function: ctx.decl.v8_fn_ptr,
+    });
     if let Some(fast_fn) = &ctx.decl.fast_fn {
-      eprintln!("ctx_ptr in ext ref {} {:?}", ctx.decl.name, ctx_ptr);
       references.push(v8::ExternalReference {
         pointer: fast_fn.function() as _,
-      });
-      references.push(v8::ExternalReference {
-        pointer: std::ptr::null_mut(),
       });
     }
   }
 
+  // Need to push null ptr because 2nd overload of the fast function is
+  // always a null pointer.
+  references.push(v8::ExternalReference {
+    pointer: std::ptr::null_mut(),
+  });
+
+  for reference in references.iter() {
+    println!("ref {:?}", unsafe { reference.pointer });
+  }
   let refs = v8::ExternalReferences::new(&references);
   // Leak, V8 takes ownership of the references.
   std::mem::forget(references);
@@ -141,8 +164,10 @@ pub fn initialize_context<'s>(
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
 
+  // for op_ctx in op_ctxs. {
+  //   add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
+  // }
   for op_ctx in op_ctxs {
-    eprintln!("register {}", op_ctx.decl.name);
     add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
   }
 
@@ -191,7 +216,6 @@ pub fn initialize_context_from_existing_snapshot<'s>(
     .iter()
     .filter(|op_ctx| op_ctx.decl.force_registration)
   {
-    eprintln!("register {}", op_ctx.decl.name);
     add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
   }
 
@@ -228,7 +252,10 @@ pub fn add_op_to_deno_core_ops(
   let builder = v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
     .data(external.into());
   let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
-    eprintln!("ctx_ptr {} {:?}", op_ctx.decl.name, ctx_ptr);
+    eprintln!(
+      "ctx_ptr {} {:?} {:?}",
+      op_ctx.decl.name, ctx_ptr, op_ctx.decl.v8_fn_ptr
+    );
     // TODO(bartlomieju): remove this conditional
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
     // if !snapshot_options.will_snapshot() {

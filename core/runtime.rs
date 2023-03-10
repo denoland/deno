@@ -612,13 +612,17 @@ impl JsRuntime {
       (isolate, snapshot_options)
     };
 
-    global_context.open(&mut isolate).set_slot(
-      &mut isolate,
-      Rc::new(RefCell::new(ContextState {
-        op_ctxs,
-        ..Default::default()
-      })),
-    );
+    let op_ctxs_rc = Rc::new(RefCell::new(ContextState {
+      op_ctxs,
+      ..Default::default()
+    }));
+
+    global_context
+      .open(&mut isolate)
+      .set_slot(&mut isolate, op_ctxs_rc.clone());
+
+    //
+    Rc::into_raw(op_ctxs_rc);
 
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
