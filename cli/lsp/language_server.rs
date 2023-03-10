@@ -97,7 +97,6 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub root_uri: Option<Url>,
   pub maybe_npm_resolver: Option<NpmPackageResolver>,
 }
 
@@ -576,7 +575,6 @@ impl Inner {
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_npm_resolver: Some(self.npm_resolver.snapshotted()),
-      root_uri: self.config.root_uri.clone(),
     })
   }
 

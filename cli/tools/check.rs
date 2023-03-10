@@ -99,7 +99,6 @@ pub fn check(
     debug: options.debug,
     graph: graph.clone(),
     hash_data,
-    maybe_config_specifier: options.maybe_config_specifier,
     maybe_npm_resolver: Some(npm_resolver.clone()),
     maybe_tsbuildinfo,
     root_names,

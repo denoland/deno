@@ -954,7 +954,6 @@ impl Documents {
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    // keep this fast because it's used by op_exists, which is a hot path in tsc
     let specifier = self.specifier_resolver.resolve(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
