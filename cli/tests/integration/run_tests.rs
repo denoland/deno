@@ -826,13 +826,13 @@ itest!(config {
 
 itest!(config_types {
   args:
-    "run --reload --quiet --config --check=all run/config_types/tsconfig.json run/config_types/main.ts",
+    "run --reload --quiet --check=all --config run/config_types/tsconfig.json run/config_types/main.ts",
   output: "run/config_types/main.out",
 });
 
 itest!(config_types_remote {
   http_server: true,
-  args: "run --reload --quiet --config --check=all run/config_types/remote.tsconfig.json run/config_types/main.ts",
+  args: "run --reload --quiet --check=all --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
   output: "run/config_types/main.out",
 });
 
