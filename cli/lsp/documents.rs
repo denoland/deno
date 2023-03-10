@@ -855,8 +855,7 @@ impl Documents {
     self
       .imports
       .values()
-      .map(|i| i.dependencies.values())
-      .flatten()
+      .flat_map(|i| i.dependencies.values())
       .flat_map(|value| value.get_type().or_else(|| value.get_code()))
   }
 
