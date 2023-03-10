@@ -319,8 +319,7 @@ mod startup_snapshot {
     {
       use deno_core::ExtensionFileSourceCode;
       maybe_additional_extension = Some(
-        Extension::builder("runtime_main")
-          .dependencies(vec!["runtime"])
+        Extension::builder_with_deps("runtime_main", vec!["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
             code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
