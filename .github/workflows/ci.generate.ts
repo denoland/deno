@@ -81,7 +81,7 @@ const submoduleStep = (submodule: string) => ({
 });
 
 const installRustStep = {
-  uses: "dtolnay/rust-toolchain@stable",
+  uses: "dsherret/rust-toolchain-file@v1",
 };
 const installPythonSteps = [{
   name: "Install Python",
