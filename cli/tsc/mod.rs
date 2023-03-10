@@ -406,8 +406,7 @@ impl State {
 }
 
 fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(&specifier.replace(".d.ts.d.ts", ".d.ts"))
-    .map_err(|err| err.into())
+  resolve_url_or_path(specifier).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -230,6 +231,41 @@ fn get_tsc_roots(
   graph: &ModuleGraph,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
+  fn try_get_check_entry(
+    module: &deno_graph::Module,
+    check_js: bool,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    match module {
+      Module::Esm(module) => match module.media_type {
+        MediaType::TypeScript
+        | MediaType::Tsx
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Jsx => Some((module.specifier.clone(), module.media_type)),
+        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+          if check_js || has_ts_check(module.media_type, &module.source) {
+            Some((module.specifier.clone(), module.media_type))
+          } else {
+            None
+          }
+        }
+        MediaType::Json
+        | MediaType::Wasm
+        | MediaType::TsBuildInfo
+        | MediaType::SourceMap
+        | MediaType::Unknown => None,
+      },
+      Module::External(_)
+      | Module::Node(_)
+      | Module::Npm(_)
+      | Module::Json(_) => None,
+    }
+  }
+
+  // todo(https://github.com/denoland/deno_graph/pull/253/): pre-allocate this
   let mut result = Vec::new();
   if graph.has_node_specifier {
     // inject a specifier that will resolve node types
@@ -238,33 +274,43 @@ fn get_tsc_roots(
       MediaType::Dts,
     ));
   }
-  result.extend(graph.modules().filter_map(|module| match module {
-    Module::Esm(module) => match module.media_type {
-      MediaType::TypeScript
-      | MediaType::Tsx
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Jsx => Some((module.specifier.clone(), module.media_type)),
-      MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-        if check_js || has_ts_check(module.media_type, &module.source) {
-          Some((module.specifier.clone(), module.media_type))
-        } else {
-          None
+
+  let mut seen_roots =
+    HashSet::with_capacity(graph.imports.len() + graph.roots.len());
+
+  // put in the global types first so that they're resolved before anything else
+  for import in graph.imports.values() {
+    for dep in import.dependencies.values() {
+      let specifier = dep.get_type().or_else(|| dep.get_code());
+      if let Some(specifier) = &specifier {
+        seen_roots.insert(*specifier);
+        let maybe_entry = graph
+          .get(specifier)
+          .and_then(|m| try_get_check_entry(m, check_js));
+        if let Some(entry) = maybe_entry {
+          result.push(entry);
         }
       }
-      MediaType::Json
-      | MediaType::Wasm
-      | MediaType::TsBuildInfo
-      | MediaType::SourceMap
-      | MediaType::Unknown => None,
-    },
-    Module::External(_)
-    | Module::Node(_)
-    | Module::Npm(_)
-    | Module::Json(_) => None,
+    }
+  }
+
+  // then the roots
+  for root in &graph.roots {
+    if let Some(module) = graph.get(root) {
+      seen_roots.insert(root);
+      if let Some(entry) = try_get_check_entry(module, check_js) {
+        result.push(entry);
+      }
+    }
+  }
+
+  // now the rest
+  result.extend(graph.modules().filter_map(|module| {
+    if seen_roots.contains(module.specifier()) {
+      None
+    } else {
+      try_get_check_entry(module, check_js)
+    }
   }));
   result
 }
