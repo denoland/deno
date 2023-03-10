@@ -1329,8 +1329,9 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
 
+  let p = if lstat { path.canonicalize()? } else { path };
   unsafe {
-    let mut path: Vec<_> = path.as_os_str().encode_wide().collect();
+    let mut path: Vec<_> = p.as_os_str().encode_wide().collect();
     path.push(0);
     let file_handle = CreateFileW(
       path.as_ptr(),
