@@ -2749,39 +2749,40 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
   let open_docs = documents.documents(true, true);
-  let module_graph_imports = documents
-    .module_graph_imports()
-    .map(|s| s.to_string())
-    .collect::<Vec<_>>();
-
   let mut result = Vec::new();
   let mut seen = HashSet::new();
 
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
-    let specifier = "asset:///node_types.d.ts".to_string();
-    result.push(specifier.clone());
+    let specifier = "asset:///node_types.d.ts";
+    result.push(specifier.to_string());
     seen.insert(specifier);
   }
 
   // inject these next because they're global
-  for import in module_graph_imports {
-    if seen.insert(import.clone()) {
-      result.push(import);
+  for import in documents.module_graph_imports() {
+    if seen.insert(import.as_str()) {
+      result.push(import.to_string());
     }
   }
 
   // finally include the documents and all their dependencies
-  for doc in open_docs {
-    let specifier = doc.specifier().to_string();
-    if seen.insert(specifier.clone()) {
-      result.push(specifier);
+  for doc in &open_docs {
+    let specifier = doc.specifier();
+    if seen.insert(specifier.as_str()) {
+      result.push(specifier.to_string());
     }
+  }
+
+  // and then all their dependencies (do this after to avoid exists calls)
+  for doc in &open_docs {
     for dep in doc.dependencies().values() {
       if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
-        let specifier = specifier.to_string();
-        if seen.insert(specifier.clone()) {
-          result.push(specifier);
+        if seen.insert(specifier.as_str()) {
+          // only include dependencies we know to exist otherwise typescript will error
+          if documents.exists(specifier) {
+            result.push(specifier.to_string());
+          }
         }
       }
     }
