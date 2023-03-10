@@ -2826,7 +2826,6 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
         Arc::new(StateSnapshot::default()),
         performance.clone(),
       ));
-      Ok(())
     })
     .build()
 }

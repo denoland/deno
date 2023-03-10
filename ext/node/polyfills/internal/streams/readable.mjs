@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import { Readable } from "internal:deno_node/polyfills/_stream.mjs";
+import { Readable } from "ext:deno_node/_stream.mjs";
 const { ReadableState, _fromList, from, fromWeb, toWeb, wrap } = Readable;
 
 export default Readable;

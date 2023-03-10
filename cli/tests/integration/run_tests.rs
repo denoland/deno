@@ -13,6 +13,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::TestContextBuilder;
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -2836,6 +2837,36 @@ itest!(package_json_with_deno_json {
   http_server: true,
 });
 
+#[test]
+fn package_json_error_dep_value_test() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/invalid_value")
+    .cwd("package_json/invalid_value")
+    .build();
+
+  // should run fine when not referencing a failing dep entry
+  context
+    .new_command()
+    .args("run ok.ts")
+    .run()
+    .assert_matches_file("package_json/invalid_value/ok.ts.out");
+
+  // should fail when referencing a failing dep entry
+  context
+    .new_command()
+    .args("run error.ts")
+    .run()
+    .assert_exit_code(1)
+    .assert_matches_file("package_json/invalid_value/error.ts.out");
+
+  // should output a warning about the failing dep entry
+  context
+    .new_command()
+    .args("task test")
+    .run()
+    .assert_matches_file("package_json/invalid_value/task.out");
+}
+
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
   output: "run/wasm_streaming_panic_test.js.out",
@@ -3996,6 +4027,51 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
+#[test]
+fn permission_prompt_strips_ansi_codes_and_control_chars() {
+  let _guard = util::http_server();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(
+      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\"."
+    ));
+  });
+
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"
+const boldANSI = "\u001b[1m" // bold
+const unboldANSI = "\u001b[22m" // unbold
+
+const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}
+├ Requested by \`Deno.Command().output()`
+
+const moveANSIUp = "\u001b[1A" // moves to the start of the line
+const clearANSI = "\u001b[2K" // clears the line
+const moveANSIStart = "\u001b[1000D" // moves to the start of the line
+
+Deno[Object.getOwnPropertySymbols(Deno)[0]].core.ops.op_spawn_child({
+    cmd: "cat",
+    args: ["/etc/passwd"],
+    clearEnv: false,
+    env: [],
+    stdin: "null",
+    stdout: "inherit",
+    stderr: "piped"
+}, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(r#"┌ ⚠️  Deno requests run access to "cat""#));
+  });
+}
+
 itest!(node_builtin_modules_ts {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
@@ -4017,14 +4093,14 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
-itest!(internal_import {
-  args: "run run/internal_import.ts",
-  output: "run/internal_import.ts.out",
+itest!(extension_import {
+  args: "run run/extension_import.ts",
+  output: "run/extension_import.ts.out",
   exit_code: 1,
 });
 
-itest!(internal_dynamic_import {
-  args: "run run/internal_dynamic_import.ts",
-  output: "run/internal_dynamic_import.ts.out",
+itest!(extension_dynamic_import {
+  args: "run run/extension_dynamic_import.ts",
+  output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });

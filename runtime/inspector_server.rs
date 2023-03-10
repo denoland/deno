@@ -8,7 +8,6 @@ use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future;
 use deno_core::futures::future::Future;
-use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
@@ -25,6 +24,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::pin::pin;
 use std::process;
 use std::rc::Rc;
 use std::thread;
@@ -226,7 +226,7 @@ async fn server(
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let register_inspector_handler = register_inspector_rx
+  let mut register_inspector_handler = pin!(register_inspector_rx
     .map(|info| {
       eprintln!(
         "Debugger listening on {}",
@@ -240,16 +240,16 @@ async fn server(
         panic!("Inspector UUID already in map");
       }
     })
-    .collect::<()>();
+    .collect::<()>());
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let deregister_inspector_handler = future::poll_fn(|cx| {
+  let mut deregister_inspector_handler = pin!(future::poll_fn(|cx| {
     inspector_map
       .borrow_mut()
       .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
     Poll::<Never>::Pending
   })
-  .fuse();
+  .fuse());
 
   let json_version_response = json!({
     "Browser": name,
@@ -287,7 +287,7 @@ async fn server(
   });
 
   // Create the server manually so it can use the Local Executor
-  let server_handler = hyper::server::Builder::new(
+  let mut server_handler = pin!(hyper::server::Builder::new(
     hyper::server::conn::AddrIncoming::bind(&host).unwrap_or_else(|e| {
       eprintln!("Cannot start inspector server: {e}.");
       process::exit(1);
@@ -302,11 +302,7 @@ async fn server(
     eprintln!("Cannot start inspector server: {err}.");
     process::exit(1);
   })
-  .fuse();
-
-  pin_mut!(register_inspector_handler);
-  pin_mut!(deregister_inspector_handler);
-  pin_mut!(server_handler);
+  .fuse());
 
   select! {
     _ = register_inspector_handler => {},

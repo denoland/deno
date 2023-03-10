@@ -6,8 +6,8 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { GPUTextureUsage } from "internal:deno_webgpu/01_webgpu.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { GPUTextureUsage } from "ext:deno_webgpu/01_webgpu.js";
 
 // ENUM: GPUCanvasAlphaMode
 webidl.converters["GPUCanvasAlphaMode"] = webidl.createEnumConverter(

@@ -11,4 +11,4 @@ export {
   on,
   once,
   setMaxListeners,
-} from "internal:deno_node/polyfills/_events.mjs";
+} from "ext:deno_node/_events.mjs";

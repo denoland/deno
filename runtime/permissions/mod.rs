@@ -38,9 +38,12 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
-#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
+#[derive(
+  Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
+)]
 pub enum PermissionState {
   Granted = 0,
+  #[default]
   Prompt = 1,
   Denied = 2,
 }
@@ -137,12 +140,6 @@ impl fmt::Display for PermissionState {
       PermissionState::Prompt => f.pad("prompt"),
       PermissionState::Denied => f.pad("denied"),
     }
-  }
-}
-
-impl Default for PermissionState {
-  fn default() -> Self {
-    PermissionState::Prompt
   }
 }
 
@@ -1912,6 +1909,41 @@ impl deno_websocket::WebSocketPermissions for PermissionsContainer {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().net.check_url(url, Some(api_name))
+  }
+}
+
+impl deno_fs::FsPermissions for PermissionsContainer {
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, Some(api_name))
+  }
+
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check_blind(path, display, api_name)
+  }
+
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, Some(api_name))
+  }
+
+  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check_all(Some(api_name))
+  }
+
+  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check_all(Some(api_name))
   }
 }
 

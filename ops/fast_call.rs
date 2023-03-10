@@ -250,13 +250,14 @@ pub(crate) fn generate(
       //
       // V8 calls the slow path so we can take the slot
       // value and throw.
-      let result_wrap = q!(Vars { op_state }, {
+      let default = optimizer.fast_result.as_ref().unwrap().default_value();
+      let result_wrap = q!(Vars { op_state, default }, {
         match result {
           Ok(result) => result,
           Err(err) => {
             op_state.last_fast_op_error.replace(err);
             __opts.fallback = true;
-            Default::default()
+            default
           }
         }
       });
@@ -429,7 +430,8 @@ fn q_fast_ty(v: &FastValue) -> Quote {
     FastValue::V8Value => q!({ v8::Local<v8::Value> }),
     FastValue::Uint8Array
     | FastValue::Uint32Array
-    | FastValue::Float64Array => unreachable!(),
+    | FastValue::Float64Array
+    | FastValue::SeqOneByteString => unreachable!(),
   }
 }
 
@@ -449,6 +451,7 @@ fn q_fast_ty_variant(v: &FastValue) -> Quote {
     FastValue::Uint8Array => q!({ TypedArray(CType::Uint8) }),
     FastValue::Uint32Array => q!({ TypedArray(CType::Uint32) }),
     FastValue::Float64Array => q!({ TypedArray(CType::Float64) }),
+    FastValue::SeqOneByteString => q!({ SeqOneByteString }),
   }
 }
 

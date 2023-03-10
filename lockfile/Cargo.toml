@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_lockfile"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 license = "MIT"
 description = "An implementation of a lockfile used in Deno"
