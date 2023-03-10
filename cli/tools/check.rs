@@ -230,7 +230,7 @@ fn get_tsc_roots(
   graph: &ModuleGraph,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
-  fn try_get_check_entry(
+  fn maybe_get_check_entry(
     module: &deno_graph::Module,
     check_js: bool,
   ) -> Option<(ModuleSpecifier, MediaType)> {
@@ -285,7 +285,7 @@ fn get_tsc_roots(
         if seen_roots.insert(*specifier) {
           let maybe_entry = graph
             .get(specifier)
-            .and_then(|m| try_get_check_entry(m, check_js));
+            .and_then(|m| maybe_get_check_entry(m, check_js));
           if let Some(entry) = maybe_entry {
             result.push(entry);
           }
@@ -298,7 +298,7 @@ fn get_tsc_roots(
   for root in &graph.roots {
     if let Some(module) = graph.get(root) {
       if seen_roots.insert(root) {
-        if let Some(entry) = try_get_check_entry(module, check_js) {
+        if let Some(entry) = maybe_get_check_entry(module, check_js) {
           result.push(entry);
         }
       }
@@ -310,7 +310,7 @@ fn get_tsc_roots(
     if seen_roots.contains(module.specifier()) {
       None
     } else {
-      try_get_check_entry(module, check_js)
+      maybe_get_check_entry(module, check_js)
     }
   }));
   result
