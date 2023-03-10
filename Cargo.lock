@@ -525,9 +525,9 @@ dependencies = [
 
 [[package]]
 name = "console_static_text"
-version = "0.3.4"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f166cdfb9db0607e2079b382ba64bc4164344006c733b95c1ecfa782a180a34a"
+checksum = "953d2c3cf53213a4eccdbe8f2e0b49b5d0f77e87a2a9060117bbf9346f92b64e"
 dependencies = [
  "unicode-width",
  "vte",
@@ -1285,6 +1285,7 @@ name = "deno_runtime"
 version = "0.99.0"
 dependencies = [
  "atty",
+ "console_static_text",
  "deno_ast",
  "deno_broadcast_channel",
  "deno_cache",
