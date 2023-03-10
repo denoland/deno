@@ -283,12 +283,13 @@ fn get_tsc_roots(
     for dep in import.dependencies.values() {
       let specifier = dep.get_type().or_else(|| dep.get_code());
       if let Some(specifier) = &specifier {
-        seen_roots.insert(*specifier);
-        let maybe_entry = graph
-          .get(specifier)
-          .and_then(|m| try_get_check_entry(m, check_js));
-        if let Some(entry) = maybe_entry {
-          result.push(entry);
+        if seen_roots.insert(*specifier) {
+          let maybe_entry = graph
+            .get(specifier)
+            .and_then(|m| try_get_check_entry(m, check_js));
+          if let Some(entry) = maybe_entry {
+            result.push(entry);
+          }
         }
       }
     }
@@ -297,9 +298,10 @@ fn get_tsc_roots(
   // then the roots
   for root in &graph.roots {
     if let Some(module) = graph.get(root) {
-      seen_roots.insert(root);
-      if let Some(entry) = try_get_check_entry(module, check_js) {
-        result.push(entry);
+      if seen_roots.insert(root) {
+        if let Some(entry) = try_get_check_entry(module, check_js) {
+          result.push(entry);
+        }
       }
     }
   }
