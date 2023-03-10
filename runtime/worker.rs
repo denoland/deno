@@ -72,21 +72,11 @@ pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
 
   /// JsRuntime extensions, not to be confused with ES modules.
-  /// Only ops registered by extensions will be initialized. If you need
-  /// to execute JS code from extensions, use `extensions_with_js` options
-  /// instead.
-  pub extensions: Vec<Extension>,
-
-  /// JsRuntime extensions, not to be confused with ES modules.
-  /// Ops registered by extensions will be initialized and JS code will be
-  /// executed. If you don't need to execute JS code from extensions, use
-  /// `extensions` option instead.
   ///
-  /// This is useful when creating snapshots, in such case you would pass
-  /// extensions using `extensions_with_js`, later when creating a runtime
-  /// from the snapshot, you would pass these extensions using `extensions`
-  /// option.
-  pub extensions_with_js: Vec<Extension>,
+  /// Extensions register "ops" and JavaScript sources provided in `js` or `esm`
+  /// configuration. If you are using a snapshot, then extensions shouldn't
+  /// provide JavaScript sources that were already snapshotted.
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
@@ -174,7 +164,6 @@ impl Default for WorkerOptions {
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
-      extensions_with_js: Default::default(),
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -299,7 +288,6 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
-      extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       leak_isolate: options.leak_isolate,

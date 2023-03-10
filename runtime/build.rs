@@ -250,7 +250,7 @@ mod startup_snapshot {
     ))
     .build();
 
-    let mut extensions_with_js: Vec<Extension> = vec![
+    let mut extensions: Vec<Extension> = vec![
       deno_webidl::init_esm(),
       deno_console::init_esm(),
       deno_url::init_ops_and_esm(),
@@ -291,15 +291,14 @@ mod startup_snapshot {
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
-      extensions_with_js.push(additional_extension);
+      extensions.push(additional_extension);
     }
 
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![],
-      extensions_with_js,
+      extensions,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
           snapshot_slice,

@@ -169,7 +169,5 @@ pub fn init_ops_and_esm<P: FfiPermissions + 'static>(
 }
 
 pub fn init_ops<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
-  ops::<P>(&mut ext(), unstable)
-    .esm(include_js_files!("00_ffi.js",))
-    .build()
+  ops::<P>(&mut ext(), unstable).build()
 }
