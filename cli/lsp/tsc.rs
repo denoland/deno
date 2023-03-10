@@ -2771,7 +2771,7 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  // finally include the documents
+  // finally include the documents and all their dependencies
   for doc in open_docs {
     let specifier = doc.specifier().to_string();
     if seen.insert(specifier.clone()) {
