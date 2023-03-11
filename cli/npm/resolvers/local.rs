@@ -232,6 +232,10 @@ async fn sync_resolution_with_fs(
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
 ) -> Result<(), AnyError> {
+  if snapshot.is_empty() {
+    return Ok(()); // don't create the directory
+  }
+
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   fs::create_dir_all(&deno_local_registry_dir).with_context(|| {
     format!("Creating '{}'", deno_local_registry_dir.display())
