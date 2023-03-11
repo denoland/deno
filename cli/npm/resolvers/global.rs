@@ -72,6 +72,10 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     self.cache.root_dir_url()
   }
 
+  fn node_modules_path(&self) -> Option<PathBuf> {
+    None
+  }
+
   fn resolve_package_folder_from_deno_module(
     &self,
     id: &NpmPackageId,
