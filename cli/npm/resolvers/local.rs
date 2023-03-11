@@ -248,6 +248,7 @@ async fn sync_resolution_with_fs(
   .await;
 
   let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
+  let pb_clear_guard = pb.clear_guard(); // prevent flickering
 
   // 1. Write all the packages out the .deno directory.
   //
@@ -274,10 +275,7 @@ async fn sync_resolution_with_fs(
       .should_use_for_npm_package(&package.pkg_id.nv.name)
       || !initialized_file.exists()
     {
-      let pb_guard = pb.update_with_prompt(
-        ProgressMessagePrompt::Initialize,
-        &package.pkg_id.nv.to_string(),
-      );
+      let pb = pb.clone();
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
@@ -285,6 +283,10 @@ async fn sync_resolution_with_fs(
         cache
           .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
           .await?;
+        let pb_guard = pb.update_with_prompt(
+          ProgressMessagePrompt::Initialize,
+          &package.pkg_id.nv.to_string(),
+        );
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
@@ -299,7 +301,7 @@ async fn sync_resolution_with_fs(
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
         // finally stop showing the progress bar
-        drop(pb_guard);
+        drop(pb_guard); // explicit for clarity
         Ok(())
       });
       if sync_download {
@@ -414,6 +416,7 @@ async fn sync_resolution_with_fs(
   }
 
   drop(single_process_lock);
+  drop(pb_clear_guard);
 
   Ok(())
 }
