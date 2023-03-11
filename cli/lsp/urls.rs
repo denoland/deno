@@ -81,7 +81,7 @@ impl LspUrlMapInner {
 }
 
 /// A bi-directional map of URLs sent to the LSP client and internal module
-/// specifiers.  We need to map internal specifiers into `deno:` schema URLs
+/// specifiers. We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
 #[derive(Debug, Default, Clone)]
 pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
@@ -143,15 +143,18 @@ impl LspUrlMap {
   /// where the client encodes a file URL differently than Rust does by default
   /// causing issues with string matching of URLs.
   pub fn normalize_url(&self, url: &Url) -> ModuleSpecifier {
-    if let Some(specifier) = self.0.lock().get_specifier(url).cloned() {
-      return specifier;
+    let mut inner = self.0.lock();
+    if let Some(specifier) = inner.get_specifier(url).cloned() {
+      specifier
+    } else {
+      let specifier = if let Ok(path) = url.to_file_path() {
+        Url::from_file_path(path).unwrap()
+      } else {
+        url.clone()
+      };
+      inner.put(specifier.clone(), url.clone());
+      specifier
     }
-    if url.scheme() == "file" {
-      if let Ok(path) = url.to_file_path() {
-        return Url::from_file_path(path).unwrap();
-      }
-    }
-    url.clone()
   }
 }
 

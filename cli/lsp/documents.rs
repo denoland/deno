@@ -1184,12 +1184,8 @@ impl Documents {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      if let Some(jsx_config) = maybe_jsx_config {
-        hasher.write_hashable(&jsx_config);
-      }
-      if let Some(deps) = maybe_package_json_deps {
-        hasher.write_hashable(&deps);
-      }
+      hasher.write_hashable(&maybe_jsx_config);
+      hasher.write_hashable(&maybe_package_json_deps);
       hasher.finish()
     }
 
@@ -1252,7 +1248,7 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies();
+      self.refresh_dependencies(root_dirs);
       self.resolver_config_hash = new_resolver_config_hash;
     }
 

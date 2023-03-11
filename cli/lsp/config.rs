@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::client::Client;
 use super::logging::lsp_log;
 use crate::util::path::ensure_directory_specifier;
 use crate::util::path::specifier_to_file_path;
@@ -10,6 +9,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use lsp::Url;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -226,7 +226,7 @@ impl Default for ImportCompletionSettings {
 
 /// Deno language server specific settings that can be applied uniquely to a
 /// specifier.
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
@@ -388,7 +388,7 @@ impl WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
-  pub enabled_paths: HashMap<String, Vec<String>>,
+  pub enabled_paths: HashMap<Url, Vec<Url>>,
   pub settings: Settings,
 }
 
@@ -396,42 +396,33 @@ impl ConfigSnapshot {
   /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     if !self.enabled_paths.is_empty() {
-      let specifier_str = specifier.to_string();
+      let specifier_str = specifier.as_str();
       for (workspace, enabled_paths) in self.enabled_paths.iter() {
-        if specifier_str.starts_with(workspace) {
+        if specifier_str.starts_with(workspace.as_str()) {
           return enabled_paths
             .iter()
-            .any(|path| specifier_str.starts_with(path));
+            .any(|path| specifier_str.starts_with(path.as_str()));
         }
       }
     }
-    if let Some((_, SpecifierSettings { enable, .. })) =
-      self.settings.specifiers.get(specifier)
-    {
-      *enable
+    if let Some(settings) = self.settings.specifiers.get(specifier) {
+      settings.enable
     } else {
       self.settings.workspace.enable
     }
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct SpecifierWithClientUri {
-  pub specifier: ModuleSpecifier,
-  pub client_uri: ModuleSpecifier,
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
-  pub specifiers:
-    BTreeMap<ModuleSpecifier, (ModuleSpecifier, SpecifierSettings)>,
+  pub specifiers: BTreeMap<ModuleSpecifier, SpecifierSettings>,
   pub workspace: WorkspaceSettings,
 }
 
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
-  enabled_paths: HashMap<String, Vec<String>>,
+  enabled_paths: HashMap<Url, Vec<Url>>,
   pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
   pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
@@ -478,12 +469,12 @@ impl Config {
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     if !self.enabled_paths.is_empty() {
-      let specifier_str = specifier.to_string();
+      let specifier_str = specifier.as_str();
       for (workspace, enabled_paths) in self.enabled_paths.iter() {
-        if specifier_str.starts_with(workspace) {
+        if specifier_str.starts_with(workspace.as_str()) {
           return enabled_paths
             .iter()
-            .any(|path| specifier_str.starts_with(path));
+            .any(|path| specifier_str.starts_with(path.as_str()));
         }
       }
     }
@@ -491,8 +482,26 @@ impl Config {
       .settings
       .specifiers
       .get(specifier)
-      .map(|(_, s)| s.enable)
+      .map(|settings| settings.enable)
       .unwrap_or_else(|| self.settings.workspace.enable)
+  }
+
+  pub fn root_dirs(&self) -> Vec<Url> {
+    let mut dirs: Vec<Url> = Vec::new();
+    for (workspace, enabled_paths) in &self.enabled_paths {
+      if enabled_paths.is_empty() {
+        dirs.extend(enabled_paths.iter().cloned());
+      } else {
+        dirs.push(workspace.clone());
+      }
+    }
+    if dirs.is_empty() {
+      if let Some(root_dir) = &self.root_uri {
+        dirs.push(root_dir.clone())
+      }
+    }
+    sort_and_remove_child_dirs(&mut dirs);
+    dirs
   }
 
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
@@ -500,7 +509,7 @@ impl Config {
       .settings
       .specifiers
       .get(specifier)
-      .map(|(_, s)| s.code_lens.test)
+      .map(|settings| settings.code_lens.test)
       .unwrap_or_else(|| self.settings.workspace.code_lens.test);
     value
   }
@@ -554,13 +563,15 @@ impl Config {
 
   /// Given the configured workspaces or root URI and the their settings,
   /// update and resolve any paths that should be enabled
-  pub async fn update_enabled_paths(&mut self, client: Client) -> bool {
+  pub fn update_enabled_paths(&mut self) -> bool {
     if let Some(workspace_folders) = self.workspace_folders.clone() {
       let mut touched = false;
-      for (workspace, folder) in workspace_folders {
-        if let Ok(settings) = client.specifier_configuration(&folder.uri).await
-        {
-          if self.update_enabled_paths_entry(workspace, settings.enable_paths) {
+      for (workspace, _) in workspace_folders {
+        if let Some(settings) = self.settings.specifiers.get(&workspace) {
+          if self.update_enabled_paths_entry(
+            workspace,
+            settings.enable_paths.clone(),
+          ) {
             touched = true;
           }
         }
@@ -583,7 +594,6 @@ impl Config {
     enabled_paths: Vec<String>,
   ) -> bool {
     let workspace = ensure_directory_specifier(workspace);
-    let key = workspace.to_string();
     let mut touched = false;
     if !enabled_paths.is_empty() {
       if let Ok(workspace_path) = specifier_to_file_path(&workspace) {
@@ -592,7 +602,7 @@ impl Config {
           let fs_path = workspace_path.join(path);
           match ModuleSpecifier::from_file_path(fs_path) {
             Ok(path_uri) => {
-              paths.push(path_uri.to_string());
+              paths.push(path_uri);
             }
             Err(_) => {
               lsp_log!("Unable to resolve a file path for `deno.enablePath` from \"{}\" for workspace \"{}\".", path, workspace);
@@ -601,38 +611,47 @@ impl Config {
         }
         if !paths.is_empty() {
           touched = true;
-          self.enabled_paths.insert(key, paths);
+          self.enabled_paths.insert(workspace.clone(), paths);
         }
       }
     } else {
       touched = true;
-      self.enabled_paths.remove(&key);
+      self.enabled_paths.remove(&workspace);
     }
     touched
   }
 
-  pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {
-    self
-      .settings
-      .specifiers
-      .iter()
-      .map(|(s, (u, _))| SpecifierWithClientUri {
-        specifier: s.clone(),
-        client_uri: u.clone(),
-      })
-      .collect()
+  pub fn get_specifiers(&self) -> Vec<ModuleSpecifier> {
+    self.settings.specifiers.keys().cloned().collect()
   }
 
   pub fn set_specifier_settings(
     &mut self,
     specifier: ModuleSpecifier,
-    client_uri: ModuleSpecifier,
     settings: SpecifierSettings,
-  ) {
-    self
-      .settings
-      .specifiers
-      .insert(specifier, (client_uri, settings));
+  ) -> bool {
+    if let Some(existing) = self.settings.specifiers.get(&specifier) {
+      if *existing == settings {
+        return false;
+      }
+    }
+
+    self.settings.specifiers.insert(specifier, settings);
+    true
+  }
+}
+
+fn sort_and_remove_child_dirs(dirs: &mut Vec<Url>) {
+  if dirs.is_empty() {
+    return;
+  }
+
+  dirs.sort();
+  for i in (0..dirs.len() - 1).rev() {
+    let prev = &dirs[i + 1];
+    if prev.as_str().starts_with(dirs[i].as_str()) {
+      dirs.remove(i + 1);
+    }
   }
 }
 
@@ -678,8 +697,8 @@ mod tests {
     assert!(!config.specifier_enabled(&specifier_b));
     let mut enabled_paths = HashMap::new();
     enabled_paths.insert(
-      "file:///project/".to_string(),
-      vec!["file:///project/worker/".to_string()],
+      Url::parse("file:///project/").unwrap(),
+      vec![Url::parse("file:///project/worker/").unwrap()],
     );
     config.enabled_paths = enabled_paths;
     assert!(config.specifier_enabled(&specifier_a));
@@ -799,5 +818,30 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings::default()
     );
+  }
+
+  #[test]
+  fn test_sort_and_remove_child_dirs() {
+    fn run_test(dirs: Vec<&str>, expected_output: Vec<&str>) {
+      let mut dirs = dirs
+        .into_iter()
+        .map(|dir| Url::parse(dir).unwrap())
+        .collect();
+      sort_and_remove_child_dirs(&mut dirs);
+      let dirs: Vec<_> = dirs.iter().map(|dir| dir.as_str()).collect();
+      assert_eq!(dirs, expected_output);
+    }
+
+    run_test(
+      vec![
+        "file:///test/asdf/test/asdf/",
+        "file:///test/asdf/",
+        "file:///test/asdf/",
+        "file:///testing/456/893/",
+        "file:///testing/456/893/test/",
+      ],
+      vec!["file:///test/asdf/", "file:///testing/456/893/"],
+    );
+    run_test(vec![], vec![]);
   }
 }
