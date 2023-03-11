@@ -45,6 +45,7 @@ fn fmt_test() {
     ])
     .run();
 
+  // No target files found
   output.assert_exit_code(1);
   output.skip_output_check();
 
