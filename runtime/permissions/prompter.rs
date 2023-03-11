@@ -5,6 +5,14 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use once_cell::sync::Lazy;
 
+/// Helper function to strip ansi codes and ASCII control characters.
+fn strip_ansi_codes_and_ascii_control(s: &str) -> std::borrow::Cow<str> {
+  console_static_text::strip_ansi_codes(s)
+    .chars()
+    .filter(|c| !c.is_ascii_control())
+    .collect()
+}
+
 pub const PERMISSION_EMOJI: &str = "⚠️";
 
 #[derive(Debug, Eq, PartialEq)]
@@ -203,6 +211,10 @@ impl PermissionPrompter for TtyPrompter {
     let _stdout_guard = std::io::stdout().lock();
     let _stderr_guard = std::io::stderr().lock();
 
+    let message = strip_ansi_codes_and_ascii_control(message);
+    let name = strip_ansi_codes_and_ascii_control(name);
+    let api_name = api_name.map(strip_ansi_codes_and_ascii_control);
+
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
       format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
@@ -211,9 +223,9 @@ impl PermissionPrompter for TtyPrompter {
     };
     eprint!("┌ {PERMISSION_EMOJI}  ");
     eprint!("{}", colors::bold("Deno requests "));
-    eprint!("{}", colors::bold(message));
+    eprint!("{}", colors::bold(message.clone()));
     eprintln!("{}", colors::bold("."));
-    if let Some(api_name) = api_name {
+    if let Some(api_name) = api_name.clone() {
       eprintln!("├ Requested by `{api_name}` API");
     }
     let msg = format!("Run again with --allow-{name} to bypass this prompt.");

@@ -13,6 +13,7 @@ use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -78,14 +79,16 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
 });
 
-pub fn init(stdio: Stdio) -> Extension {
-  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
-  let stdio = Rc::new(RefCell::new(Some(stdio)));
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps("deno_io", &["deno_web"])
+}
 
-  Extension::builder("deno_io")
+fn ops(
+  ext: &mut ExtensionBuilder,
+  stdio: Rc<RefCell<Option<Stdio>>>,
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
-    .dependencies(vec!["deno_web"])
-    .esm(include_js_files!("12_io.js",))
     .middleware(|op| match op.name {
       "op_print" => op_print::decl(),
       _ => op,
@@ -133,7 +136,22 @@ pub fn init(stdio: Stdio) -> Extension {
       ));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
     })
+}
+
+pub fn init_ops_and_esm(stdio: Stdio) -> Extension {
+  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
+  let stdio = Rc::new(RefCell::new(Some(stdio)));
+
+  ops(&mut ext(), stdio)
+    .esm(include_js_files!("12_io.js",))
     .build()
+}
+
+pub fn init_ops(stdio: Stdio) -> Extension {
+  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
+  let stdio = Rc::new(RefCell::new(Some(stdio)));
+
+  ops(&mut ext(), stdio).build()
 }
 
 pub enum StdioPipe {

@@ -13,6 +13,7 @@ use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::BufView;
+use deno_core::ExtensionBuilder;
 use deno_core::WriteOutcome;
 
 use deno_core::url::Url;
@@ -91,21 +92,21 @@ impl Default for Options {
   }
 }
 
-pub fn init<FP>(options: Options) -> Extension
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web", "deno_url", "deno_console"],
+  )
+}
+
+fn ops<FP>(
+  ext: &mut ExtensionBuilder,
+  options: Options,
+) -> &mut ExtensionBuilder
 where
   FP: FetchPermissions + 'static,
 {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
-    .esm(include_js_files!(
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
+  ext
     .ops(vec![
       op_fetch::decl::<FP>(),
       op_fetch_send::decl(),
@@ -125,7 +126,30 @@ where
         .unwrap()
       });
     })
+}
+
+pub fn init_ops_and_esm<FP>(options: Options) -> Extension
+where
+  FP: FetchPermissions + 'static,
+{
+  ops::<FP>(&mut ext(), options)
+    .esm(include_js_files!(
+      "20_headers.js",
+      "21_formdata.js",
+      "22_body.js",
+      "22_http_client.js",
+      "23_request.js",
+      "23_response.js",
+      "26_fetch.js",
+    ))
     .build()
+}
+
+pub fn init_ops<FP>(options: Options) -> Extension
+where
+  FP: FetchPermissions + 'static,
+{
+  ops::<FP>(&mut ext(), options).build()
 }
 
 pub type CancelableResponseFuture =

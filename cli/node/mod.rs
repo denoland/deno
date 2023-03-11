@@ -388,7 +388,6 @@ fn resolve_bin_entry_value<'a>(
         .as_object()
         .map(|o| {
           o.keys()
-            .into_iter()
             .map(|k| format!(" * npm:{pkg_nv}/{k}"))
             .collect::<Vec<_>>()
         })

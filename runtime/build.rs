@@ -204,8 +204,9 @@ mod startup_snapshot {
     snapshot_path: PathBuf,
     maybe_additional_extension: Option<Extension>,
   ) {
-    let runtime_extension = Extension::builder("runtime")
-      .dependencies(vec![
+    let runtime_extension = Extension::builder_with_deps(
+      "runtime",
+      &[
         "deno_webidl",
         "deno_console",
         "deno_url",
@@ -227,74 +228,85 @@ mod startup_snapshot {
         "deno_flash",
         "deno_io",
         "deno_fs",
-      ])
-      .esm(include_js_files!(
-        dir "js",
-        "01_errors.js",
-        "01_version.ts",
-        "06_util.js",
-        "10_permissions.js",
-        "11_workers.js",
-        "13_buffer.js",
-        "30_os.js",
-        "40_fs_events.js",
-        "40_http.js",
-        "40_process.js",
-        "40_signals.js",
-        "40_tty.js",
-        "41_prompt.js",
-        "90_deno_ns.js",
-        "98_global_scope.js",
-      ))
-      .build();
+      ],
+    )
+    .esm(include_js_files!(
+      dir "js",
+      "01_errors.js",
+      "01_version.ts",
+      "06_util.js",
+      "10_permissions.js",
+      "11_workers.js",
+      "13_buffer.js",
+      "30_os.js",
+      "40_fs_events.js",
+      "40_http.js",
+      "40_process.js",
+      "40_signals.js",
+      "40_tty.js",
+      "41_prompt.js",
+      "90_deno_ns.js",
+      "98_global_scope.js",
+    ))
+    .build();
 
-    let mut extensions_with_js: Vec<Extension> = vec![
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init(),
-      deno_tls::init(),
-      deno_web::init::<Permissions>(
+    let mut extensions: Vec<Extension> = vec![
+      deno_webidl::init_esm(),
+      deno_console::init_esm(),
+      deno_url::init_ops_and_esm(),
+      deno_tls::init_ops(),
+      deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
       ),
-      deno_fetch::init::<Permissions>(Default::default()),
-      deno_cache::init::<SqliteBackedCache>(None),
-      deno_websocket::init::<Permissions>("".to_owned(), None, None),
-      deno_webstorage::init(None),
-      deno_crypto::init(None),
-      deno_webgpu::init(false),
-      deno_broadcast_channel::init(
+      deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
+      deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+      deno_websocket::init_ops_and_esm::<Permissions>(
+        "".to_owned(),
+        None,
+        None,
+      ),
+      deno_webstorage::init_ops_and_esm(None),
+      deno_crypto::init_ops_and_esm(None),
+      deno_webgpu::init_ops_and_esm(false),
+      deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_ffi::init::<Permissions>(false),
-      deno_net::init::<Permissions>(
+      deno_ffi::init_ops_and_esm::<Permissions>(false),
+      deno_net::init_ops_and_esm::<Permissions>(
         None, false, // No --unstable.
         None,
       ),
-      deno_napi::init::<Permissions>(),
-      deno_http::init(),
-      deno_io::init(Default::default()),
-      deno_fs::init::<Permissions>(false),
-      deno_flash::init::<Permissions>(false), // No --unstable
+      deno_napi::init_ops::<Permissions>(),
+      deno_http::init_ops_and_esm(),
+      deno_io::init_ops_and_esm(Default::default()),
+      deno_fs::init_ops_and_esm::<Permissions>(false),
+      deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::init::<Permissions>(None),
+      deno_node::init_ops_and_esm::<Permissions>(None),
       deno_node::init_polyfill_ops_and_esm(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
-      extensions_with_js.push(additional_extension);
+      extensions.push(additional_extension);
     }
 
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![],
-      extensions_with_js,
-      compression_cb: None,
+      extensions,
+      compression_cb: Some(Box::new(|vec, snapshot_slice| {
+        lzzzz::lz4_hc::compress_to_vec(
+          snapshot_slice,
+          vec,
+          lzzzz::lz4_hc::CLEVEL_MAX,
+        )
+        .expect("snapshot compression failed");
+      })),
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
   }
@@ -307,8 +319,7 @@ mod startup_snapshot {
     {
       use deno_core::ExtensionFileSourceCode;
       maybe_additional_extension = Some(
-        Extension::builder("runtime_main")
-          .dependencies(vec!["runtime"])
+        Extension::builder_with_deps("runtime_main", &["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
             code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
