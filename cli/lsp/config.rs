@@ -486,24 +486,6 @@ impl Config {
       .unwrap_or_else(|| self.settings.workspace.enable)
   }
 
-  pub fn root_dirs(&self) -> Vec<Url> {
-    let mut dirs: Vec<Url> = Vec::new();
-    for (workspace, enabled_paths) in &self.enabled_paths {
-      if enabled_paths.is_empty() {
-        dirs.extend(enabled_paths.iter().cloned());
-      } else {
-        dirs.push(workspace.clone());
-      }
-    }
-    if dirs.is_empty() {
-      if let Some(root_dir) = &self.root_uri {
-        dirs.push(root_dir.clone())
-      }
-    }
-    sort_and_remove_child_dirs(&mut dirs);
-    dirs
-  }
-
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
     let value = self
       .settings
@@ -638,20 +620,6 @@ impl Config {
 
     self.settings.specifiers.insert(specifier, settings);
     true
-  }
-}
-
-fn sort_and_remove_child_dirs(dirs: &mut Vec<Url>) {
-  if dirs.is_empty() {
-    return;
-  }
-
-  dirs.sort();
-  for i in (0..dirs.len() - 1).rev() {
-    let prev = &dirs[i + 1];
-    if prev.as_str().starts_with(dirs[i].as_str()) {
-      dirs.remove(i + 1);
-    }
   }
 }
 
@@ -818,30 +786,5 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings::default()
     );
-  }
-
-  #[test]
-  fn test_sort_and_remove_child_dirs() {
-    fn run_test(dirs: Vec<&str>, expected_output: Vec<&str>) {
-      let mut dirs = dirs
-        .into_iter()
-        .map(|dir| Url::parse(dir).unwrap())
-        .collect();
-      sort_and_remove_child_dirs(&mut dirs);
-      let dirs: Vec<_> = dirs.iter().map(|dir| dir.as_str()).collect();
-      assert_eq!(dirs, expected_output);
-    }
-
-    run_test(
-      vec![
-        "file:///test/asdf/test/asdf/",
-        "file:///test/asdf/",
-        "file:///test/asdf/",
-        "file:///testing/456/893/",
-        "file:///testing/456/893/test/",
-      ],
-      vec!["file:///test/asdf/", "file:///testing/456/893/"],
-    );
-    run_test(vec![], vec![]);
   }
 }

@@ -316,7 +316,7 @@ impl LanguageServer {
     }
   }
 
-  pub async fn refresh_specifiers_from_client(&self) {
+  pub async fn refresh_specifiers_from_client(&self) -> bool {
     let (client, specifiers) =
       {
         let ls = self.0.read().await;
@@ -397,6 +397,7 @@ impl LanguageServer {
         ls.send_diagnostics_update();
       }
     }
+    touched
   }
 }
 
@@ -1080,7 +1081,6 @@ impl Inner {
 
   fn refresh_documents_config(&mut self) {
     self.documents.update_config(
-      self.config.root_dirs(),
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
       self.maybe_package_json.as_ref(),
@@ -2752,7 +2752,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
   async fn initialized(&self, params: InitializedParams) {
     self.0.write().await.initialized(params).await;
 
-    self.refresh_specifiers_from_client().await;
+    if !self.refresh_specifiers_from_client().await {
+      // force update config
+      self.0.write().await.refresh_documents_config();
+    }
 
     lsp_log!("Server ready.");
   }
@@ -2887,17 +2890,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    let mark = {
+    let (performance, mark) = {
       let mut ls = self.0.write().await;
       let mark = ls
         .performance
         .mark("did_change_workspace_folders", Some(&params));
       ls.did_change_workspace_folders(params);
-      mark
+      (ls.performance.clone(), mark)
     };
 
     self.refresh_specifiers_from_client().await;
-    self.0.read().await.performance.measure(mark);
+    performance.measure(mark);
   }
 
   async fn document_symbol(

@@ -5684,7 +5684,7 @@ struct PerformanceAverages {
 
 #[test]
 fn lsp_performance() {
-  let mut client = LspClientBuilder::new().build();
+  let mut client = LspClientBuilder::new().print_stderr().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {

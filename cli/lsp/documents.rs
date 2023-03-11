@@ -1248,7 +1248,7 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies(root_dirs);
+      self.refresh_dependencies();
       self.resolver_config_hash = new_resolver_config_hash;
     }
 

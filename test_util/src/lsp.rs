@@ -148,6 +148,11 @@ impl LspStdoutReader {
     self.pending_messages.0.lock().len()
   }
 
+  pub fn output_pending_messages(&self) {
+    let messages = self.pending_messages.0.lock();
+    eprintln!("{:?}", messages);
+  }
+
   pub fn had_message(&self, is_match: impl Fn(&LspMessage) -> bool) -> bool {
     self.read_messages.iter().any(&is_match)
       || self.pending_messages.0.lock().iter().any(&is_match)
@@ -453,6 +458,9 @@ impl LspClientBuilder {
     self
   }
 
+  // not deprecated, this is just here so you don't accidentally
+  // commit code with this enabled
+  #[deprecated]
   pub fn print_stderr(&mut self) -> &mut Self {
     self.print_stderr = true;
     self
@@ -541,6 +549,7 @@ impl LspClient {
   }
 
   pub fn queue_len(&self) -> usize {
+    self.reader.output_pending_messages();
     self.reader.pending_len()
   }
 
