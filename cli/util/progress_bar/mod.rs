@@ -27,6 +27,7 @@ mod renderer;
 pub enum ProgressMessagePrompt {
   Download,
   Blocking,
+  Initialize,
 }
 
 impl ProgressMessagePrompt {
@@ -34,6 +35,9 @@ impl ProgressMessagePrompt {
     match self {
       ProgressMessagePrompt::Download => colors::green("Download").to_string(),
       ProgressMessagePrompt::Blocking => colors::cyan("Blocking").to_string(),
+      ProgressMessagePrompt::Initialize => {
+        colors::green("Initialize").to_string()
+      }
     }
   }
 }

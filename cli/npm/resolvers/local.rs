@@ -11,6 +11,9 @@ use std::path::PathBuf;
 
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::progress_bar::ProgressMessagePrompt;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -244,6 +247,8 @@ async fn sync_resolution_with_fs(
   )
   .await;
 
+  let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
+
   // 1. Write all the packages out the .deno directory.
   //
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
@@ -269,6 +274,10 @@ async fn sync_resolution_with_fs(
       .should_use_for_npm_package(&package.pkg_id.nv.name)
       || !initialized_file.exists()
     {
+      let pb_guard = pb.update_with_prompt(
+        ProgressMessagePrompt::Initialize,
+        &package.pkg_id.nv.to_string(),
+      );
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
@@ -289,6 +298,8 @@ async fn sync_resolution_with_fs(
         copy_dir_recursive(&cache_folder, &package_path)?;
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
+        // finally stop showing the progress bar
+        drop(pb_guard);
         Ok(())
       });
       if sync_download {
