@@ -34,15 +34,17 @@ fn fmt_test() {
   let output = context
     .new_command()
     .cwd(s)
-    .args_vec(
-      vec![
-        "fmt".to_string(),
-        format!("--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str} --check {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}")
-      ]
-      )
+    .args_vec(vec![
+      "fmt".to_string(),
+      format!(
+        "--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str}",
+      ),
+      format!(
+        "--check {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}",
+      ),
+    ])
     .run();
 
-  // No target files found
   output.assert_exit_code(1);
   output.skip_output_check();
 
