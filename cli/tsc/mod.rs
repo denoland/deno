@@ -352,7 +352,6 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: Vec<Vec<u8>>,
-  pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_npm_resolver: Option<NpmPackageResolver>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
@@ -374,7 +373,6 @@ pub struct Response {
 struct State {
   hash_data: Vec<Vec<u8>>,
   graph: Arc<ModuleGraph>,
-  maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   maybe_npm_resolver: Option<NpmPackageResolver>,
@@ -386,7 +384,6 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: Vec<Vec<u8>>,
-    maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_npm_resolver: Option<NpmPackageResolver>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
@@ -395,7 +392,6 @@ impl State {
     State {
       hash_data,
       graph,
-      maybe_config_specifier,
       maybe_npm_resolver,
       maybe_tsbuildinfo,
       maybe_response: None,
@@ -406,8 +402,7 @@ impl State {
 }
 
 fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(&specifier.replace(".d.ts.d.ts", ".d.ts"))
-    .map_err(|err| err.into())
+  resolve_url_or_path(specifier).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]
@@ -427,17 +422,6 @@ fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
   data.extend_from_slice(&state.hash_data);
   let hash = checksum::gen(&data);
   Ok(json!({ "hash": hash }))
-}
-
-#[op]
-fn op_cwd(s: &mut OpState) -> Result<String, AnyError> {
-  let state = s.borrow_mut::<State>();
-  if let Some(config_specifier) = &state.maybe_config_specifier {
-    let cwd = config_specifier.join("./")?;
-    Ok(cwd.to_string())
-  } else {
-    Ok("cache:///".to_string())
-  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -463,27 +447,6 @@ fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   }
 
   true
-}
-
-#[derive(Debug, Deserialize)]
-struct ExistsArgs {
-  /// The fully qualified specifier that should be loaded.
-  specifier: String,
-}
-
-#[op]
-fn op_exists(state: &mut OpState, args: ExistsArgs) -> bool {
-  let state = state.borrow_mut::<State>();
-  let graph = &state.graph;
-  if let Ok(specifier) = normalize_specifier(&args.specifier) {
-    if specifier.scheme() == "asset" || specifier.scheme() == "data" {
-      true
-    } else {
-      graph.get(&specifier).is_some()
-    }
-  } else {
-    false
-  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -866,7 +829,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
         state.put(State::new(
           request.graph.clone(),
           request.hash_data.clone(),
-          request.maybe_config_specifier.clone(),
           request.maybe_npm_resolver.clone(),
           request.maybe_tsbuildinfo.clone(),
           root_map.clone(),
@@ -912,10 +874,8 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
 fn get_tsc_ops() -> Vec<deno_core::OpDecl> {
   vec![
-    op_cwd::decl(),
     op_create_hash::decl(),
     op_emit::decl(),
-    op_exists::decl(),
     op_is_node_file::decl(),
     op_load::decl(),
     op_resolve::decl(),
@@ -982,7 +942,6 @@ mod tests {
       Arc::new(graph),
       hash_data,
       None,
-      None,
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
@@ -1024,7 +983,6 @@ mod tests {
       debug: false,
       graph: Arc::new(graph),
       hash_data,
-      maybe_config_specifier: None,
       maybe_npm_resolver: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],

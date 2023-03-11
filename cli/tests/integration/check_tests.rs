@@ -26,14 +26,14 @@ itest!(check_random_extension {
 });
 
 itest!(check_all {
-  args: "check --quiet --all check/check_all.ts",
-  output: "check/check_all.out",
+  args: "check --quiet --all check/all/check_all.ts",
+  output: "check/all/check_all.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(check_all_local {
-  args: "check --quiet check/check_all.ts",
+  args: "check --quiet check/all/check_all.ts",
   output_str: Some(""),
   http_server: true,
 });
@@ -233,9 +233,16 @@ fn ts_no_recheck_on_redirect() {
 }
 
 itest!(check_dts {
-  args: "check --quiet check/check_dts.d.ts",
-  output: "check/check_dts.out",
+  args: "check --quiet check/dts/check_dts.d.ts",
+  output: "check/dts/check_dts.out",
   exit_code: 1,
+});
+
+itest!(check_types_dts {
+  args: "check main.ts",
+  cwd: Some("check/types_dts/"),
+  output: "check/types_dts/main.out",
+  exit_code: 0,
 });
 
 itest!(package_json_basic {
