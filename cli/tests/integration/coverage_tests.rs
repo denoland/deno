@@ -45,7 +45,7 @@ fn error_if_invalid_cache() {
   let mod_temp_path = deno_dir_path.join("mod.ts");
   let mod_test_temp_path = deno_dir_path.join("mod.test.ts");
 
-  // Write the inital mod.ts file
+  // Write the initial mod.ts file
   std::fs::copy(mod_before_path, &mod_temp_path).unwrap();
   // And the test file
   std::fs::copy(mod_test_path, mod_test_temp_path).unwrap();
