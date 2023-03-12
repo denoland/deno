@@ -105,7 +105,8 @@ impl CliMainWorker {
     Ok(self.worker.exit_code())
   }
 
-  pub async fn run_for_watcher(self) -> Result<(), AnyError> {
+  pub async fn run_for_watcher(mut self) -> Result<(), AnyError> {
+    self.worker.js_runtime.set_leak_isolate(false);
     /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.

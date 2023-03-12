@@ -757,6 +757,41 @@ fn run_watch_not_exit() {
   check_alive_then_kill(child);
 }
 
+/// Confirm that the port is released with the watcher reload.
+#[test]
+fn run_watch_http_server() {
+  const SOURCE: &str = r#"
+    import { serve } from "https://deno.land/std@0.114.0/http/server.ts";
+    serve((_req) => new Response("Hello, world"));
+    console.log("OK");
+  "#;
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(&file_to_watch, SOURCE).unwrap();
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--allow-net")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines);
+  wait_contains("OK", &mut stdout_lines);
+
+  write(&file_to_watch, SOURCE).unwrap();
+
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("OK", &mut stdout_lines);
+
+  child.kill().unwrap();
+}
+
 #[test]
 fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(

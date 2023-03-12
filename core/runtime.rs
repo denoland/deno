@@ -335,14 +335,15 @@ impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
+      // Clear the GothamState. This allows final env cleanup hooks to run.
+      // Note: that OpState is cloned for every OpCtx, so we can't just drop
+      // one reference to it.
+      let rc_state = self.op_state();
+      rc_state.borrow_mut().clear_state();
     }
+
     if self.leak_isolate {
       if let Some(v8_isolate) = self.v8_isolate.take() {
-        // Clear the GothamState. This allows final env cleanup hooks to run.
-        // Note: that OpState is cloned for every OpCtx, so we can't just drop
-        // one reference to it.
-        let rc_state = self.op_state();
-        rc_state.borrow_mut().clear_state();
         std::mem::forget(v8_isolate);
       }
     }
@@ -712,6 +713,10 @@ impl JsRuntime {
     // the runtime.
     unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
     drop(module_map_rc);
+  }
+
+  pub fn set_leak_isolate(&mut self, v: bool) {
+    self.leak_isolate = v;
   }
 
   #[inline]
