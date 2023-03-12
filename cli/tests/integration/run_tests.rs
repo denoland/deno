@@ -826,15 +826,15 @@ itest!(config {
 
 itest!(config_types {
   args:
-    "run --reload --quiet --config run/config_types/tsconfig.json run/config_types/main.ts",
+    "run --reload --quiet --check=all --config run/config_types/tsconfig.json run/config_types/main.ts",
   output: "run/config_types/main.out",
 });
 
 itest!(config_types_remote {
-    http_server: true,
-    args: "run --reload --quiet --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
-    output: "run/config_types/main.out",
-  });
+  http_server: true,
+  args: "run --reload --quiet --check=all --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
+  output: "run/config_types/main.out",
+});
 
 itest!(empty_typescript {
   args: "run --reload --check run/empty.ts",
@@ -4027,6 +4027,51 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
+#[test]
+fn permission_prompt_strips_ansi_codes_and_control_chars() {
+  let _guard = util::http_server();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(
+      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\"."
+    ));
+  });
+
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"
+const boldANSI = "\u001b[1m" // bold
+const unboldANSI = "\u001b[22m" // unbold
+
+const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}
+├ Requested by \`Deno.Command().output()`
+
+const moveANSIUp = "\u001b[1A" // moves to the start of the line
+const clearANSI = "\u001b[2K" // clears the line
+const moveANSIStart = "\u001b[1000D" // moves to the start of the line
+
+Deno[Object.getOwnPropertySymbols(Deno)[0]].core.ops.op_spawn_child({
+    cmd: "cat",
+    args: ["/etc/passwd"],
+    clearEnv: false,
+    env: [],
+    stdin: "null",
+    stdout: "inherit",
+    stderr: "piped"
+}, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(r#"┌ ⚠️  Deno requests run access to "cat""#));
+  });
+}
+
 itest!(node_builtin_modules_ts {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
@@ -4048,14 +4093,14 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
-itest!(internal_import {
-  args: "run run/internal_import.ts",
-  output: "run/internal_import.ts.out",
+itest!(extension_import {
+  args: "run run/extension_import.ts",
+  output: "run/extension_import.ts.out",
   exit_code: 1,
 });
 
-itest!(internal_dynamic_import {
-  args: "run run/internal_dynamic_import.ts",
-  output: "run/internal_dynamic_import.ts.out",
+itest!(extension_dynamic_import {
+  args: "run run/extension_dynamic_import.ts",
+  output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });

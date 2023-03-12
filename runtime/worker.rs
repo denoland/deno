@@ -72,21 +72,11 @@ pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
 
   /// JsRuntime extensions, not to be confused with ES modules.
-  /// Only ops registered by extensions will be initialized. If you need
-  /// to execute JS code from extensions, use `extensions_with_js` options
-  /// instead.
-  pub extensions: Vec<Extension>,
-
-  /// JsRuntime extensions, not to be confused with ES modules.
-  /// Ops registered by extensions will be initialized and JS code will be
-  /// executed. If you don't need to execute JS code from extensions, use
-  /// `extensions` option instead.
   ///
-  /// This is useful when creating snapshots, in such case you would pass
-  /// extensions using `extensions_with_js`, later when creating a runtime
-  /// from the snapshot, you would pass these extensions using `extensions`
-  /// option.
-  pub extensions_with_js: Vec<Extension>,
+  /// Extensions register "ops" and JavaScript sources provided in `js` or `esm`
+  /// configuration. If you are using a snapshot, then extensions shouldn't
+  /// provide JavaScript sources that were already snapshotted.
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
@@ -141,6 +131,7 @@ pub struct WorkerOptions {
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+  pub leak_isolate: bool,
 }
 
 impl Default for WorkerOptions {
@@ -173,10 +164,10 @@ impl Default for WorkerOptions {
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
-      extensions_with_js: Default::default(),
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      leak_isolate: false,
     }
   }
 }
@@ -206,7 +197,6 @@ impl MainWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
@@ -215,17 +205,16 @@ impl MainWorker {
       CreateCache(Arc::new(create_cache_fn))
     });
 
-    // Internal modules
-    let mut extensions: Vec<Extension> = vec![
+    let mut extensions = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
+      deno_url::init_ops(),
+      deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
+      deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -234,18 +223,21 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
+      deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init(options.origin_storage_dir.clone()),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
+      deno_webstorage::init_ops(options.origin_storage_dir.clone()),
+      deno_broadcast_channel::init_ops(
+        options.broadcast_channel.clone(),
+        unstable,
+      ),
+      deno_crypto::init_ops(options.seed),
+      deno_webgpu::init_ops(unstable),
       // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
+      deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
@@ -255,28 +247,29 @@ impl MainWorker {
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::init(),
-      ops::fs::init::<PermissionsContainer>(),
-      deno_io::init(options.stdio),
-      deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
+      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_io::init_ops(options.stdio),
+      deno_tls::init_ops(),
+      deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
-      deno_node::init::<PermissionsContainer>(options.npm_resolver),
+      deno_napi::init_ops::<PermissionsContainer>(),
+      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
+      deno_node::init_polyfill_ops(),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
+      deno_http::init_ops(),
+      deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
-      // Permissions ext (worker specific state)
-      perm_ext,
     ];
+
+    extensions.push(perm_ext);
+
     extensions.extend(std::mem::take(&mut options.extensions));
 
     #[cfg(not(feature = "dont_create_runtime_snapshot"))]
@@ -295,9 +288,9 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
-      extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
+      leak_isolate: options.leak_isolate,
       ..Default::default()
     });
 
@@ -321,13 +314,15 @@ impl MainWorker {
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let bootstrap_str = v8::String::new(scope, "bootstrap").unwrap();
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
       let bootstrap_ns: v8::Local<v8::Object> = global_obj
         .get(scope, bootstrap_str.into())
         .unwrap()
         .try_into()
         .unwrap();
-      let main_runtime_str = v8::String::new(scope, "mainRuntime").unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"mainRuntime").unwrap();
       let bootstrap_fn =
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.31.1"
+version = "1.31.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -62,7 +62,7 @@ chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
 clap = "=3.1.12"
 clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
-console_static_text = "=0.3.4"
+console_static_text.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.0"
@@ -73,13 +73,14 @@ env_logger = "=0.9.0"
 eszip = "=0.37.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
+fs3.workspace = true
 http.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
-lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lsp-types.workspace = true
 lzzzz = '1.0'
 mitata = "=0.0.7"
 monch = "=0.4.1"
@@ -93,7 +94,7 @@ regex.workspace = true
 ring.workspace = true
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
-secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
+secure_tempfile = { version = "=3.4.0", package = "tempfile" } # different name to discourage use in tests
 serde.workspace = true
 serde_repr.workspace = true
 shell-escape = "=0.1.5"
@@ -103,7 +104,7 @@ text_lines = "=0.6.0"
 thiserror = "=1.0.38"
 tokio.workspace = true
 tokio-util.workspace = true
-tower-lsp = { version = "=0.17.0", features = ["proposed"] }
+tower-lsp.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }

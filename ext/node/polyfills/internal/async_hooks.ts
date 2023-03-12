@@ -2,12 +2,12 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // deno-lint-ignore camelcase
-import * as async_wrap from "internal:deno_node/internal_binding/async_wrap.ts";
-import { ERR_ASYNC_CALLBACK } from "internal:deno_node/internal/errors.ts";
+import * as async_wrap from "ext:deno_node/internal_binding/async_wrap.ts";
+import { ERR_ASYNC_CALLBACK } from "ext:deno_node/internal/errors.ts";
 export {
   asyncIdSymbol,
   ownerSymbol,
-} from "internal:deno_node/internal_binding/symbols.ts";
+} from "ext:deno_node/internal_binding/symbols.ts";
 
 interface ActiveHooks {
   array: AsyncHook[];

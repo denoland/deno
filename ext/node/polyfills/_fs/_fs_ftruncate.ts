@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { CallbackWithError } from "internal:deno_node/_fs/_fs_common.ts";
+import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 
 export function ftruncate(
   fd: number,

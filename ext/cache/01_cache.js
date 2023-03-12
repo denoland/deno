@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 const core = globalThis.Deno.core;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Symbol,
@@ -12,11 +12,11 @@ import {
   Request,
   RequestPrototype,
   toInnerRequest,
-} from "internal:deno_fetch/23_request.js";
-import { toInnerResponse } from "internal:deno_fetch/23_response.js";
-import { URLPrototype } from "internal:deno_url/00_url.js";
-import { getHeader } from "internal:deno_fetch/20_headers.js";
-import { readableStreamForRid } from "internal:deno_web/06_streams.js";
+} from "ext:deno_fetch/23_request.js";
+import { toInnerResponse } from "ext:deno_fetch/23_response.js";
+import { URLPrototype } from "ext:deno_url/00_url.js";
+import { getHeader } from "ext:deno_fetch/20_headers.js";
+import { readableStreamForRid } from "ext:deno_web/06_streams.js";
 
 class CacheStorage {
   constructor() {

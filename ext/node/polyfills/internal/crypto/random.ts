@@ -1,19 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import randomBytes from "internal:deno_node/internal/crypto/_randomBytes.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import randomFill, {
   randomFillSync,
-} from "internal:deno_node/internal/crypto/_randomFill.ts";
-import randomInt from "internal:deno_node/internal/crypto/_randomInt.ts";
+} from "ext:deno_node/internal/crypto/_randomFill.ts";
+import randomInt from "ext:deno_node/internal/crypto/_randomInt.ts";
 
-export { default as randomBytes } from "internal:deno_node/internal/crypto/_randomBytes.ts";
+export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 export {
   default as randomFill,
   randomFillSync,
-} from "internal:deno_node/internal/crypto/_randomFill.ts";
-export { default as randomInt } from "internal:deno_node/internal/crypto/_randomInt.ts";
+} from "ext:deno_node/internal/crypto/_randomFill.ts";
+export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
 
 export type LargeNumberLike =
   | ArrayBufferView

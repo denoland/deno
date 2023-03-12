@@ -655,8 +655,7 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames.iter().any(|f| {
     if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[internal:")
-        || file_name.starts_with("internal:"))
+      !(file_name.starts_with("[ext:") || file_name.starts_with("ext:"))
     } else {
       true
     }
@@ -668,13 +667,11 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
       .rev()
       .skip_while(|f| {
         if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[internal:")
-            || file_name.starts_with("internal:")
+          file_name.starts_with("[ext:") || file_name.starts_with("ext:")
         } else {
           false
         }
       })
-      .into_iter()
       .collect::<Vec<_>>();
     frames.reverse();
     js_error.frames = frames;

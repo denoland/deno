@@ -97,7 +97,7 @@ impl Serialize for WorkerControlEvent {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("internal:"),
+              Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
             });
             json!({
@@ -376,7 +376,6 @@ impl WebWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
@@ -388,12 +387,12 @@ impl WebWorker {
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
+      deno_url::init_ops(),
+      deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
+      deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -402,18 +401,21 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
+      deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init(None).disable(),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
+      deno_webstorage::init_ops(None).disable(),
+      deno_broadcast_channel::init_ops(
+        options.broadcast_channel.clone(),
+        unstable,
+      ),
+      deno_crypto::init_ops(options.seed),
+      deno_webgpu::init_ops(unstable),
       // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
+      deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
@@ -425,24 +427,24 @@ impl WebWorker {
       ),
       // Extensions providing Deno.* features
       ops::fs_events::init(),
-      ops::fs::init::<PermissionsContainer>(),
-      deno_io::init(options.stdio),
-      deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
+      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_io::init_ops(options.stdio),
+      deno_tls::init_ops(),
+      deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<PermissionsContainer>(),
-      deno_node::init_polyfill(),
-      deno_node::init::<PermissionsContainer>(options.npm_resolver),
+      deno_napi::init_ops::<PermissionsContainer>(),
+      deno_node::init_polyfill_ops(),
+      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
+      deno_http::init_ops(),
+      deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -500,13 +502,16 @@ impl WebWorker {
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
-      let bootstrap_str = v8::String::new(scope, "bootstrap").unwrap();
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
       let bootstrap_ns: v8::Local<v8::Object> = global_obj
         .get(scope, bootstrap_str.into())
         .unwrap()
         .try_into()
         .unwrap();
-      let main_runtime_str = v8::String::new(scope, "workerRuntime").unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"workerRuntime")
+          .unwrap();
       let bootstrap_fn =
         bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
       let bootstrap_fn =

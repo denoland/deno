@@ -2,10 +2,10 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 
-import { TextDecoder, TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { codes } from "internal:deno_node/internal/error_codes.ts";
-import { encodings } from "internal:deno_node/internal_binding/string_decoder.ts";
-import { indexOfBuffer, indexOfNumber } from "internal:deno_node/internal_binding/buffer.ts";
+import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
+import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
+import { indexOfBuffer, indexOfNumber } from "ext:deno_node/internal_binding/buffer.ts";
 import {
   asciiToBytes,
   base64ToBytes,
@@ -14,14 +14,14 @@ import {
   bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
-} from "internal:deno_node/internal_binding/_utils.ts";
-import { isAnyArrayBuffer, isArrayBufferView } from "internal:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "internal:deno_node/internal/util.mjs";
-import { validateBuffer } from "internal:deno_node/internal/validators.mjs";
-import { isUint8Array } from "internal:deno_node/internal/util/types.ts";
-import { forgivingBase64Encode, forgivingBase64UrlEncode } from "internal:deno_web/00_infra.js";
-import { atob, btoa } from "internal:deno_web/05_base64.js";
-import { Blob } from "internal:deno_web/09_file.js";
+} from "ext:deno_node/internal_binding/_utils.ts";
+import { isAnyArrayBuffer, isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { forgivingBase64Encode, forgivingBase64UrlEncode } from "ext:deno_web/00_infra.js";
+import { atob, btoa } from "ext:deno_web/05_base64.js";
+import { Blob } from "ext:deno_web/09_file.js";
 
 export { atob, btoa, Blob };
 

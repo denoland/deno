@@ -818,7 +818,7 @@ pub struct Documents {
   resolver_config_hash: u64,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
-  imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
+  imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: CliGraphResolver,
@@ -849,6 +849,14 @@ impl Documents {
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
+  }
+
+  pub fn module_graph_imports(&self) -> impl Iterator<Item = &ModuleSpecifier> {
+    self
+      .imports
+      .values()
+      .flat_map(|i| i.dependencies.values())
+      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -946,7 +954,6 @@ impl Documents {
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    // keep this fast because it's used by op_exists, which is a hot path in tsc
     let specifier = self.specifier_resolver.resolve(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
@@ -1239,7 +1246,7 @@ impl Documents {
           })
           .collect()
       } else {
-        HashMap::new()
+        IndexMap::new()
       },
     );
 

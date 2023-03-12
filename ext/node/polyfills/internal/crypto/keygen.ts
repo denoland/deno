@@ -1,13 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { KeyObject } from "internal:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import {
-  KeyFormat,
-  KeyType,
-} from "internal:deno_node/internal/crypto/types.ts";
+import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
 export function generateKey(
   _type: "hmac" | "aes",

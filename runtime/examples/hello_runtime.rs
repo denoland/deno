@@ -43,7 +43,6 @@ async fn main() -> Result<(), AnyError> {
       inspect: false,
     },
     extensions: vec![],
-    extensions_with_js: vec![],
     startup_snapshot: None,
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
@@ -66,6 +65,7 @@ async fn main() -> Result<(), AnyError> {
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
     stdio: Default::default(),
+    leak_isolate: true,
   };
 
   let js_path =
