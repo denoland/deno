@@ -185,10 +185,16 @@ fn parse_compiler_options(
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if IGNORED_COMPILER_OPTIONS.contains(&key) {
-      items.push(key.to_string());
-    } else {
-      filtered.insert(key.to_string(), value.to_owned());
+    // We don't pass "types" entries to typescript via the compiler
+    // options and instead provide those to tsc as "roots". This is
+    // because our "types" behavior is at odds with how TypeScript's
+    // "types" works.
+    if key != "types" {
+      if IGNORED_COMPILER_OPTIONS.contains(&key) {
+        items.push(key.to_string());
+      } else {
+        filtered.insert(key.to_string(), value.to_owned());
+      }
     }
   }
   let value = serde_json::to_value(filtered)?;
