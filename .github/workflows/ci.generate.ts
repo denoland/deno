@@ -202,6 +202,13 @@ const ci = {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
+      container: "${{ matrix.container }}",
+      defaults: {
+        run: {
+          shell: "bash",
+        },
+      },
+      container: "${{ matrix.container }}",
       "timeout-minutes": 120,
       strategy: {
         matrix: {
