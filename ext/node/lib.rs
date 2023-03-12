@@ -382,6 +382,7 @@ pub fn init_polyfill() -> Extension {
       idna::op_node_idna_domain_to_unicode::decl(),
       idna::op_node_idna_punycode_decode::decl(),
       idna::op_node_idna_punycode_encode::decl(),
+      zlib::op_zlib_deflate_sync::decl(),
       op_node_build_os::decl(),
     ])
     .build()

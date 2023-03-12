@@ -133,7 +133,12 @@ interface ZlibOptions {
   info?: boolean;
   maxOutputLength?: number;
 }
+
 const { ops } = globalThis.__bootstrap.core;
+
+const Z_DEFAULT_LEVEL = -1;
+const Z_DEFAULT_WINDOWBITS = 15;
+const Z_DEFAULT_MEMLEVEL = 8;
 
 function deflateSync(
   buffer: Buffer | ArrayBuffer | ArrayBufferView,
@@ -141,7 +146,52 @@ function deflateSync(
 ) {
   return ops.op_zlib_deflate_sync(
     buffer,
+    options?.level ?? Z_DEFAULT_LEVEL,
+    options?.windowBits ?? Z_DEFAULT_WINDOWBITS,
+    options?.memLevel ?? Z_DEFAULT_MEMLEVEL,
+    options?.strategy ?? 0,
   );
+}
+
+class Deflate {
+  #handle: number;
+  #closed = false;
+
+  constructor(options?: ZlibOptions) {
+    this.#handle = ops.op_zlib_create_deflate(
+      options?.level ?? Z_DEFAULT_LEVEL,
+      options?.windowBits ?? Z_DEFAULT_WINDOWBITS,
+      options?.memLevel ?? Z_DEFAULT_MEMLEVEL,
+      options?.strategy ?? 0,
+    );
+  }
+
+  /** @deprecated */
+  // get bytesRead(): number;
+
+  // get bytesWritten(): number;
+  
+  close(callback?: () => void) {
+    if (this.#closed) return;
+    ops.op_zlib_deflate_close(this.#handle);
+    this.#closed = true;
+  }
+
+  flush(kind?: number, callback?: () => void) {
+    return ops.op_zlib_deflate_flush(this.#handle, kind ?? 0);
+  }
+
+  params(level: number, strategy: number, callback?: () => void) {
+    ops.op_zlib_deflate_params(this.#handle, level, strategy);
+  }
+
+  reset(callback?: () => void) {
+    ops.op_zlib_deflate_reset(this.#handle);
+  }
+}
+
+function createDeflate(options?: ZlibOptions) {
+  return new Deflate(options);
 }
 
 export {
