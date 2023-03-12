@@ -588,21 +588,11 @@ struct DiagnosticDataRedirect {
   pub redirect: ModuleSpecifier,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DiagnosticDataImportMapRemap {
-  pub from: String,
-  pub to: String,
-}
-
 /// An enum which represents diagnostic errors which originate from Deno itself.
 pub enum DenoDiagnostic {
   /// A `x-deno-warning` is associated with the specifier and should be displayed
   /// as a warning to the user.
   DenoWarn(String),
-  /// An informational diagnostic that indicates an existing specifier can be
-  /// remapped to an import map import specifier.
-  ImportMapRemap { from: String, to: String },
   /// The import assertion type is incorrect.
   InvalidAssertType(String),
   /// A module requires an assertion type to be a valid import.
@@ -633,7 +623,6 @@ impl DenoDiagnostic {
   fn code(&self) -> &str {
     match self {
       Self::DenoWarn(_) => "deno-warn",
-      Self::ImportMapRemap { .. } => "import-map-remap",
       Self::InvalidAssertType(_) => "invalid-assert-type",
       Self::NoAssertType => "no-assert-type",
       Self::NoCache(_) => "no-cache",
@@ -673,30 +662,6 @@ impl DenoDiagnostic {
   ) -> Result<lsp::CodeAction, AnyError> {
     if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
       let code_action = match code.as_str() {
-        "import-map-remap" => {
-          let data = diagnostic
-            .data
-            .clone()
-            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
-          let DiagnosticDataImportMapRemap { from, to } =
-            serde_json::from_value(data)?;
-          lsp::CodeAction {
-            title: format!("Update \"{from}\" to \"{to}\" to use import map."),
-            kind: Some(lsp::CodeActionKind::QUICKFIX),
-            diagnostics: Some(vec![diagnostic.clone()]),
-            edit: Some(lsp::WorkspaceEdit {
-              changes: Some(HashMap::from([(
-                specifier.clone(),
-                vec![lsp::TextEdit {
-                  new_text: format!("\"{to}\""),
-                  range: diagnostic.range,
-                }],
-              )])),
-              ..Default::default()
-            }),
-            ..Default::default()
-          }
-        }
         "no-assert-type" => lsp::CodeAction {
           title: "Insert import assertion.".to_string(),
           kind: Some(lsp::CodeActionKind::QUICKFIX),
@@ -805,8 +770,7 @@ impl DenoDiagnostic {
     if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
       matches!(
         code.as_str(),
-        "import-map-remap"
-          | "no-cache"
+        "no-cache"
           | "no-cache-npm"
           | "no-cache-data"
           | "no-assert-type"
@@ -823,7 +787,6 @@ impl DenoDiagnostic {
   pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
-      Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
       Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{specifier}\"."), Some(json!({ "specifier": specifier }))),
@@ -976,28 +939,11 @@ fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
   referrer: &ModuleSpecifier,
-  dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
   if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
     if npm_resolver.in_npm_package(referrer) {
       return; // ignore, surface typescript errors instead
-    }
-  }
-
-  if let Some(import_map) = &snapshot.maybe_import_map {
-    if let Resolution::Ok(resolved) = &dependency.maybe_code {
-      if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
-        if dependency_key != to {
-          diagnostics.push(
-            DenoDiagnostic::ImportMapRemap {
-              from: dependency_key.to_string(),
-              to,
-            }
-            .to_lsp_diagnostic(&documents::to_lsp_range(&resolved.range)),
-          );
-        }
-      }
     }
   }
   diagnose_resolution(
@@ -1033,14 +979,8 @@ async fn generate_deno_diagnostics(
     let mut diagnostics = Vec::new();
     let specifier = document.specifier();
     if config.specifier_enabled(specifier) {
-      for (dependency_key, dependency) in document.dependencies() {
-        diagnose_dependency(
-          &mut diagnostics,
-          snapshot,
-          specifier,
-          dependency_key,
-          dependency,
-        );
+      for dependency in document.dependencies().values() {
+        diagnose_dependency(&mut diagnostics, snapshot, specifier, dependency);
       }
     }
     diagnostics_vec.push((
@@ -1249,129 +1189,5 @@ let c: number = "a";
         .unwrap();
     // should be none because it's cancelled
     assert_eq!(diagnostics.len(), 0);
-  }
-
-  #[tokio::test]
-  async fn test_deno_diagnostics_with_import_map() {
-    let temp_dir = TempDir::new();
-    let (snapshot, _) = setup(
-      &temp_dir,
-      &[
-        ("file:///std/testing/asserts.ts", "export function assert() {}", 1, LanguageId::TypeScript),
-        ("file:///a/file.ts", "import { assert } from \"../std/testing/asserts.ts\";\n\nassert();\n", 1, LanguageId::TypeScript),
-      ],
-      Some(("file:///a/import-map.json", r#"{
-        "imports": {
-          "/~/std/": "../std/"
-        }
-      }"#)),
-    );
-    let config = mock_config();
-    let token = CancellationToken::new();
-    let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
-    assert_eq!(actual.len(), 2);
-    for (specifier, _, diagnostics) in actual {
-      match specifier.as_str() {
-        "file:///std/testing/asserts.ts" => {
-          assert_eq!(json!(diagnostics), json!([]))
-        }
-        "file:///a/file.ts" => assert_eq!(
-          json!(diagnostics),
-          json!([
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 23
-                },
-                "end": {
-                  "line": 0,
-                  "character": 50
-                }
-              },
-              "severity": 4,
-              "code": "import-map-remap",
-              "source": "deno",
-              "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
-              "data": {
-                "from": "../std/testing/asserts.ts",
-                "to": "/~/std/testing/asserts.ts"
-              }
-            }
-          ])
-        ),
-        _ => unreachable!("unexpected specifier {}", specifier),
-      }
-    }
-  }
-
-  #[test]
-  fn test_get_code_action_import_map_remap() {
-    let specifier = ModuleSpecifier::parse("file:///a/file.ts").unwrap();
-    let result = DenoDiagnostic::get_code_action(&specifier, &lsp::Diagnostic {
-      range: lsp::Range {
-        start: lsp::Position { line: 0, character: 23 },
-        end: lsp::Position { line: 0, character: 50 },
-      },
-      severity: Some(lsp::DiagnosticSeverity::HINT),
-      code: Some(lsp::NumberOrString::String("import-map-remap".to_string())),
-      source: Some("deno".to_string()),
-      message: "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.".to_string(),
-      data: Some(json!({
-        "from": "../std/testing/asserts.ts",
-        "to": "/~/std/testing/asserts.ts"
-      })),
-      ..Default::default()
-    });
-    assert!(result.is_ok());
-    let actual = result.unwrap();
-    assert_eq!(
-      json!(actual),
-      json!({
-        "title": "Update \"../std/testing/asserts.ts\" to \"/~/std/testing/asserts.ts\" to use import map.",
-        "kind": "quickfix",
-        "diagnostics": [
-          {
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 23
-              },
-              "end": {
-                "line": 0,
-                "character": 50
-              }
-            },
-            "severity": 4,
-            "code": "import-map-remap",
-            "source": "deno",
-            "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
-            "data": {
-              "from": "../std/testing/asserts.ts",
-              "to": "/~/std/testing/asserts.ts"
-            }
-          }
-        ],
-        "edit": {
-          "changes": {
-            "file:///a/file.ts": [
-              {
-                "range": {
-                  "start": {
-                    "line": 0,
-                    "character": 23
-                  },
-                  "end": {
-                    "line": 0,
-                    "character": 50
-                  }
-                },
-                "newText": "\"/~/std/testing/asserts.ts\""
-              }
-            ]
-          }
-        }
-      })
-    );
   }
 }
