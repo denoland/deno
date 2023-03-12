@@ -282,6 +282,7 @@ mod ts {
         );
       })),
       snapshot_module_load_cb: None,
+      maybe_heap_snapshot_path: None,
     });
   }
 
@@ -375,6 +376,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       .expect("snapshot compression failed");
     })),
     snapshot_module_load_cb: None,
+    maybe_heap_snapshot_path: Some(PathBuf::from("cli_snapshot.heapsnapshot")),
   })
 }
 

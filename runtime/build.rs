@@ -308,6 +308,7 @@ mod startup_snapshot {
         .expect("snapshot compression failed");
       })),
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
+      maybe_heap_snapshot_path: None,
     });
   }
 

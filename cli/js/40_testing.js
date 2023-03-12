@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
+//
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;

@@ -19,12 +19,13 @@ pub struct CreateSnapshotOptions {
   pub extensions: Vec<Extension>,
   pub compression_cb: Option<Box<CompressionCb>>,
   pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
+  pub maybe_heap_snapshot_path: Option<PathBuf>,
 }
 
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   let mut mark = Instant::now();
 
-  let js_runtime = JsRuntime::new(RuntimeOptions {
+  let mut js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     startup_snapshot: create_snapshot_options.startup_snapshot,
     extensions: create_snapshot_options.extensions,
@@ -37,6 +38,22 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     create_snapshot_options.snapshot_path.display()
   );
   mark = Instant::now();
+
+  if let Some(heap_snapshot_path) =
+    create_snapshot_options.maybe_heap_snapshot_path
+  {
+    let mut scope = js_runtime.handle_scope();
+    let mut vec = Vec::<u8>::new();
+    scope.take_heap_snapshot(|chunk| {
+      vec.extend_from_slice(chunk);
+      true
+    });
+    let s = std::str::from_utf8(&vec).unwrap();
+    let p = PathBuf::from(create_snapshot_options.cargo_manifest_dir)
+      .join(heap_snapshot_path);
+    std::fs::write(&p, s).expect("Failed to write heap snapshot");
+    println!("Heap snapshot written to: {:?}", p.display(),);
+  }
 
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;
