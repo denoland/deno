@@ -6,7 +6,7 @@ const windowsRunnerCondition =
   "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
-    "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+    "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
   macos: "macos-12",
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
@@ -235,6 +235,7 @@ const ci = {
               os: Runners.linux,
               job: "test",
               profile: "release",
+              container: "ubuntu:20.04",
               use_sysroot: true,
               // TODO(ry): Because CI is so slow on for OSX and Windows, we
               // currently run the Web Platform tests only on Linux.
@@ -244,6 +245,7 @@ const ci = {
               os: Runners.linux,
               job: "bench",
               profile: "release",
+              container: "ubuntu:20.04",
               use_sysroot: true,
               skip_pr:
                 "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
@@ -252,6 +254,7 @@ const ci = {
               os: Runners.linux,
               job: "test",
               profile: "debug",
+              container: "ubuntu:20.04",
               use_sysroot: true,
               wpt:
                 "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
