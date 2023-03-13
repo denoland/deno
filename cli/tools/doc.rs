@@ -7,6 +7,7 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::file_fetcher::File;
+use crate::graph_util::graph_lock_or_exit;
 use crate::proc_state::ProcState;
 use crate::tsc::get_types_declaration_file_text;
 use deno_ast::MediaType;
@@ -77,6 +78,11 @@ pub async fn print_docs(
       ps.file_fetcher.insert_cached(root);
 
       let graph = ps.create_graph(vec![root_specifier.clone()]).await?;
+
+      if let Some(lockfile) = &ps.lockfile {
+        graph_lock_or_exit(&graph, &mut lockfile.lock());
+      }
+
       let doc_parser = doc::DocParser::new(
         graph,
         doc_flags.private,
