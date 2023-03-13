@@ -42,7 +42,7 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_url_or_path_deprecated;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
@@ -459,7 +459,7 @@ impl ProcState {
 
     let specifiers = files
       .iter()
-      .map(|file| resolve_url_or_path(file))
+      .map(|file| resolve_url_or_path_deprecated(file))
       .collect::<Result<Vec<_>, _>>()?;
     self
       .prepare_module_load(
@@ -495,7 +495,7 @@ impl ProcState {
     referrer: &str,
     permissions: &mut PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+    if let Ok(referrer) = deno_core::resolve_url_or_path_deprecated(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
         return self
@@ -568,7 +568,7 @@ impl ProcState {
       let cwd = std::env::current_dir().context("Unable to get CWD")?;
       deno_core::resolve_path("./$deno$repl.ts", &cwd)?
     } else {
-      deno_core::resolve_url_or_path(referrer)?
+      deno_core::resolve_url_or_path_deprecated(referrer)?
     };
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier

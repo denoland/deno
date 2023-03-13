@@ -8,7 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_url_or_path_deprecated;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -268,7 +268,7 @@ async fn create_graph(
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| resolve_url_or_path(p))
+    .map(|p| resolve_url_or_path_deprecated(p))
     .collect::<Result<Vec<_>, _>>()?;
 
   ps.create_graph(entry_points).await

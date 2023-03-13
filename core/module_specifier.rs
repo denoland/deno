@@ -123,7 +123,7 @@ pub fn resolve_url(
 /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
 /// file path; if it is a relative path it's resolved relative to the current
 /// working directory.
-pub fn resolve_url_or_path(
+pub fn resolve_url_or_path_deprecated(
   specifier: &str,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
   if specifier_has_uri_scheme(specifier) {
@@ -344,7 +344,7 @@ mod tests {
   }
 
   #[test]
-  fn test_resolve_url_or_path() {
+  fn test_resolve_url_or_path_deprecated() {
     // Absolute URL.
     let mut tests: Vec<(&str, String)> = vec![
       (
@@ -440,13 +440,15 @@ mod tests {
     }
 
     for (specifier, expected_url) in tests {
-      let url = resolve_url_or_path(specifier).unwrap().to_string();
+      let url = resolve_url_or_path_deprecated(specifier)
+        .unwrap()
+        .to_string();
       assert_eq!(url, expected_url);
     }
   }
 
   #[test]
-  fn test_resolve_url_or_path_error() {
+  fn test_resolve_url_or_path_deprecated_error() {
     use url::ParseError::*;
     use ModuleResolutionError::*;
 
@@ -460,7 +462,7 @@ mod tests {
     }
 
     for (specifier, expected_err) in tests {
-      let err = resolve_url_or_path(specifier).unwrap_err();
+      let err = resolve_url_or_path_deprecated(specifier).unwrap_err();
       assert_eq!(err, expected_err);
     }
   }

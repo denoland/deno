@@ -483,7 +483,9 @@ impl Flags {
       Fmt(FmtFlags { files, .. }) => Some(files.include.clone()),
       Lint(LintFlags { files, .. }) => Some(files.include.clone()),
       Run(RunFlags { script }) => {
-        if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+        if let Ok(module_specifier) =
+          deno_core::resolve_url_or_path_deprecated(script)
+        {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
@@ -525,7 +527,8 @@ impl Flags {
 
     match &self.subcommand {
       Run(RunFlags { script }) => {
-        let module_specifier = deno_core::resolve_url_or_path(script).ok()?;
+        let module_specifier =
+          deno_core::resolve_url_or_path_deprecated(script).ok()?;
         if module_specifier.scheme() == "file" {
           let p = module_specifier
             .to_file_path()
@@ -540,7 +543,7 @@ impl Flags {
         }
       }
       Task(TaskFlags { cwd: Some(cwd), .. }) => {
-        deno_core::resolve_url_or_path(cwd)
+        deno_core::resolve_url_or_path_deprecated(cwd)
           .ok()?
           .to_file_path()
           .ok()

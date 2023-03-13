@@ -1078,7 +1078,7 @@ fn resolve_import_map_specifier(
         log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", colors::yellow("Warning"), config_file.specifier);
       }
     }
-    let specifier = deno_core::resolve_url_or_path(import_map_path)
+    let specifier = deno_core::resolve_url_or_path_deprecated(import_map_path)
       .context(format!("Bad URL (\"{import_map_path}\") for import map."))?;
     return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {

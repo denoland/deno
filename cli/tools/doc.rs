@@ -15,7 +15,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_path;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_url_or_path_deprecated;
 use deno_doc as doc;
 use deno_graph::ModuleSpecifier;
 use std::path::PathBuf;
@@ -63,7 +63,7 @@ pub async fn print_docs(
     }
     DocSourceFileFlag::Path(source_file) => {
       let cwd = std::env::current_dir().context("Unable to get CWD")?;
-      let module_specifier = resolve_url_or_path(&source_file)?;
+      let module_specifier = resolve_url_or_path_deprecated(&source_file)?;
 
       // If the root module has external types, the module graph won't redirect it,
       // so instead create a dummy file which exports everything from the actual file being documented.

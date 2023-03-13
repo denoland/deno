@@ -17,7 +17,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_url_or_path_deprecated;
 use deno_core::serde_json;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
@@ -39,7 +39,8 @@ pub async fn compile(
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let module_specifier =
+    resolve_url_or_path_deprecated(&compile_flags.source_file)?;
   let deno_dir = &ps.dir;
 
   let output_path =
@@ -283,7 +284,8 @@ async fn write_standalone_binary(
 async fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
 ) -> Result<PathBuf, AnyError> {
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let module_specifier =
+    resolve_url_or_path_deprecated(&compile_flags.source_file)?;
 
   let mut output = compile_flags.output.clone();
 
