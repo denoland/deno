@@ -4289,7 +4289,14 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "info", "--config", "tsconfig.json"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "info",
+      "--no-npm",
+      "--no-remote",
+      "--config",
+      "tsconfig.json"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4298,6 +4305,8 @@ mod tests {
           file: None
         }),
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        no_npm: true,
+        no_remote: true,
         ..Flags::default()
       }
     );
@@ -5715,7 +5724,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5735,6 +5744,8 @@ mod tests {
         }),
         unstable: true,
         no_prompt: true,
+        no_npm: true,
+        no_remote: true,
         coverage_dir: Some("cov".to_string()),
         location: Some(Url::parse("https://foo/").unwrap()),
         type_check_mode: TypeCheckMode::Local,
@@ -6140,8 +6151,14 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "doc", "--private", "path/to/module.js"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--no-npm",
+      "--no-remote",
+      "--private",
+      "path/to/module.js"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6151,6 +6168,8 @@ mod tests {
           source_file: DocSourceFileFlag::Path("path/to/module.js".to_string()),
           filter: None,
         }),
+        no_npm: true,
+        no_remote: true,
         ..Flags::default()
       }
     );
@@ -6617,6 +6636,8 @@ mod tests {
       "bench",
       "--json",
       "--unstable",
+      "--no-npm",
+      "--no-remote",
       "--filter",
       "- foo",
       "--location",
@@ -6640,6 +6661,8 @@ mod tests {
           },
         }),
         unstable: true,
+        no_npm: true,
+        no_remote: true,
         type_check_mode: TypeCheckMode::Local,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
