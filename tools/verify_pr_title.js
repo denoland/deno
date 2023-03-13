@@ -24,6 +24,9 @@ const validPrefixes = [
   "build",
   "refactor",
   "test",
+  // allow Revert PRs because it allows us to remove the landed
+  // commit from the generated changelog
+  "Revert ",
 ];
 
 if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {
