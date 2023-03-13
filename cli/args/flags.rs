@@ -1092,6 +1092,10 @@ Show documentation for runtime built-ins:
     )
     .arg(import_map_arg())
     .arg(reload_arg())
+    .arg(lock_arg())
+    .arg(no_lock_arg())
+    .arg(no_npm_arg())
+    .arg(no_remote_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -1339,9 +1343,12 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
         .conflicts_with("file")
         .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
     )
-    // TODO(lucacasonato): remove for 2.0
-    .arg(no_check_arg().hide(true))
+    .arg(no_check_arg().hide(true)) // TODO(lucacasonato): remove for 2.0
     .arg(no_config_arg())
+    .arg(no_remote_arg())
+    .arg(no_npm_arg())
+    .arg(no_lock_arg())
+    .arg(lock_arg())
     .arg(config_arg())
     .arg(import_map_arg())
     .arg(local_npm_arg())
@@ -1890,20 +1897,7 @@ Remote modules and multiple modules may also be specified:
 }
 
 fn compile_args(app: Command) -> Command {
-  app
-    .arg(import_map_arg())
-    .arg(no_remote_arg())
-    .arg(no_npm_arg())
-    .arg(local_npm_arg())
-    .arg(no_config_arg())
-    .arg(config_arg())
-    .arg(no_check_arg())
-    .arg(check_arg())
-    .arg(reload_arg())
-    .arg(lock_arg())
-    .arg(lock_write_arg())
-    .arg(no_lock_arg())
-    .arg(ca_file_arg())
+  compile_args_without_check_args(app.arg(no_check_arg()).arg(check_arg()))
 }
 
 fn compile_args_without_check_args(app: Command) -> Command {
@@ -2304,6 +2298,7 @@ fn lock_write_arg<'a>() -> Arg<'a> {
   Arg::new("lock-write")
     .long("lock-write")
     .help("Force overwriting the lock file.")
+    .conflicts_with("no-lock")
 }
 
 fn no_lock_arg<'a>() -> Arg<'a> {
@@ -2311,7 +2306,6 @@ fn no_lock_arg<'a>() -> Arg<'a> {
     .long("no-lock")
     .help("Disable auto discovery of the lock file.")
     .conflicts_with("lock")
-    .conflicts_with("lock-write")
 }
 
 static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
@@ -2461,7 +2455,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
-  compile_args_without_no_check_parse(flags, matches);
+  compile_args_without_check_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -2559,6 +2553,10 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  no_lock_arg_parse(flags, matches);
+  no_npm_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
 
   let source_file = matches
     .value_of("source_file")
@@ -2683,6 +2681,10 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   local_npm_args_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  no_lock_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
+  no_npm_arg_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.value_of("file").map(|f| f.to_string()),
@@ -3011,19 +3013,12 @@ fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  import_map_arg_parse(flags, matches);
-  no_remote_arg_parse(flags, matches);
-  no_npm_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
-  config_args_parse(flags, matches);
+  compile_args_without_check_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
-  reload_arg_parse(flags, matches);
-  lock_args_parse(flags, matches);
-  ca_file_arg_parse(flags, matches);
 }
 
-fn compile_args_without_no_check_parse(
+fn compile_args_without_check_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
 ) {
@@ -3116,6 +3111,7 @@ fn unsafely_ignore_certificate_errors_parse(
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 }
+
 fn runtime_args_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
@@ -3259,11 +3255,9 @@ fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   lock_arg_parse(flags, matches);
+  no_lock_arg_parse(flags, matches);
   if matches.is_present("lock-write") {
     flags.lock_write = true;
-  }
-  if matches.is_present("no-lock") {
-    flags.no_lock = true;
   }
 }
 
@@ -3275,6 +3269,12 @@ fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       "./deno.lock"
     };
     flags.lock = Some(PathBuf::from(lockfile));
+  }
+}
+
+fn no_lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("no-lock") {
+    flags.no_lock = true;
   }
 }
 
@@ -4289,7 +4289,14 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "info", "--config", "tsconfig.json"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "info",
+      "--no-npm",
+      "--no-remote",
+      "--config",
+      "tsconfig.json"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4298,6 +4305,8 @@ mod tests {
           file: None
         }),
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        no_npm: true,
+        no_remote: true,
         ..Flags::default()
       }
     );
@@ -5715,7 +5724,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5735,6 +5744,8 @@ mod tests {
         }),
         unstable: true,
         no_prompt: true,
+        no_npm: true,
+        no_remote: true,
         coverage_dir: Some("cov".to_string()),
         location: Some(Url::parse("https://foo/").unwrap()),
         type_check_mode: TypeCheckMode::Local,
@@ -6140,8 +6151,14 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "doc", "--private", "path/to/module.js"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--no-npm",
+      "--no-remote",
+      "--private",
+      "path/to/module.js"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6151,6 +6168,8 @@ mod tests {
           source_file: DocSourceFileFlag::Path("path/to/module.js".to_string()),
           filter: None,
         }),
+        no_npm: true,
+        no_remote: true,
         ..Flags::default()
       }
     );
@@ -6617,6 +6636,8 @@ mod tests {
       "bench",
       "--json",
       "--unstable",
+      "--no-npm",
+      "--no-remote",
       "--filter",
       "- foo",
       "--location",
@@ -6640,6 +6661,8 @@ mod tests {
           },
         }),
         unstable: true,
+        no_npm: true,
+        no_remote: true,
         type_check_mode: TypeCheckMode::Local,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),

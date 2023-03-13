@@ -27,6 +27,7 @@ use std::sync::Arc;
 
 use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::progress_bar::ProgressBar;
 
 use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
@@ -276,6 +277,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 
 pub fn create_npm_fs_resolver(
   cache: NpmCache,
+  progress_bar: &ProgressBar,
   registry_url: Url,
   resolution: NpmResolution,
   maybe_node_modules_path: Option<PathBuf>,
@@ -283,6 +285,7 @@ pub fn create_npm_fs_resolver(
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
       cache,
+      progress_bar.clone(),
       registry_url,
       node_modules_folder,
       resolution,
