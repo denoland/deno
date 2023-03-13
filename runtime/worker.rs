@@ -36,7 +36,6 @@ use log::debug;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::runtime::ppid;
 use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 
@@ -339,34 +338,15 @@ impl MainWorker {
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
-    // let start = std::time::Instant::now();
     let scope = &mut self.js_runtime.handle_scope();
+    let options_v8 =
+      deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
-    let args = &[
-      deno_core::serde_v8::to_v8(scope, &options.args).unwrap(),
-      deno_core::serde_v8::to_v8(scope, options.cpu_count).unwrap(),
-      deno_core::serde_v8::to_v8(scope, options.debug_flag).unwrap(),
-      deno_core::serde_v8::to_v8(scope, &options.runtime_version).unwrap(),
-      deno_core::serde_v8::to_v8(scope, &options.locale).unwrap(),
-      deno_core::serde_v8::to_v8(scope, &options.location).unwrap(),
-      deno_core::serde_v8::to_v8(scope, options.no_color).unwrap(),
-      deno_core::serde_v8::to_v8(scope, options.is_tty).unwrap(),
-      deno_core::serde_v8::to_v8(scope, &options.ts_version).unwrap(),
-      deno_core::serde_v8::to_v8(scope, options.unstable).unwrap(),
-      deno_core::serde_v8::to_v8(scope, std::process::id()).unwrap(),
-      deno_core::serde_v8::to_v8(scope, ppid()).unwrap(),
-      deno_core::serde_v8::to_v8(scope, env!("TARGET")).unwrap(),
-      deno_core::serde_v8::to_v8(scope, deno_core::v8_version()).unwrap(),
-      deno_core::serde_v8::to_v8(scope, &options.user_agent).unwrap(),
-      deno_core::serde_v8::to_v8(scope, options.inspect).unwrap(),
-    ];
-    bootstrap_fn.call(scope, undefined.into(), args).unwrap();
-    // eprintln!(
-    //   "bootstrap took: {}ns",
-    //   (std::time::Instant::now() - start).as_nanos()
-    // );
+    bootstrap_fn
+      .call(scope, undefined.into(), &[options_v8])
+      .unwrap();
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
