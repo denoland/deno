@@ -345,11 +345,12 @@ fn create_lsp_structs(
     registry_url.clone(),
     npm_cache.clone(),
     http_client,
-    progress_bar,
+    progress_bar.clone(),
   );
   let resolution = NpmResolution::new(api.clone(), None, None);
   let fs_resolver = create_npm_fs_resolver(
     npm_cache.clone(),
+    &progress_bar,
     registry_url.clone(),
     resolution.clone(),
     None,
@@ -609,6 +610,7 @@ impl Inner {
           resolution.clone(),
           create_npm_fs_resolver(
             self.npm_cache.clone(),
+            &ProgressBar::new(ProgressBarStyle::TextOnly),
             self.npm_api.base_url().clone(),
             resolution,
             None,
