@@ -39,22 +39,22 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
             profile: release
             use_sysroot: true
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
             skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
             profile: debug
             use_sysroot: true
             wpt: '${{ github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: lint
             profile: debug
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
@@ -230,7 +230,7 @@ jobs:
             ${{ env.RUSTFLAGS }}
           __1
           CC=clang-15
-          CFLAGS=-flto=thin --sysroot=/sysroot
+          CFLAGS=-flto=thin --sysroot=/sysroot -include=cli/force_link_glibc_2.23.h
           __0
       - name: Log versions
         shell: bash

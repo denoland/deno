@@ -6,7 +6,7 @@ const windowsRunnerCondition =
   "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
-    "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+    "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
   macos: "macos-12",
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
@@ -71,7 +71,7 @@ RUSTDOCFLAGS<<__1
   \${{ env.RUSTFLAGS }}
 __1
 CC=clang-15
-CFLAGS=-flto=thin --sysroot=/sysroot
+CFLAGS=-flto=thin --sysroot=/sysroot -include=cli/force_link_glibc_2.23.h
 __0`,
 };
 
