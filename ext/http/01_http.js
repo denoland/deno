@@ -143,16 +143,19 @@ class HttpConn {
       false,
     );
 
-    const respondWith = createRespondWith(
+    const responseHandler = createRespondWith(
       this,
       streamRid,
       request,
       this.#remoteAddr,
-      this.#localAddr,
-    ).catch((error) => {
-      abortController.abort(error);
-      throw error;
-    });
+      this.#localAddr
+    );
+
+    const respondWith = (resp) =>
+      responseHandler(resp).catch((error) => {
+        abortController.abort(error);
+        throw error;
+      });
 
     return { request, respondWith };
   }
