@@ -10,22 +10,22 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub enum Cipher {
+enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128ECB, Aes128GCM, etc.
 }
 
-pub enum Decipher {
+enum Decipher {
   // TODO(kt3k): implement Deciphers
   // Aes128Cbc(Box<cbc::Decryptor<aes::Aes128>>),
 }
 
 pub struct CipherContext {
-  pub cipher: Rc<RefCell<Cipher>>,
+  cipher: Rc<RefCell<Cipher>>,
 }
 
 pub struct DecipherContext {
-  pub decipher: Rc<RefCell<Decipher>>,
+  _decipher: Rc<RefCell<Decipher>>,
 }
 
 impl CipherContext {
@@ -53,7 +53,7 @@ impl Resource for DecipherContext {
 }
 
 impl Cipher {
-  pub fn new(
+  fn new(
     algorithm_name: &str,
     key: &[u8],
     iv: &[u8],
@@ -67,7 +67,7 @@ impl Cipher {
     })
   }
 
-  pub fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+  fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
