@@ -94,8 +94,5 @@ impl Cipher {
 /// Pads the last block of cbc mode based on PKCS#7
 fn pad_block(data: &mut [u8; 16], pos: usize) {
   assert!(pos <= 16);
-  let v = (16 - pos) as u8;
-  for b in &mut data[pos..] {
-    *b = v;
-  }
+  data[pos..].fill((16 - pos) as u8);
 }

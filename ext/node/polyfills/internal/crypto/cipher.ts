@@ -163,7 +163,7 @@ export class Cipheriv extends Transform implements Cipher {
   update(
     data: string | Buffer | ArrayBufferView,
     // TODO(kt3k): Handle inputEncoding
-    inputEncoding?: Encoding,
+    _inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
     this._cache.add(data);
