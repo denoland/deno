@@ -32,7 +32,7 @@ if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {
   console.error(
     "The PR title must start with one of the following prefixes:\n",
   );
-  for (prefix of validPrefixes) {
+  for (const prefix of validPrefixes) {
     console.error(`  - ${prefix}`);
   }
   Deno.exit(1);
