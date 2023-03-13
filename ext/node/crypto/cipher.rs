@@ -12,9 +12,11 @@ use std::rc::Rc;
 
 pub enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
+  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128ECB, Aes128GCM, etc.
 }
 
 pub enum Decipher {
+  // TODO(kt3k): implement Deciphers
   // Aes128Cbc(Box<cbc::Decryptor<aes::Aes128>>),
 }
 
@@ -71,10 +73,12 @@ impl Cipher {
       Aes128Cbc(encryptor) => {
         let len = input.len();
         if len == 16 {
+          // not the last block
           encryptor
             .as_mut()
             .encrypt_block_b2b_mut(input.into(), output.into());
         } else {
+          // this is the last block, so we need to pad it
           let mut block = [0; 16];
           block[..input.len()].copy_from_slice(input);
           pad_block(&mut block, len);
@@ -87,7 +91,7 @@ impl Cipher {
   }
 }
 
-/// padding the last block of cbc mode
+/// Pads the last block of cbc mode based on PKCS#7
 fn pad_block(data: &mut [u8; 16], pos: usize) {
   let v = (16 - pos) as u8;
   for b in &mut data[pos..] {

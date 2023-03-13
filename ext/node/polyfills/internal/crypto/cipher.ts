@@ -162,12 +162,13 @@ export class Cipheriv extends Transform implements Cipher {
 
   update(
     data: string | Buffer | ArrayBufferView,
+    // TODO(kt3k): Handle inputEncoding
     inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
     this._cache.add(data);
     const input = this._cache.get();
-    const output = new Uint8Array(input.length);
+    const output = new Buffer(input.length);
     for (let i = 0; i < input.length; i += 16) {
       ops.op_node_cipheriv_encrypt(
         this.context,
@@ -175,8 +176,9 @@ export class Cipheriv extends Transform implements Cipher {
         output.subarray(i, i + 16),
       );
     }
-    const buf = Buffer.from(output, inputEncoding);
-    return outputEncoding === "buffer" ? buf : buf.toString(outputEncoding);
+    return outputEncoding === "buffer"
+      ? output
+      : output.toString(outputEncoding);
   }
 }
 
