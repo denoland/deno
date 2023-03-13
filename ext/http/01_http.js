@@ -143,19 +143,14 @@ class HttpConn {
       false,
     );
 
-    const responseHandler = createRespondWith(
+    const respondWith = createRespondWith(
       this,
       streamRid,
       request,
       this.#remoteAddr,
       this.#localAddr,
+      abortController,
     );
-
-    const respondWith = (resp) =>
-      responseHandler(resp).catch((error) => {
-        abortController.abort(error);
-        throw error;
-      });
 
     return { request, respondWith };
   }
@@ -191,6 +186,7 @@ function createRespondWith(
   request,
   remoteAddr,
   localAddr,
+  abortController,
 ) {
   return async function respondWith(resp) {
     try {
@@ -387,6 +383,9 @@ function createRespondWith(
         }
         ws[_serverHandleIdleTimeout]();
       }
+    } catch (error) {
+      abortController.abort(error);
+      throw error;
     } finally {
       if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
         core.close(streamRid);
