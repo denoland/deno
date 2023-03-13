@@ -239,6 +239,7 @@ impl ProcState {
     );
     let npm_fs_resolver = create_npm_fs_resolver(
       npm_cache,
+      &progress_bar,
       npm_registry_url,
       npm_resolution.clone(),
       cli_options.node_modules_dir_path(),
