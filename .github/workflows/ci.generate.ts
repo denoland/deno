@@ -474,16 +474,16 @@ const ci = {
               "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
           },
           {
+            name: "Lint PR title",
+            if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+            run:
+              "deno run ./tools/verify_pr_title.js ${{ github.event.pull_request.title }}",
+          },
+          {
             name: "lint.js",
             if: "matrix.job == 'lint'",
             run:
               "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
-          },
-          {
-            name: "Verify PR title",
-            if: "matrix.job == 'lint'",
-            run:
-              "deno run ./tools/verify_pr_title.js ${{ github.event.pull_request.title }}",
           },
           {
             name: "Build debug",
