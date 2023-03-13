@@ -2885,6 +2885,26 @@ fn package_json_no_node_modules_dir_created() {
   assert!(!temp_dir.path().join("node_modules").exists());
 }
 
+#[test]
+fn node_modules_dir_no_npm_specifiers_no_node_modules_dir_created() {
+  // it should not create a node_modules directory
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.deno_dir();
+
+  temp_dir.write("deno.json", "{}");
+  temp_dir.write("main.ts", "");
+
+  context
+    .new_command()
+    .args("run --node-modules-dir main.ts")
+    .run();
+
+  assert!(!temp_dir.path().join("node_modules").exists());
+}
+
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
   output: "run/wasm_streaming_panic_test.js.out",
