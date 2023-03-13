@@ -77,7 +77,8 @@ __0`,
 
 const submoduleStep = (submodule: string) => ({
   name: `Clone submodule ${submodule}`,
-  run: `git submodule update --init --recursive --depth=1 -- ${submodule}`,
+  run: `git config --global --add safe.directory '*'
+  git submodule update --init --recursive --depth=1 -- ${submodule}`,
 });
 
 const installRustStep = {
