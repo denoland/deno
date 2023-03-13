@@ -54,13 +54,13 @@ export function getPathsFromTestSuites(suites: TestSuites): string[] {
   return testPaths;
 }
 
-const PARALLEL_PATTERHN = Deno.build.os == "windows"
+const PARALLEL_PATTERN = Deno.build.os == "windows"
   ? /^parallel[/\/]/
   : /^parallel\//;
 
 export function partitionParallelTestPaths(
   testPaths: string[],
 ): { parallel: string[]; sequential: string[] } {
-  const partitions = partition(testPaths, (p) => !!p.match(PARALLEL_PATTERHN));
+  const partitions = partition(testPaths, (p) => !!p.match(PARALLEL_PATTERN));
   return { parallel: partitions[0], sequential: partitions[1] };
 }
