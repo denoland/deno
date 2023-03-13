@@ -131,6 +131,10 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self.root_node_modules_url
   }
 
+  fn node_modules_path(&self) -> Option<PathBuf> {
+    Some(self.root_node_modules_path.clone())
+  }
+
   fn resolve_package_folder_from_deno_module(
     &self,
     node_id: &NpmPackageId,

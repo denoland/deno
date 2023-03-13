@@ -12,6 +12,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use indexmap::IndexMap;
 
+use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolutionSnapshot;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
@@ -664,13 +665,31 @@ impl CliOptions {
     .map(Some)
   }
 
-  pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {
+  pub async fn resolve_npm_resolution_snapshot(
+    &self,
+    api: &NpmRegistryApi,
+  ) -> Result<Option<NpmResolutionSnapshot>, AnyError> {
     if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone
-      return Some(state.snapshot.clone());
+      return Ok(Some(state.snapshot.clone()));
     }
 
-    None
+    if let Some(lockfile) = self.maybe_lock_file() {
+      if !lockfile.lock().overwrite {
+        return Ok(Some(
+          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), api)
+            .await
+            .with_context(|| {
+              format!(
+                "failed reading lockfile '{}'",
+                lockfile.lock().filename.display()
+              )
+            })?,
+        ));
+      }
+    }
+
+    Ok(None)
   }
 
   // If the main module should be treated as being in an npm package.

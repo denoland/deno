@@ -911,7 +911,6 @@ fn diagnose_resolution(
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           if npm_resolver
-            .resolution()
             .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
@@ -933,7 +932,6 @@ fn diagnose_resolution(
           let types_node_ref =
             NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
-            .resolution()
             .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
