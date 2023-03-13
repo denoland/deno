@@ -148,7 +148,7 @@ class HttpConn {
       streamRid,
       request,
       this.#remoteAddr,
-      this.#localAddr
+      this.#localAddr,
     );
 
     const respondWith = (resp) =>
