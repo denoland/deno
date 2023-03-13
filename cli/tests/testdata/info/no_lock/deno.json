@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "mod": "http://localhost:4545/info/no_lock/mod.ts"
-  }
-}

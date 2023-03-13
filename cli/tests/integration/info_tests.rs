@@ -94,11 +94,19 @@ itest!(info_missing_module {
   output: "info/info_missing_module.out",
 });
 
-itest!(info_no_lock {
-  args: "info --quiet main.ts",
+itest!(info_lock {
+  args: "info main.ts",
   http_server: true,
-  cwd: Some("info/no_lock"),
-  output: "info/no_lock/main.out",
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(info_no_lock {
+  args: "info --no-lock main.ts",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/info.nolock.out",
 });
 
 itest!(info_recursive_modules {

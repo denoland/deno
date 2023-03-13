@@ -1092,6 +1092,10 @@ Show documentation for runtime built-ins:
     )
     .arg(import_map_arg())
     .arg(reload_arg())
+    .arg(lock_arg())
+    .arg(no_lock_arg())
+    .arg(no_npm_arg())
+    .arg(no_remote_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -2294,6 +2298,7 @@ fn lock_write_arg<'a>() -> Arg<'a> {
   Arg::new("lock-write")
     .long("lock-write")
     .help("Force overwriting the lock file.")
+    .conflicts_with("no-lock")
 }
 
 fn no_lock_arg<'a>() -> Arg<'a> {
@@ -2301,7 +2306,6 @@ fn no_lock_arg<'a>() -> Arg<'a> {
     .long("no-lock")
     .help("Disable auto discovery of the lock file.")
     .conflicts_with("lock")
-    .conflicts_with("lock-write")
 }
 
 static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
@@ -2451,7 +2455,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
-  compile_args_without_no_check_parse(flags, matches);
+  compile_args_without_check_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -2549,6 +2553,10 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  no_lock_arg_parse(flags, matches);
+  no_npm_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
 
   let source_file = matches
     .value_of("source_file")
@@ -3005,12 +3013,12 @@ fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  compile_args_without_no_check_parse(flags, matches);
+  compile_args_without_check_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
 }
 
-fn compile_args_without_no_check_parse(
+fn compile_args_without_check_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
 ) {
