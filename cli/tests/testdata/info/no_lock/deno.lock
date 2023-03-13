@@ -1,0 +1,6 @@
+{
+  "version": "2",
+  "remote": {
+    "http://localhost:4545/info/no_lock/mod.ts": "invalid"
+  }
+}
