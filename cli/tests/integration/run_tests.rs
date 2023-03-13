@@ -2886,7 +2886,7 @@ fn package_json_no_node_modules_dir_created() {
 }
 
 #[test]
-fn node_modules_dir_no_npm_specifiers_no_node_modules_dir_created() {
+fn node_modules_dir_no_npm_specifiers_no_dir_created() {
   // it should not create a node_modules directory
   let context = TestContextBuilder::new()
     .add_npm_env_vars()
