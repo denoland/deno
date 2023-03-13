@@ -42,7 +42,7 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::resolve_url_or_path_deprecated;
+use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
@@ -459,7 +459,7 @@ impl ProcState {
 
     let specifiers = files
       .iter()
-      .map(|file| resolve_url_or_path_deprecated(file))
+      .map(|file| resolve_url_or_path(file, self.options.initial_cwd()))
       .collect::<Result<Vec<_>, _>>()?;
     self
       .prepare_module_load(

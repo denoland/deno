@@ -729,7 +729,6 @@ fn create_web_worker_callback(
 mod tests {
   use super::*;
   use deno_core::resolve_path;
-  use deno_core::resolve_url_or_path_deprecated;
   use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
@@ -787,8 +786,7 @@ mod tests {
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
     let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
-    let module_specifier =
-      resolve_url_or_path_deprecated(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {

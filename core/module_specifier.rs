@@ -135,9 +135,27 @@ pub fn resolve_url_or_path_deprecated(
   }
 }
 
+/// Takes a string representing either an absolute URL or a file path,
+/// as it may be passed to deno as a command line argument.
+/// The string is interpreted as a URL if it starts with a valid URI scheme,
+/// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
+/// file path; if it is a relative path it's resolved relative to passed
+/// `current_dir`.
+#[allow(dead_code)]
+pub fn resolve_url_or_path(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  if specifier_has_uri_scheme(specifier) {
+    resolve_url(specifier)
+  } else {
+    resolve_path(specifier, current_dir)
+  }
+}
+
 /// Converts a string representing a relative or absolute path into a
-/// ModuleSpecifier. A relative path is considered relative to the current
-/// working directory.
+/// ModuleSpecifier. A relative path is considered relative to the passed
+/// `current_dir`.
 pub fn resolve_path(
   path_str: &str,
   current_dir: &Path,
