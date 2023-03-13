@@ -11,6 +11,7 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
@@ -143,7 +144,8 @@ impl ReplSession {
     }
     assert_ne!(context_id, 0);
 
-    let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
+    let cwd = std::env::current_dir().context("Unable to get CWD")?;
+    let referrer = deno_core::resolve_path("./$deno$repl.ts", &cwd).unwrap();
 
     let mut repl_session = ReplSession {
       proc_state,

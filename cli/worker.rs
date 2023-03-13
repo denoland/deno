@@ -728,6 +728,7 @@ fn create_web_worker_callback(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_path;
   use deno_core::resolve_url_or_path;
   use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -735,7 +736,8 @@ mod tests {
   use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
-    let main_module = resolve_url_or_path("./hello.js").unwrap();
+    let main_module =
+      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
@@ -802,7 +804,7 @@ mod tests {
       .parent()
       .unwrap()
       .join("tests/circular1.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -817,7 +819,9 @@ mod tests {
   async fn execute_mod_resolve_error() {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
-    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
+    let module_specifier =
+      resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
+        .unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }
@@ -828,7 +832,7 @@ mod tests {
     // tests).
     let mut worker = create_test_worker();
     let p = test_util::testdata_path().join("run/001_hello.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
   }
