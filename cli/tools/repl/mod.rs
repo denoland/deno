@@ -5,8 +5,9 @@ use crate::args::ReplFlags;
 use crate::colors;
 use crate::proc_state::ProcState;
 use crate::worker::create_main_worker;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_path;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
@@ -80,7 +81,8 @@ async fn read_eval_file(
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let main_module = resolve_path("./$deno$repl.ts", &cwd).unwrap();
   let ps = ProcState::build(flags).await?;
   let mut worker = create_main_worker(
     &ps,
