@@ -2618,17 +2618,6 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       ),
     );
 
-    if let Some(ext) = &flags.ext {
-      if ext != "ts" {
-        eprintln!(
-          "{}",
-          crate::colors::yellow(
-            "--ts/-T is in conflict with --ext. Setting --ext=ts."
-          )
-        );
-      }
-    }
-
     flags.ext = Some("ts".to_string());
   }
 
