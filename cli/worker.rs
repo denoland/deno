@@ -448,8 +448,7 @@ async fn create_main_worker_internal(
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
     let pkg_nv = ps
-      .npm_resolver
-      .resolution()
+      .npm_resolution
       .resolve_pkg_id_from_pkg_req(&package_ref.req)?
       .nv;
     let node_resolution = node::node_resolve_binary_export(
@@ -524,7 +523,6 @@ async fn create_main_worker_internal(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
-    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
@@ -550,7 +548,6 @@ async fn create_main_worker_internal(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
-    leak_isolate: !bench_or_test && ps.options.coverage_dir().is_none(),
   };
 
   let mut worker = MainWorker::bootstrap_from_options(
@@ -758,7 +755,6 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
-      extensions_with_js: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
@@ -781,7 +777,6 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
-      leak_isolate: false,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)
