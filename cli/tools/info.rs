@@ -23,6 +23,7 @@ use deno_runtime::colors;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
+use crate::graph_util::graph_lock_or_exit;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
@@ -39,6 +40,10 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let graph = ps
       .create_graph_with_loader(vec![specifier], &mut loader)
       .await?;
+
+    if let Some(lockfile) = &ps.lockfile {
+      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    }
 
     if info_flags.json {
       let mut json_graph = json!(graph);
