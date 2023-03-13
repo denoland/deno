@@ -208,7 +208,6 @@ const ci = {
           shell: "bash",
         },
       },
-      container: "${{ matrix.container }}",
       "timeout-minutes": 120,
       strategy: {
         matrix: {
@@ -242,7 +241,7 @@ const ci = {
               os: Runners.linux,
               job: "test",
               profile: "release",
-              container: "ubuntu:20.04",
+              container: "rust:1.68-buster",
               use_sysroot: true,
               // TODO(ry): Because CI is so slow on for OSX and Windows, we
               // currently run the Web Platform tests only on Linux.
@@ -252,7 +251,7 @@ const ci = {
               os: Runners.linux,
               job: "bench",
               profile: "release",
-              container: "ubuntu:20.04",
+              container: "rust:1.68-buster",
               use_sysroot: true,
               skip_pr:
                 "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
@@ -261,7 +260,7 @@ const ci = {
               os: Runners.linux,
               job: "test",
               profile: "debug",
-              container: "ubuntu:20.04",
+              container: "rust:1.68-buster",
               use_sysroot: true,
               wpt:
                 "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
