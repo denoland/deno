@@ -565,8 +565,7 @@ impl ProcState {
     // but sadly that's not the case due to missing APIs in V8.
     let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
     let referrer = if referrer.is_empty() && is_repl {
-      let cwd = std::env::current_dir().context("Unable to get CWD")?;
-      deno_core::resolve_path("./$deno$repl.ts", &cwd)?
+      deno_core::resolve_path("./$deno$repl.ts", self.options.initial_cwd())?
     } else {
       deno_core::resolve_url_or_path_deprecated(referrer)?
     };

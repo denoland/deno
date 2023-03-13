@@ -142,10 +142,11 @@ pub async fn eval_command(
 ) -> Result<i32, AnyError> {
   // deno_graph works off of extensions for local files to determine the media
   // type, and so our "fake" specifier needs to have the proper extension.
-  let cwd = std::env::current_dir().context("Unable to get CWD")?;
-  let main_module =
-    resolve_path(&format!("./$deno$eval.{}", eval_flags.ext), &cwd)?;
   let ps = ProcState::build(flags).await?;
+  let main_module = resolve_path(
+    &format!("./$deno$eval.{}", eval_flags.ext),
+    ps.options.initial_cwd(),
+  )?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);
