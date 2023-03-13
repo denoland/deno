@@ -17,6 +17,7 @@ const validPrefixes = [
   "chore",
   "fix",
   "feat",
+  "perf",
   "ci",
   "cleanup",
   "docs",
