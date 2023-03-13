@@ -371,10 +371,9 @@ Module._findPath = function (request, paths, isMain, parentPath) {
     const isRelative = ops.op_require_is_request_relative(
       request,
     );
-    const basePath =
-      (isDenoDirPackage && !isRelative && !usesLocalNodeModulesDir)
-        ? pathResolve(curPath, packageSpecifierSubPath(request))
-        : pathResolve(curPath, request);
+    const basePath = (isDenoDirPackage && !isRelative)
+      ? pathResolve(curPath, packageSpecifierSubPath(request))
+      : pathResolve(curPath, request);
     let filename;
 
     const rc = stat(basePath);

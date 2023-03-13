@@ -1,34 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateObject,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import type { TransformOptions } from "internal:deno_node/polyfills/_stream.d.ts";
-import { Transform } from "internal:deno_node/polyfills/_stream.mjs";
-import { KeyObject } from "internal:deno_node/polyfills/internal/crypto/keys.ts";
-import type { BufferEncoding } from "internal:deno_node/polyfills/_global.d.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { Transform } from "ext:deno_node/_stream.mjs";
+import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
-} from "internal:deno_node/polyfills/internal/crypto/types.ts";
-import {
-  privateDecrypt,
-  privateEncrypt,
-  publicDecrypt,
-  publicEncrypt,
-} from "internal:deno_node/polyfills/_crypto/crypto_browserify/public_encrypt/mod.js";
+} from "ext:deno_node/internal/crypto/types.ts";
 
-export {
-  privateDecrypt,
-  privateEncrypt,
-  publicDecrypt,
-  publicEncrypt,
-} from "internal:deno_node/polyfills/_crypto/crypto_browserify/public_encrypt/mod.js";
+const { ops } = globalThis.__bootstrap.core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -279,6 +268,34 @@ export function getCipherInfo(
   }
 
   notImplemented("crypto.getCipherInfo");
+}
+
+export function privateEncrypt(
+  privateKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = privateKey.padding || 1;
+  return ops.op_node_private_encrypt(privateKey, buffer, padding);
+}
+
+export function privateDecrypt(
+  privateKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = privateKey.padding || 1;
+  return ops.op_node_private_decrypt(privateKey, buffer, padding);
+}
+
+export function publicEncrypt(
+  publicKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = publicKey.padding || 1;
+  return ops.op_node_public_encrypt(publicKey, buffer, padding);
+}
+
+export function publicDecrypt() {
+  notImplemented("crypto.publicDecrypt");
 }
 
 export default {

@@ -31,9 +31,9 @@ use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_io::Stdio;
+use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::ops::io::Stdio;
-use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -655,8 +655,7 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames.iter().any(|f| {
     if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[internal:")
-        || file_name.starts_with("internal:"))
+      !(file_name.starts_with("[ext:") || file_name.starts_with("ext:"))
     } else {
       true
     }
@@ -668,13 +667,11 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
       .rev()
       .skip_while(|f| {
         if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[internal:")
-            || file_name.starts_with("internal:")
+          file_name.starts_with("[ext:") || file_name.starts_with("ext:")
         } else {
           false
         }
       })
-      .into_iter()
       .collect::<Vec<_>>();
     frames.reverse();
     js_error.frames = frames;
@@ -775,7 +772,6 @@ fn extract_files_from_regex_blocks(
           Some(&"mts") => MediaType::Mts,
           Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => media_type,
           _ => MediaType::Unknown,
         }
       } else {
@@ -832,7 +828,7 @@ fn extract_files_from_source_comments(
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.as_str().to_string(),
+    specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
@@ -1389,7 +1385,7 @@ pub async fn run_tests_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(module) = maybe_module {
+          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {

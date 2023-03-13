@@ -4,15 +4,15 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { Deferred, writableStreamClose } from "internal:deno_web/06_streams.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
-import { add, remove } from "internal:deno_web/03_abort_signal.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
+import { add, remove } from "ext:deno_web/03_abort_signal.js";
 import {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:deno_fetch/20_headers.js";
+} from "ext:deno_fetch/20_headers.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
