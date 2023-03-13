@@ -1144,6 +1144,7 @@ This command has implicit access to all permissions (--allow-all).",
     .arg(
       // TODO(@satyarohith): remove this argument in 2.0.
       Arg::new("ts")
+        .conflicts_with("ext")
         .long("ts")
         .short('T')
         .help("deprecated: Treat eval input as TypeScript")
@@ -1207,7 +1208,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .long("ext")
         .help("Set content type of the supplied file")
         .takes_value(true)
-        .default_value(EXT_DEFAULT)
+        // TODO(Cre3per): set to EXT_DEFAULT for 2.0
+        .default_value("ts")
         .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
     .arg(
@@ -2609,7 +2611,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let as_typescript = matches.is_present("ts");
 
   if as_typescript {
-    println!(
+    eprintln!(
       "{}",
       crate::colors::yellow(
         "Warning: --ts/-T flag is deprecated. Use --ext=ts instead."
@@ -2618,7 +2620,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
     if let Some(ext) = &flags.ext {
       if ext != "ts" {
-        println!(
+        eprintln!(
           "{}",
           crate::colors::yellow(
             "--ts/-T is in conflict with --ext. Setting --ext=ts."
@@ -3738,7 +3740,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3760,7 +3762,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3782,7 +3784,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3804,7 +3806,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -3828,7 +3830,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         watch: Some(vec![]),
         no_clear_screen: true,
         ..Flags::default()
@@ -3859,7 +3861,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -3882,7 +3884,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
@@ -3913,7 +3915,7 @@ mod tests {
           no_semicolons: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         watch: Some(vec![]),
         ..Flags::default()
       }
@@ -3948,7 +3950,7 @@ mod tests {
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3977,7 +3979,7 @@ mod tests {
           prose_wrap: None,
           no_semicolons: Some(false),
         }),
-        ext: Some(EXT_DEFAULT.to_string()),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );

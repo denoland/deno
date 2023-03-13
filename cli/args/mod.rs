@@ -600,7 +600,7 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
-  // TODO(Cre3per): This mapping moves to deno_ast with https://github.com/denoland/deno_ast/issues/133
+  // TODO(Cre3per): This mapping moved to deno_ast with https://github.com/denoland/deno_ast/issues/133 and should be available in deno_ast >= 0.25.0 via `MediaType::from_path(...).as_media_type()`
   fn media_type_from_file_extension(extension: &str) -> Option<String> {
     match extension {
       "ts" => Some("text/typescript"),
