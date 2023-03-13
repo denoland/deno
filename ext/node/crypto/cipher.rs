@@ -52,14 +52,13 @@ impl Resource for DecipherContext {
   }
 }
 
-use Cipher::*;
-
 impl Cipher {
   pub fn new(
     algorithm_name: &str,
     key: &[u8],
     iv: &[u8],
   ) -> Result<Self, AnyError> {
+    use Cipher::*;
     Ok(match algorithm_name {
       "aes-128-cbc" => {
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
@@ -69,6 +68,7 @@ impl Cipher {
   }
 
   pub fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
         let len = input.len();
@@ -93,6 +93,7 @@ impl Cipher {
 
 /// Pads the last block of cbc mode based on PKCS#7
 fn pad_block(data: &mut [u8; 16], pos: usize) {
+  assert!(pos <= 16);
   let v = (16 - pos) as u8;
   for b in &mut data[pos..] {
     *b = v;
