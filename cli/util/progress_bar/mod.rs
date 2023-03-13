@@ -255,7 +255,7 @@ impl DrawThreadRenderer for ProgressBarInner {
 
 #[derive(Clone, Debug)]
 pub struct ProgressBar {
-  inner: Option<ProgressBarInner>,
+  inner: ProgressBarInner,
 }
 
 impl ProgressBar {
@@ -266,17 +266,14 @@ impl ProgressBar {
 
   pub fn new(style: ProgressBarStyle) -> Self {
     Self {
-      inner: match Self::are_supported() {
-        true => Some(ProgressBarInner::new(match style {
-          ProgressBarStyle::DownloadBars => {
-            Arc::new(renderer::BarProgressBarRenderer)
-          }
-          ProgressBarStyle::TextOnly => {
-            Arc::new(renderer::TextOnlyProgressBarRenderer)
-          }
-        })),
-        false => None,
-      },
+      inner: ProgressBarInner::new(match style {
+        ProgressBarStyle::DownloadBars => {
+          Arc::new(renderer::BarProgressBarRenderer)
+        }
+        ProgressBarStyle::TextOnly => {
+          Arc::new(renderer::TextOnlyProgressBarRenderer)
+        }
+      }),
     }
   }
 
@@ -289,34 +286,29 @@ impl ProgressBar {
     kind: ProgressMessagePrompt,
     msg: &str,
   ) -> UpdateGuard {
-    match &self.inner {
-      Some(inner) => {
-        let entry = inner.add_entry(kind, msg.to_string());
-        UpdateGuard {
-          maybe_entry: Some(entry),
-        }
+    // only check if progress bars are supported once we go
+    // to update so that we lazily initialize the progress bar
+    if ProgressBar::are_supported() {
+      let entry = self.inner.add_entry(kind, msg.to_string());
+      UpdateGuard {
+        maybe_entry: Some(entry),
       }
-      None => {
-        // if we're not running in TTY, fallback to using logger crate
-        if !msg.is_empty() {
-          log::log!(log::Level::Info, "{} {}", kind.as_text(), msg);
-        }
-        UpdateGuard { maybe_entry: None }
+    } else {
+      // if we're not running in TTY, fallback to using logger crate
+      if !msg.is_empty() {
+        log::log!(log::Level::Info, "{} {}", kind.as_text(), msg);
       }
+      UpdateGuard { maybe_entry: None }
     }
   }
 
   pub fn clear_guard(&self) -> ClearGuard {
-    if let Some(inner) = &self.inner {
-      inner.increment_clear();
-    }
+    self.inner.increment_clear();
     ClearGuard { pb: self.clone() }
   }
 
   fn decrement_clear(&self) {
-    if let Some(inner) = &self.inner {
-      inner.decrement_clear();
-    }
+    self.inner.decrement_clear();
   }
 }
 

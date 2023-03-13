@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -45,6 +44,7 @@ use super::common::NpmPackageFsResolver;
 #[derive(Debug, Clone)]
 pub struct LocalNpmPackageResolver {
   cache: NpmCache,
+  progress_bar: ProgressBar,
   resolution: NpmResolution,
   registry_url: Url,
   root_node_modules_path: PathBuf,
@@ -54,12 +54,14 @@ pub struct LocalNpmPackageResolver {
 impl LocalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
+    progress_bar: ProgressBar,
     registry_url: Url,
     node_modules_folder: PathBuf,
     resolution: NpmResolution,
   ) -> Self {
     Self {
       cache,
+      progress_bar,
       resolution,
       registry_url,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
@@ -203,8 +205,14 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {
-    sync_resolver_with_fs(self).await?;
-    Ok(())
+    sync_resolution_with_fs(
+      &self.resolution.snapshot(),
+      &self.cache,
+      &self.progress_bar,
+      &self.registry_url,
+      &self.root_node_modules_path,
+    )
+    .await
   }
 
   fn ensure_read_permission(
@@ -220,22 +228,11 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 }
 
-async fn sync_resolver_with_fs(
-  resolver: &LocalNpmPackageResolver,
-) -> Result<(), AnyError> {
-  sync_resolution_with_fs(
-    &resolver.resolution.snapshot(),
-    &resolver.cache,
-    &resolver.registry_url,
-    &resolver.root_node_modules_path,
-  )
-  .await
-}
-
 /// Creates a pnpm style folder structure.
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &NpmCache,
+  progress_bar: &ProgressBar,
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
 ) -> Result<(), AnyError> {
@@ -251,8 +248,7 @@ async fn sync_resolution_with_fs(
   )
   .await;
 
-  let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let pb_clear_guard = pb.clear_guard(); // prevent flickering
+  let pb_clear_guard = progress_bar.clear_guard(); // prevent flickering
 
   // 1. Write all the packages out the .deno directory.
   //
@@ -279,7 +275,7 @@ async fn sync_resolution_with_fs(
       .should_use_for_npm_package(&package.pkg_id.nv.name)
       || !initialized_file.exists()
     {
-      let pb = pb.clone();
+      let pb = progress_bar.clone();
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
