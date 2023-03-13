@@ -734,9 +734,7 @@ fn resolve_non_graph_specifier_types(
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let node_id = npm_resolver
-      .resolution()
-      .resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
+    let node_id = npm_resolver.resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
     let npm_id_ref = NpmPackageNvReference {
       nv: node_id.nv,
       sub_path: npm_ref.sub_path,
