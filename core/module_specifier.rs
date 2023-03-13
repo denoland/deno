@@ -4,6 +4,7 @@ use crate::normalize_path;
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
+use std::path::Path;
 use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
@@ -128,7 +129,9 @@ pub fn resolve_url_or_path(
   if specifier_has_uri_scheme(specifier) {
     resolve_url(specifier)
   } else {
-    resolve_path(specifier)
+    let cwd = current_dir()
+      .map_err(|_| ModuleResolutionError::InvalidPath(specifier.into()))?;
+    resolve_path(specifier, &cwd)
   }
 }
 
@@ -137,10 +140,9 @@ pub fn resolve_url_or_path(
 /// working directory.
 pub fn resolve_path(
   path_str: &str,
+  current_dir: &Path,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  let path = current_dir()
-    .map_err(|_| ModuleResolutionError::InvalidPath(path_str.into()))?
-    .join(path_str);
+  let path = current_dir.join(path_str);
   let path = normalize_path(path);
   Url::from_file_path(&path)
     .map_err(|()| ModuleResolutionError::InvalidPath(path))
