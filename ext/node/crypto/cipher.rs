@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub enum Cipher {
-  Aes128Cbc(Box<cbc::Encryptor::<aes::Aes128>>),
+  Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
 }
 
 pub enum Decipher {
@@ -53,9 +53,15 @@ impl Resource for DecipherContext {
 use Cipher::*;
 
 impl Cipher {
-  pub fn new(algorithm_name: &str, key: &[u8], iv: &[u8]) -> Result<Self, AnyError> {
+  pub fn new(
+    algorithm_name: &str,
+    key: &[u8],
+    iv: &[u8],
+  ) -> Result<Self, AnyError> {
     Ok(match algorithm_name {
-      "aes-128-cbc" => Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into()))),
+      "aes-128-cbc" => {
+        Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
+      }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
     })
   }
@@ -65,14 +71,18 @@ impl Cipher {
       Aes128Cbc(encryptor) => {
         let len = input.len();
         if len == 16 {
-          encryptor.as_mut().encrypt_block_b2b_mut(input.into(), output.into());
+          encryptor
+            .as_mut()
+            .encrypt_block_b2b_mut(input.into(), output.into());
         } else {
           let mut block = [0; 16];
           block[..input.len()].copy_from_slice(input);
           pad_block(&mut block, len);
-          encryptor.as_mut().encrypt_block_b2b_mut(&block.into(), output.into());
+          encryptor
+            .as_mut()
+            .encrypt_block_b2b_mut(&block.into(), output.into());
         }
-      },
+      }
     }
   }
 }

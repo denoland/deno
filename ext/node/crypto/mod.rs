@@ -15,8 +15,8 @@ use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 
-mod digest;
 mod cipher;
+mod digest;
 
 #[op(fast)]
 pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
@@ -162,14 +162,21 @@ pub fn op_node_create_cipheriv(
   key: &[u8],
   iv: &[u8],
 ) -> u32 {
-  state.resource_table.add(match cipher::CipherContext::new(algorithm, key, iv) {
-    Ok(context) => context,
-    Err(_) => return 0,
-  })
+  state.resource_table.add(
+    match cipher::CipherContext::new(algorithm, key, iv) {
+      Ok(context) => context,
+      Err(_) => return 0,
+    },
+  )
 }
 
 #[op(fast)]
-pub fn op_node_cipheriv_encrypt(state: &mut OpState, rid: u32, input: &[u8], output: &mut [u8]) -> bool {
+pub fn op_node_cipheriv_encrypt(
+  state: &mut OpState,
+  rid: u32,
+  input: &[u8],
+  output: &mut [u8],
+) -> bool {
   let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
     Ok(context) => context,
     Err(_) => return false,
