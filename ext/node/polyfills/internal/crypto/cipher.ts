@@ -137,6 +137,7 @@ export class Cipheriv extends Transform implements Cipher {
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
     ops.op_node_cipheriv_encrypt(this.context, this._cache.cache, buf);
+    Deno.close(this.context);
     return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
