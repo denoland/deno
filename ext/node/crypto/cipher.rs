@@ -79,6 +79,7 @@ impl Cipher {
     })
   }
 
+  /// encrypt encrypts the data in the middle of the input.
   fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
     use Cipher::*;
     match self {
@@ -91,13 +92,14 @@ impl Cipher {
     }
   }
 
+  /// r#final encrypts the last block of the input data.
   fn r#final(self, input: &[u8], output: &mut [u8]) -> Result<(), AnyError> {
     assert!(input.len() < 16);
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
         let _ = (*encryptor)
-          .encrypt_padded_b2b_mut::<Pkcs7>(input.into(), output.into())
+          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| type_error("Cannot pad the input data"))?;
         Ok(())
       }
