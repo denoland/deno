@@ -83,6 +83,7 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub side_modules: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -906,6 +907,13 @@ fn compile_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("compile"), true, false)
     .trailing_var_arg(true)
     .arg(script_arg().required(true))
+    .arg(
+      Arg::new("side-module")
+        .long("side-module")
+        .takes_value(true)
+        .multiple_occurrences(true)
+        .value_hint(ValueHint::FilePath),
+    )
     .arg(
       Arg::new("output")
         .long("output")
@@ -2484,12 +2492,17 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
   let target = matches.value_of("target").map(String::from);
+  let side_modules = match matches.values_of("side-module") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
     args,
     target,
+    side_modules,
   });
 }
 
@@ -6240,6 +6253,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          side_modules: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6259,6 +6273,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
+          side_modules: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,

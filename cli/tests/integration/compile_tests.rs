@@ -592,3 +592,37 @@ fn dynamic_import() {
   .unwrap();
   assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
 }
+
+#[test]
+fn dynamic_import_unanalyzable() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("dynamic_import_unanalyzable.exe")
+  } else {
+    dir.path().join("dynamic_import_unanalyzable")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--allow-read")
+    .arg("--side-module")
+    .arg(util::testdata_path().join("./compile/dynamic_imports/import1.ts"))
+    .arg("--output")
+    .arg(&exe)
+    .arg(
+      util::testdata_path()
+        .join("./compile/dynamic_imports/main_unanalyzable.ts"),
+    )
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(output.status.success());
+  let expected = std::fs::read_to_string(
+    util::testdata_path().join("./compile/dynamic_imports/main.out"),
+  )
+  .unwrap();
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+}
