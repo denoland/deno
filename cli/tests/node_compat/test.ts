@@ -35,6 +35,7 @@ const darwinIgnorePaths = new Set(
   getPathsFromTestSuites(config.darwinIgnore),
 );
 
+const decoder = new TextDecoder();
 let testSerialId = 0;
 
 async function runTest(t: Deno.TestContext, path: string): Promise<void> {
@@ -111,7 +112,6 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
   });
 }
 
-const decoder = new TextDecoder();
 Deno.test("Node.js compatibility", async (t) => {
   for (const path of testPaths.sequential) {
     await runTest(t, path);
