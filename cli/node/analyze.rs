@@ -76,11 +76,11 @@ pub fn esm_code_with_node_globals(
   let global_this_expr = if has_global_this {
     global_this_expr
   } else {
-    write!(result, "var globalThis = {};", global_this_expr).unwrap();
+    write!(result, "var globalThis = {global_this_expr};").unwrap();
     "globalThis"
   };
   for global in globals {
-    write!(result, "var {0} = {1}.{0};", global, global_this_expr).unwrap();
+    write!(result, "var {global} = {global_this_expr}.{global};").unwrap();
   }
 
   let file_text = text_info.text_str();

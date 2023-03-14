@@ -32,7 +32,6 @@ impl op_ffi_ptr_of {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            argc: 2usize,
         }
     }
     #[inline]
@@ -169,13 +168,7 @@ where
             as *const _ops::OpCtx)
     };
     let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let buf = match unsafe { &*buf }.get_storage_if_aligned() {
-        Some(v) => v.as_ptr(),
-        None => {
-            unsafe { &mut *fast_api_callback_options }.fallback = true;
-            return Default::default();
-        }
-    };
+    let buf = unsafe { (&*buf).get_storage_if_aligned().unwrap_unchecked() }.as_ptr();
     let out = match unsafe { &*out }.get_storage_if_aligned() {
         Some(v) => v,
         None => {

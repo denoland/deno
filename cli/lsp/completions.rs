@@ -324,7 +324,7 @@ fn get_import_map_completions(
             new_text: label.clone(),
           }));
           items.push(lsp::CompletionItem {
-            label: label.clone(),
+            label,
             kind,
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
@@ -368,6 +368,7 @@ fn get_local_completions(
   } else {
     false
   };
+  let cwd = std::env::current_dir().ok()?;
   if current_path.is_dir() {
     let items = std::fs::read_dir(current_path).ok()?;
     Some(
@@ -375,7 +376,7 @@ fn get_local_completions(
         .filter_map(|de| {
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier = resolve_path(de.path().to_str()?).ok()?;
+          let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
           if &entry_specifier == base {
             return None;
           }
@@ -394,7 +395,7 @@ fn get_local_completions(
           let filter_text = if full_text.starts_with(current) {
             Some(full_text)
           } else {
-            Some(format!("{}{}", current, label))
+            Some(format!("{current}{label}"))
           };
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
@@ -523,12 +524,7 @@ mod tests {
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        *language_id,
-        (*source).into(),
-      );
+      documents.open(specifier, *version, *language_id, (*source).into());
     }
     let http_cache = HttpCache::new(location);
     for (specifier, source) in source_fixtures {
@@ -686,6 +682,7 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,
@@ -710,6 +707,7 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,

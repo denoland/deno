@@ -21,7 +21,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -121,7 +120,7 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<Vec<Reference>, AnyError> {
   let linter = create_linter(parsed_source.media_type(), lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
@@ -158,7 +157,7 @@ fn check_specifier(
   documents: &Documents,
 ) -> Option<String> {
   for ext in SUPPORTED_EXTENSIONS {
-    let specifier_with_ext = format!("{}{}", specifier, ext);
+    let specifier_with_ext = format!("{specifier}{ext}");
     if documents.contains_import(&specifier_with_ext, referrer) {
       return Some(specifier_with_ext);
     }
@@ -398,7 +397,7 @@ impl CodeActionCollection {
       specifier.clone(),
       vec![lsp::TextEdit {
         new_text: prepend_whitespace(
-          format!("// deno-lint-ignore {}\n", code),
+          format!("// deno-lint-ignore {code}\n"),
           line_content,
         ),
         range: lsp::Range {
@@ -414,7 +413,7 @@ impl CodeActionCollection {
       }],
     );
     let ignore_error_action = lsp::CodeAction {
-      title: format!("Disable {} for this line", code),
+      title: format!("Disable {code} for this line"),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       command: None,
@@ -447,7 +446,7 @@ impl CodeActionCollection {
       })
     });
 
-    let mut new_text = format!("// deno-lint-ignore-file {}\n", code);
+    let mut new_text = format!("// deno-lint-ignore-file {code}\n");
     let mut range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -461,7 +460,7 @@ impl CodeActionCollection {
     // If ignore file comment already exists, append the lint code
     // to the existing comment.
     if let Some(ignore_comment) = maybe_ignore_comment {
-      new_text = format!(" {}", code);
+      new_text = format!(" {code}");
       // Get the end position of the comment.
       let line = maybe_parsed_source
         .unwrap()
@@ -479,7 +478,7 @@ impl CodeActionCollection {
     let mut changes = HashMap::new();
     changes.insert(specifier.clone(), vec![lsp::TextEdit { new_text, range }]);
     let ignore_file_action = lsp::CodeAction {
-      title: format!("Disable {} for the entire file", code),
+      title: format!("Disable {code} for the entire file"),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       command: None,

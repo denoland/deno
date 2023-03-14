@@ -18,7 +18,7 @@ fn main() {
   let output: serde_json::Value =
     eval(&mut runtime, code).expect("Eval failed");
 
-  println!("Output: {:?}", output);
+  println!("Output: {output:?}");
 
   let expected_output = serde_json::json!(10);
   assert_eq!(expected_output, output);
@@ -40,9 +40,9 @@ fn eval(
 
       match deserialized_value {
         Ok(value) => Ok(value),
-        Err(err) => Err(format!("Cannot deserialize value: {:?}", err)),
+        Err(err) => Err(format!("Cannot deserialize value: {err:?}")),
       }
     }
-    Err(err) => Err(format!("Evaling error: {:?}", err)),
+    Err(err) => Err(format!("Evaling error: {err:?}")),
   }
 }

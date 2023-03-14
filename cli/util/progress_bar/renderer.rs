@@ -6,8 +6,11 @@ use deno_runtime::colors;
 
 use crate::util::display::human_download_size;
 
+use super::ProgressMessagePrompt;
+
 #[derive(Clone)]
 pub struct ProgressDataDisplayEntry {
+  pub prompt: ProgressMessagePrompt,
   pub message: String,
   pub position: u64,
   pub total_size: u64,
@@ -142,7 +145,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
 
     format!(
       "{} {}{}{}",
-      colors::green("Download"),
+      data.display_entry.prompt.as_text(),
       data.display_entry.message,
       colors::gray(bytes_text),
       colors::gray(total_text),
@@ -154,7 +157,7 @@ fn get_elapsed_text(elapsed: Duration) -> String {
   let elapsed_secs = elapsed.as_secs();
   let seconds = elapsed_secs % 60;
   let minutes = elapsed_secs / 60;
-  format!("[{:0>2}:{:0>2}]", minutes, seconds)
+  format!("[{minutes:0>2}:{seconds:0>2}]")
 }
 
 #[cfg(test)]
@@ -195,6 +198,7 @@ mod test {
     let renderer = BarProgressBarRenderer;
     let mut data = ProgressData {
       display_entry: ProgressDataDisplayEntry {
+        prompt: ProgressMessagePrompt::Download,
         message: "data".to_string(),
         position: 0,
         total_size: 10 * BYTES_TO_KIB,
@@ -251,6 +255,7 @@ mod test {
     let renderer = TextOnlyProgressBarRenderer;
     let mut data = ProgressData {
       display_entry: ProgressDataDisplayEntry {
+        prompt: ProgressMessagePrompt::Blocking,
         message: "data".to_string(),
         position: 0,
         total_size: 10 * BYTES_TO_KIB,
@@ -263,7 +268,7 @@ mod test {
     };
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(text, "Download data 0.00KiB/10.00KiB (2/3)");
+    assert_eq!(text, "Blocking data 0.00KiB/10.00KiB (2/3)");
 
     data.pending_entries = 0;
     data.total_entries = 1;
@@ -271,6 +276,6 @@ mod test {
     data.display_entry.total_size = 0;
     let text = renderer.render(data);
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(text, "Download data");
+    assert_eq!(text, "Blocking data");
   }
 }

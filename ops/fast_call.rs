@@ -68,9 +68,9 @@ pub(crate) fn generate(
   // - op_foo_fast, the fast call type.
   // - op_foo_fast_fn, the fast call function.
   let ident = item_fn.sig.ident.clone();
-  let fast_ident = Ident::new(&format!("{}_fast", ident), Span::call_site());
+  let fast_ident = Ident::new(&format!("{ident}_fast"), Span::call_site());
   let fast_fn_ident =
-    Ident::new(&format!("{}_fast_fn", ident), Span::call_site());
+    Ident::new(&format!("{ident}_fast_fn"), Span::call_site());
 
   // Deal with generics.
   let generics = &item_fn.sig.generics;
@@ -250,13 +250,14 @@ pub(crate) fn generate(
       //
       // V8 calls the slow path so we can take the slot
       // value and throw.
-      let result_wrap = q!(Vars { op_state }, {
+      let default = optimizer.fast_result.as_ref().unwrap().default_value();
+      let result_wrap = q!(Vars { op_state, default }, {
         match result {
           Ok(result) => result,
           Err(err) => {
             op_state.last_fast_op_error.replace(err);
             __opts.fallback = true;
-            Default::default()
+            default
           }
         }
       });
@@ -418,15 +419,19 @@ pub(crate) fn generate(
 fn q_fast_ty(v: &FastValue) -> Quote {
   match v {
     FastValue::Void => q!({ () }),
+    FastValue::Bool => q!({ bool }),
     FastValue::U32 => q!({ u32 }),
     FastValue::I32 => q!({ i32 }),
     FastValue::U64 => q!({ u64 }),
     FastValue::I64 => q!({ i64 }),
     FastValue::F32 => q!({ f32 }),
     FastValue::F64 => q!({ f64 }),
-    FastValue::Bool => q!({ bool }),
+    FastValue::Pointer => q!({ *mut ::std::ffi::c_void }),
     FastValue::V8Value => q!({ v8::Local<v8::Value> }),
-    FastValue::Uint8Array | FastValue::Uint32Array => unreachable!(),
+    FastValue::Uint8Array
+    | FastValue::Uint32Array
+    | FastValue::Float64Array
+    | FastValue::SeqOneByteString => unreachable!(),
   }
 }
 
@@ -434,16 +439,19 @@ fn q_fast_ty(v: &FastValue) -> Quote {
 fn q_fast_ty_variant(v: &FastValue) -> Quote {
   match v {
     FastValue::Void => q!({ Void }),
+    FastValue::Bool => q!({ Bool }),
     FastValue::U32 => q!({ Uint32 }),
     FastValue::I32 => q!({ Int32 }),
     FastValue::U64 => q!({ Uint64 }),
     FastValue::I64 => q!({ Int64 }),
     FastValue::F32 => q!({ Float32 }),
     FastValue::F64 => q!({ Float64 }),
-    FastValue::Bool => q!({ Bool }),
+    FastValue::Pointer => q!({ Pointer }),
     FastValue::V8Value => q!({ V8Value }),
     FastValue::Uint8Array => q!({ TypedArray(CType::Uint8) }),
     FastValue::Uint32Array => q!({ TypedArray(CType::Uint32) }),
+    FastValue::Float64Array => q!({ TypedArray(CType::Float64) }),
+    FastValue::SeqOneByteString => q!({ SeqOneByteString }),
   }
 }
 

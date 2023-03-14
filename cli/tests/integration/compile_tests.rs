@@ -564,3 +564,31 @@ fn check_local_by_default2() {
     r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
   ));
 }
+
+#[test]
+fn dynamic_import() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("dynamic_import.exe")
+  } else {
+    dir.path().join("dynamic_import")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/dynamic_imports/main.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(output.status.success());
+  let expected = std::fs::read_to_string(
+    util::testdata_path().join("./compile/dynamic_imports/main.out"),
+  )
+  .unwrap();
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+}

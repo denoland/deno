@@ -6,6 +6,7 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
+use deno_graph::Module;
 use deno_runtime::colors;
 
 use crate::args::BundleFlags;
@@ -25,20 +26,37 @@ pub async fn bundle(
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let cli_options = Arc::new(CliOptions::from_flags(flags)?);
+
+  log::info!(
+    "{} \"deno bundle\" is deprecated and will be removed in the future.",
+    colors::yellow("Warning"),
+  );
+  log::info!(
+    "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
+  );
+
+  let module_specifier =
+    resolve_url_or_path(&bundle_flags.source_file, cli_options.initial_cwd())?;
+
   let resolver = |_| {
     let cli_options = cli_options.clone();
-    let source_file1 = &bundle_flags.source_file;
-    let source_file2 = &bundle_flags.source_file;
+    let module_specifier = &module_specifier;
     async move {
-      let module_specifier = resolve_url_or_path(source_file1)?;
-
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
-      let graph = create_graph_and_maybe_check(module_specifier, &ps).await?;
+      let graph =
+        create_graph_and_maybe_check(module_specifier.clone(), &ps).await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
-        .filter_map(|(_, r)| r.ok().and_then(|(s, _, _)| s.to_file_path().ok()))
+        .filter_map(|(_, r)| {
+          r.ok().and_then(|module| match module {
+            Module::Esm(m) => m.specifier.to_file_path().ok(),
+            Module::Json(m) => m.specifier.to_file_path().ok(),
+            // nothing to watch
+            Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
+          })
+        })
         .collect();
 
       if let Ok(Some(import_map_path)) = ps
@@ -57,7 +75,7 @@ pub async fn bundle(
         result: Ok((ps, graph)),
       },
       Err(e) => ResolutionResult::Restart {
-        paths_to_watch: vec![PathBuf::from(source_file2)],
+        paths_to_watch: vec![module_specifier.to_file_path().unwrap()],
         result: Err(e),
       },
     })
@@ -134,7 +152,7 @@ fn bundle_module_graph(
   graph: &deno_graph::ModuleGraph,
   ps: &ProcState,
 ) -> Result<deno_emit::BundleEmit, AnyError> {
-  log::info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
+  log::info!("{} {}", colors::green("Bundle"), graph.roots[0]);
 
   let ts_config_result = ps
     .options
@@ -145,29 +163,12 @@ fn bundle_module_graph(
     }
   }
 
-  let mut output = deno_emit::bundle_graph(
+  deno_emit::bundle_graph(
     graph,
     deno_emit::BundleOptions {
       bundle_type: deno_emit::BundleType::Module,
       emit_options: ts_config_result.ts_config.into(),
       emit_ignore_directives: true,
     },
-  )?;
-
-  // todo(https://github.com/denoland/deno_emit/issues/85): move to deno_emit
-  if let Some(shebang) = shebang_file(graph) {
-    output.code = format!("{}\n{}", shebang, output.code);
-  }
-
-  Ok(output)
-}
-
-fn shebang_file(graph: &deno_graph::ModuleGraph) -> Option<String> {
-  let source = graph.get(&graph.roots[0].0)?.maybe_source.as_ref()?;
-  let first_line = source.lines().next()?;
-  if first_line.starts_with("#!") {
-    Some(first_line.to_string())
-  } else {
-    None
-  }
+  )
 }

@@ -6,16 +6,22 @@ use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
 
 use deno_core::Extension;
+use deno_core::ExtensionFileSource;
+use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::init(),
-    deno_url::init(),
+    deno_webidl::init_esm(),
+    deno_url::init_ops_and_esm(),
     Extension::builder("bench_setup")
-      .js(vec![(
-        "setup",
-        "const { URL } = globalThis.__bootstrap.url;",
-      )])
+      .esm(vec![ExtensionFileSource {
+        specifier: "ext:setup".to_string(),
+        code: ExtensionFileSourceCode::IncludedInBinary(
+          r#"import { URL } from "ext:deno_url/00_url.js";
+        globalThis.URL = URL;
+        "#,
+        ),
+      }])
       .build(),
   ]
 }
