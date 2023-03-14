@@ -742,7 +742,6 @@ mod tests {
   use super::*;
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
-  use deno_core::resolve_url_or_path;
   use deno_core::url::Url;
   use deno_runtime::deno_fetch::create_http_client;
   use deno_runtime::deno_web::Blob;
@@ -827,7 +826,8 @@ mod tests {
 
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
     let p = test_util::testdata_path().join(format!("encoding/{charset}.ts"));
-    let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
+    let specifier =
+      ModuleSpecifier::from_file_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(&*file.source, expected);
   }
@@ -845,7 +845,7 @@ mod tests {
     ];
 
     for (specifier, is_ok, expected) in fixtures {
-      let specifier = resolve_url_or_path(specifier).unwrap();
+      let specifier = ModuleSpecifier::parse(specifier).unwrap();
       let actual = get_validated_scheme(&specifier);
       assert_eq!(actual.is_ok(), is_ok);
       if is_ok {
@@ -1021,7 +1021,7 @@ mod tests {
     ];
 
     for (specifier, maybe_content_type, media_type, maybe_charset) in fixtures {
-      let specifier = resolve_url_or_path(specifier).unwrap();
+      let specifier = ModuleSpecifier::parse(specifier).unwrap();
       assert_eq!(
         map_content_type(&specifier, maybe_content_type.as_ref()),
         (media_type, maybe_charset)
@@ -1034,7 +1034,8 @@ mod tests {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let local = temp_dir.path().join("a.ts");
     let specifier =
-      resolve_url_or_path(local.as_os_str().to_str().unwrap()).unwrap();
+      ModuleSpecifier::from_file_path(local.as_os_str().to_str().unwrap())
+        .unwrap();
     let file = File {
       local,
       maybe_types: None,
@@ -1143,7 +1144,7 @@ mod tests {
     let (file_fetcher_01, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let (file_fetcher_02, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let specifier =
-      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
+      ModuleSpecifier::parse("http://localhost:4545/subdir/mod2.ts").unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -1587,8 +1588,7 @@ mod tests {
   async fn test_fetch_local_bypasses_file_cache() {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let fixture_path = temp_dir.path().join("mod.ts");
-    let specifier =
-      resolve_url_or_path(&fixture_path.to_string_lossy()).unwrap();
+    let specifier = ModuleSpecifier::from_file_path(&fixture_path).unwrap();
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -1690,7 +1690,8 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_remote_javascript_with_types() {
     let specifier =
-      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
+      ModuleSpecifier::parse("http://127.0.0.1:4545/xTypeScriptTypes.js")
+        .unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
     assert_eq!(
       file.maybe_types,
@@ -1701,7 +1702,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_remote_jsx_with_types() {
     let specifier =
-      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.jsx")
+      ModuleSpecifier::parse("http://127.0.0.1:4545/xTypeScriptTypes.jsx")
         .unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
     assert_eq!(file.media_type, MediaType::Jsx,);
@@ -1714,7 +1715,8 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_remote_typescript_with_types() {
     let specifier =
-      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.ts").unwrap();
+      ModuleSpecifier::parse("http://127.0.0.1:4545/xTypeScriptTypes.ts")
+        .unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
     assert_eq!(file.maybe_types, None);
   }

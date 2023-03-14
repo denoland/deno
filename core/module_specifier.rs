@@ -121,23 +121,22 @@ pub fn resolve_url(
 /// as it may be passed to deno as a command line argument.
 /// The string is interpreted as a URL if it starts with a valid URI scheme,
 /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
-/// file path; if it is a relative path it's resolved relative to the current
-/// working directory.
+/// file path; if it is a relative path it's resolved relative to passed
+/// `current_dir`.
 pub fn resolve_url_or_path(
   specifier: &str,
+  current_dir: &Path,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
   if specifier_has_uri_scheme(specifier) {
     resolve_url(specifier)
   } else {
-    let cwd = current_dir()
-      .map_err(|_| ModuleResolutionError::InvalidPath(specifier.into()))?;
-    resolve_path(specifier, &cwd)
+    resolve_path(specifier, current_dir)
   }
 }
 
 /// Converts a string representing a relative or absolute path into a
-/// ModuleSpecifier. A relative path is considered relative to the current
-/// working directory.
+/// ModuleSpecifier. A relative path is considered relative to the passed
+/// `current_dir`.
 pub fn resolve_path(
   path_str: &str,
   current_dir: &Path,
@@ -440,13 +439,13 @@ mod tests {
     }
 
     for (specifier, expected_url) in tests {
-      let url = resolve_url_or_path(specifier).unwrap().to_string();
+      let url = resolve_url_or_path(specifier, &cwd).unwrap().to_string();
       assert_eq!(url, expected_url);
     }
   }
 
   #[test]
-  fn test_resolve_url_or_path_error() {
+  fn test_resolve_url_or_path_deprecated_error() {
     use url::ParseError::*;
     use ModuleResolutionError::*;
 
@@ -460,7 +459,8 @@ mod tests {
     }
 
     for (specifier, expected_err) in tests {
-      let err = resolve_url_or_path(specifier).unwrap_err();
+      let err =
+        resolve_url_or_path(specifier, &PathBuf::from("/")).unwrap_err();
       assert_eq!(err, expected_err);
     }
   }
