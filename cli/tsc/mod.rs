@@ -13,7 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_url_or_path_deprecated;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -402,7 +402,7 @@ impl State {
 }
 
 fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(specifier).map_err(|err| err.into())
+  resolve_url_or_path_deprecated(specifier).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]
@@ -928,7 +928,7 @@ mod tests {
     maybe_tsbuildinfo: Option<String>,
   ) -> OpState {
     let specifier = maybe_specifier
-      .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
+      .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
@@ -1050,7 +1050,7 @@ mod tests {
       ("file:///.tsbuildinfo", MediaType::Unknown),
     ];
     for (specifier, media_type) in fixtures {
-      let specifier = resolve_url_or_path(specifier).unwrap();
+      let specifier = ModuleSpecifier::parse(specifier).unwrap();
       assert_eq!(get_tsc_media_type(&specifier), media_type);
     }
   }
@@ -1076,7 +1076,7 @@ mod tests {
   #[tokio::test]
   async fn test_load() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1107,7 +1107,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_asset() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1128,7 +1128,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_tsbuildinfo() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1169,7 +1169,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -1191,7 +1191,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve_empty() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -1253,7 +1253,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_basic() {
-    let specifier = resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -1264,7 +1264,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_reexport_dts() {
-    let specifier = resolve_url_or_path("file:///reexports.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("file:///reexports.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -1275,7 +1275,7 @@ mod tests {
 
   #[tokio::test]
   async fn fix_lib_ref() {
-    let specifier = resolve_url_or_path("file:///libref.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("file:///libref.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");

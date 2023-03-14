@@ -239,6 +239,7 @@ impl ProcState {
     );
     let npm_fs_resolver = create_npm_fs_resolver(
       npm_cache,
+      &progress_bar,
       npm_registry_url,
       npm_resolution.clone(),
       cli_options.node_modules_dir_path(),
@@ -458,7 +459,7 @@ impl ProcState {
 
     let specifiers = files
       .iter()
-      .map(|file| resolve_url_or_path(file))
+      .map(|file| resolve_url_or_path(file, self.options.initial_cwd()))
       .collect::<Result<Vec<_>, _>>()?;
     self
       .prepare_module_load(
@@ -494,7 +495,7 @@ impl ProcState {
     referrer: &str,
     permissions: &mut PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+    if let Ok(referrer) = deno_core::resolve_url_or_path_deprecated(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
         return self
@@ -564,9 +565,9 @@ impl ProcState {
     // but sadly that's not the case due to missing APIs in V8.
     let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
     let referrer = if referrer.is_empty() && is_repl {
-      deno_core::resolve_url_or_path("./$deno$repl.ts")?
+      deno_core::resolve_path("./$deno$repl.ts", self.options.initial_cwd())?
     } else {
-      deno_core::resolve_url_or_path(referrer)?
+      deno_core::resolve_url_or_path_deprecated(referrer)?
     };
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
