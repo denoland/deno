@@ -241,13 +241,13 @@ mod ts {
       }
     }
 
+    deno_core::ops!(
+      deno_ops,
+      [op_build_info, op_is_node_file, op_load, op_script_version,]
+    );
+
     let tsc_extension = Extension::builder("deno_tsc")
-      .ops(vec![
-        op_build_info::decl(),
-        op_is_node_file::decl(),
-        op_load::decl(),
-        op_script_version::decl(),
-      ])
+      .ops(deno_ops())
       .js(include_js_files! {
         dir "tsc",
         "00_typescript.js",

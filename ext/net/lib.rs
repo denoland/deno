@@ -78,6 +78,16 @@ pub struct DefaultTlsOptions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(pub Option<Vec<String>>);
 
+deno_core::ops_bundle!(deno_ops,
+  parameters = [ P: NetPermissions ],
+  ops = [
+    ops::deno_ops<P>,
+    #[cfg(unix)]
+    ops_unix::deno_ops<P>,
+    ops_tls::deno_ops<P>,
+  ]
+);
+
 fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
 }
@@ -88,10 +98,7 @@ fn ops<P: NetPermissions + 'static>(
   unstable: bool,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> &mut ExtensionBuilder {
-  let mut ops = ops::init::<P>();
-  ops.extend(ops_tls::init::<P>());
-
-  ext.ops(ops).state(move |state| {
+  ext.ops(deno_ops::<P>()).state(move |state| {
     state.put(DefaultTlsOptions {
       root_cert_store: root_cert_store.clone(),
     });

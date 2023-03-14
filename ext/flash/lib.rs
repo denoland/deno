@@ -1540,43 +1540,46 @@ fn ext() -> ExtensionBuilder {
   )
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [P: FlashPermissions],
+  ops = [
+    op_flash_serve<P>,
+    op_node_unstable_flash_serve<P>,
+    op_flash_respond,
+    op_flash_respond_async,
+    op_flash_respond_chunked,
+    op_flash_method,
+    op_flash_path,
+    op_flash_headers,
+    op_flash_addr,
+    op_flash_next,
+    op_flash_next_server,
+    op_flash_next_async,
+    op_flash_read_body,
+    op_flash_upgrade_websocket,
+    op_flash_drive_server,
+    op_flash_wait_for_listening,
+    op_flash_first_packet,
+    op_flash_has_body_stream,
+    op_flash_close_server,
+    op_flash_make_request,
+    op_flash_write_resource,
+    op_try_flash_respond_chunked,
+  ]
+);
+
 fn ops<P: FlashPermissions + 'static>(
   ext: &mut ExtensionBuilder,
   unstable: bool,
 ) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_flash_serve::decl::<P>(),
-      op_node_unstable_flash_serve::decl::<P>(),
-      op_flash_respond::decl(),
-      op_flash_respond_async::decl(),
-      op_flash_respond_chunked::decl(),
-      op_flash_method::decl(),
-      op_flash_path::decl(),
-      op_flash_headers::decl(),
-      op_flash_addr::decl(),
-      op_flash_next::decl(),
-      op_flash_next_server::decl(),
-      op_flash_next_async::decl(),
-      op_flash_read_body::decl(),
-      op_flash_upgrade_websocket::decl(),
-      op_flash_drive_server::decl(),
-      op_flash_wait_for_listening::decl(),
-      op_flash_first_packet::decl(),
-      op_flash_has_body_stream::decl(),
-      op_flash_close_server::decl(),
-      op_flash_make_request::decl(),
-      op_flash_write_resource::decl(),
-      op_try_flash_respond_chunked::decl(),
-    ])
-    .state(move |op_state| {
-      op_state.put(Unstable(unstable));
-      op_state.put(FlashContext {
-        next_server_id: 0,
-        join_handles: HashMap::default(),
-        servers: HashMap::default(),
-      });
-    })
+  ext.ops(deno_ops::<P>()).state(move |op_state| {
+    op_state.put(Unstable(unstable));
+    op_state.put(FlashContext {
+      next_server_id: 0,
+      join_handles: HashMap::default(),
+      servers: HashMap::default(),
+    });
+  })
 }
 
 pub fn init_ops_and_esm<P: FlashPermissions + 'static>(

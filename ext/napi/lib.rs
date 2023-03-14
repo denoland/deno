@@ -514,9 +514,16 @@ impl Env {
   }
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [P: NapiPermissions],
+  ops = [
+    op_napi_open<P>
+  ]
+);
+
 pub fn init_ops<P: NapiPermissions + 'static>() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
-    .ops(vec![op_napi_open::decl::<P>()])
+    .ops(deno_ops::<P>())
     .event_loop_middleware(|op_state_rc, cx| {
       // `work` can call back into the runtime. It can also schedule an async task
       // but we don't know that now. We need to make the runtime re-poll to make

@@ -86,40 +86,45 @@ fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [P: FfiPermissions],
+  ops = [
+    op_ffi_load<P>,
+    op_ffi_get_static,
+    op_ffi_call_nonblocking,
+    op_ffi_call_ptr<P>,
+    op_ffi_call_ptr_nonblocking<P>,
+    op_ffi_ptr_create<P>,
+    op_ffi_ptr_equals<P>,
+    op_ffi_ptr_of<P>,
+    op_ffi_ptr_offset<P>,
+    op_ffi_ptr_value<P>,
+    op_ffi_get_buf<P>,
+    op_ffi_buf_copy_into<P>,
+    op_ffi_cstr_read<P>,
+    op_ffi_read_bool<P>,
+    op_ffi_read_u8<P>,
+    op_ffi_read_i8<P>,
+    op_ffi_read_u16<P>,
+    op_ffi_read_i16<P>,
+    op_ffi_read_u32<P>,
+    op_ffi_read_i32<P>,
+    op_ffi_read_u64<P>,
+    op_ffi_read_i64<P>,
+    op_ffi_read_f32<P>,
+    op_ffi_read_f64<P>,
+    op_ffi_read_ptr<P>,
+    op_ffi_unsafe_callback_create<P>,
+    op_ffi_unsafe_callback_ref,
+  ]
+);
+
 fn ops<P: FfiPermissions + 'static>(
   ext: &mut ExtensionBuilder,
   unstable: bool,
 ) -> &mut ExtensionBuilder {
   ext
-    .ops(vec![
-      op_ffi_load::decl::<P>(),
-      op_ffi_get_static::decl(),
-      op_ffi_call_nonblocking::decl(),
-      op_ffi_call_ptr::decl::<P>(),
-      op_ffi_call_ptr_nonblocking::decl::<P>(),
-      op_ffi_ptr_create::decl::<P>(),
-      op_ffi_ptr_equals::decl::<P>(),
-      op_ffi_ptr_of::decl::<P>(),
-      op_ffi_ptr_offset::decl::<P>(),
-      op_ffi_ptr_value::decl::<P>(),
-      op_ffi_get_buf::decl::<P>(),
-      op_ffi_buf_copy_into::decl::<P>(),
-      op_ffi_cstr_read::decl::<P>(),
-      op_ffi_read_bool::decl::<P>(),
-      op_ffi_read_u8::decl::<P>(),
-      op_ffi_read_i8::decl::<P>(),
-      op_ffi_read_u16::decl::<P>(),
-      op_ffi_read_i16::decl::<P>(),
-      op_ffi_read_u32::decl::<P>(),
-      op_ffi_read_i32::decl::<P>(),
-      op_ffi_read_u64::decl::<P>(),
-      op_ffi_read_i64::decl::<P>(),
-      op_ffi_read_f32::decl::<P>(),
-      op_ffi_read_f64::decl::<P>(),
-      op_ffi_read_ptr::decl::<P>(),
-      op_ffi_unsafe_callback_create::decl::<P>(),
-      op_ffi_unsafe_callback_ref::decl(),
-    ])
+    .ops(deno_ops::<P>())
     .event_loop_middleware(|op_state_rc, _cx| {
       // FFI callbacks coming in from other threads will call in and get queued.
       let mut maybe_scheduling = false;

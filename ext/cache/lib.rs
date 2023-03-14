@@ -30,24 +30,27 @@ fn ext() -> ExtensionBuilder {
   )
 }
 
+deno_core::ops!(deno_ops,
+  parameters=[CA: Cache],
+  ops = [
+    op_cache_storage_open<CA>,
+    op_cache_storage_has<CA>,
+    op_cache_storage_delete<CA>,
+    op_cache_put<CA>,
+    op_cache_match<CA>,
+    op_cache_delete<CA>,
+  ]
+);
+
 fn ops<CA: Cache + 'static>(
   ext: &mut ExtensionBuilder,
   maybe_create_cache: Option<CreateCache<CA>>,
 ) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_cache_storage_open::decl::<CA>(),
-      op_cache_storage_has::decl::<CA>(),
-      op_cache_storage_delete::decl::<CA>(),
-      op_cache_put::decl::<CA>(),
-      op_cache_match::decl::<CA>(),
-      op_cache_delete::decl::<CA>(),
-    ])
-    .state(move |state| {
-      if let Some(create_cache) = maybe_create_cache.clone() {
-        state.put(create_cache);
-      }
-    })
+  ext.ops(deno_ops::<CA>()).state(move |state| {
+    if let Some(create_cache) = maybe_create_cache.clone() {
+      state.put(create_cache);
+    }
+  })
 }
 
 pub fn init_ops_and_esm<CA: Cache + 'static>(

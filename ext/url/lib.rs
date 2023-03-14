@@ -22,17 +22,22 @@ fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_webidl"])
 }
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_url_reparse,
+    op_url_parse,
+    op_url_get_serialization,
+    op_url_parse_with_base,
+    op_url_parse_search_params,
+    op_url_stringify_search_params,
+    op_urlpattern_parse,
+    op_urlpattern_process_match_input
+  ]
+);
+
 fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  ext.ops(vec![
-    op_url_reparse::decl(),
-    op_url_parse::decl(),
-    op_url_get_serialization::decl(),
-    op_url_parse_with_base::decl(),
-    op_url_parse_search_params::decl(),
-    op_url_stringify_search_params::decl(),
-    op_urlpattern_parse::decl(),
-    op_urlpattern_process_match_input::decl(),
-  ])
+  ext.ops(deno_ops())
 }
 
 pub fn init_ops_and_esm() -> Extension {

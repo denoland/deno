@@ -100,33 +100,34 @@ fn ext_polyfill() -> ExtensionBuilder {
   Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_io", "deno_fs"])
 }
 
-fn ops_polyfill(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  ext.ops(vec![
-    crypto::op_node_cipheriv_encrypt::decl(),
-    crypto::op_node_cipheriv_final::decl(),
-    crypto::op_node_create_cipheriv::decl(),
-    crypto::op_node_create_hash::decl(),
-    crypto::op_node_hash_update::decl(),
-    crypto::op_node_hash_update_str::decl(),
-    crypto::op_node_hash_digest::decl(),
-    crypto::op_node_hash_digest_hex::decl(),
-    crypto::op_node_hash_clone::decl(),
-    crypto::op_node_private_encrypt::decl(),
-    crypto::op_node_private_decrypt::decl(),
-    crypto::op_node_public_encrypt::decl(),
-    winerror::op_node_sys_to_uv_error::decl(),
-    v8::op_v8_cached_data_version_tag::decl(),
-    v8::op_v8_get_heap_statistics::decl(),
-    idna::op_node_idna_domain_to_ascii::decl(),
-    idna::op_node_idna_domain_to_unicode::decl(),
-    idna::op_node_idna_punycode_decode::decl(),
-    idna::op_node_idna_punycode_encode::decl(),
-    op_node_build_os::decl(),
-  ])
-}
+deno_core::ops!(
+  deno_ops_polyfill,
+  [
+    crypto::op_node_cipheriv_encrypt,
+    crypto::op_node_cipheriv_final,
+    crypto::op_node_create_cipheriv,
+    crypto::op_node_create_hash,
+    crypto::op_node_hash_update,
+    crypto::op_node_hash_update_str,
+    crypto::op_node_hash_digest,
+    crypto::op_node_hash_digest_hex,
+    crypto::op_node_hash_clone,
+    crypto::op_node_private_encrypt,
+    crypto::op_node_private_decrypt,
+    crypto::op_node_public_encrypt,
+    winerror::op_node_sys_to_uv_error,
+    v8::op_v8_cached_data_version_tag,
+    v8::op_v8_get_heap_statistics,
+    idna::op_node_idna_domain_to_ascii,
+    idna::op_node_idna_domain_to_unicode,
+    idna::op_node_idna_punycode_decode,
+    idna::op_node_idna_punycode_encode,
+    op_node_build_os,
+  ]
+);
 
 pub fn init_polyfill_ops() -> Extension {
-  ops_polyfill(&mut ext_polyfill()).build()
+  ext_polyfill().ops(deno_ops_polyfill()).build()
 }
 
 pub fn init_polyfill_ops_and_esm() -> Extension {
@@ -354,7 +355,8 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "zlib.ts",
   );
 
-  ops_polyfill(&mut ext_polyfill())
+  ext_polyfill()
+    .ops(deno_ops_polyfill())
     .esm(esm_files)
     .esm_entry_point("ext:deno_node/module_all.ts")
     .build()
@@ -364,40 +366,43 @@ fn ext() -> ExtensionBuilder {
   Extension::builder("deno_node_loading")
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [P: NodePermissions],
+  ops = [
+    ops::op_require_init_paths,
+    ops::op_require_node_module_paths<P>,
+    ops::op_require_proxy_path,
+    ops::op_require_is_deno_dir_package,
+    ops::op_require_resolve_deno_dir,
+    ops::op_require_is_request_relative,
+    ops::op_require_resolve_lookup_paths,
+    ops::op_require_try_self_parent_path<P>,
+    ops::op_require_try_self<P>,
+    ops::op_require_real_path<P>,
+    ops::op_require_path_is_absolute,
+    ops::op_require_path_dirname,
+    ops::op_require_stat<P>,
+    ops::op_require_path_resolve,
+    ops::op_require_path_basename,
+    ops::op_require_read_file<P>,
+    ops::op_require_as_file_path,
+    ops::op_require_resolve_exports<P>,
+    ops::op_require_read_closest_package_json<P>,
+    ops::op_require_read_package_scope<P>,
+    ops::op_require_package_imports_resolve<P>,
+    ops::op_require_break_on_next_statement,
+  ]
+);
+
 fn ops<P: NodePermissions + 'static>(
   ext: &mut ExtensionBuilder,
   maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      ops::op_require_init_paths::decl(),
-      ops::op_require_node_module_paths::decl::<P>(),
-      ops::op_require_proxy_path::decl(),
-      ops::op_require_is_deno_dir_package::decl(),
-      ops::op_require_resolve_deno_dir::decl(),
-      ops::op_require_is_request_relative::decl(),
-      ops::op_require_resolve_lookup_paths::decl(),
-      ops::op_require_try_self_parent_path::decl::<P>(),
-      ops::op_require_try_self::decl::<P>(),
-      ops::op_require_real_path::decl::<P>(),
-      ops::op_require_path_is_absolute::decl(),
-      ops::op_require_path_dirname::decl(),
-      ops::op_require_stat::decl::<P>(),
-      ops::op_require_path_resolve::decl(),
-      ops::op_require_path_basename::decl(),
-      ops::op_require_read_file::decl::<P>(),
-      ops::op_require_as_file_path::decl(),
-      ops::op_require_resolve_exports::decl::<P>(),
-      ops::op_require_read_closest_package_json::decl::<P>(),
-      ops::op_require_read_package_scope::decl::<P>(),
-      ops::op_require_package_imports_resolve::decl::<P>(),
-      ops::op_require_break_on_next_statement::decl(),
-    ])
-    .state(move |state| {
-      if let Some(npm_resolver) = maybe_npm_resolver.clone() {
-        state.put(npm_resolver);
-      }
-    })
+  ext.ops(deno_ops::<P>()).state(move |state| {
+    if let Some(npm_resolver) = maybe_npm_resolver.clone() {
+      state.put(npm_resolver);
+    }
+  })
 }
 
 pub fn init_ops_and_esm<P: NodePermissions + 'static>(

@@ -12,13 +12,18 @@ use deno_core::OpState;
 use serde::Deserialize;
 use std::path::Path;
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_query_permission,
+    op_revoke_permission,
+    op_request_permission,
+  ]
+);
+
 pub fn init() -> Extension {
   Extension::builder("deno_permissions")
-    .ops(vec![
-      op_query_permission::decl(),
-      op_revoke_permission::decl(),
-      op_request_permission::decl(),
-    ])
+    .ops(deno_ops())
     .build()
 }
 

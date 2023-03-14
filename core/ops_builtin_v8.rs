@@ -11,7 +11,6 @@ use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRealm;
 use crate::JsRuntime;
-use crate::OpDecl;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
@@ -21,41 +20,42 @@ use std::cell::RefCell;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
-pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
-  vec![
-    op_ref_op::decl(),
-    op_unref_op::decl(),
-    op_set_macrotask_callback::decl(),
-    op_set_next_tick_callback::decl(),
-    op_set_promise_reject_callback::decl(),
-    op_run_microtasks::decl(),
-    op_has_tick_scheduled::decl(),
-    op_set_has_tick_scheduled::decl(),
-    op_eval_context::decl(),
-    op_queue_microtask::decl(),
-    op_create_host_object::decl(),
-    op_encode::decl(),
-    op_decode::decl(),
-    op_serialize::decl(),
-    op_deserialize::decl(),
-    op_set_promise_hooks::decl(),
-    op_get_promise_details::decl(),
-    op_get_proxy_details::decl(),
-    op_memory_usage::decl(),
-    op_set_wasm_streaming_callback::decl(),
-    op_abort_wasm_streaming::decl(),
-    op_destructure_error::decl(),
-    op_dispatch_exception::decl(),
-    op_op_names::decl(),
-    op_apply_source_map::decl(),
-    op_set_format_exception_callback::decl(),
-    op_event_loop_has_more_work::decl(),
-    op_store_pending_promise_rejection::decl(),
-    op_remove_pending_promise_rejection::decl(),
-    op_has_pending_promise_rejection::decl(),
-    op_arraybuffer_was_detached::decl(),
+crate::ops!(
+  deno_ops_builtins_v8,
+  [
+    op_ref_op,
+    op_unref_op,
+    op_set_macrotask_callback,
+    op_set_next_tick_callback,
+    op_set_promise_reject_callback,
+    op_run_microtasks,
+    op_has_tick_scheduled,
+    op_set_has_tick_scheduled,
+    op_eval_context,
+    op_queue_microtask,
+    op_create_host_object,
+    op_encode,
+    op_decode,
+    op_serialize,
+    op_deserialize,
+    op_set_promise_hooks,
+    op_get_promise_details,
+    op_get_proxy_details,
+    op_memory_usage,
+    op_set_wasm_streaming_callback,
+    op_abort_wasm_streaming,
+    op_destructure_error,
+    op_dispatch_exception,
+    op_op_names,
+    op_apply_source_map,
+    op_set_format_exception_callback,
+    op_event_loop_has_more_work,
+    op_store_pending_promise_rejection,
+    op_remove_pending_promise_rejection,
+    op_has_pending_promise_rejection,
+    op_arraybuffer_was_detached,
   ]
-}
+);
 
 fn to_v8_fn(
   scope: &mut v8::HandleScope,

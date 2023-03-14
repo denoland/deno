@@ -12,6 +12,15 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use wgpu_types::SurfaceStatus;
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_webgpu_surface_configure,
+    op_webgpu_surface_get_current_texture,
+    op_webgpu_surface_present,
+  ]
+);
+
 pub fn init_surface(unstable: bool) -> Extension {
   Extension::builder_with_deps(
     "deno_webgpu_surface",
@@ -21,11 +30,7 @@ pub fn init_surface(unstable: bool) -> Extension {
     "03_surface.js",
     "04_surface_idl_types.js",
   ))
-  .ops(vec![
-    op_webgpu_surface_configure::decl(),
-    op_webgpu_surface_get_current_texture::decl(),
-    op_webgpu_surface_present::decl(),
-  ])
+  .ops(deno_ops())
   .state(move |state| {
     // TODO: check & possibly streamline this
     // Unstable might be able to be OpMiddleware

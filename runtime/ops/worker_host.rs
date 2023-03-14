@@ -88,6 +88,17 @@ impl Drop for WorkerThread {
 
 pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_create_worker,
+    op_host_terminate_worker,
+    op_host_post_message,
+    op_host_recv_ctrl,
+    op_host_recv_message,
+  ]
+);
+
 pub fn init(
   create_web_worker_cb: Arc<CreateWebWorkerCb>,
   preload_module_cb: Arc<WorkerEventCb>,
@@ -112,13 +123,7 @@ pub fn init(
         FormatJsErrorFnHolder(format_js_error_fn.clone());
       state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
     })
-    .ops(vec![
-      op_create_worker::decl(),
-      op_host_terminate_worker::decl(),
-      op_host_post_message::decl(),
-      op_host_recv_ctrl::decl(),
-      op_host_recv_message::decl(),
-    ])
+    .ops(deno_ops())
     .build()
 }
 

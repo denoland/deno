@@ -30,14 +30,13 @@ use tokio::signal::windows::CtrlBreak;
 #[cfg(windows)]
 use tokio::signal::windows::CtrlC;
 
+deno_core::ops!(
+  deno_ops,
+  [op_signal_bind, op_signal_unbind, op_signal_poll,]
+);
+
 pub fn init() -> Extension {
-  Extension::builder("deno_signal")
-    .ops(vec![
-      op_signal_bind::decl(),
-      op_signal_unbind::decl(),
-      op_signal_poll::decl(),
-    ])
-    .build()
+  Extension::builder("deno_signal").ops(deno_ops()).build()
 }
 
 #[cfg(unix)]

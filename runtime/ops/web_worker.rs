@@ -16,16 +16,21 @@ use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_worker_post_message,
+    op_worker_recv_message,
+    // Notify host that guest worker closes.
+    op_worker_close,
+    op_worker_get_type,
+    op_worker_sync_fetch,
+  ]
+);
+
 pub fn init() -> Extension {
   Extension::builder("deno_web_worker")
-    .ops(vec![
-      op_worker_post_message::decl(),
-      op_worker_recv_message::decl(),
-      // Notify host that guest worker closes.
-      op_worker_close::decl(),
-      op_worker_get_type::decl(),
-      op_worker_sync_fetch::decl(),
-    ])
+    .ops(deno_ops())
     .build()
 }
 

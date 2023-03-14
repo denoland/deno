@@ -65,6 +65,97 @@ impl OpDecl {
   }
 }
 
+/// Declares a block of Deno `#[op]`s. The first parameter determines the name of the
+/// op declaration block, and is usually `deno_ops`. This block generates a function that
+/// returns a [`Vec<OpDecl>`].
+///
+/// This can be either a compact form like:
+///
+/// ```no_compile
+/// # use deno_core::*;
+/// #[op]
+/// fn op_xyz() {}
+///
+/// deno_core::ops!(deno_ops, [
+///   op_xyz
+/// ]);
+///
+/// // Use the ops:
+/// deno_ops()
+/// ```
+///
+/// ... or a parameterized form like so that allows passing a number of type parameters
+/// to each `#[op]`:
+///
+/// ```no_compile
+/// # use deno_core::*;
+/// #[op]
+/// fn op_xyz<P>() where P: Clone {}
+///
+/// deno_core::ops!(deno_ops,
+///   parameters = [P: Clone],
+///   ops = [
+///     op_xyz<P>
+///   ]
+/// );
+///
+/// // Use the ops, with `String` as the parameter `P`:
+/// deno_ops::<String>()
+/// ```
+#[macro_export]
+macro_rules! ops {
+  ($name:ident, parameters = [ $( $param:ident : $type:ident ),+ ], ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ]) => {
+    pub(crate) fn $name < $( $param : $type + 'static ),+ > () -> Vec<$crate::OpDecl> {
+      let mut v = vec![];
+      $(
+        $( #[ $m ] )*
+        {
+          let decl = $( $op )::+ :: decl $( :: <$op_param> )? ();
+          v.push(decl);
+        }
+      )+
+      v
+    }
+  };
+  ($name:ident, [ $( $(#[$m:meta])* $( $op:ident )::+ ),+ $(,)? ] ) => {
+    pub(crate) fn $name() -> Vec<$crate::OpDecl> {
+      vec![
+        $( $( #[ $m ] )* $( $op )::+ :: decl(), )+
+      ]
+    }
+  }
+}
+
+/// Declares a bundle of Deno `#[op]` blocks.
+#[macro_export]
+macro_rules! ops_bundle {
+  ($name:ident, parameters = [ $( $param:ident : $type:ident ),+ ], ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ]) => {
+    pub(crate) fn $name < $( $param : $type + 'static ),+ > () -> Vec<$crate::OpDecl> {
+      let mut v = vec![];
+      $(
+        $( #[ $m ] )*
+        {
+          let decl = $( $op )::+ $( :: <$op_param> )? ();
+          v.extend(decl);
+        }
+      )+
+      v
+    }
+  };
+  ($name:ident, [ $( $(#[$m:meta])* $( $op:ident )::+ ),+ $(,)? ] ) => {
+    pub(crate) fn $name() -> Vec<$crate::OpDecl> {
+      let mut v = vec![];
+      $(
+        $( #[ $m ] )*
+        {
+          v.extend($( $op )::+ ());
+        }
+      )+
+      v
+    }
+  }
+}
+
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<ExtensionFileSource>>,

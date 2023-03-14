@@ -83,12 +83,14 @@ fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps("deno_io", &["deno_web"])
 }
 
+deno_core::ops!(deno_ops, [op_read_sync, op_write_sync]);
+
 fn ops(
   ext: &mut ExtensionBuilder,
   stdio: Rc<RefCell<Option<Stdio>>>,
 ) -> &mut ExtensionBuilder {
   ext
-    .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
+    .ops(deno_ops())
     .middleware(|op| match op.name {
       "op_print" => op_print::decl(),
       _ => op,

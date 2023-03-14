@@ -65,50 +65,52 @@ fn ext() -> ExtensionBuilder {
   )
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [P: TimersPermission],
+  ops = [
+    op_base64_decode,
+    op_base64_encode,
+    op_base64_atob,
+    op_base64_btoa,
+    op_encoding_normalize_label,
+    op_encoding_decode_single,
+    op_encoding_decode_utf8,
+    op_encoding_new_decoder,
+    op_encoding_decode,
+    op_encoding_encode_into,
+    op_encode_binary_string,
+    op_blob_create_part,
+    op_blob_slice_part,
+    op_blob_read_part,
+    op_blob_remove_part,
+    op_blob_create_object_url,
+    op_blob_revoke_object_url,
+    op_blob_from_object_url,
+    op_message_port_create_entangled,
+    op_message_port_post_message,
+    op_message_port_recv_message,
+    compression::op_compression_new,
+    compression::op_compression_write,
+    compression::op_compression_finish,
+    op_now<P>,
+    op_timer_handle,
+    op_cancel_handle,
+    op_sleep,
+    op_transfer_arraybuffer,
+]);
+
 fn ops<P: TimersPermission + 'static>(
   ext: &mut ExtensionBuilder,
   blob_store: BlobStore,
   maybe_location: Option<Url>,
 ) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_base64_decode::decl(),
-      op_base64_encode::decl(),
-      op_base64_atob::decl(),
-      op_base64_btoa::decl(),
-      op_encoding_normalize_label::decl(),
-      op_encoding_decode_single::decl(),
-      op_encoding_decode_utf8::decl(),
-      op_encoding_new_decoder::decl(),
-      op_encoding_decode::decl(),
-      op_encoding_encode_into::decl(),
-      op_encode_binary_string::decl(),
-      op_blob_create_part::decl(),
-      op_blob_slice_part::decl(),
-      op_blob_read_part::decl(),
-      op_blob_remove_part::decl(),
-      op_blob_create_object_url::decl(),
-      op_blob_revoke_object_url::decl(),
-      op_blob_from_object_url::decl(),
-      op_message_port_create_entangled::decl(),
-      op_message_port_post_message::decl(),
-      op_message_port_recv_message::decl(),
-      compression::op_compression_new::decl(),
-      compression::op_compression_write::decl(),
-      compression::op_compression_finish::decl(),
-      op_now::decl::<P>(),
-      op_timer_handle::decl(),
-      op_cancel_handle::decl(),
-      op_sleep::decl(),
-      op_transfer_arraybuffer::decl(),
-    ])
-    .state(move |state| {
-      state.put(blob_store.clone());
-      if let Some(location) = maybe_location.clone() {
-        state.put(Location(location));
-      }
-      state.put(StartTime::now());
-    })
+  ext.ops(deno_ops::<P>()).state(move |state| {
+    state.put(blob_store.clone());
+    if let Some(location) = maybe_location.clone() {
+      state.put(Location(location));
+    }
+    state.put(StartTime::now());
+  })
 }
 
 pub fn init_ops_and_esm<P: TimersPermission + 'static>(

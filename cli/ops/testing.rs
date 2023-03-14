@@ -25,21 +25,26 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_pledge_test_permissions,
+    op_restore_test_permissions,
+    op_get_test_origin,
+    op_register_test,
+    op_register_test_step,
+    op_dispatch_test_event,
+    op_tests_should_stop,
+  ]
+);
+
 pub fn init(
   sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
   filter: TestFilter,
 ) -> Extension {
   Extension::builder("deno_test")
-    .ops(vec![
-      op_pledge_test_permissions::decl(),
-      op_restore_test_permissions::decl(),
-      op_get_test_origin::decl(),
-      op_register_test::decl(),
-      op_register_test_step::decl(),
-      op_dispatch_test_event::decl(),
-      op_tests_should_stop::decl(),
-    ])
+    .ops(deno_ops())
     .state(move |state| {
       state.put(sender.clone());
       state.put(fail_fast_tracker.clone());

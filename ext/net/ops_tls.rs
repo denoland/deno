@@ -31,7 +31,6 @@ use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -653,15 +652,16 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
-  vec![
-    op_tls_start::decl::<P>(),
-    op_net_connect_tls::decl::<P>(),
-    op_net_listen_tls::decl::<P>(),
-    op_net_accept_tls::decl(),
-    op_tls_handshake::decl(),
+deno_core::ops!(deno_ops,
+  parameters = [P: NetPermissions],
+  ops = [
+    op_tls_start<P>,
+    op_net_connect_tls<P>,
+    op_net_listen_tls<P>,
+    op_net_accept_tls,
+    op_tls_handshake,
   ]
-}
+);
 
 #[derive(Debug)]
 pub struct TlsStreamResource {

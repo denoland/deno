@@ -26,25 +26,28 @@ fn ext() -> ExtensionBuilder {
   Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_webidl"])
 }
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_webstorage_length,
+    op_webstorage_key,
+    op_webstorage_set,
+    op_webstorage_get,
+    op_webstorage_remove,
+    op_webstorage_clear,
+    op_webstorage_iterate_keys,
+  ]
+);
+
 fn ops(
   ext: &mut ExtensionBuilder,
   origin_storage_dir: Option<PathBuf>,
 ) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_webstorage_length::decl(),
-      op_webstorage_key::decl(),
-      op_webstorage_set::decl(),
-      op_webstorage_get::decl(),
-      op_webstorage_remove::decl(),
-      op_webstorage_clear::decl(),
-      op_webstorage_iterate_keys::decl(),
-    ])
-    .state(move |state| {
-      if let Some(origin_storage_dir) = &origin_storage_dir {
-        state.put(OriginStorageDir(origin_storage_dir.clone()));
-      }
-    })
+  ext.ops(deno_ops()).state(move |state| {
+    if let Some(origin_storage_dir) = &origin_storage_dir {
+      state.put(OriginStorageDir(origin_storage_dir.clone()));
+    }
+  })
 }
 
 pub fn init_ops_and_esm(origin_storage_dir: Option<PathBuf>) -> Extension {

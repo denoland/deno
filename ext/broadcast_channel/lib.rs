@@ -114,22 +114,25 @@ fn ext() -> ExtensionBuilder {
   )
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [BC: BroadcastChannel],
+  ops = [
+    op_broadcast_subscribe<BC>,
+    op_broadcast_unsubscribe<BC>,
+    op_broadcast_send<BC>,
+    op_broadcast_recv<BC>,
+  ]
+);
+
 fn ops<BC: BroadcastChannel + 'static>(
   ext: &mut ExtensionBuilder,
   bc: BC,
   unstable: bool,
 ) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_broadcast_subscribe::decl::<BC>(),
-      op_broadcast_unsubscribe::decl::<BC>(),
-      op_broadcast_send::decl::<BC>(),
-      op_broadcast_recv::decl::<BC>(),
-    ])
-    .state(move |state| {
-      state.put(bc.clone());
-      state.put(Unstable(unstable));
-    })
+  ext.ops(deno_ops::<BC>()).state(move |state| {
+    state.put(bc.clone());
+    state.put(Unstable(unstable));
+  })
 }
 
 pub fn init_ops_and_esm<BC: BroadcastChannel + 'static>(

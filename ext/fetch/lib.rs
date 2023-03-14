@@ -100,6 +100,15 @@ fn ext() -> ExtensionBuilder {
   )
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [FP: FetchPermissions],
+  ops = [
+    op_fetch<FP>,
+    op_fetch_send,
+    op_fetch_custom_client<FP>,
+  ]
+);
+
 fn ops<FP>(
   ext: &mut ExtensionBuilder,
   options: Options,
@@ -107,26 +116,20 @@ fn ops<FP>(
 where
   FP: FetchPermissions + 'static,
 {
-  ext
-    .ops(vec![
-      op_fetch::decl::<FP>(),
-      op_fetch_send::decl(),
-      op_fetch_custom_client::decl::<FP>(),
-    ])
-    .state(move |state| {
-      state.put::<Options>(options.clone());
-      state.put::<reqwest::Client>({
-        create_http_client(
-          options.user_agent.clone(),
-          options.root_cert_store.clone(),
-          vec![],
-          options.proxy.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-          options.client_cert_chain_and_key.clone(),
-        )
-        .unwrap()
-      });
-    })
+  ext.ops(deno_ops::<FP>()).state(move |state| {
+    state.put::<Options>(options.clone());
+    state.put::<reqwest::Client>({
+      create_http_client(
+        options.user_agent.clone(),
+        options.root_cert_store.clone(),
+        vec![],
+        options.proxy.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
+        options.client_cert_chain_and_key.clone(),
+      )
+      .unwrap()
+    });
+  })
 }
 
 pub fn init_ops_and_esm<FP>(options: Options) -> Extension

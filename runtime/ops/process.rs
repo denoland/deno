@@ -99,17 +99,20 @@ impl StdioOrRid {
   }
 }
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_spawn_child,
+    op_spawn_wait,
+    op_spawn_sync,
+    deprecated::op_run,
+    deprecated::op_run_status,
+    deprecated::op_kill,
+  ]
+);
+
 pub fn init_ops() -> Extension {
-  Extension::builder("deno_process")
-    .ops(vec![
-      op_spawn_child::decl(),
-      op_spawn_wait::decl(),
-      op_spawn_sync::decl(),
-      deprecated::op_run::decl(),
-      deprecated::op_run_status::decl(),
-      deprecated::op_kill::decl(),
-    ])
-    .build()
+  Extension::builder("deno_process").ops(deno_ops()).build()
 }
 
 struct ChildResource(tokio::process::Child);

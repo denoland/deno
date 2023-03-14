@@ -2825,17 +2825,22 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   })
 }
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_is_cancelled,
+    op_is_node_file,
+    op_load,
+    op_resolve,
+    op_respond,
+    op_script_names,
+    op_script_version,
+  ]
+);
+
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder("deno_tsc")
-    .ops(vec![
-      op_is_cancelled::decl(),
-      op_is_node_file::decl(),
-      op_load::decl(),
-      op_resolve::decl(),
-      op_respond::decl(),
-      op_script_names::decl(),
-      op_script_version::decl(),
-    ])
+    .ops(deno_ops())
     .state(move |state| {
       state.put(State::new(
         Arc::new(StateSnapshot::default()),

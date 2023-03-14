@@ -15,7 +15,6 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -44,34 +43,21 @@ use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
-  vec![
-    op_net_accept_tcp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_accept_unix::decl(),
-    op_net_connect_tcp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_connect_unix::decl::<P>(),
-    op_net_listen_tcp::decl::<P>(),
-    op_net_listen_udp::decl::<P>(),
-    op_node_unstable_net_listen_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unix::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unixpacket::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_node_unstable_net_listen_unixpacket::decl::<P>(),
-    op_net_recv_udp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_recv_unixpacket::decl(),
-    op_net_send_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_send_unixpacket::decl::<P>(),
-    op_dns_resolve::decl::<P>(),
-    op_set_nodelay::decl(),
-    op_set_keepalive::decl(),
+deno_core::ops!(deno_ops,
+  parameters = [P: NetPermissions],
+  ops = [
+    op_net_accept_tcp,
+    op_net_connect_tcp<P>,
+    op_net_listen_tcp<P>,
+    op_net_listen_udp<P>,
+    op_node_unstable_net_listen_udp<P>,
+    op_net_recv_udp,
+    op_net_send_udp<P>,
+    op_dns_resolve<P>,
+    op_set_nodelay,
+    op_set_keepalive,
   ]
-}
+);
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]

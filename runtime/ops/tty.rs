@@ -33,14 +33,10 @@ fn get_windows_handle(
   Ok(handle)
 }
 
+deno_core::ops!(deno_ops, [op_stdin_set_raw, op_isatty, op_console_size,]);
+
 pub fn init() -> Extension {
-  Extension::builder("deno_tty")
-    .ops(vec![
-      op_stdin_set_raw::decl(),
-      op_isatty::decl(),
-      op_console_size::decl(),
-    ])
-    .build()
+  Extension::builder("deno_tty").ops(deno_ops()).build()
 }
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>

@@ -29,10 +29,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
+deno_core::ops!(deno_ops, [op_fs_events_open, op_fs_events_poll]);
+
 pub fn init() -> Extension {
-  Extension::builder("deno_fs_events")
-    .ops(vec![op_fs_events_open::decl(), op_fs_events_poll::decl()])
-    .build()
+  Extension::builder("deno_fs_events").ops(deno_ops()).build()
 }
 
 struct FsEventsResource {

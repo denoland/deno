@@ -85,27 +85,29 @@ fn ext() -> ExtensionBuilder {
   )
 }
 
-fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  ext.ops(vec![
-    op_http_accept::decl(),
-    op_http_write_headers::decl(),
-    op_http_headers::decl(),
-    op_http_write::decl(),
-    op_http_write_resource::decl(),
-    op_http_shutdown::decl(),
-    op_http_websocket_accept_header::decl(),
-    op_http_upgrade_websocket::decl(),
-  ])
-}
+deno_core::ops!(
+  deno_ops,
+  [
+    op_http_accept,
+    op_http_write_headers,
+    op_http_headers,
+    op_http_write,
+    op_http_write_resource,
+    op_http_shutdown,
+    op_http_websocket_accept_header,
+    op_http_upgrade_websocket,
+  ]
+);
 
 pub fn init_ops_and_esm() -> Extension {
-  ops(&mut ext())
+  ext()
+    .ops(deno_ops())
     .esm(include_js_files!("01_http.js",))
     .build()
 }
 
 pub fn init_ops() -> Extension {
-  ops(&mut ext()).build()
+  ext().ops(deno_ops()).build()
 }
 
 pub enum HttpSocketAddr {

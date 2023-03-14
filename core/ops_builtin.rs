@@ -23,34 +23,42 @@ fn ext() -> ExtensionBuilder {
   Extension::builder("core")
 }
 
-fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  let mut ops = vec![
-    op_close::decl(),
-    op_try_close::decl(),
-    op_print::decl(),
-    op_resources::decl(),
-    op_wasm_streaming_feed::decl(),
-    op_wasm_streaming_set_url::decl(),
-    op_void_sync::decl(),
-    op_void_async::decl(),
-    op_add::decl(),
-    // // TODO(@AaronO): track IO metrics for builtin streams
-    op_read::decl(),
-    op_read_all::decl(),
-    op_write::decl(),
-    op_write_all::decl(),
-    op_shutdown::decl(),
-    op_metrics::decl(),
-    op_format_file_name::decl(),
-    op_is_proxy::decl(),
-    op_str_byte_length::decl(),
-  ];
-  ops.extend(crate::ops_builtin_v8::init_builtins_v8());
-  ext.ops(ops)
-}
+crate::ops!(
+  deno_ops_builtins,
+  [
+    op_close,
+    op_try_close,
+    op_print,
+    op_resources,
+    op_wasm_streaming_feed,
+    op_wasm_streaming_set_url,
+    op_void_sync,
+    op_void_async,
+    op_add,
+    // TODO(@AaronO): track IO metrics for builtin streams
+    op_read,
+    op_read_all,
+    op_write,
+    op_write_all,
+    op_shutdown,
+    op_metrics,
+    op_format_file_name,
+    op_is_proxy,
+    op_str_byte_length,
+  ]
+);
+
+crate::ops_bundle!(
+  deno_ops,
+  [
+    deno_ops_builtins,
+    crate::ops_builtin_v8::deno_ops_builtins_v8,
+  ]
+);
 
 pub(crate) fn init_builtin_ops_and_esm() -> Extension {
-  ops(&mut ext())
+  ext()
+    .ops(deno_ops())
     .js(include_js_files!(
       "00_primordials.js",
       "01_core.js",
@@ -60,7 +68,7 @@ pub(crate) fn init_builtin_ops_and_esm() -> Extension {
 }
 
 pub(crate) fn init_builtin_ops() -> Extension {
-  ops(&mut ext()).build()
+  ext().ops(deno_ops()).build()
 }
 
 /// Return map of resources with id as key

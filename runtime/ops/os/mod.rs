@@ -9,7 +9,6 @@ use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
@@ -18,31 +17,33 @@ use std::env;
 
 mod sys_info;
 
-fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  builder.ops(vec![
-    op_env::decl(),
-    op_exec_path::decl(),
-    op_exit::decl(),
-    op_delete_env::decl(),
-    op_get_env::decl(),
-    op_gid::decl(),
-    op_hostname::decl(),
-    op_loadavg::decl(),
-    op_network_interfaces::decl(),
-    op_os_release::decl(),
-    op_os_uptime::decl(),
-    op_node_unstable_os_uptime::decl(),
-    op_set_env::decl(),
-    op_set_exit_code::decl(),
-    op_system_memory_info::decl(),
-    op_uid::decl(),
-    op_runtime_memory_usage::decl(),
-  ])
-}
+deno_core::ops!(
+  deno_ops,
+  [
+    op_env,
+    op_exec_path,
+    op_exit,
+    op_delete_env,
+    op_get_env,
+    op_gid,
+    op_hostname,
+    op_loadavg,
+    op_network_interfaces,
+    op_os_release,
+    op_os_uptime,
+    op_node_unstable_os_uptime,
+    op_set_env,
+    op_set_exit_code,
+    op_system_memory_info,
+    op_uid,
+    op_runtime_memory_usage,
+  ]
+);
 
 pub fn init(exit_code: ExitCode) -> Extension {
   let mut builder = Extension::builder("deno_os");
-  init_ops(&mut builder)
+  builder
+    .ops(deno_ops())
     .state(move |state| {
       state.put::<ExitCode>(exit_code.clone());
     })
@@ -51,7 +52,8 @@ pub fn init(exit_code: ExitCode) -> Extension {
 
 pub fn init_for_worker() -> Extension {
   let mut builder = Extension::builder("deno_os_worker");
-  init_ops(&mut builder)
+  builder
+    .ops(deno_ops())
     .middleware(|op| match op.name {
       "op_exit" => noop_op::decl(),
       "op_set_exit_code" => noop_op::decl(),

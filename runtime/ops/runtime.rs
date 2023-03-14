@@ -7,9 +7,11 @@ use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 
+deno_core::ops!(deno_ops, [op_main_module]);
+
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder("deno_runtime")
-    .ops(vec![op_main_module::decl()])
+    .ops(deno_ops())
     .state(move |state| {
       state.put::<ModuleSpecifier>(main_module.clone());
     })

@@ -22,19 +22,24 @@ use crate::tools::bench::BenchDescription;
 use crate::tools::bench::BenchEvent;
 use crate::tools::test::TestFilter;
 
+deno_core::ops!(
+  deno_ops,
+  [
+    op_pledge_test_permissions,
+    op_restore_test_permissions,
+    op_get_bench_origin,
+    op_register_bench,
+    op_dispatch_bench_event,
+    op_bench_now,
+  ]
+);
+
 pub fn init(
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
 ) -> Extension {
   Extension::builder("deno_bench")
-    .ops(vec![
-      op_pledge_test_permissions::decl(),
-      op_restore_test_permissions::decl(),
-      op_get_bench_origin::decl(),
-      op_register_bench::decl(),
-      op_dispatch_bench_event::decl(),
-      op_bench_now::decl(),
-    ])
+    .ops(deno_ops())
     .state(move |state| {
       state.put(sender.clone());
       state.put(filter.clone());

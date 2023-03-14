@@ -28,13 +28,14 @@ use deno_net::io::UnixStreamResource;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
+deno_core::ops!(
+  deno_ops,
+  [op_http_start, op_http_upgrade, op_flash_upgrade_http,]
+);
+
 pub fn init() -> Extension {
   Extension::builder("deno_http_runtime")
-    .ops(vec![
-      op_http_start::decl(),
-      op_http_upgrade::decl(),
-      op_flash_upgrade_http::decl(),
-    ])
+    .ops(deno_ops())
     .build()
 }
 

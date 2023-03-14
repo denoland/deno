@@ -1990,9 +1990,9 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder("test_ext")
-      .ops(vec![op_test::decl()])
-      .build();
+    deno_core::ops!(deno_ops, [op_test]);
+
+    let ext = Extension::builder("test_ext").ops(deno_ops()).build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![ext],

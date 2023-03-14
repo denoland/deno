@@ -119,7 +119,7 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(get_tsc_ops())
+      .ops(deno_ops())
       .build()],
     ..Default::default()
   });
@@ -829,7 +829,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(get_tsc_ops())
+      .ops(deno_ops())
       .state(move |state| {
         state.put(State::new(
           request.graph.clone(),
@@ -880,16 +880,17 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   }
 }
 
-fn get_tsc_ops() -> Vec<deno_core::OpDecl> {
-  vec![
-    op_create_hash::decl(),
-    op_emit::decl(),
-    op_is_node_file::decl(),
-    op_load::decl(),
-    op_resolve::decl(),
-    op_respond::decl(),
+deno_core::ops!(
+  deno_ops,
+  [
+    op_create_hash,
+    op_emit,
+    op_is_node_file,
+    op_load,
+    op_resolve,
+    op_respond,
   ]
-}
+);
 
 #[cfg(test)]
 mod tests {

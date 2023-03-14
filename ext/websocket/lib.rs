@@ -505,27 +505,30 @@ fn ext() -> ExtensionBuilder {
   )
 }
 
+deno_core::ops!(deno_ops,
+  parameters = [P: WebSocketPermissions],
+  ops = [
+    op_ws_check_permission_and_cancel_handle<P>,
+    op_ws_create<P>,
+    op_ws_send,
+    op_ws_close,
+    op_ws_next_event,
+  ]
+);
+
 fn ops<P: WebSocketPermissions + 'static>(
   ext: &mut ExtensionBuilder,
   user_agent: String,
   root_cert_store: Option<RootCertStore>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_ws_check_permission_and_cancel_handle::decl::<P>(),
-      op_ws_create::decl::<P>(),
-      op_ws_send::decl(),
-      op_ws_close::decl(),
-      op_ws_next_event::decl(),
-    ])
-    .state(move |state| {
-      state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-      state.put(UnsafelyIgnoreCertificateErrors(
-        unsafely_ignore_certificate_errors.clone(),
-      ));
-      state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
-    })
+  ext.ops(deno_ops::<P>()).state(move |state| {
+    state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
+    state.put(UnsafelyIgnoreCertificateErrors(
+      unsafely_ignore_certificate_errors.clone(),
+    ));
+    state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
+  })
 }
 
 pub fn init_ops_and_esm<P: WebSocketPermissions + 'static>(
