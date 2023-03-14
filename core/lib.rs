@@ -20,6 +20,7 @@ mod resources;
 mod runtime;
 pub mod snapshot_util;
 mod source_map;
+mod task_queue;
 
 // Re-exports
 pub use anyhow;
@@ -71,12 +72,13 @@ pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_path;
 pub use crate::module_specifier::resolve_url;
 pub use crate::module_specifier::resolve_url_or_path;
+pub use crate::module_specifier::resolve_url_or_path_deprecated;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::module_specifier::DUMMY_SPECIFIER;
+pub use crate::modules::ExtModuleLoader;
+pub use crate::modules::ExtModuleLoaderCb;
 pub use crate::modules::FsModuleLoader;
-pub use crate::modules::InternalModuleLoader;
-pub use crate::modules::InternalModuleLoaderCb;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
@@ -116,6 +118,8 @@ pub use crate::runtime::Snapshot;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
+pub use crate::task_queue::TaskQueue;
+pub use crate::task_queue::TaskQueuePermit;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
@@ -138,16 +142,11 @@ pub mod _ops {
 /// A helper macro that will return a call site in Rust code. Should be
 /// used when executing internal one-line scripts for JsRuntime lifecycle.
 ///
-/// Returns a string in form of: "`[internal:<filename>:<line>:<column>]`"
+/// Returns a string in form of: "`[ext:<filename>:<line>:<column>]`"
 #[macro_export]
 macro_rules! located_script_name {
   () => {
-    format!(
-      "[internal:{}:{}:{}]",
-      std::file!(),
-      std::line!(),
-      std::column!()
-    );
+    format!("[ext:{}:{}:{}]", std::file!(), std::line!(), std::column!());
   };
 }
 

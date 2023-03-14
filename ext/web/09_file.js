@@ -12,7 +12,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
@@ -29,6 +29,7 @@ const {
   RegExpPrototypeTest,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
+  SafeRegExp,
   StringPrototypeCharAt,
   StringPrototypeToLowerCase,
   StringPrototypeSlice,
@@ -38,7 +39,7 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -143,13 +144,15 @@ function processBlobParts(parts, endings) {
   return { parts: processedParts, size };
 }
 
+const NORMALIZE_PATTERN = new SafeRegExp(/^[\x20-\x7E]*$/);
+
 /**
  * @param {string} str
  * @returns {string}
  */
 function normalizeType(str) {
   let normalizedType = str;
-  if (!RegExpPrototypeTest(/^[\x20-\x7E]*$/, str)) {
+  if (!RegExpPrototypeTest(NORMALIZE_PATTERN, str)) {
     normalizedType = "";
   }
   return StringPrototypeToLowerCase(normalizedType);

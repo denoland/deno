@@ -9,7 +9,7 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   byteLowerCase,
   collectHttpQuotedString,
@@ -18,7 +18,7 @@ import {
   HTTP_TAB_OR_SPACE_SUFFIX_RE,
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
-} from "internal:deno_web/00_infra.js";
+} from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
@@ -32,6 +32,7 @@ const {
   ObjectEntries,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeRegExp,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -88,7 +89,7 @@ function fillHeaders(headers, object) {
 
 // Regex matching illegal chars in a header value
 // deno-lint-ignore no-control-regex
-const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/;
+const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
 
 /**
  * https://fetch.spec.whatwg.org/#concept-headers-append

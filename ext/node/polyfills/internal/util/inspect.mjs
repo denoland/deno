@@ -20,9 +20,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { validateObject, validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
-import { inspect as denoInspect, getStringWidth as denoGetStringWidth, inspectArgs } from "internal:deno_console/02_console.js";
+import { inspect as denoInspect, getStringWidth as denoGetStringWidth, inspectArgs } from "ext:deno_console/02_console.js";
+import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
 
 /**
  * Echos the value of any input. Tries to print the value out

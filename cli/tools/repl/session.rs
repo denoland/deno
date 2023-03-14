@@ -143,7 +143,11 @@ impl ReplSession {
     }
     assert_ne!(context_id, 0);
 
-    let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
+    let referrer = deno_core::resolve_path(
+      "./$deno$repl.ts",
+      proc_state.options.initial_cwd(),
+    )
+    .unwrap();
 
     let mut repl_session = ReplSession {
       proc_state,

@@ -540,7 +540,7 @@ pub struct RegisterCallbackArgs {
 
 #[op(v8)]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
   args: RegisterCallbackArgs,
   cb: serde_v8::Value<'scope>,

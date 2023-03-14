@@ -3,32 +3,57 @@
 
 ((window) => {
   const {
+    Array,
+    ArrayPrototypeFill,
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
     Error,
+    ErrorCaptureStackTrace,
+    Map,
+    MapPrototypeDelete,
+    MapPrototypeGet,
+    MapPrototypeHas,
+    MapPrototypeSet,
+    ObjectAssign,
+    ObjectFreeze,
+    ObjectFromEntries,
+    Promise,
+    PromisePrototypeThen,
     RangeError,
     ReferenceError,
+    SafeArrayIterator,
+    SafePromisePrototypeFinally,
+    setQueueMicrotask,
+    StringPrototypeSlice,
+    StringPrototypeSplit,
+    SymbolFor,
     SyntaxError,
     TypeError,
     URIError,
-    Array,
-    ArrayPrototypeFill,
-    ArrayPrototypePush,
-    ArrayPrototypeMap,
-    ErrorCaptureStackTrace,
-    Promise,
-    ObjectAssign,
-    ObjectFromEntries,
-    Map,
-    MapPrototypeGet,
-    MapPrototypeHas,
-    MapPrototypeDelete,
-    MapPrototypeSet,
-    PromisePrototypeThen,
-    SafePromisePrototypeFinally,
-    StringPrototypeSlice,
-    SymbolFor,
-    setQueueMicrotask,
   } = window.__bootstrap.primordials;
   const { ops } = window.Deno.core;
+
+  const build = {
+    target: "unknown",
+    arch: "unknown",
+    os: "unknown",
+    vendor: "unknown",
+    env: undefined,
+  };
+
+  function setBuildInfo(target) {
+    const { 0: arch, 1: vendor, 2: os, 3: env } = StringPrototypeSplit(
+      target,
+      "-",
+      4,
+    );
+    build.target = target;
+    build.arch = arch;
+    build.vendor = vendor;
+    build.os = os;
+    build.env = env;
+    ObjectFreeze(build);
+  }
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -174,7 +199,7 @@
     const id = rollPromiseId();
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
     try {
-      ops[name](id, ...args);
+      ops[name](id, ...new SafeArrayIterator(args));
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
@@ -408,6 +433,8 @@
     eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
     setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),
     byteLength: (str) => ops.op_str_byte_length(str),
+    build,
+    setBuildInfo,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

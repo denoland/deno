@@ -11,13 +11,13 @@ use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::init(),
-    deno_url::init(),
+    deno_webidl::init_esm(),
+    deno_url::init_ops_and_esm(),
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
-        specifier: "internal:setup".to_string(),
+        specifier: "ext:setup".to_string(),
         code: ExtensionFileSourceCode::IncludedInBinary(
-          r#"import { URL } from "internal:deno_url/00_url.js";
+          r#"import { URL } from "ext:deno_url/00_url.js";
         globalThis.URL = URL;
         "#,
         ),
