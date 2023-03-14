@@ -301,13 +301,10 @@ const ci = {
         },
         ...cancelEarlyIfDraftPr([
           submoduleStep("./test_util/std"),
+          submoduleStep("./third_party"),
           {
             ...submoduleStep("./test_util/wpt"),
             if: "matrix.wpt",
-          },
-          {
-            ...submoduleStep("./third_party"),
-            if: "matrix.job == 'lint' || matrix.job == 'bench'",
           },
           {
             name: "Create source tarballs (release, linux)",
