@@ -88,6 +88,7 @@ impl DiagnosticsPublisher {
 
       self
         .client
+        .when_outside_lsp_lock()
         .publish_diagnostics(specifier, version_diagnostics.clone(), version)
         .await;
     }

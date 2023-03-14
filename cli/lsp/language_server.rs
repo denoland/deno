@@ -214,8 +214,7 @@ impl LanguageServer {
                 .read()
                 .await
                 .client
-                .show_message(MessageType::WARNING, err)
-                .await;
+                .show_message(MessageType::WARNING, err);
               return Err(LspError::internal_error());
             }
           }
@@ -233,8 +232,7 @@ impl LanguageServer {
               .read()
               .await
               .client
-              .show_message(MessageType::WARNING, err)
-              .await;
+              .show_message(MessageType::WARNING, err);
           }
           // do npm resolution in a write—we should have everything
           // cached by this point anyway
@@ -367,6 +365,7 @@ impl LanguageServer {
     let mut touched = false;
     if let Some(specifiers) = specifiers {
       let configs_result = client
+        .when_outside_lsp_lock()
         .specifier_configurations(
           specifiers
             .iter()
@@ -1008,7 +1007,7 @@ impl Inner {
       tsconfig.merge(&unstable_libs);
     }
     if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     let _ok: bool = self
       .ts_server
@@ -1088,16 +1087,16 @@ impl Inner {
     self.update_debug_flag();
     // Check to see if we need to change the cache path
     if let Err(err) = self.update_cache() {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_config_file() {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_package_json() {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_tsconfig().await {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
 
     if capabilities.code_action_provider.is_some() {
@@ -1114,11 +1113,11 @@ impl Inner {
 
     // Check to see if we need to setup the import map
     if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     // Check to see if we need to setup any module registries
     if let Err(err) = self.update_registries().await {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
 
     // self.refresh_documents_config(); // todo(THIS PR): REMOVE
@@ -1140,46 +1139,6 @@ impl Inner {
       self.npm_api.clone(),
       self.npm_resolution.clone(),
     );
-  }
-
-  async fn initialized(&mut self, _: InitializedParams) {
-    if self
-      .config
-      .client_capabilities
-      .workspace_did_change_watched_files
-    {
-      // we are going to watch all the JSON files in the workspace, and the
-      // notification handler will pick up any of the changes of those files we
-      // are interested in.
-      let watch_registration_options =
-        DidChangeWatchedFilesRegistrationOptions {
-          watchers: vec![FileSystemWatcher {
-            glob_pattern: "**/*.{json,jsonc}".to_string(),
-            kind: Some(WatchKind::Change),
-          }],
-        };
-      let registration = Registration {
-        id: "workspace/didChangeWatchedFiles".to_string(),
-        method: "workspace/didChangeWatchedFiles".to_string(),
-        register_options: Some(
-          serde_json::to_value(watch_registration_options).unwrap(),
-        ),
-      };
-      if let Err(err) =
-        self.client.register_capability(vec![registration]).await
-      {
-        warn!("Client errored on capabilities.\n{:#}", err);
-      }
-    }
-
-    if self.config.client_capabilities.testing_api {
-      let test_server = testing::TestServer::new(
-        self.client.clone(),
-        self.performance.clone(),
-        self.config.root_uri.clone(),
-      );
-      self.maybe_testing_server = Some(test_server);
-    }
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -1300,22 +1259,22 @@ impl Inner {
 
     self.update_debug_flag();
     if let Err(err) = self.update_cache() {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_registries().await {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_config_file() {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_package_json() {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_tsconfig().await {
-      self.client.show_message(MessageType::WARNING, err).await;
+      self.client.show_message(MessageType::WARNING, err);
     }
 
     self.refresh_documents_config();
@@ -1342,10 +1301,10 @@ impl Inner {
     if let Some(config_file) = &self.maybe_config_file {
       if changes.contains(&config_file.specifier) {
         if let Err(err) = self.update_config_file() {
-          self.client.show_message(MessageType::WARNING, err).await;
+          self.client.show_message(MessageType::WARNING, err);
         }
         if let Err(err) = self.update_tsconfig().await {
-          self.client.show_message(MessageType::WARNING, err).await;
+          self.client.show_message(MessageType::WARNING, err);
         }
         touched = true;
       }
@@ -1354,7 +1313,7 @@ impl Inner {
       // always update the package json if the deno config changes
       if touched || changes.contains(&package_json.specifier()) {
         if let Err(err) = self.update_package_json() {
-          self.client.show_message(MessageType::WARNING, err).await;
+          self.client.show_message(MessageType::WARNING, err);
         }
         touched = true;
       }
@@ -1364,7 +1323,7 @@ impl Inner {
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
       if touched || changes.contains(import_map_uri) {
         if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::WARNING, err).await;
+          self.client.show_message(MessageType::WARNING, err);
         }
         touched = true;
       }
@@ -1512,7 +1471,7 @@ impl Inner {
         Ok(Some(text_edits))
       }
     } else {
-      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{specifier}\". Likely due to unrecoverable syntax errors in the file.")).await;
+      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{specifier}\". Likely due to unrecoverable syntax errors in the file."));
       Ok(None)
     }
   }
@@ -2140,7 +2099,7 @@ impl Inner {
       &specifier,
       &params.text_document_position.position,
       &self.config.snapshot(),
-      &self.client.as_notification_only(),
+      &self.client,
       &self.module_registries,
       &self.documents,
       self.maybe_import_map.clone(),
@@ -2841,8 +2800,54 @@ impl tower_lsp::LanguageServer for LanguageServer {
     language_server.initialize(params).await
   }
 
-  async fn initialized(&self, params: InitializedParams) {
-    self.0.write().await.initialized(params).await;
+  async fn initialized(&self, _: InitializedParams) {
+    let mut maybe_registration = None;
+    let client = {
+      let mut ls = self.0.write().await;
+      if ls
+        .config
+        .client_capabilities
+        .workspace_did_change_watched_files
+      {
+        // we are going to watch all the JSON files in the workspace, and the
+        // notification handler will pick up any of the changes of those files we
+        // are interested in.
+        let watch_registration_options =
+          DidChangeWatchedFilesRegistrationOptions {
+            watchers: vec![FileSystemWatcher {
+              glob_pattern: "**/*.{json,jsonc}".to_string(),
+              kind: Some(WatchKind::Change),
+            }],
+          };
+        maybe_registration = Some(Registration {
+          id: "workspace/didChangeWatchedFiles".to_string(),
+          method: "workspace/didChangeWatchedFiles".to_string(),
+          register_options: Some(
+            serde_json::to_value(watch_registration_options).unwrap(),
+          ),
+        });
+      }
+
+      if ls.config.client_capabilities.testing_api {
+        let test_server = testing::TestServer::new(
+          ls.client.clone(),
+          ls.performance.clone(),
+          ls.config.root_uri.clone(),
+        );
+        ls.maybe_testing_server = Some(test_server);
+      }
+      ls.client.clone()
+    };
+
+    if let Some(registration) = maybe_registration {
+      if let Err(err) = client
+        .when_outside_lsp_lock()
+        .register_capability(vec![registration])
+        .await
+      {
+        warn!("Client errored on capabilities.\n{:#}", err);
+      }
+    }
 
     if !self.refresh_specifiers_from_client().await {
       // force update config
@@ -2889,7 +2894,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
     // retrieve the specifier settings outside the lock if
     // they haven't been asked for yet
     if !had_specifier_settings {
-      let response = client.specifier_configuration(&client_uri).await;
+      let response = client
+        .when_outside_lsp_lock()
+        .specifier_configuration(&client_uri)
+        .await;
       let mut ls = self.0.write().await;
       match response {
         Ok(specifier_settings) => {
@@ -2953,7 +2961,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
     // received and acquiring the lock, but most likely there
     // won't be any racing here.
     let client_workspace_config = if has_workspace_capability {
-      let config_response = client.workspace_configuration().await;
+      let config_response = client
+        .when_outside_lsp_lock()
+        .workspace_configuration()
+        .await;
       match config_response {
         Ok(value) => Some(value),
         Err(err) => {
