@@ -21,7 +21,6 @@ mod ts {
   use deno_core::op;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-  use regex::Regex;
   use serde::Deserialize;
   use serde_json::json;
   use serde_json::Value;

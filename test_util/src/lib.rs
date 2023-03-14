@@ -14,6 +14,7 @@ use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
+use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use rustls::Certificate;

@@ -338,9 +338,8 @@ fn resolve_package_target_string(
       referrer,
     ));
   }
-  let invalid_segment_re =
-    Regex::new(r"(^|\\|/)(\.\.?|node_modules)(\\|/|$)").expect("bad regex");
-  let pattern_re = Regex::new(r"\*").expect("bad regex");
+  let invalid_segment_re = regex!(r"(^|\\|/)(\.\.?|node_modules)(\\|/|$)");
+  let pattern_re = regex!(r"\*");
   if !target.starts_with("./") {
     if internal && !target.starts_with("../") && !target.starts_with('/') {
       let is_url = Url::parse(&target).is_ok();

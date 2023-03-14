@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use attrs::Attributes;
-use once_cell::sync::Lazy;
+use lazy_regex::regex;
 use optimizer::BailoutReason;
 use optimizer::Optimizer;
 use proc_macro::TokenStream;
@@ -9,7 +9,6 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use quote::ToTokens;
-use regex::Regex;
 use syn::parse;
 use syn::parse_macro_input;
 use syn::punctuated::Punctuated;

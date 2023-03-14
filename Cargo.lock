@@ -1250,6 +1250,7 @@ dependencies = [
  "hex",
  "idna 0.3.0",
  "indexmap",
+ "lazy-regex",
  "md-5",
  "md4",
  "once_cell",
@@ -2652,9 +2653,9 @@ dependencies = [
 
 [[package]]
 name = "lazy-regex"
-version = "2.4.1"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a505da2f89befd87ab425d252795f0f285e100b43e7d22d29528df3d9a576793"
+checksum = "ff63c423c68ea6814b7da9e88ce585f793c87ddd9e78f646970891769c8235d4"
 dependencies = [
  "lazy-regex-proc_macros",
  "once_cell",
@@ -2667,10 +2668,10 @@ version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8edfc11b8f56ce85e207e62ea21557cfa09bb24a8f6b04ae181b086ff8611c22"
 dependencies = [
- "proc-macro2 1.0.47",
- "quote 1.0.21",
+ "proc-macro2 1.0.51",
+ "quote 1.0.23",
  "regex",
- "syn 1.0.105",
+ "syn 1.0.107",
 ]
 
 [[package]]
@@ -4978,7 +4979,7 @@ dependencies = [
  "flate2",
  "futures",
  "hyper",
- "lazy_static",
+ "lazy-regex",
  "lsp-types",
  "once_cell",
  "os_pipe",
