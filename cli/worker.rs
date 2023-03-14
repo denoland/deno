@@ -448,8 +448,7 @@ async fn create_main_worker_internal(
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
     let pkg_nv = ps
-      .npm_resolver
-      .resolution()
+      .npm_resolution
       .resolve_pkg_id_from_pkg_req(&package_ref.req)?
       .nv;
     let node_resolution = node::node_resolve_binary_export(
@@ -549,7 +548,6 @@ async fn create_main_worker_internal(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
-    leak_isolate: !bench_or_test && ps.options.coverage_dir().is_none(),
   };
 
   let mut worker = MainWorker::bootstrap_from_options(
@@ -730,14 +728,15 @@ fn create_web_worker_callback(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::resolve_url_or_path;
+  use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
   use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
-    let main_module = resolve_url_or_path("./hello.js").unwrap();
+    let main_module =
+      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
@@ -779,7 +778,6 @@ mod tests {
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
       stdio: Default::default(),
-      leak_isolate: false,
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)
@@ -788,7 +786,7 @@ mod tests {
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
     let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -805,7 +803,7 @@ mod tests {
       .parent()
       .unwrap()
       .join("tests/circular1.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -820,7 +818,9 @@ mod tests {
   async fn execute_mod_resolve_error() {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
-    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
+    let module_specifier =
+      resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
+        .unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }
@@ -831,7 +831,7 @@ mod tests {
     // tests).
     let mut worker = create_test_worker();
     let p = test_util::testdata_path().join("run/001_hello.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
   }

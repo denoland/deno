@@ -7,6 +7,7 @@ use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::env_vars_for_npm_tests_no_sync_download;
 use util::http_server;
+use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
@@ -101,7 +102,7 @@ itest!(conditional_exports {
 itest!(conditional_exports_node_modules_dir {
     args:
       "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
-    output: "npm/conditional_exports/main.out",
+    output: "npm/conditional_exports/main_node_modules.out",
     envs: env_vars_for_npm_tests(),
     http_server: true,
     temp_cwd: true,
@@ -729,7 +730,7 @@ itest!(node_modules_dir_require_added_node_modules_folder {
 
 itest!(node_modules_dir_with_deps {
   args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main.out",
+  output: "npm/cjs_with_deps/main_node_modules.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   temp_cwd: true,
@@ -1392,39 +1393,26 @@ fn auto_discover_lock_file() {
 
 #[test]
 fn peer_deps_with_copied_folders_and_lockfile() {
-  let _server = http_server();
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
+    .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
+    .cwd("npm/peer_deps_with_copied_folders")
+    .build();
 
-  let deno_dir = util::new_deno_dir();
-  let temp_dir = util::TempDir::new();
+  let deno_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
+  let temp_dir_sub_path =
+    temp_dir.path().join("npm/peer_deps_with_copied_folders");
 
   // write empty config file
-  temp_dir.write("deno.json", "{}");
-  let test_folder_path = test_util::testdata_path()
-    .join("npm")
-    .join("peer_deps_with_copied_folders");
-  let main_contents =
-    std::fs::read_to_string(test_folder_path.join("main.ts")).unwrap();
-  temp_dir.write("./main.ts", main_contents);
+  temp_dir.write("npm/peer_deps_with_copied_folders/deno.json", "{}");
 
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("-A")
-    .arg("main.ts")
-    .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
+  let output = context.new_command().args("run -A main.ts").run();
+  output.assert_exit_code(0);
+  output.assert_matches_file("npm/peer_deps_with_copied_folders/main.out");
 
-  let expected_output =
-    std::fs::read_to_string(test_folder_path.join("main.out")).unwrap();
-
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
-
-  assert!(temp_dir.path().join("deno.lock").exists());
+  assert!(temp_dir_sub_path.join("deno.lock").exists());
   let grandchild_path = deno_dir
     .path()
     .join("npm")
@@ -1437,52 +1425,26 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   assert!(grandchild_path.join("1.0.0_1").exists()); // copy folder, which is hardlinked
 
   // run again
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("-A")
-    .arg("main.ts")
-    .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
-  assert!(output.status.success());
+  let output = context.new_command().args("run -A main.ts").run();
+  output.assert_exit_code(0);
+  output.assert_matches_text("1\n2\n");
 
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--reload")
-    .arg("-A")
-    .arg("main.ts")
-    .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
-  assert!(output.status.success());
+  // run with reload
+  let output = context.new_command().args("run -A --reload main.ts").run();
+  output.assert_exit_code(0);
+  output.assert_matches_file("npm/peer_deps_with_copied_folders/main.out");
 
   // now run with local node modules
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--node-modules-dir")
-    .arg("-A")
-    .arg("main.ts")
-    .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
-  assert!(output.status.success());
+  let output = context
+    .new_command()
+    .args("run -A --node-modules-dir main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file(
+    "npm/peer_deps_with_copied_folders/main_node_modules.out",
+  );
 
-  let deno_folder = temp_dir.path().join("node_modules").join(".deno");
+  let deno_folder = temp_dir_sub_path.join("node_modules").join(".deno");
   assert!(deno_folder
     .join("@denotest+peer-dep-test-grandchild@1.0.0")
     .exists());
@@ -1491,55 +1453,32 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .exists()); // copy folder
 
   // now again run with local node modules
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--node-modules-dir")
-    .arg("-A")
-    .arg("main.ts")
-    .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  let output = context
+    .new_command()
+    .args("run -A --node-modules-dir main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_text("1\n2\n");
 
   // now ensure it works with reloading
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--node-modules-dir")
-    .arg("--reload")
-    .arg("-A")
-    .arg("main.ts")
-    .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+  let output = context
+    .new_command()
+    .args("run -A --reload --node-modules-dir main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file(
+    "npm/peer_deps_with_copied_folders/main_node_modules_reload.out",
+  );
 
   // now ensure it works with reloading and no lockfile
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(temp_dir.path())
-    .arg("run")
-    .arg("--node-modules-dir")
-    .arg("--no-lock")
-    .arg("--reload")
-    .arg("-A")
-    .arg("main.ts")
-    .envs(env_vars_for_npm_tests())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output,);
-  assert!(output.status.success());
+  let output = context
+    .new_command()
+    .args("run -A --reload --node-modules-dir --no-lock main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file(
+    "npm/peer_deps_with_copied_folders/main_node_modules_reload.out",
+  );
 }
 
 itest!(info_peer_deps {

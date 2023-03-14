@@ -658,6 +658,6 @@ Deno.test(
     p.close();
     p.stdout.close();
     assertStrictEquals(code, 1);
-    assertStringIncludes(stderr, "invalid module path");
+    assertStringIncludes(stderr, "No such file or directory");
   },
 );
