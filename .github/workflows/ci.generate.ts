@@ -484,7 +484,7 @@ const ci = {
             env: {
               PR_TITLE: "${{ github.event.pull_request.title }}",
             },
-            run: 'eno run ./tools/verify_pr_title.js "$PR_TITLE"',
+            run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
           },
           {
             name: "lint.js",
