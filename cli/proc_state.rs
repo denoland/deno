@@ -24,9 +24,11 @@ use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
+use crate::npm::create_npm_fs_resolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
@@ -91,8 +93,10 @@ pub struct Inner {
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
+  pub npm_api: NpmRegistryApi,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
+  pub npm_resolution: NpmResolution,
   pub package_json_deps_installer: PackageJsonDepsInstaller,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
@@ -153,8 +157,10 @@ impl ProcState {
       resolver: self.resolver.clone(),
       maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
       node_analysis_cache: self.node_analysis_cache.clone(),
+      npm_api: self.npm_api.clone(),
       npm_cache: self.npm_cache.clone(),
       npm_resolver: self.npm_resolver.clone(),
+      npm_resolution: self.npm_resolution.clone(),
       package_json_deps_installer: self.package_json_deps_installer.clone(),
       cjs_resolutions: Default::default(),
       progress_bar: self.progress_bar.clone(),
@@ -210,30 +216,42 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let registry_url = NpmRegistryApi::default_url().to_owned();
+    let npm_registry_url = NpmRegistryApi::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let api = NpmRegistryApi::new(
-      registry_url,
+    let npm_api = NpmRegistryApi::new(
+      npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
-      npm_cache.clone(),
-      api,
-      cli_options.node_modules_dir_path(),
-      cli_options.get_npm_resolution_snapshot(),
+    let npm_snapshot = cli_options
+      .resolve_npm_resolution_snapshot(&npm_api)
+      .await?;
+    let npm_resolution = NpmResolution::new(
+      npm_api.clone(),
+      npm_snapshot,
       lockfile.as_ref().cloned(),
-    )
-    .await?;
+    );
+    let npm_fs_resolver = create_npm_fs_resolver(
+      npm_cache,
+      &progress_bar,
+      npm_registry_url,
+      npm_resolution.clone(),
+      cli_options.node_modules_dir_path(),
+    );
+    let npm_resolver = NpmPackageResolver::new(
+      npm_resolution.clone(),
+      npm_fs_resolver,
+      lockfile.as_ref().cloned(),
+    );
     let package_json_deps_installer = PackageJsonDepsInstaller::new(
-      npm_resolver.api().clone(),
-      npm_resolver.resolution().clone(),
+      npm_api.clone(),
+      npm_resolution.clone(),
       cli_options.maybe_package_json_deps(),
     );
     let maybe_import_map = cli_options
@@ -247,8 +265,8 @@ impl ProcState {
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
       cli_options.no_npm(),
-      npm_resolver.api().clone(),
-      npm_resolver.resolution().clone(),
+      npm_api.clone(),
+      npm_resolution.clone(),
       package_json_deps_installer.clone(),
     ));
 
@@ -299,8 +317,10 @@ impl ProcState {
       resolver,
       maybe_file_watcher_reporter,
       node_analysis_cache,
+      npm_api,
       npm_cache,
       npm_resolver,
+      npm_resolution,
       package_json_deps_installer,
       cjs_resolutions: Default::default(),
       progress_bar,
@@ -439,7 +459,7 @@ impl ProcState {
 
     let specifiers = files
       .iter()
-      .map(|file| resolve_url_or_path(file))
+      .map(|file| resolve_url_or_path(file, self.options.initial_cwd()))
       .collect::<Result<Vec<_>, _>>()?;
     self
       .prepare_module_load(
@@ -475,7 +495,7 @@ impl ProcState {
     referrer: &str,
     permissions: &mut PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+    if let Ok(referrer) = deno_core::resolve_url_or_path_deprecated(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
         return self
@@ -545,9 +565,9 @@ impl ProcState {
     // but sadly that's not the case due to missing APIs in V8.
     let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
     let referrer = if referrer.is_empty() && is_repl {
-      deno_core::resolve_url_or_path("./$deno$repl.ts")?
+      deno_core::resolve_path("./$deno$repl.ts", self.options.initial_cwd())?
     } else {
-      deno_core::resolve_url_or_path(referrer)?
+      deno_core::resolve_url_or_path_deprecated(referrer)?
     };
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
@@ -564,10 +584,8 @@ impl ProcState {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          let reference = self
-            .npm_resolver
-            .resolution()
-            .pkg_req_ref_to_nv_ref(reference)?;
+          let reference =
+            self.npm_resolution.pkg_req_ref_to_nv_ref(reference)?;
           return self
             .handle_node_resolve_result(node::node_resolve_npm_reference(
               &reference,
@@ -641,8 +659,8 @@ impl ProcState {
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
       self.options.no_npm(),
-      self.npm_resolver.api().clone(),
-      self.npm_resolver.resolution().clone(),
+      self.npm_api.clone(),
+      self.npm_resolution.clone(),
       self.package_json_deps_installer.clone(),
     );
     let graph_resolver = cli_resolver.as_graph_resolver();

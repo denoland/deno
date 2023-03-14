@@ -140,9 +140,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
       Some(eszip::Module { ref specifier, .. }) => {
-        deno_core::resolve_url_or_path(specifier)?
+        deno_core::resolve_url_or_path_deprecated(specifier)?
       }
-      None => deno_core::resolve_url_or_path(referrer)?,
+      None => deno_core::resolve_url_or_path_deprecated(referrer)?,
     };
 
     self.maybe_import_map_resolver.as_ref().map_or_else(
@@ -241,8 +241,8 @@ pub async fn run(
             parse_from_json(&base, &source).unwrap().import_map,
           )),
           false,
-          ps.npm_resolver.api().clone(),
-          ps.npm_resolver.resolution().clone(),
+          ps.npm_api.clone(),
+          ps.npm_resolution.clone(),
           ps.package_json_deps_installer.clone(),
         )
       },
@@ -301,7 +301,6 @@ pub async fn run(
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
     stdio: Default::default(),
-    leak_isolate: true,
   };
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),

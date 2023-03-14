@@ -12,6 +12,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use indexmap::IndexMap;
 
+use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolutionSnapshot;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
@@ -384,11 +385,12 @@ fn resolve_lint_rules_options(
 fn discover_package_json(
   flags: &Flags,
   maybe_stop_at: Option<PathBuf>,
+  current_dir: &Path,
 ) -> Result<Option<PackageJson>, AnyError> {
   // TODO(bartlomieju): discover for all subcommands, but print warnings that
   // `package.json` is ignored in bundle/compile/etc.
 
-  if let Some(package_json_dir) = flags.package_json_search_dir() {
+  if let Some(package_json_dir) = flags.package_json_search_dir(current_dir) {
     let package_json_dir =
       canonicalize_path_maybe_not_exists(&package_json_dir)?;
     return package_json::discover_from(&package_json_dir, maybe_stop_at);
@@ -508,6 +510,7 @@ pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
   flags: Flags,
+  initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
   maybe_package_json: Option<PackageJson>,
@@ -548,6 +551,7 @@ impl CliOptions {
 
     Ok(Self {
       flags,
+      initial_cwd,
       maybe_config_file,
       maybe_lockfile,
       maybe_package_json,
@@ -576,10 +580,11 @@ impl CliOptions {
           .parent()
           .map(|p| p.to_path_buf());
 
-        maybe_package_json = discover_package_json(&flags, maybe_stop_at)?;
+        maybe_package_json =
+          discover_package_json(&flags, maybe_stop_at, &initial_cwd)?;
       }
     } else {
-      maybe_package_json = discover_package_json(&flags, None)?;
+      maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
     }
 
     let maybe_lock_file =
@@ -591,6 +596,11 @@ impl CliOptions {
       maybe_lock_file,
       maybe_package_json,
     )
+  }
+
+  #[inline(always)]
+  pub fn initial_cwd(&self) -> &Path {
+    &self.initial_cwd
   }
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
@@ -640,6 +650,7 @@ impl CliOptions {
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self.maybe_config_file.as_ref(),
+        &self.initial_cwd,
       ),
     }
   }
@@ -664,13 +675,31 @@ impl CliOptions {
     .map(Some)
   }
 
-  pub fn get_npm_resolution_snapshot(&self) -> Option<NpmResolutionSnapshot> {
+  pub async fn resolve_npm_resolution_snapshot(
+    &self,
+    api: &NpmRegistryApi,
+  ) -> Result<Option<NpmResolutionSnapshot>, AnyError> {
     if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone
-      return Some(state.snapshot.clone());
+      return Ok(Some(state.snapshot.clone()));
     }
 
-    None
+    if let Some(lockfile) = self.maybe_lock_file() {
+      if !lockfile.lock().overwrite {
+        return Ok(Some(
+          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), api)
+            .await
+            .with_context(|| {
+              format!(
+                "failed reading lockfile '{}'",
+                lockfile.lock().filename.display()
+              )
+            })?,
+        ));
+      }
+    }
+
+    Ok(None)
   }
 
   // If the main module should be treated as being in an npm package.
@@ -1052,6 +1081,7 @@ fn resolve_local_node_modules_folder(
 fn resolve_import_map_specifier(
   maybe_import_map_path: Option<&str>,
   maybe_config_file: Option<&ConfigFile>,
+  current_dir: &Path,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   if let Some(import_map_path) = maybe_import_map_path {
     if let Some(config_file) = &maybe_config_file {
@@ -1059,8 +1089,9 @@ fn resolve_import_map_specifier(
         log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", colors::yellow("Warning"), config_file.specifier);
       }
     }
-    let specifier = deno_core::resolve_url_or_path(import_map_path)
-      .context(format!("Bad URL (\"{import_map_path}\") for import map."))?;
+    let specifier =
+      deno_core::resolve_url_or_path(import_map_path, current_dir)
+        .context(format!("Bad URL (\"{import_map_path}\") for import map."))?;
     return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {
     // if the config file is an import map we prefer to use it, over `importMap`
@@ -1152,7 +1183,11 @@ mod test {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    let actual = resolve_import_map_specifier(
+      None,
+      Some(&config_file),
+      &PathBuf::from("/"),
+    );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(
@@ -1169,7 +1204,11 @@ mod test {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    let actual = resolve_import_map_specifier(
+      None,
+      Some(&config_file),
+      &PathBuf::from("/"),
+    );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(
@@ -1188,7 +1227,11 @@ mod test {
     let config_specifier =
       ModuleSpecifier::parse("https://example.com/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    let actual = resolve_import_map_specifier(
+      None,
+      Some(&config_file),
+      &PathBuf::from("/"),
+    );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(
@@ -1204,13 +1247,16 @@ mod test {
     let config_text = r#"{
       "importMap": "import_map.json"
     }"#;
+    let cwd = &PathBuf::from("/");
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual =
-      resolve_import_map_specifier(Some("import-map.json"), Some(&config_file));
-    let import_map_path =
-      std::env::current_dir().unwrap().join("import-map.json");
+    let actual = resolve_import_map_specifier(
+      Some("import-map.json"),
+      Some(&config_file),
+      cwd,
+    );
+    let import_map_path = cwd.join("import-map.json");
     let expected_specifier =
       ModuleSpecifier::from_file_path(import_map_path).unwrap();
     assert!(actual.is_ok());
@@ -1227,7 +1273,11 @@ mod test {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    let actual = resolve_import_map_specifier(
+      None,
+      Some(&config_file),
+      &PathBuf::from("/"),
+    );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, Some(config_specifier));
@@ -1239,7 +1289,11 @@ mod test {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    let actual = resolve_import_map_specifier(
+      None,
+      Some(&config_file),
+      &PathBuf::from("/"),
+    );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
@@ -1247,7 +1301,7 @@ mod test {
 
   #[test]
   fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(None, None);
+    let actual = resolve_import_map_specifier(None, None, &PathBuf::from("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);

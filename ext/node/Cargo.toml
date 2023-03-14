@@ -14,6 +14,8 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [dependencies]
+aes.workspace = true
+cbc.workspace = true
 deno_core.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 hex = "0.4.3"

@@ -236,6 +236,9 @@ impl NpmResolutionPackage {
   }
 }
 
+/// Handles updating and storing npm resolution in memory.
+///
+/// This does not interact with the file system.
 #[derive(Clone)]
 pub struct NpmResolution(Arc<NpmResolutionInner>);
 

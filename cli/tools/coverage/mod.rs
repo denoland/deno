@@ -655,8 +655,10 @@ pub async fn cover_files(
   };
 
   for script_coverage in script_coverages {
-    let module_specifier =
-      deno_core::resolve_url_or_path(&script_coverage.url)?;
+    let module_specifier = deno_core::resolve_url_or_path(
+      &script_coverage.url,
+      ps.options.initial_cwd(),
+    )?;
 
     let maybe_file = if module_specifier.scheme() == "file" {
       ps.file_fetcher.get_source(&module_specifier)
