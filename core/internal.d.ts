@@ -534,7 +534,7 @@ declare namespace __bootstrap {
     export const FinalizationRegistryPrototype:
       typeof FinalizationRegistry.prototype;
     export const FinalizationRegistryPrototypeRegister: UncurryThis<
-      typeof FinalizationRegistry.prototype.registar
+      typeof FinalizationRegistry.prototype.register
     >;
     export const FinalizationRegistryPrototypeUnregister: UncurryThis<
       typeof FinalizationRegistry.prototype.unregister
