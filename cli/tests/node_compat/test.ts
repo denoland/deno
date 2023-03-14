@@ -45,7 +45,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
     filters.length > 0 &&
     filters.every((pattern) => !path.includes(pattern))
   ) {
-    return Promise.resolve();
+    return;
   }
   const isTodo = path.includes("TODO");
   const ignore =
