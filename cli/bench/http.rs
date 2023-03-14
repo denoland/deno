@@ -1,11 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::{collections::HashMap, path::Path, process::Command, time::Duration};
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use super::Result;
 
-pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
+pub use test_util::parse_wrk_output;
+pub use test_util::WrkOutput as HttpBenchmarkResult;
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
 //   "node_http" was once called "node"
@@ -39,7 +44,7 @@ pub fn benchmark(
     let name = entry.file_name().into_string().unwrap();
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
-    let lua_script = http_dir.join(format!("{}.lua", file_stem));
+    let lua_script = http_dir.join(format!("{file_stem}.lua"));
     let mut maybe_lua = None;
     if lua_script.exists() {
       maybe_lua = Some(lua_script.to_str().unwrap());
@@ -153,7 +158,7 @@ fn run(
   let wrk = test_util::prebuilt_tool_path("wrk");
   assert!(wrk.is_file());
 
-  let addr = format!("http://127.0.0.1:{}/", port);
+  let addr = format!("http://127.0.0.1:{port}/");
   let mut wrk_cmd =
     vec![wrk.to_str().unwrap(), "-d", DURATION, "--latency", &addr];
 
@@ -167,7 +172,7 @@ fn run(
 
   std::thread::sleep(Duration::from_secs(1)); // wait to capture failure. TODO racy.
 
-  println!("{}", output);
+  println!("{output}");
   assert!(
     server.try_wait()?.map_or(true, |s| s.success()),
     "server ended with error"
@@ -189,7 +194,7 @@ fn get_port() -> u16 {
 }
 
 fn server_addr(port: u16) -> String {
-  format!("0.0.0.0:{}", port)
+  format!("0.0.0.0:{port}")
 }
 
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {

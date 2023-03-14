@@ -13,6 +13,7 @@ use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::BufView;
+use deno_core::ExtensionBuilder;
 use deno_core::WriteOutcome;
 
 use deno_core::url::Url;
@@ -31,7 +32,8 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
-use http::{header::CONTENT_LENGTH, Uri};
+use http::header::CONTENT_LENGTH;
+use http::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -70,7 +72,8 @@ pub struct Options {
   pub user_agent: String,
   pub root_cert_store: Option<RootCertStore>,
   pub proxy: Option<Proxy>,
-  pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub request_builder_hook:
+    Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
@@ -90,23 +93,21 @@ impl Default for Options {
   }
 }
 
-pub fn init<FP>(options: Options) -> Extension
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web", "deno_url", "deno_console"],
+  )
+}
+
+fn ops<FP>(
+  ext: &mut ExtensionBuilder,
+  options: Options,
+) -> &mut ExtensionBuilder
 where
   FP: FetchPermissions + 'static,
 {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
-    .js(include_js_files!(
-      prefix "deno:ext/fetch",
-      "01_fetch_util.js",
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
+  ext
     .ops(vec![
       op_fetch::decl::<FP>(),
       op_fetch_send::decl(),
@@ -125,9 +126,31 @@ where
         )
         .unwrap()
       });
-      Ok(())
     })
+}
+
+pub fn init_ops_and_esm<FP>(options: Options) -> Extension
+where
+  FP: FetchPermissions + 'static,
+{
+  ops::<FP>(&mut ext(), options)
+    .esm(include_js_files!(
+      "20_headers.js",
+      "21_formdata.js",
+      "22_body.js",
+      "22_http_client.js",
+      "23_request.js",
+      "23_response.js",
+      "26_fetch.js",
+    ))
     .build()
+}
+
+pub fn init_ops<FP>(options: Options) -> Extension
+where
+  FP: FetchPermissions + 'static,
+{
+  ops::<FP>(&mut ext(), options).build()
 }
 
 pub type CancelableResponseFuture =
@@ -230,8 +253,7 @@ where
 
       if method != Method::GET {
         return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {}.",
-          method
+          "Fetching files only supports the GET method. Received {method}."
         )));
       }
 
@@ -321,7 +343,8 @@ where
 
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
-        request = request_builder_hook(request);
+        request = request_builder_hook(request)
+          .map_err(|err| type_error(err.to_string()))?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -346,11 +369,11 @@ where
     }
     "data" => {
       let data_url = DataUrl::process(url.as_str())
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let (body, _) = data_url
         .decode_to_vec()
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let response = http::Response::builder()
         .status(http::StatusCode::OK)
@@ -370,7 +393,7 @@ where
       // because the URL isn't an object URL.
       return Err(type_error("Blob for the given URL not found."));
     }
-    _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
+    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
   };
 
   Ok(FetchReturn {

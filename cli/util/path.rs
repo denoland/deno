@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -62,8 +64,7 @@ pub fn specifier_to_file_path(
   match result {
     Ok(path) => Ok(path),
     Err(()) => Err(uri_error(format!(
-      "Invalid file path.\n  Specifier: {}",
-      specifier
+      "Invalid file path.\n  Specifier: {specifier}"
     ))),
   }
 }
@@ -74,7 +75,7 @@ pub fn ensure_directory_specifier(
 ) -> ModuleSpecifier {
   let path = specifier.path();
   if !path.ends_with('/') {
-    let new_path = format!("{}/", path);
+    let new_path = format!("{path}/");
     specifier.set_path(&new_path);
   }
   specifier
@@ -133,7 +134,7 @@ pub fn relative_specifier(
   Some(if text.starts_with("../") || text.starts_with("./") {
     text
   } else {
-    format!("./{}", text)
+    format!("./{text}")
   })
 }
 
@@ -168,12 +169,12 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
             ext
           ))
         } else {
-          path.with_file_name(format!("{}{}.{}", file_stem, suffix, ext))
+          path.with_file_name(format!("{file_stem}{suffix}.{ext}"))
         };
       }
     }
 
-    path.with_file_name(format!("{}{}", file_name, suffix))
+    path.with_file_name(format!("{file_name}{suffix}"))
   } else {
     path.with_file_name(suffix)
   }
@@ -378,9 +379,7 @@ mod test {
       assert_eq!(
         actual.as_deref(),
         expected,
-        "from: \"{}\" to: \"{}\"",
-        from_str,
-        to_str
+        "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
   }

@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assert, assertEquals } from "./test_util.ts";
 
 let isCI: boolean;
@@ -211,6 +213,16 @@ Deno.test({
 
   // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
   // adapters.
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
+});
+
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function webgpuAdapterHasFeatures() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  assert(adapter.features);
   const resources = Object.keys(Deno.resources());
   Deno.close(Number(resources[resources.length - 1]));
 });

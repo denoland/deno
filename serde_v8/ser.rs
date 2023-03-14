@@ -5,13 +5,21 @@ use serde::ser::Serialize;
 use std::cell::RefCell;
 use std::ops::DerefMut;
 
-use crate::error::{Error, Result};
+use crate::error::Error;
+use crate::error::Result;
 use crate::keys::v8_struct_key;
+use crate::magic;
+use crate::magic::transl8::opaque_deref_mut;
+use crate::magic::transl8::opaque_recv;
+use crate::magic::transl8::MagicType;
+use crate::magic::transl8::ToV8;
 use crate::magic::transl8::MAGIC_FIELD;
-use crate::magic::transl8::{opaque_deref_mut, opaque_recv, MagicType, ToV8};
-use crate::{
-  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
-};
+use crate::ByteString;
+use crate::DetachedBuffer;
+use crate::ExternalPointer;
+use crate::StringOrBuffer;
+use crate::U16String;
+use crate::ZeroCopyBuf;
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
@@ -262,6 +270,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 
 // Dispatches between magic and regular struct serializers
 pub enum StructSerializers<'a, 'b, 'c> {
+  ExternalPointer(MagicalSerializer<'a, 'b, 'c, magic::ExternalPointer>),
   Magic(MagicalSerializer<'a, 'b, 'c, magic::Value<'a>>),
   ZeroCopyBuf(MagicalSerializer<'a, 'b, 'c, ZeroCopyBuf>),
   MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
@@ -281,6 +290,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
     value: &T,
   ) -> Result<()> {
     match self {
+      StructSerializers::ExternalPointer(s) => s.serialize_field(key, value),
       StructSerializers::Magic(s) => s.serialize_field(key, value),
       StructSerializers::ZeroCopyBuf(s) => s.serialize_field(key, value),
       StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
@@ -295,6 +305,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
 
   fn end(self) -> JsResult<'a> {
     match self {
+      StructSerializers::ExternalPointer(s) => s.end(),
       StructSerializers::Magic(s) => s.end(),
       StructSerializers::ZeroCopyBuf(s) => s.end(),
       StructSerializers::MagicDetached(s) => s.end(),
@@ -378,8 +389,8 @@ macro_rules! forward_to {
     };
 }
 
-const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
-const MIN_SAFE_INTEGER: i64 = -MAX_SAFE_INTEGER;
+pub(crate) const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+pub(crate) const MIN_SAFE_INTEGER: i64 = -MAX_SAFE_INTEGER;
 
 impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   type Ok = v8::Local<'a, v8::Value>;
@@ -557,6 +568,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     len: usize,
   ) -> Result<Self::SerializeStruct> {
     match name {
+      magic::ExternalPointer::MAGIC_NAME => {
+        let m = MagicalSerializer::<ExternalPointer>::new(self.scope);
+        Ok(StructSerializers::ExternalPointer(m))
+      }
       ByteString::MAGIC_NAME => {
         let m = MagicalSerializer::<ByteString>::new(self.scope);
         Ok(StructSerializers::MagicByteString(m))

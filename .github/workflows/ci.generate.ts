@@ -1,13 +1,14 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
+import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
+const windowsRunnerCondition =
+  "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
-    "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+    "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
   macos: "macos-12",
-  windows:
-    "${{ github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022' }}",
+  windows: `\${{ ${windowsRunnerCondition} }}`,
 };
 
 const installPkgsCommand =
@@ -19,8 +20,8 @@ const sysRootStep = {
 sudo apt-get remove --purge -y man-db
 
 # Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -42,6 +43,12 @@ sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 
+cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
+cp third_party/prebuilt/linux64/libdl/libdl.a .
+
+sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
+sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
 cat >> $GITHUB_ENV << __0
@@ -54,6 +61,7 @@ RUSTFLAGS<<__1
   -C linker=clang-15
   -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
+  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -64,6 +72,7 @@ RUSTDOCFLAGS<<__1
   -C linker=clang-15
   -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
+  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -80,12 +89,12 @@ const submoduleStep = (submodule: string) => ({
 });
 
 const installRustStep = {
-  uses: "dtolnay/rust-toolchain@stable",
+  uses: "dsherret/rust-toolchain-file@v1",
 };
 const installPythonSteps = [{
   name: "Install Python",
   uses: "actions/setup-python@v4",
-  with: { "python-version": 3.8 },
+  with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
   if: "startsWith(matrix.os, 'windows')",
@@ -200,11 +209,7 @@ const ci = {
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
-      if: [
-        "github.event_name == 'push' ||",
-        "!startsWith(github.event.pull_request.head.label, 'denoland:')",
-      ].join("\n"),
-      "runs-on": "${{ matrix.os }}",
+      "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
       strategy: {
         matrix: {
@@ -227,6 +232,9 @@ const ci = {
             },
             {
               os: Runners.windows,
+              // use a free runner on PRs since this will be skipped
+              runner:
+                `\${{ github.event_name == 'pull_request' && 'windows-2022' || (${windowsRunnerCondition}) }}`,
               job: "test",
               profile: "release",
               skip_pr: true,
@@ -296,13 +304,10 @@ const ci = {
         },
         ...cancelEarlyIfDraftPr([
           submoduleStep("./test_util/std"),
+          submoduleStep("./third_party"),
           {
             ...submoduleStep("./test_util/wpt"),
             if: "matrix.wpt",
-          },
-          {
-            ...submoduleStep("./third_party"),
-            if: "matrix.job == 'lint' || matrix.job == 'bench'",
           },
           {
             name: "Create source tarballs (release, linux)",
@@ -420,7 +425,7 @@ const ci = {
                 "~/.cargo/git/db",
               ].join("\n"),
               key:
-                "18-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+                "20-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
             },
           },
           {
@@ -438,7 +443,7 @@ const ci = {
               ].join("\n"),
               key: "never_saved",
               "restore-keys":
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
+                "19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
             },
           },
           {
@@ -472,6 +477,12 @@ const ci = {
             if: "matrix.job == 'lint'",
             run:
               "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
+          },
+          {
+            name: "Lint PR title",
+            if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+            run:
+              "deno run ./tools/verify_pr_title.js '${{ github.event.pull_request.title }}'",
           },
           {
             name: "lint.js",
@@ -853,7 +864,7 @@ const ci = {
     },
     "publish-canary": {
       name: "publish canary",
-      "runs-on": "ubuntu-20.04",
+      "runs-on": "ubuntu-22.04",
       needs: ["build"],
       if:
         "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",

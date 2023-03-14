@@ -20,6 +20,7 @@ use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
 use crate::util::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -92,8 +93,7 @@ pub async fn format(
       }
     }
   };
-  let deno_dir = cli_options.resolve_deno_dir()?;
-  let deno_dir = &deno_dir;
+  let deno_dir = &cli_options.resolve_deno_dir()?;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.fmt_incremental_cache_db_file_path(),
@@ -183,7 +183,7 @@ fn format_markdown(
           dprint_plugin_json::format_text(text, &json_config)
         } else {
           let fake_filename =
-            PathBuf::from(format!("deno_fmt_stdin.{}", extension));
+            PathBuf::from(format!("deno_fmt_stdin.{extension}"));
           let mut codeblock_config =
             get_resolved_typescript_config(fmt_options);
           codeblock_config.line_width = line_width;
@@ -287,13 +287,13 @@ async fn check_source_files(
           warn!("Error checking: {}", file_path.to_string_lossy());
           warn!(
             "{}",
-            format!("{}", e)
+            format!("{e}")
               .split('\n')
               .map(|l| {
                 if l.trim().is_empty() {
                   String::new()
                 } else {
-                  format!("  {}", l)
+                  format!("  {l}")
                 }
               })
               .collect::<Vec<_>>()
@@ -317,8 +317,7 @@ async fn check_source_files(
   } else {
     let not_formatted_files_str = files_str(not_formatted_files_count);
     Err(generic_error(format!(
-      "Found {} not formatted {} in {}",
-      not_formatted_files_count, not_formatted_files_str, checked_files_str,
+      "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
     )))
   }
 }
@@ -369,7 +368,7 @@ async fn format_source_files(
         Err(e) => {
           let _g = output_lock.lock();
           eprintln!("Error formatting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          eprintln!("   {e}");
         }
       }
       Ok(())
@@ -511,6 +510,13 @@ fn get_resolved_typescript_config(
     }
   }
 
+  if let Some(semi_colons) = options.semi_colons {
+    builder.semi_colons(match semi_colons {
+      true => dprint_plugin_typescript::configuration::SemiColons::Prefer,
+      false => dprint_plugin_typescript::configuration::SemiColons::Asi,
+    });
+  }
+
   builder.build()
 }
 
@@ -575,7 +581,10 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
+    .map_err(|_| {
+      anyhow!("{} is not a valid UTF-8 file", file_path.display())
+    })?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
   let text = if had_bom {
     text_encoding::strip_bom(&file_text).to_string()
@@ -709,7 +718,7 @@ mod test {
       &PathBuf::from("mod.ts"),
       "1",
       &Default::default(),
-      |_, file_text, _| Ok(Some(format!("1{}", file_text))),
+      |_, file_text, _| Ok(Some(format!("1{file_text}"))),
     )
     .unwrap();
   }

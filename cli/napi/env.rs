@@ -34,8 +34,7 @@ pub unsafe extern "C" fn napi_fatal_error(
     std::str::from_utf8(slice).unwrap()
   };
   panic!(
-    "Fatal exception triggered by napi_fatal_error!\nLocation: {:?}\n{}",
-    location, message
+    "Fatal exception triggered by napi_fatal_error!\nLocation: {location:?}\n{message}"
   );
 }
 
@@ -46,10 +45,7 @@ fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let error = value.to_rust_string_lossy(&mut env.scope());
-  panic!(
-    "Fatal exception triggered by napi_fatal_exception!\n{}",
-    error
-  );
+  panic!("Fatal exception triggered by napi_fatal_exception!\n{error}");
 }
 
 #[napi_sym::napi_sym]
@@ -141,15 +137,14 @@ fn napi_module_register(module: *const NapiModule) -> Result {
 
 #[napi_sym::napi_sym]
 fn napi_get_uv_event_loop(_env: *mut Env, uv_loop: *mut *mut ()) -> Result {
-  // Don't error out because addons may pass this to
-  // our libuv _polyfills_.
+  // There is no uv_loop in Deno
   *uv_loop = std::ptr::null_mut();
   Ok(())
 }
 
 const NODE_VERSION: napi_node_version = napi_node_version {
-  major: 17,
-  minor: 4,
+  major: 18,
+  minor: 13,
   patch: 0,
   release: "Deno\0".as_ptr() as *const c_char,
 };
@@ -159,8 +154,8 @@ fn napi_get_node_version(
   env: *mut Env,
   result: *mut *const napi_node_version,
 ) -> Result {
-  let _: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  crate::check_arg!(result);
+  crate::check_env!(env);
+  crate::check_arg!(env, result);
 
   *result = &NODE_VERSION as *const napi_node_version;
   Ok(())

@@ -74,14 +74,14 @@ fn child_lines(
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STDOUT: {}", line);
+      eprintln!("STDOUT: {line}");
       line
     });
   let stderr_lines = std::io::BufReader::new(child.stderr.take().unwrap())
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STDERR: {}", line);
+      eprintln!("STDERR: {line}");
       line
     });
   (stdout_lines, stderr_lines)
@@ -402,6 +402,8 @@ fn bundle_js_watch() {
 
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, "Bundle started");
@@ -455,8 +457,9 @@ fn bundle_watch_not_exit() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, "Bundle started");
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
+  assert_contains!(stderr_lines.next().unwrap(), "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_eq!(stderr_lines.next().unwrap(), "");
   assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
@@ -635,9 +638,14 @@ fn run_watch_external_watch_files() {
 
   // Change content of the external file
   write(&external_file_to_watch, "Hello world2").unwrap();
-
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("Process finished", &mut stderr_lines);
+
+  // Again (https://github.com/denoland/deno/issues/17584)
+  write(&external_file_to_watch, "Hello world3").unwrap();
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
+
   check_alive_then_kill(child);
 }
 
@@ -1169,7 +1177,7 @@ fn run_watch_dynamic_imports() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-
+  assert_contains!(stderr_lines.next().unwrap(), "No package.json file found");
   assert_contains!(stderr_lines.next().unwrap(), "Process started");
 
   wait_contains(

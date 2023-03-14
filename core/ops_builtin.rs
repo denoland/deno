@@ -1,3 +1,4 @@
+use crate::ExtensionBuilder;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
 use crate::error::type_error;
@@ -13,40 +14,53 @@ use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
 use std::cell::RefCell;
-use std::io::{stderr, stdout, Write};
+use std::io::stderr;
+use std::io::stdout;
+use std::io::Write;
 use std::rc::Rc;
 
-pub(crate) fn init_builtins() -> Extension {
-  Extension::builder("deno_builtins")
+fn ext() -> ExtensionBuilder {
+  Extension::builder("core")
+}
+
+fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
+  let mut ops = vec![
+    op_close::decl(),
+    op_try_close::decl(),
+    op_print::decl(),
+    op_resources::decl(),
+    op_wasm_streaming_feed::decl(),
+    op_wasm_streaming_set_url::decl(),
+    op_void_sync::decl(),
+    op_void_async::decl(),
+    op_add::decl(),
+    // // TODO(@AaronO): track IO metrics for builtin streams
+    op_read::decl(),
+    op_read_all::decl(),
+    op_write::decl(),
+    op_write_all::decl(),
+    op_shutdown::decl(),
+    op_metrics::decl(),
+    op_format_file_name::decl(),
+    op_is_proxy::decl(),
+    op_str_byte_length::decl(),
+  ];
+  ops.extend(crate::ops_builtin_v8::init_builtins_v8());
+  ext.ops(ops)
+}
+
+pub(crate) fn init_builtin_ops_and_esm() -> Extension {
+  ops(&mut ext())
     .js(include_js_files!(
-      prefix "deno:core",
       "00_primordials.js",
       "01_core.js",
       "02_error.js",
     ))
-    .ops(vec![
-      op_close::decl(),
-      op_try_close::decl(),
-      op_print::decl(),
-      op_resources::decl(),
-      op_wasm_streaming_feed::decl(),
-      op_wasm_streaming_set_url::decl(),
-      op_void_sync::decl(),
-      op_void_async::decl(),
-      op_add::decl(),
-      // // TODO(@AaronO): track IO metrics for builtin streams
-      op_read::decl(),
-      op_read_all::decl(),
-      op_write::decl(),
-      op_write_all::decl(),
-      op_shutdown::decl(),
-      op_metrics::decl(),
-      op_format_file_name::decl(),
-      op_is_proxy::decl(),
-      op_str_byte_length::decl(),
-    ])
-    .ops(crate::ops_builtin_v8::init_builtins_v8())
     .build()
+}
+
+pub(crate) fn init_builtin_ops() -> Extension {
+  ops(&mut ext()).build()
 }
 
 /// Return map of resources with id as key
@@ -107,7 +121,7 @@ pub fn op_metrics(state: &mut OpState) -> (OpMetrics, Vec<OpMetrics>) {
 
 /// Builtin utility to print to stdout/stderr
 #[op]
-pub fn op_print(msg: String, is_err: bool) -> Result<(), Error> {
+pub fn op_print(msg: &str, is_err: bool) -> Result<(), Error> {
   if is_err {
     stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();
@@ -152,12 +166,12 @@ pub fn op_wasm_streaming_feed(
 pub fn op_wasm_streaming_set_url(
   state: &mut OpState,
   rid: ResourceId,
-  url: String,
+  url: &str,
 ) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-  wasm_streaming.0.borrow_mut().set_url(&url);
+  wasm_streaming.0.borrow_mut().set_url(url);
 
   Ok(())
 }

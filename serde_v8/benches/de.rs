@@ -1,9 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use bencher::{benchmark_group, benchmark_main, Bencher};
+use bencher::benchmark_group;
+use bencher::benchmark_main;
+use bencher::Bencher;
 
 use serde::Deserialize;
 
-use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::utils::js_exec;
+use serde_v8::utils::v8_do;
 use serde_v8::ByteString;
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -29,7 +32,7 @@ fn dedo(
 }
 
 fn dedo_json(code: &str, f: impl FnOnce(String)) {
-  let code = format!("JSON.stringify({})", code);
+  let code = format!("JSON.stringify({code})");
   dedo(&code[..], |scope, v| {
     let s: String = serde_v8::from_v8(scope, v).unwrap();
     f(s);

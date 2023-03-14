@@ -1,12 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
-use crate::graph_util::GraphData;
-use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
-use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::util::checksum;
 
@@ -16,7 +13,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -25,19 +21,25 @@ use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
-use deno_graph::Resolved;
+use deno_graph::npm::NpmPackageNvReference;
+use deno_graph::npm::NpmPackageReqReference;
+use deno_graph::Module;
+use deno_graph::ModuleGraph;
+use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -49,28 +51,6 @@ pub use self::diagnostics::DiagnosticMessageChain;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
 
-// Declaration files
-
-pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
-pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
-pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
-pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
-pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
-pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
-pub static DENO_WEBSOCKET_LIB: &str =
-  include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
-pub static DENO_WEBSTORAGE_LIB: &str =
-  include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
-pub static DENO_CACHE_LIB: &str = include_str!(env!("DENO_CACHE_LIB_PATH"));
-pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
-pub static DENO_BROADCAST_CHANNEL_LIB: &str =
-  include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));
-pub static DENO_NET_LIB: &str = include_str!(env!("DENO_NET_LIB_PATH"));
-pub static SHARED_GLOBALS_LIB: &str =
-  include_str!("dts/lib.deno.shared_globals.d.ts");
-pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
-pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
-
 pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
   #[cold]
   #[inline(never)]
@@ -78,6 +58,14 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
     static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
       include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
 
+    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+    // ~45s on M1 MacBook Pro; without compression it took ~1s.
+    // Thus we're not not using compressed snapshot, trading off
+    // a lot of build time for some startup time in debug build.
+    #[cfg(debug_assertions)]
+    return COMPRESSED_COMPILER_SNAPSHOT.to_vec().into_boxed_slice();
+
+    #[cfg(not(debug_assertions))]
     zstd::bulk::decompress(
       &COMPRESSED_COMPILER_SNAPSHOT[4..],
       u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())
@@ -89,28 +77,57 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
 );
 
 pub fn get_types_declaration_file_text(unstable: bool) -> String {
-  let mut types = vec![
-    DENO_NS_LIB,
-    DENO_CONSOLE_LIB,
-    DENO_URL_LIB,
-    DENO_WEB_LIB,
-    DENO_FETCH_LIB,
-    DENO_WEBGPU_LIB,
-    DENO_WEBSOCKET_LIB,
-    DENO_WEBSTORAGE_LIB,
-    DENO_CRYPTO_LIB,
-    DENO_BROADCAST_CHANNEL_LIB,
-    DENO_NET_LIB,
-    SHARED_GLOBALS_LIB,
-    DENO_CACHE_LIB,
-    WINDOW_LIB,
+  let mut assets = get_asset_texts_from_new_runtime()
+    .unwrap()
+    .into_iter()
+    .map(|a| (a.specifier, a.text))
+    .collect::<HashMap<_, _>>();
+
+  let mut lib_names = vec![
+    "deno.ns",
+    "deno.console",
+    "deno.url",
+    "deno.web",
+    "deno.fetch",
+    "deno.webgpu",
+    "deno.websocket",
+    "deno.webstorage",
+    "deno.crypto",
+    "deno.broadcast_channel",
+    "deno.net",
+    "deno.shared_globals",
+    "deno.cache",
+    "deno.window",
   ];
 
   if unstable {
-    types.push(UNSTABLE_NS_LIB);
+    lib_names.push("deno.unstable");
   }
 
-  types.join("\n")
+  lib_names
+    .into_iter()
+    .map(|name| {
+      let asset_url = format!("asset:///lib.{name}.d.ts");
+      assets.remove(&asset_url).unwrap()
+    })
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+
+fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
+  // the assets are stored within the typescript isolate, so take them out of there
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![Extension::builder("deno_cli_tsc")
+      .ops(get_tsc_ops())
+      .build()],
+    ..Default::default()
+  });
+  let global =
+    runtime.execute_script("get_assets.js", "globalThis.getAssets()")?;
+  let scope = &mut runtime.handle_scope();
+  let local = deno_core::v8::Local::new(scope, global);
+  Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
 }
 
 pub fn compiler_snapshot() -> Snapshot {
@@ -124,40 +141,50 @@ macro_rules! inc {
 }
 
 /// Contains static assets that are not preloaded in the compiler snapshot.
-pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
-  Lazy::new(|| {
-    ([
-      (
-        "lib.dom.asynciterable.d.ts",
-        inc!("lib.dom.asynciterable.d.ts"),
-      ),
-      ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
-      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
-      ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
-      ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
-      ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
-      ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
-      ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
-      ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
-      ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
-      ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
-      ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
-      ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
-      ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
-      ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
-      (
-        "lib.webworker.importscripts.d.ts",
-        inc!("lib.webworker.importscripts.d.ts"),
-      ),
-      (
-        "lib.webworker.iterable.d.ts",
-        inc!("lib.webworker.iterable.d.ts"),
-      ),
-    ])
-    .iter()
-    .cloned()
-    .collect()
-  });
+///
+/// We lazily load these because putting them in the compiler snapshot will
+/// increase memory usage when not used (last time checked by about 0.5MB).
+pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
+  HashMap<&'static str, &'static str>,
+> = Lazy::new(|| {
+  ([
+    (
+      "lib.dom.asynciterable.d.ts",
+      inc!("lib.dom.asynciterable.d.ts"),
+    ),
+    ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+    ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
+    ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+    ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+    ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+    ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+    ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+    ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+    ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+    ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
+    ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+    ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+    ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+    (
+      "lib.webworker.importscripts.d.ts",
+      inc!("lib.webworker.importscripts.d.ts"),
+    ),
+    (
+      "lib.webworker.iterable.d.ts",
+      inc!("lib.webworker.iterable.d.ts"),
+    ),
+    (
+      // Special file that can be used to inject the @types/node package.
+      // This is used for `node:` specifiers.
+      "node_types.d.ts",
+      "/// <reference types=\"npm:@types/node\" />\n",
+    ),
+  ])
+  .iter()
+  .cloned()
+  .collect()
+});
 
 /// A structure representing stats from a type check operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -186,16 +213,23 @@ impl fmt::Display for Stats {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     writeln!(f, "Compilation statistics:")?;
     for (key, value) in self.0.clone() {
-      writeln!(f, "  {}: {}", key, value)?;
+      writeln!(f, "  {key}: {value}")?;
     }
 
     Ok(())
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetText {
+  pub specifier: String,
+  pub text: String,
+}
+
 /// Retrieve a static asset that are included in the binary.
-pub fn get_asset(asset: &str) -> Option<&'static str> {
-  STATIC_ASSETS.get(asset).map(|s| s.to_owned())
+fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
+  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.to_owned())
 }
 
 fn get_maybe_hash(
@@ -317,9 +351,8 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph_data: Arc<RwLock<GraphData>>,
+  pub graph: Arc<ModuleGraph>,
   pub hash_data: Vec<Vec<u8>>,
-  pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_npm_resolver: Option<NpmPackageResolver>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
@@ -340,41 +373,43 @@ pub struct Response {
 #[derive(Debug, Default)]
 struct State {
   hash_data: Vec<Vec<u8>>,
-  graph_data: Arc<RwLock<GraphData>>,
-  maybe_config_specifier: Option<ModuleSpecifier>,
+  graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   maybe_npm_resolver: Option<NpmPackageResolver>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
+  current_dir: PathBuf,
 }
 
 impl State {
   pub fn new(
-    graph_data: Arc<RwLock<GraphData>>,
+    graph: Arc<ModuleGraph>,
     hash_data: Vec<Vec<u8>>,
-    maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_npm_resolver: Option<NpmPackageResolver>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
+    current_dir: PathBuf,
   ) -> Self {
     State {
       hash_data,
-      graph_data,
-      maybe_config_specifier,
+      graph,
       maybe_npm_resolver,
       maybe_tsbuildinfo,
       maybe_response: None,
       remapped_specifiers,
       root_map,
+      current_dir,
     }
   }
 }
 
-fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(&specifier.replace(".d.ts.d.ts", ".d.ts"))
-    .map_err(|err| err.into())
+fn normalize_specifier(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]
@@ -396,17 +431,6 @@ fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
   Ok(json!({ "hash": hash }))
 }
 
-#[op]
-fn op_cwd(s: &mut OpState) -> Result<String, AnyError> {
-  let state = s.borrow_mut::<State>();
-  if let Some(config_specifier) = &state.maybe_config_specifier {
-    let cwd = config_specifier.join("./")?;
-    Ok(cwd.to_string())
-  } else {
-    Ok("cache:///".to_string())
-  }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EmitArgs {
@@ -421,7 +445,7 @@ struct EmitArgs {
 fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
-    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+    "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
     _ => {
       if cfg!(debug_assertions) {
         panic!("Unhandled emit write: {}", args.file_name);
@@ -430,30 +454,6 @@ fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   }
 
   true
-}
-
-#[derive(Debug, Deserialize)]
-struct ExistsArgs {
-  /// The fully qualified specifier that should be loaded.
-  specifier: String,
-}
-
-#[op]
-fn op_exists(state: &mut OpState, args: ExistsArgs) -> bool {
-  let state = state.borrow_mut::<State>();
-  let graph_data = state.graph_data.read();
-  if let Ok(specifier) = normalize_specifier(&args.specifier) {
-    if specifier.scheme() == "asset" || specifier.scheme() == "data" {
-      true
-    } else {
-      matches!(
-        graph_data.get(&graph_data.follow_redirect(&specifier)),
-        Some(ModuleEntry::Module { .. })
-      )
-    }
-  } else {
-    false
-  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -488,22 +488,21 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = normalize_specifier(&v.specifier)
+  let specifier = normalize_specifier(&v.specifier, &state.current_dir)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
-  let graph_data = state.graph_data.read();
-  let data = if &v.specifier == "deno:///.tsbuildinfo" {
+  let graph = &state.graph;
+  let data = if &v.specifier == "internal:///.tsbuildinfo" {
     state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
-  } else if &v.specifier == "deno:///missing_dependency.d.ts" {
+  } else if &v.specifier == "internal:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
-  } else if v.specifier.starts_with("asset:///") {
-    let name = v.specifier.replace("asset:///", "");
-    let maybe_source = get_asset(&name);
+  } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
+    let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source.map(Cow::Borrowed)
@@ -517,15 +516,30 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     } else {
       &specifier
     };
-    let maybe_source = if let Some(ModuleEntry::Module {
-      code,
-      media_type: mt,
-      ..
-    }) =
-      graph_data.get(&graph_data.follow_redirect(specifier))
-    {
-      media_type = *mt;
-      Some(Cow::Borrowed(code as &str))
+    let maybe_source = if let Some(module) = graph.get(specifier) {
+      match module {
+        Module::Esm(module) => {
+          media_type = module.media_type;
+          Some(Cow::Borrowed(&*module.source))
+        }
+        Module::Json(module) => {
+          media_type = MediaType::Json;
+          Some(Cow::Borrowed(&*module.source))
+        }
+        Module::Npm(_) | Module::Node(_) => None,
+        Module::External(module) => {
+          // means it's Deno code importing an npm module
+          let specifier =
+            node::resolve_specifier_into_node_modules(&module.specifier);
+          media_type = MediaType::from(&specifier);
+          let file_path = specifier.to_file_path().unwrap();
+          let code =
+            std::fs::read_to_string(&file_path).with_context(|| {
+              format!("Unable to load {}", file_path.display())
+            })?;
+          Some(Cow::Owned(code))
+        }
+      }
     } else if state
       .maybe_npm_resolver
       .as_ref()
@@ -577,128 +591,169 @@ fn op_resolve(
   } else if let Some(remapped_base) = state.root_map.get(&args.base) {
     remapped_base.clone()
   } else {
-    normalize_specifier(&args.base).context(
+    normalize_specifier(&args.base, &state.current_dir).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
-  for specifier in &args.specifiers {
+  for specifier in args.specifiers {
+    if let Some(module_name) = specifier.strip_prefix("node:") {
+      if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+        // return itself for node: specifiers because during type checking
+        // we resolve to the ambient modules in the @types/node package
+        // rather than deno_std/node
+        resolved.push((specifier, MediaType::Dts.to_string()));
+        continue;
+      }
+    }
+
     if specifier.starts_with("asset:///") {
-      resolved.push((
-        specifier.clone(),
-        MediaType::from(specifier).as_ts_extension().to_string(),
-      ));
-    } else {
-      let graph_data = state.graph_data.read();
-      let resolved_dep = match graph_data.get_dependencies(&referrer) {
-        Some(dependencies) => dependencies.get(specifier).map(|d| {
-          if matches!(d.maybe_type, Resolved::Ok { .. }) {
-            &d.maybe_type
-          } else {
-            &d.maybe_code
+      let media_type =
+        MediaType::from(&specifier).as_ts_extension().to_string();
+      resolved.push((specifier, media_type));
+      continue;
+    }
+
+    let graph = &state.graph;
+    let resolved_dep = graph
+      .get(&referrer)
+      .and_then(|m| m.esm())
+      .and_then(|m| m.dependencies.get(&specifier))
+      .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
+
+    let maybe_result = match resolved_dep {
+      Some(ResolutionResolved { specifier, .. }) => {
+        resolve_graph_specifier_types(specifier, state)?
+      }
+      _ => resolve_non_graph_specifier_types(&specifier, &referrer, state)?,
+    };
+    let result = match maybe_result {
+      Some((specifier, media_type)) => {
+        let specifier_str = match specifier.scheme() {
+          "data" | "blob" => {
+            let specifier_str = hash_url(&specifier, media_type);
+            state
+              .remapped_specifiers
+              .insert(specifier_str.clone(), specifier);
+            specifier_str
           }
-        }),
-        None => None,
-      };
-      let maybe_result = match resolved_dep {
-        Some(Resolved::Ok { specifier, .. }) => {
-          let specifier = graph_data.follow_redirect(specifier);
-          match graph_data.get(&specifier) {
-            Some(ModuleEntry::Module {
-              media_type,
-              maybe_types,
-              ..
-            }) => match maybe_types {
-              Some(Resolved::Ok { specifier, .. }) => {
-                let types = graph_data.follow_redirect(specifier);
-                match graph_data.get(&types) {
-                  Some(ModuleEntry::Module { media_type, .. }) => {
-                    Some((types, *media_type))
-                  }
-                  _ => None,
-                }
-              }
-              _ => Some((specifier, *media_type)),
-            },
-            _ => {
-              // handle npm:<package> urls
-              if let Ok(npm_ref) =
-                NpmPackageReference::from_specifier(&specifier)
-              {
-                if let Some(npm_resolver) = &state.maybe_npm_resolver {
-                  Some(resolve_npm_package_reference_types(
-                    &npm_ref,
-                    npm_resolver,
-                  )?)
-                } else {
-                  None
-                }
-              } else {
-                None
-              }
-            }
-          }
-        }
-        _ => {
-          state.maybe_npm_resolver.as_ref().and_then(|npm_resolver| {
-            if npm_resolver.in_npm_package(&referrer) {
-              // we're in an npm package, so use node resolution
-              Some(NodeResolution::into_specifier_and_media_type(
-                node::node_resolve(
-                  specifier,
-                  &referrer,
-                  NodeResolutionMode::Types,
-                  npm_resolver,
-                  &mut PermissionsContainer::allow_all(),
-                )
-                .ok()
-                .flatten(),
-              ))
-            } else {
-              None
-            }
-          })
-        }
-      };
-      let result = match maybe_result {
-        Some((specifier, media_type)) => {
-          let specifier_str = match specifier.scheme() {
-            "data" | "blob" => {
-              let specifier_str = hash_url(&specifier, media_type);
+          _ => {
+            if let Some(specifier_str) =
+              maybe_remap_specifier(&specifier, media_type)
+            {
               state
                 .remapped_specifiers
                 .insert(specifier_str.clone(), specifier);
               specifier_str
+            } else {
+              specifier.to_string()
             }
-            _ => {
-              if let Some(specifier_str) =
-                maybe_remap_specifier(&specifier, media_type)
-              {
-                state
-                  .remapped_specifiers
-                  .insert(specifier_str.clone(), specifier);
-                specifier_str
-              } else {
-                specifier.to_string()
-              }
-            }
-          };
-          (specifier_str, media_type.as_ts_extension().into())
-        }
-        None => (
-          "deno:///missing_dependency.d.ts".to_string(),
-          ".d.ts".to_string(),
-        ),
-      };
-      log::debug!("Resolved {} to {:?}", specifier, result);
-      resolved.push(result);
-    }
+          }
+        };
+        (specifier_str, media_type.as_ts_extension().into())
+      }
+      None => (
+        "internal:///missing_dependency.d.ts".to_string(),
+        ".d.ts".to_string(),
+      ),
+    };
+    log::debug!("Resolved {} to {:?}", specifier, result);
+    resolved.push(result);
   }
 
   Ok(resolved)
 }
 
+fn resolve_graph_specifier_types(
+  specifier: &ModuleSpecifier,
+  state: &State,
+) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+  let graph = &state.graph;
+  let maybe_module = graph.get(specifier);
+  // follow the types reference directive, which may be pointing at an npm package
+  let maybe_module = match maybe_module {
+    Some(Module::Esm(module)) => {
+      let maybe_types_dep = module
+        .maybe_types_dependency
+        .as_ref()
+        .map(|d| &d.dependency);
+      match maybe_types_dep.and_then(|d| d.maybe_specifier()) {
+        Some(specifier) => graph.get(specifier),
+        _ => maybe_module,
+      }
+    }
+    maybe_module => maybe_module,
+  };
+
+  // now get the types from the resolved module
+  match maybe_module {
+    Some(Module::Esm(module)) => {
+      Ok(Some((module.specifier.clone(), module.media_type)))
+    }
+    Some(Module::Json(module)) => {
+      Ok(Some((module.specifier.clone(), module.media_type)))
+    }
+    Some(Module::Npm(module)) => {
+      if let Some(npm_resolver) = &state.maybe_npm_resolver {
+        resolve_npm_package_reference_types(&module.nv_reference, npm_resolver)
+          .map(Some)
+      } else {
+        Ok(None)
+      }
+    }
+    Some(Module::External(module)) => {
+      // we currently only use "External" for when the module is in an npm package
+      Ok(state.maybe_npm_resolver.as_ref().map(|npm_resolver| {
+        let specifier =
+          node::resolve_specifier_into_node_modules(&module.specifier);
+        NodeResolution::into_specifier_and_media_type(
+          node::url_to_node_resolution(specifier, npm_resolver).ok(),
+        )
+      }))
+    }
+    Some(Module::Node(_)) | None => Ok(None),
+  }
+}
+
+fn resolve_non_graph_specifier_types(
+  specifier: &str,
+  referrer: &ModuleSpecifier,
+  state: &State,
+) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+  let npm_resolver = match state.maybe_npm_resolver.as_ref() {
+    Some(npm_resolver) => npm_resolver,
+    None => return Ok(None), // we only support non-graph types for npm packages
+  };
+  if npm_resolver.in_npm_package(referrer) {
+    // we're in an npm package, so use node resolution
+    Ok(Some(NodeResolution::into_specifier_and_media_type(
+      node::node_resolve(
+        specifier,
+        referrer,
+        NodeResolutionMode::Types,
+        npm_resolver,
+        &mut PermissionsContainer::allow_all(),
+      )
+      .ok()
+      .flatten(),
+    )))
+  } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
+    // todo(dsherret): add support for injecting this in the graph so
+    // we don't need this special code here.
+    // This could occur when resolving npm:@types/node when it is
+    // injected and not part of the graph
+    let node_id = npm_resolver.resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
+    let npm_id_ref = NpmPackageNvReference {
+      nv: node_id.nv,
+      sub_path: npm_ref.sub_path,
+    };
+    resolve_npm_package_reference_types(&npm_id_ref, npm_resolver).map(Some)
+  } else {
+    Ok(None)
+  }
+}
+
 pub fn resolve_npm_package_reference_types(
-  npm_ref: &NpmPackageReference,
+  npm_ref: &NpmPackageNvReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(
@@ -713,9 +768,9 @@ pub fn resolve_npm_package_reference_types(
 }
 
 #[op]
-fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(&path) {
+  match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
       .maybe_npm_resolver
       .as_ref()
@@ -774,27 +829,19 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(vec![
-        op_cwd::decl(),
-        op_create_hash::decl(),
-        op_emit::decl(),
-        op_exists::decl(),
-        op_is_node_file::decl(),
-        op_load::decl(),
-        op_resolve::decl(),
-        op_respond::decl(),
-      ])
+      .ops(get_tsc_ops())
       .state(move |state| {
         state.put(State::new(
-          request.graph_data.clone(),
+          request.graph.clone(),
           request.hash_data.clone(),
-          request.maybe_config_specifier.clone(),
           request.maybe_npm_resolver.clone(),
           request.maybe_tsbuildinfo.clone(),
           root_map.clone(),
           remapped_specifiers.clone(),
+          std::env::current_dir()
+            .context("Unable to get CWD")
+            .unwrap(),
         ));
-        Ok(())
       })
       .build()],
     ..Default::default()
@@ -807,7 +854,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     "rootNames": root_names,
   });
   let request_str = request_value.to_string();
-  let exec_source = format!("globalThis.exec({})", request_str);
+  let exec_source = format!("globalThis.exec({request_str})");
 
   runtime
     .execute_script(&located_script_name!(), startup_source)
@@ -833,6 +880,17 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   }
 }
 
+fn get_tsc_ops() -> Vec<deno_core::OpDecl> {
+  vec![
+    op_create_hash::decl(),
+    op_emit::decl(),
+    op_is_node_file::decl(),
+    op_load::decl(),
+    op_resolve::decl(),
+    op_respond::decl(),
+  ]
+}
+
 #[cfg(test)]
 mod tests {
   use super::Diagnostic;
@@ -841,7 +899,7 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
-  use deno_graph::ModuleKind;
+  use deno_graph::ModuleGraph;
   use std::fs;
 
   #[derive(Debug, Default)]
@@ -880,30 +938,24 @@ mod tests {
     maybe_tsbuildinfo: Option<String>,
   ) -> OpState {
     let specifier = maybe_specifier
-      .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
+      .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let graph = deno_graph::create_graph(
-      vec![(specifier, ModuleKind::Esm)],
-      &mut loader,
-      deno_graph::GraphOptions {
-        is_dynamic: false,
-        imports: None,
-        resolver: None,
-        module_analyzer: None,
-        reporter: None,
-      },
-    )
-    .await;
+    let mut graph = ModuleGraph::default();
+    graph
+      .build(vec![specifier], &mut loader, Default::default())
+      .await;
     let state = State::new(
-      Arc::new(RwLock::new((&graph).into())),
+      Arc::new(graph),
       hash_data,
-      None,
       None,
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
+      std::env::current_dir()
+        .context("Unable to get CWD")
+        .unwrap(),
     );
     let mut op_state = OpState::new(1);
     op_state.put(state);
@@ -916,18 +968,10 @@ mod tests {
     let hash_data = vec![b"something".to_vec()];
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let graph = deno_graph::create_graph(
-      vec![(specifier.clone(), ModuleKind::Esm)],
-      &mut loader,
-      deno_graph::GraphOptions {
-        is_dynamic: false,
-        imports: None,
-        resolver: None,
-        module_analyzer: None,
-        reporter: None,
-      },
-    )
-    .await;
+    let mut graph = ModuleGraph::default();
+    graph
+      .build(vec![specifier.clone()], &mut loader, Default::default())
+      .await;
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
@@ -940,17 +984,16 @@ mod tests {
       "lib": ["deno.window"],
       "module": "esnext",
       "noEmit": true,
-      "outDir": "deno:///",
+      "outDir": "internal:///",
       "strict": true,
       "target": "esnext",
-      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "tsBuildInfoFile": "internal:///.tsbuildinfo",
     }));
     let request = Request {
       config,
       debug: false,
-      graph_data: Arc::new(RwLock::new((&graph).into())),
+      graph: Arc::new(graph),
       hash_data,
-      maybe_config_specifier: None,
       maybe_npm_resolver: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
@@ -1020,7 +1063,7 @@ mod tests {
       ("file:///.tsbuildinfo", MediaType::Unknown),
     ];
     for (specifier, media_type) in fixtures {
-      let specifier = resolve_url_or_path(specifier).unwrap();
+      let specifier = ModuleSpecifier::parse(specifier).unwrap();
       assert_eq!(get_tsc_media_type(&specifier), media_type);
     }
   }
@@ -1032,7 +1075,7 @@ mod tests {
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
-        file_name: "deno:///.tsbuildinfo".to_string(),
+        file_name: "internal:///.tsbuildinfo".to_string(),
       },
     );
     assert!(actual);
@@ -1046,7 +1089,7 @@ mod tests {
   #[tokio::test]
   async fn test_load() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1077,7 +1120,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_asset() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1089,7 +1132,7 @@ mod tests {
     .expect("should have invoked op");
     let actual: LoadResponse =
       serde_json::from_value(value).expect("failed to deserialize");
-    let expected = get_asset("lib.dom.d.ts").unwrap();
+    let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data, expected);
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
@@ -1098,14 +1141,16 @@ mod tests {
   #[tokio::test]
   async fn test_load_tsbuildinfo() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
     .await;
-    let actual =
-      op_load::call(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
-        .expect("should have invoked op");
+    let actual = op_load::call(
+      &mut state,
+      json!({ "specifier": "internal:///.tsbuildinfo"}),
+    )
+    .expect("should have invoked op");
     assert_eq!(
       actual,
       json!({
@@ -1137,7 +1182,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -1159,7 +1204,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve_empty() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -1174,7 +1219,7 @@ mod tests {
     .expect("should have not errored");
     assert_eq!(
       actual,
-      vec![("deno:///missing_dependency.d.ts".into(), ".d.ts".into())]
+      vec![("internal:///missing_dependency.d.ts".into(), ".d.ts".into())]
     );
   }
 
@@ -1221,7 +1266,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_basic() {
-    let specifier = resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -1232,7 +1277,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_reexport_dts() {
-    let specifier = resolve_url_or_path("file:///reexports.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("file:///reexports.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -1243,7 +1288,7 @@ mod tests {
 
   #[tokio::test]
   async fn fix_lib_ref() {
-    let specifier = resolve_url_or_path("file:///libref.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("file:///libref.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
