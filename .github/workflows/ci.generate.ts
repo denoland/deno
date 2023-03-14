@@ -43,7 +43,7 @@ sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 
-sudo ln -s third_party/prebuilt/linux64/libdl/libdl.so /sysroot/lib/x86_64-linux-gnu/libdl.so
+sudo ln -s third_party/prebuilt/linux64/libdl/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
 sudo ln -s third_party/prebuilt/linux64/libdl/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
 
 # Configure the build environment. Both Rust and Clang will produce
