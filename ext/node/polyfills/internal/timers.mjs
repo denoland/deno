@@ -1,15 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { inspect } from "internal:deno_node/internal/util/inspect.mjs";
-import { validateFunction, validateNumber } from "internal:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "internal:deno_node/internal/errors.ts";
-import { emitWarning } from "internal:deno_node/process.ts";
+import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { validateFunction, validateNumber } from "ext:deno_node/internal/validators.mjs";
+import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
+import { emitWarning } from "ext:deno_node/process.ts";
 import {
   setTimeout as setTimeout_,
   clearTimeout as clearTimeout_,
   setInterval as setInterval_,
-} from "internal:deno_web/02_timers.js";
+} from "ext:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;

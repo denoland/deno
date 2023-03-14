@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { resolve, toFileUrl } from "internal:deno_node/path.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { EventEmitter } from "internal:deno_node/events.ts";
+import { resolve, toFileUrl } from "ext:deno_node/path.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
 
 const environmentData = new Map();
 let threads = 0;

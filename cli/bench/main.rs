@@ -472,7 +472,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"lsp") {
-    let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
+    let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
   }
 

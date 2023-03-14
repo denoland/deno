@@ -604,21 +604,22 @@ fn lexical_scoped_variable() {
 #[test]
 fn missing_deno_dir() {
   use std::fs::read_dir;
-  use std::fs::remove_dir_all;
-  const DENO_DIR: &str = "nonexistent";
-  let test_deno_dir = test_util::testdata_path().join(DENO_DIR);
+  let temp_dir = TempDir::new();
+  let deno_dir_path = temp_dir.path().join("deno");
   let (out, err) = util::run_and_collect_output(
     true,
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      ("DENO_DIR".to_owned(), DENO_DIR.to_owned()),
+      (
+        "DENO_DIR".to_owned(),
+        deno_dir_path.to_str().unwrap().to_owned(),
+      ),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
   );
-  assert!(read_dir(&test_deno_dir).is_ok());
-  remove_dir_all(&test_deno_dir).unwrap();
+  assert!(read_dir(deno_dir_path).is_ok());
   assert_ends_with!(out, "1\n");
   assert!(err.is_empty());
 }

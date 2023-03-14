@@ -1,14 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { basename } from "internal:deno_node/path.ts";
-import { EventEmitter } from "internal:deno_node/events.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { promisify } from "internal:deno_node/util.ts";
-import { getValidatedPath } from "internal:deno_node/internal/fs/utils.mjs";
-import { validateFunction } from "internal:deno_node/internal/validators.mjs";
-import { stat, Stats } from "internal:deno_node/_fs/_fs_stat.ts";
-import { Stats as StatsClass } from "internal:deno_node/internal/fs/utils.mjs";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { delay } from "internal:deno_node/_util/async.ts";
+import { basename } from "ext:deno_node/path.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { promisify } from "ext:deno_node/util.ts";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { stat, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
+import { Stats as StatsClass } from "ext:deno_node/internal/fs/utils.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { delay } from "ext:deno_node/_util/async.ts";
 
 const statPromisified = promisify(stat);
 const statAsync = async (filename: string): Promise<Stats | null> => {

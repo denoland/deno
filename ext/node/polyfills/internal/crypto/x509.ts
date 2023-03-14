@@ -1,12 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { KeyObject } from "internal:deno_node/internal/crypto/keys.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
-import { isArrayBufferView } from "internal:deno_node/internal/util/types.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { BinaryLike } from "internal:deno_node/internal/crypto/types.ts";
+import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 
 // deno-lint-ignore no-explicit-any
 export type PeerCertificate = any;

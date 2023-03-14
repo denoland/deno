@@ -42,7 +42,7 @@ pub struct ExtensionFileSource {
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
-pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
+pub type OpStateFn = dyn Fn(&mut OpState);
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
 pub struct OpDecl {
@@ -77,7 +77,7 @@ pub struct Extension {
   initialized: bool,
   enabled: bool,
   name: &'static str,
-  deps: Option<Vec<&'static str>>,
+  deps: Option<&'static [&'static str]>,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -90,11 +90,22 @@ impl Extension {
     }
   }
 
+  pub fn builder_with_deps(
+    name: &'static str,
+    deps: &'static [&'static str],
+  ) -> ExtensionBuilder {
+    ExtensionBuilder {
+      name,
+      deps,
+      ..Default::default()
+    }
+  }
+
   /// Check if dependencies have been loaded, and errors if either:
   /// - The extension is depending on itself or an extension with the same name.
   /// - A dependency hasn't been loaded yet.
-  pub fn check_dependencies(&self, previous_exts: &[&mut Extension]) {
-    if let Some(deps) = &self.deps {
+  pub fn check_dependencies(&self, previous_exts: &[Extension]) {
+    if let Some(deps) = self.deps {
       'dep_loop: for dep in deps {
         if dep == &self.name {
           panic!("Extension '{}' is either depending on itself or there is another extension with the same name", self.name);
@@ -113,18 +124,12 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn get_js_sources(&self) -> &[ExtensionFileSource] {
-    match &self.js_files {
-      Some(files) => files,
-      None => &[],
-    }
+  pub fn get_js_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
+    self.js_files.as_ref()
   }
 
-  pub fn get_esm_sources(&self) -> &[ExtensionFileSource] {
-    match &self.esm_files {
-      Some(files) => files,
-      None => &[],
-    }
+  pub fn get_esm_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
+    self.esm_files.as_ref()
   }
 
   pub fn get_esm_entry_point(&self) -> Option<&'static str> {
@@ -147,10 +152,9 @@ impl Extension {
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
-  pub fn init_state(&self, state: &mut OpState) -> Result<(), Error> {
-    match &self.opstate_fn {
-      Some(ofn) => ofn(state),
-      None => Ok(()),
+  pub fn init_state(&self, state: &mut OpState) {
+    if let Some(op_fn) = &self.opstate_fn {
+      op_fn(state);
     }
   }
 
@@ -195,22 +199,17 @@ pub struct ExtensionBuilder {
   middleware: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   name: &'static str,
-  deps: Vec<&'static str>,
+  deps: &'static [&'static str],
 }
 
 impl ExtensionBuilder {
-  pub fn dependencies(&mut self, dependencies: Vec<&'static str>) -> &mut Self {
-    self.deps.extend(dependencies);
-    self
-  }
-
   pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
     let js_files =
       // TODO(bartlomieju): if we're automatically remapping here, then we should
       // use a different result struct that `ExtensionFileSource` as it's confusing
       // when (and why) the remapping happens.
       js_files.into_iter().map(|file_source| ExtensionFileSource {
-        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
       });
     self.js.extend(js_files);
@@ -224,7 +223,7 @@ impl ExtensionBuilder {
       // use a different result struct that `ExtensionFileSource` as it's confusing
       // when (and why) the remapping happens.
       .map(|file_source| ExtensionFileSource {
-        specifier: format!("internal:{}/{}", self.name, file_source.specifier),
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
         code: file_source.code,
       });
     self.esm.extend(esm_files);
@@ -243,7 +242,7 @@ impl ExtensionBuilder {
 
   pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
   where
-    F: Fn(&mut OpState) -> Result<(), Error> + 'static,
+    F: Fn(&mut OpState) + 'static,
   {
     self.state = Some(Box::new(opstate_fn));
     self
@@ -288,7 +287,7 @@ impl ExtensionBuilder {
 
 /// Helps embed JS files in an extension. Returns a vector of
 /// `ExtensionFileSource`, that represent the filename and source code. All
-/// specified files are rewritten into "internal:<extension_name>/<file_name>".
+/// specified files are rewritten into "ext:<extension_name>/<file_name>".
 ///
 /// An optional "dir" option can be specified to prefix all files with a
 /// directory name.
@@ -300,8 +299,8 @@ impl ExtensionBuilder {
 ///   "02_goodbye.js",
 /// )
 /// // Produces following specifiers:
-/// - "internal:my_extension/01_hello.js"
-/// - "internal:my_extension/02_goodbye.js"
+/// - "ext:my_extension/01_hello.js"
+/// - "ext:my_extension/02_goodbye.js"
 ///
 /// /// Example with "dir" option (for "my_extension"):
 /// ```ignore
@@ -311,8 +310,8 @@ impl ExtensionBuilder {
 ///   "02_goodbye.js",
 /// )
 /// // Produces following specifiers:
-/// - "internal:my_extension/js/01_hello.js"
-/// - "internal:my_extension/js/02_goodbye.js"
+/// - "ext:my_extension/js/01_hello.js"
+/// - "ext:my_extension/js/02_goodbye.js"
 /// ```
 #[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]

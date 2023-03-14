@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { ownerSymbol } from "internal:deno_node/internal/async_hooks.ts";
+import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 import {
   kArrayBufferOffset,
   kBytesWritten,
@@ -28,17 +28,14 @@ import {
   LibuvStreamWrap,
   streamBaseState,
   WriteWrap,
-} from "internal:deno_node/internal_binding/stream_wrap.ts";
-import { isUint8Array } from "internal:deno_node/internal/util/types.ts";
-import { errnoException } from "internal:deno_node/internal/errors.ts";
-import {
-  getTimerDuration,
-  kTimeout,
-} from "internal:deno_node/internal/timers.mjs";
-import { setUnrefTimeout } from "internal:deno_node/timers.ts";
-import { validateFunction } from "internal:deno_node/internal/validators.mjs";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { errnoException } from "ext:deno_node/internal/errors.ts";
+import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
+import { setUnrefTimeout } from "ext:deno_node/timers.ts";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");

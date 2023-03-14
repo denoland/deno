@@ -8,7 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
-use crate::modules::InternalModuleLoaderCb;
+use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -89,7 +89,6 @@ pub struct JsRuntime {
   snapshot_options: SnapshotOptions,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
-  extensions_with_js: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
@@ -250,20 +249,12 @@ pub struct RuntimeOptions {
 
   /// JsRuntime extensions, not to be confused with ES modules.
   /// Only ops registered by extensions will be initialized. If you need
-  /// to execute JS code from extensions, use `extensions_with_js` options
-  /// instead.
-  pub extensions: Vec<Extension>,
-
-  /// JsRuntime extensions, not to be confused with ES modules.
-  /// Ops registered by extensions will be initialized and JS code will be
-  /// executed. If you don't need to execute JS code from extensions, use
-  /// `extensions` option instead.
+  /// to execute JS code from extensions, pass source files in `js` or `esm`
+  /// option on `ExtensionBuilder`.
   ///
-  /// This is useful when creating snapshots, in such case you would pass
-  /// extensions using `extensions_with_js`, later when creating a runtime
-  /// from the snapshot, you would pass these extensions using `extensions`
-  /// option.
-  pub extensions_with_js: Vec<Extension>,
+  /// If you are creating a runtime from a snapshot take care not to include
+  /// JavaScript sources in the extensions.
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
@@ -275,7 +266,7 @@ pub struct RuntimeOptions {
   /// An optional callback that will be called for each module that is loaded
   /// during snapshotting. This callback can be used to transpile source on the
   /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
-  pub snapshot_module_load_cb: Option<InternalModuleLoaderCb>,
+  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -356,18 +347,15 @@ impl JsRuntime {
     let has_startup_snapshot = options.startup_snapshot.is_some();
     if !has_startup_snapshot {
       options
-        .extensions_with_js
-        .insert(0, crate::ops_builtin::init_builtins());
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtin_ops_and_esm());
     } else {
       options
         .extensions
-        .insert(0, crate::ops_builtin::init_builtins());
+        .insert(0, crate::ops_builtin::init_builtin_ops());
     }
 
-    let ops = Self::collect_ops(
-      &mut options.extensions,
-      &mut options.extensions_with_js,
-    );
+    let ops = Self::collect_ops(&mut options.extensions);
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -446,7 +434,6 @@ impl JsRuntime {
         }
       }
 
-      let mut module_handles = vec![];
       let mut scope = v8::ContextScope::new(scope, context);
       // The 0th element is the module map itself, followed by X number of module
       // handles. We need to deserialize the "next_module_id" field from the
@@ -459,6 +446,9 @@ impl JsRuntime {
             info_data.length()
           };
 
+          // Over allocate so executing a few scripts doesn't have to resize this vec.
+          let mut module_handles =
+            Vec::with_capacity(next_module_id as usize + 16);
           for i in 1..=next_module_id {
             match scope
               .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
@@ -605,9 +595,12 @@ impl JsRuntime {
 
     let loader = if snapshot_options != SnapshotOptions::Load {
       let esm_sources = options
-        .extensions_with_js
+        .extensions
         .iter()
-        .flat_map(|ext| ext.get_esm_sources().to_owned())
+        .flat_map(|ext| match ext.get_esm_sources() {
+          Some(s) => s.to_owned(),
+          None => vec![],
+        })
         .collect::<Vec<ExtensionFileSource>>();
 
       #[cfg(feature = "include_js_files_for_snapshotting")]
@@ -620,7 +613,7 @@ impl JsRuntime {
         }
       }
 
-      Rc::new(crate::modules::InternalModuleLoader::new(
+      Rc::new(crate::modules::ExtModuleLoader::new(
         options.module_loader,
         esm_sources,
         options.snapshot_module_load_cb,
@@ -670,7 +663,6 @@ impl JsRuntime {
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
-      extensions_with_js: options.extensions_with_js,
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
@@ -732,7 +724,7 @@ impl JsRuntime {
 
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
-  /// [`RuntimeOptions::extensions_with_js`] when the [`JsRuntime`] was
+  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was
   /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
@@ -848,50 +840,45 @@ impl JsRuntime {
     }
 
     // Take extensions to avoid double-borrow
-    let extensions = std::mem::take(&mut self.extensions_with_js);
+    let extensions = std::mem::take(&mut self.extensions);
     for ext in &extensions {
       {
-        let esm_files = ext.get_esm_sources();
-        if let Some(entry_point) = ext.get_esm_entry_point() {
-          let file_source = esm_files
-            .iter()
-            .find(|file| file.specifier == entry_point)
-            .unwrap();
-          load_and_evaluate_module(self, file_source)?;
-        } else {
-          for file_source in esm_files {
+        if let Some(esm_files) = ext.get_esm_sources() {
+          if let Some(entry_point) = ext.get_esm_entry_point() {
+            let file_source = esm_files
+              .iter()
+              .find(|file| file.specifier == entry_point)
+              .unwrap();
             load_and_evaluate_module(self, file_source)?;
+          } else {
+            for file_source in esm_files {
+              load_and_evaluate_module(self, file_source)?;
+            }
           }
         }
       }
 
       {
-        let js_files = ext.get_js_sources();
-        for file_source in js_files {
-          // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-          realm.execute_script(
-            self.v8_isolate(),
-            &file_source.specifier,
-            &file_source.code.load()?,
-          )?;
+        if let Some(js_files) = ext.get_js_sources() {
+          for file_source in js_files {
+            // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+            realm.execute_script(
+              self.v8_isolate(),
+              &file_source.specifier,
+              &file_source.code.load()?,
+            )?;
+          }
         }
       }
     }
     // Restore extensions
-    self.extensions_with_js = extensions;
+    self.extensions = extensions;
 
     Ok(())
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(
-    extensions: &mut [Extension],
-    extensions_with_js: &mut [Extension],
-  ) -> Vec<OpDecl> {
-    let mut exts = vec![];
-    exts.extend(extensions);
-    exts.extend(extensions_with_js);
-
+  fn collect_ops(exts: &mut [Extension]) -> Vec<OpDecl> {
     for (ext, previous_exts) in
       exts.iter().enumerate().map(|(i, ext)| (ext, &exts[..i]))
     {
@@ -939,7 +926,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -949,24 +936,6 @@ impl JsRuntime {
 
       // Restore extensions
       self.extensions = extensions;
-    }
-    {
-      let mut extensions: Vec<Extension> =
-        std::mem::take(&mut self.extensions_with_js);
-
-      // Setup state
-      for e in extensions.iter_mut() {
-        // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
-
-        // Setup event-loop middleware
-        if let Some(middleware) = e.init_event_loop_middleware() {
-          self.event_loop_middlewares.push(middleware);
-        }
-      }
-
-      // Restore extensions
-      self.extensions_with_js = extensions;
     }
     Ok(())
   }
@@ -2887,7 +2856,6 @@ pub mod tests {
           mode,
           dispatch_count: dispatch_count2.clone(),
         });
-        Ok(())
       })
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3985,8 +3953,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap_err();
     let error_string = error.to_string();
-    // Test that the script specifier is a URL: `internal:<repo-relative path>`.
-    assert!(error_string.contains("internal:core/01_core.js"));
+    // Test that the script specifier is a URL: `ext:<repo-relative path>`.
+    assert!(error_string.contains("ext:core/01_core.js"));
   }
 
   #[test]
@@ -4045,7 +4013,6 @@ assertEquals(1, notify_return_value);
       .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
-        Ok(())
       })
       .build();
 
@@ -5020,8 +4987,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ) -> Pin<Box<ModuleSourceFuture>> {
         let source = r#"
         // This module doesn't really exist, just verifying that we'll get
-        // an error when specifier starts with "internal:".
-        import { core } from "internal:core.js";
+        // an error when specifier starts with "ext:".
+        import { core } from "ext:core.js";
         "#;
 
         async move {
@@ -5057,7 +5024,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .unwrap_err();
     assert_eq!(
       err.to_string(),
-      "Cannot load internal module from external code"
+      "Cannot load extension module from external code"
     );
   }
 }

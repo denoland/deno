@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { fromFileUrl } from "internal:deno_node/path.ts";
+import { fromFileUrl } from "ext:deno_node/path.ts";
 
 type ExistsCallback = (exists: boolean) => void;
 

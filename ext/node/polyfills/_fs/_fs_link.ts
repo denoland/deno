@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import type { CallbackWithError } from "internal:deno_node/_fs/_fs_common.ts";
-import { fromFileUrl } from "internal:deno_node/path.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+import { fromFileUrl } from "ext:deno_node/path.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 /**
  * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these

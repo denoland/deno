@@ -43,6 +43,26 @@ pub fn init() -> Extension {
     .build()
 }
 
+// ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
+#[cfg(windows)]
+const COOKED_MODE: DWORD =
+  // enable line-by-line input (returns input only after CR is read)
+  wincon::ENABLE_LINE_INPUT
+  // enables real-time character echo to console display (requires ENABLE_LINE_INPUT)
+  | wincon::ENABLE_ECHO_INPUT
+  // system handles CTRL-C (with ENABLE_LINE_INPUT, also handles BS, CR, and LF) and other control keys (when using `ReadFile` or `ReadConsole`)
+  | wincon::ENABLE_PROCESSED_INPUT;
+
+#[cfg(windows)]
+fn mode_raw_input_on(original_mode: DWORD) -> DWORD {
+  original_mode & !COOKED_MODE | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+}
+
+#[cfg(windows)]
+fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
+  original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
+}
+
 #[op(fast)]
 fn op_stdin_set_raw(
   state: &mut OpState,
@@ -83,13 +103,10 @@ fn op_stdin_set_raw(
         return Err(Error::last_os_error().into());
       }
 
-      const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
-        | wincon::ENABLE_ECHO_INPUT
-        | wincon::ENABLE_PROCESSED_INPUT;
       let new_mode = if is_raw {
-        original_mode & !RAW_MODE_MASK | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+        mode_raw_input_on(original_mode)
       } else {
-        original_mode | RAW_MODE_MASK & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+        mode_raw_input_off(original_mode)
       };
 
       // SAFETY: winapi call
@@ -269,5 +286,33 @@ pub fn console_size(
         rows: size.ws_row as u32,
       })
     }
+  }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+  #[test]
+  fn test_winos_raw_mode_transitions() {
+    use crate::ops::tty::mode_raw_input_off;
+    use crate::ops::tty::mode_raw_input_on;
+
+    let known_off_modes =
+      [0xf7 /* Win10/CMD */, 0x1f7 /* Win10/WinTerm */];
+    let known_on_modes =
+      [0x2f0 /* Win10/CMD */, 0x3f0 /* Win10/WinTerm */];
+
+    // assert known transitions
+    assert_eq!(known_on_modes[0], mode_raw_input_on(known_off_modes[0]));
+    assert_eq!(known_on_modes[1], mode_raw_input_on(known_off_modes[1]));
+
+    // assert ON-OFF round-trip is neutral
+    assert_eq!(
+      known_off_modes[0],
+      mode_raw_input_off(mode_raw_input_on(known_off_modes[0]))
+    );
+    assert_eq!(
+      known_off_modes[1],
+      mode_raw_input_off(mode_raw_input_on(known_off_modes[1]))
+    );
   }
 }

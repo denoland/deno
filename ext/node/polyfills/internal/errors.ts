@@ -13,18 +13,18 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { inspect } from "internal:deno_node/internal/util/inspect.mjs";
-import { codes } from "internal:deno_node/internal/error_codes.ts";
+import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
-} from "internal:deno_node/internal_binding/uv.ts";
-import { assert } from "internal:deno_node/_util/asserts.ts";
-import { isWindows } from "internal:deno_node/_util/os.ts";
-import { os as osConstants } from "internal:deno_node/internal_binding/constants.ts";
-import { hideStackFrames } from "internal:deno_node/internal/hide_stack_frames.ts";
-import { getSystemErrorName } from "internal:deno_node/_utils.ts";
+} from "ext:deno_node/internal_binding/uv.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
+import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
+import { getSystemErrorName } from "ext:deno_node/_utils.ts";
 
 export { errorMap };
 

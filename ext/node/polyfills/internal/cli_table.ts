@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { getStringWidth } from "internal:deno_node/internal/util/inspect.mjs";
+import { getStringWidth } from "ext:deno_node/internal/util/inspect.mjs";
 
 // The use of Unicode characters below is the only non-comment use of non-ASCII
 // Unicode characters in Node.js built-in modules. If they are ever removed or
