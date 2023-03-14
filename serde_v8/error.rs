@@ -22,6 +22,7 @@ pub enum Error {
   ExpectedObject,
   ExpectedBuffer,
   ExpectedDetachable,
+  ExpectedExternal,
 
   ExpectedUtf8,
   ExpectedLatin1,

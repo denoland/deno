@@ -45,7 +45,6 @@ pub fn init(exit_code: ExitCode) -> Extension {
   init_ops(&mut builder)
     .state(move |state| {
       state.put::<ExitCode>(exit_code.clone());
-      Ok(())
     })
     .build()
 }
@@ -83,10 +82,10 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_set_env(
   state: &mut OpState,
-  key: String,
-  value: String,
+  key: &str,
+  value: &str,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
     return Err(type_error("Key is an empty string."));
   }
@@ -327,7 +326,7 @@ fn rss() -> usize {
     }
     for n in chars {
       idx += 1;
-      if ('0'..='9').contains(&n) {
+      if n.is_ascii_digit() {
         out *= 10;
         out += n as usize - '0' as usize;
       } else {
@@ -419,7 +418,6 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
 
 #[op]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  super::check_unstable(state, "Deno.osUptime");
   os_uptime(state)
 }
 

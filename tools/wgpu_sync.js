@@ -85,7 +85,21 @@ async function patchSrcLib() {
   await patchFile(
     join(TARGET_DIR, "src", "lib.rs"),
     (data) =>
-      data.replace(`prefix "deno:deno_webgpu",`, `prefix "deno:ext/webgpu",`),
+      data.replace(
+        `prefix "ext:deno_webgpu",`,
+        `prefix "ext:deno_webgpu",`,
+      ),
+  );
+}
+
+async function patchSurface() {
+  await patchFile(
+    join(TARGET_DIR, "src", "surface.rs"),
+    (data) =>
+      data.replace(
+        `prefix "ext:deno_webgpu",`,
+        `prefix "ext:deno_webgpu",`,
+      ),
   );
 }
 
@@ -94,6 +108,7 @@ async function main() {
   await checkoutUpstream();
   await patchCargo();
   await patchSrcLib();
+  await patchSurface();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 

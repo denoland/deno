@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::Context;
 use anyhow::Error;
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
@@ -106,7 +107,10 @@ fn main() -> Result<(), Error> {
     ..Default::default()
   });
 
-  let main_module = resolve_path(main_url)?;
+  let main_module = resolve_path(
+    main_url,
+    &std::env::current_dir().context("Unable to get CWD")?,
+  )?;
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;

@@ -1,9 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::inspector_server::InspectorServer;
-use crate::js;
 use crate::ops;
-use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
 use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
@@ -34,6 +32,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_io::Stdio;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
@@ -98,7 +97,7 @@ impl Serialize for WorkerControlEvent {
         let value = match error.downcast_ref::<JsError>() {
           Some(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
-              Some(s) => !s.trim_start_matches('[').starts_with("deno:"),
+              Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
             });
             json!({
@@ -319,6 +318,7 @@ pub struct WebWorker {
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
+  bootstrap_fn_global: Option<v8::Global<v8::Function>>,
 }
 
 pub struct WebWorkerOptions {
@@ -376,7 +376,6 @@ impl WebWorker {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
       })
       .build();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
@@ -388,12 +387,12 @@ impl WebWorker {
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
+      deno_url::init_ops(),
+      deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
+      deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -402,18 +401,21 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
+      deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init(None).disable(),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
+      deno_webstorage::init_ops(None).disable(),
+      deno_broadcast_channel::init_ops(
+        options.broadcast_channel.clone(),
+        unstable,
+      ),
+      deno_crypto::init_ops(options.seed),
+      deno_webgpu::init_ops(unstable),
       // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
+      deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
@@ -425,25 +427,24 @@ impl WebWorker {
       ),
       // Extensions providing Deno.* features
       ops::fs_events::init(),
-      ops::fs::init(),
-      ops::io::init(),
-      ops::io::init_stdio(options.stdio),
-      deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
+      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_io::init_ops(options.stdio),
+      deno_tls::init_ops(),
+      deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init::<PermissionsContainer>(unstable),
-      deno_node::init::<PermissionsContainer>(options.npm_resolver),
+      deno_napi::init_ops::<PermissionsContainer>(),
+      deno_node::init_polyfill_ops(),
+      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
-      ops::process::init(),
-      ops::spawn::init(),
+      ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
+      deno_http::init_ops(),
+      deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -452,13 +453,17 @@ impl WebWorker {
     // Append exts
     extensions.extend(std::mem::take(&mut options.extensions));
 
+    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
+    let startup_snapshot = options
+      .startup_snapshot
+      .unwrap_or_else(crate::js::deno_isolate_init);
+    #[cfg(feature = "dont_create_runtime_snapshot")]
+    let startup_snapshot = options.startup_snapshot
+      .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(
-        options
-          .startup_snapshot
-          .unwrap_or_else(js::deno_isolate_init),
-      ),
+      startup_snapshot: Some(startup_snapshot),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -492,6 +497,28 @@ impl WebWorker {
       (internal_handle, external_handle)
     };
 
+    let bootstrap_fn_global = {
+      let context = js_runtime.global_context();
+      let scope = &mut js_runtime.handle_scope();
+      let context_local = v8::Local::new(scope, context);
+      let global_obj = context_local.global(scope);
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
+      let bootstrap_ns: v8::Local<v8::Object> = global_obj
+        .get(scope, bootstrap_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"workerRuntime")
+          .unwrap();
+      let bootstrap_fn =
+        bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
+      let bootstrap_fn =
+        v8::Local::<v8::Function>::try_from(bootstrap_fn).unwrap();
+      v8::Global::new(scope, bootstrap_fn)
+    };
+
     (
       Self {
         id: worker_id,
@@ -501,6 +528,7 @@ impl WebWorker {
         worker_type: options.worker_type,
         main_module,
         poll_for_messages_fn: None,
+        bootstrap_fn_global: Some(bootstrap_fn_global),
       },
       external_handle,
     )
@@ -509,15 +537,24 @@ impl WebWorker {
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
-    let script = format!(
-      "bootstrap.workerRuntime({}, \"{}\", \"{}\")",
-      options.as_json(),
-      self.name,
-      self.id
-    );
-    self
-      .execute_script(&located_script_name!(), &script)
-      .expect("Failed to execute worker bootstrap script");
+    {
+      let scope = &mut self.js_runtime.handle_scope();
+      let options_v8 =
+        deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+      let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
+      let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
+      let undefined = v8::undefined(scope);
+      let name_str: v8::Local<v8::Value> =
+        v8::String::new(scope, &self.name).unwrap().into();
+      let id_str: v8::Local<v8::Value> =
+        v8::String::new(scope, &format!("{}", self.id))
+          .unwrap()
+          .into();
+      bootstrap_fn
+        .call(scope, undefined.into(), &[options_v8, name_str, id_str])
+        .unwrap();
+    }
+    // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
     // Save a reference to function that will start polling for messages
     // from a worker host; it will be called after the user code is loaded.
     let script = r#"

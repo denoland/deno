@@ -20,9 +20,6 @@ delete Object.prototype.__proto__;
   let logDebug = false;
   let logSource = "JS";
 
-  /** @type {string=} */
-  let cwd;
-
   // The map from the normalized specifier to the original.
   // TypeScript normalizes the specifier in its internal processing,
   // but the original specifier is needed when looking up the source from the runtime.
@@ -91,43 +88,6 @@ delete Object.prototype.__proto__;
     if (!cond) {
       throw new AssertionError(msg);
     }
-  }
-
-  // deno-fmt-ignore
-  const base64abc = [
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
-    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d",
-    "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s",
-    "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7",
-    "8", "9", "+", "/",
-  ];
-
-  /** Taken from https://deno.land/std/encoding/base64.ts */
-  function convertToBase64(data) {
-    const uint8 = core.encode(data);
-    let result = "",
-      i;
-    const l = uint8.length;
-    for (i = 2; i < l; i += 3) {
-      result += base64abc[uint8[i - 2] >> 2];
-      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
-      result += base64abc[((uint8[i - 1] & 0x0f) << 2) | (uint8[i] >> 6)];
-      result += base64abc[uint8[i] & 0x3f];
-    }
-    if (i === l + 1) {
-      // 1 octet yet to write
-      result += base64abc[uint8[i - 2] >> 2];
-      result += base64abc[(uint8[i - 2] & 0x03) << 4];
-      result += "==";
-    }
-    if (i === l) {
-      // 2 octets yet to write
-      result += base64abc[uint8[i - 2] >> 2];
-      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
-      result += base64abc[(uint8[i - 1] & 0x0f) << 2];
-      result += "=";
-    }
-    return result;
   }
 
   class SpecifierIsCjsCache {
@@ -386,6 +346,7 @@ delete Object.prototype.__proto__;
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
   const ASSETS_URL_PREFIX = "asset:///";
+  const CACHE_URL_PREFIX = "cache:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
@@ -484,8 +445,9 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.fileExists("${specifier}")`);
       }
-      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return ops.op_exists({ specifier });
+      // this is used by typescript to find the libs path
+      // so we can completely ignore it
+      return false;
     },
     readFile(specifier) {
       if (logDebug) {
@@ -564,7 +526,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getCurrentDirectory()`);
       }
-      return cwd ?? ops.op_cwd();
+      return CACHE_URL_PREFIX;
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -818,14 +780,6 @@ delete Object.prototype.__proto__;
    * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames }) {
-    // https://github.com/microsoft/TypeScript/issues/49150
-    ts.base64encode = function (host, input) {
-      if (host && host.base64encode) {
-        return host.base64encode(input);
-      }
-      return convertToBase64(input);
-    };
-
     setLogDebug(debugFlag, "TS");
     performanceStart();
     if (logDebug) {
@@ -1222,13 +1176,12 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {{ debug: boolean; rootUri?: string; }} init */
-  function serverInit({ debug: debugFlag, rootUri }) {
+  /** @param {{ debug: boolean; }} init */
+  function serverInit({ debug: debugFlag }) {
     if (hasStarted) {
       throw new Error("The language server has already been initialized.");
     }
     hasStarted = true;
-    cwd = rootUri;
     languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");

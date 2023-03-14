@@ -20,7 +20,10 @@ use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CliResolver;
+use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
+use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
 
@@ -260,20 +263,37 @@ async fn build_test_graph(
   mut loader: TestLoader,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver =
-    original_import_map.map(|m| CliResolver::with_import_map(Arc::new(m)));
-  deno_graph::create_graph(
-    roots,
-    &mut loader,
-    deno_graph::GraphOptions {
-      is_dynamic: false,
-      imports: None,
-      resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
-      module_analyzer: Some(analyzer),
-      reporter: None,
-    },
-  )
-  .await
+  let resolver = original_import_map.map(|m| {
+    let npm_registry_api = NpmRegistryApi::new_uninitialized();
+    let npm_resolution =
+      NpmResolution::new(npm_registry_api.clone(), None, None);
+    let deps_installer = PackageJsonDepsInstaller::new(
+      npm_registry_api.clone(),
+      npm_resolution.clone(),
+      None,
+    );
+    CliGraphResolver::new(
+      None,
+      Some(Arc::new(m)),
+      false,
+      npm_registry_api,
+      npm_resolution,
+      deps_installer,
+    )
+  });
+  let mut graph = ModuleGraph::default();
+  graph
+    .build(
+      roots,
+      &mut loader,
+      deno_graph::BuildOptions {
+        resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
+        module_analyzer: Some(analyzer),
+        ..Default::default()
+      },
+    )
+    .await;
+  graph
 }
 
 fn make_path(text: &str) -> PathBuf {

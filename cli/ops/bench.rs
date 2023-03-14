@@ -38,7 +38,6 @@ pub fn init(
     .state(move |state| {
       state.put(sender.clone());
       state.put(filter.clone());
-      Ok(())
     })
     .build()
 }

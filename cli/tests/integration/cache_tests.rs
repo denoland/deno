@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use test_util::env_vars_for_npm_tests;
+
 itest!(_036_import_map_fetch {
   args:
     "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
@@ -94,4 +96,14 @@ itest!(check_local_by_default2 {
 itest!(json_import {
   // should not error
   args: "cache --quiet cache/json_import/main.ts",
+});
+
+itest!(package_json_basic {
+  args: "cache main.ts",
+  output: "package_json/basic/main.cache.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
 });
