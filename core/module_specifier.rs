@@ -9,8 +9,6 @@ use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
 
-pub const DUMMY_SPECIFIER: &str = "<unknown>";
-
 /// Error indicating the reason resolving a module specifier failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModuleResolutionError {
@@ -85,18 +83,7 @@ pub fn resolve_import(
     // 3. Return the result of applying the URL parser to specifier with base
     //    URL as the base URL.
     Err(ParseError::RelativeUrlWithoutBase) => {
-      let base = if base == DUMMY_SPECIFIER {
-        // Handle <unknown> case, happening under e.g. repl.
-        // Use CWD for such case.
-
-        // Forcefully join base to current dir.
-        // Otherwise, later joining in Url would be interpreted in
-        // the parent directory (appending trailing slash does not work)
-        let path = current_dir().unwrap().join(base);
-        Url::from_file_path(path).unwrap()
-      } else {
-        Url::parse(base).map_err(InvalidBaseUrl)?
-      };
+      let base = Url::parse(base).map_err(InvalidBaseUrl)?;
       base.join(specifier).map_err(InvalidUrl)?
     }
 
@@ -185,16 +172,7 @@ mod tests {
 
   #[test]
   fn test_resolve_import() {
-    fn get_path(specifier: &str) -> Url {
-      let base_path = current_dir().unwrap().join("<unknown>");
-      let base_url = Url::from_file_path(base_path).unwrap();
-      base_url.join(specifier).unwrap()
-    }
-    let awesome = get_path("/awesome.ts");
-    let awesome_srv = get_path("/service/awesome.ts");
     let tests = vec![
-      ("/awesome.ts", "<unknown>", awesome.as_str()),
-      ("/service/awesome.ts", "<unknown>", awesome_srv.as_str()),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
