@@ -121,24 +121,6 @@ pub fn resolve_url(
 /// as it may be passed to deno as a command line argument.
 /// The string is interpreted as a URL if it starts with a valid URI scheme,
 /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
-/// file path; if it is a relative path it's resolved relative to the current
-/// working directory.
-pub fn resolve_url_or_path_deprecated(
-  specifier: &str,
-) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  if specifier_has_uri_scheme(specifier) {
-    resolve_url(specifier)
-  } else {
-    let cwd = current_dir()
-      .map_err(|_| ModuleResolutionError::InvalidPath(specifier.into()))?;
-    resolve_path(specifier, &cwd)
-  }
-}
-
-/// Takes a string representing either an absolute URL or a file path,
-/// as it may be passed to deno as a command line argument.
-/// The string is interpreted as a URL if it starts with a valid URI scheme,
-/// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
 /// file path; if it is a relative path it's resolved relative to passed
 /// `current_dir`.
 pub fn resolve_url_or_path(
@@ -361,7 +343,7 @@ mod tests {
   }
 
   #[test]
-  fn test_resolve_url_or_path_deprecated() {
+  fn test_resolve_url_or_path() {
     // Absolute URL.
     let mut tests: Vec<(&str, String)> = vec![
       (
@@ -457,9 +439,7 @@ mod tests {
     }
 
     for (specifier, expected_url) in tests {
-      let url = resolve_url_or_path_deprecated(specifier)
-        .unwrap()
-        .to_string();
+      let url = resolve_url_or_path(specifier, &cwd).unwrap().to_string();
       assert_eq!(url, expected_url);
     }
   }
@@ -479,7 +459,8 @@ mod tests {
     }
 
     for (specifier, expected_err) in tests {
-      let err = resolve_url_or_path_deprecated(specifier).unwrap_err();
+      let err =
+        resolve_url_or_path(specifier, &PathBuf::from("/")).unwrap_err();
       assert_eq!(err, expected_err);
     }
   }
