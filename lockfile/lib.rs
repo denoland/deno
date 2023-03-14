@@ -1,10 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+mod error;
+pub use error::LockfileError as Error;
+
 use std::collections::BTreeMap;
 use std::io::Write;
 
-use anyhow::Context;
-use anyhow::Error as AnyError;
 use ring::digest;
 use serde::Deserialize;
 use serde::Serialize;
@@ -109,7 +110,7 @@ pub struct Lockfile {
 }
 
 impl Lockfile {
-  pub fn new(filename: PathBuf, overwrite: bool) -> Result<Lockfile, AnyError> {
+  pub fn new(filename: PathBuf, overwrite: bool) -> Result<Lockfile, Error> {
     // Writing a lock file always uses the new format.
     if overwrite {
       return Ok(Lockfile {
@@ -136,35 +137,20 @@ impl Lockfile {
       }
     };
 
-    let s = result.with_context(|| {
-      format!("Unable to read lockfile: \"{}\"", filename.display())
-    })?;
-    let value: serde_json::Value =
-      serde_json::from_str(&s).with_context(|| {
-        format!(
-          "Unable to parse contents of the lockfile \"{}\"",
-          filename.display()
-        )
-      })?;
+    let s =
+      result.map_err(|_| Error::ReadError(filename.display().to_string()))?;
+    let value: serde_json::Value = serde_json::from_str(&s)
+      .map_err(|_| Error::ParseError(filename.display().to_string()))?;
     let version = value.get("version").and_then(|v| v.as_str());
     let content = if version == Some("2") {
-      serde_json::from_value::<LockfileContent>(value).with_context(|| {
-        format!(
-          "Unable to parse contents of the lockfile \"{}\"",
-          filename.display()
-        )
-      })?
+      serde_json::from_value::<LockfileContent>(value)
+        .map_err(|_| Error::ParseError(filename.display().to_string()))?
     } else {
       // If there's no version field, we assume that user is using the old
       // version of the lockfile. We'll migrate it in-place into v2 and it
-      // will be writte in v2 if user uses `--lock-write` flag.
+      // will be written in v2 if user uses `--lock-write` flag.
       let remote: BTreeMap<String, String> = serde_json::from_value(value)
-        .with_context(|| {
-          format!(
-            "Unable to parse contents of the lockfile \"{}\"",
-            filename.display()
-          )
-        })?;
+        .map_err(|_| Error::ParseError(filename.display().to_string()))?;
       LockfileContent {
         version: "2".to_string(),
         remote,
@@ -181,7 +167,7 @@ impl Lockfile {
   }
 
   // Synchronize lock file to disk - noop if --lock-write file is not specified.
-  pub fn write(&self) -> Result<(), AnyError> {
+  pub fn write(&self) -> Result<(), Error> {
     if !self.has_content_changed && !self.overwrite {
       return Ok(());
     }

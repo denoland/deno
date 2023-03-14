@@ -101,7 +101,7 @@ shell-escape = "=0.1.5"
 tar.workspace = true
 text-size = "=1.1.0"
 text_lines = "=0.6.0"
-thiserror = "=1.0.38"
+thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
