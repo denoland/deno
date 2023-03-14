@@ -14,12 +14,12 @@ description = "Web Cryptography API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-aes = "0.8.1"
+aes.workspace = true
 aes-gcm = "0.10"
 aes-kw = { version = "0.2.1", features = ["alloc"] }
 base64.workspace = true
 block-modes = "0.9.1"
-cbc = { version = "0.1.2", features = ["alloc"] }
+cbc.workspace = true
 const-oid = "0.9.0"
 ctr = "0.9.1"
 # https://github.com/dalek-cryptography/curve25519-dalek/pull/397

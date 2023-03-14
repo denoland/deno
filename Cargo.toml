@@ -77,6 +77,7 @@ deno_websocket = { version = "0.97.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.87.0", path = "./ext/webstorage" }
 deno_napi = { version = "0.22.0", path = "./ext/napi" }
 
+aes = "=0.8.2"
 anyhow = "1.0.57"
 async-trait = "0.1.51"
 atty = "=0.2.14"
@@ -84,6 +85,7 @@ base64 = "=0.13.1"
 bencher = "0.1"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
+cbc = { version = "=0.1.2", features = ["alloc"] }
 console_static_text = "=0.7.1"
 data-url = "=0.2.0"
 dlopen = "0.1.8"
@@ -120,6 +122,7 @@ sha2 = { version = "0.10.6", features = ["oid"] }
 smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
+thiserror = "=1.0.38"
 tokio = { version = "=1.25.0", features = ["full"] }
 tokio-rustls = "0.23.3"
 tokio-tungstenite = "0.16.1"

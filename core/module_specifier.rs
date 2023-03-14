@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
-use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -168,6 +167,7 @@ mod tests {
   use super::*;
   use crate::serde_json::from_value;
   use crate::serde_json::json;
+  use std::env::current_dir;
   use std::path::Path;
 
   #[test]
