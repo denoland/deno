@@ -18,7 +18,8 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -118,10 +119,10 @@ export interface DecipherOCB extends Decipher {
 
 export class Cipheriv extends Transform implements Cipher {
   /** CipherContext resource id */
-  context: number;
+  #context: number;
 
-  _cache: BlockModeCache;
-  _finished: false;
+  /** plaintext data cache */
+  #cache: BlockModeCache;
 
   constructor(
     cipher: string,
@@ -130,14 +131,14 @@ export class Cipheriv extends Transform implements Cipher {
     options?: TransformOptions,
   ) {
     super(options);
-    this._cache = new BlockModeCache();
-    this.context = ops.op_node_create_cipheriv(cipher, key, iv);
+    this.#cache = new BlockModeCache();
+    this.#context = ops.op_node_create_cipheriv(cipher, key, iv);
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
-    ops.op_node_cipheriv_encrypt(this.context, this._cache.cache, buf);
-    Deno.close(this.context);
+    ops.op_node_cipheriv_encrypt(this.#context, this.#cache.cache, buf);
+    core.close(this.#context);
     return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
@@ -166,12 +167,12 @@ export class Cipheriv extends Transform implements Cipher {
     _inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
-    this._cache.add(data);
-    const input = this._cache.get();
+    this.#cache.add(data);
+    const input = this.#cache.get();
     const output = new Buffer(input.length);
     for (let i = 0; i < input.length; i += 16) {
       ops.op_node_cipheriv_encrypt(
-        this.context,
+        this.#context,
         input.subarray(i, i + 16),
         output.subarray(i, i + 16),
       );
