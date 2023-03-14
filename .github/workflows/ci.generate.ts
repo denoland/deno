@@ -46,8 +46,6 @@ sudo mount -t proc /proc /sysroot/proc
 cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
 cp third_party/prebuilt/linux64/libdl/libdl.a .
 
-ls
-
 sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
 sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
 
