@@ -1,8 +1,0 @@
-error: Unsupported scheme "internal" for module "internal:runtime/js/01_build.js". Supported schemes: [
-    "data",
-    "blob",
-    "file",
-    "http",
-    "https",
-]
-    at [WILDCARD]

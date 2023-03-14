@@ -18,7 +18,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
@@ -143,7 +143,11 @@ impl ReplSession {
     }
     assert_ne!(context_id, 0);
 
-    let referrer = deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap();
+    let referrer = deno_core::resolve_path(
+      "./$deno$repl.ts",
+      proc_state.options.initial_cwd(),
+    )
+    .unwrap();
 
     let mut repl_session = ReplSession {
       proc_state,
@@ -454,7 +458,7 @@ impl ReplSession {
 
     let npm_imports = resolved_imports
       .iter()
-      .flat_map(|url| NpmPackageReference::from_specifier(url).ok())
+      .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
       .map(|r| r.req)
       .collect::<Vec<_>>();
     let has_node_specifier =
@@ -463,7 +467,7 @@ impl ReplSession {
       if !self.has_initialized_node_runtime {
         deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
-          self.proc_state.options.node_modules_dir(),
+          self.proc_state.options.has_node_modules_dir(),
         )
         .await?;
         self.has_initialized_node_runtime = true;

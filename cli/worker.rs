@@ -14,7 +14,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::colors;
 use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
@@ -293,8 +293,7 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages()
-      || self.ps.has_node_builtin_specifier()
+    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
     {
       self.initialize_main_module_for_node().await?;
     }
@@ -304,11 +303,11 @@ impl CliMainWorker {
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
-      self.ps.options.node_modules_dir(),
+      self.ps.options.has_node_modules_dir(),
     )
     .await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
-      if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
+      if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
         // to be the name of the binary command instead of deno
         let binary_name = pkg_ref
@@ -421,7 +420,7 @@ pub async fn create_main_worker_for_test_or_bench(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -439,25 +438,28 @@ async fn create_main_worker_internal(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
   bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
-    NpmPackageReference::from_specifier(&main_module)
+    NpmPackageReqReference::from_specifier(&main_module)
   {
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
+    let pkg_nv = ps
+      .npm_resolution
+      .resolve_pkg_id_from_pkg_req(&package_ref.req)?
+      .nv;
     let node_resolution = node::node_resolve_binary_export(
-      &package_ref.req,
+      &pkg_nv,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
-      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
-  } else if ps.npm_resolver.is_npm_main() {
+  } else if ps.options.is_npm_main() {
     let node_resolution =
       node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
     let is_main_cjs =
@@ -521,7 +523,6 @@ async fn create_main_worker_internal(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
-    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
@@ -626,7 +627,7 @@ fn create_web_worker_pre_execute_module_callback(
       if ps.npm_resolver.has_packages() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
-          ps.options.node_modules_dir(),
+          ps.options.has_node_modules_dir(),
         )
         .await?;
       }
@@ -639,7 +640,7 @@ fn create_web_worker_pre_execute_module_callback(
 
 fn create_web_worker_callback(
   ps: ProcState,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -727,14 +728,15 @@ fn create_web_worker_callback(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::resolve_url_or_path;
+  use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
   use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
-    let main_module = resolve_url_or_path("./hello.js").unwrap();
+    let main_module =
+      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
@@ -754,7 +756,6 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
-      extensions_with_js: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
@@ -785,7 +786,7 @@ mod tests {
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
     let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -802,7 +803,7 @@ mod tests {
       .parent()
       .unwrap()
       .join("tests/circular1.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -817,7 +818,9 @@ mod tests {
   async fn execute_mod_resolve_error() {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
-    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
+    let module_specifier =
+      resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
+        .unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }
@@ -828,7 +831,7 @@ mod tests {
     // tests).
     let mut worker = create_test_worker();
     let p = test_util::testdata_path().join("run/001_hello.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
   }

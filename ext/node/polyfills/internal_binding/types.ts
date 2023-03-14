@@ -21,7 +21,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { core } from "internal:deno_node/polyfills/_core.ts";
+import { core } from "ext:deno_node/_core.ts";
 
 // https://tc39.es/ecma262/#sec-object.prototype.tostring
 const _toString = Object.prototype.toString;
@@ -57,12 +57,7 @@ const _getArrayBufferByteLength = Object.getOwnPropertyDescriptor(
 )!.get!;
 
 // https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
-const _getSharedArrayBufferByteLength = globalThis.SharedArrayBuffer
-  ? Object.getOwnPropertyDescriptor(
-    SharedArrayBuffer.prototype,
-    "byteLength",
-  )!.get!
-  : undefined;
+let _getSharedArrayBufferByteLength;
 
 // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
 const _getTypedArrayToStringTag = Object.getOwnPropertyDescriptor(
@@ -285,10 +280,11 @@ export function isSetIterator(
 export function isSharedArrayBuffer(
   value: unknown,
 ): value is SharedArrayBuffer {
-  // SharedArrayBuffer is not available on this runtime
-  if (_getSharedArrayBufferByteLength === undefined) {
-    return false;
-  }
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= Object.getOwnPropertyDescriptor(
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  )!.get!;
 
   try {
     _getSharedArrayBufferByteLength.call(value);

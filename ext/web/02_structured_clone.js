@@ -7,7 +7,7 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 const core = globalThis.Deno.core;
-import DOMException from "internal:deno_web/01_dom_exception.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,

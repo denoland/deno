@@ -22,6 +22,7 @@
     "cli/bench/testdata/express-router.js",
     "cli/bench/testdata/npm/*",
     "cli/tsc/dts/*.d.ts",
+    "cli/tests/node_compat/test",
     "cli/tests/testdata/fmt/badly_formatted.json",
     "cli/tests/testdata/fmt/badly_formatted.md",
     "cli/tests/testdata/byte_order_mark.ts",

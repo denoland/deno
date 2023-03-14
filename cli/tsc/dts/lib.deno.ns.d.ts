@@ -333,6 +333,8 @@ declare namespace Deno {
    *
    * Requires `allow-sys` permission.
    *
+   * On Windows there is no API available to retrieve this information and this method returns `[ 0, 0, 0 ]`.
+   *
    * @tags allow-sys
    * @category Observability
    */
@@ -3479,7 +3481,7 @@ declare namespace Deno {
    *
    * ### Truncate part of the file
    *
-   * ```
+   * ```ts
    * const file = await Deno.makeTempFile();
    * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
    * await Deno.truncate(file, 7);
@@ -3688,10 +3690,7 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
-  /** 
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
-   * Options which can be used with {@linkcode Deno.run}.
+  /** Options which can be used with {@linkcode Deno.run}.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -3749,10 +3748,7 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** 
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
-   * The status resolved from the `.status()` method of a
+  /** The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
    *
    * If `success` is `true`, then `code` will be `0`, but if `success` is
@@ -3772,8 +3768,6 @@ declare namespace Deno {
     };
 
   /**
-   * * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
    *
@@ -3930,10 +3924,7 @@ declare namespace Deno {
     handler: () => void,
   ): void;
 
-  /** 
-   * @deprecated Use {@linkcode Deno.Command} instead.
-   * 
-   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
+  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
@@ -4104,7 +4095,7 @@ declare namespace Deno {
     unref(): void;
   }
 
-  /** 
+  /**
    * Options which can be set when calling {@linkcode Deno.Command}.
    *
    * @category Sub Process
@@ -4168,7 +4159,7 @@ declare namespace Deno {
     windowsRawArguments?: boolean;
   }
 
-  /** 
+  /**
    * @category Sub Process
    */
   export interface CommandStatus {
@@ -4181,9 +4172,9 @@ declare namespace Deno {
     signal: Signal | null;
   }
 
-  /** 
-   * The interface returned from calling {@linkcode Command.output} or
-   * {@linkcode Command.outputSync} which represents the result of spawning the
+  /**
+   * The interface returned from calling {@linkcode Deno.Command.output} or
+   * {@linkcode Deno.Command.outputSync} which represents the result of spawning the
    * child process.
    *
    * @category Sub Process
@@ -4729,7 +4720,7 @@ declare namespace Deno {
    *
    * Then `Deno.args` will contain:
    *
-   * ```
+   * ```ts
    * [ "/etc/passwd" ]
    * ```
    *

@@ -30,6 +30,7 @@ export async function checkCopyright() {
     ":!:test_util/wpt/**",
     ":!:cli/tools/init/templates/**",
     ":!:cli/tests/unit_node/testdata/**",
+    ":!:cli/tests/node_compat/test/**",
 
     // rust
     "*.rs",

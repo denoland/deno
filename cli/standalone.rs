@@ -63,7 +63,7 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
-/// binary by checking for the magic trailer string `D3N0` at EOF-12.
+/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-24.
 /// The magic trailer is followed by:
 /// - a u64 pointer to the JS bundle embedded in the binary
 /// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
@@ -140,9 +140,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
       Some(eszip::Module { ref specifier, .. }) => {
-        deno_core::resolve_url_or_path(specifier)?
+        ModuleSpecifier::parse(specifier)?
       }
-      None => deno_core::resolve_url_or_path(referrer)?,
+      None => {
+        let cwd = std::env::current_dir().context("Unable to get CWD")?;
+        deno_core::resolve_url_or_path(referrer, &cwd)?
+      }
     };
 
     self.maybe_import_map_resolver.as_ref().map_or_else(
@@ -240,6 +243,10 @@ pub async fn run(
           Some(Arc::new(
             parse_from_json(&base, &source).unwrap().import_map,
           )),
+          false,
+          ps.npm_api.clone(),
+          ps.npm_resolution.clone(),
+          ps.package_json_deps_installer.clone(),
         )
       },
     ),
@@ -274,7 +281,6 @@ pub async fn run(
       inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps),
-    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
