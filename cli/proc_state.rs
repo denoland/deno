@@ -495,7 +495,10 @@ impl ProcState {
     referrer: &str,
     permissions: &mut PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(referrer) = deno_core::resolve_url_or_path_deprecated(referrer) {
+    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
+    // call - maybe it should be caller's responsibility to pass it as an arg?
+    let cwd = std::env::current_dir().context("Unable to get CWD")?;
+    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer, &cwd) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
         return self
@@ -567,7 +570,7 @@ impl ProcState {
     let referrer = if referrer.is_empty() && is_repl {
       deno_core::resolve_path("./$deno$repl.ts", self.options.initial_cwd())?
     } else {
-      deno_core::resolve_url_or_path_deprecated(referrer)?
+      deno_core::resolve_url_or_path(referrer, &cwd)?
     };
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier

@@ -13,7 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::resolve_url_or_path_deprecated;
+use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -402,7 +402,10 @@ impl State {
 }
 
 fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path_deprecated(specifier).map_err(|err| err.into())
+  // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
+  // call - maybe it should be caller's responsibility to pass it as an arg?
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  resolve_url_or_path(specifier, &cwd).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]
