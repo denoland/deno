@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
 use deno_core::error::type_error;
@@ -38,6 +39,18 @@ impl CipherContext {
   pub fn encrypt(&self, input: &[u8], output: &mut [u8]) {
     self.cipher.borrow_mut().encrypt(input, output);
   }
+
+  pub fn r#final(
+    self,
+    input: &[u8],
+    output: &mut [u8],
+  ) -> Result<(), AnyError> {
+    Rc::try_unwrap(self.cipher)
+      .map_err(|_| type_error("Cipher context is already in use"))?
+      .into_inner()
+      .r#final(input, output);
+    Ok(())
+  }
 }
 
 impl Resource for CipherContext {
@@ -71,28 +84,26 @@ impl Cipher {
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
-        let len = input.len();
-        if len == 16 {
-          // not the last block
-          encryptor
-            .as_mut()
-            .encrypt_block_b2b_mut(input.into(), output.into());
-        } else {
-          // this is the last block, so we need to pad it
-          let mut block = [0; 16];
-          block[..input.len()].copy_from_slice(input);
-          pad_block(&mut block, len);
-          encryptor
-            .as_mut()
-            .encrypt_block_b2b_mut(&block.into(), output.into());
+        assert!(input.len() == 16);
+        encryptor
+          .as_mut()
+          .encrypt_block_b2b_mut(input.into(), output.into());
+      }
+    }
+  }
+
+  fn r#final(self, input: &[u8], output: &mut [u8]) -> bool {
+    assert!(input.len() < 16);
+    use Cipher::*;
+    match self {
+      Aes128Cbc(encryptor) => {
+        match (*encryptor)
+          .encrypt_padded_b2b_mut::<Pkcs7>(input.into(), output.into())
+        {
+          Ok(_) => true,
+          Err(_) => false,
         }
       }
     }
   }
-}
-
-/// Pads the last block of cbc mode based on PKCS#7
-fn pad_block(data: &mut [u8; 16], pos: usize) {
-  assert!(pos <= 16);
-  data[pos..].fill((16 - pos) as u8);
 }

@@ -103,6 +103,7 @@ fn ext_polyfill() -> ExtensionBuilder {
 fn ops_polyfill(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
   ext.ops(vec![
     crypto::op_node_cipheriv_encrypt::decl(),
+    crypto::op_node_cipheriv_final::decl(),
     crypto::op_node_create_cipheriv::decl(),
     crypto::op_node_create_hash::decl(),
     crypto::op_node_hash_update::decl(),

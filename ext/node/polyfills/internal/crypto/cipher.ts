@@ -18,8 +18,7 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
+const { ops } = globalThis.__bootstrap.core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -137,8 +136,7 @@ export class Cipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
-    ops.op_node_cipheriv_encrypt(this.#context, this.#cache.cache, buf);
-    core.close(this.#context);
+    ops.op_node_cipheriv_final(this.#context, this.#cache.cache, buf);
     return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 

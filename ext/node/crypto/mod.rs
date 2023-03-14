@@ -184,3 +184,16 @@ pub fn op_node_cipheriv_encrypt(
   context.encrypt(input, output);
   true
 }
+
+#[op]
+pub fn op_node_cipheriv_final(
+  state: &mut OpState,
+  rid: u32,
+  input: &[u8],
+  output: &mut [u8],
+) -> Result<(), AnyError> {
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
+  let context = Rc::try_unwrap(context)
+    .map_err(|_| type_error("Cipher context is already in use"))?;
+  context.r#final(input, output)
+}
