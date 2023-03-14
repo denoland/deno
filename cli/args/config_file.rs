@@ -2,7 +2,6 @@
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
-use crate::args::TaskFlags;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
@@ -186,10 +185,16 @@ fn parse_compiler_options(
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if IGNORED_COMPILER_OPTIONS.contains(&key) {
-      items.push(key.to_string());
-    } else {
-      filtered.insert(key.to_string(), value.to_owned());
+    // We don't pass "types" entries to typescript via the compiler
+    // options and instead provide those to tsc as "roots". This is
+    // because our "types" behavior is at odds with how TypeScript's
+    // "types" works.
+    if key != "types" {
+      if IGNORED_COMPILER_OPTIONS.contains(&key) {
+        items.push(key.to_string());
+      } else {
+        filtered.insert(key.to_string(), value.to_owned());
+      }
     }
   }
   let value = serde_json::to_value(filtered)?;
@@ -501,25 +506,13 @@ impl ConfigFile {
         Ok(Some(ConfigFile::read(&config_path)?))
       }
       ConfigFlag::Discover => {
-        if let Some(config_path_args) = flags.config_path_args() {
+        if let Some(config_path_args) = flags.config_path_args(cwd) {
           let mut checked = HashSet::new();
           for f in config_path_args {
             if let Some(cf) = Self::discover_from(&f, &mut checked)? {
               return Ok(Some(cf));
             }
           }
-          // attempt to resolve the config file from the task subcommand's
-          // `--cwd` when specified
-          if let crate::args::DenoSubcommand::Task(TaskFlags {
-            cwd: Some(path),
-            ..
-          }) = &flags.subcommand
-          {
-            let task_cwd = canonicalize_path(&PathBuf::from(path))?;
-            if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
-              return Ok(Some(path));
-            }
-          };
           // From CWD walk up to root looking for deno.json or deno.jsonc
           Self::discover_from(cwd, &mut checked)
         } else {

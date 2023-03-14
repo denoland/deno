@@ -60,6 +60,28 @@ pub async fn execute_script(
         .await;
     Ok(exit_code)
   } else if let Some(script) = package_json_scripts.get(task_name) {
+    if let Some(package_deps) = ps.package_json_deps_installer.package_deps() {
+      for (key, value) in package_deps {
+        if let Err(err) = value {
+          log::info!(
+            "{} Ignoring dependency '{}' in package.json because its version requirement failed to parse: {:#}",
+            colors::yellow("Warning"),
+            key,
+            err,
+          );
+        }
+      }
+    }
+    ps.package_json_deps_installer
+      .ensure_top_level_install()
+      .await?;
+    ps.npm_resolver.resolve_pending().await?;
+
+    log::info!(
+      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
+      colors::yellow("Warning"),
+    );
+
     let cwd = match task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => maybe_package_json

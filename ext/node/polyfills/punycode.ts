@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { ucs2 } from "internal:deno_node/polyfills/internal/idna.ts";
+import { ucs2 } from "ext:deno_node/internal/idna.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 

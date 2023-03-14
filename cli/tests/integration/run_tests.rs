@@ -13,6 +13,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::TestContextBuilder;
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -545,6 +546,12 @@ itest!(dynamic_import_already_rejected {
   output: "run/dynamic_import_already_rejected/main.out",
 });
 
+itest!(dynamic_import_concurrent_non_statically_analyzable {
+  args: "run --allow-read --allow-net --quiet run/dynamic_import_concurrent_non_statically_analyzable/main.ts",
+  output: "run/dynamic_import_concurrent_non_statically_analyzable/main.out",
+  http_server: true,
+});
+
 itest!(no_check_imports_not_used_as_values {
     args: "run --config run/no_check_imports_not_used_as_values/preserve_imports.tsconfig.json --no-check run/no_check_imports_not_used_as_values/main.ts",
     output: "run/no_check_imports_not_used_as_values/main.out",
@@ -819,15 +826,15 @@ itest!(config {
 
 itest!(config_types {
   args:
-    "run --reload --quiet --config run/config_types/tsconfig.json run/config_types/main.ts",
+    "run --reload --quiet --check=all --config run/config_types/tsconfig.json run/config_types/main.ts",
   output: "run/config_types/main.out",
 });
 
 itest!(config_types_remote {
-    http_server: true,
-    args: "run --reload --quiet --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
-    output: "run/config_types/main.out",
-  });
+  http_server: true,
+  args: "run --reload --quiet --check=all --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
+  output: "run/config_types/main.out",
+});
 
 itest!(empty_typescript {
   args: "run --reload --check run/empty.ts",
@@ -2749,9 +2756,10 @@ itest!(config_not_auto_discovered_for_remote_script {
   http_server: true,
 });
 
-itest!(package_json_auto_discovered_for_local_script_log {
+itest!(package_json_auto_discovered_for_local_script_arg {
   args: "run -L debug -A no_deno_json/main.ts",
   output: "run/with_package_json/no_deno_json/main.out",
+  // notice this is not in no_deno_json
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
@@ -2762,7 +2770,7 @@ itest!(package_json_auto_discovered_for_local_script_log {
 // In this case we shouldn't discover `package.json` file, because it's in a
 // directory that is above the directory containing `deno.json` file.
 itest!(
-  package_json_auto_discovered_for_local_script_log_with_stop {
+  package_json_auto_discovered_for_local_script_arg_with_stop {
     args: "run -L debug with_stop/some/nested/dir/main.ts",
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
@@ -2772,6 +2780,25 @@ itest!(
     exit_code: 1,
   }
 );
+
+itest!(package_json_not_auto_discovered_no_config {
+  args: "run -L debug -A --no-config noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+});
+
+itest!(package_json_not_auto_discovered_no_npm {
+  args: "run -L debug -A --no-npm noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+});
+
+itest!(package_json_not_auto_discovered_env_var {
+  args: "run -L debug -A noconfig.ts",
+  output: "run/with_package_json/no_deno_json/noconfig.out",
+  cwd: Some("run/with_package_json/no_deno_json/"),
+  envs: vec![("DENO_NO_PACKAGE_JSON".to_string(), "1".to_string())],
+});
 
 itest!(
   package_json_auto_discovered_node_modules_relative_package_json {
@@ -2792,6 +2819,91 @@ itest!(package_json_auto_discovered_for_npm_binary {
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
 });
+
+itest!(package_json_auto_discovered_no_package_json_imports {
+  // this should not use --quiet because we should ensure no package.json install occurs
+  args: "run -A no_package_json_imports.ts",
+  output: "run/with_package_json/no_deno_json/no_package_json_imports.out",
+  cwd: Some("run/with_package_json/no_deno_json"),
+  copy_temp_dir: Some("run/with_package_json/no_deno_json"),
+});
+
+itest!(package_json_with_deno_json {
+  args: "run --quiet -A main.ts",
+  output: "package_json/deno_json/main.out",
+  cwd: Some("package_json/deno_json/"),
+  copy_temp_dir: Some("package_json/deno_json/"),
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+});
+
+#[test]
+fn package_json_error_dep_value_test() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/invalid_value")
+    .cwd("package_json/invalid_value")
+    .build();
+
+  // should run fine when not referencing a failing dep entry
+  context
+    .new_command()
+    .args("run ok.ts")
+    .run()
+    .assert_matches_file("package_json/invalid_value/ok.ts.out");
+
+  // should fail when referencing a failing dep entry
+  context
+    .new_command()
+    .args("run error.ts")
+    .run()
+    .assert_exit_code(1)
+    .assert_matches_file("package_json/invalid_value/error.ts.out");
+
+  // should output a warning about the failing dep entry
+  context
+    .new_command()
+    .args("task test")
+    .run()
+    .assert_matches_file("package_json/invalid_value/task.out");
+}
+
+#[test]
+fn package_json_no_node_modules_dir_created() {
+  // it should not create a node_modules directory
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.deno_dir();
+
+  temp_dir.write("deno.json", "{}");
+  temp_dir.write("package.json", "{}");
+  temp_dir.write("main.ts", "");
+
+  context.new_command().args("run main.ts").run();
+
+  assert!(!temp_dir.path().join("node_modules").exists());
+}
+
+#[test]
+fn node_modules_dir_no_npm_specifiers_no_dir_created() {
+  // it should not create a node_modules directory
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.deno_dir();
+
+  temp_dir.write("deno.json", "{}");
+  temp_dir.write("main.ts", "");
+
+  context
+    .new_command()
+    .args("run --node-modules-dir main.ts")
+    .run();
+
+  assert!(!temp_dir.path().join("node_modules").exists());
+}
 
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
@@ -3953,6 +4065,51 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
+#[test]
+fn permission_prompt_strips_ansi_codes_and_control_chars() {
+  let _guard = util::http_server();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(
+      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\"."
+    ));
+  });
+
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"
+const boldANSI = "\u001b[1m" // bold
+const unboldANSI = "\u001b[22m" // unbold
+
+const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}
+├ Requested by \`Deno.Command().output()`
+
+const moveANSIUp = "\u001b[1A" // moves to the start of the line
+const clearANSI = "\u001b[2K" // clears the line
+const moveANSIStart = "\u001b[1000D" // moves to the start of the line
+
+Deno[Object.getOwnPropertySymbols(Deno)[0]].core.ops.op_spawn_child({
+    cmd: "cat",
+    args: ["/etc/passwd"],
+    clearEnv: false,
+    env: [],
+    stdin: "null",
+    stdout: "inherit",
+    stderr: "piped"
+}, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(r#"┌ ⚠️  Deno requests run access to "cat""#));
+  });
+}
+
 itest!(node_builtin_modules_ts {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
@@ -3974,14 +4131,14 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
-itest!(internal_import {
-  args: "run run/internal_import.ts",
-  output: "run/internal_import.ts.out",
+itest!(extension_import {
+  args: "run run/extension_import.ts",
+  output: "run/extension_import.ts.out",
   exit_code: 1,
 });
 
-itest!(internal_dynamic_import {
-  args: "run run/internal_dynamic_import.ts",
-  output: "run/internal_dynamic_import.ts.out",
+itest!(extension_dynamic_import {
+  args: "run run/extension_dynamic_import.ts",
+  output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });

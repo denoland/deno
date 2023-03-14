@@ -10,6 +10,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::util::fs::symlink_dir;
+use crate::util::fs::LaxSingleProcessFsFlag;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressMessagePrompt;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -41,27 +44,28 @@ use super::common::NpmPackageFsResolver;
 #[derive(Debug, Clone)]
 pub struct LocalNpmPackageResolver {
   cache: NpmCache,
+  progress_bar: ProgressBar,
   resolution: NpmResolution,
   registry_url: Url,
   root_node_modules_path: PathBuf,
-  root_node_modules_specifier: ModuleSpecifier,
+  root_node_modules_url: Url,
 }
 
 impl LocalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
+    progress_bar: ProgressBar,
     registry_url: Url,
     node_modules_folder: PathBuf,
     resolution: NpmResolution,
   ) -> Self {
     Self {
       cache,
+      progress_bar,
       resolution,
       registry_url,
-      root_node_modules_specifier: ModuleSpecifier::from_directory_path(
-        &node_modules_folder,
-      )
-      .unwrap(),
+      root_node_modules_url: Url::from_directory_path(&node_modules_folder)
+        .unwrap(),
       root_node_modules_path: node_modules_folder,
     }
   }
@@ -92,8 +96,7 @@ impl LocalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<PathBuf> {
-    let relative_url =
-      self.root_node_modules_specifier.make_relative(specifier)?;
+    let relative_url = self.root_node_modules_url.make_relative(specifier)?;
     if relative_url.starts_with("../") {
       return None;
     }
@@ -126,6 +129,14 @@ impl LocalNpmPackageResolver {
 
 #[async_trait]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
+  fn root_dir_url(&self) -> &Url {
+    &self.root_node_modules_url
+  }
+
+  fn node_modules_path(&self) -> Option<PathBuf> {
+    Some(self.root_node_modules_path.clone())
+  }
+
   fn resolve_package_folder_from_deno_module(
     &self,
     node_id: &NpmPackageId,
@@ -194,8 +205,14 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {
-    sync_resolver_with_fs(self).await?;
-    Ok(())
+    sync_resolution_with_fs(
+      &self.resolution.snapshot(),
+      &self.cache,
+      &self.progress_bar,
+      &self.registry_url,
+      &self.root_node_modules_path,
+    )
+    .await
   }
 
   fn ensure_read_permission(
@@ -211,29 +228,31 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 }
 
-async fn sync_resolver_with_fs(
-  resolver: &LocalNpmPackageResolver,
-) -> Result<(), AnyError> {
-  sync_resolution_with_fs(
-    &resolver.resolution.snapshot(),
-    &resolver.cache,
-    &resolver.registry_url,
-    &resolver.root_node_modules_path,
-  )
-  .await
-}
-
 /// Creates a pnpm style folder structure.
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &NpmCache,
+  progress_bar: &ProgressBar,
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
 ) -> Result<(), AnyError> {
+  if snapshot.is_empty() {
+    return Ok(()); // don't create the directory
+  }
+
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   fs::create_dir_all(&deno_local_registry_dir).with_context(|| {
     format!("Creating '{}'", deno_local_registry_dir.display())
   })?;
+
+  let single_process_lock = LaxSingleProcessFsFlag::lock(
+    deno_local_registry_dir.join(".deno.lock"),
+    // similar message used by cargo build
+    "waiting for file lock on node_modules directory",
+  )
+  .await;
+
+  let pb_clear_guard = progress_bar.clear_guard(); // prevent flickering
 
   // 1. Write all the packages out the .deno directory.
   //
@@ -260,6 +279,7 @@ async fn sync_resolution_with_fs(
       .should_use_for_npm_package(&package.pkg_id.nv.name)
       || !initialized_file.exists()
     {
+      let pb = progress_bar.clone();
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
@@ -267,6 +287,10 @@ async fn sync_resolution_with_fs(
         cache
           .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
           .await?;
+        let pb_guard = pb.update_with_prompt(
+          ProgressMessagePrompt::Initialize,
+          &package.pkg_id.nv.to_string(),
+        );
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
@@ -280,6 +304,8 @@ async fn sync_resolution_with_fs(
         copy_dir_recursive(&cache_folder, &package_path)?;
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
+        // finally stop showing the progress bar
+        drop(pb_guard); // explicit for clarity
         Ok(())
       });
       if sync_download {
@@ -392,6 +418,9 @@ async fn sync_resolution_with_fs(
       pending_packages.push_back((id.clone(), false));
     }
   }
+
+  drop(single_process_lock);
+  drop(pb_clear_guard);
 
   Ok(())
 }

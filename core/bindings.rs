@@ -65,7 +65,7 @@ pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new(s, "").unwrap();
+  let source_map_url = v8::String::empty(s);
   v8::ScriptOrigin::new(
     s,
     resource_name.into(),
@@ -84,7 +84,7 @@ pub fn module_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new(s, "").unwrap();
+  let source_map_url = v8::String::empty(s);
   v8::ScriptOrigin::new(
     s,
     resource_name.into(),
@@ -111,9 +111,11 @@ pub fn initialize_context<'s>(
 
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  let deno_str = v8::String::new(scope, "Deno").unwrap();
-  let core_str = v8::String::new(scope, "core").unwrap();
-  let ops_str = v8::String::new(scope, "ops").unwrap();
+  let deno_str =
+    v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
+  let core_str =
+    v8::String::new_external_onebyte_static(scope, b"core").unwrap();
+  let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
 
   // Snapshot already registered `Deno.core.ops` but
   // extensions may provide ops that aren't part of the snapshot.
@@ -135,9 +137,6 @@ pub fn initialize_context<'s>(
       .try_into()
       .unwrap();
     initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
-    if snapshot_options != SnapshotOptions::CreateFromExisting {
-      initialize_async_ops_info(scope, ops_obj, op_ctxs);
-    }
     return scope.escape(context);
   }
 
@@ -153,7 +152,8 @@ pub fn initialize_context<'s>(
 
   // Bind v8 console object to Deno.core.console
   let extra_binding_obj = context.get_extras_binding_object(scope);
-  let console_str = v8::String::new(scope, "console").unwrap();
+  let console_str =
+    v8::String::new_external_onebyte_static(scope, b"console").unwrap();
   let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
   core_obj.set(scope, console_str.into(), console_obj);
 
@@ -161,9 +161,6 @@ pub fn initialize_context<'s>(
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
 
-  if !snapshot_options.will_snapshot() {
-    initialize_async_ops_info(scope, ops_obj, op_ctxs);
-  }
   initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
   scope.escape(context)
 }
@@ -209,7 +206,8 @@ pub fn set_func(
   name: &'static str,
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
-  let key = v8::String::new(scope, name).unwrap();
+  let key =
+    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
   let val = v8::Function::new(scope, callback).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
@@ -226,7 +224,8 @@ pub fn set_func_raw(
   fast_function: &Option<Box<dyn FastFunction>>,
   snapshot_options: SnapshotOptions,
 ) {
-  let key = v8::String::new(scope, name).unwrap();
+  let key =
+    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
   let builder =
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
@@ -282,11 +281,11 @@ pub fn host_import_module_dynamically_callback<'s>(
     .unwrap()
     .to_rust_string_lossy(scope);
 
-  let is_internal_module = specifier_str.starts_with("internal:");
+  let is_ext_module = specifier_str.starts_with("ext:");
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  if !is_internal_module {
+  if !is_ext_module {
     let assertions = parse_import_assertions(
       scope,
       import_assertions,
@@ -334,10 +333,12 @@ pub fn host_import_module_dynamically_callback<'s>(
 
   let promise = promise.catch(scope, map_err).unwrap();
 
-  if is_internal_module {
-    let message =
-      v8::String::new(scope, "Cannot load internal module from external code")
-        .unwrap();
+  if is_ext_module {
+    let message = v8::String::new_external_onebyte_static(
+      scope,
+      b"Cannot load extension module from external code",
+    )
+    .unwrap();
     let exception = v8::Exception::type_error(scope, message);
     resolver.reject(scope, exception);
   }
@@ -360,18 +361,20 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
     .get_info(&module_global)
     .expect("Module not found");
 
-  let url_key = v8::String::new(scope, "url").unwrap();
+  let url_key = v8::String::new_external_onebyte_static(scope, b"url").unwrap();
   let url_val = v8::String::new(scope, &info.name).unwrap();
   meta.create_data_property(scope, url_key.into(), url_val.into());
 
-  let main_key = v8::String::new(scope, "main").unwrap();
+  let main_key =
+    v8::String::new_external_onebyte_static(scope, b"main").unwrap();
   let main_val = v8::Boolean::new(scope, info.main);
   meta.create_data_property(scope, main_key.into(), main_val.into());
 
   let builder =
     v8::FunctionBuilder::new(import_meta_resolve).data(url_val.into());
   let val = v8::FunctionBuilder::<v8::Function>::build(builder, scope).unwrap();
-  let resolve_key = v8::String::new(scope, "resolve").unwrap();
+  let resolve_key =
+    v8::String::new_external_onebyte_static(scope, b"resolve").unwrap();
   meta.set(scope, resolve_key.into(), val.into());
 }
 
@@ -453,7 +456,8 @@ fn catch_dynamic_import_promise_error(
     let message = v8::Exception::create_message(scope, arg);
     if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
       let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
-      let message_key = v8::String::new(scope, "message").unwrap();
+      let message_key =
+        v8::String::new_external_onebyte_static(scope, b"message").unwrap();
       let message = arg.get(scope, message_key.into()).unwrap();
       let exception = match name.as_str() {
         "RangeError" => {
@@ -470,8 +474,11 @@ fn catch_dynamic_import_promise_error(
         }
         _ => v8::Exception::error(scope, message.try_into().unwrap()),
       };
-      let code_key = v8::String::new(scope, "code").unwrap();
-      let code_value = v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+      let code_key =
+        v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+      let code_value =
+        v8::String::new_external_onebyte_static(scope, b"ERR_MODULE_NOT_FOUND")
+          .unwrap();
       let exception_obj = exception.to_object(scope).unwrap();
       exception_obj.set(scope, code_key.into(), code_value.into());
       scope.throw_exception(exception);
@@ -656,85 +663,4 @@ pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);
-}
-
-struct AsyncOpsInfo {
-  ptr: *const OpCtx,
-  len: usize,
-}
-
-impl<'s> IntoIterator for &'s AsyncOpsInfo {
-  type Item = &'s OpCtx;
-  type IntoIter = AsyncOpsInfoIterator<'s>;
-
-  fn into_iter(self) -> Self::IntoIter {
-    AsyncOpsInfoIterator {
-      // SAFETY: OpCtx slice is valid for the lifetime of the Isolate
-      info: unsafe { std::slice::from_raw_parts(self.ptr, self.len) },
-      index: 0,
-    }
-  }
-}
-
-struct AsyncOpsInfoIterator<'s> {
-  info: &'s [OpCtx],
-  index: usize,
-}
-
-impl<'s> Iterator for AsyncOpsInfoIterator<'s> {
-  type Item = &'s OpCtx;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    loop {
-      match self.info.get(self.index) {
-        Some(ctx) if ctx.decl.is_async => {
-          self.index += 1;
-          return Some(ctx);
-        }
-        Some(_) => {
-          self.index += 1;
-        }
-        None => return None,
-      }
-    }
-  }
-}
-
-fn async_ops_info(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let async_op_names = v8::Object::new(scope);
-  let external: v8::Local<v8::External> = args.data().try_into().unwrap();
-  let info: &AsyncOpsInfo =
-    // SAFETY: external is guaranteed to be a valid pointer to AsyncOpsInfo
-    unsafe { &*(external.value() as *const AsyncOpsInfo) };
-  for ctx in info {
-    let name = v8::String::new(scope, ctx.decl.name).unwrap();
-    let argc = v8::Integer::new(scope, ctx.decl.argc as i32);
-    async_op_names.set(scope, name.into(), argc.into());
-  }
-  rv.set(async_op_names.into());
-}
-
-fn initialize_async_ops_info(
-  scope: &mut v8::HandleScope,
-  ops_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-) {
-  let key = v8::String::new(scope, "asyncOpsInfo").unwrap();
-  let external = v8::External::new(
-    scope,
-    Box::into_raw(Box::new(AsyncOpsInfo {
-      ptr: op_ctxs as *const [OpCtx] as _,
-      len: op_ctxs.len(),
-    })) as *mut c_void,
-  );
-  let val = v8::Function::builder(async_ops_info)
-    .data(external.into())
-    .build(scope)
-    .unwrap();
-  val.set_name(key);
-  ops_obj.set(scope, key.into(), val.into());
 }

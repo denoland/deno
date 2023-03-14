@@ -2,21 +2,18 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 const internals = globalThis.__bootstrap.internals;
-import { core } from "internal:deno_node/polyfills/_core.ts";
-import {
-  notImplemented,
-  warnNotImplemented,
-} from "internal:deno_node/polyfills/_utils.ts";
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+import { core } from "ext:deno_node/_core.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_UNKNOWN_SIGNAL,
   errnoException,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { getOptionValue } from "internal:deno_node/polyfills/internal/options.ts";
-import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { fromFileUrl, join } from "internal:deno_node/polyfills/path.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { getOptionValue } from "ext:deno_node/internal/options.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { fromFileUrl, join } from "ext:deno_node/path.ts";
 import {
   arch as arch_,
   chdir,
@@ -25,21 +22,20 @@ import {
   nextTick as _nextTick,
   version,
   versions,
-} from "internal:deno_node/polyfills/_process/process.ts";
-import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
+} from "ext:deno_node/_process/process.ts";
+import { _exiting } from "ext:deno_node/_process/exiting.ts";
 export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
-} from "internal:deno_node/polyfills/_process/streams.mjs";
-import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
+} from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,
   processTicksAndRejections,
   runNextTicks,
-} from "internal:deno_node/polyfills/_next_tick.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import * as files from "internal:runtime/js/40_files.js";
+} from "ext:deno_node/_next_tick.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import * as io from "ext:deno_io/12_io.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -59,11 +55,11 @@ let stdin = null as any;
 let stdout = null as any;
 
 export { stderr, stdin, stdout };
-import { getBinding } from "internal:deno_node/polyfills/internal_binding/mod.ts";
-import * as constants from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import * as uv from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import type { BindingName } from "internal:deno_node/polyfills/internal_binding/mod.ts";
-import { buildAllowedFlags } from "internal:deno_node/polyfills/internal/process/per_thread.mjs";
+import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
+import * as constants from "ext:deno_node/internal_binding/constants.ts";
+import * as uv from "ext:deno_node/internal_binding/uv.ts";
+import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
+import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
 // @ts-ignore Deno[Deno.internal] is used on purpose here
 const DenoCommand = Deno[Deno.internal]?.nodeUnstable?.Command ||
@@ -752,17 +748,17 @@ internals.__bootstrapNodeProcess = function (
   });
 
   // Initializes stdin
-  stdin = stdio.stdin = process.stdin = initStdin();
+  stdin = process.stdin = initStdin();
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = stdio.stderr = process.stderr = createWritableStdioStream(
-    files.stderr,
+  stderr = process.stderr = createWritableStdioStream(
+    io.stderr,
     "stderr",
   );
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdio.stdout = process.stdout = createWritableStdioStream(
-    files.stdout,
+  stdout = process.stdout = createWritableStdioStream(
+    io.stdout,
     "stdout",
   );
 
