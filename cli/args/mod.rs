@@ -1247,7 +1247,7 @@ mod test {
     let config_text = r#"{
       "importMap": "import_map.json"
     }"#;
-    let cwd = &PathBuf::from("/");
+    let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
