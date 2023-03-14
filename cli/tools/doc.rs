@@ -13,6 +13,7 @@ use crate::tsc::get_types_declaration_file_text;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::resolve_path;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::ModuleSpecifier;
@@ -60,11 +61,13 @@ pub async fn print_docs(
       doc_parser.parse_module(&source_file_specifier)?.definitions
     }
     DocSourceFileFlag::Path(source_file) => {
-      let module_specifier = resolve_url_or_path(&source_file)?;
+      let module_specifier =
+        resolve_url_or_path(&source_file, ps.options.initial_cwd())?;
 
       // If the root module has external types, the module graph won't redirect it,
       // so instead create a dummy file which exports everything from the actual file being documented.
-      let root_specifier = resolve_url_or_path("./$deno$doc.ts").unwrap();
+      let root_specifier =
+        resolve_path("./$deno$doc.ts", ps.options.initial_cwd()).unwrap();
       let root = File {
         local: PathBuf::from("./$deno$doc.ts"),
         maybe_types: None,
