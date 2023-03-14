@@ -11,6 +11,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::v8;
+use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use dlopen::raw::Library;
@@ -126,7 +127,7 @@ pub struct FfiLoadArgs {
 #[op(v8)]
 pub fn op_ffi_load<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   args: FfiLoadArgs,
 ) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
 where

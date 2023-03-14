@@ -31,9 +31,9 @@ use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_io::Stdio;
+use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::ops::io::Stdio;
-use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -655,8 +655,7 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames.iter().any(|f| {
     if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[internal:")
-        || file_name.starts_with("internal:"))
+      !(file_name.starts_with("[ext:") || file_name.starts_with("ext:"))
     } else {
       true
     }
@@ -668,13 +667,11 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
       .rev()
       .skip_while(|f| {
         if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[internal:")
-            || file_name.starts_with("internal:")
+          file_name.starts_with("[ext:") || file_name.starts_with("ext:")
         } else {
           false
         }
       })
-      .into_iter()
       .collect::<Vec<_>>();
     frames.reverse();
     js_error.frames = frames;
@@ -743,6 +740,7 @@ async fn test_specifier(
 }
 
 fn extract_files_from_regex_blocks(
+  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
@@ -775,7 +773,6 @@ fn extract_files_from_regex_blocks(
           Some(&"mts") => MediaType::Mts,
           Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => media_type,
           _ => MediaType::Unknown,
         }
       } else {
@@ -803,13 +800,16 @@ fn extract_files_from_regex_blocks(
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
-      let file_specifier = deno_core::resolve_url_or_path(&format!(
-        "{}${}-{}{}",
-        specifier,
-        file_line_index + line_offset + 1,
-        file_line_index + line_offset + line_count + 1,
-        file_media_type.as_ts_extension(),
-      ))
+      let file_specifier = deno_core::resolve_url_or_path(
+        &format!(
+          "{}${}-{}{}",
+          specifier,
+          file_line_index + line_offset + 1,
+          file_line_index + line_offset + line_count + 1,
+          file_media_type.as_ts_extension(),
+        ),
+        current_dir,
+      )
       .unwrap();
 
       Some(File {
@@ -827,12 +827,13 @@ fn extract_files_from_regex_blocks(
 }
 
 fn extract_files_from_source_comments(
+  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: Arc<str>,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.as_str().to_string(),
+    specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
@@ -854,6 +855,7 @@ fn extract_files_from_source_comments(
     })
     .flat_map(|comment| {
       extract_files_from_regex_blocks(
+        current_dir,
         specifier,
         &comment.text,
         media_type,
@@ -869,6 +871,7 @@ fn extract_files_from_source_comments(
 }
 
 fn extract_files_from_fenced_blocks(
+  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
@@ -882,6 +885,7 @@ fn extract_files_from_fenced_blocks(
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
+    current_dir,
     specifier,
     source,
     media_type,
@@ -902,12 +906,14 @@ async fn fetch_inline_files(
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
+        ps.options.initial_cwd(),
         &file.specifier,
         &file.source,
         file.media_type,
       )
     } else {
       extract_files_from_source_comments(
+        ps.options.initial_cwd(),
         &file.specifier,
         file.source,
         file.media_type,
@@ -1431,9 +1437,10 @@ pub async fn run_tests_with_watch(
         );
 
         if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-          }) {
+          for path in changed
+            .iter()
+            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+          {
             if modules.contains(&path) {
               modules_to_reload.push(specifier);
               break;

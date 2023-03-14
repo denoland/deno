@@ -19,14 +19,14 @@ import {
   isStringObject,
   isSymbolObject,
   isTypedArray,
-} from "internal:deno_node/polyfills/internal/util/types.ts";
+} from "ext:deno_node/internal/util/types.ts";
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
   SKIP_SYMBOLS,
-} from "internal:deno_node/polyfills/internal_binding/util.ts";
+} from "ext:deno_node/internal_binding/util.ts";
 
 enum valueType {
   noIterator,

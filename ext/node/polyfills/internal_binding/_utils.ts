@@ -2,7 +2,7 @@
 import {
   forgivingBase64Decode,
   forgivingBase64UrlEncode,
-} from "internal:deno_web/00_infra.js";
+} from "ext:deno_web/00_infra.js";
 
 export function asciiToBytes(str: string) {
   const byteArray = [];

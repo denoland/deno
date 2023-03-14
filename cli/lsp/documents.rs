@@ -6,6 +6,7 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::args::package_json;
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::CachedUrlMetadata;
@@ -14,7 +15,6 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::lsp::logging::lsp_log;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -44,7 +44,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -819,7 +818,7 @@ pub struct Documents {
   resolver_config_hash: u64,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
-  imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
+  imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: CliGraphResolver,
@@ -850,6 +849,14 @@ impl Documents {
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
+  }
+
+  pub fn module_graph_imports(&self) -> impl Iterator<Item = &ModuleSpecifier> {
+    self
+      .imports
+      .values()
+      .flat_map(|i| i.dependencies.values())
+      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -947,7 +954,6 @@ impl Documents {
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    // keep this fast because it's used by op_exists, which is a hot path in tsc
     let specifier = self.specifier_resolver.resolve(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
@@ -1171,7 +1177,7 @@ impl Documents {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
-      maybe_package_json_deps: Option<&BTreeMap<String, NpmPackageReq>>,
+      maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       if let Some(import_map) = maybe_import_map {
@@ -1187,14 +1193,8 @@ impl Documents {
       hasher.finish()
     }
 
-    let maybe_package_json_deps = maybe_package_json.and_then(|package_json| {
-      match package_json::get_local_package_json_version_reqs(package_json) {
-        Ok(deps) => Some(deps),
-        Err(err) => {
-          lsp_log!("Error parsing package.json deps: {err:#}");
-          None
-        }
-      }
+    let maybe_package_json_deps = maybe_package_json.map(|package_json| {
+      package_json::get_local_package_json_version_reqs(package_json)
     });
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
@@ -1206,7 +1206,11 @@ impl Documents {
     self.npm_package_json_reqs = Arc::new({
       match &maybe_package_json_deps {
         Some(deps) => {
-          let mut reqs = deps.values().cloned().collect::<Vec<_>>();
+          let mut reqs = deps
+            .values()
+            .filter_map(|r| r.as_ref().ok())
+            .cloned()
+            .collect::<Vec<_>>();
           reqs.sort();
           reqs
         }
@@ -1242,7 +1246,7 @@ impl Documents {
           })
           .collect()
       } else {
-        HashMap::new()
+        IndexMap::new()
       },
     );
 
@@ -1405,7 +1409,6 @@ fn node_resolve_npm_req_ref(
   maybe_npm_resolver.map(|npm_resolver| {
     NodeResolution::into_specifier_and_media_type(
       npm_resolver
-        .resolution()
         .pkg_req_ref_to_nv_ref(npm_req_ref)
         .ok()
         .and_then(|pkg_id_ref| {
