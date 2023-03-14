@@ -43,6 +43,8 @@ sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 
+# We need to make -ldl available to the linker, but it's not
+# available in the sysroot. So we'll just create a symlink to it.
 sudo ln -s /lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
 sudo ln -s /lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
 
@@ -425,7 +427,7 @@ const ci = {
                 "~/.cargo/git/db",
               ].join("\n"),
               key:
-                "18-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+                "19-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
             },
           },
           {

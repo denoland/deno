@@ -202,6 +202,8 @@ jobs:
           sudo mount --rbind /home /sysroot/home
           sudo mount -t proc /proc /sysroot/proc
 
+          # We need to make -ldl available to the linker, but it's not
+          # available in the sysroot. So we'll just create a symlink to it.
           sudo ln -s /lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
           sudo ln -s /lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
 
@@ -259,7 +261,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '18-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          key: '19-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
