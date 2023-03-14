@@ -43,10 +43,8 @@ sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 
-# We need to make -ldl available to the linker, but it's not
-# available in the sysroot. So we'll just create a symlink to it.
-sudo ln -s /lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-sudo ln -s /lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
+sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
