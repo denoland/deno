@@ -910,6 +910,13 @@ fn compile_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("side-module")
         .long("side-module")
+        .help("Additional module to include in the module graph")
+        .long_help(
+          "Includes an additional module in the compiled executable's module \
+    graph. Use this flag if a dynamically imported module or a web worker main \
+    module fails to load in the executable. This flag can be passed multiple \
+    times, to include multiple additional modules.",
+        )
         .takes_value(true)
         .multiple_occurrences(true)
         .value_hint(ValueHint::FilePath),
