@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path_deprecated;
+use deno_core::resolve_url_or_path;
 use deno_graph::Module;
 use deno_runtime::colors;
 
@@ -40,7 +40,11 @@ pub async fn bundle(
     let source_file1 = &bundle_flags.source_file;
     let source_file2 = &bundle_flags.source_file;
     async move {
-      let module_specifier = resolve_url_or_path_deprecated(source_file1)?;
+      let module_specifier = resolve_url_or_path(
+        source_file1,
+        // NOTE(bartlomieju): there should be no relative paths to resolve
+        cli_options.initial_cwd(),
+      )?;
 
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;

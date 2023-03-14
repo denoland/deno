@@ -692,8 +692,12 @@ pub async fn run_benchmarks_with_watch(
 
         if let Some(changed) = &changed {
           for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path_deprecated(&path.to_string_lossy())
-              .ok()
+            deno_core::resolve_url_or_path(
+              &path.to_string_lossy(),
+              // NOTE(bartlomieju): there should be no relative paths to resolve
+              ps.options.initial_cwd(),
+            )
+            .ok()
           }) {
             if modules.contains(&path) {
               modules_to_reload.push(specifier);
