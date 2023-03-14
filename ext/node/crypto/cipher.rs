@@ -48,8 +48,7 @@ impl CipherContext {
     Rc::try_unwrap(self.cipher)
       .map_err(|_| type_error("Cipher context is already in use"))?
       .into_inner()
-      .r#final(input, output);
-    Ok(())
+      .r#final(input, output)
   }
 }
 
@@ -92,17 +91,14 @@ impl Cipher {
     }
   }
 
-  fn r#final(self, input: &[u8], output: &mut [u8]) -> bool {
+  fn r#final(self, input: &[u8], output: &mut [u8]) -> Result<(), AnyError> {
     assert!(input.len() < 16);
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
-        match (*encryptor)
-          .encrypt_padded_b2b_mut::<Pkcs7>(input.into(), output.into())
-        {
-          Ok(_) => true,
-          Err(_) => false,
-        }
+        let _ = (*encryptor).encrypt_padded_b2b_mut::<Pkcs7>(input.into(), output.into())
+        .map_err(|_| type_error("Cannot pad the input data"))?;
+        Ok(())
       }
     }
   }
