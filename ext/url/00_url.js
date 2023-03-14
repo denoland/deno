@@ -302,6 +302,11 @@ class URLSearchParams {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     return ops.op_url_stringify_search_params(this[_list]);
   }
+
+  get size() {
+    webidl.assertBranded(this, URLSearchParamsPrototype);
+    return this[_list].length;
+  }
 }
 
 webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);

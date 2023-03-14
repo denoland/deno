@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+import { partition } from "std/collections/mod.ts";
 import { join } from "std/path/mod.ts";
 
 /**
@@ -51,4 +52,15 @@ export function getPathsFromTestSuites(suites: TestSuites): string[] {
     }
   }
   return testPaths;
+}
+
+const PARALLEL_PATTERN = Deno.build.os == "windows"
+  ? /^parallel[/\/]/
+  : /^parallel\//;
+
+export function partitionParallelTestPaths(
+  testPaths: string[],
+): { parallel: string[]; sequential: string[] } {
+  const partitions = partition(testPaths, (p) => !!p.match(PARALLEL_PATTERN));
+  return { parallel: partitions[0], sequential: partitions[1] };
 }

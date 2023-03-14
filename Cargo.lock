@@ -1211,11 +1211,11 @@ dependencies = [
 name = "deno_lockfile"
 version = "0.8.0"
 dependencies = [
- "anyhow",
  "ring",
  "serde",
  "serde_json",
  "test_util",
+ "thiserror",
 ]
 
 [[package]]
@@ -1244,6 +1244,8 @@ dependencies = [
 name = "deno_node"
 version = "0.29.0"
 dependencies = [
+ "aes",
+ "cbc",
  "deno_core",
  "digest 0.10.6",
  "hex",

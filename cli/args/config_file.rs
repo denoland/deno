@@ -506,7 +506,7 @@ impl ConfigFile {
         Ok(Some(ConfigFile::read(&config_path)?))
       }
       ConfigFlag::Discover => {
-        if let Some(config_path_args) = flags.config_path_args() {
+        if let Some(config_path_args) = flags.config_path_args(cwd) {
           let mut checked = HashSet::new();
           for f in config_path_args {
             if let Some(cf) = Self::discover_from(&f, &mut checked)? {
