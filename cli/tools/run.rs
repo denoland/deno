@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_path;
+use deno_core::resolve_url_or_path;
 use deno_core::resolve_url_or_path_deprecated;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::permissions::Permissions;
@@ -56,7 +57,7 @@ To grant permissions, set them before the script argument. For example:
     if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
       ModuleSpecifier::parse(&run_flags.script)?
     } else {
-      resolve_url_or_path_deprecated(&run_flags.script)?
+      resolve_url_or_path(&run_flags.script, ps.options.initial_cwd())?
     };
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),

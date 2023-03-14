@@ -13,7 +13,7 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path_deprecated;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::npm::NpmPackageReqReference;
 use log::Level;
@@ -308,7 +308,8 @@ async fn resolve_shim_data(
   let installation_dir = root.join("bin");
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path_deprecated(&install_flags.module_url)?;
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let module_url = resolve_url_or_path(&install_flags.module_url, &cwd)?;
 
   let name = if install_flags.name.is_some() {
     install_flags.name.clone()
@@ -408,7 +409,7 @@ async fn resolve_shim_data(
   }
 
   if let Some(import_map_path) = &flags.import_map_path {
-    let import_map_url = resolve_url_or_path_deprecated(import_map_path)?;
+    let import_map_url = resolve_url_or_path(import_map_path, &cwd)?;
     executable_args.push("--import-map".to_string());
     executable_args.push(import_map_url.to_string());
   }

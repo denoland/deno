@@ -17,7 +17,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path_deprecated;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
@@ -40,11 +40,14 @@ pub async fn compile(
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   let module_specifier =
-    resolve_url_or_path_deprecated(&compile_flags.source_file)?;
+    resolve_url_or_path(&compile_flags.source_file, ps.options.initial_cwd())?;
   let deno_dir = &ps.dir;
 
-  let output_path =
-    resolve_compile_executable_output_path(&compile_flags).await?;
+  let output_path = resolve_compile_executable_output_path(
+    &compile_flags,
+    ps.options.initial_cwd(),
+  )
+  .await?;
 
   let graph = Arc::try_unwrap(
     create_graph_and_maybe_check(module_specifier.clone(), &ps).await?,
@@ -283,9 +286,10 @@ async fn write_standalone_binary(
 
 async fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
+  current_dir: &Path,
 ) -> Result<PathBuf, AnyError> {
   let module_specifier =
-    resolve_url_or_path_deprecated(&compile_flags.source_file)?;
+    resolve_url_or_path(&compile_flags.source_file, current_dir)?;
 
   let mut output = compile_flags.output.clone();
 
@@ -341,12 +345,15 @@ mod test {
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
-    let path = resolve_compile_executable_output_path(&CompileFlags {
-      source_file: "mod.ts".to_string(),
-      output: Some(PathBuf::from("./file")),
-      args: Vec::new(),
-      target: Some("x86_64-unknown-linux-gnu".to_string()),
-    })
+    let path = resolve_compile_executable_output_path(
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: Some(PathBuf::from("./file")),
+        args: Vec::new(),
+        target: Some("x86_64-unknown-linux-gnu".to_string()),
+      },
+      &std::env::current_dir().unwrap(),
+    )
     .await
     .unwrap();
 
@@ -358,12 +365,15 @@ mod test {
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_windows() {
-    let path = resolve_compile_executable_output_path(&CompileFlags {
-      source_file: "mod.ts".to_string(),
-      output: Some(PathBuf::from("./file")),
-      args: Vec::new(),
-      target: Some("x86_64-pc-windows-msvc".to_string()),
-    })
+    let path = resolve_compile_executable_output_path(
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: Some(PathBuf::from("./file")),
+        args: Vec::new(),
+        target: Some("x86_64-pc-windows-msvc".to_string()),
+      },
+      &std::env::current_dir().unwrap(),
+    )
     .await
     .unwrap();
     assert_eq!(path.file_name().unwrap(), "file.exe");
