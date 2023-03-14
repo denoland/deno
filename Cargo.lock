@@ -1211,11 +1211,11 @@ dependencies = [
 name = "deno_lockfile"
 version = "0.8.0"
 dependencies = [
- "anyhow",
  "ring",
  "serde",
  "serde_json",
  "test_util",
+ "thiserror",
 ]
 
 [[package]]
