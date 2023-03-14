@@ -690,7 +690,7 @@ pub async fn cover_files(
   };
 
   let mut report_outputs: Vec<ReportOutput> = vec![];
-  for script_coverage in script_coverages {
+  for script_coverage in &script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
       &script_coverage.url,
       ps.options.initial_cwd(),
