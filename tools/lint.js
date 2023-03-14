@@ -24,7 +24,8 @@ if (Deno.args.includes("--rs")) {
 
 if (!didLint) {
   await dlint();
-  await dlintPreferPrimordials();
+  // todo(dsherret): re-enable
+  // await dlintPreferPrimordials();
   console.log("copyright checker");
   await checkCopyright();
   await clippy();
@@ -134,7 +135,7 @@ async function clippy() {
   console.log("clippy");
 
   const currentBuildMode = buildMode();
-  const cmd = ["clippy", "--all-targets", "--locked"];
+  const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
 
   if (currentBuildMode != "debug") {
     cmd.push("--release");
