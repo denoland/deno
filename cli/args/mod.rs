@@ -596,6 +596,7 @@ impl CliOptions {
     )
   }
 
+  #[inline(always)]
   pub fn initial_cwd(&self) -> &Path {
     &self.initial_cwd
   }
