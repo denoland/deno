@@ -2,7 +2,10 @@
 
 // deno-lint-ignore-file
 
-const { createDictionaryConverter, converters } = globalThis.__bootstrap.webidl;
+import {
+  converters,
+  createDictionaryConverter,
+} from "ext:deno_webidl/00_webidl.js";
 
 const TextDecodeOptions = createDictionaryConverter(
   "TextDecodeOptions",
@@ -14,6 +17,7 @@ const TextDecodeOptions = createDictionaryConverter(
     },
   ],
 );
+globalThis.TextDecodeOptions = TextDecodeOptions;
 
 // Sanity check
 {
@@ -33,3 +37,4 @@ function handwrittenConverter(V) {
   }
   return defaultValue;
 }
+globalThis.handwrittenConverter = handwrittenConverter;

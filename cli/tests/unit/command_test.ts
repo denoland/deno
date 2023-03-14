@@ -85,6 +85,24 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
+  async function commandStdinPiped() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["info"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
+    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
+    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+
+    await child.status;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
   async function commandStdoutPiped() {
     const command = new Deno.Command(Deno.execPath(), {
       args: [
@@ -833,10 +851,11 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true } },
-  async function commandWithPromisePrototypeThenOverride() {
+  async function commandWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
+    const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
-      Promise.prototype.then = () => {
+      Promise.prototype.then = Array.prototype[Symbol.iterator] = () => {
         throw new Error();
       };
       await new Deno.Command(Deno.execPath(), {
@@ -844,6 +863,7 @@ Deno.test(
       }).output();
     } finally {
       Promise.prototype.then = originalThen;
+      Array.prototype[Symbol.iterator] = originalSymbolIterator;
     }
   },
 );

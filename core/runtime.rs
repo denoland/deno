@@ -8,22 +8,25 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::modules::NoopModuleLoader;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ExtensionFileSource;
+use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
+use anyhow::Context as AnyhowContext;
 use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
@@ -86,7 +89,6 @@ pub struct JsRuntime {
   snapshot_options: SnapshotOptions,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
-  extensions_with_js: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
@@ -155,6 +157,8 @@ pub(crate) struct ContextState {
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) pending_promise_rejections:
+    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) unrefed_ops: HashSet<i32>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
@@ -169,8 +173,6 @@ pub struct JsRuntimeState {
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
-  pub(crate) pending_promise_exceptions:
-    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
@@ -187,7 +189,7 @@ pub struct JsRuntimeState {
   /// It will be retrieved by `exception_to_err_result` and used as an error
   /// instead of any other exceptions.
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
-  // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
+  // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
@@ -199,9 +201,9 @@ fn v8_init(
 ) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10454784]);
+  struct IcuData([u8; 10541264]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-  v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
+  v8::icu::set_common_data_72(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
     " --wasm-test-streaming",
@@ -247,27 +249,24 @@ pub struct RuntimeOptions {
 
   /// JsRuntime extensions, not to be confused with ES modules.
   /// Only ops registered by extensions will be initialized. If you need
-  /// to execute JS code from extensions, use `extensions_with_js` options
-  /// instead.
-  pub extensions: Vec<Extension>,
-
-  /// JsRuntime extensions, not to be confused with ES modules.
-  /// Ops registered by extensions will be initialized and JS code will be
-  /// executed. If you don't need to execute JS code from extensions, use
-  /// `extensions` option instead.
+  /// to execute JS code from extensions, pass source files in `js` or `esm`
+  /// option on `ExtensionBuilder`.
   ///
-  /// This is useful when creating snapshots, in such case you would pass
-  /// extensions using `extensions_with_js`, later when creating a runtime
-  /// from the snapshot, you would pass these extensions using `extensions`
-  /// option.
-  pub extensions_with_js: Vec<Extension>,
+  /// If you are creating a runtime from a snapshot take care not to include
+  /// JavaScript sources in the extensions.
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
   /// Prepare runtime to take snapshot of loaded code.
-  /// The snapshot is determinstic and uses predictable random numbers.
+  /// The snapshot is deterministic and uses predictable random numbers.
   pub will_snapshot: bool,
+
+  /// An optional callback that will be called for each module that is loaded
+  /// during snapshotting. This callback can be used to transpile source on the
+  /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
+  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -314,12 +313,6 @@ impl SnapshotOptions {
       SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
     )
   }
-  pub fn will_snapshot(&self) -> bool {
-    matches!(
-      self,
-      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
-    )
-  }
 
   fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
     match (snapshot_loaded, will_snapshot) {
@@ -351,20 +344,18 @@ impl JsRuntime {
     DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
     // Add builtins extension
-    if options.startup_snapshot.is_none() {
+    let has_startup_snapshot = options.startup_snapshot.is_some();
+    if !has_startup_snapshot {
       options
-        .extensions_with_js
-        .insert(0, crate::ops_builtin::init_builtins());
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtin_ops_and_esm());
     } else {
       options
         .extensions
-        .insert(0, crate::ops_builtin::init_builtins());
+        .insert(0, crate::ops_builtin::init_builtin_ops());
     }
 
-    let ops = Self::collect_ops(
-      &mut options.extensions,
-      &mut options.extensions_with_js,
-    );
+    let ops = Self::collect_ops(&mut options.extensions);
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -384,7 +375,6 @@ impl JsRuntime {
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let state_rc = Rc::new(RefCell::new(JsRuntimeState {
-      pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
@@ -424,6 +414,58 @@ impl JsRuntime {
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
+    let mut module_map_data = None;
+    let mut module_handles = vec![];
+
+    fn get_context_data(
+      scope: &mut v8::HandleScope<()>,
+      context: v8::Local<v8::Context>,
+    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Array>) {
+      fn data_error_to_panic(err: v8::DataError) -> ! {
+        match err {
+          v8::DataError::BadType { actual, expected } => {
+            panic!(
+              "Invalid type for snapshot data: expected {expected}, got {actual}"
+            );
+          }
+          v8::DataError::NoData { expected } => {
+            panic!("No data for snapshot data: expected {expected}");
+          }
+        }
+      }
+
+      let mut scope = v8::ContextScope::new(scope, context);
+      // The 0th element is the module map itself, followed by X number of module
+      // handles. We need to deserialize the "next_module_id" field from the
+      // map to see how many module handles we expect.
+      match scope.get_context_data_from_snapshot_once::<v8::Array>(0) {
+        Ok(val) => {
+          let next_module_id = {
+            let info_data: v8::Local<v8::Array> =
+              val.get_index(&mut scope, 1).unwrap().try_into().unwrap();
+            info_data.length()
+          };
+
+          // Over allocate so executing a few scripts doesn't have to resize this vec.
+          let mut module_handles =
+            Vec::with_capacity(next_module_id as usize + 16);
+          for i in 1..=next_module_id {
+            match scope
+              .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
+            {
+              Ok(val) => {
+                let module_global = v8::Global::new(&mut scope, val);
+                module_handles.push(module_global);
+              }
+              Err(err) => data_error_to_panic(err),
+            }
+          }
+
+          (module_handles, v8::Global::new(&mut scope, val))
+        }
+        Err(err) => data_error_to_panic(err),
+      }
+    }
 
     let (mut isolate, snapshot_options) = if options.will_snapshot {
       let (snapshot_creator, snapshot_loaded) =
@@ -469,6 +511,14 @@ impl JsRuntime {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
+
+        // Get module map data from the snapshot
+        if has_startup_snapshot {
+          let context_data = get_context_data(scope, context);
+          module_handles = context_data.0;
+          module_map_data = Some(context_data.1);
+        }
+
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
@@ -511,6 +561,13 @@ impl JsRuntime {
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
+        // Get module map data from the snapshot
+        if has_startup_snapshot {
+          let context_data = get_context_data(scope, context);
+          module_handles = context_data.0;
+          module_map_data = Some(context_data.1);
+        }
+
         global_context = v8::Global::new(scope, context);
       }
 
@@ -536,23 +593,65 @@ impl JsRuntime {
       None
     };
 
-    let loader = options
-      .module_loader
-      .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+    let loader = if snapshot_options != SnapshotOptions::Load {
+      let esm_sources = options
+        .extensions
+        .iter()
+        .flat_map(|ext| match ext.get_esm_sources() {
+          Some(s) => s.to_owned(),
+          None => vec![],
+        })
+        .collect::<Vec<ExtensionFileSource>>();
+
+      #[cfg(feature = "include_js_files_for_snapshotting")]
+      for source in &esm_sources {
+        use crate::ExtensionFileSourceCode;
+        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+          &source.code
+        {
+          println!("cargo:rerun-if-changed={}", path.display())
+        }
+      }
+
+      Rc::new(crate::modules::ExtModuleLoader::new(
+        options.module_loader,
+        esm_sources,
+        options.snapshot_module_load_cb,
+      ))
+    } else {
+      options
+        .module_loader
+        .unwrap_or_else(|| Rc::new(NoopModuleLoader))
+    };
+
     {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context.clone()));
       state.inspector = inspector;
       state
         .known_realms
-        .push(v8::Weak::new(&mut isolate, global_context));
+        .push(v8::Weak::new(&mut isolate, &global_context));
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
 
-    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
+      loader,
+      op_state,
+      snapshot_options == SnapshotOptions::Load,
+    )));
+    if let Some(module_map_data) = module_map_data {
+      let scope =
+        &mut v8::HandleScope::with_context(&mut isolate, global_context);
+      let mut module_map = module_map_rc.borrow_mut();
+      module_map.update_with_snapshot_data(
+        scope,
+        module_map_data,
+        module_handles,
+      );
+    }
     isolate.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
       Rc::into_raw(module_map_rc.clone()) as *mut c_void,
@@ -564,7 +663,6 @@ impl JsRuntime {
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
-      extensions_with_js: options.extensions_with_js,
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
@@ -626,7 +724,7 @@ impl JsRuntime {
 
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
-  /// [`RuntimeOptions::extensions_with_js`] when the [`JsRuntime`] was
+  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was
   /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
@@ -723,30 +821,64 @@ impl JsRuntime {
 
   /// Initializes JS of provided Extensions in the given realm
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
+    fn load_and_evaluate_module(
+      runtime: &mut JsRuntime,
+      file_source: &ExtensionFileSource,
+    ) -> Result<(), Error> {
+      futures::executor::block_on(async {
+        let id = runtime
+          .load_side_module(
+            &ModuleSpecifier::parse(&file_source.specifier)?,
+            None,
+          )
+          .await?;
+        let receiver = runtime.mod_evaluate(id);
+        runtime.run_event_loop(false).await?;
+        receiver.await?
+      })
+      .with_context(|| format!("Couldn't execute '{}'", file_source.specifier))
+    }
+
     // Take extensions to avoid double-borrow
-    let extensions = std::mem::take(&mut self.extensions_with_js);
+    let extensions = std::mem::take(&mut self.extensions);
     for ext in &extensions {
-      let js_files = ext.init_js();
-      for (filename, source) in js_files {
-        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self.v8_isolate(), filename, source)?;
+      {
+        if let Some(esm_files) = ext.get_esm_sources() {
+          if let Some(entry_point) = ext.get_esm_entry_point() {
+            let file_source = esm_files
+              .iter()
+              .find(|file| file.specifier == entry_point)
+              .unwrap();
+            load_and_evaluate_module(self, file_source)?;
+          } else {
+            for file_source in esm_files {
+              load_and_evaluate_module(self, file_source)?;
+            }
+          }
+        }
+      }
+
+      {
+        if let Some(js_files) = ext.get_js_sources() {
+          for file_source in js_files {
+            // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+            realm.execute_script(
+              self.v8_isolate(),
+              &file_source.specifier,
+              &file_source.code.load()?,
+            )?;
+          }
+        }
       }
     }
     // Restore extensions
-    self.extensions_with_js = extensions;
+    self.extensions = extensions;
 
     Ok(())
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(
-    extensions: &mut [Extension],
-    extensions_with_js: &mut [Extension],
-  ) -> Vec<OpDecl> {
-    let mut exts = vec![];
-    exts.extend(extensions);
-    exts.extend(extensions_with_js);
-
+  fn collect_ops(exts: &mut [Extension]) -> Vec<OpDecl> {
     for (ext, previous_exts) in
       exts.iter().enumerate().map(|(i, ext)| (ext, &exts[..i]))
     {
@@ -794,7 +926,7 @@ impl JsRuntime {
       // Setup state
       for e in extensions.iter_mut() {
         // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
+        e.init_state(&mut op_state.borrow_mut());
 
         // Setup event-loop middleware
         if let Some(middleware) = e.init_event_loop_middleware() {
@@ -804,24 +936,6 @@ impl JsRuntime {
 
       // Restore extensions
       self.extensions = extensions;
-    }
-    {
-      let mut extensions: Vec<Extension> =
-        std::mem::take(&mut self.extensions_with_js);
-
-      // Setup state
-      for e in extensions.iter_mut() {
-        // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut())?;
-
-        // Setup event-loop middleware
-        if let Some(middleware) = e.init_event_loop_middleware() {
-          self.event_loop_middlewares.push(middleware);
-        }
-      }
-
-      // Restore extensions
-      self.extensions_with_js = extensions;
     }
     Ok(())
   }
@@ -844,11 +958,40 @@ impl JsRuntime {
   fn init_cbs(&mut self, realm: &JsRealm) {
     let (recv_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
-      let recv_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
-      let build_custom_error_cb =
-        Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
-          .expect("Deno.core.buildCustomError is undefined in the realm");
+      let context = realm.context();
+      let context_local = v8::Local::new(scope, context);
+      let global = context_local.global(scope);
+      let deno_str =
+        v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
+      let core_str =
+        v8::String::new_external_onebyte_static(scope, b"core").unwrap();
+      let opresolve_str =
+        v8::String::new_external_onebyte_static(scope, b"opresolve").unwrap();
+      let build_custom_error_str =
+        v8::String::new_external_onebyte_static(scope, b"buildCustomError")
+          .unwrap();
+
+      let deno_obj: v8::Local<v8::Object> = global
+        .get(scope, deno_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let core_obj: v8::Local<v8::Object> = deno_obj
+        .get(scope, core_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+      let recv_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, opresolve_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let build_custom_error_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, build_custom_error_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
       (
         v8::Global::new(scope, recv_cb),
         v8::Global::new(scope, build_custom_error_cb),
@@ -912,15 +1055,37 @@ impl JsRuntime {
       }
     }
 
-    self.state.borrow_mut().global_realm.take();
     self.state.borrow_mut().inspector.take();
+
+    // Serialize the module map and store its data in the snapshot.
+    {
+      let module_map_rc = self.module_map.take().unwrap();
+      let module_map = module_map_rc.borrow();
+      let (module_map_data, module_handles) =
+        module_map.serialize_for_snapshotting(&mut self.handle_scope());
+
+      let context = self.global_context();
+      let mut scope = self.handle_scope();
+      let local_context = v8::Local::new(&mut scope, context);
+      let local_data = v8::Local::new(&mut scope, module_map_data);
+      let offset = scope.add_context_data(local_context, local_data);
+      assert_eq!(offset, 0);
+
+      for (index, handle) in module_handles.into_iter().enumerate() {
+        let module_handle = v8::Local::new(&mut scope, handle);
+        let offset = scope.add_context_data(local_context, module_handle);
+        assert_eq!(offset, index + 1);
+      }
+    }
 
     // Drop existing ModuleMap to drop v8::Global handles
     {
-      self.module_map.take();
       let v8_isolate = self.v8_isolate();
       Self::drop_state_and_module_map(v8_isolate);
     }
+
+    self.state.borrow_mut().global_realm.take();
+
     // Drop other v8::Global handles before snapshotting
     {
       for weak_context in &self.state.clone().borrow().known_realms {
@@ -1169,7 +1334,7 @@ impl JsRuntime {
     // run in macrotasks callbacks so we need to let them run first).
     self.drain_nexttick()?;
     self.drain_macrotasks()?;
-    self.check_promise_exceptions()?;
+    self.check_promise_rejections()?;
 
     // Event loop middlewares
     let mut maybe_scheduling = false;
@@ -1308,7 +1473,7 @@ fn get_stalled_top_level_await_message_for_module(
 ) -> Vec<v8::Global<v8::Message>> {
   let module_map = JsRuntime::module_map(scope);
   let module_map = module_map.borrow();
-  let module_handle = module_map.handles_by_id.get(&module_id).unwrap();
+  let module_handle = module_map.handles.get(module_id).unwrap();
 
   let module = v8::Local::new(scope, module_handle);
   let stalled = module.get_stalled_top_level_await_message(scope);
@@ -1328,7 +1493,7 @@ fn find_stalled_top_level_await(
   // First check if that's root module
   let root_module_id = module_map
     .info
-    .values()
+    .iter()
     .filter(|m| m.main)
     .map(|m| m.id)
     .next();
@@ -1343,8 +1508,7 @@ fn find_stalled_top_level_await(
 
   // It wasn't a top module, so iterate over all modules and try to find
   // any with stalled top level await
-  let module_ids = module_map.handles_by_id.keys().copied().collect::<Vec<_>>();
-  for module_id in module_ids {
+  for module_id in 0..module_map.handles.len() {
     let messages =
       get_stalled_top_level_await_message_for_module(scope, module_id);
     if !messages.is_empty() {
@@ -1427,8 +1591,8 @@ impl JsRuntimeState {
   }
 }
 
-pub(crate) fn exception_to_err_result<'s, T>(
-  scope: &mut v8::HandleScope<'s>,
+pub(crate) fn exception_to_err_result<T>(
+  scope: &mut v8::HandleScope,
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
@@ -1605,6 +1769,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> oneshot::Receiver<Result<(), Error>> {
+    let global_realm = self.global_realm();
     let state_rc = self.state.clone();
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
@@ -1616,7 +1781,11 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
-    assert_eq!(status, v8::ModuleStatus::Instantiated);
+    assert_eq!(
+      status,
+      v8::ModuleStatus::Instantiated,
+      "Module not instantiated {id}"
+    );
 
     let (sender, receiver) = oneshot::channel();
 
@@ -1688,7 +1857,11 @@ impl JsRuntime {
           .handled_promise_rejections
           .contains(&promise_global);
         if !pending_rejection_was_already_handled {
-          state.pending_promise_exceptions.remove(&promise_global);
+          global_realm
+            .state(tc_scope)
+            .borrow_mut()
+            .pending_promise_rejections
+            .remove(&promise_global);
         }
       }
       let promise_global = v8::Global::new(tc_scope, promise);
@@ -2126,27 +2299,15 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn check_promise_exceptions(&mut self) -> Result<(), Error> {
-    let mut state = self.state.borrow_mut();
-
-    if state.pending_promise_exceptions.is_empty() {
-      return Ok(());
+  fn check_promise_rejections(&mut self) -> Result<(), Error> {
+    let known_realms = self.state.borrow().known_realms.clone();
+    let isolate = self.v8_isolate();
+    for weak_context in known_realms {
+      if let Some(context) = weak_context.to_global(isolate) {
+        JsRealm(context).check_promise_rejections(isolate)?;
+      }
     }
-
-    let key = {
-      state
-        .pending_promise_exceptions
-        .keys()
-        .next()
-        .unwrap()
-        .clone()
-    };
-    let handle = state.pending_promise_exceptions.remove(&key).unwrap();
-    drop(state);
-
-    let scope = &mut self.handle_scope();
-    let exception = v8::Local::new(scope, handle);
-    exception_to_err_result(scope, exception, true)
+    Ok(())
   }
 
   // Send finished responses to JS
@@ -2369,7 +2530,6 @@ impl JsRuntime {
       let tc_scope = &mut v8::TryCatch::new(scope);
       let this = v8::undefined(tc_scope).into();
       js_nexttick_cb.call(tc_scope, this, &[]);
-
       if let Some(exception) = tc_scope.exception() {
         return exception_to_err_result(tc_scope, exception, false);
       }
@@ -2497,6 +2657,36 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+
+  fn check_promise_rejections(
+    &self,
+    isolate: &mut v8::Isolate,
+  ) -> Result<(), Error> {
+    let context_state_rc = self.state(isolate);
+    let mut context_state = context_state_rc.borrow_mut();
+
+    if context_state.pending_promise_rejections.is_empty() {
+      return Ok(());
+    }
+
+    let key = {
+      context_state
+        .pending_promise_rejections
+        .keys()
+        .next()
+        .unwrap()
+        .clone()
+    };
+    let handle = context_state
+      .pending_promise_rejections
+      .remove(&key)
+      .unwrap();
+    drop(context_state);
+
+    let scope = &mut self.handle_scope(isolate);
+    let exception = v8::Local::new(scope, handle);
+    exception_to_err_result(scope, exception, true)
+  }
 }
 
 #[inline]
@@ -2583,10 +2773,13 @@ pub mod tests {
   use super::*;
   use crate::error::custom_error;
   use crate::error::AnyError;
+  use crate::modules::AssertedModuleType;
+  use crate::modules::ModuleInfo;
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::modules::ModuleType;
   use crate::modules::ResolutionKind;
+  use crate::modules::SymbolicModule;
   use crate::ZeroCopyBuf;
   use deno_ops::op;
   use futures::future::lazy;
@@ -2596,6 +2789,7 @@ pub mod tests {
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
   use std::sync::Arc;
+
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
     pub use crate::*;
@@ -2603,7 +2797,7 @@ pub mod tests {
 
   pub fn run_in_task<F>(f: F)
   where
-    F: FnOnce(&mut Context) + Send + 'static,
+    F: FnOnce(&mut Context) + 'static,
   {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
@@ -2662,7 +2856,6 @@ pub mod tests {
           mode,
           dispatch_count: dispatch_count2.clone(),
         });
-        Ok(())
       })
       .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2696,10 +2889,10 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.ops.op_test(42);
-        var p2 = Deno.core.ops.op_test(42);
+        var p1 = Deno.core.opAsync("op_test", 42);
+        var p2 = Deno.core.opAsync("op_test", 42);
         "#,
       )
       .unwrap();
@@ -2752,7 +2945,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.initializeAsyncOps();
+        
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2771,7 +2964,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2788,7 +2981,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2803,7 +2996,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
@@ -2835,8 +3028,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_poll_value() {
-    run_in_task(|cx| {
-      let mut runtime = JsRuntime::new(Default::default());
+    let mut runtime = JsRuntime::new(Default::default());
+    run_in_task(move |cx| {
       let value_global = runtime
         .execute_script("a.js", "Promise.resolve(1 + 2)")
         .unwrap();
@@ -3035,8 +3228,8 @@ pub mod tests {
 
   #[test]
   fn test_encode_decode() {
-    run_in_task(|cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "encode_decode_test.js",
@@ -3051,8 +3244,8 @@ pub mod tests {
 
   #[test]
   fn test_serialize_deserialize() {
-    run_in_task(|cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "serialize_deserialize_test.js",
@@ -3076,15 +3269,15 @@ pub mod tests {
       "DOMExceptionOperationError"
     }
 
-    run_in_task(|cx| {
-      let ext = Extension::builder("test_ext")
-        .ops(vec![op_err::decl()])
-        .build();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext],
-        get_error_class_fn: Some(&get_error_class_name),
-        ..Default::default()
-      });
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_err::decl()])
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      get_error_class_fn: Some(&get_error_class_name),
+      ..Default::default()
+    });
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "error_builder_test.js",
@@ -3265,6 +3458,7 @@ pub mod tests {
     )
     .unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(module_id);
 
     let module_namespace = runtime.get_module_namespace(module_id).unwrap();
@@ -3400,8 +3594,6 @@ pub mod tests {
         referrer: &str,
         _kind: ResolutionKind,
       ) -> Result<ModuleSpecifier, Error> {
-        assert_eq!(specifier, "file:///main.js");
-        assert_eq!(referrer, ".");
         let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
@@ -3412,29 +3604,147 @@ pub mod tests {
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
+        eprintln!("load() should not be called");
         unreachable!()
       }
     }
 
-    let loader = std::rc::Rc::new(ModsLoader::default());
+    fn create_module(
+      runtime: &mut JsRuntime,
+      i: usize,
+      main: bool,
+    ) -> ModuleInfo {
+      let specifier = crate::resolve_url(&format!("file:///{i}.js")).unwrap();
+      let prev = i - 1;
+      let source_code = format!(
+        r#"
+        import {{ f{prev} }} from "file:///{prev}.js";
+        export function f{i}() {{ return f{prev}() }}
+        "#
+      );
+
+      let id = if main {
+        futures::executor::block_on(
+          runtime.load_main_module(&specifier, Some(source_code)),
+        )
+        .unwrap()
+      } else {
+        futures::executor::block_on(
+          runtime.load_side_module(&specifier, Some(source_code)),
+        )
+        .unwrap()
+      };
+      assert_eq!(i, id);
+
+      #[allow(clippy::let_underscore_future)]
+      let _ = runtime.mod_evaluate(id);
+      futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+
+      ModuleInfo {
+        id,
+        main,
+        name: specifier.to_string(),
+        requests: vec![crate::modules::ModuleRequest {
+          specifier: format!("file:///{prev}.js"),
+          asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
+        }],
+        module_type: ModuleType::JavaScript,
+      }
+    }
+
+    fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
+      let module_map_rc = runtime.get_module_map();
+      let module_map = module_map_rc.borrow();
+      assert_eq!(module_map.handles.len(), modules.len());
+      assert_eq!(module_map.info.len(), modules.len());
+      assert_eq!(module_map.by_name.len(), modules.len());
+
+      assert_eq!(module_map.next_load_id, (modules.len() + 1) as ModuleLoadId);
+
+      for info in modules {
+        assert!(module_map.handles.get(info.id).is_some());
+        assert_eq!(module_map.info.get(info.id).unwrap(), info);
+        assert_eq!(
+          module_map
+            .by_name
+            .get(&(info.name.clone(), AssertedModuleType::JavaScriptOrWasm))
+            .unwrap(),
+          &SymbolicModule::Mod(info.id)
+        );
+      }
+    }
+
+    let loader = Rc::new(ModsLoader::default());
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader),
+      module_loader: Some(loader.clone()),
       will_snapshot: true,
       ..Default::default()
     });
 
-    let specifier = crate::resolve_url("file:///main.js").unwrap();
-    let source_code = "Deno.core.print('hello\\n')".to_string();
-
-    let module_id = futures::executor::block_on(
-      runtime.load_main_module(&specifier, Some(source_code)),
+    let specifier = crate::resolve_url("file:///0.js").unwrap();
+    let source_code =
+      r#"export function f0() { return "hello world" }"#.to_string();
+    let id = futures::executor::block_on(
+      runtime.load_side_module(&specifier, Some(source_code)),
     )
     .unwrap();
 
-    let _ = runtime.mod_evaluate(module_id);
+    #[allow(clippy::let_underscore_future)]
+    let _ = runtime.mod_evaluate(id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
-    let _snapshot = runtime.snapshot();
+    let mut modules = vec![];
+    modules.push(ModuleInfo {
+      id,
+      main: false,
+      name: specifier.to_string(),
+      requests: vec![],
+      module_type: ModuleType::JavaScript,
+    });
+
+    modules.extend((1..200).map(|i| create_module(&mut runtime, i, false)));
+
+    assert_module_map(&mut runtime, &modules);
+
+    let snapshot = runtime.snapshot();
+
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader.clone()),
+      will_snapshot: true,
+      startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
+      ..Default::default()
+    });
+
+    assert_module_map(&mut runtime2, &modules);
+
+    modules.extend((200..400).map(|i| create_module(&mut runtime2, i, false)));
+    modules.push(create_module(&mut runtime2, 400, true));
+
+    assert_module_map(&mut runtime2, &modules);
+
+    let snapshot2 = runtime2.snapshot();
+
+    let mut runtime3 = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      startup_snapshot: Some(Snapshot::JustCreated(snapshot2)),
+      ..Default::default()
+    });
+
+    assert_module_map(&mut runtime3, &modules);
+
+    let source_code = r#"(async () => {
+      const mod = await import("file:///400.js");
+      return mod.f400();
+    })();"#
+      .to_string();
+    let val = runtime3.execute_script(".", &source_code).unwrap();
+    let val = futures::executor::block_on(runtime3.resolve_value(val)).unwrap();
+    {
+      let scope = &mut runtime3.handle_scope();
+      let value = v8::Local::new(scope, val);
+      let str_ = value.to_string(scope).unwrap().to_rust_string_lossy(scope);
+      assert_eq!(str_, "hello world");
+    }
   }
 
   #[test]
@@ -3481,8 +3791,8 @@ main();
 
   #[test]
   fn test_error_async_stack() {
-    run_in_task(|cx| {
-      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "error_async_stack.js",
@@ -3530,15 +3840,15 @@ main();
       Err(anyhow!("original async error").context("higher-level async error"))
     }
 
-    run_in_task(|cx| {
-      let ext = Extension::builder("test_ext")
-        .ops(vec![op_err_sync::decl(), op_err_async::decl()])
-        .build();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext],
-        ..Default::default()
-      });
+    let ext = Extension::builder("test_ext")
+      .ops(vec![op_err_sync::decl(), op_err_async::decl()])
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
 
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "test_error_context_sync.js",
@@ -3560,7 +3870,7 @@ if (errMessage !== "higher-level sync error: original sync error") {
         .execute_script(
           "test_error_context_async.js",
           r#"
-Deno.core.initializeAsyncOps();
+
 (async () => {
   let errMessage;
   try {
@@ -3578,7 +3888,7 @@ Deno.core.initializeAsyncOps();
 
       match runtime.poll_value(&promise, cx) {
         Poll::Ready(Ok(_)) => {}
-        Poll::Ready(Err(err)) => panic!("{:?}", err),
+        Poll::Ready(Err(err)) => panic!("{err:?}"),
         _ => panic!(),
       }
     })
@@ -3586,8 +3896,8 @@ Deno.core.initializeAsyncOps();
 
   #[test]
   fn test_pump_message_loop() {
-    run_in_task(|cx| {
-      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "pump_message_loop.js",
@@ -3643,8 +3953,8 @@ assertEquals(1, notify_return_value);
       )
       .unwrap_err();
     let error_string = error.to_string();
-    // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-    assert!(error_string.contains("deno:core/01_core.js"));
+    // Test that the script specifier is a URL: `ext:<repo-relative path>`.
+    assert!(error_string.contains("ext:core/01_core.js"));
   }
 
   #[test]
@@ -3703,7 +4013,6 @@ assertEquals(1, notify_return_value);
       .ops(vec![op_async_borrow::decl()])
       .state(|state| {
         state.put(InnerState(42));
-        Ok(())
       })
       .build();
 
@@ -3715,7 +4024,7 @@ assertEquals(1, notify_return_value);
     runtime
       .execute_script(
         "op_async_borrow.js",
-        "Deno.core.initializeAsyncOps(); Deno.core.ops.op_async_borrow()",
+        "Deno.core.opAsync(\"op_async_borrow\")",
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
@@ -3789,8 +4098,8 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       .execute_script(
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
-Deno.core.initializeAsyncOps();
-Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
+
+Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   lines: {
     100: {
       unit: "m"
@@ -3828,7 +4137,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       .execute_script(
         "macrotasks_and_nextticks.js",
         r#"
-        Deno.core.initializeAsyncOps();
+        
         (async function () {
           const results = [];
           Deno.core.ops.op_set_macrotask_callback(() => {
@@ -4046,7 +4355,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           if (reason.message !== "reject") {
             throw Error("unexpected reason: " + reason);
           }
-          Deno.core.ops.op_store_pending_promise_exception(promise);
+          Deno.core.ops.op_store_pending_promise_rejection(promise);
           Deno.core.ops.op_promise_reject();
         });
         new Promise((_, reject) => reject(Error("reject")));
@@ -4096,15 +4405,13 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           "",
           &format!(
             r#"
-              Deno.core.initializeAsyncOps();
+              
               globalThis.rejectValue = undefined;
               Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
               }});
-              Deno.core.ops.op_void_async().then(() => Promise.reject({number}));
-            "#,
-            realm_name=realm_name,
-            number=number
+              Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
+            "#
           ),
         )
         .unwrap();
@@ -4120,7 +4427,7 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
       let reject_value = v8::Local::new(scope, reject_value);
       assert!(reject_value.is_string());
       let reject_value_string = reject_value.to_rust_string_lossy(scope);
-      assert_eq!(reject_value_string, format!("{}/{}", realm_name, number));
+      assert_eq!(reject_value_string, format!("{realm_name}/{number}"));
     }
   }
 
@@ -4534,12 +4841,12 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
+            
             (async function () {
-              const buf = await Deno.core.ops.op_test(false);
+              const buf = await Deno.core.opAsync("op_test", false);
               let err;
               try {
-                await Deno.core.ops.op_test(true);
+                await Deno.core.opAsync("op_test", true);
               } catch(e) {
                 err = e;
               }
@@ -4566,19 +4873,20 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
 
   #[tokio::test]
   async fn js_realm_ref_unref_ops() {
-    run_in_task(|cx| {
-      // Never resolves.
-      #[op]
-      async fn op_pending() {
-        futures::future::pending().await
-      }
+    // Never resolves.
+    #[op]
+    async fn op_pending() {
+      futures::future::pending().await
+    }
 
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![Extension::builder("test_ext")
-          .ops(vec![op_pending::decl()])
-          .build()],
-        ..Default::default()
-      });
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![Extension::builder("test_ext")
+        .ops(vec![op_pending::decl()])
+        .build()],
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let main_realm = runtime.global_realm();
       let other_realm = runtime.create_realm().unwrap();
 
@@ -4587,8 +4895,8 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
-            var promise = Deno.core.ops.op_pending();
+            
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();
@@ -4597,8 +4905,8 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
           runtime.v8_isolate(),
           "",
           r#"
-            Deno.core.initializeAsyncOps();
-            var promise = Deno.core.ops.op_pending();
+            
+            var promise = Deno.core.opAsync("op_pending");
           "#,
         )
         .unwrap();
@@ -4650,5 +4958,73 @@ Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
         }",
       )
       .is_ok());
+  }
+
+  #[tokio::test]
+  async fn cant_load_internal_module_when_snapshot_is_loaded_and_not_snapshotting(
+  ) {
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _kind: ResolutionKind,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let source = r#"
+        // This module doesn't really exist, just verifying that we'll get
+        // an error when specifier starts with "ext:".
+        import { core } from "ext:core.js";
+        "#;
+
+        async move {
+          Ok(ModuleSource {
+            code: source.as_bytes().to_vec().into_boxed_slice(),
+            module_url_specified: "file:///main.js".to_string(),
+            module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let snapshot = {
+      let runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      let snap: &[u8] = &runtime.snapshot();
+      Vec::from(snap).into_boxed_slice()
+    };
+
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(Rc::new(ModsLoader)),
+      startup_snapshot: Some(Snapshot::Boxed(snapshot)),
+      ..Default::default()
+    });
+
+    let err = runtime2
+      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
+      .await
+      .unwrap_err();
+    assert_eq!(
+      err.to_string(),
+      "Cannot load extension module from external code"
+    );
   }
 }

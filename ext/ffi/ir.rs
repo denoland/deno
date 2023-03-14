@@ -5,7 +5,6 @@ use crate::MAX_SAFE_INTEGER;
 use crate::MIN_SAFE_INTEGER;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
 use libffi::middle::Arg;
@@ -77,33 +76,6 @@ impl NativeValue {
         Arg::new(&self.pointer)
       }
       NativeType::Struct(_) => Arg::new(&*self.pointer),
-    }
-  }
-
-  // SAFETY: native_type must correspond to the type of value represented by the union field
-  pub unsafe fn to_value(&self, native_type: NativeType) -> Value {
-    match native_type {
-      NativeType::Void => Value::Null,
-      NativeType::Bool => Value::from(self.bool_value),
-      NativeType::U8 => Value::from(self.u8_value),
-      NativeType::I8 => Value::from(self.i8_value),
-      NativeType::U16 => Value::from(self.u16_value),
-      NativeType::I16 => Value::from(self.i16_value),
-      NativeType::U32 => Value::from(self.u32_value),
-      NativeType::I32 => Value::from(self.i32_value),
-      NativeType::U64 => Value::from(self.u64_value),
-      NativeType::I64 => Value::from(self.i64_value),
-      NativeType::USize => Value::from(self.usize_value),
-      NativeType::ISize => Value::from(self.isize_value),
-      NativeType::F32 => Value::from(self.f32_value),
-      NativeType::F64 => Value::from(self.f64_value),
-      NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
-        Value::from(self.pointer as usize)
-      }
-      NativeType::Struct(_) => {
-        // Return value is written to out_buffer
-        Value::Null
-      }
     }
   }
 
@@ -206,13 +178,11 @@ impl NativeValue {
         local_value.into()
       }
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
-        let value = self.pointer as u64;
-        let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as u64 {
-            v8::BigInt::new_from_u64(scope, value).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
+        let local_value: v8::Local<v8::Value> = if self.pointer.is_null() {
+          v8::null(scope).into()
+        } else {
+          v8::External::new(scope, self.pointer).into()
+        };
         local_value.into()
       }
       NativeType::Struct(_) => {
@@ -396,22 +366,16 @@ pub fn ffi_parse_f64_arg(
 
 #[inline]
 pub fn ffi_parse_pointer_arg(
-  scope: &mut v8::HandleScope,
+  _scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
-  // Order of checking:
-  // 1. BigInt: Uncommon and not supported by Fast API, optimise this case.
-  // 2. Number: Common and supported by Fast API.
-  // 3. Null: Very uncommon / can be represented by a 0.
-  let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
-    value.u64_value().0 as usize as *mut c_void
-  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as usize as *mut c_void
+  let pointer = if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
+    value.value()
   } else if arg.is_null() {
     ptr::null_mut()
   } else {
     return Err(type_error(
-      "Invalid FFI pointer type, expected null, integer or BigInt",
+      "Invalid FFI pointer type, expected null, or External",
     ));
   };
   Ok(NativeValue { pointer })
@@ -502,22 +466,16 @@ pub fn ffi_parse_struct_arg(
 
 #[inline]
 pub fn ffi_parse_function_arg(
-  scope: &mut v8::HandleScope,
+  _scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
-  // Order of checking:
-  // 1. BigInt: Uncommon and not supported by Fast API, optimise this case.
-  // 2. Number: Common and supported by Fast API, optimise this case as second.
-  // 3. Null: Very uncommon / can be represented by a 0.
-  let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
-    value.u64_value().0 as usize as *mut c_void
-  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as usize as *mut c_void
+  let pointer = if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
+    value.value()
   } else if arg.is_null() {
     ptr::null_mut()
   } else {
     return Err(type_error(
-      "Invalid FFI function type, expected null, integer, or BigInt",
+      "Invalid FFI function type, expected null, or External",
     ));
   };
   Ok(NativeValue { pointer })

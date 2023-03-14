@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::cache::DenoDir;
@@ -18,10 +19,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use deno_runtime::permissions::PermissionsContainer;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -40,10 +39,15 @@ pub async fn compile(
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let module_specifier =
+    resolve_url_or_path(&compile_flags.source_file, ps.options.initial_cwd())?;
   let deno_dir = &ps.dir;
 
-  let output_path = resolve_compile_executable_output_path(&compile_flags)?;
+  let output_path = resolve_compile_executable_output_path(
+    &compile_flags,
+    ps.options.initial_cwd(),
+  )
+  .await?;
 
   let graph = Arc::try_unwrap(
     create_graph_and_maybe_check(module_specifier.clone(), &ps).await?,
@@ -52,8 +56,6 @@ pub async fn compile(
 
   // at the moment, we don't support npm specifiers in deno_compile, so show an error
   error_for_any_npm_specifier(&graph)?;
-
-  graph.valid()?;
 
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
@@ -95,7 +97,7 @@ async fn get_base_binary(
   }
 
   let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-  let binary_name = format!("deno-{}.zip", target);
+  let binary_name = format!("deno-{target}.zip");
 
   let binary_path_suffix = if crate::version::is_canary() {
     format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -112,9 +114,14 @@ async fn get_base_binary(
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
-  let base_binary_path =
-    crate::tools::upgrade::unpack(archive_data, target.contains("windows"))?;
+  let temp_dir = secure_tempfile::TempDir::new()?;
+  let base_binary_path = crate::tools::upgrade::unpack_into_dir(
+    archive_data,
+    target.contains("windows"),
+    &temp_dir,
+  )?;
   let base_binary = tokio::fs::read(base_binary_path).await?;
+  drop(temp_dir); // delete the temp dir
   Ok(base_binary)
 }
 
@@ -123,7 +130,7 @@ async fn download_base_binary(
   output_directory: &Path,
   binary_path_suffix: &str,
 ) -> Result<(), AnyError> {
-  let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
+  let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
   let maybe_bytes = {
     let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
     let progress = progress_bars.update(&download_url);
@@ -158,28 +165,18 @@ async fn create_standalone_binary(
 ) -> Result<Vec<u8>, AnyError> {
   let mut eszip_archive = eszip.into_bytes();
 
-  let ca_data = match ps.options.ca_file() {
-    Some(ca_file) => {
-      Some(fs::read(ca_file).with_context(|| format!("Reading: {}", ca_file))?)
+  let ca_data = match ps.options.ca_data() {
+    Some(CaData::File(ca_file)) => {
+      Some(fs::read(ca_file).with_context(|| format!("Reading: {ca_file}"))?)
     }
+    Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
     None => None,
   };
-  let maybe_import_map: Option<(Url, String)> =
-    match ps.options.resolve_import_map_specifier()? {
-      None => None,
-      Some(import_map_specifier) => {
-        let file = ps
-          .file_fetcher
-          .fetch(&import_map_specifier, PermissionsContainer::allow_all())
-          .await
-          .context(format!(
-            "Unable to load '{}' import map",
-            import_map_specifier
-          ))?;
-
-        Some((import_map_specifier, file.source.to_string()))
-      }
-    };
+  let maybe_import_map = ps
+    .options
+    .resolve_import_map(&ps.file_fetcher)
+    .await?
+    .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
   let metadata = Metadata {
     argv: compile_flags.args.clone(),
     unstable: ps.options.unstable(),
@@ -287,20 +284,35 @@ async fn write_standalone_binary(
   Ok(())
 }
 
-fn resolve_compile_executable_output_path(
+async fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
+  current_dir: &Path,
 ) -> Result<PathBuf, AnyError> {
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
-  compile_flags.output.as_ref().and_then(|output| {
-    if path_has_trailing_slash(output) {
-      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
-      Some(output.join(infer_file_name))
+  let module_specifier =
+    resolve_url_or_path(&compile_flags.source_file, current_dir)?;
+
+  let mut output = compile_flags.output.clone();
+
+  if let Some(out) = output.as_ref() {
+    if path_has_trailing_slash(out) {
+      if let Some(infer_file_name) = infer_name_from_url(&module_specifier)
+        .await
+        .map(PathBuf::from)
+      {
+        output = Some(out.join(infer_file_name));
+      }
     } else {
-      Some(output.to_path_buf())
+      output = Some(out.to_path_buf());
     }
-  }).or_else(|| {
-    infer_name_from_url(&module_specifier).map(PathBuf::from)
-  }).ok_or_else(|| generic_error(
+  }
+
+  if output.is_none() {
+    output = infer_name_from_url(&module_specifier)
+      .await
+      .map(PathBuf::from)
+  }
+
+  output.ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output| {
     get_os_specific_filepath(output, &compile_flags.target)
@@ -331,14 +343,18 @@ fn get_os_specific_filepath(
 mod test {
   pub use super::*;
 
-  #[test]
-  fn resolve_compile_executable_output_path_target_linux() {
-    let path = resolve_compile_executable_output_path(&CompileFlags {
-      source_file: "mod.ts".to_string(),
-      output: Some(PathBuf::from("./file")),
-      args: Vec::new(),
-      target: Some("x86_64-unknown-linux-gnu".to_string()),
-    })
+  #[tokio::test]
+  async fn resolve_compile_executable_output_path_target_linux() {
+    let path = resolve_compile_executable_output_path(
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: Some(PathBuf::from("./file")),
+        args: Vec::new(),
+        target: Some("x86_64-unknown-linux-gnu".to_string()),
+      },
+      &std::env::current_dir().unwrap(),
+    )
+    .await
     .unwrap();
 
     // no extension, no matter what the operating system is
@@ -347,14 +363,18 @@ mod test {
     assert_eq!(path.file_name().unwrap(), "file");
   }
 
-  #[test]
-  fn resolve_compile_executable_output_path_target_windows() {
-    let path = resolve_compile_executable_output_path(&CompileFlags {
-      source_file: "mod.ts".to_string(),
-      output: Some(PathBuf::from("./file")),
-      args: Vec::new(),
-      target: Some("x86_64-pc-windows-msvc".to_string()),
-    })
+  #[tokio::test]
+  async fn resolve_compile_executable_output_path_target_windows() {
+    let path = resolve_compile_executable_output_path(
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: Some(PathBuf::from("./file")),
+        args: Vec::new(),
+        target: Some("x86_64-pc-windows-msvc".to_string()),
+      },
+      &std::env::current_dir().unwrap(),
+    )
+    .await
     .unwrap();
     assert_eq!(path.file_name().unwrap(), "file.exe");
   }

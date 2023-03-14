@@ -2,7 +2,6 @@
 
 use crate::args::TsTypeLib;
 use crate::emit::emit_parsed_source;
-use crate::graph_util::ModuleEntry;
 use crate::node;
 use crate::proc_state::ProcState;
 use crate::util::text_encoding::code_without_source_map;
@@ -22,6 +21,8 @@ use deno_core::ModuleType;
 use deno_core::OpState;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
+use deno_graph::EsmModule;
+use deno_graph::JsonModule;
 use deno_runtime::permissions::PermissionsContainer;
 use std::cell::RefCell;
 use std::pin::Pin;
@@ -78,32 +79,34 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
-    if specifier.as_str() == "node:module" {
-      return Ok(ModuleCodeSource {
-        code: deno_runtime::deno_node::MODULE_ES_SHIM.to_string(),
-        found_url: specifier.to_owned(),
-        media_type: MediaType::JavaScript,
-      });
+    if specifier.scheme() == "node" {
+      unreachable!(); // Node built-in modules should be handled internally.
     }
-    let graph_data = self.ps.graph_data.read();
-    let found_url = graph_data.follow_redirect(specifier);
-    match graph_data.get(&found_url) {
-      Some(ModuleEntry::Module {
-        code, media_type, ..
-      }) => {
+
+    let graph = self.ps.graph();
+    match graph.get(specifier) {
+      Some(deno_graph::Module::Json(JsonModule {
+        source,
+        media_type,
+        specifier,
+        ..
+      })) => Ok(ModuleCodeSource {
+        code: source.to_string(),
+        found_url: specifier.clone(),
+        media_type: *media_type,
+      }),
+      Some(deno_graph::Module::Esm(EsmModule {
+        source,
+        media_type,
+        specifier,
+        ..
+      })) => {
         let code = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => {
-            if let Some(source) = graph_data.get_cjs_esm_translation(specifier)
-            {
-              source.to_owned()
-            } else {
-              code.to_string()
-            }
-          }
+          | MediaType::Json => source.to_string(),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
           MediaType::TypeScript
           | MediaType::Mts
@@ -114,15 +117,15 @@ impl CliModuleLoader {
             emit_parsed_source(
               &self.ps.emit_cache,
               &self.ps.parsed_source_cache,
-              &found_url,
+              specifier,
               *media_type,
-              code,
+              source,
               &self.ps.emit_options,
               self.ps.emit_options_hash,
             )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
-            panic!("Unexpected media type {} for {}", media_type, found_url)
+            panic!("Unexpected media type {media_type} for {specifier}")
           }
         };
 
@@ -131,12 +134,12 @@ impl CliModuleLoader {
 
         Ok(ModuleCodeSource {
           code,
-          found_url,
+          found_url: specifier.clone(),
           media_type: *media_type,
         })
       }
       _ => {
-        let mut msg = format!("Loading unprepared module: {}", specifier);
+        let mut msg = format!("Loading unprepared module: {specifier}");
         if let Some(referrer) = maybe_referrer {
           msg = format!("{}, imported from: {}", msg, referrer.as_str());
         }
@@ -302,10 +305,10 @@ impl SourceMapGetter for CliModuleLoader {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    let graph_data = self.ps.graph_data.read();
-    let specifier = graph_data.follow_redirect(&resolve_url(file_name).ok()?);
-    let code = match graph_data.get(&specifier) {
-      Some(ModuleEntry::Module { code, .. }) => code,
+    let graph = self.ps.graph();
+    let code = match graph.get(&resolve_url(file_name).ok()?) {
+      Some(deno_graph::Module::Esm(module)) => &module.source,
+      Some(deno_graph::Module::Json(module)) => &module.source,
       _ => return None,
     };
     // Do NOT use .lines(): it skips the terminating empty line.

@@ -45,7 +45,6 @@ pub fn init(exit_code: ExitCode) -> Extension {
   init_ops(&mut builder)
     .state(move |state| {
       state.put::<ExitCode>(exit_code.clone());
-      Ok(())
     })
     .build()
 }
@@ -83,23 +82,21 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_set_env(
   state: &mut OpState,
-  key: String,
-  value: String,
+  key: &str,
+  value: &str,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
     return Err(type_error("Key is an empty string."));
   }
   if key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error(format!(
-      "Key contains invalid characters: {:?}",
-      key
+      "Key contains invalid characters: {key:?}"
     )));
   }
   if value.contains('\0') {
     return Err(type_error(format!(
-      "Value contains invalid characters: {:?}",
-      value
+      "Value contains invalid characters: {value:?}"
     )));
   }
   env::set_var(key, value);
@@ -129,8 +126,7 @@ fn op_get_env(
 
   if key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error(format!(
-      "Key contains invalid characters: {:?}",
-      key
+      "Key contains invalid characters: {key:?}"
     )));
   }
 
@@ -215,7 +211,7 @@ impl From<netif::Interface> for NetworkInterface {
     };
 
     let (address, range) = ifa.cidr();
-    let cidr = format!("{:?}/{}", address, range);
+    let cidr = format!("{address:?}/{range}");
 
     let name = ifa.name().to_owned();
     let address = format!("{:?}", ifa.address());
@@ -223,10 +219,7 @@ impl From<netif::Interface> for NetworkInterface {
     let scopeid = ifa.scope_id();
 
     let [b0, b1, b2, b3, b4, b5] = ifa.mac();
-    let mac = format!(
-      "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-      b0, b1, b2, b3, b4, b5
-    );
+    let mac = format!("{b0:02x}:{b1:02x}:{b2:02x}:{b3:02x}:{b4:02x}:{b5:02x}");
 
     Self {
       family,
@@ -333,7 +326,7 @@ fn rss() -> usize {
     }
     for n in chars {
       idx += 1;
-      if ('0'..='9').contains(&n) {
+      if n.is_ascii_digit() {
         out *= 10;
         out += n as usize - '0' as usize;
       } else {
@@ -425,7 +418,6 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
 
 #[op]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  super::check_unstable(state, "Deno.osUptime");
   os_uptime(state)
 }
 

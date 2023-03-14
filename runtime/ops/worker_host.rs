@@ -111,8 +111,6 @@ pub fn init(
       let format_js_error_fn_holder =
         FormatJsErrorFnHolder(format_js_error_fn.clone());
       state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
-
-      Ok(())
     })
     .ops(vec![
       op_create_worker::decl(),
@@ -193,8 +191,7 @@ fn op_create_worker(
   >(1);
 
   // Setup new thread
-  let thread_builder =
-    std::thread::Builder::new().name(format!("{}", worker_id));
+  let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
 
   // Spawn it
   thread_builder.spawn(move || {

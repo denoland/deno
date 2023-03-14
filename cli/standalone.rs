@@ -1,13 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CaData;
 use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::util::v8::construct_v8_flags;
 use crate::version;
-use crate::CliResolver;
-use deno_core::anyhow::anyhow;
+use crate::CliGraphResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -26,7 +27,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
@@ -38,10 +38,7 @@ use deno_runtime::BootstrapOptions;
 use import_map::parse_from_json;
 use log::Level;
 use std::env::current_exe;
-use std::io::BufReader;
-use std::io::Cursor;
 use std::io::SeekFrom;
-use std::iter::once;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -66,7 +63,7 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
-/// binary by checking for the magic trailer string `D3N0` at EOF-12.
+/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-24.
 /// The magic trailer is followed by:
 /// - a u64 pointer to the JS bundle embedded in the binary
 /// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
@@ -130,7 +127,7 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 struct EmbeddedModuleLoader {
   eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<CliResolver>,
+  maybe_import_map_resolver: Option<CliGraphResolver>,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -143,9 +140,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
       Some(eszip::Module { ref specifier, .. }) => {
-        deno_core::resolve_url_or_path(specifier)?
+        ModuleSpecifier::parse(specifier)?
       }
-      None => deno_core::resolve_url_or_path(referrer)?,
+      None => {
+        let cwd = std::env::current_dir().context("Unable to get CWD")?;
+        deno_core::resolve_url_or_path(referrer, &cwd)?
+      }
     };
 
     self.maybe_import_map_resolver.as_ref().map_or_else(
@@ -153,7 +153,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         deno_core::resolve_import(specifier, referrer.as_str())
           .map_err(|err| err.into())
       },
-      |r| r.resolve(specifier, &referrer).to_result(),
+      |r| r.resolve(specifier, &referrer),
     )
   }
 
@@ -217,6 +217,7 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
     v8_flags: metadata.v8_flags.clone(),
     log_level: metadata.log_level,
     ca_stores: metadata.ca_stores.clone(),
+    ca_data: metadata.ca_data.clone().map(CaData::Bytes),
     ..Default::default()
   }
 }
@@ -237,9 +238,16 @@ pub async fn run(
     eszip,
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        CliResolver::with_import_map(Arc::new(
-          parse_from_json(&base, &source).unwrap().import_map,
-        ))
+        CliGraphResolver::new(
+          None,
+          Some(Arc::new(
+            parse_from_json(&base, &source).unwrap().import_map,
+          )),
+          false,
+          ps.npm_api.clone(),
+          ps.npm_resolution.clone(),
+          ps.package_json_deps_installer.clone(),
+        )
       },
     ),
   });
@@ -250,29 +258,9 @@ pub async fn run(
     todo!("Workers are currently not supported in standalone binaries");
   });
 
-  // Keep in sync with `main.rs`.
-  v8_set_flags(
-    once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(metadata.v8_flags.iter().cloned())
-      .collect::<Vec<_>>(),
-  );
+  v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
 
-  let mut root_cert_store = ps.root_cert_store.clone();
-
-  if let Some(cert) = metadata.ca_data {
-    let reader = &mut BufReader::new(Cursor::new(cert));
-    match rustls_pemfile::certs(reader) {
-      Ok(certs) => {
-        root_cert_store.add_parsable_certificates(&certs);
-      }
-      Err(e) => {
-        return Err(anyhow!(
-          "Unable to add pem file to certificate store: {}",
-          e
-        ));
-      }
-    }
-  }
+  let root_cert_store = ps.root_cert_store.clone();
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
@@ -293,7 +281,6 @@ pub async fn run(
       inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps),
-    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -342,9 +329,7 @@ fn get_error_class_name(e: &AnyError) -> &'static str {
     panic!(
       "Error '{}' contains boxed error of unsupported type:{}",
       e,
-      e.chain()
-        .map(|e| format!("\n  {:?}", e))
-        .collect::<String>()
+      e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
     );
   })
 }

@@ -59,7 +59,7 @@ pub fn op_query_permission(
     n => {
       return Err(custom_error(
         "ReferenceError",
-        format!("No such permission name: {}", n),
+        format!("No such permission name: {n}"),
       ))
     }
   };
@@ -93,7 +93,7 @@ pub fn op_revoke_permission(
     n => {
       return Err(custom_error(
         "ReferenceError",
-        format!("No such permission name: {}", n),
+        format!("No such permission name: {n}"),
       ))
     }
   };
@@ -127,7 +127,7 @@ pub fn op_request_permission(
     n => {
       return Err(custom_error(
         "ReferenceError",
-        format!("No such permission name: {}", n),
+        format!("No such permission name: {n}"),
       ))
     }
   };
@@ -135,7 +135,7 @@ pub fn op_request_permission(
 }
 
 fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {
-  let url = url::Url::parse(&format!("http://{}/", host_str))
+  let url = url::Url::parse(&format!("http://{host_str}/"))
     .map_err(|_| uri_error("Invalid host"))?;
   if url.path() != "/" {
     return Err(uri_error("Invalid host"));

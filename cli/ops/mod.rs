@@ -18,7 +18,6 @@ fn init_proc_state(ps: ProcState) -> Extension {
     .ops(vec![op_npm_process_state::decl()])
     .state(move |state| {
       state.put(ps.clone());
-      Ok(())
     })
     .build()
 }

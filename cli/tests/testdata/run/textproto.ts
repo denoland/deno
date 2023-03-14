@@ -17,8 +17,8 @@
 import type {
   BufReader,
   ReadLineResult,
-} from "../../../../test_util/std/io/buffer.ts";
-import { concat } from "../../../../test_util/std/bytes/mod.ts";
+} from "../../../../test_util/std/io/buf_reader.ts";
+import { concat } from "../../../../test_util/std/bytes/concat.ts";
 
 // Constants created for DRY
 const CHAR_SPACE: number = " ".charCodeAt(0);

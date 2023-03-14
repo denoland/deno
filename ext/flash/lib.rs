@@ -17,6 +17,7 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
@@ -373,11 +374,9 @@ unsafe fn op_flash_respond_fast(
   let ctx = &mut *(ptr as *mut ServerContext);
 
   let response = &*response;
-  if let Some(response) = response.get_storage_if_aligned() {
-    flash_respond(ctx, token, shutdown, response)
-  } else {
-    todo!();
-  }
+  // Uint8Array is always byte-aligned.
+  let response = response.get_storage_if_aligned().unwrap_unchecked();
+  flash_respond(ctx, token, shutdown, response)
 }
 
 macro_rules! get_request {
@@ -667,6 +666,26 @@ fn op_flash_headers(
   )
 }
 
+#[op]
+fn op_flash_addr(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+) -> Result<(String, u16), AnyError> {
+  let mut op_state = state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx
+    .servers
+    .get_mut(&server_id)
+    .ok_or_else(|| type_error("server closed"))?;
+  let req = &ctx
+    .requests
+    .get(&token)
+    .ok_or_else(|| type_error("request closed"))?;
+  let socket = req.socket();
+  Ok((socket.addr.ip().to_string(), socket.addr.port()))
+}
+
 // Remember the first packet we read? It probably also has some body data. This op quickly copies it into
 // a buffer and sets up channels for streaming the rest.
 #[op]
@@ -723,7 +742,7 @@ fn op_flash_first_packet(
           return Ok(Some(buf.into()));
         }
         Err(e) => {
-          return Err(type_error(format!("{}", e)));
+          return Err(type_error(format!("{e}")));
         }
       }
     }
@@ -773,7 +792,7 @@ async fn op_flash_read_body(
           return n;
         }
         Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
-          panic!("chunked read error: {}", e);
+          panic!("chunked read error: {e}");
         }
         Err(_) => {
           drop(_lock);
@@ -936,7 +955,7 @@ fn run_server(
       match token {
         Token(0) => loop {
           match listener.accept() {
-            Ok((mut socket, _)) => {
+            Ok((mut socket, addr)) => {
               counter += 1;
               let token = Token(counter);
               poll
@@ -962,6 +981,7 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
+                addr,
               });
 
               trace!("New connection: {}", token.0);
@@ -1493,8 +1513,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
   if !unstable.0 {
     eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
+      "Unstable API '{api_name}'. The --unstable flag must be provided."
     );
     std::process::exit(70);
   }
@@ -1508,19 +1527,24 @@ pub trait FlashPermissions {
   ) -> Result<(), AnyError>;
 }
 
-pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec![
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &[
       "deno_web",
       "deno_net",
       "deno_fetch",
       "deno_websocket",
       "deno_http",
-    ])
-    .js(deno_core::include_js_files!(
-      prefix "deno:ext/flash",
-      "01_http.js",
-    ))
+    ],
+  )
+}
+
+fn ops<P: FlashPermissions + 'static>(
+  ext: &mut ExtensionBuilder,
+  unstable: bool,
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       op_flash_serve::decl::<P>(),
       op_node_unstable_flash_serve::decl::<P>(),
@@ -1530,6 +1554,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_method::decl(),
       op_flash_path::decl(),
       op_flash_headers::decl(),
+      op_flash_addr::decl(),
       op_flash_next::decl(),
       op_flash_next_server::decl(),
       op_flash_next_async::decl(),
@@ -1551,7 +1576,17 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
         join_handles: HashMap::default(),
         servers: HashMap::default(),
       });
-      Ok(())
     })
+}
+
+pub fn init_ops_and_esm<P: FlashPermissions + 'static>(
+  unstable: bool,
+) -> Extension {
+  ops::<P>(&mut ext(), unstable)
+    .esm(deno_core::include_js_files!("01_http.js",))
     .build()
+}
+
+pub fn init_ops<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
+  ops::<P>(&mut ext(), unstable).build()
 }

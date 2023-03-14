@@ -109,8 +109,7 @@ impl TsServer {
         while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
           if !started {
             // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false, &state_snapshot)
-              .expect("could not start tsc");
+            start(&mut ts_runtime, false).unwrap();
             started = true;
           }
           let value = request(&mut ts_runtime, state_snapshot, req, token);
@@ -211,12 +210,12 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
   let assets = tsc::LAZILY_LOADED_STATIC_ASSETS
     .iter()
     .map(|(k, v)| {
-      let url_str = format!("asset:///{}", k);
+      let url_str = format!("asset:///{k}");
       let specifier = resolve_url(&url_str).unwrap();
       let asset = AssetDocument::new(specifier.clone(), v);
       (specifier, asset)
     })
-    .collect();
+    .collect::<AssetsMap>();
   Arc::new(Mutex::new(assets))
 }
 
@@ -384,9 +383,9 @@ fn get_tag_documentation(
   let maybe_text = get_tag_body_text(tag, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
-      format!("{}  \n{}", label, text)
+      format!("{label}  \n{text}")
     } else {
-      format!("{} - {}", label, text)
+      format!("{label} - {text}")
     }
   } else {
     label
@@ -397,7 +396,7 @@ fn make_codeblock(text: &str) -> String {
   if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
-    format!("```\n{}\n```", text)
+    format!("```\n{text}\n```")
   }
 }
 
@@ -700,9 +699,9 @@ fn display_parts_to_string(
                   .unwrap_or_else(|| "".to_string())
               });
               let link_str = if link.linkcode {
-                format!("[`{}`]({})", link_text, specifier)
+                format!("[`{link_text}`]({specifier})")
               } else {
-                format!("[{}]({})", link_text, specifier)
+                format!("[{link_text}]({specifier})")
               };
               out.push(link_str);
             }
@@ -785,8 +784,7 @@ impl QuickInfo {
         .join("  \n\n");
       if !tags_preview.is_empty() {
         parts.push(lsp::MarkedString::from_markdown(format!(
-          "\n\n{}",
-          tags_preview
+          "\n\n{tags_preview}"
         )));
       }
     }
@@ -1984,7 +1982,7 @@ impl CompletionEntryDetails {
           .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
           .join("");
-        value = format!("{}\n\n{}", value, tag_documentation);
+        value = format!("{value}\n\n{tag_documentation}");
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -2486,7 +2484,7 @@ impl SignatureHelpItem {
     let documentation =
       display_parts_to_string(&self.documentation, language_server);
     lsp::SignatureInformation {
-      label: format!("{}{}{}", prefix_text, params_text, suffix_text),
+      label: format!("{prefix_text}{params_text}{suffix_text}"),
       documentation: Some(lsp::Documentation::MarkupContent(
         lsp::MarkupContent {
           kind: lsp::MarkupKind::Markdown,
@@ -2661,24 +2659,6 @@ struct SpecifierArgs {
 }
 
 #[op]
-fn op_exists(state: &mut OpState, args: SpecifierArgs) -> bool {
-  let state = state.borrow_mut::<State>();
-  // we don't measure the performance of op_exists anymore because as of TS 4.5
-  // it is noisy with all the checking for custom libs, that we can't see the
-  // forrest for the trees as well as it compounds any lsp performance
-  // challenges, opening a single document in the editor causes some 3k worth
-  // of op_exists requests... :omg:
-  let specifier = match state.normalize_specifier(&args.specifier) {
-    Ok(url) => url,
-    // sometimes tsc tries to query invalid specifiers, especially when
-    // something else isn't quite right, so instead of bubbling up the error
-    // back to tsc, we simply swallow it and say the file doesn't exist
-    Err(_) => return false,
-  };
-  state.state_snapshot.documents.exists(&specifier)
-}
-
-#[op]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
   state.token.is_cancelled()
@@ -2728,28 +2708,29 @@ fn op_resolve(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
-
-  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
-    &args.specifiers,
-    &referrer,
-    state.state_snapshot.maybe_npm_resolver.as_ref(),
-  ) {
-    Ok(
-      resolved
-        .into_iter()
-        .map(|o| {
-          o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
-        })
-        .collect(),
-    )
-  } else {
-    Err(custom_error(
+  let result = match state.get_asset_or_document(&referrer) {
+    Some(referrer_doc) => {
+      let resolved = state.state_snapshot.documents.resolve(
+        args.specifiers,
+        &referrer_doc,
+        state.state_snapshot.maybe_npm_resolver.as_ref(),
+      );
+      Ok(
+        resolved
+          .into_iter()
+          .map(|o| {
+            o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
+          })
+          .collect(),
+      )
+    }
+    None => Err(custom_error(
       "NotFound",
       format!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
       ),
-    ))
+    )),
   };
 
   state.performance.measure(mark);
@@ -2764,15 +2745,50 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 }
 
 #[op]
-fn op_script_names(state: &mut OpState) -> Vec<ModuleSpecifier> {
+fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
-  state
-    .state_snapshot
-    .documents
-    .documents(true, true)
-    .into_iter()
-    .map(|d| d.specifier().clone())
-    .collect()
+  let documents = &state.state_snapshot.documents;
+  let open_docs = documents.documents(true, true);
+  let mut result = Vec::new();
+  let mut seen = HashSet::new();
+
+  if documents.has_injected_types_node_package() {
+    // ensure this is first so it resolves the node types first
+    let specifier = "asset:///node_types.d.ts";
+    result.push(specifier.to_string());
+    seen.insert(specifier);
+  }
+
+  // inject these next because they're global
+  for import in documents.module_graph_imports() {
+    if seen.insert(import.as_str()) {
+      result.push(import.to_string());
+    }
+  }
+
+  // finally include the documents and all their dependencies
+  for doc in &open_docs {
+    let specifier = doc.specifier();
+    if seen.insert(specifier.as_str()) {
+      result.push(specifier.to_string());
+    }
+  }
+
+  // and then all their dependencies (do this after to avoid exists calls)
+  for doc in &open_docs {
+    for dep in doc.dependencies().values() {
+      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
+        if seen.insert(specifier.as_str()) {
+          // only include dependencies we know to exist otherwise typescript will error
+          if documents.exists(specifier) {
+            result.push(specifier.to_string());
+          }
+        }
+      }
+    }
+  }
+
+  result
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2807,7 +2823,6 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder("deno_tsc")
     .ops(vec![
-      op_exists::decl(),
       op_is_cancelled::decl(),
       op_is_node_file::decl(),
       op_load::decl(),
@@ -2821,24 +2836,15 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
         Arc::new(StateSnapshot::default()),
         performance.clone(),
       ));
-      Ok(())
     })
     .build()
 }
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(
-  runtime: &mut JsRuntime,
-  debug: bool,
-  state_snapshot: &StateSnapshot,
-) -> Result<(), AnyError> {
-  let root_uri = state_snapshot
-    .root_uri
-    .clone()
-    .unwrap_or_else(|| Url::parse("cache:///").unwrap());
-  let init_config = json!({ "debug": debug, "rootUri": root_uri });
-  let init_src = format!("globalThis.serverInit({});", init_config);
+fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+  let init_config = json!({ "debug": debug });
+  let init_src = format!("globalThis.serverInit({init_config});");
 
   runtime.execute_script(&located_script_name!(), &init_src)?;
   Ok(())
@@ -3427,7 +3433,7 @@ pub fn request(
     (state.performance.clone(), method.to_value(state, id))
   };
   let mark = performance.mark("request", Some(request_params.clone()));
-  let request_src = format!("globalThis.serverRequest({});", request_params);
+  let request_src = format!("globalThis.serverRequest({request_params});");
   runtime.execute_script(&located_script_name!(), &request_src)?;
 
   let op_state = runtime.op_state();
@@ -3491,8 +3497,7 @@ mod tests {
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default());
-    start(&mut runtime, debug, &state_snapshot)
-      .expect("could not start server");
+    start(&mut runtime, debug).unwrap();
     let ts_config = TsConfig::new(config);
     assert_eq!(
       request(
@@ -4032,34 +4037,6 @@ mod tests {
         "file:///a.ts": []
       })
     );
-  }
-
-  #[test]
-  fn test_op_exists() {
-    let temp_dir = TempDir::new();
-    let (mut rt, state_snapshot, _) = setup(
-      &temp_dir,
-      false,
-      json!({
-        "target": "esnext",
-        "module": "esnext",
-        "lib": ["deno.ns", "deno.window"],
-        "noEmit": true,
-      }),
-      &[],
-    );
-    let performance = Arc::new(Performance::default());
-    let state = State::new(state_snapshot, performance);
-    let op_state = rt.op_state();
-    let mut op_state = op_state.borrow_mut();
-    op_state.put(state);
-    let actual = op_exists::call(
-      &mut op_state,
-      SpecifierArgs {
-        specifier: "/error/unknown:something/index.d.ts".to_string(),
-      },
-    );
-    assert!(!actual);
   }
 
   #[test]

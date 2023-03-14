@@ -4,8 +4,8 @@ use crate::args::BenchOptions;
 use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::graph_util::contains_specifier;
-use crate::graph_util::graph_valid;
+use crate::display::write_json_to_stdout;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
@@ -14,6 +14,7 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
+use crate::version::get_user_agent;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -24,7 +25,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
-use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -43,6 +43,7 @@ use tokio::sync::mpsc::UnboundedSender;
 #[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
   filter: TestFilter,
+  json: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -64,7 +65,7 @@ pub enum BenchEvent {
   Result(usize, BenchResult),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
@@ -111,7 +112,13 @@ impl BenchReport {
   }
 }
 
-fn create_reporter(show_output: bool) -> Box<dyn BenchReporter + Send> {
+fn create_reporter(
+  show_output: bool,
+  json: bool,
+) -> Box<dyn BenchReporter + Send> {
+  if json {
+    return Box::new(JsonReporter::new());
+  }
   Box::new(ConsoleReporter::new(show_output))
 }
 
@@ -123,6 +130,81 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporterOutput {
+  runtime: String,
+  cpu: String,
+  benches: Vec<JsonReporterBench>,
+}
+
+impl Default for JsonReporterOutput {
+  fn default() -> Self {
+    Self {
+      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      cpu: mitata::cpu::name(),
+      benches: vec![],
+    }
+  }
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporterBench {
+  origin: String,
+  group: Option<String>,
+  name: String,
+  baseline: bool,
+  results: Vec<BenchResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporter(JsonReporterOutput);
+
+impl JsonReporter {
+  fn new() -> Self {
+    Self(Default::default())
+  }
+}
+
+impl BenchReporter for JsonReporter {
+  fn report_group_summary(&mut self) {}
+  #[cold]
+  fn report_plan(&mut self, _plan: &BenchPlan) {}
+
+  fn report_end(&mut self, _report: &BenchReport) {
+    match write_json_to_stdout(self) {
+      Ok(_) => (),
+      Err(e) => println!("{e}"),
+    }
+  }
+
+  fn report_register(&mut self, _desc: &BenchDescription) {}
+
+  fn report_wait(&mut self, _desc: &BenchDescription) {}
+
+  fn report_output(&mut self, _output: &str) {}
+
+  fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    let maybe_bench = self.0.benches.iter_mut().find(|bench| {
+      bench.origin == desc.origin
+        && bench.group == desc.group
+        && bench.name == desc.name
+        && bench.baseline == desc.baseline
+    });
+
+    if let Some(bench) = maybe_bench {
+      bench.results.push(result.clone());
+    } else {
+      self.0.benches.push(JsonReporterBench {
+        origin: desc.origin.clone(),
+        group: desc.group.clone(),
+        name: desc.name.clone(),
+        baseline: desc.baseline,
+        results: vec![result.clone()],
+      });
+    }
+  }
 }
 
 struct ConsoleReporter {
@@ -378,12 +460,14 @@ async fn bench_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
+  let option_for_handles = options.clone();
+
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let ps = ps.clone();
     let permissions = permissions.clone();
     let specifier = specifier;
     let sender = sender.clone();
-    let options = options.clone();
+    let options = option_for_handles.clone();
 
     tokio::task::spawn_blocking(move || {
       let future = bench_specifier(ps, permissions, specifier, sender, options);
@@ -400,7 +484,8 @@ async fn bench_specifiers(
     tokio::task::spawn(async move {
       let mut used_only = false;
       let mut report = BenchReport::new();
-      let mut reporter = create_reporter(log_level != Some(Level::Error));
+      let mut reporter =
+        create_reporter(log_level != Some(Level::Error), options.json);
       let mut benches = IndexMap::new();
 
       while let Some(event) = receiver.recv().await {
@@ -511,6 +596,7 @@ pub async fn run_benchmarks(
     specifiers,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&bench_options.filter),
+      json: bench_options.json,
     },
   )
   .await?;
@@ -538,7 +624,7 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let bench_options = &bench_options;
-    let ps = ps.borrow();
+    let ps = ps.borrow().clone();
 
     async move {
       let bench_modules =
@@ -548,20 +634,10 @@ pub async fn run_benchmarks_with_watch(
       let mut modules_to_reload = if files_changed {
         Vec::new()
       } else {
-        bench_modules
-          .iter()
-          .map(|url| (url.clone(), ModuleKind::Esm))
-          .collect()
+        bench_modules.clone()
       };
-      let graph = ps
-        .create_graph(
-          bench_modules
-            .iter()
-            .map(|s| (s.clone(), ModuleKind::Esm))
-            .collect(),
-        )
-        .await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      let graph = ps.create_graph(bench_modules.clone()).await?;
+      graph_valid_with_cli_options(&graph, &bench_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {
@@ -573,7 +649,7 @@ pub async fn run_benchmarks_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(module) = maybe_module {
+          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
@@ -602,6 +678,7 @@ pub async fn run_benchmarks_with_watch(
             }
           }
         }
+
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -614,11 +691,12 @@ pub async fn run_benchmarks_with_watch(
         );
 
         if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-          }) {
-            if modules.contains(&&path) {
-              modules_to_reload.push((specifier, ModuleKind::Esm));
+          for path in changed
+            .iter()
+            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+          {
+            if modules.contains(&path) {
+              modules_to_reload.push(specifier);
               break;
             }
           }
@@ -649,18 +727,17 @@ pub async fn run_benchmarks_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
-    ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow();
     let bench_options = &bench_options;
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
 
     async move {
       let specifiers =
         collect_specifiers(&bench_options.files, is_supported_bench_path)?
-          .iter()
-          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
-          .cloned()
+          .into_iter()
+          .filter(|specifier| modules_to_reload.contains(specifier))
           .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
@@ -671,6 +748,7 @@ pub async fn run_benchmarks_with_watch(
         specifiers,
         BenchSpecifierOptions {
           filter: TestFilter::from_flag(&bench_options.filter),
+          json: bench_options.json,
         },
       )
       .await?;

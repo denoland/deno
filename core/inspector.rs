@@ -111,6 +111,16 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
     &self.v8_inspector_client
   }
 
+  unsafe fn base_ptr(
+    this: *const Self,
+  ) -> *const v8::inspector::V8InspectorClientBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_inspector_client) }
+  }
+
   fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
     &mut self.v8_inspector_client
   }
@@ -645,6 +655,14 @@ impl InspectorSession {
 impl v8::inspector::ChannelImpl for InspectorSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
     &self.v8_channel
+  }
+
+  unsafe fn base_ptr(this: *const Self) -> *const v8::inspector::ChannelBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_channel) }
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {

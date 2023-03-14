@@ -31,7 +31,6 @@ fn napi_tests() {
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")
-    .arg("--unstable")
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -40,8 +39,8 @@ fn napi_tests() {
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
 
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   assert!(output.status.success());
 }
