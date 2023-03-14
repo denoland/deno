@@ -96,8 +96,9 @@ impl Cipher {
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
-        let _ = (*encryptor).encrypt_padded_b2b_mut::<Pkcs7>(input.into(), output.into())
-        .map_err(|_| type_error("Cannot pad the input data"))?;
+        let _ = (*encryptor)
+          .encrypt_padded_b2b_mut::<Pkcs7>(input.into(), output.into())
+          .map_err(|_| type_error("Cannot pad the input data"))?;
         Ok(())
       }
     }
