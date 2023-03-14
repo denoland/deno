@@ -72,6 +72,7 @@ pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_path;
 pub use crate::module_specifier::resolve_url;
 pub use crate::module_specifier::resolve_url_or_path;
+pub use crate::module_specifier::resolve_url_or_path_deprecated;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::module_specifier::DUMMY_SPECIFIER;

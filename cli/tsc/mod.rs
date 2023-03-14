@@ -13,7 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_url_or_path_deprecated;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -402,7 +402,7 @@ impl State {
 }
 
 fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(specifier).map_err(|err| err.into())
+  resolve_url_or_path_deprecated(specifier).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]

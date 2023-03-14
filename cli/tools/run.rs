@@ -9,6 +9,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_path;
 use deno_core::resolve_url_or_path;
+use deno_core::resolve_url_or_path_deprecated;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -56,7 +57,7 @@ To grant permissions, set them before the script argument. For example:
     if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
       ModuleSpecifier::parse(&run_flags.script)?
     } else {
-      resolve_url_or_path(&run_flags.script)?
+      resolve_url_or_path(&run_flags.script, ps.options.initial_cwd())?
     };
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
@@ -103,7 +104,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // code properly.
 async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
-  let main_module = resolve_url_or_path(&script)?;
+  let main_module = resolve_url_or_path_deprecated(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
   let mut ps =
     ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
@@ -142,10 +143,11 @@ pub async fn eval_command(
 ) -> Result<i32, AnyError> {
   // deno_graph works off of extensions for local files to determine the media
   // type, and so our "fake" specifier needs to have the proper extension.
-  let cwd = std::env::current_dir().context("Unable to get CWD")?;
-  let main_module =
-    resolve_path(&format!("./$deno$eval.{}", eval_flags.ext), &cwd)?;
   let ps = ProcState::build(flags).await?;
+  let main_module = resolve_path(
+    &format!("./$deno$eval.{}", eval_flags.ext),
+    ps.options.initial_cwd(),
+  )?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);

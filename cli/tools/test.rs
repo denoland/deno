@@ -799,7 +799,7 @@ fn extract_files_from_regex_blocks(
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
-      let file_specifier = deno_core::resolve_url_or_path(&format!(
+      let file_specifier = deno_core::resolve_url_or_path_deprecated(&format!(
         "{}${}-{}{}",
         specifier,
         file_line_index + line_offset + 1,
@@ -1428,7 +1428,8 @@ pub async fn run_tests_with_watch(
 
         if let Some(changed) = &changed {
           for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
+            deno_core::resolve_url_or_path_deprecated(&path.to_string_lossy())
+              .ok()
           }) {
             if modules.contains(&path) {
               modules_to_reload.push(specifier);
