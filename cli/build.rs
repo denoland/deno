@@ -178,16 +178,6 @@ mod ts {
     }
 
     #[op]
-    fn op_cwd() -> String {
-      "cache:///".into()
-    }
-
-    #[op]
-    fn op_exists() -> bool {
-      false
-    }
-
-    #[op]
     fn op_is_node_file() -> bool {
       false
     }
@@ -254,8 +244,6 @@ mod ts {
     let tsc_extension = Extension::builder("deno_tsc")
       .ops(vec![
         op_build_info::decl(),
-        op_cwd::decl(),
-        op_exists::decl(),
         op_is_node_file::decl(),
         op_load::decl(),
         op_script_version::decl(),
@@ -276,8 +264,7 @@ mod ts {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![],
-      extensions_with_js: vec![tsc_extension],
+      extensions: vec![tsc_extension],
 
       // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
       // ~45s on M1 MacBook Pro; without compression it took ~1s.
@@ -321,7 +308,7 @@ mod ts {
 }
 
 fn create_cli_snapshot(snapshot_path: PathBuf) {
-  let extensions: Vec<Extension> = vec![
+  let mut extensions: Vec<Extension> = vec![
     deno_webidl::init(),
     deno_console::init(),
     deno_url::init_ops(),
@@ -364,20 +351,21 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
     ),
   });
-  let extensions_with_js = vec![Extension::builder("cli")
-    // FIXME(bartlomieju): information about which extensions were
-    // already snapshotted is not preserved in the snapshot. This should be
-    // fixed, so we can reliably depend on that information.
-    // .dependencies(vec!["runtime"])
-    .esm(esm_files)
-    .build()];
+  extensions.push(
+    Extension::builder("cli")
+      // FIXME(bartlomieju): information about which extensions were
+      // already snapshotted is not preserved in the snapshot. This should be
+      // fixed, so we can reliably depend on that information.
+      // .dependencies(vec!["runtime"])
+      .esm(esm_files)
+      .build(),
+  );
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
     snapshot_path,
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
-    extensions_with_js,
     compression_cb: Some(Box::new(|vec, snapshot_slice| {
       lzzzz::lz4_hc::compress_to_vec(
         snapshot_slice,
