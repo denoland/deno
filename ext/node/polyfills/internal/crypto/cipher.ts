@@ -168,13 +168,7 @@ export class Cipheriv extends Transform implements Cipher {
     this.#cache.add(data);
     const input = this.#cache.get();
     const output = new Buffer(input.length);
-    for (let i = 0; i < input.length; i += 16) {
-      ops.op_node_cipheriv_encrypt(
-        this.#context,
-        input.subarray(i, i + 16),
-        output.subarray(i, i + 16),
-      );
-    }
+    ops.op_node_cipheriv_encrypt(this.#context, input, output);
     return outputEncoding === "buffer"
       ? output
       : output.toString(outputEncoding);
@@ -195,7 +189,6 @@ class BlockModeCache {
     this.cache.set(data, cache.length);
   }
 
-  // TODO(kt3k): add and get should be merged into one method.
   get(): Uint8Array {
     if (this.cache.length < 16) {
       return null;

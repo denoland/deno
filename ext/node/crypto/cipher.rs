@@ -84,10 +84,10 @@ impl Cipher {
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
-        assert!(input.len() == 16);
-        encryptor
-          .as_mut()
-          .encrypt_block_b2b_mut(input.into(), output.into());
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+        }
       }
     }
   }
