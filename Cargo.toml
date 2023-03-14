@@ -85,7 +85,7 @@ base64 = "=0.13.1"
 bencher = "0.1"
 bytes = "=1.2.1"
 cache_control = "=0.2.0"
-cbc = "=0.1.2"
+cbc = { version = "=0.1.2", features = ["alloc"] }
 console_static_text = "=0.7.1"
 data-url = "=0.2.0"
 dlopen = "0.1.8"
