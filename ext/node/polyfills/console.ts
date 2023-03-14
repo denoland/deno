@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { Console } from "internal:deno_node/polyfills/internal/console/constructor.mjs";
+import { Console } from "ext:deno_node/internal/console/constructor.mjs";
+import { windowOrWorkerGlobalScope } from "ext:runtime/98_global_scope.js";
+// Don't rely on global `console` because during bootstrapping, it is pointing
+// to native `console` object provided by V8.
+const console = windowOrWorkerGlobalScope.console.value;
 
 export default Object.assign({}, console, { Console });
 

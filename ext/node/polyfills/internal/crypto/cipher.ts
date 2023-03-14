@@ -1,34 +1,24 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateObject,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import type { TransformOptions } from "internal:deno_node/polyfills/_stream.d.ts";
-import { Transform } from "internal:deno_node/polyfills/_stream.mjs";
-import { KeyObject } from "internal:deno_node/polyfills/internal/crypto/keys.ts";
-import type { BufferEncoding } from "internal:deno_node/polyfills/_global.d.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { Transform } from "ext:deno_node/_stream.mjs";
+import { KeyObject } from "./keys.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
-} from "internal:deno_node/polyfills/internal/crypto/types.ts";
-import {
-  privateDecrypt,
-  privateEncrypt,
-  publicDecrypt,
-  publicEncrypt,
-} from "internal:deno_node/polyfills/_crypto/crypto_browserify/public_encrypt/mod.js";
+} from "ext:deno_node/internal/crypto/types.ts";
+import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 
-export {
-  privateDecrypt,
-  privateEncrypt,
-  publicDecrypt,
-  publicEncrypt,
-} from "internal:deno_node/polyfills/_crypto/crypto_browserify/public_encrypt/mod.js";
+const { ops } = globalThis.__bootstrap.core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -53,21 +43,13 @@ export interface CipherOCBOptions extends TransformOptions {
 }
 
 export interface Cipher extends ReturnType<typeof Transform> {
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
-  update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
   update(
     data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
+    inputEncoding?: Encoding,
+    outputEncoding?: Encoding,
   ): string;
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
+  final(outputEncoding?: BufferEncoding): string;
 
   setAutoPadding(autoPadding?: boolean): this;
 }
@@ -135,21 +117,27 @@ export interface DecipherOCB extends Decipher {
 }
 
 export class Cipheriv extends Transform implements Cipher {
-  constructor(
-    _cipher: string,
-    _key: CipherKey,
-    _iv: BinaryLike | null,
-    _options?: TransformOptions,
-  ) {
-    super();
+  /** CipherContext resource id */
+  #context: number;
 
-    notImplemented("crypto.Cipheriv");
+  /** plaintext data cache */
+  #cache: BlockModeCache;
+
+  constructor(
+    cipher: string,
+    key: CipherKey,
+    iv: BinaryLike | null,
+    options?: TransformOptions,
+  ) {
+    super(options);
+    this.#cache = new BlockModeCache();
+    this.#context = ops.op_node_create_cipheriv(cipher, key, iv);
   }
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
-  final(_outputEncoding?: string): Buffer | string {
-    notImplemented("crypto.Cipheriv.prototype.final");
+  final(encoding: string = getDefaultEncoding()): Buffer | string {
+    const buf = new Buffer(16);
+    ops.op_node_cipheriv_final(this.#context, this.#cache.cache, buf);
+    return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
   getAuthTag(): Buffer {
@@ -163,30 +151,52 @@ export class Cipheriv extends Transform implements Cipher {
     },
   ): this {
     notImplemented("crypto.Cipheriv.prototype.setAAD");
+    return this;
   }
 
   setAutoPadding(_autoPadding?: boolean): this {
     notImplemented("crypto.Cipheriv.prototype.setAutoPadding");
+    return this;
   }
 
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
   update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    _data: string | BinaryLike | ArrayBufferView,
+    data: string | Buffer | ArrayBufferView,
+    // TODO(kt3k): Handle inputEncoding
     _inputEncoding?: Encoding,
-    _outputEncoding?: Encoding,
+    outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
-    notImplemented("crypto.Cipheriv.prototype.update");
+    this.#cache.add(data);
+    const input = this.#cache.get();
+    const output = new Buffer(input.length);
+    ops.op_node_cipheriv_encrypt(this.#context, input, output);
+    return outputEncoding === "buffer"
+      ? output
+      : output.toString(outputEncoding);
+  }
+}
+
+/** Caches data and output the chunk of multiple of 16.
+ * Used by CBC, ECB modes of block ciphers */
+class BlockModeCache {
+  constructor() {
+    this.cache = new Uint8Array(0);
+  }
+
+  add(data: Uint8Array) {
+    const cache = this.cache;
+    this.cache = new Uint8Array(cache.length + data.length);
+    this.cache.set(cache);
+    this.cache.set(data, cache.length);
+  }
+
+  get(): Uint8Array {
+    if (this.cache.length < 16) {
+      return null;
+    }
+    const len = Math.floor(this.cache.length / 16) * 16;
+    const out = this.cache.subarray(0, len);
+    this.cache = this.cache.subarray(len);
+    return out;
   }
 }
 
@@ -202,8 +212,6 @@ export class Decipheriv extends Transform implements Cipher {
     notImplemented("crypto.Decipheriv");
   }
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
   final(_outputEncoding?: string): Buffer | string {
     notImplemented("crypto.Decipheriv.prototype.final");
   }
@@ -225,18 +233,6 @@ export class Decipheriv extends Transform implements Cipher {
     notImplemented("crypto.Decipheriv.prototype.setAutoPadding");
   }
 
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
-  update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
-  ): string;
   update(
     _data: string | BinaryLike | ArrayBufferView,
     _inputEncoding?: Encoding,
@@ -279,6 +275,34 @@ export function getCipherInfo(
   }
 
   notImplemented("crypto.getCipherInfo");
+}
+
+export function privateEncrypt(
+  privateKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = privateKey.padding || 1;
+  return ops.op_node_private_encrypt(privateKey, buffer, padding);
+}
+
+export function privateDecrypt(
+  privateKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = privateKey.padding || 1;
+  return ops.op_node_private_decrypt(privateKey, buffer, padding);
+}
+
+export function publicEncrypt(
+  publicKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView | string | KeyObject,
+): Buffer {
+  const padding = publicKey.padding || 1;
+  return ops.op_node_public_encrypt(publicKey, buffer, padding);
+}
+
+export function publicDecrypt() {
+  notImplemented("crypto.publicDecrypt");
 }
 
 export default {

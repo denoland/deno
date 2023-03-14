@@ -2138,6 +2138,18 @@ Deno.test(async function inspectAggregateError() {
   }
 });
 
+Deno.test(function inspectWithPrototypePollution() {
+  const originalExec = RegExp.prototype.exec;
+  try {
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
+    Deno.inspect("foo");
+  } finally {
+    RegExp.prototype.exec = originalExec;
+  }
+});
+
 Deno.test(function inspectorMethods() {
   console.timeStamp("test");
   console.profile("test");

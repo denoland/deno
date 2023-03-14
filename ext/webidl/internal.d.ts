@@ -4,7 +4,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-declare module "internal:deno_webidl/00_webidl.js" {
+declare module "ext:deno_webidl/00_webidl.js" {
   interface ConverterOpts {
     /**
      * The prefix for error messages created by this converter.

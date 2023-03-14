@@ -133,41 +133,37 @@ pub trait BenchReporter {
 }
 
 #[derive(Debug, Serialize)]
-struct JsonReporterResult {
+struct JsonReporterOutput {
   runtime: String,
   cpu: String,
-  origin: String,
-  group: Option<String>,
-  name: String,
-  baseline: bool,
-  result: BenchResult,
+  benches: Vec<JsonReporterBench>,
 }
 
-impl JsonReporterResult {
-  fn new(
-    origin: String,
-    group: Option<String>,
-    name: String,
-    baseline: bool,
-    result: BenchResult,
-  ) -> Self {
+impl Default for JsonReporterOutput {
+  fn default() -> Self {
     Self {
       runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
       cpu: mitata::cpu::name(),
-      origin,
-      group,
-      name,
-      baseline,
-      result,
+      benches: vec![],
     }
   }
 }
 
 #[derive(Debug, Serialize)]
-struct JsonReporter(Vec<JsonReporterResult>);
+struct JsonReporterBench {
+  origin: String,
+  group: Option<String>,
+  name: String,
+  baseline: bool,
+  results: Vec<BenchResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporter(JsonReporterOutput);
+
 impl JsonReporter {
   fn new() -> Self {
-    Self(vec![])
+    Self(Default::default())
   }
 }
 
@@ -190,13 +186,24 @@ impl BenchReporter for JsonReporter {
   fn report_output(&mut self, _output: &str) {}
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
-    self.0.push(JsonReporterResult::new(
-      desc.origin.clone(),
-      desc.group.clone(),
-      desc.name.clone(),
-      desc.baseline,
-      result.clone(),
-    ));
+    let maybe_bench = self.0.benches.iter_mut().find(|bench| {
+      bench.origin == desc.origin
+        && bench.group == desc.group
+        && bench.name == desc.name
+        && bench.baseline == desc.baseline
+    });
+
+    if let Some(bench) = maybe_bench {
+      bench.results.push(result.clone());
+    } else {
+      self.0.benches.push(JsonReporterBench {
+        origin: desc.origin.clone(),
+        group: desc.group.clone(),
+        name: desc.name.clone(),
+        baseline: desc.baseline,
+        results: vec![result.clone()],
+      });
+    }
   }
 }
 
@@ -642,7 +649,7 @@ pub async fn run_benchmarks_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(module) = maybe_module {
+          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
@@ -671,6 +678,7 @@ pub async fn run_benchmarks_with_watch(
             }
           }
         }
+
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -683,9 +691,10 @@ pub async fn run_benchmarks_with_watch(
         );
 
         if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-          }) {
+          for path in changed
+            .iter()
+            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+          {
             if modules.contains(&path) {
               modules_to_reload.push(specifier);
               break;

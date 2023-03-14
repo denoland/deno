@@ -4,15 +4,16 @@
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
-import { build } from "internal:runtime/js/01_build.js";
-import { nextTick as _nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
-import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
+const core = globalThis.Deno.core;
+import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
+import { _exiting } from "ext:deno_node/_process/exiting.ts";
+import * as fs from "ext:deno_fs/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
-  if (build.arch == "x86_64") {
+  if (core.build.arch == "x86_64") {
     return "x64";
-  } else if (build.arch == "aarch64") {
+  } else if (core.build.arch == "aarch64") {
     return "arm64";
   } else {
     throw Error("unreachable");
@@ -20,10 +21,10 @@ export function arch(): string {
 }
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
-export const chdir = Deno.chdir;
+export const chdir = fs.chdir;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
-export const cwd = Deno.cwd;
+export const cwd = fs.cwd;
 
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
 export const nextTick = _nextTick;
@@ -125,5 +126,8 @@ export const versions = {
   unicode: "14.0",
   ngtcp2: "0.8.1",
   nghttp3: "0.7.0",
-  ...Deno.version,
+  // Will be filled when calling "__bootstrapNodeProcess()",
+  deno: "",
+  v8: "",
+  typescript: "",
 };
