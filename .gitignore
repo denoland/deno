@@ -5,6 +5,7 @@
 
 /.cargo_home/
 /.idea/
+/.vs/
 /.vscode/
 gclient_config.py_entries
 /gh-pages/

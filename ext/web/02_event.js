@@ -7,9 +7,9 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -1056,6 +1056,15 @@ class EventTarget {
       prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
     });
 
+    // This is an optimization to avoid creating an event listener
+    // on each startup.
+    // Stores the flag for checking whether unload is dispatched or not.
+    // This prevents the recursive dispatches of unload events.
+    // See https://github.com/denoland/deno/issues/9201.
+    if (event.type === "unload" && self === globalThis_) {
+      globalThis_[SymbolFor("Deno.isUnloadDispatched")] = true;
+    }
+
     const { listeners } = self[eventTargetData];
     if (!ReflectHas(listeners, event.type)) {
       setTarget(event, this);
@@ -1469,7 +1478,7 @@ function reportException(error) {
       const frame = frames[i];
       if (
         typeof frame.fileName == "string" &&
-        !StringPrototypeStartsWith(frame.fileName, "internal:")
+        !StringPrototypeStartsWith(frame.fileName, "ext:")
       ) {
         filename = frame.fileName;
         lineno = frame.lineNumber;

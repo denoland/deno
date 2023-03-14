@@ -58,6 +58,7 @@ const {
   ReflectHas,
   ReflectOwnKeys,
   RegExpPrototypeTest,
+  SafeRegExp,
   Set,
   SetPrototypeEntries,
   SetPrototypeForEach,
@@ -386,7 +387,7 @@ converters.DOMString = function (V, opts = {}) {
 };
 
 // deno-lint-ignore no-control-regex
-const IS_BYTE_STRING = /^[\x00-\xFF]*$/;
+const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
 converters.ByteString = (V, opts) => {
   const x = converters.DOMString(V, opts);
   if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
@@ -486,14 +487,6 @@ converters.DataView = (V, opts = {}) => {
   return V;
 };
 
-// Returns the unforgeable `TypedArray` constructor name or `undefined`,
-// if the `this` value isn't a valid `TypedArray` object.
-//
-// https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
-const typedArrayNameGetter = ObjectGetOwnPropertyDescriptor(
-  ObjectGetPrototypeOf(Uint8Array).prototype,
-  SymbolToStringTag,
-).get;
 ArrayPrototypeForEach(
   [
     Int8Array,
@@ -508,9 +501,11 @@ ArrayPrototypeForEach(
   ],
   (func) => {
     const name = func.name;
-    const article = RegExpPrototypeTest(/^[AEIOU]/, name) ? "an" : "a";
+    const article = RegExpPrototypeTest(new SafeRegExp(/^[AEIOU]/), name)
+      ? "an"
+      : "a";
     converters[name] = (V, opts = {}) => {
-      if (!ArrayBufferIsView(V) || typedArrayNameGetter.call(V) !== name) {
+      if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
           TypeError,
           `is not ${article} ${name} object`,

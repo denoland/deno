@@ -9,30 +9,26 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
 import {
   byteUpperCase,
   HTTP_TOKEN_CODE_POINT_RE,
-} from "internal:deno_web/00_infra.js";
-import { URL } from "internal:deno_url/00_url.js";
-import {
-  extractBody,
-  InnerBody,
-  mixinBody,
-} from "internal:deno_fetch/22_body.js";
-import { getLocationHref } from "internal:deno_web/12_location.js";
-import { extractMimeType } from "internal:deno_web/01_mimesniff.js";
-import { blobFromObjectUrl } from "internal:deno_web/09_file.js";
+} from "ext:deno_web/00_infra.js";
+import { URL } from "ext:deno_url/00_url.js";
+import { extractBody, InnerBody, mixinBody } from "ext:deno_fetch/22_body.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
+import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
+import { blobFromObjectUrl } from "ext:deno_web/09_file.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "internal:deno_fetch/22_http_client.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+} from "ext:deno_fetch/20_headers.js";
+import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,

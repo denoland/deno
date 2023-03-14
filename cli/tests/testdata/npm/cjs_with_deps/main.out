@@ -1,5 +1,7 @@
-Download http://localhost:4545/npm/registry/chai
 Download http://localhost:4545/npm/registry/chalk
+Download http://localhost:4545/npm/registry/chai
+Download http://localhost:4545/npm/registry/ansi-styles
+Download http://localhost:4545/npm/registry/supports-color
 Download http://localhost:4545/npm/registry/assertion-error
 Download http://localhost:4545/npm/registry/check-error
 Download http://localhost:4545/npm/registry/deep-eql
@@ -7,8 +9,6 @@ Download http://localhost:4545/npm/registry/get-func-name
 Download http://localhost:4545/npm/registry/loupe
 Download http://localhost:4545/npm/registry/pathval
 Download http://localhost:4545/npm/registry/type-detect
-Download http://localhost:4545/npm/registry/ansi-styles
-Download http://localhost:4545/npm/registry/supports-color
 Download http://localhost:4545/npm/registry/color-convert
 Download http://localhost:4545/npm/registry/has-flag
 Download http://localhost:4545/npm/registry/color-name

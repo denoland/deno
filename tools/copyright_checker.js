@@ -29,6 +29,8 @@ export async function checkCopyright() {
     ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",
     ":!:cli/tools/init/templates/**",
+    ":!:cli/tests/unit_node/testdata/**",
+    ":!:cli/tests/node_compat/test/**",
 
     // rust
     "*.rs",
