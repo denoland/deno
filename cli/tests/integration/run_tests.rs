@@ -1552,11 +1552,10 @@ itest!(jsx_import_source_error {
   exit_code: 1,
 });
 
-// TODO(#11128): Flaky. Re-enable later.
-// itest!(single_compile_with_reload {
-//   args: "run --relcert/oad --allow-read run/single_compile_with_reload.ts",
-//   output: "run/single_compile_with_reload.ts.out",
-// });
+itest!(single_compile_with_reload {
+  args: "run --reload --allow-read run/single_compile_with_reload.ts",
+  output: "run/single_compile_with_reload.ts.out",
+});
 
 itest!(proto_exploit {
   args: "run run/proto_exploit.js",
