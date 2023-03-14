@@ -13,6 +13,7 @@ use crate::JsRealm;
 use crate::JsRuntime;
 use crate::OpDecl;
 use crate::ZeroCopyBuf;
+use anyhow::Context;
 use anyhow::Error;
 use deno_ops::op;
 use serde::Deserialize;
@@ -165,7 +166,12 @@ fn op_eval_context<'a>(
   let source = v8::Local::<v8::String>::try_from(source.v8_value)
     .map_err(|_| type_error("Invalid source"))?;
   let specifier = match specifier {
-    Some(s) => resolve_url_or_path(&s)?.to_string(),
+    Some(s) => {
+      // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
+      // call - maybe it should be caller's responsibility to pass fully resolved URL?
+      let cwd = std::env::current_dir().context("Unable to get CWD")?;
+      resolve_url_or_path(&s, &cwd)?.to_string()
+    }
     None => crate::DUMMY_SPECIFIER.to_string(),
   };
   let specifier = v8::String::new(tc_scope, &specifier).unwrap();

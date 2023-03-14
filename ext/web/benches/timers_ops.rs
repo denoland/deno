@@ -21,10 +21,10 @@ impl deno_web::TimersPermission for Permissions {
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::init(),
-    deno_url::init(),
-    deno_console::init(),
-    deno_web::init::<Permissions>(BlobStore::default(), None),
+    deno_webidl::init_esm(),
+    deno_url::init_ops_and_esm(),
+    deno_console::init_esm(),
+    deno_web::init_ops_and_esm::<Permissions>(BlobStore::default(), None),
     Extension::builder("bench_setup")
     .esm(vec![
       ExtensionFileSource {

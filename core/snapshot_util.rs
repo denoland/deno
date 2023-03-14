@@ -17,7 +17,6 @@ pub struct CreateSnapshotOptions {
   pub snapshot_path: PathBuf,
   pub startup_snapshot: Option<Snapshot>,
   pub extensions: Vec<Extension>,
-  pub extensions_with_js: Vec<Extension>,
   pub compression_cb: Option<Box<CompressionCb>>,
   pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 }
@@ -29,7 +28,6 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     will_snapshot: true,
     startup_snapshot: create_snapshot_options.startup_snapshot,
     extensions: create_snapshot_options.extensions,
-    extensions_with_js: create_snapshot_options.extensions_with_js,
     snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
     ..Default::default()
   });

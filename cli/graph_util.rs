@@ -165,8 +165,8 @@ pub async fn create_graph_and_maybe_check(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
     ps.options.no_npm(),
-    ps.npm_resolver.api().clone(),
-    ps.npm_resolver.resolution().clone(),
+    ps.npm_api.clone(),
+    ps.npm_resolution.clone(),
     ps.package_json_deps_installer.clone(),
   );
   let graph_resolver = cli_resolver.as_graph_resolver();

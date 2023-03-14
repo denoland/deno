@@ -6,12 +6,14 @@ mod local;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
@@ -25,13 +27,13 @@ use std::sync::Arc;
 
 use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::progress_bar::ProgressBar;
 
 use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
 use super::NpmPackageId;
-use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
 
 /// State provided to the process via an environment variable.
@@ -41,13 +43,11 @@ pub struct NpmProcessState {
   pub local_node_modules_path: Option<String>,
 }
 
+/// Brings together the npm resolution with the file system.
 #[derive(Clone)]
 pub struct NpmPackageResolver {
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
-  local_node_modules_path: Option<PathBuf>,
-  api: NpmRegistryApi,
   resolution: NpmResolution,
-  cache: NpmCache,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
@@ -55,95 +55,37 @@ impl std::fmt::Debug for NpmPackageResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
       .field("fs_resolver", &"<omitted>")
-      .field("local_node_modules_path", &self.local_node_modules_path)
-      .field("api", &"<omitted>")
       .field("resolution", &"<omitted>")
-      .field("cache", &"<omitted>")
       .field("maybe_lockfile", &"<omitted>")
       .finish()
   }
 }
 
 impl NpmPackageResolver {
-  pub fn new(cache: NpmCache, api: NpmRegistryApi) -> Self {
-    Self::new_inner(cache, api, None, None, None)
-  }
-
-  pub async fn new_with_maybe_lockfile(
-    cache: NpmCache,
-    api: NpmRegistryApi,
-    local_node_modules_path: Option<PathBuf>,
-    initial_snapshot: Option<NpmResolutionSnapshot>,
-    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
-  ) -> Result<Self, AnyError> {
-    let mut initial_snapshot = initial_snapshot;
-
-    if initial_snapshot.is_none() {
-      if let Some(lockfile) = &maybe_lockfile {
-        if !lockfile.lock().overwrite {
-          initial_snapshot = Some(
-            NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &api)
-              .await
-              .with_context(|| {
-                format!(
-                  "failed reading lockfile '{}'",
-                  lockfile.lock().filename.display()
-                )
-              })?,
-          )
-        }
-      }
-    }
-
-    Ok(Self::new_inner(
-      cache,
-      api,
-      local_node_modules_path,
-      initial_snapshot,
-      maybe_lockfile,
-    ))
-  }
-
-  fn new_inner(
-    cache: NpmCache,
-    api: NpmRegistryApi,
-    local_node_modules_path: Option<PathBuf>,
-    maybe_snapshot: Option<NpmResolutionSnapshot>,
+  pub fn new(
+    resolution: NpmResolution,
+    fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    let registry_url = api.base_url().to_owned();
-    let resolution =
-      NpmResolution::new(api.clone(), maybe_snapshot, maybe_lockfile.clone());
-    let fs_resolver: Arc<dyn NpmPackageFsResolver> =
-      match &local_node_modules_path {
-        Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
-          cache.clone(),
-          registry_url,
-          node_modules_folder.clone(),
-          resolution.clone(),
-        )),
-        None => Arc::new(GlobalNpmPackageResolver::new(
-          cache.clone(),
-          registry_url,
-          resolution.clone(),
-        )),
-      };
     Self {
       fs_resolver,
-      local_node_modules_path,
-      api,
       resolution,
-      cache,
       maybe_lockfile,
     }
   }
 
-  pub fn api(&self) -> &NpmRegistryApi {
-    &self.api
+  pub fn resolve_pkg_id_from_pkg_req(
+    &self,
+    req: &NpmPackageReq,
+  ) -> Result<NpmPackageId, AnyError> {
+    self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
-  pub fn resolution(&self) -> &NpmResolution {
-    &self.resolution
+  pub fn pkg_req_ref_to_nv_ref(
+    &self,
+    req_ref: NpmPackageReqReference,
+  ) -> Result<NpmPackageNvReference, AnyError> {
+    self.resolution.pkg_req_ref_to_nv_ref(req_ref)
   }
 
   /// Resolves an npm package folder path from a Deno module.
@@ -259,22 +201,11 @@ impl NpmPackageResolver {
     serde_json::to_string(&NpmProcessState {
       snapshot: self.snapshot(),
       local_node_modules_path: self
-        .local_node_modules_path
-        .as_ref()
+        .fs_resolver
+        .node_modules_path()
         .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
-  }
-
-  /// Gets a new resolver with a new snapshotted state.
-  pub fn snapshotted(&self) -> Self {
-    Self::new_inner(
-      self.cache.clone(),
-      self.api.clone(),
-      self.local_node_modules_path.clone(),
-      Some(self.snapshot()),
-      None,
-    )
   }
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
@@ -341,6 +272,29 @@ impl RequireNpmResolver for NpmPackageResolver {
     path: &Path,
   ) -> Result<(), AnyError> {
     self.fs_resolver.ensure_read_permission(permissions, path)
+  }
+}
+
+pub fn create_npm_fs_resolver(
+  cache: NpmCache,
+  progress_bar: &ProgressBar,
+  registry_url: Url,
+  resolution: NpmResolution,
+  maybe_node_modules_path: Option<PathBuf>,
+) -> Arc<dyn NpmPackageFsResolver> {
+  match maybe_node_modules_path {
+    Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
+      cache,
+      progress_bar.clone(),
+      registry_url,
+      node_modules_folder,
+      resolution,
+    )),
+    None => Arc::new(GlobalNpmPackageResolver::new(
+      cache,
+      registry_url,
+      resolution,
+    )),
   }
 }
 
