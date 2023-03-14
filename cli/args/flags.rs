@@ -16,7 +16,6 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -46,8 +45,6 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .unwrap()
     .to_string()
 });
-
-static EXT_DEFAULT: &str = "js";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -1208,7 +1205,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .long("ext")
         .help("Set content type of the supplied file")
         .takes_value(true)
-        // TODO(Cre3per): set to EXT_DEFAULT for 2.0
+        // TODO(Cre3per): Remove default value in 2.0
         .default_value("ts")
         .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
@@ -2156,13 +2153,14 @@ fn cached_only_arg<'a>() -> Arg<'a> {
 
 /// Used for subcommands that operate on executable scripts only.
 /// `deno fmt` has its own `--ext` arg because its possible values differ.
+/// If --ext is not provided and the script doesn't have a file extension,
+/// deno_graph::parse_module() defaults to js.
 fn executable_ext_arg<'a>() -> Arg<'a> {
   Arg::new("ext")
     .long("ext")
     .help("Set content type of the supplied file")
     .takes_value(true)
     .possible_values(["ts", "tsx", "js", "jsx"])
-    .default_value(EXT_DEFAULT)
 }
 
 fn location_arg<'a>() -> Arg<'a> {
@@ -2453,7 +2451,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   watch_arg_parse(flags, matches, false);
-  ext_arg_parse(flags, matches, Some(source_file.as_str()));
+  ext_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     source_file,
@@ -2499,7 +2497,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
   let target = matches.value_of("target").map(String::from);
-  ext_arg_parse(flags, matches, Some(source_file.as_str()));
+  ext_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
@@ -2605,7 +2603,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
 
-  ext_arg_parse(flags, matches, None);
+  ext_arg_parse(flags, matches);
 
   // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.is_present("ts");
@@ -2639,7 +2637,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_args_parse(flags, matches);
   watch_arg_parse(flags, matches, false);
-  ext_arg_parse(flags, matches, None);
+  ext_arg_parse(flags, matches);
 
   let include = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -2821,7 +2819,7 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.argv.push(v);
   }
 
-  ext_arg_parse(flags, matches, Some(script.as_str()));
+  ext_arg_parse(flags, matches);
 
   watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
@@ -3230,26 +3228,8 @@ fn cached_only_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   }
 }
 
-fn ext_arg_parse(
-  flags: &mut Flags,
-  matches: &clap::ArgMatches,
-  script: Option<&str>,
-) {
-  if let Some(script) = script {
-    if Path::new(script).extension().is_some() {
-      // File extensions should take precedence over --ext. Leave flags.ext=None
-      // if the script has an extension.
-      return;
-    }
-  }
-
+fn ext_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ext = matches.value_of("ext").map(String::from);
-
-  if flags.ext.is_none() {
-    panic!(
-      "ext_arg_parse() was called, but --ext has no value. Was --ext registered during subcommand creation?"
-    );
-  }
 }
 
 fn location_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -3563,7 +3543,6 @@ mod tests {
           script: "_".to_string(),
         }),
         v8_flags: svec!["--help"],
-        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );
@@ -4383,7 +4362,6 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );
@@ -4407,7 +4385,6 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );
@@ -4452,7 +4429,6 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
-        ext: Some(EXT_DEFAULT.to_string()),
         type_check_mode: TypeCheckMode::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -4501,7 +4477,6 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
-        ext: Some(EXT_DEFAULT.to_string()),
         ..Flags::default()
       }
     );

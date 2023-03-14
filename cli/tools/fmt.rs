@@ -51,12 +51,8 @@ pub async fn format(
   fmt_options: FmtOptions,
 ) -> Result<(), AnyError> {
   if fmt_options.is_stdin {
-    return format_stdin(
-      fmt_options,
-      flags.ext.expect(
-        "--ext should use clap's default value when no file was specified, but it didn't",
-      ),
-    );
+    // ext.unwrap() is safe because `fmt --ext` is defaulted by clap
+    return format_stdin(fmt_options, flags.ext.unwrap());
   }
 
   let files = fmt_options.files;

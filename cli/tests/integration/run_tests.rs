@@ -3803,8 +3803,8 @@ itest!(ts_without_extension {
   exit_code: 0,
 });
 
-itest!(extension_takes_precedence_over_ext_flag {
-  args: "run --ext ts file_extensions/ts_with_extension.ts",
+itest!(ext_flag_takes_precedence_over_extension {
+  args: "run --ext ts file_extensions/ts_with_js_extension.js",
   output: "file_extensions/ts_with_extension.out",
   exit_code: 0,
 });

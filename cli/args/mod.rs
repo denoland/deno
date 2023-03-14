@@ -600,26 +600,6 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
-  // TODO(Cre3per): This mapping moved to deno_ast with https://github.com/denoland/deno_ast/issues/133 and should be available in deno_ast >= 0.25.0 via `MediaType::from_path(...).as_media_type()`
-  fn media_type_from_file_extension(extension: &str) -> Option<String> {
-    match extension {
-      "ts" => Some("text/typescript"),
-      "tsx" => Some("text/tsx"),
-      "js" => Some("text/javascript"),
-      "jsx" => Some("text/jsx"),
-      _ => None,
-    }
-    .map(|el| el.to_string())
-  }
-
-  pub fn content_type(&self) -> Option<String> {
-    self
-      .flags
-      .ext
-      .as_ref()
-      .and_then(|el| Self::media_type_from_file_extension(el.as_str()))
-  }
-
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
     if self.flags.unstable {
       TsTypeLib::UnstableDenoWindow
@@ -722,13 +702,22 @@ impl CliOptions {
   ) -> HashMap<ModuleSpecifier, HashMap<String, String>> {
     let maybe_main_specifier =
       self.resolve_main_module().and_then(|el| el.ok());
+    // TODO(Cre3per): This mapping moved to deno_ast with https://github.com/denoland/deno_ast/issues/133 and should be available in deno_ast >= 0.25.0 via `MediaType::from_path(...).as_media_type()`
+    let maybe_content_type =
+      self.flags.ext.as_ref().and_then(|el| match el.as_str() {
+        "ts" => Some("text/typescript"),
+        "tsx" => Some("text/tsx"),
+        "js" => Some("text/javascript"),
+        "jsx" => Some("text/jsx"),
+        _ => None,
+      });
 
     if let (Some(main_specifier), Some(content_type)) =
-      (maybe_main_specifier, self.content_type())
+      (maybe_main_specifier, maybe_content_type)
     {
       HashMap::from([(
         main_specifier,
-        HashMap::from([("content-type".to_string(), content_type)]),
+        HashMap::from([("content-type".to_string(), content_type.to_string())]),
       )])
     } else {
       HashMap::default()
