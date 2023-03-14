@@ -11,10 +11,10 @@ description = "An implementation of a lockfile used in Deno"
 path = "lib.rs"
 
 [dependencies]
-anyhow.workspace = true
 ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 test_util.workspace = true
