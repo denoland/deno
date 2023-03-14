@@ -137,9 +137,10 @@ function readDir(path) {
   );
   return {
     async *[SymbolAsyncIterator]() {
-      // TODO(petamoriken): use primordials
-      // deno-lint-ignore prefer-primordials
-      yield* await array;
+      const dir = await array;
+      for (let i = 0; i < dir.length; ++i) {
+        yield dir[i];
+      }
     },
   };
 }
