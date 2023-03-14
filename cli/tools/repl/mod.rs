@@ -68,7 +68,8 @@ async fn read_eval_file(
   ps: &ProcState,
   eval_file: &str,
 ) -> Result<String, AnyError> {
-  let specifier = deno_core::resolve_url_or_path(eval_file)?;
+  let specifier =
+    deno_core::resolve_url_or_path(eval_file, ps.options.initial_cwd())?;
 
   let file = ps
     .file_fetcher

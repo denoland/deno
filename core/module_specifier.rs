@@ -4,6 +4,7 @@ use crate::normalize_path;
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
+use std::path::Path;
 use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
@@ -122,25 +123,43 @@ pub fn resolve_url(
 /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
 /// file path; if it is a relative path it's resolved relative to the current
 /// working directory.
-pub fn resolve_url_or_path(
+pub fn resolve_url_or_path_deprecated(
   specifier: &str,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
   if specifier_has_uri_scheme(specifier) {
     resolve_url(specifier)
   } else {
-    resolve_path(specifier)
+    let cwd = current_dir()
+      .map_err(|_| ModuleResolutionError::InvalidPath(specifier.into()))?;
+    resolve_path(specifier, &cwd)
+  }
+}
+
+/// Takes a string representing either an absolute URL or a file path,
+/// as it may be passed to deno as a command line argument.
+/// The string is interpreted as a URL if it starts with a valid URI scheme,
+/// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
+/// file path; if it is a relative path it's resolved relative to passed
+/// `current_dir`.
+pub fn resolve_url_or_path(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  if specifier_has_uri_scheme(specifier) {
+    resolve_url(specifier)
+  } else {
+    resolve_path(specifier, current_dir)
   }
 }
 
 /// Converts a string representing a relative or absolute path into a
-/// ModuleSpecifier. A relative path is considered relative to the current
-/// working directory.
+/// ModuleSpecifier. A relative path is considered relative to the passed
+/// `current_dir`.
 pub fn resolve_path(
   path_str: &str,
+  current_dir: &Path,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  let path = current_dir()
-    .map_err(|_| ModuleResolutionError::InvalidPath(path_str.into()))?
-    .join(path_str);
+  let path = current_dir.join(path_str);
   let path = normalize_path(path);
   Url::from_file_path(&path)
     .map_err(|()| ModuleResolutionError::InvalidPath(path))
@@ -342,7 +361,7 @@ mod tests {
   }
 
   #[test]
-  fn test_resolve_url_or_path() {
+  fn test_resolve_url_or_path_deprecated() {
     // Absolute URL.
     let mut tests: Vec<(&str, String)> = vec![
       (
@@ -438,13 +457,15 @@ mod tests {
     }
 
     for (specifier, expected_url) in tests {
-      let url = resolve_url_or_path(specifier).unwrap().to_string();
+      let url = resolve_url_or_path_deprecated(specifier)
+        .unwrap()
+        .to_string();
       assert_eq!(url, expected_url);
     }
   }
 
   #[test]
-  fn test_resolve_url_or_path_error() {
+  fn test_resolve_url_or_path_deprecated_error() {
     use url::ParseError::*;
     use ModuleResolutionError::*;
 
@@ -458,7 +479,7 @@ mod tests {
     }
 
     for (specifier, expected_err) in tests {
-      let err = resolve_url_or_path(specifier).unwrap_err();
+      let err = resolve_url_or_path_deprecated(specifier).unwrap_err();
       assert_eq!(err, expected_err);
     }
   }

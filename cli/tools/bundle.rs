@@ -34,15 +34,16 @@ pub async fn bundle(
     "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
   );
 
+  let module_specifier = cli_options.resolve_main_module().unwrap()?;
+
   let resolver = |_| {
     let cli_options = cli_options.clone();
-    let source_file = &bundle_flags.source_file;
+    let module_specifier = &module_specifier;
     async move {
-      let module_specifier = cli_options.resolve_main_module().unwrap()?;
-
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
-      let graph = create_graph_and_maybe_check(module_specifier, &ps).await?;
+      let graph =
+        create_graph_and_maybe_check(module_specifier.clone(), &ps).await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
@@ -72,7 +73,7 @@ pub async fn bundle(
         result: Ok((ps, graph)),
       },
       Err(e) => ResolutionResult::Restart {
-        paths_to_watch: vec![PathBuf::from(source_file)],
+        paths_to_watch: vec![module_specifier.to_file_path().unwrap()],
         result: Err(e),
       },
     })

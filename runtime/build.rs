@@ -250,11 +250,11 @@ mod startup_snapshot {
     ))
     .build();
 
-    let mut extensions_with_js: Vec<Extension> = vec![
+    let mut extensions: Vec<Extension> = vec![
       deno_webidl::init_esm(),
       deno_console::init_esm(),
       deno_url::init_ops_and_esm(),
-      deno_tls::init(),
+      deno_tls::init_ops(),
       deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
@@ -278,7 +278,7 @@ mod startup_snapshot {
         None, false, // No --unstable.
         None,
       ),
-      deno_napi::init::<Permissions>(),
+      deno_napi::init_ops::<Permissions>(),
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),
       deno_fs::init_ops_and_esm::<Permissions>(false),
@@ -291,15 +291,14 @@ mod startup_snapshot {
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
-      extensions_with_js.push(additional_extension);
+      extensions.push(additional_extension);
     }
 
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![],
-      extensions_with_js,
+      extensions,
       compression_cb: Some(Box::new(|vec, snapshot_slice| {
         lzzzz::lz4_hc::compress_to_vec(
           snapshot_slice,
@@ -320,8 +319,7 @@ mod startup_snapshot {
     {
       use deno_core::ExtensionFileSourceCode;
       maybe_additional_extension = Some(
-        Extension::builder("runtime_main")
-          .dependencies(vec!["runtime"])
+        Extension::builder_with_deps("runtime_main", &["runtime"])
           .esm(vec![ExtensionFileSource {
             specifier: "js/99_main.js".to_string(),
             code: ExtensionFileSourceCode::IncludedInBinary(include_str!(

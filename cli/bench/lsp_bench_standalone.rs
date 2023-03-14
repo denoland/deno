@@ -14,34 +14,29 @@ fn incremental_change_wait(bench: &mut Bencher) {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
 
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///testdata/express-router.js",
-          "languageId": "javascript",
-          "version": 0,
-          "text": include_str!("testdata/express-router.js")
-        }
-      }),
-    )
-    .unwrap();
+  client.write_notification(
+    "textDocument/didOpen",
+    json!({
+      "textDocument": {
+        "uri": "file:///testdata/express-router.js",
+        "languageId": "javascript",
+        "version": 0,
+        "text": include_str!("testdata/express-router.js")
+      }
+    }),
+  );
 
-  let (id, method, _): (u64, String, Option<Value>) =
-    client.read_request().unwrap();
+  let (id, method, _): (u64, String, Option<Value>) = client.read_request();
   assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(
-      id,
-      json!({
-        "enable": true
-      }),
-    )
-    .unwrap();
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  );
 
   let (method, _maybe_diag): (String, Option<Value>) =
-    client.read_notification().unwrap();
+    client.read_notification();
   assert_eq!(method, "textDocument/publishDiagnostics");
 
   let mut document_version: u64 = 0;
@@ -61,7 +56,7 @@ fn incremental_change_wait(bench: &mut Bencher) {
               {"text": text, "range":{"start":{"line":509,"character":10},"end":{"line":509,"character":16}}}
             ]
         })
-    ).unwrap();
+    );
 
      wait_for_deno_lint_diagnostic(document_version, &mut client);
 
@@ -75,7 +70,7 @@ fn wait_for_deno_lint_diagnostic(
 ) {
   loop {
     let (method, maybe_diag): (String, Option<Value>) =
-      client.read_notification().unwrap();
+      client.read_notification();
     if method == "textDocument/publishDiagnostics" {
       let d = maybe_diag.unwrap();
       let msg = d.as_object().unwrap();

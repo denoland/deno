@@ -50,6 +50,7 @@ async function dlint() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
+    ":!:cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     ":!:cli/tests/testdata/fmt/**",
     ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
@@ -135,7 +136,7 @@ async function clippy() {
   console.log("clippy");
 
   const currentBuildMode = buildMode();
-  const cmd = ["clippy", "--all-targets", "--locked"];
+  const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
 
   if (currentBuildMode != "debug") {
     cmd.push("--release");

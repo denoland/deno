@@ -368,6 +368,7 @@ fn get_local_completions(
   } else {
     false
   };
+  let cwd = std::env::current_dir().ok()?;
   if current_path.is_dir() {
     let items = std::fs::read_dir(current_path).ok()?;
     Some(
@@ -375,7 +376,7 @@ fn get_local_completions(
         .filter_map(|de| {
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier = resolve_path(de.path().to_str()?).ok()?;
+          let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
           if &entry_specifier == base {
             return None;
           }
