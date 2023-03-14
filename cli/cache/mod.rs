@@ -104,24 +104,6 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
-    fn maybe_extend_optional_map(
-      maybe_map: Option<&HashMap<String, String>>,
-      maybe_extend: Option<&HashMap<String, String>>,
-    ) -> Option<HashMap<String, String>> {
-      if maybe_map.is_none() && maybe_extend.is_none() {
-        None
-      } else {
-        let mut headers = HashMap::<String, String>::new();
-        if let Some(map) = maybe_map {
-          headers.extend(map.clone());
-        }
-        if let Some(extend) = maybe_extend {
-          headers.extend(extend.clone());
-        }
-        Some(headers)
-      }
-    }
-
     if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
       // The specifier might be in a completely different symlinked tree than
       // what the resolved node_modules_url is in (ex. `/my-project-1/node_modules`
@@ -164,13 +146,16 @@ impl Loader for FetchCacher {
             Err(err)
           },
           |file| {
-            let maybe_overridden_headers =
-              file_header_overrides.get(&specifier);
-
-            let maybe_headers = maybe_extend_optional_map(
-              file.maybe_headers.as_ref(),
-              maybe_overridden_headers,
-            );
+            let maybe_headers =
+              match (file.maybe_headers, file_header_overrides.get(&specifier))
+              {
+                (Some(headers), Some(overrides)) => {
+                  Some(headers.into_iter().chain(overrides.clone()).collect())
+                }
+                (Some(headers), None) => Some(headers),
+                (None, Some(overrides)) => Some(overrides.clone()),
+                (None, None) => None,
+              };
 
             Ok(Some(LoadResponse::Module {
               specifier: file.specifier,
