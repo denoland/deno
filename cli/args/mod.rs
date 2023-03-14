@@ -385,11 +385,12 @@ fn resolve_lint_rules_options(
 fn discover_package_json(
   flags: &Flags,
   maybe_stop_at: Option<PathBuf>,
+  current_dir: &Path,
 ) -> Result<Option<PackageJson>, AnyError> {
   // TODO(bartlomieju): discover for all subcommands, but print warnings that
   // `package.json` is ignored in bundle/compile/etc.
 
-  if let Some(package_json_dir) = flags.package_json_search_dir() {
+  if let Some(package_json_dir) = flags.package_json_search_dir(current_dir) {
     let package_json_dir =
       canonicalize_path_maybe_not_exists(&package_json_dir)?;
     return package_json::discover_from(&package_json_dir, maybe_stop_at);
@@ -579,10 +580,11 @@ impl CliOptions {
           .parent()
           .map(|p| p.to_path_buf());
 
-        maybe_package_json = discover_package_json(&flags, maybe_stop_at)?;
+        maybe_package_json =
+          discover_package_json(&flags, maybe_stop_at, &initial_cwd)?;
       }
     } else {
-      maybe_package_json = discover_package_json(&flags, None)?;
+      maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
     }
 
     let maybe_lock_file =
