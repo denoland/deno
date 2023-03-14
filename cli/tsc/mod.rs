@@ -13,7 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::resolve_url_or_path_deprecated;
+use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -39,6 +39,7 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -378,6 +379,7 @@ struct State {
   maybe_npm_resolver: Option<NpmPackageResolver>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
+  current_dir: PathBuf,
 }
 
 impl State {
@@ -388,6 +390,7 @@ impl State {
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
+    current_dir: PathBuf,
   ) -> Self {
     State {
       hash_data,
@@ -397,12 +400,16 @@ impl State {
       maybe_response: None,
       remapped_specifiers,
       root_map,
+      current_dir,
     }
   }
 }
 
-fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path_deprecated(specifier).map_err(|err| err.into())
+fn normalize_specifier(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]
@@ -481,7 +488,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = normalize_specifier(&v.specifier)
+  let specifier = normalize_specifier(&v.specifier, &state.current_dir)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -584,7 +591,7 @@ fn op_resolve(
   } else if let Some(remapped_base) = state.root_map.get(&args.base) {
     remapped_base.clone()
   } else {
-    normalize_specifier(&args.base).context(
+    normalize_specifier(&args.base, &state.current_dir).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
@@ -831,6 +838,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           request.maybe_tsbuildinfo.clone(),
           root_map.clone(),
           remapped_specifiers.clone(),
+          std::env::current_dir()
+            .context("Unable to get CWD")
+            .unwrap(),
         ));
       })
       .build()],
@@ -943,6 +953,9 @@ mod tests {
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
+      std::env::current_dir()
+        .context("Unable to get CWD")
+        .unwrap(),
     );
     let mut op_state = OpState::new(1);
     op_state.put(state);
