@@ -140,9 +140,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
       Some(eszip::Module { ref specifier, .. }) => {
-        deno_core::resolve_url_or_path_deprecated(specifier)?
+        ModuleSpecifier::parse(specifier)?
       }
-      None => deno_core::resolve_url_or_path_deprecated(referrer)?,
+      None => {
+        let cwd = std::env::current_dir().context("Unable to get CWD")?;
+        deno_core::resolve_url_or_path(referrer, &cwd)?
+      }
     };
 
     self.maybe_import_map_resolver.as_ref().map_or_else(
