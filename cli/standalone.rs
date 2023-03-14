@@ -137,12 +137,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
+    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
+    // call
+    let cwd = std::env::current_dir().context("Unable to get CWD")?;
+
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
       Some(eszip::Module { ref specifier, .. }) => {
-        deno_core::resolve_url_or_path_deprecated(specifier)?
+        deno_core::resolve_url_or_path(specifier, &cwd)?
       }
-      None => deno_core::resolve_url_or_path_deprecated(referrer)?,
+      None => deno_core::resolve_url_or_path(referrer, &cwd)?,
     };
 
     self.maybe_import_map_resolver.as_ref().map_or_else(
