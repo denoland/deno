@@ -937,21 +937,22 @@ fn lsp_workspace_enable_paths() {
   let root_specifier = temp_dir.uri();
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder
-      .set_enable_paths(vec!["./worker".to_string()])
-      .set_root_uri(root_specifier.clone())
-      .set_workspace_folders(vec![lsp::WorkspaceFolder {
-        uri: root_specifier.clone(),
-        name: "project".to_string(),
-      }])
-      .set_deno_enable(false);
-  });
-
-  client.handle_configuration_request(json!([{
-    "enable": false,
-    "enablePaths": ["./worker"],
-  }]));
+  client.initialize_with_config(
+    |builder| {
+      builder
+        .set_enable_paths(vec!["./worker".to_string()])
+        .set_root_uri(root_specifier.clone())
+        .set_workspace_folders(vec![lsp::WorkspaceFolder {
+          uri: root_specifier.clone(),
+          name: "project".to_string(),
+        }])
+        .set_deno_enable(false);
+    },
+    json!([{
+      "enable": false,
+      "enablePaths": ["./worker"],
+    }]),
+  );
 
   client.did_open(json!({
     "textDocument": {
@@ -5668,7 +5669,7 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(client.queue_len(), 0);
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
@@ -5676,7 +5677,7 @@ pub struct PerformanceAverage {
   pub average_duration: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PerformanceAverages {
   averages: Vec<PerformanceAverage>,
@@ -5684,7 +5685,7 @@ struct PerformanceAverages {
 
 #[test]
 fn lsp_performance() {
-  let mut client = LspClientBuilder::new().print_stderr().build();
+  let mut client = LspClientBuilder::new().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -5707,7 +5708,30 @@ fn lsp_performance() {
     "deno/performance",
     json!(null),
   );
-  assert_eq!(res.averages.len(), 13);
+  let mut averages = res
+    .averages
+    .iter()
+    .map(|a| a.name.as_str())
+    .collect::<Vec<_>>();
+  averages.sort();
+  assert_eq!(
+    averages,
+    vec![
+      "did_open",
+      "hover",
+      "initialize",
+      "op_load",
+      "request",
+      "testing_update",
+      "update_cache",
+      "update_diagnostics_deps",
+      "update_diagnostics_lint",
+      "update_diagnostics_ts",
+      "update_import_map",
+      "update_registries",
+      "update_tsconfig",
+    ]
+  );
   client.shutdown();
 }
 
@@ -6231,32 +6255,32 @@ fn lsp_configuration_did_change() {
       "settings": {}
     }),
   );
-  let (id, method, _) = client.read_request::<Value>();
-  assert_eq!(method, "workspace/configuration");
-  client.write_response(
-    id,
-    json!([{
-      "enable": true,
-      "codeLens": {
-        "implementations": true,
-        "references": true
-      },
-      "importMap": null,
-      "lint": true,
-      "suggest": {
-        "autoImports": true,
-        "completeFunctionCalls": false,
-        "names": true,
-        "paths": true,
-        "imports": {
-          "hosts": {
-            "http://localhost:4545/": true
-          }
+  let request = json!([{
+    "enable": true,
+    "codeLens": {
+      "implementations": true,
+      "references": true
+    },
+    "importMap": null,
+    "lint": true,
+    "suggest": {
+      "autoImports": true,
+      "completeFunctionCalls": false,
+      "names": true,
+      "paths": true,
+      "imports": {
+        "hosts": {
+          "http://localhost:4545/": true
         }
-      },
-      "unstable": false
-    }]),
-  );
+      }
+    },
+    "unstable": false
+  }]);
+  // one for the workspace
+  client.handle_configuration_request(request.clone());
+  // one for the specifier
+  client.handle_configuration_request(request);
+
   let list = client.get_completion_list(
     "file:///a/file.ts",
     (0, 46),

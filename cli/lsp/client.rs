@@ -27,6 +27,26 @@ pub enum TestingNotification {
   Progress(testing_lsp_custom::TestRunProgressParams),
 }
 
+/// A client that provides methods that don't need to be awaited.
+///
+/// This struct should be used in places where you want to ensure the
+/// code doesn't accidentally call into the client while holding an
+/// LSP lock, which could then call into the server causing a deadlock.
+#[derive(Clone)]
+pub struct NotificationOnlyClient(Client);
+
+impl NotificationOnlyClient {
+  pub fn send_registry_state_notification(
+    &self,
+    params: lsp_custom::RegistryStateNotificationParams,
+  ) {
+    let client = self.0.clone();
+    tokio::task::spawn(async move {
+      client.send_registry_state_notification(params).await;
+    });
+  }
+}
+
 #[derive(Clone)]
 pub struct Client(Arc<dyn ClientTrait>);
 
@@ -43,6 +63,10 @@ impl Client {
 
   pub fn new_for_repl() -> Self {
     Self(Arc::new(ReplClient))
+  }
+
+  pub fn as_notification_only(&self) -> NotificationOnlyClient {
+    NotificationOnlyClient(self.clone())
   }
 
   pub async fn publish_diagnostics(
@@ -207,6 +231,10 @@ impl ClientTrait for TowerClient {
     uris: Vec<lsp::Url>,
   ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>
   {
+    eprintln!(
+      "URIS: {:?}",
+      uris.iter().map(|i| i.as_str()).collect::<Vec<_>>()
+    );
     let client = self.0.clone();
     Box::pin(async move {
       let config_response = client
@@ -235,6 +263,7 @@ impl ClientTrait for TowerClient {
   }
 
   fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>> {
+    eprintln!("WORKSPACE CONFIG");
     let client = self.0.clone();
     Box::pin(async move {
       let config_response = client

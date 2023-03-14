@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::client::Client;
+use super::client::NotificationOnlyClient;
 use super::config::ConfigSnapshot;
 use super::documents::Documents;
 use super::lsp_custom;
@@ -48,7 +48,7 @@ pub struct CompletionItemData {
 async fn check_auto_config_registry(
   url_str: &str,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &NotificationOnlyClient,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
@@ -78,14 +78,12 @@ async fn check_auto_config_registry(
           // incompatible.
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
-            client
-              .send_registry_state_notification(
-                lsp_custom::RegistryStateNotificationParams {
-                  origin,
-                  suggestions,
-                },
-              )
-              .await;
+            client.send_registry_state_notification(
+              lsp_custom::RegistryStateNotificationParams {
+                origin,
+                suggestions,
+              },
+            );
           }
         }
       }
@@ -139,7 +137,7 @@ pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &NotificationOnlyClient,
   module_registries: &ModuleRegistry,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,

@@ -75,6 +75,7 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
@@ -84,7 +85,6 @@ use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
-use crate::util::path::ensure_directory_specifier;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -377,10 +377,11 @@ impl LanguageServer {
 
       let mut ls = self.0.write().await;
       if let Ok(configs) = configs_result {
-        for (i, value) in configs.into_iter().enumerate() {
+        for (value, internal_uri) in
+          configs.into_iter().zip(specifiers.into_iter().map(|s| s.1))
+        {
           match value {
             Ok(specifier_settings) => {
-              let internal_uri = specifiers[i].1.clone();
               if ls
                 .config
                 .set_specifier_settings(internal_uri, specifier_settings)
@@ -1062,8 +1063,7 @@ impl Inner {
       // sometimes this root uri may not have a trailing slash, so force it to
       self.config.root_uri = params
         .root_uri
-        .map(|s| self.url_map.normalize_url(&s))
-        .map(ensure_directory_specifier);
+        .map(|s| self.url_map.normalize_url(&s, LspUrlKind::Folder));
 
       if let Some(value) = params.initialization_options {
         self.config.set_workspace_settings(value).map_err(|err| {
@@ -1074,7 +1074,12 @@ impl Inner {
       self.config.workspace_folders = params.workspace_folders.map(|folders| {
         folders
           .into_iter()
-          .map(|folder| (self.url_map.normalize_url(&folder.uri), folder))
+          .map(|folder| {
+            (
+              self.url_map.normalize_url(&folder.uri, LspUrlKind::Folder),
+              folder,
+            )
+          })
           .collect()
       });
       self.config.update_capabilities(&params.capabilities);
@@ -1215,7 +1220,9 @@ impl Inner {
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change", Some(&params));
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     match self.documents.change(
       &specifier,
       params.text_document.version,
@@ -1251,7 +1258,9 @@ impl Inner {
       // already managed by the language service
       return;
     }
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
 
     if let Err(err) = self.documents.close(&specifier) {
       error!("{}", err);
@@ -1326,7 +1335,7 @@ impl Inner {
     let changes: HashSet<Url> = params
       .changes
       .iter()
-      .map(|f| self.url_map.normalize_url(&f.uri))
+      .map(|f| self.url_map.normalize_url(&f.uri, LspUrlKind::File))
       .collect();
 
     // if the current deno.json has changed, we need to reload it
@@ -1379,7 +1388,12 @@ impl Inner {
       .event
       .added
       .into_iter()
-      .map(|folder| (self.url_map.normalize_url(&folder.uri), folder))
+      .map(|folder| {
+        (
+          self.url_map.normalize_url(&folder.uri, LspUrlKind::Folder),
+          folder,
+        )
+      })
       .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
     if let Some(current_folders) = &self.config.workspace_folders {
       for (specifier, folder) in current_folders {
@@ -1399,7 +1413,9 @@ impl Inner {
     &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -1437,7 +1453,9 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     let document = match self.documents.get(&specifier) {
       Some(doc) if doc.is_open() => doc,
       _ => return Ok(None),
@@ -1500,9 +1518,10 @@ impl Inner {
   }
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position_params.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -1587,7 +1606,9 @@ impl Inner {
     &self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -1847,7 +1868,9 @@ impl Inner {
     &self,
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
       || !(self.config.get_workspace_settings().enabled_code_lens()
@@ -1907,9 +1930,10 @@ impl Inner {
     &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position_params.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -1951,9 +1975,10 @@ impl Inner {
     &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2007,9 +2032,10 @@ impl Inner {
     &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position_params.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2046,9 +2072,10 @@ impl Inner {
     &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position_params.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2093,9 +2120,10 @@ impl Inner {
     &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2112,7 +2140,7 @@ impl Inner {
       &specifier,
       &params.text_document_position.position,
       &self.config.snapshot(),
-      self.client.clone(),
+      &self.client.as_notification_only(),
       &self.module_registries,
       &self.documents,
       self.maybe_import_map.clone(),
@@ -2252,9 +2280,10 @@ impl Inner {
     &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position_params.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2298,7 +2327,9 @@ impl Inner {
     &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2342,7 +2373,9 @@ impl Inner {
     &self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
-    let specifier = self.url_map.normalize_url(&params.item.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.item.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2388,7 +2421,9 @@ impl Inner {
     &self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
-    let specifier = self.url_map.normalize_url(&params.item.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.item.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2435,9 +2470,10 @@ impl Inner {
     &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position_params.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2503,9 +2539,10 @@ impl Inner {
     &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2555,7 +2592,9 @@ impl Inner {
     &self,
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2593,7 +2632,9 @@ impl Inner {
     &self,
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2635,7 +2676,9 @@ impl Inner {
     &self,
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2678,9 +2721,10 @@ impl Inner {
     &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let specifier = self.url_map.normalize_url(
+      &params.text_document_position_params.text_document.uri,
+      LspUrlKind::File,
+    );
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
     {
@@ -2824,7 +2868,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
       let client_uri = params.text_document.uri.clone();
-      let specifier = inner.url_map.normalize_url(&client_uri);
+      let specifier =
+        inner.url_map.normalize_url(&client_uri, LspUrlKind::File);
       let document = inner.did_open(&specifier, params).await;
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
@@ -2865,6 +2910,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       {
         ls.refresh_documents_config();
         ls.send_diagnostics_update();
+        ls.send_testing_update();
       }
     }
   }
@@ -3127,7 +3173,9 @@ impl Inner {
     &self,
     params: lsp_custom::CacheParams,
   ) -> Result<Option<PrepareCacheResult>, AnyError> {
-    let referrer = self.url_map.normalize_url(&params.referrer.uri);
+    let referrer = self
+      .url_map
+      .normalize_url(&params.referrer.uri, LspUrlKind::File);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
     }
@@ -3137,7 +3185,7 @@ impl Inner {
       params
         .uris
         .iter()
-        .map(|t| self.url_map.normalize_url(&t.uri))
+        .map(|t| self.url_map.normalize_url(&t.uri, LspUrlKind::File))
         .collect()
     } else {
       vec![referrer]
@@ -3211,7 +3259,9 @@ impl Inner {
     &self,
     params: InlayHintParams,
   ) -> LspResult<Option<Vec<InlayHint>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     let workspace_settings = self.config.get_workspace_settings();
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
@@ -3272,7 +3322,9 @@ impl Inner {
     let mark = self
       .performance
       .mark("virtual_text_document", Some(&params));
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document.uri, LspUrlKind::File);
     let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
       let mut documents_specifiers = self
