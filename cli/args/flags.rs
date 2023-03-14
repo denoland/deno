@@ -6,6 +6,7 @@ use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
@@ -16,6 +17,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -474,16 +476,17 @@ impl Flags {
 
   /// Extract path arguments for config search paths.
   /// If it returns Some(vec), the config should be discovered
-  /// from the current dir after trying to discover from each entry in vec.
+  /// from the passed `current_dir` after trying to discover from each entry in
+  /// the returned vector.
   /// If it returns None, the config file shouldn't be discovered at all.
-  pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
+  pub fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
 
     match &self.subcommand {
       Fmt(FmtFlags { files, .. }) => Some(files.include.clone()),
       Lint(LintFlags { files, .. }) => Some(files.include.clone()),
       Run(RunFlags { script }) => {
-        if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+        if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
@@ -520,12 +523,12 @@ impl Flags {
   /// from the `path` dir.
   /// If it returns None, the `package.json` file shouldn't be discovered at
   /// all.
-  pub fn package_json_search_dir(&self) -> Option<PathBuf> {
+  pub fn package_json_search_dir(&self, current_dir: &Path) -> Option<PathBuf> {
     use DenoSubcommand::*;
 
     match &self.subcommand {
       Run(RunFlags { script }) => {
-        let module_specifier = deno_core::resolve_url_or_path(script).ok()?;
+        let module_specifier = resolve_url_or_path(script, current_dir).ok()?;
         if module_specifier.scheme() == "file" {
           let p = module_specifier
             .to_file_path()
@@ -540,7 +543,7 @@ impl Flags {
         }
       }
       Task(TaskFlags { cwd: Some(cwd), .. }) => {
-        deno_core::resolve_url_or_path(cwd)
+        resolve_url_or_path(cwd, current_dir)
           .ok()?
           .to_file_path()
           .ok()
@@ -6338,30 +6341,28 @@ mod tests {
   #[test]
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
-    assert_eq!(
-      flags.config_path_args(),
-      Some(vec![std::env::current_dir().unwrap().join("foo.js")])
-    );
+    let cwd = std::env::current_dir().unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("foo.js")]));
 
     let flags =
       flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
         .unwrap();
-    assert_eq!(flags.config_path_args(), None);
+    assert_eq!(flags.config_path_args(&cwd), None);
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
-      flags.config_path_args(),
+      flags.config_path_args(&cwd),
       Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_args().unwrap().is_empty());
+    assert!(flags.config_path_args(&cwd).unwrap().is_empty());
 
     let flags =
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
-      flags.config_path_args(),
+      flags.config_path_args(&cwd),
       Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
   }
