@@ -141,7 +141,6 @@ pub fn resolve_url_or_path_deprecated(
 /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
 /// file path; if it is a relative path it's resolved relative to passed
 /// `current_dir`.
-#[allow(dead_code)]
 pub fn resolve_url_or_path(
   specifier: &str,
   current_dir: &Path,

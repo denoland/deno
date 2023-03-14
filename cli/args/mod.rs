@@ -1184,7 +1184,7 @@ mod test {
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
-      &std::env::current_dir().unwrap(),
+      &PathBuf::from("/"),
     );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
@@ -1205,7 +1205,7 @@ mod test {
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
-      &std::env::current_dir().unwrap(),
+      &PathBuf::from("/"),
     );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
@@ -1228,7 +1228,7 @@ mod test {
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
-      &std::env::current_dir().unwrap(),
+      &PathBuf::from("/"),
     );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
@@ -1245,16 +1245,16 @@ mod test {
     let config_text = r#"{
       "importMap": "import_map.json"
     }"#;
+    let cwd = &PathBuf::from("/");
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
-      &std::env::current_dir().unwrap(),
+      cwd,
     );
-    let import_map_path =
-      std::env::current_dir().unwrap().join("import-map.json");
+    let import_map_path = cwd.join("import-map.json");
     let expected_specifier =
       ModuleSpecifier::from_file_path(import_map_path).unwrap();
     assert!(actual.is_ok());
@@ -1274,7 +1274,7 @@ mod test {
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
-      &std::env::current_dir().unwrap(),
+      &PathBuf::from("/"),
     );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
@@ -1290,7 +1290,7 @@ mod test {
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
-      &std::env::current_dir().unwrap(),
+      &PathBuf::from("/"),
     );
     assert!(actual.is_ok());
     let actual = actual.unwrap();
@@ -1299,11 +1299,7 @@ mod test {
 
   #[test]
   fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(
-      None,
-      None,
-      &std::env::current_dir().unwrap(),
-    );
+    let actual = resolve_import_map_specifier(None, None, &PathBuf::from("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
