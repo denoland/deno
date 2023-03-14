@@ -481,8 +481,10 @@ const ci = {
           {
             name: "Lint PR title",
             if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
-            run:
-              "deno run ./tools/verify_pr_title.js '${{ github.event.pull_request.title }}'",
+            env: {
+              PR_TITLE: "${{ github.event.pull_request.title }}",
+            },
+            run: 'eno run ./tools/verify_pr_title.js "$PR_TITLE"',
           },
           {
             name: "lint.js",
