@@ -747,7 +747,7 @@ function inspectValue(
  * Insert a backslash before any occurrence of the chosen quote symbol and
  * before any backslash.
  */
-function quoteString(string, inspectOptions) {
+function quoteString(string, inspectOptions = DEFAULT_INSPECT_OPTIONS) {
   const quotes = inspectOptions.quotes;
   const quote =
     ArrayPrototypeFind(quotes, (c) => !StringPrototypeIncludes(string, c)) ??
