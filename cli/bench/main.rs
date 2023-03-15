@@ -13,6 +13,8 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 
+include!("../util/time.rs");
+
 mod http;
 mod lsp;
 
@@ -436,8 +438,7 @@ async fn main() -> Result<()> {
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: chrono::Utc::now()
-      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
@@ -472,7 +473,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"lsp") {
-    let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
+    let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
   }
 

@@ -12,7 +12,6 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
     .ops(vec![op_main_module::decl()])
     .state(move |state| {
       state.put::<ModuleSpecifier>(main_module.clone());
-      Ok(())
     })
     .build()
 }

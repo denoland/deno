@@ -16,7 +16,9 @@ use pretty_assertions::assert_eq;
 
 use crate::copy_dir_recursive;
 use crate::deno_exe_path;
+use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::http_server;
+use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -28,17 +30,25 @@ use crate::TempDir;
 pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
+  use_separate_deno_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   copy_temp_dir: Option<String>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
+  deno_exe: Option<PathBuf>,
 }
 
 impl TestContextBuilder {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  pub fn for_npm() -> Self {
+    let mut builder = Self::new();
+    builder.use_http_server().add_npm_env_vars();
+    builder
   }
 
   pub fn use_http_server(&mut self) -> &mut Self {
@@ -51,14 +61,24 @@ impl TestContextBuilder {
     self
   }
 
+  /// By default, the temp_dir and the deno_dir will be shared.
+  /// In some cases, that might cause an issue though, so calling
+  /// this will use a separate directory for the deno dir and the
+  /// temp directory.
+  pub fn use_separate_deno_dir(&mut self) -> &mut Self {
+    self.use_separate_deno_dir = true;
+    self
+  }
+
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
-  pub fn use_copy_temp_dir(&mut self, dir: impl AsRef<str>) {
+  pub fn use_copy_temp_dir(&mut self, dir: impl AsRef<str>) -> &mut Self {
     self.copy_temp_dir = Some(dir.as_ref().to_string());
+    self
   }
 
-  pub fn set_cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
+  pub fn cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
     self.cwd = Some(cwd.as_ref().to_string());
     self
   }
@@ -74,19 +94,40 @@ impl TestContextBuilder {
     self
   }
 
+  pub fn add_npm_env_vars(&mut self) -> &mut Self {
+    for (key, value) in env_vars_for_npm_tests_no_sync_download() {
+      self.env(key, value);
+    }
+    self
+  }
+
+  pub fn use_sync_npm_download(&mut self) -> &mut Self {
+    self.env(
+      // make downloads determinstic
+      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
+      "1",
+    );
+    self
+  }
+
   pub fn build(&self) -> TestContext {
     let deno_dir = new_deno_dir(); // keep this alive for the test
+    let temp_dir = if self.use_separate_deno_dir {
+      TempDir::new()
+    } else {
+      deno_dir.clone()
+    };
     let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
       let test_data_path = testdata_path().join(temp_copy_dir);
-      let temp_copy_dir = deno_dir.path().join(temp_copy_dir);
+      let temp_copy_dir = temp_dir.path().join(temp_copy_dir);
       std::fs::create_dir_all(&temp_copy_dir).unwrap();
       copy_dir_recursive(&test_data_path, &temp_copy_dir).unwrap();
-      deno_dir.path().to_owned()
+      temp_dir.path().to_owned()
     } else {
       testdata_path()
     };
 
-    let deno_exe = deno_exe_path();
+    let deno_exe = self.deno_exe.clone().unwrap_or_else(deno_exe_path);
     println!("deno_exe path {}", deno_exe.display());
 
     let http_server_guard = if self.use_http_server {
@@ -97,10 +138,12 @@ impl TestContextBuilder {
 
     TestContext {
       cwd: self.cwd.clone(),
+      deno_exe,
       envs: self.envs.clone(),
       use_temp_cwd: self.use_temp_cwd,
       _http_server_guard: http_server_guard,
       deno_dir,
+      temp_dir,
       testdata_dir,
     }
   }
@@ -108,11 +151,13 @@ impl TestContextBuilder {
 
 #[derive(Clone)]
 pub struct TestContext {
+  deno_exe: PathBuf,
   envs: HashMap<String, String>,
   use_temp_cwd: bool,
   cwd: Option<String>,
   _http_server_guard: Option<Rc<HttpServerGuard>>,
   deno_dir: TempDir,
+  temp_dir: TempDir,
   testdata_dir: PathBuf,
 }
 
@@ -135,34 +180,46 @@ impl TestContext {
     &self.deno_dir
   }
 
+  pub fn temp_dir(&self) -> &TempDir {
+    &self.temp_dir
+  }
+
   pub fn new_command(&self) -> TestCommandBuilder {
     TestCommandBuilder {
-      command_name: Default::default(),
+      command_name: self.deno_exe.to_string_lossy().to_string(),
       args: Default::default(),
       args_vec: Default::default(),
       stdin: Default::default(),
       envs: Default::default(),
       env_clear: Default::default(),
       cwd: Default::default(),
+      split_output: false,
       context: self.clone(),
     }
+  }
+
+  pub fn new_lsp_command(&self) -> LspClientBuilder {
+    let mut builder = LspClientBuilder::new();
+    builder.deno_exe(&self.deno_exe).set_test_context(self);
+    builder
   }
 }
 
 pub struct TestCommandBuilder {
-  command_name: Option<String>,
+  command_name: String,
   args: String,
   args_vec: Vec<String>,
   stdin: Option<String>,
   envs: HashMap<String, String>,
   env_clear: bool,
   cwd: Option<String>,
+  split_output: bool,
   context: TestContext,
 }
 
 impl TestCommandBuilder {
   pub fn command_name(&mut self, name: impl AsRef<str>) -> &mut Self {
-    self.command_name = Some(name.as_ref().to_string());
+    self.command_name = name.as_ref().to_string();
     self
   }
 
@@ -178,6 +235,15 @@ impl TestCommandBuilder {
 
   pub fn stdin(&mut self, text: impl AsRef<str>) -> &mut Self {
     self.stdin = Some(text.as_ref().to_string());
+    self
+  }
+
+  /// Splits the output into stdout and stderr rather than having them combined.
+  pub fn split_output(&mut self) -> &mut Self {
+    // Note: it was previously attempted to capture stdout & stderr separately
+    // then forward the output to a combined pipe, but this was found to be
+    // too racy compared to providing the same combined pipe to both.
+    self.split_output = true;
     self
   }
 
@@ -203,10 +269,27 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
+    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
+      let mut output = String::new();
+      pipe.read_to_string(&mut output).unwrap();
+      output
+    }
+
+    fn sanitize_output(text: String, args: &[String]) -> String {
+      let mut text = strip_ansi_codes(&text).to_string();
+      // deno test's output capturing flushes with a zero-width space in order to
+      // synchronize the output pipes. Occassionally this zero width space
+      // might end up in the output so strip it from the output comparison here.
+      if args.first().map(|s| s.as_str()) == Some("test") {
+        text = text.replace('\u{200B}', "");
+      }
+      text
+    }
+
     let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
     let cwd = if self.context.use_temp_cwd {
       assert!(cwd.is_none());
-      self.context.deno_dir.path().to_owned()
+      self.context.temp_dir.path().to_owned()
     } else if let Some(cwd_) = cwd {
       self.context.testdata_dir.join(cwd_)
     } else {
@@ -232,16 +315,11 @@ impl TestCommandBuilder {
       arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
     .collect::<Vec<_>>();
-    let (mut reader, writer) = pipe().unwrap();
-    let command_name = self
-      .command_name
-      .as_ref()
-      .cloned()
-      .unwrap_or("deno".to_string());
+    let command_name = &self.command_name;
     let mut command = if command_name == "deno" {
       Command::new(deno_exe_path())
     } else {
-      Command::new(&command_name)
+      Command::new(command_name)
     };
     command.env("DENO_DIR", self.context.deno_dir.path());
 
@@ -260,9 +338,25 @@ impl TestCommandBuilder {
     });
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
-    let writer_clone = writer.try_clone().unwrap();
-    command.stderr(writer_clone);
-    command.stdout(writer);
+
+    let (combined_reader, std_out_err_handle) = if self.split_output {
+      let (stdout_reader, stdout_writer) = pipe().unwrap();
+      let (stderr_reader, stderr_writer) = pipe().unwrap();
+      command.stdout(stdout_writer);
+      command.stderr(stderr_writer);
+      (
+        None,
+        Some((
+          std::thread::spawn(move || read_pipe_to_string(stdout_reader)),
+          std::thread::spawn(move || read_pipe_to_string(stderr_reader)),
+        )),
+      )
+    } else {
+      let (combined_reader, combined_writer) = pipe().unwrap();
+      command.stdout(combined_writer.try_clone().unwrap());
+      command.stderr(combined_writer);
+      (Some(combined_reader), None)
+    };
 
     let mut process = command.spawn().unwrap();
 
@@ -277,10 +371,16 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let mut actual = String::new();
-    reader.read_to_string(&mut actual).unwrap();
+    let combined = combined_reader
+      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
 
-    let status = process.wait().expect("failed to finish process");
+    let status = process.wait().unwrap();
+    let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
+      (
+        sanitize_output(stdout.join().unwrap(), &args),
+        sanitize_output(stderr.join().unwrap(), &args),
+      )
+    });
     let exit_code = status.code();
     #[cfg(unix)]
     let signal = {
@@ -290,33 +390,30 @@ impl TestCommandBuilder {
     #[cfg(not(unix))]
     let signal = None;
 
-    actual = strip_ansi_codes(&actual).to_string();
-
-    // deno test's output capturing flushes with a zero-width space in order to
-    // synchronize the output pipes. Occassionally this zero width space
-    // might end up in the output so strip it from the output comparison here.
-    if args.first().map(|s| s.as_str()) == Some("test") {
-      actual = actual.replace('\u{200B}', "");
-    }
-
     TestCommandOutput {
       exit_code,
       signal,
-      text: actual,
+      combined,
+      std_out_err,
       testdata_dir: self.context.testdata_dir.clone(),
       asserted_exit_code: RefCell::new(false),
-      asserted_text: RefCell::new(false),
+      asserted_stdout: RefCell::new(false),
+      asserted_stderr: RefCell::new(false),
+      asserted_combined: RefCell::new(false),
       _test_context: self.context.clone(),
     }
   }
 }
 
 pub struct TestCommandOutput {
-  text: String,
+  combined: Option<String>,
+  std_out_err: Option<(String, String)>,
   exit_code: Option<i32>,
   signal: Option<i32>,
   testdata_dir: PathBuf,
-  asserted_text: RefCell<bool>,
+  asserted_stdout: RefCell<bool>,
+  asserted_stderr: RefCell<bool>,
+  asserted_combined: RefCell<bool>,
   asserted_exit_code: RefCell<bool>,
   // keep alive for the duration of the output reference
   _test_context: TestContext,
@@ -324,6 +421,17 @@ pub struct TestCommandOutput {
 
 impl Drop for TestCommandOutput {
   fn drop(&mut self) {
+    fn panic_unasserted_output(text: &str) {
+      println!("OUTPUT\n{text}\nOUTPUT");
+      panic!(
+        concat!(
+          "The non-empty text of the command was not asserted at {}. ",
+          "Call `output.skip_output_check()` to skip if necessary.",
+        ),
+        failed_position()
+      );
+    }
+
     if std::thread::panicking() {
       return;
     }
@@ -335,15 +443,20 @@ impl Drop for TestCommandOutput {
         failed_position(),
       )
     }
-    if !*self.asserted_text.borrow() && !self.text.is_empty() {
-      println!("OUTPUT\n{}\nOUTPUT", self.text);
-      panic!(
-        concat!(
-          "The non-empty text of the command was not asserted. ",
-          "Call `output.skip_output_check()` to skip if necessary at {}.",
-        ),
-        failed_position()
-      );
+
+    // either the combined output needs to be asserted or both stdout and stderr
+    if let Some(combined) = &self.combined {
+      if !*self.asserted_combined.borrow() && !combined.is_empty() {
+        panic_unasserted_output(combined);
+      }
+    }
+    if let Some((stdout, stderr)) = &self.std_out_err {
+      if !*self.asserted_stdout.borrow() && !stdout.is_empty() {
+        panic_unasserted_output(stdout);
+      }
+      if !*self.asserted_stderr.borrow() && !stderr.is_empty() {
+        panic_unasserted_output(stderr);
+      }
     }
   }
 }
@@ -354,7 +467,9 @@ impl TestCommandOutput {
   }
 
   pub fn skip_output_check(&self) {
-    *self.asserted_text.borrow_mut() = true;
+    *self.asserted_combined.borrow_mut() = true;
+    *self.asserted_stdout.borrow_mut() = true;
+    *self.asserted_stderr.borrow_mut() = true;
   }
 
   pub fn skip_exit_code_check(&self) {
@@ -370,9 +485,30 @@ impl TestCommandOutput {
     self.signal
   }
 
-  pub fn text(&self) -> &str {
+  pub fn combined_output(&self) -> &str {
     self.skip_output_check();
-    &self.text
+    self
+      .combined
+      .as_deref()
+      .expect("not available since .split_output() was called")
+  }
+
+  pub fn stdout(&self) -> &str {
+    *self.asserted_stdout.borrow_mut() = true;
+    self
+      .std_out_err
+      .as_ref()
+      .map(|(stdout, _)| stdout.as_str())
+      .expect("call .split_output() on the builder")
+  }
+
+  pub fn stderr(&self) -> &str {
+    *self.asserted_stderr.borrow_mut() = true;
+    self
+      .std_out_err
+      .as_ref()
+      .map(|(_, stderr)| stderr.as_str())
+      .expect("call .split_output() on the builder")
   }
 
   pub fn assert_exit_code(&self, expected_exit_code: i32) -> &Self {
@@ -380,7 +516,7 @@ impl TestCommandOutput {
 
     if let Some(exit_code) = &actual_exit_code {
       if *exit_code != expected_exit_code {
-        println!("OUTPUT\n{}\nOUTPUT", self.text());
+        self.print_output();
         panic!(
           "bad exit code, expected: {:?}, actual: {:?} at {}",
           expected_exit_code,
@@ -389,7 +525,7 @@ impl TestCommandOutput {
         );
       }
     } else {
-      println!("OUTPUT\n{}\nOUTPUT", self.text());
+      self.print_output();
       if let Some(signal) = self.signal() {
         panic!(
           "process terminated by signal, expected exit code: {:?}, actual signal: {:?} at {}",
@@ -409,29 +545,79 @@ impl TestCommandOutput {
     self
   }
 
-  pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
-    let expected_text = expected_text.as_ref();
-    let actual = self.text();
-
-    if !expected_text.contains("[WILDCARD]") {
-      assert_eq!(actual, expected_text, "at {}", failed_position());
-    } else if !wildcard_match(expected_text, actual) {
-      println!("OUTPUT START\n{actual}\nOUTPUT END");
-      println!("EXPECTED START\n{expected_text}\nEXPECTED END");
-      panic!("pattern match failed at {}", failed_position());
+  pub fn print_output(&self) {
+    if let Some(combined) = &self.combined {
+      println!("OUTPUT\n{combined}\nOUTPUT");
+    } else if let Some((stdout, stderr)) = &self.std_out_err {
+      println!("STDOUT OUTPUT\n{stdout}\nSTDOUT OUTPUT");
+      println!("STDERR OUTPUT\n{stderr}\nSTDERR OUTPUT");
     }
+  }
 
-    self
+  pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
+    self.inner_assert_matches_text(self.combined_output(), expected_text)
   }
 
   pub fn assert_matches_file(&self, file_path: impl AsRef<Path>) -> &Self {
+    self.inner_assert_matches_file(self.combined_output(), file_path)
+  }
+
+  pub fn assert_stdout_matches_text(
+    &self,
+    expected_text: impl AsRef<str>,
+  ) -> &Self {
+    self.inner_assert_matches_text(self.stdout(), expected_text)
+  }
+
+  pub fn assert_stdout_matches_file(
+    &self,
+    file_path: impl AsRef<Path>,
+  ) -> &Self {
+    self.inner_assert_matches_file(self.stdout(), file_path)
+  }
+
+  pub fn assert_stderr_matches_text(
+    &self,
+    expected_text: impl AsRef<str>,
+  ) -> &Self {
+    self.inner_assert_matches_text(self.stderr(), expected_text)
+  }
+
+  pub fn assert_stderrr_matches_file(
+    &self,
+    file_path: impl AsRef<Path>,
+  ) -> &Self {
+    self.inner_assert_matches_file(self.stderr(), file_path)
+  }
+
+  fn inner_assert_matches_text(
+    &self,
+    actual: &str,
+    expected: impl AsRef<str>,
+  ) -> &Self {
+    let expected = expected.as_ref();
+    if !expected.contains("[WILDCARD]") {
+      assert_eq!(actual, expected, "at {}", failed_position());
+    } else if !wildcard_match(expected, actual) {
+      println!("OUTPUT START\n{actual}\nOUTPUT END");
+      println!("EXPECTED START\n{expected}\nEXPECTED END");
+      panic!("pattern match failed at {}", failed_position());
+    }
+    self
+  }
+
+  fn inner_assert_matches_file(
+    &self,
+    actual: &str,
+    file_path: impl AsRef<Path>,
+  ) -> &Self {
     let output_path = self.testdata_dir().join(file_path);
     println!("output path {}", output_path.display());
     let expected_text =
       std::fs::read_to_string(&output_path).unwrap_or_else(|err| {
         panic!("failed loading {}\n\n{err:#}", output_path.display())
       });
-    self.assert_matches_text(expected_text)
+    self.inner_assert_matches_text(actual, expected_text)
   }
 }
 

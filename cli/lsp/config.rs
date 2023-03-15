@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
-use crate::util::path::ensure_directory_specifier;
 use crate::util::path::specifier_to_file_path;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -593,7 +592,6 @@ impl Config {
     workspace: ModuleSpecifier,
     enabled_paths: Vec<String>,
   ) -> bool {
-    let workspace = ensure_directory_specifier(workspace);
     let mut touched = false;
     if !enabled_paths.is_empty() {
       if let Ok(workspace_path) = specifier_to_file_path(&workspace) {

@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import { Duplex } from "internal:deno_node/polyfills/_stream.mjs";
+import { Duplex } from "ext:deno_node/_stream.mjs";
 const { from, fromWeb, toWeb } = Duplex;
 
 export default Duplex;

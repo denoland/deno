@@ -75,9 +75,14 @@ declare namespace __bootstrap {
       typeof globalThis.FinalizationRegistry;
     export const SafeWeakRef: typeof globalThis.WeakRef;
     export const SafePromiseAll: typeof Promise.all;
+    // NOTE: Uncomment the following functions when you need to use them
+    // export const SafePromiseAllSettled: typeof Promise.allSettled;
+    // export const SafePromiseAny: typeof Promise.any;
+    // export const SafePromiseRace: typeof Promise.race;
     export const SafePromisePrototypeFinally: UncurryThis<
       Promise.prototype.finally
     >;
+    export const SafeRegExp: typeof RegExp;
 
     // safe iterators
     export const SafeArrayIterator: new <T>(array: T[]) => IterableIterator<T>;
@@ -529,7 +534,7 @@ declare namespace __bootstrap {
     export const FinalizationRegistryPrototype:
       typeof FinalizationRegistry.prototype;
     export const FinalizationRegistryPrototypeRegister: UncurryThis<
-      typeof FinalizationRegistry.prototype.registar
+      typeof FinalizationRegistry.prototype.register
     >;
     export const FinalizationRegistryPrototypeUnregister: UncurryThis<
       typeof FinalizationRegistry.prototype.unregister

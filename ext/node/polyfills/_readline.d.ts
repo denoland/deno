@@ -3,22 +3,16 @@
 
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/cd61f5b4d3d143108569ec3f88adc0eb34b961c4/types/node/readline.d.ts
 
-import {
-  Abortable,
-  EventEmitter,
-} from "internal:deno_node/polyfills/_events.d.ts";
-import * as promises from "internal:deno_node/polyfills/readline/promises.ts";
-import {
-  ReadableStream,
-  WritableStream,
-} from "internal:deno_node/polyfills/_global.d.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+import { Abortable, EventEmitter } from "ext:deno_node/_events.d.ts";
+import * as promises from "ext:deno_node/readline/promises.ts";
+import { ReadableStream, WritableStream } from "ext:deno_node/_global.d.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import type {
   AsyncCompleter,
   Completer,
   CompleterResult,
   ReadLineOptions,
-} from "internal:deno_node/polyfills/_readline_shared_types.d.ts";
+} from "ext:deno_node/_readline_shared_types.d.ts";
 
 /**
  * The `readline` module provides an interface for reading data from a `Readable` stream (such as `process.stdin`) one line at a time.

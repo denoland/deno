@@ -5,8 +5,8 @@
 /// <reference path="../webidl/internal.d.ts" />
 
 const primordials = globalThis.__bootstrap.primordials;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { CryptoKey } from "internal:deno_crypto/00_crypto.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { CryptoKey } from "ext:deno_crypto/00_crypto.js";
 const {
   ArrayBufferIsView,
   ArrayBufferPrototype,

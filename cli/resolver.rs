@@ -1,11 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
+use deno_core::TaskQueue;
 use deno_graph::npm::NpmPackageNv;
 use deno_graph::npm::NpmPackageReq;
 use deno_graph::source::NpmResolver;
@@ -14,9 +16,9 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_runtime::deno_node::is_builtin_node_module;
 use import_map::ImportMap;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
@@ -33,7 +35,7 @@ pub struct CliGraphResolver {
   npm_registry_api: NpmRegistryApi,
   npm_resolution: NpmResolution,
   package_json_deps_installer: PackageJsonDepsInstaller,
-  sync_download_semaphore: Option<Arc<tokio::sync::Semaphore>>,
+  sync_download_queue: Option<Arc<TaskQueue>>,
 }
 
 impl Default for CliGraphResolver {
@@ -51,7 +53,7 @@ impl Default for CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       package_json_deps_installer: Default::default(),
-      sync_download_semaphore: Self::create_sync_download_semaphore(),
+      sync_download_queue: Self::create_sync_download_queue(),
     }
   }
 }
@@ -76,13 +78,13 @@ impl CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       package_json_deps_installer,
-      sync_download_semaphore: Self::create_sync_download_semaphore(),
+      sync_download_queue: Self::create_sync_download_queue(),
     }
   }
 
-  fn create_sync_download_semaphore() -> Option<Arc<tokio::sync::Semaphore>> {
+  fn create_sync_download_queue() -> Option<Arc<TaskQueue>> {
     if crate::npm::should_sync_download() {
-      Some(Arc::new(tokio::sync::Semaphore::new(1)))
+      Some(Default::default())
     } else {
       None
     }
@@ -144,16 +146,19 @@ impl Resolver for CliGraphResolver {
 
 fn resolve_package_json_dep(
   specifier: &str,
-  deps: &BTreeMap<String, NpmPackageReq>,
-) -> Result<Option<ModuleSpecifier>, deno_core::url::ParseError> {
-  for (bare_specifier, req) in deps {
+  deps: &PackageJsonDeps,
+) -> Result<Option<ModuleSpecifier>, AnyError> {
+  for (bare_specifier, req_result) in deps {
     if specifier.starts_with(bare_specifier) {
-      if specifier.len() == bare_specifier.len() {
-        return ModuleSpecifier::parse(&format!("npm:{req}")).map(Some);
-      }
       let path = &specifier[bare_specifier.len()..];
-      if path.starts_with('/') {
-        return ModuleSpecifier::parse(&format!("npm:/{req}{path}")).map(Some);
+      if path.is_empty() || path.starts_with('/') {
+        let req = req_result.as_ref().map_err(|err| {
+          anyhow!(
+            "Parsing version constraints in the application-level package.json is more strict at the moment.\n\n{:#}",
+            err.clone()
+          )
+        })?;
+        return Ok(Some(ModuleSpecifier::parse(&format!("npm:{req}{path}"))?));
       }
     }
   }
@@ -190,10 +195,10 @@ impl NpmResolver for CliGraphResolver {
     let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
     let deps_installer = self.package_json_deps_installer.clone();
-    let maybe_sync_download_semaphore = self.sync_download_semaphore.clone();
+    let maybe_sync_download_queue = self.sync_download_queue.clone();
     async move {
-      let permit = if let Some(semaphore) = &maybe_sync_download_semaphore {
-        Some(semaphore.acquire().await.unwrap())
+      let permit = if let Some(task_queue) = &maybe_sync_download_queue {
+        Some(task_queue.acquire().await)
       } else {
         None
       };
@@ -239,6 +244,8 @@ impl NpmResolver for CliGraphResolver {
 
 #[cfg(test)]
 mod test {
+  use std::collections::BTreeMap;
+
   use super::*;
 
   #[test]
@@ -247,7 +254,11 @@ mod test {
       specifier: &str,
       deps: &BTreeMap<String, NpmPackageReq>,
     ) -> Result<Option<String>, String> {
-      resolve_package_json_dep(specifier, deps)
+      let deps = deps
+        .iter()
+        .map(|(key, value)| (key.to_string(), Ok(value.clone())))
+        .collect();
+      resolve_package_json_dep(specifier, &deps)
         .map(|s| s.map(|s| s.to_string()))
         .map_err(|err| err.to_string())
     }
@@ -273,7 +284,7 @@ mod test {
     );
     assert_eq!(
       resolve("package/some_path.ts", &deps).unwrap(),
-      Some("npm:/package@1.0/some_path.ts".to_string()),
+      Some("npm:package@1.0/some_path.ts".to_string()),
     );
 
     assert_eq!(
@@ -282,7 +293,7 @@ mod test {
     );
     assert_eq!(
       resolve("@deno/test/some_path.ts", &deps).unwrap(),
-      Some("npm:/@deno/test@~0.2/some_path.ts".to_string()),
+      Some("npm:@deno/test@~0.2/some_path.ts".to_string()),
     );
     // matches the start, but doesn't have the same length or a path
     assert_eq!(resolve("@deno/testing", &deps).unwrap(), None,);
