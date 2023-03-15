@@ -8,7 +8,6 @@ use test_util::TempDir;
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
@@ -30,7 +29,6 @@ fn upgrade_in_tmpdir() {
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_space_in_path() {
   let temp_dir = TempDir::new_with_prefix("directory with spaces");
   let exe_path = temp_dir.path().join("deno");
@@ -50,7 +48,6 @@ fn upgrade_with_space_in_path() {
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
@@ -79,7 +76,6 @@ fn upgrade_with_version_in_tmpdir() {
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_canary_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
@@ -108,7 +104,6 @@ fn upgrade_with_canary_in_tmpdir() {
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_out_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
@@ -145,7 +140,6 @@ fn upgrade_with_out_in_tmpdir() {
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_invalid_stable_version() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
@@ -162,7 +156,7 @@ fn upgrade_invalid_stable_version() {
     .unwrap();
   assert!(!output.status.success());
   assert_eq!(
-    "error: Invalid semver passed\n",
+    "error: Invalid version passed\n",
     util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
   );
 }
@@ -170,7 +164,6 @@ fn upgrade_invalid_stable_version() {
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_invalid_canary_version() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
