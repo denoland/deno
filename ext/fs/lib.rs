@@ -1347,7 +1347,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
 
-  let p = if lstat { path.canonicalize()? } else { path };
+  let p = if lstat { path } else { path.canonicalize()? };
   unsafe {
     let mut path: Vec<_> = p.as_os_str().encode_wide().collect();
     path.push(0);
