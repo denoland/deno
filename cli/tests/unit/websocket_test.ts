@@ -21,6 +21,7 @@ Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
 });
 
 // https://github.com/denoland/deno/pull/17762
+// https://github.com/denoland/deno/issues/17761
 Deno.test(async function websocketPingPong() {
   const promise = deferred();
   const ws = new WebSocket("ws://localhost:4245/");
