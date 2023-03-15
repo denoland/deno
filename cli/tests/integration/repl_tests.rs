@@ -223,6 +223,36 @@ fn pty_assign_global_this() {
 }
 
 #[test]
+fn pty_assign_deno_keys_and_deno() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "Object.keys(Deno).forEach((key)=>{try{Deno[key] = undefined} catch {}})",
+    );
+    console.write_line("delete globalThis.Deno");
+    console.write_line("console.log('testing ' + 'this out')");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert_not_contains!(output, "panicked");
+    assert_contains!(output, "testing this out");
+  });
+}
+
+#[test]
+fn pty_internal_repl() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("globalThis");
+    console.write_line("__\t\t");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert_contains!(output, "__defineGetter__");
+    // should not contain the internal repl variable
+    // in the `globalThis` or completions output
+    assert_not_contains!(output, "__DENO_");
+  });
+}
+
+#[test]
 fn pty_emoji() {
   // windows was having issues displaying this
   util::with_pty(&["repl"], |mut console| {
