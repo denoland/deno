@@ -30,6 +30,9 @@ Deno.test(async function websocketPingPong() {
     ws.send("hello");
     promise.resolve();
   };
+  ws.onclose = () => {
+    promise.resolve();
+  };
   await promise;
   ws.close();
 });
