@@ -318,15 +318,15 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       Default::default(),
     ),
     deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
-    deno_cache::init_ops::<SqliteBackedCache>(None),
+    deno_cache::deno_cache::init_runtime::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
       "".to_owned(),
       None,
       None,
     ),
     deno_webstorage::deno_webstorage::init_runtime(None),
-    deno_crypto::init_ops(None),
-    deno_webgpu::init_ops(false),
+    deno_crypto::deno_crypto::init_runtime(None),
+    deno_webgpu::deno_webgpu::init_runtime(false),
     deno_broadcast_channel::deno_broadcast_channel::init_runtime(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
@@ -335,7 +335,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_fs::init_ops::<PermissionsContainer>(false),
     deno_node::init_ops::<PermissionsContainer>(None), // No --unstable.
     deno_node::init_polyfill_ops(),
-    deno_ffi::init_ops::<PermissionsContainer>(false),
+    deno_ffi::deno_ffi::init_runtime::<PermissionsContainer>(false),
     deno_net::init_ops::<PermissionsContainer>(
       None, false, // No --unstable.
       None,

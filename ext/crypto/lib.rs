@@ -8,11 +8,8 @@ use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::ExtensionBuilder;
 
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -73,13 +70,6 @@ use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_webidl", "deno_web"],
-  )
-}
-
 deno_core::ops!(
   deno_ops,
   [
@@ -115,26 +105,19 @@ deno_core::ops!(
   ]
 );
 
-fn ops(
-  ext: &mut ExtensionBuilder,
-  maybe_seed: Option<u64>,
-) -> &mut ExtensionBuilder {
-  ext.ops(deno_ops()).state(move |state| {
+deno_core::extension!(deno_crypto,
+  deps = [ deno_webidl, deno_web ],
+  ops = deno_ops,
+  esm = [ "00_crypto.js", "01_webidl.js" ],
+  config = {
+    maybe_seed: Option<u64>,
+  },
+  state = |state, maybe_seed| {
     if let Some(seed) = maybe_seed {
       state.put(StdRng::seed_from_u64(seed));
     }
-  })
-}
-
-pub fn init_ops_and_esm(maybe_seed: Option<u64>) -> Extension {
-  ops(&mut ext(), maybe_seed)
-    .esm(include_js_files!("00_crypto.js", "01_webidl.js",))
-    .build()
-}
-
-pub fn init_ops(maybe_seed: Option<u64>) -> Extension {
-  ops(&mut ext(), maybe_seed).build()
-}
+  },
+);
 
 #[op]
 pub fn op_crypto_base64url_decode(data: String) -> ZeroCopyBuf {

@@ -3,10 +3,7 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -117,32 +114,20 @@ impl Resource for WebGpuQuerySet {
   }
 }
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_webidl", "deno_web"],
-  )
-}
-
-fn ops(ext: &mut ExtensionBuilder, unstable: bool) -> &mut ExtensionBuilder {
-  ext.ops(deno_ops()).state(move |state| {
+deno_core::extension!(deno_webgpu,
+  deps = [ deno_webidl, deno_web ],
+  esm = [ "01_webgpu.js", "02_idl_types.js" ],
+  config = {
+    unstable: bool,
+  },
+  state = |state, unstable| {
     // TODO: check & possibly streamline this
     // Unstable might be able to be OpMiddleware
     // let unstable_checker = state.borrow::<super::UnstableChecker>();
     // let unstable = unstable_checker.unstable;
     state.put(Unstable(unstable));
-  })
-}
-
-pub fn init_ops_and_esm(unstable: bool) -> Extension {
-  ops(&mut ext(), unstable)
-    .esm(include_js_files!("01_webgpu.js", "02_idl_types.js",))
-    .build()
-}
-
-pub fn init_ops(unstable: bool) -> Extension {
-  ops(&mut ext(), unstable).build()
-}
+  },
+);
 
 fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   let mut return_features: Vec<&'static str> = vec![];

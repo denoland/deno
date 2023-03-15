@@ -2,10 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
-use deno_core::include_js_files;
 use deno_core::v8;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 
 use std::cell::RefCell;
@@ -82,10 +79,6 @@ pub(crate) struct FfiState {
   pub(crate) async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
 }
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
-}
-
 deno_core::ops!(deno_ops,
   parameters = [P: FfiPermissions],
   ops = [
@@ -119,60 +112,55 @@ deno_core::ops!(deno_ops,
   ]
 );
 
-fn ops<P: FfiPermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  unstable: bool,
-) -> &mut ExtensionBuilder {
-  ext
-    .ops(deno_ops::<P>())
-    .event_loop_middleware(|op_state_rc, _cx| {
-      // FFI callbacks coming in from other threads will call in and get queued.
-      let mut maybe_scheduling = false;
+deno_core::extension!(deno_ffi,
+  deps = [ deno_web ],
+  parameters = [P: FfiPermissions],
+  ops = deno_ops<P>,
+  esm = [ "00_ffi.js" ],
+  config = {
+    unstable: bool,
+  },
+  state = |state, unstable| {
+    // Stolen from deno_webgpu, is there a better option?
+    state.put(Unstable(unstable));
 
-      let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
+    let (async_work_sender, async_work_receiver) =
+      mpsc::unbounded::<PendingFfiAsyncWork>();
 
-      {
-        let mut op_state = op_state_rc.borrow_mut();
-        let ffi_state = op_state.borrow_mut::<FfiState>();
+    state.put(FfiState {
+      async_work_receiver,
+      async_work_sender,
+    });
+  },
+  event_loop_middleware = event_loop_middleware,
+);
 
-        while let Ok(Some(async_work_fut)) =
-          ffi_state.async_work_receiver.try_next()
-        {
-          // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
-          work_items.push(async_work_fut);
-          maybe_scheduling = true;
-        }
+fn event_loop_middleware(
+  op_state_rc: Rc<RefCell<OpState>>,
+  _cx: &mut std::task::Context,
+) -> bool {
+  // FFI callbacks coming in from other threads will call in and get queued.
+  let mut maybe_scheduling = false;
 
-        drop(op_state);
-      }
-      while let Some(async_work_fut) = work_items.pop() {
-        async_work_fut();
-      }
+  let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
 
-      maybe_scheduling
-    })
-    .state(move |state| {
-      // Stolen from deno_webgpu, is there a better option?
-      state.put(Unstable(unstable));
+  {
+    let mut op_state = op_state_rc.borrow_mut();
+    let ffi_state = op_state.borrow_mut::<FfiState>();
 
-      let (async_work_sender, async_work_receiver) =
-        mpsc::unbounded::<PendingFfiAsyncWork>();
+    while let Ok(Some(async_work_fut)) =
+      ffi_state.async_work_receiver.try_next()
+    {
+      // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
+      work_items.push(async_work_fut);
+      maybe_scheduling = true;
+    }
 
-      state.put(FfiState {
-        async_work_receiver,
-        async_work_sender,
-      });
-    })
-}
+    drop(op_state);
+  }
+  while let Some(async_work_fut) = work_items.pop() {
+    async_work_fut();
+  }
 
-pub fn init_ops_and_esm<P: FfiPermissions + 'static>(
-  unstable: bool,
-) -> Extension {
-  ops::<P>(&mut ext(), unstable)
-    .esm(include_js_files!("00_ffi.js",))
-    .build()
-}
-
-pub fn init_ops<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
-  ops::<P>(&mut ext(), unstable).build()
+  maybe_scheduling
 }

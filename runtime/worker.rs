@@ -221,7 +221,7 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_cache::deno_cache::init_runtime::<SqliteBackedCache>(create_cache),
       deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -234,10 +234,10 @@ impl MainWorker {
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_crypto::init_ops(options.seed),
-      deno_webgpu::init_ops(unstable),
+      deno_crypto::deno_crypto::init_runtime(options.seed),
+      deno_webgpu::deno_webgpu::init_runtime(unstable),
       // ffi
-      deno_ffi::init_ops::<PermissionsContainer>(unstable),
+      deno_ffi::deno_ffi::init_runtime::<PermissionsContainer>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(

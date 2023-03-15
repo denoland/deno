@@ -262,15 +262,15 @@ mod startup_snapshot {
         Default::default(),
       ),
       deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
-      deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+      deno_cache::deno_cache::init_esm::<SqliteBackedCache>(),
       deno_websocket::deno_websocket::init_esm::<Permissions>(),
       deno_webstorage::deno_webstorage::init_esm(),
-      deno_crypto::init_ops_and_esm(None),
-      deno_webgpu::init_ops_and_esm(false),
+      deno_crypto::deno_crypto::init_esm(),
+      deno_webgpu::deno_webgpu::init_esm(),
       deno_broadcast_channel::deno_broadcast_channel::init_esm::<
         InMemoryBroadcastChannel,
       >(),
-      deno_ffi::init_ops_and_esm::<Permissions>(false),
+      deno_ffi::deno_ffi::init_esm::<Permissions>(),
       deno_net::init_ops_and_esm::<Permissions>(
         None, false, // No --unstable.
         None,
