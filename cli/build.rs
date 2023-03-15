@@ -336,7 +336,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::init_ops::<PermissionsContainer>(),
+    deno_napi::deno_napi::init_runtime::<PermissionsContainer>(),
     deno_http::init_ops(),
     deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
   ];

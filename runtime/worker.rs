@@ -255,7 +255,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::init_ops::<PermissionsContainer>(),
+      deno_napi::deno_napi::init_runtime::<PermissionsContainer>(),
       deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       deno_node::init_polyfill_ops(),
       ops::os::init(exit_code.clone()),

@@ -161,11 +161,12 @@ macro_rules! extension {
   (
     $name:ident,
     $(deps = [ $( $dep:ident ),* ],)?
-    $(params = [ $( $param:ident ),* ], )?
-    $(ops = $ops_symbol:ident,)?
+    $(parameters = [ $( $param:ident : $type:ident ),+ ], )?
+    $(ops = $ops_symbol:ident $( < $ops_param:ident > )?,)?
     $(esm = [ $( $esm:literal ),* ],)?
     $(config = { $( $config_id:ident : $config_type:ty ),* },)?
     $(state = $state_fn:ident, )?
+    $(event_loop_middleware = $event_loop_middleware_fn:ident, )?
   ) => {
     /// Extension struct.
     pub mod $name {
@@ -180,25 +181,28 @@ macro_rules! extension {
         $( $( pub $config_id : $config_type ),* )?
       }
 
-      pub fn init_esm() -> $crate::Extension {
+      pub fn init_esm $( <  $( $param : $type + 'static ),+ > )? () -> $crate::Extension {
         let mut ext = ext();
         // If esm was specified, add JS files
         $( let mut ext = ext.esm(
           $crate::include_js_files!( $( $esm , )* )
         ); )?
-        let ext = $crate::extension!(__ops__ ext $( $ops_symbol )? __eot__);
+        let ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
         ext.build()
       }
 
-      pub fn init_runtime( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_runtime $( <  $( $param : $type + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
         let config = Config { $( $( $config_id )* )? };
 
         let mut ext = ext();
-        let ext = $crate::extension!(__ops__ ext $( $ops_symbol )? __eot__);
+        let ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
         $(
           ext.state(move |state| {
             $state_fn(state, config.clone())
           });
+        )?;
+        $(
+          ext.event_loop_middleware($event_loop_middleware_fn);
         )?;
         ext.build()
       }
@@ -207,6 +211,10 @@ macro_rules! extension {
 
   (__ops__ $ext:ident $ops_symbol:ident __eot__) => {
     $ext.ops($ops_symbol())
+  };
+
+  (__ops__ $ext:ident $ops_symbol:ident < $ops_param:ident > __eot__) => {
+    $ext.ops($ops_symbol::<$ops_param>())
   };
 
   (__ops__ .) => {
