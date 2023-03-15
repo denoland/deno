@@ -389,12 +389,16 @@ fn choose_files(
   }
 }
 
+/// `lint` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedLintConfig {
   pub rules: LintRulesConfig,
-  #[serde(flatten)]
-  pub files: SerializedFilesConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+
   #[serde(rename = "files")]
   pub deprecated_files: SerializedFilesConfig,
   pub report: Option<String>,
@@ -405,9 +409,12 @@ impl SerializedLintConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<LintConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+
     Ok(LintConfig {
       rules: self.rules,
-      files: choose_files(self.files, self.deprecated_files)
+      files: choose_files(files, self.deprecated_files)
         .into_resolved(config_file_specifier)?,
       report: self.report,
     })
@@ -490,15 +497,23 @@ fn choose_fmt_options(
   }
 }
 
+/// `fmt` config representation for serde
+///
+/// fields from `use_tabs`..`semi_colons` are expanded from [FmtOptionsConfig].
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 struct SerializedFmtConfig {
-  #[serde(flatten)]
-  pub options: FmtOptionsConfig,
+  pub use_tabs: Option<bool>,
+  pub line_width: Option<u32>,
+  pub indent_width: Option<u8>,
+  pub single_quote: Option<bool>,
+  pub prose_wrap: Option<ProseWrap>,
+  pub semi_colons: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
-  #[serde(flatten)]
-  pub files: SerializedFilesConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: SerializedFilesConfig,
 }
@@ -508,9 +523,20 @@ impl SerializedFmtConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<FmtConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+    let options = FmtOptionsConfig {
+      use_tabs: self.use_tabs,
+      line_width: self.line_width,
+      indent_width: self.indent_width,
+      single_quote: self.single_quote,
+      prose_wrap: self.prose_wrap,
+      semi_colons: self.semi_colons,
+    };
+
     Ok(FmtConfig {
-      options: choose_fmt_options(self.options, self.deprecated_options),
-      files: choose_files(self.files, self.deprecated_files)
+      options: choose_fmt_options(options, self.deprecated_options),
+      files: choose_files(files, self.deprecated_files)
         .into_resolved(config_file_specifier)?,
     })
   }
@@ -522,11 +548,14 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
+/// `test` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedTestConfig {
-  #[serde(flatten)]
-  pub files: SerializedFilesConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: SerializedFilesConfig,
 }
@@ -536,8 +565,11 @@ impl SerializedTestConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<TestConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+
     Ok(TestConfig {
-      files: choose_files(self.files, self.deprecated_files)
+      files: choose_files(files, self.deprecated_files)
         .into_resolved(config_file_specifier)?,
     })
   }
@@ -548,11 +580,14 @@ pub struct TestConfig {
   pub files: FilesConfig,
 }
 
+/// `bench` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedBenchConfig {
-  #[serde(flatten)]
-  pub files: SerializedFilesConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: SerializedFilesConfig,
 }
@@ -562,8 +597,11 @@ impl SerializedBenchConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<BenchConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+
     Ok(BenchConfig {
-      files: choose_files(self.files, self.deprecated_files)
+      files: choose_files(files, self.deprecated_files)
         .into_resolved(config_file_specifier)?,
     })
   }
