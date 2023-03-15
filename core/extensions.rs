@@ -192,7 +192,7 @@ macro_rules! extension {
       }
 
       pub fn init_runtime $( <  $( $param : $type + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
-        let config = Config { $( $( $config_id )* )? };
+        let config = Config { $( $( $config_id ),* )? };
 
         let mut ext = ext();
         let ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);

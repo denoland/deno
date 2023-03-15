@@ -261,11 +261,7 @@ mod startup_snapshot {
       ),
       deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
       deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
-      deno_websocket::init_ops_and_esm::<Permissions>(
-        "".to_owned(),
-        None,
-        None,
-      ),
+      deno_websocket::deno_websocket::init_esm::<Permissions>(),
       deno_webstorage::deno_webstorage::init_esm(),
       deno_crypto::init_ops_and_esm(None),
       deno_webgpu::init_ops_and_esm(false),

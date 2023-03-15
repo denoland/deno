@@ -319,7 +319,11 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     ),
     deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
     deno_cache::init_ops::<SqliteBackedCache>(None),
-    deno_websocket::init_ops::<PermissionsContainer>("".to_owned(), None, None),
+    deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
+      "".to_owned(),
+      None,
+      None,
+    ),
     deno_webstorage::deno_webstorage::init_runtime(None),
     deno_crypto::init_ops(None),
     deno_webgpu::init_ops(false),
