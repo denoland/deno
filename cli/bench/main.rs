@@ -13,6 +13,8 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 
+include!("../util/time.rs");
+
 mod http;
 mod lsp;
 
@@ -398,17 +400,6 @@ struct BenchResult {
   req_per_sec: HashMap<String, i64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
-}
-
-pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
-  let now = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .expect("system time before Unix epoch");
-  let naive = chrono::NaiveDateTime::from_timestamp(
-    now.as_secs() as i64,
-    now.subsec_nanos(),
-  );
-  chrono::DateTime::from_utc(naive, chrono::Utc)
 }
 
 #[tokio::main]

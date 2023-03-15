@@ -9,6 +9,7 @@ use crate::http_util::HttpClient;
 use crate::proc_state::ProcState;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::time;
 use crate::version;
 
 use deno_core::anyhow::bail;
@@ -47,19 +48,6 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
   fn current_time(&self) -> chrono::DateTime<chrono::Utc>;
 }
 
-// Identical to chrono::Utc::now() but without the system "clock"
-// feature flag.
-pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
-  let now = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .expect("system time before Unix epoch");
-  let naive = chrono::NaiveDateTime::from_timestamp(
-    now.as_secs() as i64,
-    now.subsec_nanos(),
-  );
-  chrono::DateTime::from_utc(naive, chrono::Utc)
-}
-
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
   http_client: HttpClient,
@@ -73,7 +61,7 @@ impl RealUpdateCheckerEnvironment {
       http_client,
       cache_file_path,
       // cache the current time
-      current_time: utc_now(),
+      current_time: time::utc_now(),
     }
   }
 }
@@ -715,7 +703,7 @@ mod test {
         file_text: Default::default(),
         current_version: Default::default(),
         latest_version: Arc::new(Mutex::new(Ok("".to_string()))),
-        time: Arc::new(Mutex::new(utc_now())),
+        time: Arc::new(Mutex::new(crate::util::time::utc_now())),
       }
     }
 
