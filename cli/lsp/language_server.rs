@@ -509,14 +509,14 @@ impl Inner {
     &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<AssetOrDocument> {
-    self.get_maybe_asset_or_document(specifier).map_or_else(
-      || {
+    self
+      .get_maybe_asset_or_document(specifier)
+      .map(Ok)
+      .unwrap_or_else(|| {
         Err(LspError::invalid_params(format!(
           "Unable to find asset or document for: {specifier}"
         )))
-      },
-      Ok,
-    )
+      })
   }
 
   /// Searches assets and documents for the provided specifier.
@@ -1677,16 +1677,12 @@ impl Inner {
     // Refactor
     let start = line_index.offset_tsc(params.range.start)?;
     let length = line_index.offset_tsc(params.range.end)? - start;
-    let only =
-      params
-        .context
-        .only
-        .as_ref()
-        .map_or(String::default(), |values| {
-          values
-            .first()
-            .map_or(String::default(), |v| v.as_str().to_owned())
-        });
+    let only = params
+      .context
+      .only
+      .as_ref()
+      .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
+      .unwrap_or_default();
     let req = tsc::RequestMethod::GetApplicableRefactors((
       specifier.clone(),
       tsc::TextSpan { start, length },
