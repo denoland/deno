@@ -6,12 +6,11 @@ use test_util as util;
 use test_util::TempDir;
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  std::fs::hard_link(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -27,12 +26,11 @@ fn upgrade_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
 fn upgrade_with_space_in_path() {
   let temp_dir = TempDir::new_with_prefix("directory with spaces");
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  std::fs::hard_link(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let status = Command::new(&exe_path)
     .arg("upgrade")
@@ -46,12 +44,11 @@ fn upgrade_with_space_in_path() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  std::fs::hard_link(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -74,12 +71,11 @@ fn upgrade_with_version_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
 fn upgrade_with_canary_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  std::fs::hard_link(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -102,13 +98,12 @@ fn upgrade_with_canary_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
 fn upgrade_with_out_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
   let new_exe_path = temp_dir.path().join("foo");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  std::fs::hard_link(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -138,12 +133,11 @@ fn upgrade_with_out_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
 fn upgrade_invalid_stable_version() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  std::fs::hard_link(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let output = Command::new(&exe_path)
     .arg("upgrade")
@@ -162,12 +156,11 @@ fn upgrade_invalid_stable_version() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
 fn upgrade_invalid_canary_version() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  std::fs::hard_link(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let output = Command::new(&exe_path)
     .arg("upgrade")
