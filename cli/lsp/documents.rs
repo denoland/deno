@@ -1254,6 +1254,27 @@ impl Documents {
   }
 
   fn refresh_dependencies(&mut self, root_dirs: Vec<Url>) {
+    fn is_auto_discoverable_dir(dir_path: &Path) -> bool {
+      if let Some(dir_name) = dir_path.file_name() {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        matches!(dir_name.as_str(), "node_modules" | ".git")
+      } else {
+        false
+      }
+    }
+
+    fn is_auto_discoverable_file(file_path: &Path) -> bool {
+      // Don't auto-discover minified files as they are likely to be very large
+      // and likely not to have dependencies on code outside them that would
+      // be useful in the LSP
+      if let Some(file_name) = file_path.file_name() {
+        let file_name = file_name.to_string_lossy().to_lowercase();
+        !file_name.as_str().contains(".min.")
+      } else {
+        false
+      }
+    }
+
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
@@ -1261,7 +1282,7 @@ impl Documents {
       }
     }
 
-    // update the file system document
+    // update the file system documents
     let mut fs_docs = self.file_system_docs.lock();
     let mut not_found_docs =
       fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
@@ -1274,11 +1295,8 @@ impl Documents {
     }
 
     while let Some(dir_path) = pending_dirs.pop_front() {
-      if let Some(dir_name) = dir_path.file_name() {
-        let dir_name = dir_name.to_string_lossy().to_lowercase();
-        if matches!(dir_name.as_str(), "node_modules" | ".git") {
-          continue;
-        }
+      if !is_auto_discoverable_dir(&dir_path) {
+        continue;
       }
       let read_dir = match std::fs::read_dir(&dir_path) {
         Ok(entry) => entry,
@@ -1317,10 +1335,10 @@ impl Documents {
             | MediaType::TsBuildInfo
             | MediaType::Unknown => false,
           };
-          if !is_diagnosable {
+          if !is_diagnosable || !is_auto_discoverable_file(&new_path) {
             continue;
           }
-          let specifier = match ModuleSpecifier::from_file_path(new_path) {
+          let specifier = match ModuleSpecifier::from_file_path(&new_path) {
             Ok(specifier) => specifier,
             Err(_) => continue,
           };
