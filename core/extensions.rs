@@ -177,9 +177,19 @@ macro_rules! extension {
         $crate::Extension::builder_with_deps(stringify!($name), &[ $( $( stringify!($dep) ),* )? ])
       }
 
+      #[doc(hidden)]
       #[derive(Clone, Default)]
-      pub struct Config {
+      struct Config {
         $( $( pub $config_id : $config_type ),* )?
+      }
+
+      impl Config {
+        /// Call a function of |state, ...| using the fields of this configuration structure.
+        #[allow(dead_code)]
+        #[doc(hidden)]
+        fn call_callback(self, state: &mut $crate::OpState, f: fn(&mut $crate::OpState, $( $( $config_type ),* )? )) {
+          f(state, $( $( self. $config_id ),* )? )
+        }
       }
 
       #[allow(unused_mut)]
@@ -205,8 +215,7 @@ macro_rules! extension {
         let mut ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
         $(
           ext.state(move |state: &mut $crate::OpState| {
-            let state_fn: fn(&mut $crate::OpState, Config) = $state_fn;
-            (state_fn)(state, config.clone())
+            config.clone().call_callback(state, $state_fn)
           });
         )?
         $(

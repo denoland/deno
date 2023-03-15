@@ -523,7 +523,7 @@ deno_core::ops!(deno_ops,
 deno_core::extension!(deno_napi,
   parameters = [P: NapiPermissions],
   ops = deno_ops<P>,
-  state = |state, _config| {
+  state = |state| {
     let (async_work_sender, async_work_receiver) =
       mpsc::unbounded::<PendingNapiAsyncWork>();
     let (threadsafe_function_sender, threadsafe_function_receiver) =
