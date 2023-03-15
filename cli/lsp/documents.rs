@@ -1174,7 +1174,7 @@ impl Documents {
       hasher.write_hashable(&{
         // ensure these are sorted
         let mut root_dirs = root_dirs.to_vec();
-        root_dirs.sort();
+        root_dirs.sort_unstable();
         root_dirs
       });
       if let Some(import_map) = maybe_import_map {

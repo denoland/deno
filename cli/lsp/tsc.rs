@@ -2749,10 +2749,8 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
   let all_docs = documents.documents(false, true);
-  let mut result = Vec::new();
   let mut seen = HashSet::new();
-
-  let mut result = Vec::with_capacity(all_docs.len() + 1);
+  let mut result = Vec::new();
 
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
@@ -2768,23 +2766,18 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  // finally include the documents and all their dependencies
+  // finally, include the documents and all their dependencies
   for doc in &all_docs {
     let specifier = doc.specifier();
-    if seen.insert(specifier.as_str()) {
+    if seen.insert(specifier.as_str()) && documents.exists(specifier) {
+      // only include dependencies we know to exist otherwise typescript will error
       result.push(specifier.to_string());
     }
-  }
 
-  // and then all their dependencies (do this after to avoid exists calls)
-  for doc in &open_docs {
     for dep in doc.dependencies().values() {
       if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
-        if seen.insert(specifier.as_str()) {
-          // only include dependencies we know to exist otherwise typescript will error
-          if documents.exists(specifier) {
-            result.push(specifier.to_string());
-          }
+        if seen.insert(specifier.as_str()) && documents.exists(specifier) {
+          result.push(specifier.to_string());
         }
       }
     }
