@@ -488,7 +488,7 @@ impl Config {
   pub fn root_dirs(&self) -> Vec<Url> {
     let mut dirs: Vec<Url> = Vec::new();
     for (workspace, enabled_paths) in &self.enabled_paths {
-      if enabled_paths.is_empty() {
+      if !enabled_paths.is_empty() {
         dirs.extend(enabled_paths.iter().cloned());
       } else {
         dirs.push(workspace.clone());
