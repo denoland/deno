@@ -19,6 +19,7 @@ derive_more = "0.99.17"
 serde.workspace = true
 serde_bytes.workspace = true
 smallvec = { workspace = true, features = ["union"] }
+thiserror.workspace = true
 v8.workspace = true
 
 [dev-dependencies]

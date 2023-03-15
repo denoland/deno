@@ -4193,6 +4193,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "smallvec",
+ "thiserror",
  "v8",
 ]
 
