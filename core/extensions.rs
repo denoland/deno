@@ -165,7 +165,7 @@ macro_rules! extension {
     $(ops = $ops_symbol:ident $( < $ops_param:ident > )?,)?
     $(esm = [ $( $esm:literal ),* ],)?
     $(js = [ $( $js:literal ),* ],)?
-    $(config = { $( $config_id:ident : $config_type:ty ),* },)?
+    $(config = { $( $config_id:ident : $config_type:ty ),* $(,)? },)?
     $(state = $state_fn:expr, )?
     $(event_loop_middleware = $event_loop_middleware_fn:ident, )?
   ) => {
@@ -178,7 +178,7 @@ macro_rules! extension {
       }
 
       #[doc(hidden)]
-      #[derive(Clone, Default)]
+      #[derive(Clone)]
       struct Config {
         $( $( pub $config_id : $config_type ),* )?
       }

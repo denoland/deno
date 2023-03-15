@@ -7,7 +7,6 @@ use std::time;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
@@ -34,18 +33,17 @@ deno_core::ops!(
   ]
 );
 
-pub fn init(
-  sender: UnboundedSender<BenchEvent>,
-  filter: TestFilter,
-) -> Extension {
-  Extension::builder("deno_bench")
-    .ops(deno_ops())
-    .state(move |state| {
-      state.put(sender.clone());
-      state.put(filter.clone());
-    })
-    .build()
-}
+deno_core::extension!(deno_bench,
+  ops = deno_ops,
+  config = {
+    sender: UnboundedSender<BenchEvent>,
+    filter: TestFilter,
+  },
+  state = |state, sender, filter| {
+    state.put(sender.clone());
+    state.put(filter.clone());
+  },
+);
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
