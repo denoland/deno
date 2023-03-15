@@ -107,3 +107,52 @@ pub fn get_js_files(
   js_files.sort();
   js_files
 }
+
+fn data_error_to_panic(err: v8::DataError) -> ! {
+  match err {
+    v8::DataError::BadType { actual, expected } => {
+      panic!(
+        "Invalid type for snapshot data: expected {expected}, got {actual}"
+      );
+    }
+    v8::DataError::NoData { expected } => {
+      panic!("No data for snapshot data: expected {expected}");
+    }
+  }
+}
+
+pub(crate) fn get_context_data(
+  scope: &mut v8::HandleScope<()>,
+  context: v8::Local<v8::Context>,
+) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Array>) {
+  let mut scope = v8::ContextScope::new(scope, context);
+  // The 0th element is the module map itself, followed by X number of module
+  // handles. We need to deserialize the "next_module_id" field from the
+  // map to see how many module handles we expect.
+  match scope.get_context_data_from_snapshot_once::<v8::Array>(0) {
+    Ok(val) => {
+      let next_module_id = {
+        let info_data: v8::Local<v8::Array> =
+          val.get_index(&mut scope, 1).unwrap().try_into().unwrap();
+        info_data.length()
+      };
+
+      // Over allocate so executing a few scripts doesn't have to resize this vec.
+      let mut module_handles = Vec::with_capacity(next_module_id as usize + 16);
+      for i in 1..=next_module_id {
+        match scope
+          .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
+        {
+          Ok(val) => {
+            let module_global = v8::Global::new(&mut scope, val);
+            module_handles.push(module_global);
+          }
+          Err(err) => data_error_to_panic(err),
+        }
+      }
+
+      (module_handles, v8::Global::new(&mut scope, val))
+    }
+    Err(err) => data_error_to_panic(err),
+  }
+}
