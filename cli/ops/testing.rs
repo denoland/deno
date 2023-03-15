@@ -12,7 +12,6 @@ use crate::tools::test::TestStepDescription;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
@@ -38,20 +37,19 @@ deno_core::ops!(
   ]
 );
 
-pub fn init(
-  sender: TestEventSender,
-  fail_fast_tracker: FailFastTracker,
-  filter: TestFilter,
-) -> Extension {
-  Extension::builder("deno_test")
-    .ops(deno_ops())
-    .state(move |state| {
-      state.put(sender.clone());
-      state.put(fail_fast_tracker.clone());
-      state.put(filter.clone());
-    })
-    .build()
-}
+deno_core::extension!(deno_test,
+  ops = deno_ops,
+  config = {
+    sender: TestEventSender,
+    fail_fast_tracker: FailFastTracker,
+    filter: TestFilter,
+  },
+  state = |state, sender, fail_fast_tracker, filter| {
+    state.put(sender.clone());
+    state.put(fail_fast_tracker.clone());
+    state.put(filter.clone());
+  },
+);
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
