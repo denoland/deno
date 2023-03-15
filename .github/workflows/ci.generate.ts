@@ -10,6 +10,8 @@ const Runners = {
   macos: "macos-12",
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
+// bump this when you want to purge the cache
+const cacheVersion = 19;
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -442,8 +444,8 @@ const ci = {
                 "!./target/*/*.tar.gz",
               ].join("\n"),
               key: "never_saved",
-              "restore-keys":
-                "19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
+              "restore-keys": cacheVersion +
+                "-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
             },
           },
           {
@@ -857,8 +859,8 @@ const ci = {
                 "!./target/*/*.zip",
                 "!./target/*/*.tar.gz",
               ].join("\n"),
-              key:
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}",
+              key: cacheVersion +
+                "-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}",
             },
           },
         ]),

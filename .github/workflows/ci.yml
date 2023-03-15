@@ -555,7 +555,7 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}'
+          key: '19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04
