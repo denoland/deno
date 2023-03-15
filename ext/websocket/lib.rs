@@ -515,16 +515,14 @@ deno_core::extension!(deno_websocket,
     root_cert_store: Option<RootCertStore>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>
   },
-  state = init_state,
+  state = |state, config| {
+    state.put::<WsUserAgent>(WsUserAgent(config.user_agent.clone()));
+    state.put(UnsafelyIgnoreCertificateErrors(
+      config.unsafely_ignore_certificate_errors.clone(),
+    ));
+    state.put::<WsRootStore>(WsRootStore(config.root_cert_store.clone()));
+  },
 );
-
-fn init_state(state: &mut OpState, config: deno_websocket::Config) {
-  state.put::<WsUserAgent>(WsUserAgent(config.user_agent.clone()));
-  state.put(UnsafelyIgnoreCertificateErrors(
-    config.unsafely_ignore_certificate_errors.clone(),
-  ));
-  state.put::<WsRootStore>(WsRootStore(config.root_cert_store.clone()));
-}
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_websocket.d.ts")

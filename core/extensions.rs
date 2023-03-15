@@ -166,7 +166,7 @@ macro_rules! extension {
     $(esm = [ $( $esm:literal ),* ],)?
     $(js = [ $( $js:literal ),* ],)?
     $(config = { $( $config_id:ident : $config_type:ty ),* },)?
-    $(state = $state_fn:ident, )?
+    $(state = $state_fn:expr, )?
     $(event_loop_middleware = $event_loop_middleware_fn:ident, )?
   ) => {
     /// Extension struct.
@@ -204,8 +204,9 @@ macro_rules! extension {
         let mut ext = ext();
         let mut ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
         $(
-          ext.state(move |state| {
-            $state_fn(state, config.clone())
+          ext.state(move |state: &mut $crate::OpState| {
+            let state_fn: fn(&mut $crate::OpState, Config) = $state_fn;
+            (state_fn)(state, config.clone())
           });
         )?
         $(

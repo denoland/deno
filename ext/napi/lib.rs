@@ -523,7 +523,22 @@ deno_core::ops!(deno_ops,
 deno_core::extension!(deno_napi,
   parameters = [P: NapiPermissions],
   ops = deno_ops<P>,
-  state = init_state,
+  state = |state, _config| {
+    let (async_work_sender, async_work_receiver) =
+      mpsc::unbounded::<PendingNapiAsyncWork>();
+    let (threadsafe_function_sender, threadsafe_function_receiver) =
+      mpsc::unbounded::<ThreadSafeFunctionStatus>();
+    state.put(NapiState {
+      pending_async_work: Vec::new(),
+      async_work_sender,
+      async_work_receiver,
+      threadsafe_function_sender,
+      threadsafe_function_receiver,
+      active_threadsafe_functions: 0,
+      env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
+      tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
+    });
+  },
   event_loop_middleware = event_loop_middleware,
 );
 
@@ -575,23 +590,6 @@ fn event_loop_middleware(
   }
 
   maybe_scheduling
-}
-
-fn init_state(state: &mut OpState, _config: deno_napi::Config) {
-  let (async_work_sender, async_work_receiver) =
-    mpsc::unbounded::<PendingNapiAsyncWork>();
-  let (threadsafe_function_sender, threadsafe_function_receiver) =
-    mpsc::unbounded::<ThreadSafeFunctionStatus>();
-  state.put(NapiState {
-    pending_async_work: Vec::new(),
-    async_work_sender,
-    async_work_receiver,
-    threadsafe_function_sender,
-    threadsafe_function_receiver,
-    active_threadsafe_functions: 0,
-    env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
-    tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
-  });
 }
 
 pub trait NapiPermissions {

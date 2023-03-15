@@ -39,14 +39,12 @@ deno_core::extension!(deno_webstorage,
   config = {
     origin_storage_dir: Option<PathBuf>
   },
-  state = init_state,
+  state = |state, config| {
+    if let Some(origin_storage_dir) = config.origin_storage_dir {
+      state.put(OriginStorageDir(origin_storage_dir.clone()));
+    }
+  },
 );
-
-fn init_state(state: &mut OpState, config: deno_webstorage::Config) {
-  if let Some(origin_storage_dir) = config.origin_storage_dir {
-    state.put(OriginStorageDir(origin_storage_dir.clone()));
-  }
-}
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
