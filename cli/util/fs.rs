@@ -732,7 +732,8 @@ mod tests {
       path
         .file_name()
         .and_then(|f| f.to_str())
-        .map_or(false, |f| !f.starts_with('.'))
+        .map(|f| !f.starts_with('.'))
+        .unwrap_or(false)
     })
     .add_ignore_paths(&[ignore_dir_path]);
 
@@ -847,7 +848,8 @@ mod tests {
       path
         .file_name()
         .and_then(|f| f.to_str())
-        .map_or(false, |f| !f.starts_with('.'))
+        .map(|f| !f.starts_with('.'))
+        .unwrap_or(false)
     };
 
     let result = collect_specifiers(

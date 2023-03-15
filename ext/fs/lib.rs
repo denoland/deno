@@ -1410,13 +1410,16 @@ where
           name,
           is_file: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_file()),
+            .map(|file_type| file_type.is_file())
+            .unwrap_or(false),
           is_directory: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_dir()),
+            .map(|file_type| file_type.is_dir())
+            .unwrap_or(false),
           is_symlink: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_symlink()),
+            .map(|file_type| file_type.is_symlink())
+            .unwrap_or(false),
         })
       } else {
         None
@@ -1457,13 +1460,16 @@ where
             name,
             is_file: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_file()),
+              .map(|file_type| file_type.is_file())
+              .unwrap_or(false),
             is_directory: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_dir()),
+              .map(|file_type| file_type.is_dir())
+              .unwrap_or(false),
             is_symlink: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_symlink()),
+              .map(|file_type| file_type.is_symlink())
+              .unwrap_or(false),
           })
         } else {
           None
