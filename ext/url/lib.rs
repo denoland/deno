@@ -4,23 +4,16 @@ mod urlpattern;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
-
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_webidl"])
-}
 
 deno_core::ops!(
   deno_ops,
@@ -36,19 +29,12 @@ deno_core::ops!(
   ]
 );
 
-fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  ext.ops(deno_ops())
-}
-
-pub fn init_ops_and_esm() -> Extension {
-  ops(&mut ext())
-    .esm(include_js_files!("00_url.js", "01_urlpattern.js",))
-    .build()
-}
-
-pub fn init_ops() -> Extension {
-  ops(&mut ext()).build()
-}
+deno_core::extension!(
+  deno_url,
+  deps = [deno_webidl],
+  ops = deno_ops,
+  esm = ["00_url.js", "01_urlpattern.js"],
+);
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
 #[op]

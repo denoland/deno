@@ -386,8 +386,8 @@ impl WebWorker {
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::deno_webidl::init_runtime(),
-      deno_console::init(),
-      deno_url::init_ops(),
+      deno_console::deno_console::init_runtime(),
+      deno_url::deno_url::init_runtime(),
       deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
