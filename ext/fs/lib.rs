@@ -1335,6 +1335,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
   use winapi::um::handleapi::CloseHandle;
   use winapi::um::handleapi::INVALID_HANDLE_VALUE;
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
+  use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
   use winapi::um::winnt::FILE_SHARE_DELETE;
   use winapi::um::winnt::FILE_SHARE_READ;
   use winapi::um::winnt::FILE_SHARE_WRITE;
@@ -1347,7 +1348,14 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
 
-  let p = if lstat { path } else { path.canonicalize()? };
+  let (p, file_flags) = if lstat {
+    (
+      path,
+      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+    )
+  } else {
+    (path.canonicalize()?, FILE_FLAG_BACKUP_SEMANTICS)
+  };
   unsafe {
     let mut path: Vec<_> = p.as_os_str().encode_wide().collect();
     path.push(0);
@@ -1357,7 +1365,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
       FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE,
       std::ptr::null_mut(),
       OPEN_EXISTING,
-      FILE_FLAG_BACKUP_SEMANTICS,
+      file_flags,
       std::ptr::null_mut(),
     );
     if file_handle == INVALID_HANDLE_VALUE {
