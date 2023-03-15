@@ -39,22 +39,22 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
             profile: release
             use_sysroot: true
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
             skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
             profile: debug
             use_sysroot: true
             wpt: '${{ github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-20.04-xl'' || ''ubuntu-20.04'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: lint
             profile: debug
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
@@ -84,12 +84,12 @@ jobs:
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
+      - name: Clone submodule ./third_party
+        run: git submodule update --init --recursive --depth=1 -- ./third_party
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.wpt))'
-      - name: Clone submodule ./third_party
-        run: git submodule update --init --recursive --depth=1 -- ./third_party
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint'' || matrix.job == ''bench''))'
       - name: 'Create source tarballs (release, linux)'
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (startsWith(matrix.os, 'ubuntu') &&
@@ -179,8 +179,8 @@ jobs:
           sudo apt-get remove --purge -y man-db
 
           # Install clang-15, lld-15, and debootstrap.
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -202,6 +202,12 @@ jobs:
           sudo mount --rbind /home /sysroot/home
           sudo mount -t proc /proc /sysroot/proc
 
+          cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
+          cp third_party/prebuilt/linux64/libdl/libdl.a .
+
+          sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
+          sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+
           # Configure the build environment. Both Rust and Clang will produce
           # llvm bitcode only, so we can use lld's incremental LTO support.
           cat >> $GITHUB_ENV << __0
@@ -214,6 +220,7 @@ jobs:
             -C linker=clang-15
             -C link-arg=-fuse-ld=lld-15
             -C link-arg=--sysroot=/sysroot
+            -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -224,6 +231,7 @@ jobs:
             -C linker=clang-15
             -C link-arg=-fuse-ld=lld-15
             -C link-arg=--sysroot=/sysroot
+            -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -254,7 +262,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '18-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          key: '20-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
@@ -287,7 +295,9 @@ jobs:
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
       - name: Lint PR title
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint'' && github.event_name == ''pull_request''))'
-        run: 'deno run ./tools/verify_pr_title.js ''${{ github.event.pull_request.title }}'''
+        env:
+          PR_TITLE: '${{ github.event.pull_request.title }}'
+        run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint''))'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
@@ -548,7 +558,7 @@ jobs:
           key: '18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs:
       - build
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
