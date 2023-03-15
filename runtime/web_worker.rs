@@ -407,7 +407,7 @@ impl WebWorker {
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init_ops(None).disable(),
+      deno_webstorage::deno_webstorage::init_runtime(None).disable(),
       deno_broadcast_channel::init_ops(
         options.broadcast_channel.clone(),
         unstable,
@@ -417,7 +417,7 @@ impl WebWorker {
       // ffi
       deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::init(),
+      ops::web_worker::deno_web_worker::init_runtime(),
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
@@ -426,7 +426,7 @@ impl WebWorker {
         options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
-      ops::fs_events::init(),
+      ops::fs_events::deno_fs_events::init_runtime(),
       deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_io::init_ops(options.stdio),
       deno_tls::init_ops(),

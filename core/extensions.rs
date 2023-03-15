@@ -156,6 +156,64 @@ macro_rules! ops_bundle {
   }
 }
 
+#[macro_export]
+macro_rules! extension {
+  (
+    $name:ident,
+    $(deps = [ $( $dep:ident ),* ],)?
+    $(params = [ $( $param:ident ),* ], )?
+    $(ops = $ops_symbol:ident,)?
+    $(esm = [ $( $esm:literal ),* ],)?
+    $(config = { $( $config_id:ident : $config_type:ty ),* },)?
+    $(state = $state_fn:ident, )?
+  ) => {
+    /// Extension struct.
+    pub mod $name {
+      use super::*;
+
+      fn ext() -> $crate::ExtensionBuilder {
+        $crate::Extension::builder_with_deps(stringify!($name), &[ $( $( stringify!($dep) ),* )? ])
+      }
+
+      #[derive(Clone, Default)]
+      pub struct Config {
+        $( $( pub $config_id : $config_type ),* )?
+      }
+
+      pub fn init_esm() -> $crate::Extension {
+        let mut ext = ext();
+        // If esm was specified, add JS files
+        $( let mut ext = ext.esm(
+          $crate::include_js_files!( $( $esm , )* )
+        ); )?
+        let ext = $crate::extension!(__ops__ ext $( $ops_symbol )? __eot__);
+        ext.build()
+      }
+
+      pub fn init_runtime( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+        let config = Config { $( $( $config_id )* )? };
+
+        let mut ext = ext();
+        let ext = $crate::extension!(__ops__ ext $( $ops_symbol )? __eot__);
+        $(
+          ext.state(move |state| {
+            $state_fn(state, config.clone())
+          });
+        )?;
+        ext.build()
+      }
+    }
+  };
+
+  (__ops__ $ext:ident $ops_symbol:ident __eot__) => {
+    $ext.ops($ops_symbol())
+  };
+
+  (__ops__ .) => {
+    $ext
+  }
+}
+
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<ExtensionFileSource>>,

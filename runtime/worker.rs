@@ -227,7 +227,9 @@ impl MainWorker {
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init_ops(options.origin_storage_dir.clone()),
+      deno_webstorage::deno_webstorage::init_runtime(
+        options.origin_storage_dir.clone(),
+      ),
       deno_broadcast_channel::init_ops(
         options.broadcast_channel.clone(),
         unstable,
@@ -244,7 +246,7 @@ impl MainWorker {
         options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::fs_events::init(),
+      ops::fs_events::deno_fs_events::init_runtime(),
       deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_io::init_ops(options.stdio),
       deno_tls::init_ops(),

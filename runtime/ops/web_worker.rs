@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 
 use deno_core::CancelFuture;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_web::JsMessageData;
 use std::cell::RefCell;
@@ -28,11 +27,7 @@ deno_core::ops!(
   ]
 );
 
-pub fn init() -> Extension {
-  Extension::builder("deno_web_worker")
-    .ops(deno_ops())
-    .build()
-}
+deno_core::extension!(deno_web_worker, ops = deno_ops,);
 
 #[op]
 fn op_worker_post_message(

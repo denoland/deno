@@ -266,7 +266,7 @@ mod startup_snapshot {
         None,
         None,
       ),
-      deno_webstorage::init_ops_and_esm(None),
+      deno_webstorage::deno_webstorage::init_esm(),
       deno_crypto::init_ops_and_esm(None),
       deno_webgpu::init_ops_and_esm(false),
       deno_broadcast_channel::init_ops_and_esm(
