@@ -75,9 +75,11 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::npm::create_npm_fs_resolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -140,6 +142,12 @@ pub struct Inner {
   lint_options: LintOptions,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
+  /// Npm's registry api.
+  npm_api: NpmRegistryApi,
+  /// Npm cache
+  npm_cache: NpmCache,
+  /// Npm resolution that is stored in memory.
+  npm_resolution: NpmResolution,
   /// Resolver for npm packages.
   npm_resolver: NpmPackageResolver,
   /// A collection of measurements which instrument that performance of the LSP.
@@ -317,10 +325,10 @@ impl LanguageServer {
   }
 }
 
-fn create_lsp_npm_resolver(
+fn create_lsp_structs(
   dir: &DenoDir,
   http_client: HttpClient,
-) -> NpmPackageResolver {
+) -> (NpmRegistryApi, NpmCache, NpmPackageResolver, NpmResolution) {
   let registry_url = NpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
@@ -337,9 +345,22 @@ fn create_lsp_npm_resolver(
     registry_url.clone(),
     npm_cache.clone(),
     http_client,
-    progress_bar,
+    progress_bar.clone(),
   );
-  NpmPackageResolver::new(npm_cache, api)
+  let resolution = NpmResolution::new(api.clone(), None, None);
+  let fs_resolver = create_npm_fs_resolver(
+    npm_cache.clone(),
+    &progress_bar,
+    registry_url.clone(),
+    resolution.clone(),
+    None,
+  );
+  (
+    api,
+    npm_cache,
+    NpmPackageResolver::new(resolution.clone(), fs_resolver, None),
+    resolution,
+  )
 }
 
 impl Inner {
@@ -365,7 +386,8 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let npm_resolver = create_lsp_npm_resolver(&dir, http_client.clone());
+    let (npm_api, npm_cache, npm_resolver, npm_resolution) =
+      create_lsp_structs(&dir, http_client.clone());
 
     Self {
       assets,
@@ -386,6 +408,9 @@ impl Inner {
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
+      npm_api,
+      npm_cache,
+      npm_resolution,
       npm_resolver,
       performance,
       ts_fixable_diagnostics: Default::default(),
@@ -574,7 +599,25 @@ impl Inner {
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_npm_resolver: Some(self.npm_resolver.snapshotted()),
+      maybe_npm_resolver: Some({
+        // create a new snapshotted npm resolution and resolver
+        let resolution = NpmResolution::new(
+          self.npm_api.clone(),
+          Some(self.npm_resolution.snapshot()),
+          None,
+        );
+        NpmPackageResolver::new(
+          resolution.clone(),
+          create_npm_fs_resolver(
+            self.npm_cache.clone(),
+            &ProgressBar::new(ProgressBarStyle::TextOnly),
+            self.npm_api.base_url().clone(),
+            resolution,
+            None,
+          ),
+          None,
+        )
+      }),
     })
   }
 
@@ -643,7 +686,12 @@ impl Inner {
       self.http_client.clone(),
     )?;
     self.module_registries_location = module_registries_location;
-    self.npm_resolver = create_lsp_npm_resolver(&dir, self.http_client.clone());
+    (
+      self.npm_api,
+      self.npm_cache,
+      self.npm_resolver,
+      self.npm_resolution,
+    ) = create_lsp_structs(&dir, self.http_client.clone());
     // update the cache path
     let location = dir.deps_folder_path();
     self.documents.set_location(&location);
@@ -987,8 +1035,8 @@ impl Inner {
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
       self.maybe_package_json.as_ref(),
-      self.npm_resolver.api().clone(),
-      self.npm_resolver.resolution().clone(),
+      self.npm_api.clone(),
+      self.npm_resolution.clone(),
     );
 
     self.assets.intitialize(self.snapshot()).await;
@@ -1180,8 +1228,8 @@ impl Inner {
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
       self.maybe_package_json.as_ref(),
-      self.npm_resolver.api().clone(),
-      self.npm_resolver.resolution().clone(),
+      self.npm_api.clone(),
+      self.npm_resolution.clone(),
     );
 
     self.send_diagnostics_update();
@@ -1238,8 +1286,8 @@ impl Inner {
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
         self.maybe_package_json.as_ref(),
-        self.npm_resolver.api().clone(),
-        self.npm_resolver.resolution().clone(),
+        self.npm_api.clone(),
+        self.npm_resolution.clone(),
       );
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();

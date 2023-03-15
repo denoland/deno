@@ -39,6 +39,7 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -378,6 +379,7 @@ struct State {
   maybe_npm_resolver: Option<NpmPackageResolver>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
+  current_dir: PathBuf,
 }
 
 impl State {
@@ -388,6 +390,7 @@ impl State {
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
+    current_dir: PathBuf,
   ) -> Self {
     State {
       hash_data,
@@ -397,12 +400,16 @@ impl State {
       maybe_response: None,
       remapped_specifiers,
       root_map,
+      current_dir,
     }
   }
 }
 
-fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(specifier).map_err(|err| err.into())
+fn normalize_specifier(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]
@@ -481,7 +488,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = normalize_specifier(&v.specifier)
+  let specifier = normalize_specifier(&v.specifier, &state.current_dir)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -584,7 +591,7 @@ fn op_resolve(
   } else if let Some(remapped_base) = state.root_map.get(&args.base) {
     remapped_base.clone()
   } else {
-    normalize_specifier(&args.base).context(
+    normalize_specifier(&args.base, &state.current_dir).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
@@ -734,9 +741,7 @@ fn resolve_non_graph_specifier_types(
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let node_id = npm_resolver
-      .resolution()
-      .resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
+    let node_id = npm_resolver.resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
     let npm_id_ref = NpmPackageNvReference {
       nv: node_id.nv,
       sub_path: npm_ref.sub_path,
@@ -833,6 +838,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           request.maybe_tsbuildinfo.clone(),
           root_map.clone(),
           remapped_specifiers.clone(),
+          std::env::current_dir()
+            .context("Unable to get CWD")
+            .unwrap(),
         ));
       })
       .build()],
@@ -930,7 +938,7 @@ mod tests {
     maybe_tsbuildinfo: Option<String>,
   ) -> OpState {
     let specifier = maybe_specifier
-      .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
+      .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
@@ -945,6 +953,9 @@ mod tests {
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
+      std::env::current_dir()
+        .context("Unable to get CWD")
+        .unwrap(),
     );
     let mut op_state = OpState::new(1);
     op_state.put(state);
@@ -1052,7 +1063,7 @@ mod tests {
       ("file:///.tsbuildinfo", MediaType::Unknown),
     ];
     for (specifier, media_type) in fixtures {
-      let specifier = resolve_url_or_path(specifier).unwrap();
+      let specifier = ModuleSpecifier::parse(specifier).unwrap();
       assert_eq!(get_tsc_media_type(&specifier), media_type);
     }
   }
@@ -1078,7 +1089,7 @@ mod tests {
   #[tokio::test]
   async fn test_load() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1109,7 +1120,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_asset() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1130,7 +1141,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_tsbuildinfo() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -1171,7 +1182,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -1193,7 +1204,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve_empty() {
     let mut state = setup(
-      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      Some(ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -1255,7 +1266,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_basic() {
-    let specifier = resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -1266,7 +1277,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_reexport_dts() {
-    let specifier = resolve_url_or_path("file:///reexports.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("file:///reexports.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -1277,7 +1288,7 @@ mod tests {
 
   #[tokio::test]
   async fn fix_lib_ref() {
-    let specifier = resolve_url_or_path("file:///libref.ts").unwrap();
+    let specifier = ModuleSpecifier::parse("file:///libref.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");

@@ -72,7 +72,8 @@ pub struct Options {
   pub user_agent: String,
   pub root_cert_store: Option<RootCertStore>,
   pub proxy: Option<Proxy>,
-  pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub request_builder_hook:
+    Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
@@ -342,7 +343,8 @@ where
 
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
-        request = request_builder_hook(request);
+        request = request_builder_hook(request)
+          .map_err(|err| type_error(err.to_string()))?;
       }
 
       let cancel_handle = CancelHandle::new_rc();

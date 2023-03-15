@@ -179,10 +179,6 @@ impl OpState {
       tracker: OpsTracker::new(ops_count),
     }
   }
-
-  pub fn clear_state(&mut self) {
-    self.gotham_state.clear();
-  }
 }
 
 impl Deref for OpState {
