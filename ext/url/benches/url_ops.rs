@@ -11,7 +11,7 @@ use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::init_esm(),
+    deno_webidl::deno_webidl::init_esm(),
     deno_url::init_ops_and_esm(),
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {

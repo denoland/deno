@@ -309,7 +309,7 @@ mod ts {
 
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   let mut extensions: Vec<Extension> = vec![
-    deno_webidl::init(),
+    deno_webidl::deno_webidl::init_runtime(),
     deno_console::init(),
     deno_url::init_ops(),
     deno_tls::init_ops(),

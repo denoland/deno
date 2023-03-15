@@ -1,13 +1,10 @@
-use crate::ExtensionBuilder;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
 use crate::error::type_error;
-use crate::include_js_files;
 use crate::io::BufMutView;
 use crate::io::BufView;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
-use crate::Extension;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
@@ -18,10 +15,6 @@ use std::io::stderr;
 use std::io::stdout;
 use std::io::Write;
 use std::rc::Rc;
-
-fn ext() -> ExtensionBuilder {
-  Extension::builder("core")
-}
 
 crate::ops!(
   deno_ops_builtins,
@@ -56,20 +49,11 @@ crate::ops_bundle!(
   ]
 );
 
-pub(crate) fn init_builtin_ops_and_esm() -> Extension {
-  ext()
-    .ops(deno_ops())
-    .js(include_js_files!(
-      "00_primordials.js",
-      "01_core.js",
-      "02_error.js",
-    ))
-    .build()
-}
-
-pub(crate) fn init_builtin_ops() -> Extension {
-  ext().ops(deno_ops()).build()
-}
+crate::extension!(
+  core,
+  ops = deno_ops,
+  js = ["00_primordials.js", "01_core.js", "02_error.js"],
+);
 
 /// Return map of resources with id as key
 /// and string representation as value.

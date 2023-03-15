@@ -251,7 +251,7 @@ mod startup_snapshot {
     .build();
 
     let mut extensions: Vec<Extension> = vec![
-      deno_webidl::init_esm(),
+      deno_webidl::deno_webidl::init_esm(),
       deno_console::init_esm(),
       deno_url::init_ops_and_esm(),
       deno_tls::init_ops(),
