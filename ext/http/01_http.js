@@ -18,7 +18,7 @@ import {
   fromInnerRequest,
   newInnerRequest,
 } from "ext:deno_fetch/23_request.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -135,10 +135,10 @@ class HttpConn {
       body !== null ? new InnerBody(body) : null,
       false,
     );
-    const signal = abortSignal.newSignal();
+    const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
-      signal,
+      abortController.signal,
       "immutable",
       false,
     );
@@ -149,6 +149,7 @@ class HttpConn {
       request,
       this.#remoteAddr,
       this.#localAddr,
+      abortController,
     );
 
     return { request, respondWith };
@@ -185,6 +186,7 @@ function createRespondWith(
   request,
   remoteAddr,
   localAddr,
+  abortController,
 ) {
   return async function respondWith(resp) {
     try {
@@ -381,6 +383,9 @@ function createRespondWith(
         }
         ws[_serverHandleIdleTimeout]();
       }
+    } catch (error) {
+      abortController.abort(error);
+      throw error;
     } finally {
       if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
         core.close(streamRid);
