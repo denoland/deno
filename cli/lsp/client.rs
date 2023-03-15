@@ -55,7 +55,7 @@ impl Client {
   ) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    tokio::task::spawn_local(async move {
+    tokio::task::spawn(async move {
       client.send_registry_state_notification(params).await;
     });
   }
@@ -63,7 +63,7 @@ impl Client {
   pub fn send_test_notification(&self, params: TestingNotification) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    tokio::task::spawn_local(async move {
+    tokio::task::spawn(async move {
       client.send_test_notification(params).await;
     });
   }
@@ -76,7 +76,7 @@ impl Client {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
     let message = message.to_string();
-    tokio::task::spawn_local(async move {
+    tokio::task::spawn(async move {
       client.show_message(message_type, message).await;
     });
   }
