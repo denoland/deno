@@ -340,16 +340,22 @@ async fn run_ws_ping_server(addr: &SocketAddr) {
       use futures::SinkExt;
       use tokio_tungstenite::tungstenite::Message;
       if let Ok(mut ws_stream) = ws_stream {
-        ws_stream.send(Message::Ping(vec![1, 2, 3])).await.unwrap();
+        for i in 0..9 {
+          ws_stream.send(Message::Ping(vec![])).await.unwrap();
 
-        let msg = ws_stream.next().await.unwrap().unwrap();
-        assert_eq!(msg, Message::Text("hello".to_string()));
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Pong(vec![]));
 
-        let msg = ws_stream.next().await.unwrap().unwrap();
-        assert_eq!(msg, Message::Pong(vec![1, 2, 3]));
+          ws_stream
+            .send(Message::Text(format!("hello {}", i)))
+            .await
+            .unwrap();
 
-        let msg = ws_stream.next().await.unwrap();
-        assert!(!matches!(msg, Ok(Message::Pong(_))));
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Text(format!("hello {}", i)));
+        }
+
+        ws_stream.close(None).await.unwrap();
       }
     });
   }

@@ -26,9 +26,9 @@ Deno.test(async function websocketPingPong() {
   const promise = deferred();
   const ws = new WebSocket("ws://localhost:4245/");
   assertEquals(ws.url, "ws://localhost:4245/");
-  ws.onopen = () => {
-    ws.send("hello");
-    promise.resolve();
+  ws.onerror = () => fail();
+  ws.onmessage = (e) => {
+    ws.send(e.data);
   };
   ws.onclose = () => {
     promise.resolve();
