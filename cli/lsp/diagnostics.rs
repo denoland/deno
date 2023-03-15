@@ -88,6 +88,7 @@ impl DiagnosticsPublisher {
 
       self
         .client
+        .when_outside_lsp_lock()
         .publish_diagnostics(specifier, version_diagnostics.clone(), version)
         .await;
     }
@@ -911,7 +912,6 @@ fn diagnose_resolution(
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           if npm_resolver
-            .resolution()
             .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
@@ -933,7 +933,6 @@ fn diagnose_resolution(
           let types_node_ref =
             NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
-            .resolution()
             .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
@@ -1179,14 +1178,11 @@ let c: number = "a";
       let mut disabled_config = mock_config();
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
-        (
-          specifier.clone(),
-          SpecifierSettings {
-            enable: false,
-            enable_paths: Vec::new(),
-            code_lens: Default::default(),
-          },
-        ),
+        SpecifierSettings {
+          enable: false,
+          enable_paths: Vec::new(),
+          code_lens: Default::default(),
+        },
       );
 
       let diagnostics = generate_lint_diagnostics(

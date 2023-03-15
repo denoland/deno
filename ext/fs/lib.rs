@@ -9,6 +9,7 @@ use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -117,9 +118,15 @@ use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-pub fn init<P: FsPermissions + 'static>(unstable: bool) -> Extension {
+fn ext() -> ExtensionBuilder {
   Extension::builder("deno_fs")
-    .esm(include_js_files!("30_fs.js",))
+}
+
+fn ops<P: FsPermissions + 'static>(
+  ext: &mut ExtensionBuilder,
+  unstable: bool,
+) -> &mut ExtensionBuilder {
+  ext
     .state(move |state| {
       state.put(UnstableChecker { unstable });
     })
@@ -184,7 +191,18 @@ pub fn init<P: FsPermissions + 'static>(unstable: bool) -> Extension {
       op_readfile_async::decl::<P>(),
       op_readfile_text_async::decl::<P>(),
     ])
+}
+
+pub fn init_ops_and_esm<P: FsPermissions + 'static>(
+  unstable: bool,
+) -> Extension {
+  ops::<P>(&mut ext(), unstable)
+    .esm(include_js_files!("30_fs.js",))
     .build()
+}
+
+pub fn init_ops<P: FsPermissions + 'static>(unstable: bool) -> Extension {
+  ops::<P>(&mut ext(), unstable).build()
 }
 
 fn default_err_mapper(err: Error, desc: String) -> Error {
@@ -1988,7 +2006,8 @@ fn make_temp(
   }
   .join("_");
   let mut rng = thread_rng();
-  loop {
+  const MAX_TRIES: u32 = 10;
+  for _ in 0..MAX_TRIES {
     let unique = rng.gen::<u32>();
     buf.set_file_name(format!("{prefix_}{unique:08x}{suffix_}"));
     let r = if is_dir {
@@ -2008,8 +2027,7 @@ fn make_temp(
         use std::os::unix::fs::OpenOptionsExt;
         open_options.mode(0o600);
       }
-      open_options.open(buf.as_path())?;
-      Ok(())
+      open_options.open(buf.as_path()).map(drop)
     };
     match r {
       Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -2017,6 +2035,10 @@ fn make_temp(
       Err(e) => return Err(e),
     }
   }
+  Err(io::Error::new(
+    io::ErrorKind::AlreadyExists,
+    "too many temp files exist",
+  ))
 }
 
 #[derive(Deserialize)]

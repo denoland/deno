@@ -38,9 +38,12 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
-#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
+#[derive(
+  Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
+)]
 pub enum PermissionState {
   Granted = 0,
+  #[default]
   Prompt = 1,
   Denied = 2,
 }
@@ -137,12 +140,6 @@ impl fmt::Display for PermissionState {
       PermissionState::Prompt => f.pad("prompt"),
       PermissionState::Denied => f.pad("denied"),
     }
-  }
-}
-
-impl Default for PermissionState {
-  fn default() -> Self {
-    PermissionState::Prompt
   }
 }
 
@@ -2553,7 +2550,6 @@ pub fn create_child_permissions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::resolve_url_or_path;
   use deno_core::serde_json::json;
   use prompter::tests::*;
 
@@ -2857,27 +2853,31 @@ mod tests {
 
     let mut fixtures = vec![
       (
-        resolve_url_or_path("http://localhost:4545/mod.ts").unwrap(),
+        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
         true,
       ),
       (
-        resolve_url_or_path("http://deno.land/x/mod.ts").unwrap(),
+        ModuleSpecifier::parse("http://deno.land/x/mod.ts").unwrap(),
         false,
       ),
       (
-        resolve_url_or_path("data:text/plain,Hello%2C%20Deno!").unwrap(),
+        ModuleSpecifier::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
         true,
       ),
     ];
 
     if cfg!(target_os = "windows") {
       fixtures
-        .push((resolve_url_or_path("file:///C:/a/mod.ts").unwrap(), true));
-      fixtures
-        .push((resolve_url_or_path("file:///C:/b/mod.ts").unwrap(), false));
+        .push((ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(), true));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        false,
+      ));
     } else {
-      fixtures.push((resolve_url_or_path("file:///a/mod.ts").unwrap(), true));
-      fixtures.push((resolve_url_or_path("file:///b/mod.ts").unwrap(), false));
+      fixtures
+        .push((ModuleSpecifier::parse("file:///a/mod.ts").unwrap(), true));
+      fixtures
+        .push((ModuleSpecifier::parse("file:///b/mod.ts").unwrap(), false));
     }
 
     for (specifier, expected) in fixtures {
@@ -2901,7 +2901,7 @@ mod tests {
 
     for url in test_cases {
       assert!(perms
-        .check_specifier(&resolve_url_or_path(url).unwrap())
+        .check_specifier(&ModuleSpecifier::parse(url).unwrap())
         .is_err());
     }
   }

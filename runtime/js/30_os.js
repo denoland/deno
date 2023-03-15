@@ -61,7 +61,7 @@ function exit(code) {
   }
 
   // Dispatches `unload` only when it's not dispatched yet.
-  if (!globalThis[SymbolFor("isUnloadDispatched")]) {
+  if (!globalThis[SymbolFor("Deno.isUnloadDispatched")]) {
     // Invokes the `unload` hooks before exiting
     // ref: https://github.com/denoland/deno/issues/3603
     windowDispatchEvent(new Event("unload"));

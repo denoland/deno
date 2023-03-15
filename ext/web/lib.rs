@@ -16,6 +16,7 @@ use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -57,33 +58,19 @@ use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
 
-/// Load and execute the javascript code.
-pub fn init<P: TimersPermission + 'static>(
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_console", "deno_url"],
+  )
+}
+
+fn ops<P: TimersPermission + 'static>(
+  ext: &mut ExtensionBuilder,
   blob_store: BlobStore,
   maybe_location: Option<Url>,
-) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
-    .esm(include_js_files!(
-      "00_infra.js",
-      "01_dom_exception.js",
-      "01_mimesniff.js",
-      "02_event.js",
-      "02_structured_clone.js",
-      "02_timers.js",
-      "03_abort_signal.js",
-      "04_global_interfaces.js",
-      "05_base64.js",
-      "06_streams.js",
-      "08_text_encoding.js",
-      "09_file.js",
-      "10_filereader.js",
-      "11_blob_url.js",
-      "12_location.js",
-      "13_message_port.js",
-      "14_compression.js",
-      "15_performance.js",
-    ))
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       op_base64_decode::decl(),
       op_base64_encode::decl(),
@@ -122,7 +109,41 @@ pub fn init<P: TimersPermission + 'static>(
       }
       state.put(StartTime::now());
     })
+}
+
+pub fn init_ops_and_esm<P: TimersPermission + 'static>(
+  blob_store: BlobStore,
+  maybe_location: Option<Url>,
+) -> Extension {
+  ops::<P>(&mut ext(), blob_store, maybe_location)
+    .esm(include_js_files!(
+      "00_infra.js",
+      "01_dom_exception.js",
+      "01_mimesniff.js",
+      "02_event.js",
+      "02_structured_clone.js",
+      "02_timers.js",
+      "03_abort_signal.js",
+      "04_global_interfaces.js",
+      "05_base64.js",
+      "06_streams.js",
+      "08_text_encoding.js",
+      "09_file.js",
+      "10_filereader.js",
+      "11_blob_url.js",
+      "12_location.js",
+      "13_message_port.js",
+      "14_compression.js",
+      "15_performance.js",
+    ))
     .build()
+}
+
+pub fn init_ops<P: TimersPermission + 'static>(
+  blob_store: BlobStore,
+  maybe_location: Option<Url>,
+) -> Extension {
+  ops::<P>(&mut ext(), blob_store, maybe_location).build()
 }
 
 #[op]
