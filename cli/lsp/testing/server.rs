@@ -156,7 +156,7 @@ impl TestServer {
                 match run.exec(&client, maybe_root_uri.as_ref()).await {
                   Ok(_) => (),
                   Err(err) => {
-                    client.show_message(lsp::MessageType::ERROR, err).await;
+                    client.show_message(lsp::MessageType::ERROR, err);
                   }
                 }
                 client.send_test_notification(TestingNotification::Progress(
