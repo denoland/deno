@@ -26,7 +26,7 @@ if (!didLint) {
   await Promise.all([
     dlint(),
     // todo(dsherret): re-enable
-    // dlintPreferPrimordials().then(() => console.log("Finished dlint prefer primoridals")),
+    // dlintPreferPrimordials(),
     checkCopyright(),
     clippy(),
   ]);
