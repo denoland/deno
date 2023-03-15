@@ -1062,7 +1062,7 @@ class EventTarget {
     // This prevents the recursive dispatches of unload events.
     // See https://github.com/denoland/deno/issues/9201.
     if (event.type === "unload" && self === globalThis_) {
-      globalThis_[SymbolFor("isUnloadDispatched")] = true;
+      globalThis_[SymbolFor("Deno.isUnloadDispatched")] = true;
     }
 
     const { listeners } = self[eventTargetData];

@@ -715,7 +715,7 @@ function wrapSafe(
   cjsModuleInstance,
 ) {
   const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(wrapper, filename);
+  const [f, err] = core.evalContext(wrapper, `file://${filename}`);
   if (err) {
     if (node.globalThis.process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);

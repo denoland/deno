@@ -10,6 +10,7 @@ pub mod resolve_addr;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use std::cell::RefCell;
@@ -77,25 +78,55 @@ pub struct DefaultTlsOptions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(pub Option<Vec<String>>);
 
-pub fn init<P: NetPermissions + 'static>(
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
+}
+
+fn ops<P: NetPermissions + 'static>(
+  ext: &mut ExtensionBuilder,
+  root_cert_store: Option<RootCertStore>,
+  unstable: bool,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+) -> &mut ExtensionBuilder {
+  let mut ops = ops::init::<P>();
+  ops.extend(ops_tls::init::<P>());
+
+  ext.ops(ops).state(move |state| {
+    state.put(DefaultTlsOptions {
+      root_cert_store: root_cert_store.clone(),
+    });
+    state.put(UnstableChecker { unstable });
+    state.put(UnsafelyIgnoreCertificateErrors(
+      unsafely_ignore_certificate_errors.clone(),
+    ));
+  })
+}
+
+pub fn init_ops_and_esm<P: NetPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unstable: bool,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  let mut ops = ops::init::<P>();
-  ops.extend(ops_tls::init::<P>());
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_web"])
-    .esm(include_js_files!("01_net.js", "02_tls.js",))
-    .ops(ops)
-    .state(move |state| {
-      state.put(DefaultTlsOptions {
-        root_cert_store: root_cert_store.clone(),
-      });
-      state.put(UnstableChecker { unstable });
-      state.put(UnsafelyIgnoreCertificateErrors(
-        unsafely_ignore_certificate_errors.clone(),
-      ));
-    })
-    .build()
+  ops::<P>(
+    &mut ext(),
+    root_cert_store,
+    unstable,
+    unsafely_ignore_certificate_errors,
+  )
+  .esm(include_js_files!("01_net.js", "02_tls.js",))
+  .build()
+}
+
+pub fn init_ops<P: NetPermissions + 'static>(
+  root_cert_store: Option<RootCertStore>,
+  unstable: bool,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+) -> Extension {
+  ops::<P>(
+    &mut ext(),
+    root_cert_store,
+    unstable,
+    unsafely_ignore_certificate_errors,
+  )
+  .build()
 }

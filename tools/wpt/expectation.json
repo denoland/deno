@@ -2090,6 +2090,7 @@
     "urlsearchparams-has.any.worker.html": true,
     "urlsearchparams-set.any.html": true,
     "urlsearchparams-set.any.worker.html": true,
+    "urlsearchparams-size.any.html": true,
     "urlsearchparams-sort.any.html": true,
     "urlsearchparams-sort.any.worker.html": true,
     "urlsearchparams-stringifier.any.html": true,
