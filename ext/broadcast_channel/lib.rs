@@ -2,7 +2,6 @@
 
 mod in_memory_broadcast_channel;
 
-use deno_core::ExtensionBuilder;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 
@@ -12,9 +11,7 @@ use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -107,13 +104,6 @@ where
   bc.recv(&resource).await
 }
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_webidl", "deno_web"],
-  )
-}
-
 deno_core::ops!(deno_ops,
   parameters = [BC: BroadcastChannel],
   ops = [
@@ -124,32 +114,20 @@ deno_core::ops!(deno_ops,
   ]
 );
 
-fn ops<BC: BroadcastChannel + 'static>(
-  ext: &mut ExtensionBuilder,
-  bc: BC,
-  unstable: bool,
-) -> &mut ExtensionBuilder {
-  ext.ops(deno_ops::<BC>()).state(move |state| {
+deno_core::extension!(deno_broadcast_channel,
+  deps = [ deno_webidl, deno_web ],
+  parameters = [BC: BroadcastChannel],
+  ops = deno_ops<BC>,
+  esm = [ "01_broadcast_channel.js" ],
+  config = {
+    bc: BC,
+    unstable: bool,
+  },
+  state = |state, bc, unstable| {
     state.put(bc.clone());
     state.put(Unstable(unstable));
-  })
-}
-
-pub fn init_ops_and_esm<BC: BroadcastChannel + 'static>(
-  bc: BC,
-  unstable: bool,
-) -> Extension {
-  ops::<BC>(&mut ext(), bc, unstable)
-    .esm(include_js_files!("01_broadcast_channel.js",))
-    .build()
-}
-
-pub fn init_ops<BC: BroadcastChannel + 'static>(
-  bc: BC,
-  unstable: bool,
-) -> Extension {
-  ops::<BC>(&mut ext(), bc, unstable).build()
-}
+  },
+);
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR"))

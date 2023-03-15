@@ -179,11 +179,12 @@ macro_rules! extension {
 
       #[doc(hidden)]
       #[derive(Clone)]
-      struct Config {
-        $( $( pub $config_id : $config_type ),* )?
+      struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
+        $( $( pub $config_id : $config_type , )* )?
+        $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
 
-      impl Config {
+      impl $( <  $( $param : $type + Clone + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
         /// Call a function of |state, ...| using the fields of this configuration structure.
         #[allow(dead_code)]
         #[doc(hidden)]
@@ -193,7 +194,7 @@ macro_rules! extension {
       }
 
       #[allow(unused_mut)]
-      pub fn init_esm $( <  $( $param : $type + 'static ),+ > )? () -> $crate::Extension {
+      pub fn init_esm $( <  $( $param : $type + Clone + 'static ),+ > )? () -> $crate::Extension {
         let mut ext = ext();
         // If esm or JS was specified, add JS files
         $( let mut ext = ext.esm(
@@ -207,9 +208,12 @@ macro_rules! extension {
       }
 
       #[allow(unused_mut)]
-      pub fn init_runtime $( <  $( $param : $type + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_runtime $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
         #[allow(unused_variables)]
-        let config = Config { $( $( $config_id ),* )? };
+        let config = Config {
+          $( $( $config_id , )* )?
+          $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
+        };
 
         let mut ext = ext();
         let mut ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);

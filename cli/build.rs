@@ -327,7 +327,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_webstorage::deno_webstorage::init_runtime(None),
     deno_crypto::init_ops(None),
     deno_webgpu::init_ops(false),
-    deno_broadcast_channel::init_ops(
+    deno_broadcast_channel::deno_broadcast_channel::init_runtime(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),

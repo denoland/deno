@@ -14,6 +14,7 @@ mod startup_snapshot {
   use deno_ast::MediaType;
   use deno_ast::ParseParams;
   use deno_ast::SourceTextInfo;
+  use deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
   use deno_core::include_js_files;
@@ -58,6 +59,7 @@ mod startup_snapshot {
     Ok(transpiled_source.text)
   }
 
+  #[derive(Clone)]
   struct Permissions;
 
   impl deno_fetch::FetchPermissions for Permissions {
@@ -265,10 +267,9 @@ mod startup_snapshot {
       deno_webstorage::deno_webstorage::init_esm(),
       deno_crypto::init_ops_and_esm(None),
       deno_webgpu::init_ops_and_esm(false),
-      deno_broadcast_channel::init_ops_and_esm(
-        deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-        false, // No --unstable.
-      ),
+      deno_broadcast_channel::deno_broadcast_channel::init_esm::<
+        InMemoryBroadcastChannel,
+      >(),
       deno_ffi::init_ops_and_esm::<Permissions>(false),
       deno_net::init_ops_and_esm::<Permissions>(
         None, false, // No --unstable.
