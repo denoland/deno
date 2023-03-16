@@ -12,7 +12,6 @@ mod startup_snapshot {
   use deno_ast::MediaType;
   use deno_ast::ParseParams;
   use deno_ast::SourceTextInfo;
-  use deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
   use deno_core::snapshot_util::*;
@@ -253,43 +252,47 @@ mod startup_snapshot {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let mut extensions: Vec<Extension> = vec![
-      deno_webidl::init_esm(),
-      deno_console::init_esm(),
-      deno_url::init_ops_and_esm(),
-      deno_web::init_ops_and_esm::<Permissions>(
+      deno_webidl::deno_webidl::init_ops_and_esm(),
+      deno_console::deno_console::init_ops_and_esm(),
+      deno_url::deno_url::init_ops_and_esm(),
+      deno_web::deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
       ),
-      deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
-      deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
-      deno_websocket::init_ops_and_esm::<Permissions>(
+      deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(
+        Default::default(),
+      ),
+      deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+      deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
         "".to_owned(),
         None,
         None,
       ),
-      deno_webstorage::init_ops_and_esm(None),
-      deno_crypto::init_ops_and_esm(None),
-      deno_webgpu::init_ops_and_esm(false),
-      deno_broadcast_channel::init_ops_and_esm(
+      deno_webstorage::deno_webstorage::init_ops_and_esm(None),
+      deno_crypto::deno_crypto::init_ops_and_esm(None),
+      deno_webgpu::deno_webgpu::init_ops_and_esm(false),
+      deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_ffi::init_ops_and_esm::<Permissions>(false),
-      deno_net::init_ops_and_esm::<Permissions>(
+      deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(false),
+      deno_net::deno_net::init_ops_and_esm::<Permissions>(
         None, false, // No --unstable.
         None,
       ),
-      deno_tls::init_ops(),
-      deno_napi::init_ops::<Permissions>(),
-      deno_http::init_ops_and_esm(),
-      deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::init_ops_and_esm::<Permissions>(false),
-      deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
-      runtime_extension,
+      deno_tls::deno_tls::init_ops_and_esm(),
+      deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
+      deno_http::deno_http::init_ops_and_esm(),
+      deno_io::deno_io::init_ops_and_esm(Rc::new(RefCell::new(Some(
+        Default::default(),
+      )))),
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
+      deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
+      runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::init_ops_and_esm::<Permissions>(None),
-      deno_node::init_polyfill_ops_and_esm(),
+      deno_node::deno_node_loading::init_ops_and_esm::<Permissions>(None),
+      deno_node::deno_node::init_ops_and_esm(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {
