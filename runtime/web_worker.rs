@@ -411,7 +411,6 @@ impl WebWorker {
       ),
       deno_webstorage::init_ops(None).disable(),
       deno_crypto::init_ops(options.seed),
-      deno_webgpu::init_ops(unstable),
       deno_broadcast_channel::init_ops(
         options.broadcast_channel.clone(),
         unstable,

@@ -217,7 +217,6 @@ mod startup_snapshot {
         "deno_websocket",
         "deno_webstorage",
         "deno_crypto",
-        "deno_webgpu",
         "deno_broadcast_channel",
         // FIXME(bartlomieju): this should be reenabled
         // "deno_node",
@@ -269,7 +268,6 @@ mod startup_snapshot {
       ),
       deno_webstorage::init_ops_and_esm(None),
       deno_crypto::init_ops_and_esm(None),
-      deno_webgpu::init_ops_and_esm(false),
       deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
