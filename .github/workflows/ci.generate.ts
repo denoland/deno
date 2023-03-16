@@ -845,7 +845,7 @@ const ci = {
             name: "Save cache build output (main)",
             uses: "actions/cache/save@v3",
             //if: "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
-            if: "matrix.job == 'test' || matrix.job == 'lint'", // todo: revert
+            if: "matrix.job == 'test' || matrix.job == 'lint'",
             with: {
               path: [
                 "./target",
