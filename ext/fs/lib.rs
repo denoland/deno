@@ -1244,11 +1244,164 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
   }
 }
 
+#[cfg(windows)]
+#[inline(always)]
+fn get_stat2(metadata: std::fs::Metadata, dev: u64) -> FsStat {
+  let (mtime, mtime_set) = to_msec(metadata.modified());
+  let (atime, atime_set) = to_msec(metadata.accessed());
+  let (birthtime, birthtime_set) = to_msec(metadata.created());
+
+  FsStat {
+    is_file: metadata.is_file(),
+    is_directory: metadata.is_dir(),
+    is_symlink: metadata.file_type().is_symlink(),
+    size: metadata.len(),
+    mtime_set,
+    mtime,
+    atime_set,
+    atime,
+    birthtime_set,
+    birthtime,
+    dev,
+    ino: 0,
+    mode: 0,
+    nlink: 0,
+    uid: 0,
+    gid: 0,
+    rdev: 0,
+    blksize: 0,
+    blocks: 0,
+  }
+}
+
+#[cfg(not(windows))]
+#[inline(always)]
+fn get_stat2(metadata: std::fs::Metadata) -> FsStat {
+  #[cfg(unix)]
+  use std::os::unix::fs::MetadataExt;
+  let (mtime, mtime_set) = to_msec(metadata.modified());
+  let (atime, atime_set) = to_msec(metadata.accessed());
+  let (birthtime, birthtime_set) = to_msec(metadata.created());
+
+  FsStat {
+    is_file: metadata.is_file(),
+    is_directory: metadata.is_dir(),
+    is_symlink: metadata.file_type().is_symlink(),
+    size: metadata.len(),
+    mtime_set,
+    mtime,
+    atime_set,
+    atime,
+    birthtime_set,
+    birthtime,
+    dev: metadata.dev(),
+    ino: metadata.ino(),
+    mode: metadata.mode(),
+    nlink: metadata.nlink(),
+    uid: metadata.uid(),
+    gid: metadata.gid(),
+    rdev: metadata.rdev(),
+    blksize: metadata.blksize(),
+    blocks: metadata.blocks(),
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatArgs {
   path: String,
   lstat: bool,
+}
+
+#[cfg(not(windows))]
+fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
+  let err_mapper =
+    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path).map_err(err_mapper)?
+  } else {
+    std::fs::metadata(&path).map_err(err_mapper)?
+  };
+
+  Ok(get_stat2(metadata))
+}
+
+#[cfg(windows)]
+fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
+  use std::os::windows::prelude::OsStrExt;
+
+  use winapi::um::fileapi::CreateFileW;
+  use winapi::um::fileapi::OPEN_EXISTING;
+  use winapi::um::handleapi::CloseHandle;
+  use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+  use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
+  use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
+  use winapi::um::winnt::FILE_SHARE_DELETE;
+  use winapi::um::winnt::FILE_SHARE_READ;
+  use winapi::um::winnt::FILE_SHARE_WRITE;
+
+  let err_mapper =
+    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path).map_err(err_mapper)?
+  } else {
+    std::fs::metadata(&path).map_err(err_mapper)?
+  };
+
+  let (p, file_flags) = if lstat {
+    (
+      path,
+      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+    )
+  } else {
+    (path.canonicalize()?, FILE_FLAG_BACKUP_SEMANTICS)
+  };
+  unsafe {
+    let mut path: Vec<_> = p.as_os_str().encode_wide().collect();
+    path.push(0);
+    let file_handle = CreateFileW(
+      path.as_ptr(),
+      0,
+      FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE,
+      std::ptr::null_mut(),
+      OPEN_EXISTING,
+      file_flags,
+      std::ptr::null_mut(),
+    );
+    if file_handle == INVALID_HANDLE_VALUE {
+      return Err(std::io::Error::last_os_error().into());
+    }
+
+    let result = get_dev(file_handle);
+    CloseHandle(file_handle);
+    let dev = result?;
+
+    Ok(get_stat2(metadata, dev))
+  }
+}
+
+#[cfg(windows)]
+use winapi::um::fileapi::GetFileInformationByHandle;
+#[cfg(windows)]
+use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
+
+#[cfg(windows)]
+unsafe fn get_dev(
+  handle: winapi::shared::ntdef::HANDLE,
+) -> std::io::Result<u64> {
+  use winapi::shared::minwindef::FALSE;
+
+  let info = {
+    let mut info =
+      std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+    if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
+      return Err(std::io::Error::last_os_error());
+    }
+
+    info.assume_init()
+  };
+
+  Ok(info.dwVolumeSerialNumber as u64)
 }
 
 #[op]
@@ -1265,15 +1418,8 @@ where
   state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.statSync()")?;
-  let err_mapper =
-    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
-  let metadata = if lstat {
-    std::fs::symlink_metadata(&path).map_err(err_mapper)?
-  } else {
-    std::fs::metadata(&path).map_err(err_mapper)?
-  };
 
-  let stat = get_stat(metadata);
+  let stat = do_stat(path, lstat)?;
   stat.write(out_buf);
 
   Ok(())
@@ -1297,14 +1443,7 @@ where
 
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
-    let err_mapper =
-      |err| default_err_mapper(err, format!("stat '{}'", path.display()));
-    let metadata = if lstat {
-      std::fs::symlink_metadata(&path).map_err(err_mapper)?
-    } else {
-      std::fs::metadata(&path).map_err(err_mapper)?
-    };
-    Ok(get_stat(metadata))
+    do_stat(path, lstat)
   })
   .await
   .unwrap()
@@ -1410,13 +1549,16 @@ where
           name,
           is_file: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_file()),
+            .map(|file_type| file_type.is_file())
+            .unwrap_or(false),
           is_directory: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_dir()),
+            .map(|file_type| file_type.is_dir())
+            .unwrap_or(false),
           is_symlink: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_symlink()),
+            .map(|file_type| file_type.is_symlink())
+            .unwrap_or(false),
         })
       } else {
         None
@@ -1457,13 +1599,16 @@ where
             name,
             is_file: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_file()),
+              .map(|file_type| file_type.is_file())
+              .unwrap_or(false),
             is_directory: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_dir()),
+              .map(|file_type| file_type.is_dir())
+              .unwrap_or(false),
             is_symlink: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_symlink()),
+              .map(|file_type| file_type.is_symlink())
+              .unwrap_or(false),
           })
         } else {
           None

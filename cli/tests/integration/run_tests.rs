@@ -2874,7 +2874,7 @@ fn package_json_no_node_modules_dir_created() {
     .add_npm_env_vars()
     .use_temp_cwd()
     .build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write("deno.json", "{}");
   temp_dir.write("package.json", "{}");
@@ -2892,7 +2892,7 @@ fn node_modules_dir_no_npm_specifiers_no_dir_created() {
     .add_npm_env_vars()
     .use_temp_cwd()
     .build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write("deno.json", "{}");
   temp_dir.write("main.ts", "");
