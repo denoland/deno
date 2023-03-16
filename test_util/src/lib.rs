@@ -85,6 +85,7 @@ const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_PING_PORT: u16 = 4245;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -325,6 +326,36 @@ async fn run_ws_server(addr: &SocketAddr) {
             }
           })
           .await;
+      }
+    });
+  }
+}
+
+async fn run_ws_ping_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: ws"); // Eye catcher for HttpServerCount
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream = accept_async(stream).await;
+      use futures::SinkExt;
+      use tokio_tungstenite::tungstenite::Message;
+      if let Ok(mut ws_stream) = ws_stream {
+        for i in 0..9 {
+          ws_stream.send(Message::Ping(vec![])).await.unwrap();
+
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Pong(vec![]));
+
+          ws_stream
+            .send(Message::Text(format!("hello {}", i)))
+            .await
+            .unwrap();
+
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Text(format!("hello {}", i)));
+        }
+
+        ws_stream.close(None).await.unwrap();
       }
     });
   }
@@ -1486,6 +1517,8 @@ pub async fn run_all_servers() {
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
   let ws_server_fut = run_ws_server(&ws_addr);
+  let ws_ping_addr = SocketAddr::from(([127, 0, 0, 1], WS_PING_PORT));
+  let ws_ping_server_fut = run_ws_ping_server(&ws_ping_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
@@ -1503,6 +1536,7 @@ pub async fn run_all_servers() {
     futures::join!(
       redirect_server_fut,
       ws_server_fut,
+      ws_ping_server_fut,
       wss_server_fut,
       tls_server_fut,
       tls_client_auth_server_fut,
