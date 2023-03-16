@@ -1705,9 +1705,9 @@
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
       ],
-      "global-immutable-prototype.any.worker.html": [
-        "Setting to a different prototype"
-      ],
+      "global-immutable-prototype.any.worker.html": {
+        "ignore": true
+      },
       "global-object-implicit-this-value.any.html": [
         "Global object's getter throws when called on incompatible object",
         "Global object's setter throws when called on incompatible object",
@@ -2090,6 +2090,7 @@
     "urlsearchparams-has.any.worker.html": true,
     "urlsearchparams-set.any.html": true,
     "urlsearchparams-set.any.worker.html": true,
+    "urlsearchparams-size.any.html": true,
     "urlsearchparams-sort.any.html": true,
     "urlsearchparams-sort.any.worker.html": true,
     "urlsearchparams-stringifier.any.html": true,

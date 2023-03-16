@@ -6,7 +6,7 @@ use crate::error::range_error;
 use crate::error::type_error;
 use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
-use crate::resolve_url_or_path_deprecated;
+use crate::resolve_url;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRealm;
@@ -159,15 +159,12 @@ struct EvalContextResult<'s>(
 fn op_eval_context<'a>(
   scope: &mut v8::HandleScope<'a>,
   source: serde_v8::Value<'a>,
-  specifier: Option<String>,
+  specifier: String,
 ) -> Result<EvalContextResult<'a>, Error> {
   let tc_scope = &mut v8::TryCatch::new(scope);
   let source = v8::Local::<v8::String>::try_from(source.v8_value)
     .map_err(|_| type_error("Invalid source"))?;
-  let specifier = match specifier {
-    Some(s) => resolve_url_or_path_deprecated(&s)?.to_string(),
-    None => crate::DUMMY_SPECIFIER.to_string(),
-  };
+  let specifier = resolve_url(&specifier)?.to_string();
   let specifier = v8::String::new(tc_scope, &specifier).unwrap();
   let origin = script_origin(tc_scope, specifier);
 
