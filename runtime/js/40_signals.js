@@ -63,7 +63,6 @@ function removeSignalListener(signo, listener) {
   const sigData = getSignalData(signo);
   SetPrototypeDelete(sigData.listeners, listener);
 
-  // deno-lint-ignore prefer-primordials
   if (sigData.listeners.size === 0 && sigData.rid) {
     unbindSignal(sigData.rid);
     sigData.rid = undefined;

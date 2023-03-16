@@ -467,7 +467,6 @@ class GPUAdapterInfo {
         vendor: this.vendor,
         architecture: this.architecture,
         device: this.device,
-        // deno-lint-ignore prefer-primordials
         description: this.description,
       })
     }`;
@@ -942,7 +941,6 @@ class GPUDevice extends EventTarget {
     const { rid, err } = ops.op_webgpu_create_buffer(
       device.rid,
       descriptor.label,
-      // deno-lint-ignore prefer-primordials
       descriptor.size,
       descriptor.usage,
       descriptor.mappedAtCreation,
@@ -952,9 +950,7 @@ class GPUDevice extends EventTarget {
     let options;
     if (descriptor.mappedAtCreation) {
       options = {
-        // deno-lint-ignore prefer-primordials
         mapping: new ArrayBuffer(descriptor.size),
-        // deno-lint-ignore prefer-primordials
         mappingRange: [0, descriptor.size],
         mappedRanges: [],
         state: "mapped at creation",
@@ -971,7 +967,6 @@ class GPUDevice extends EventTarget {
       descriptor.label,
       device,
       rid,
-      // deno-lint-ignore prefer-primordials
       descriptor.size,
       descriptor.usage,
       options,
@@ -996,7 +991,6 @@ class GPUDevice extends EventTarget {
     const { rid, err } = ops.op_webgpu_create_texture({
       deviceRid: device.rid,
       ...descriptor,
-      // deno-lint-ignore prefer-primordials
       size: normalizeGPUExtent3D(descriptor.size),
     });
     device.pushError(err);
@@ -1198,7 +1192,6 @@ class GPUDevice extends EventTarget {
           kind: "GPUBufferBinding",
           resource: rid,
           offset: entry.resource.offset,
-          // deno-lint-ignore prefer-primordials
           size: entry.resource.size,
         };
       }
@@ -2115,11 +2108,8 @@ function createGPUTexture(descriptor, device, rid) {
   texture[_device] = device;
   texture[_rid] = rid;
   texture[_views] = [];
-  // deno-lint-ignore prefer-primordials
   texture[_width] = descriptor.size.width;
-  // deno-lint-ignore prefer-primordials
   texture[_height] = descriptor.size.height;
-  // deno-lint-ignore prefer-primordials
   texture[_depthOrArrayLayers] = descriptor.size.depthOrArrayLayers;
   texture[_mipLevelCount] = descriptor.mipLevelCount;
   texture[_sampleCount] = descriptor.sampleCount;

@@ -289,10 +289,8 @@ class Blob {
       relativeStart = 0;
     } else {
       if (start < 0) {
-        // deno-lint-ignore prefer-primordials
         relativeStart = MathMax(O.size + start, 0);
       } else {
-        // deno-lint-ignore prefer-primordials
         relativeStart = MathMin(start, O.size);
       }
     }
@@ -302,10 +300,8 @@ class Blob {
       relativeEnd = O.size;
     } else {
       if (end < 0) {
-        // deno-lint-ignore prefer-primordials
         relativeEnd = MathMax(O.size + end, 0);
       } else {
-        // deno-lint-ignore prefer-primordials
         relativeEnd = MathMin(end, O.size);
       }
     }
@@ -323,7 +319,6 @@ class Blob {
         // and only use relativeEnd?
         break;
       }
-      // deno-lint-ignore prefer-primordials
       const size = part.size;
       if (relativeStart && size <= relativeStart) {
         // Skip the beginning and change the relative
@@ -333,7 +328,6 @@ class Blob {
       } else {
         const chunk = part.slice(
           relativeStart,
-          // deno-lint-ignore prefer-primordials
           MathMin(part.size, relativeEnd),
         );
         added += chunk.size;
@@ -386,7 +380,6 @@ class Blob {
    */
   async text() {
     webidl.assertBranded(this, BlobPrototype);
-    // deno-lint-ignore prefer-primordials
     const buffer = await this.#u8Array(this.size);
     return core.decode(buffer);
   }
@@ -414,7 +407,6 @@ class Blob {
    */
   async arrayBuffer() {
     webidl.assertBranded(this, BlobPrototype);
-    // deno-lint-ignore prefer-primordials
     const buf = await this.#u8Array(this.size);
     return TypedArrayPrototypeGetBuffer(buf);
   }
