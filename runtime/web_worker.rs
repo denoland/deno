@@ -392,15 +392,17 @@ impl WebWorker {
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
-        user_agent: options.bootstrap.user_agent.clone(),
-        root_cert_store: options.root_cert_store.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-        ..Default::default()
-      }),
+      deno_fetch::deno_fetch::init_runtime::<PermissionsContainer>(
+        deno_fetch::Options {
+          user_agent: options.bootstrap.user_agent.clone(),
+          root_cert_store: options.root_cert_store.clone(),
+          unsafely_ignore_certificate_errors: options
+            .unsafely_ignore_certificate_errors
+            .clone(),
+          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          ..Default::default()
+        },
+      ),
       deno_cache::deno_cache::init_runtime::<SqliteBackedCache>(create_cache),
       deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
@@ -444,7 +446,7 @@ impl WebWorker {
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init_ops(),
-      deno_flash::init_ops::<PermissionsContainer>(unstable),
+      deno_flash::deno_flash::init_runtime::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,

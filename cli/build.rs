@@ -317,7 +317,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
+    deno_fetch::deno_fetch::init_runtime::<PermissionsContainer>(Default::default()),
     deno_cache::deno_cache::init_runtime::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
       "".to_owned(),
@@ -342,7 +342,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     ),
     deno_napi::deno_napi::init_runtime::<PermissionsContainer>(),
     deno_http::init_ops(),
-    deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
+    deno_flash::deno_flash::init_runtime::<PermissionsContainer>(false), // No --unstable
   ];
 
   let mut esm_files = include_js_files!(

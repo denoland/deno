@@ -163,8 +163,8 @@ macro_rules! extension {
     $(deps = [ $( $dep:ident ),* ],)?
     $(parameters = [ $( $param:ident : $type:ident ),+ ], )?
     $(ops = $ops_symbol:ident $( < $ops_param:ident > )?,)?
-    $(esm = [ $( $esm:literal ),* ],)?
-    $(js = [ $( $js:literal ),* ],)?
+    $(esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ],)?
+    $(js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ],)?
     $(config = { $( $config_id:ident : $config_type:ty ),* $(,)? },)?
     $(state = $state_fn:expr, )?
     $(event_loop_middleware = $event_loop_middleware_fn:ident, )?
@@ -198,10 +198,10 @@ macro_rules! extension {
         let mut ext = ext();
         // If esm or JS was specified, add JS files
         $( let mut ext = ext.esm(
-          $crate::include_js_files!( $( $esm , )* )
+          $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
         ); )?
         $( let mut ext = ext.js(
-          $crate::include_js_files!( $( $js , )* )
+          $crate::include_js_files!( $( dir $dir_js , )? $( $js , )* )
         ); )?
         let ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
         ext.build()

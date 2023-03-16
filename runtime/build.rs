@@ -261,7 +261,7 @@ mod startup_snapshot {
         deno_web::BlobStore::default(),
         Default::default(),
       ),
-      deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
+      deno_fetch::deno_fetch::init_esm::<Permissions>(),
       deno_cache::deno_cache::init_esm::<SqliteBackedCache>(),
       deno_websocket::deno_websocket::init_esm::<Permissions>(),
       deno_webstorage::deno_webstorage::init_esm(),
@@ -279,7 +279,7 @@ mod startup_snapshot {
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),
       deno_fs::init_ops_and_esm::<Permissions>(false),
-      deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
+      deno_flash::deno_flash::init_esm::<Permissions>(), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around

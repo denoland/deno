@@ -10,10 +10,8 @@ use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::BufView;
-use deno_core::ExtensionBuilder;
 use deno_core::WriteOutcome;
 
 use deno_core::url::Url;
@@ -24,7 +22,6 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -93,13 +90,6 @@ impl Default for Options {
   }
 }
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_webidl", "deno_web", "deno_url", "deno_console"],
-  )
-}
-
 deno_core::ops!(deno_ops,
   parameters = [FP: FetchPermissions],
   ops = [
@@ -109,14 +99,23 @@ deno_core::ops!(deno_ops,
   ]
 );
 
-fn ops<FP>(
-  ext: &mut ExtensionBuilder,
-  options: Options,
-) -> &mut ExtensionBuilder
-where
-  FP: FetchPermissions + 'static,
-{
-  ext.ops(deno_ops::<FP>()).state(move |state| {
+deno_core::extension!(deno_fetch,
+  deps = [ deno_webidl, deno_web, deno_url, deno_console ],
+  parameters = [FP: FetchPermissions],
+  ops = deno_ops<FP>,
+  esm = [
+    "20_headers.js",
+    "21_formdata.js",
+    "22_body.js",
+    "22_http_client.js",
+    "23_request.js",
+    "23_response.js",
+    "26_fetch.js"
+  ],
+  config = {
+    options: Options,
+  },
+  state = |state, options| {
     state.put::<Options>(options.clone());
     state.put::<reqwest::Client>({
       create_http_client(
@@ -129,32 +128,8 @@ where
       )
       .unwrap()
     });
-  })
-}
-
-pub fn init_ops_and_esm<FP>(options: Options) -> Extension
-where
-  FP: FetchPermissions + 'static,
-{
-  ops::<FP>(&mut ext(), options)
-    .esm(include_js_files!(
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
-    .build()
-}
-
-pub fn init_ops<FP>(options: Options) -> Extension
-where
-  FP: FetchPermissions + 'static,
-{
-  ops::<FP>(&mut ext(), options).build()
-}
+  },
+);
 
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
