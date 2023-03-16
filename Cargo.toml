@@ -97,7 +97,6 @@ indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.17"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
-lzzzz = "1.0"
 notify = "=5.0.0"
 num-bigint = "0.4"
 once_cell = "1.17.1"
@@ -232,8 +231,6 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.zstd]
 opt-level = 3
-[profile.bench.package.lzzzz]
-opt-level = 3
 [profile.bench.package.zstd-sys]
 opt-level = 3
 [profile.bench.package.base64-simd]
@@ -305,8 +302,6 @@ opt-level = 3
 [profile.release.package.tokio]
 opt-level = 3
 [profile.release.package.zstd]
-opt-level = 3
-[profile.release.package.lzzzz]
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3

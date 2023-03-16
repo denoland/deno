@@ -299,14 +299,7 @@ mod startup_snapshot {
       snapshot_path,
       startup_snapshot: None,
       extensions,
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        lzzzz::lz4_hc::compress_to_vec(
-          snapshot_slice,
-          vec,
-          lzzzz::lz4_hc::CLEVEL_MAX,
-        )
-        .expect("snapshot compression failed");
-      })),
+      compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
   }

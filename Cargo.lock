@@ -750,7 +750,6 @@ dependencies = [
  "libc",
  "log",
  "lsp-types",
- "lzzzz",
  "mitata",
  "monch",
  "napi_sym",
@@ -1207,7 +1206,6 @@ dependencies = [
  "hyper",
  "libc",
  "log",
- "lzzzz",
  "netif",
  "nix",
  "notify",
@@ -2596,15 +2594,6 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "url",
-]
-
-[[package]]
-name = "lzzzz"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8014d1362004776e6a91e4c15a3aa7830d1b6650a075b51a9969ebb6d6af13bc"
-dependencies = [
- "cc",
 ]
 
 [[package]]
