@@ -150,6 +150,14 @@ declare class URLSearchParams {
    * ```
    */
   toString(): string;
+
+  /** Contains the number of search parameters
+   *
+   * ```ts
+   * searchParams.size
+   * ```
+   */
+  size: number;
 }
 
 /** The URL interface represents an object providing static methods used for

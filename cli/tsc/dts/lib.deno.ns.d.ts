@@ -3078,43 +3078,41 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
-    /** ID of the device containing the file.
-     *
-     * _Linux/Mac OS only._ */
-    dev: number | null;
+    /** ID of the device containing the file. */
+    dev: number;
     /** Inode number.
      *
-     * _Linux/Mac OS only._ */
-    ino: number | null;
+     * _Linux/Mac OS only, always returns 0 on Windows_ */
+    ino: number;
     /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
      *
      * The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory. */
-    mode: number | null;
+    mode: number;
     /** Number of hard links pointing to this file.
      *
-     * _Linux/Mac OS only._ */
-    nlink: number | null;
+     * _Linux/Mac OS only, always returns 0 on Windows_ */
+    nlink: number;
     /** User ID of the owner of this file.
      *
-     * _Linux/Mac OS only._ */
-    uid: number | null;
+     * _Linux/Mac OS only, always returns 0 on Windows_ */
+    uid: number;
     /** Group ID of the owner of this file.
      *
-     * _Linux/Mac OS only._ */
-    gid: number | null;
+     * _Linux/Mac OS only, always returns 0 on Windows_ */
+    gid: number;
     /** Device ID of this file.
      *
-     * _Linux/Mac OS only._ */
-    rdev: number | null;
+     * _Linux/Mac OS only, always returns 0 on Windows_ */
+    rdev: number;
     /** Blocksize for filesystem I/O.
      *
-     * _Linux/Mac OS only._ */
-    blksize: number | null;
+     * _Linux/Mac OS only, always returns 0 on Windows_ */
+    blksize: number;
     /** Number of blocks allocated to the file, in 512-byte units.
      *
-     * _Linux/Mac OS only._ */
-    blocks: number | null;
+     * _Linux/Mac OS only, always returns 0 on Windows_ */
+    blocks: number;
   }
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.

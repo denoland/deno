@@ -22,41 +22,69 @@ use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
+use once_cell::sync::Lazy;
 
 use super::cdp;
 
-static PRELUDE: &str = r#"
-Object.defineProperty(globalThis, "_", {
-  configurable: true,
-  get: () => Deno[Deno.internal].lastEvalResult,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
-   console.log("Last evaluation result is no longer saved to _.");
-  },
+/// We store functions used in the repl on this object because
+/// the user might modify the `Deno` global or delete it outright.
+pub static REPL_INTERNALS_NAME: Lazy<String> = Lazy::new(|| {
+  let now = std::time::SystemTime::now();
+  let seconds = now
+    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+    .unwrap()
+    .as_secs();
+  // use a changing variable name to make it hard to depend on this
+  format!("__DENO_REPL_INTERNALS_{seconds}__")
 });
 
-Object.defineProperty(globalThis, "_error", {
+fn get_prelude() -> String {
+  format!(
+    r#"
+Object.defineProperty(globalThis, "{0}", {{
+  enumerable: false,
+  writable: false,
+  value: {{
+    lastEvalResult: undefined,
+    lastThrownError: undefined,
+    inspectArgs: Deno[Deno.internal].inspectArgs,
+    noColor: Deno.noColor,
+  }},
+}});
+Object.defineProperty(globalThis, "_", {{
   configurable: true,
-  get: () => Deno[Deno.internal].lastThrownError,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_error", {
+  get: () => {0}.lastEvalResult,
+  set: (value) => {{
+   Object.defineProperty(globalThis, "_", {{
      value: value,
      writable: true,
      enumerable: true,
      configurable: true,
-   });
+   }});
+   console.log("Last evaluation result is no longer saved to _.");
+  }},
+}});
+
+Object.defineProperty(globalThis, "_error", {{
+  configurable: true,
+  get: () => {0}.lastThrownError,
+  set: (value) => {{
+   Object.defineProperty(globalThis, "_error", {{
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   }});
 
    console.log("Last thrown error is no longer saved to _error.");
-  },
-});
+  }},
+}});
 
 globalThis.clear = console.clear.bind(console);
-"#;
+"#,
+    *REPL_INTERNALS_NAME
+  )
+}
 
 pub enum EvaluationOutput {
   Value(String),
@@ -161,7 +189,7 @@ impl ReplSession {
     };
 
     // inject prelude
-    repl_session.evaluate_expression(PRELUDE).await?;
+    repl_session.evaluate_expression(&get_prelude()).await?;
 
     Ok(repl_session)
   }
@@ -307,22 +335,27 @@ impl ReplSession {
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
-    self.post_message_with_event_loop(
-      "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
-        function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
-        object_id: None,
-        arguments: Some(vec![error.into()]),
-        silent: None,
-        return_by_value: None,
-        generate_preview: None,
-        user_gesture: None,
-        await_promise: None,
-        execution_context_id: Some(self.context_id),
-        object_group: None,
-        throw_on_side_effect: None
-      }),
-    ).await?;
+    self
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(cdp::CallFunctionOnArgs {
+          function_declaration: format!(
+            r#"function (object) {{ {}.lastThrownError = object; }}"#,
+            *REPL_INTERNALS_NAME
+          ),
+          object_id: None,
+          arguments: Some(vec![error.into()]),
+          silent: None,
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          execution_context_id: Some(self.context_id),
+          object_group: None,
+          throw_on_side_effect: None,
+        }),
+      )
+      .await?;
     Ok(())
   }
 
@@ -334,9 +367,10 @@ impl ReplSession {
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration:
-            "function (object) { Deno[Deno.internal].lastEvalResult = object; }"
-              .to_string(),
+          function_declaration: format!(
+            r#"function (object) {{ {}.lastEvalResult = object; }}"#,
+            *REPL_INTERNALS_NAME
+          ),
           object_id: None,
           arguments: Some(vec![evaluate_result.into()]),
           silent: None,
@@ -360,28 +394,33 @@ impl ReplSession {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
-    let inspect_response = self.post_message_with_event_loop(
-      "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
-        function_declaration: r#"function (object) {
-          try {
-            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
-          } catch (err) {
-            return Deno[Deno.internal].inspectArgs(["%o", err]);
-          }
-        }"#.to_string(),
-        object_id: None,
-        arguments: Some(vec![evaluate_result.into()]),
-        silent: None,
-        return_by_value: None,
-        generate_preview: None,
-        user_gesture: None,
-        await_promise: None,
-        execution_context_id: Some(self.context_id),
-        object_group: None,
-        throw_on_side_effect: None
-      }),
-    ).await?;
+    let inspect_response = self
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(cdp::CallFunctionOnArgs {
+          function_declaration: format!(
+            r#"function (object) {{
+          try {{
+            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+          }} catch (err) {{
+            return {0}.inspectArgs(["%o", err]);
+          }}
+        }}"#,
+            *REPL_INTERNALS_NAME
+          ),
+          object_id: None,
+          arguments: Some(vec![evaluate_result.into()]),
+          silent: None,
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          execution_context_id: Some(self.context_id),
+          object_group: None,
+          throw_on_side_effect: None,
+        }),
+      )
+      .await?;
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
