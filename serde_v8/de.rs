@@ -13,6 +13,7 @@ use crate::magic::transl8::visit_magic;
 use crate::magic::transl8::FromV8;
 use crate::magic::transl8::MagicType;
 use crate::payload::ValueType;
+use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::StringOrBuffer;
@@ -347,6 +348,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       StringOrBuffer::MAGIC_NAME => {
         visit_magic(visitor, StringOrBuffer::from_v8(self.scope, self.input)?)
+      }
+      BigInt::MAGIC_NAME => {
+        visit_magic(visitor, BigInt::from_v8(self.scope, self.input)?)
       }
       magic::Value::MAGIC_NAME => {
         visit_magic(visitor, magic::Value::from_v8(self.scope, self.input)?)
