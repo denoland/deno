@@ -26,14 +26,14 @@ jobs:
         include:
           - os: macos-12
             job: test
-            profile: fastci
+            profile: debug
           - os: macos-12
             job: test
             profile: release
             skip_pr: true
           - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
-            profile: fastci
+            profile: debug
           - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             runner: '${{ github.event_name == ''pull_request'' && ''windows-2022'' || (github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'') }}'
             job: test
@@ -274,7 +274,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-'
+          restore-keys: '18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-'
       - name: Apply and update mtime cache
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (!startsWith(github.ref, ''refs/tags/'')))'
         uses: ./.github/mtime_cache
@@ -302,12 +302,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint''))'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
       - name: Build debug
-        if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && ((matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'debug'))
-        run: cargo build --locked --all-targets
-      - name: Build fastci
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && ((matrix.job == ''test'' && matrix.profile == ''fastci'')))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''test'' && matrix.profile == ''debug''))'
         run: cargo build --locked --all-targets
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
@@ -380,10 +375,14 @@ jobs:
       - name: Test debug
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' && matrix.profile == 'debug' &&
-          !startsWith(github.ref, 'refs/tags/')))
+          !startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')))
         run: cargo test --locked
-      - name: Test fastci
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''test'' && matrix.profile == ''fastci''))'
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+      - name: Test debug (fast)
+        if: |-
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' && matrix.profile == 'debug' && 
+          !startsWith(matrix.os, 'ubuntu')))
         run: |-
           cargo test --locked --lib
           cargo test --locked --test '*'
@@ -490,7 +489,7 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Build product size info
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint'' && matrix.profile != ''fastci'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint'' && matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))))'
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
@@ -548,7 +547,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v3
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && ((matrix.profile == ''release'' || matrix.profile == ''fastci'') && github.ref == ''refs/heads/main''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''test'' && github.ref == ''refs/heads/main''))'
         with:
           path: |-
             ./target
