@@ -188,3 +188,34 @@ pub(crate) fn set_snapshotted_data(
     assert_eq!(offset, index + 1);
   }
 }
+
+/// Returns an isolate set up for snapshotting.
+pub(crate) fn create_snapshot_creator(
+  external_refs: &'static v8::ExternalReferences,
+  maybe_startup_snapshot: Option<Snapshot>,
+) -> v8::OwnedIsolate {
+  if let Some(snapshot) = maybe_startup_snapshot {
+    match snapshot {
+      Snapshot::Static(data) => {
+        v8::Isolate::snapshot_creator_from_existing_snapshot(
+          data,
+          Some(external_refs),
+        )
+      }
+      Snapshot::JustCreated(data) => {
+        v8::Isolate::snapshot_creator_from_existing_snapshot(
+          data,
+          Some(external_refs),
+        )
+      }
+      Snapshot::Boxed(data) => {
+        v8::Isolate::snapshot_creator_from_existing_snapshot(
+          data,
+          Some(external_refs),
+        )
+      }
+    }
+  } else {
+    v8::Isolate::snapshot_creator(Some(external_refs))
+  }
+}

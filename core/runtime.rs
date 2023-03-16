@@ -418,37 +418,12 @@ impl JsRuntime {
     let mut maybe_snapshotted_data = None;
 
     let (mut isolate, snapshot_options) = if options.will_snapshot {
-      let (snapshot_creator, snapshot_loaded) =
-        if let Some(snapshot) = options.startup_snapshot {
-          (
-            match snapshot {
-              Snapshot::Static(data) => {
-                v8::Isolate::snapshot_creator_from_existing_snapshot(
-                  data,
-                  Some(refs),
-                )
-              }
-              Snapshot::JustCreated(data) => {
-                v8::Isolate::snapshot_creator_from_existing_snapshot(
-                  data,
-                  Some(refs),
-                )
-              }
-              Snapshot::Boxed(data) => {
-                v8::Isolate::snapshot_creator_from_existing_snapshot(
-                  data,
-                  Some(refs),
-                )
-              }
-            },
-            true,
-          )
-        } else {
-          (v8::Isolate::snapshot_creator(Some(refs)), false)
-        };
-
-      let snapshot_options =
-        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+      let snapshot_options = SnapshotOptions::from_bools(
+        options.startup_snapshot.is_some(),
+        options.will_snapshot,
+      );
+      let snapshot_creator =
+        snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
 
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
