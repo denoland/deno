@@ -187,6 +187,7 @@ macro_rules! extension {
 
       /// If ESM or JS was specified, add those files to the extension.
       #[inline(always)]
+      #[allow(unused_variables)]
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
         $( ext.esm(
           $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
@@ -201,6 +202,7 @@ macro_rules! extension {
 
       // If ops were specified, add those ops to the extension.
       #[inline(always)]
+      #[allow(unused_variables)]
       fn with_ops $( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
@@ -283,7 +285,7 @@ macro_rules! extension {
         /// Call a function of |state, ...| using the fields of this configuration structure.
         #[allow(dead_code)]
         #[doc(hidden)]
-        fn call_callback(self, state: &mut $crate::OpState, f: fn(&mut $crate::OpState, $( $( $config_type ),* )? )) {
+        fn call_callback<F: Fn(&mut $crate::OpState, $( $( $config_type ),* )?)>(self, state: &mut $crate::OpState, f: F) {
           f(state, $( $( self. $config_id ),* )? )
         }
       }
@@ -296,7 +298,6 @@ macro_rules! extension {
   };
 
   (! __ops__ $ext:ident __eot__) => {
-    $ext
   };
 
   (! __ops__ $ext:ident $ops_symbol:ident __eot__) => {
