@@ -50,8 +50,6 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
-use v8::fast_api::CFunctionInfo;
-use v8::fast_api::CTypeInfo;
 use v8::OwnedIsolate;
 
 type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
@@ -378,32 +376,7 @@ impl JsRuntime {
       .into_iter()
       .enumerate()
       .map(|(id, decl)| {
-        let mut fast_fn_c_info = None;
-
-        if let Some(fast_fn) = &decl.fast_fn {
-          let args = CTypeInfo::new_from_slice(fast_fn.args());
-          let ret = CTypeInfo::new(fast_fn.return_type());
-
-          // SAFETY: all arguments are coming from the trait and they have
-          // static lifetime
-          let c_fn = unsafe {
-            CFunctionInfo::new(
-              args.as_ptr(),
-              fast_fn.args().len(),
-              ret.as_ptr(),
-            )
-          };
-          fast_fn_c_info = Some(c_fn);
-        }
-
-        OpCtx {
-          id,
-          state: op_state.clone(),
-          runtime_state: weak.clone(),
-          decl: Rc::new(decl),
-          fast_fn_c_info,
-          realm_idx: 0,
-        }
+        OpCtx::new(id, 0, Rc::new(decl), op_state.clone(), weak.clone())
       })
       .collect::<Vec<_>>()
       .into_boxed_slice();
@@ -651,31 +624,13 @@ impl JsRuntime {
         .op_ctxs
         .iter()
         .map(|op_ctx| {
-          let mut fast_fn_c_info = None;
-
-          if let Some(fast_fn) = &op_ctx.decl.fast_fn {
-            let args = CTypeInfo::new_from_slice(fast_fn.args());
-            let ret = CTypeInfo::new(fast_fn.return_type());
-
-            // SAFETY: all arguments are coming from the trait and they have
-            // static lifetime
-            let c_fn = unsafe {
-              CFunctionInfo::new(
-                args.as_ptr(),
-                fast_fn.args().len(),
-                ret.as_ptr(),
-              )
-            };
-            fast_fn_c_info = Some(c_fn);
-          }
-          OpCtx {
-            id: op_ctx.id,
-            state: op_ctx.state.clone(),
-            decl: op_ctx.decl.clone(),
-            fast_fn_c_info,
-            runtime_state: op_ctx.runtime_state.clone(),
+          OpCtx::new(
+            op_ctx.id,
             realm_idx,
-          }
+            op_ctx.decl.clone(),
+            op_ctx.state.clone(),
+            op_ctx.runtime_state.clone(),
+          )
         })
         .collect();
 
@@ -3609,6 +3564,7 @@ pub mod tests {
         .build()],
       ..Default::default()
     });
+
     let specifier = crate::resolve_url("file:///0.js").unwrap();
     let source_code =
       r#"export function f0() { return "hello world" }"#.to_string();
