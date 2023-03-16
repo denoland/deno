@@ -493,6 +493,7 @@ const ci = {
             if: "matrix.job == 'lint'",
             run:
               "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
+            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
             name: "Build debug",
