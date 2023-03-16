@@ -12,7 +12,7 @@ const Runners = {
 };
 // bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
-  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}";
+  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
