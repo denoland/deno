@@ -28,6 +28,8 @@ const validPrefixes = [
   // allow Revert PRs because it allows us to remove the landed
   // commit from the generated changelog
   "Revert ",
+  // Allow landing breaking changes that are properly marked
+  "BREAKING",
 ];
 
 if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {
