@@ -116,6 +116,7 @@ use deno_core::error::generic_error;
 use deno_core::error::not_supported;
 
 deno_core::extension!(deno_fs,
+  deps = [ deno_web, deno_io ],
   parameters = [P: FsPermissions],
   ops = [
     op_open_sync<P>,
