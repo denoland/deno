@@ -307,6 +307,8 @@ const DEFAULT_INSPECT_OPTIONS = {
   strAbbreviateSize: 100,
   /** You can override the quotes preference in inspectString.
    * Used by util.inspect() */
+  // TODO(kt3k): Consider using symbol as a key to hide this from the public
+  // API.
   quotes: QUOTES,
 };
 
