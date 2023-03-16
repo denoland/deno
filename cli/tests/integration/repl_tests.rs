@@ -1057,3 +1057,19 @@ fn npm_packages() {
     assert!(err.is_empty());
   }
 }
+
+#[test]
+fn pty_tab_indexable_props() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const arr = [1, 2, 3]");
+    console.write_line("arr.\t\t");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    println!("output");
+    assert_contains!(output, "constructor");
+    assert_contains!(output, "sort");
+    assert_contains!(output, "at");
+    assert_not_contains!(output, "0", "1", "2");
+  });
+}

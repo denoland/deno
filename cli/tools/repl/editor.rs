@@ -109,7 +109,7 @@ impl EditorHelper {
           own_properties: None,
           accessor_properties_only: None,
           generate_preview: None,
-          non_indexed_properties_only: None,
+          non_indexed_properties_only: Some(true),
         }),
       )
       .ok()?;
