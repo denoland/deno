@@ -56,7 +56,6 @@ const {
   TypedArrayPrototypeSlice,
   TypeError,
   Uint8Array,
-  Uint8ArrayPrototype,
 } = primordials;
 
 /**
@@ -199,7 +198,6 @@ class InnerBody {
     const { 0: out1, 1: out2 } = this.stream.tee();
     this.streamOrStatic = out1;
     const second = new InnerBody(out2);
-    // deno-lint-ignore prefer-primordials
     second.source = core.deserialize(core.serialize(this.source));
     second.length = this.length;
     return second;
@@ -458,9 +456,9 @@ function extractBody(object) {
     // no observable side-effect for users so far, but could change
     stream = { body: source, consumed: false };
     length = null; // NOTE: string length != byte length
-  } else if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, source)) {
+  } else if (TypedArrayPrototypeGetSymbolToStringTag(source) === "Uint8Array") {
     stream = { body: source, consumed: false };
-    length = source.byteLength;
+    length = TypedArrayPrototypeGetByteLength(source);
   }
   const body = new InnerBody(stream);
   body.source = source;
