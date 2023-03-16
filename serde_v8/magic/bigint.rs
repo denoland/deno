@@ -44,7 +44,7 @@ impl FromV8 for BigInt {
     let v8bigint = v8::Local::<v8::BigInt>::try_from(value)
       .map_err(|_| Error::ExpectedBigInt)?;
     let word_count = v8bigint.word_count();
-    let mut words: SmallVec<[u64; 1]> = smallvec![0u64; word_count as usize];
+    let mut words: SmallVec<[u64; 1]> = smallvec![0u64; word_count];
     let (sign_bit, _words) = v8bigint.to_words_array(&mut words);
     let sign = match sign_bit {
       true => num_bigint::Sign::Minus,
