@@ -15,10 +15,11 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
+use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
-pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
+pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
   let mut references = vec![
     v8::ExternalReference {
       function: call_console.map_fn_to(),
@@ -95,7 +96,7 @@ pub fn module_origin<'a>(
   )
 }
 
-pub fn initialize_context<'s>(
+pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
 ) -> v8::Local<'s, v8::Context> {
@@ -184,7 +185,7 @@ pub fn initialize_context_from_existing_snapshot<'s>(
   context
 }
 
-pub fn set_func(
+fn set_func(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   name: &'static str,
@@ -197,20 +198,20 @@ pub fn set_func(
   obj.set(scope, key.into(), val.into());
 }
 
-// Register a raw v8::FunctionCallback
-// with some external data.
-pub fn add_op_to_deno_core_ops(
+fn add_op_to_deno_core_ops(
   scope: &mut v8::HandleScope<'_>,
-  deno_core_ops: v8::Local<v8::Object>,
+  obj: v8::Local<v8::Object>,
   op_ctx: &OpCtx,
+  snapshot_options: SnapshotOptions,
 ) {
-  let ctx_ptr = op_ctx as *const OpCtx as *const c_void;
+  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let key =
     v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
       .unwrap();
-  let external = v8::External::new(scope, ctx_ptr as *mut c_void);
+  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
   let builder = v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
     .data(external.into());
+
   let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
     builder.build_fast(
       scope,
@@ -224,7 +225,7 @@ pub fn add_op_to_deno_core_ops(
   };
   let val = templ.get_function(scope).unwrap();
   val.set_name(key);
-  deno_core_ops.set(scope, key.into(), val.into());
+  obj.set(scope, key.into(), val.into());
 }
 
 pub extern "C" fn wasm_async_resolve_promise_callback(
