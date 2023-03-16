@@ -31,6 +31,7 @@ const {
   SafeArrayIterator,
   Symbol,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
@@ -160,11 +161,11 @@ class FileReader extends EventTarget {
               for (let i = 0; i < chunks.length; ++i) {
                 const chunk = chunks[i];
                 TypedArrayPrototypeSet(bytes, chunk, offs);
-                offs += chunk.byteLength;
+                offs += TypedArrayPrototypeGetByteLength(chunk);
               }
               switch (readtype.kind) {
                 case "ArrayBuffer": {
-                  this[result] = bytes.buffer;
+                  this[result] = TypedArrayPrototypeGetBuffer(bytes);
                   break;
                 }
                 case "BinaryString":

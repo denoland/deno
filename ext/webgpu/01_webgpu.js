@@ -467,6 +467,7 @@ class GPUAdapterInfo {
         vendor: this.vendor,
         architecture: this.architecture,
         device: this.device,
+        // deno-lint-ignore prefer-primordials
         description: this.description,
       })
     }`;

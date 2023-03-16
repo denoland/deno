@@ -44,6 +44,7 @@ const {
   SymbolIterator,
   PromisePrototypeCatch,
   SymbolFor,
+  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
@@ -442,7 +443,7 @@ class WebSocket extends EventTarget {
           if (this.binaryType === "blob") {
             data = new Blob([value]);
           } else {
-            data = value.buffer;
+            data = TypedArrayPrototypeGetBuffer(value);
           }
 
           const event = new MessageEvent("message", {

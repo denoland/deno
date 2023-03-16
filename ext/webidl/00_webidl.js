@@ -1082,7 +1082,6 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       get() {
         assertBranded(this, objPrototype);
-        // deno-lint-ignore prefer-primordials
         return obj[setlikeInner].size;
       },
     },
