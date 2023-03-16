@@ -19,20 +19,21 @@ use crate::JsRealm;
 use crate::JsRuntime;
 
 pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
-  let mut references = vec![
-    v8::ExternalReference {
-      function: call_console.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: import_meta_resolve.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: catch_dynamic_import_promise_error.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: empty_fn.map_fn_to(),
-    },
-  ];
+  // Overallocate a bit, it's better than having to resize the vector.
+  let mut references = Vec::with_capacity(4 + ops.len() * 4);
+
+  references.push(v8::ExternalReference {
+    function: call_console.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: import_meta_resolve.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: catch_dynamic_import_promise_error.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: empty_fn.map_fn_to(),
+  });
 
   for ctx in ops {
     let ctx_ptr = ctx as *const OpCtx as _;
