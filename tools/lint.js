@@ -138,7 +138,7 @@ function splitToChunks(paths, initCmdLen) {
 
 async function clippy() {
   const currentBuildMode = buildMode();
-  const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
+  const cmd = ["clippy", "--all-targets", "--locked"];
 
   if (currentBuildMode != "debug") {
     cmd.push("--release");
