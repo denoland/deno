@@ -26,7 +26,7 @@ fn lsp_startup_shutdown() {
 #[test]
 fn lsp_init_tsconfig() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write(
     "lib.tsconfig.json",
@@ -59,7 +59,7 @@ fn lsp_init_tsconfig() {
 #[test]
 fn lsp_tsconfig_types() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write(
     "types.tsconfig.json",
@@ -124,7 +124,7 @@ fn lsp_tsconfig_bad_config_path() {
 #[test]
 fn lsp_triple_slash_types() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   let a_dts = "// deno-lint-ignore-file no-var\ndeclare var a: string;";
   temp_dir.write("a.d.ts", a_dts);
   let mut client = context.new_lsp_command().build();
@@ -147,7 +147,7 @@ fn lsp_triple_slash_types() {
 #[test]
 fn lsp_import_map() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   let import_map = r#"{
   "imports": {
     "/~/": "./lib/"
@@ -231,7 +231,7 @@ fn lsp_import_map_data_url() {
 #[test]
 fn lsp_import_map_config_file() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.import_map.jsonc",
     r#"{
@@ -298,7 +298,7 @@ fn lsp_import_map_config_file() {
 #[test]
 fn lsp_import_map_embedded_in_config_file() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.embedded_import_map.jsonc",
     r#"{
@@ -359,7 +359,7 @@ fn lsp_import_map_embedded_in_config_file() {
 #[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.jsonc",
     r#"{
@@ -510,7 +510,7 @@ fn lsp_import_assertions() {
 #[test]
 fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   temp_dir.write(
     "import-map.json",
     r#"{
@@ -932,26 +932,27 @@ fn lsp_workspace_enable_paths() {
   // we aren't actually writing anything to the tempdir in this test, but we
   // just need a legitimate file path on the host system so that logic that
   // tries to convert to and from the fs paths works on all env
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   let root_specifier = temp_dir.uri();
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder
-      .set_enable_paths(vec!["./worker".to_string()])
-      .set_root_uri(root_specifier.clone())
-      .set_workspace_folders(vec![lsp::WorkspaceFolder {
-        uri: root_specifier.clone(),
-        name: "project".to_string(),
-      }])
-      .set_deno_enable(false);
-  });
-
-  client.handle_configuration_request(json!([{
-    "enable": false,
-    "enablePaths": ["./worker"],
-  }]));
+  client.initialize_with_config(
+    |builder| {
+      builder
+        .set_enable_paths(vec!["./worker".to_string()])
+        .set_root_uri(root_specifier.clone())
+        .set_workspace_folders(vec![lsp::WorkspaceFolder {
+          uri: root_specifier.clone(),
+          name: "project".to_string(),
+        }])
+        .set_deno_enable(false);
+    },
+    json!([{
+      "enable": false,
+      "enablePaths": ["./worker"],
+    }]),
+  );
 
   client.did_open(json!({
     "textDocument": {
@@ -1216,7 +1217,7 @@ fn lsp_hover_change_mbc() {
 #[test]
 fn lsp_hover_closed_document() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   temp_dir.write("a.ts", r#"export const a = "a";"#);
   temp_dir.write("b.ts", r#"export * from "./a.ts";"#);
   temp_dir.write("c.ts", "import { a } from \"./b.ts\";\nconsole.log(a);\n");
@@ -5188,7 +5189,7 @@ fn lsp_auto_discover_registry() {
 #[test]
 fn lsp_cache_location() {
   let context = TestContextBuilder::new().use_http_server().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_cache(".cache").add_test_server_suggestions();
@@ -5668,7 +5669,7 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(client.queue_len(), 0);
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
@@ -5676,7 +5677,7 @@ pub struct PerformanceAverage {
   pub average_duration: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PerformanceAverages {
   averages: Vec<PerformanceAverage>,
@@ -5707,7 +5708,30 @@ fn lsp_performance() {
     "deno/performance",
     json!(null),
   );
-  assert_eq!(res.averages.len(), 13);
+  let mut averages = res
+    .averages
+    .iter()
+    .map(|a| a.name.as_str())
+    .collect::<Vec<_>>();
+  averages.sort();
+  assert_eq!(
+    averages,
+    vec![
+      "did_open",
+      "hover",
+      "initialize",
+      "op_load",
+      "request",
+      "testing_update",
+      "update_cache",
+      "update_diagnostics_deps",
+      "update_diagnostics_lint",
+      "update_diagnostics_ts",
+      "update_import_map",
+      "update_registries",
+      "update_tsconfig",
+    ]
+  );
   client.shutdown();
 }
 
@@ -5826,7 +5850,7 @@ fn lsp_format_mbc() {
 #[test]
 fn lsp_format_exclude_with_config() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write(
     "deno.fmt.jsonc",
@@ -5879,7 +5903,7 @@ fn lsp_format_exclude_with_config() {
 #[test]
 fn lsp_format_exclude_default_config() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write(
     "deno.fmt.jsonc",
@@ -6071,7 +6095,7 @@ fn lsp_format_markdown() {
 #[test]
 fn lsp_format_with_config() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.fmt.jsonc",
     r#"{
@@ -6231,32 +6255,32 @@ fn lsp_configuration_did_change() {
       "settings": {}
     }),
   );
-  let (id, method, _) = client.read_request::<Value>();
-  assert_eq!(method, "workspace/configuration");
-  client.write_response(
-    id,
-    json!([{
-      "enable": true,
-      "codeLens": {
-        "implementations": true,
-        "references": true
-      },
-      "importMap": null,
-      "lint": true,
-      "suggest": {
-        "autoImports": true,
-        "completeFunctionCalls": false,
-        "names": true,
-        "paths": true,
-        "imports": {
-          "hosts": {
-            "http://localhost:4545/": true
-          }
+  let request = json!([{
+    "enable": true,
+    "codeLens": {
+      "implementations": true,
+      "references": true
+    },
+    "importMap": null,
+    "lint": true,
+    "suggest": {
+      "autoImports": true,
+      "completeFunctionCalls": false,
+      "names": true,
+      "paths": true,
+      "imports": {
+        "hosts": {
+          "http://localhost:4545/": true
         }
-      },
-      "unstable": false
-    }]),
-  );
+      }
+    },
+    "unstable": false
+  }]);
+  // one for the workspace
+  client.handle_configuration_request(request.clone());
+  // one for the specifier
+  client.handle_configuration_request(request);
+
   let list = client.get_completion_list(
     "file:///a/file.ts",
     (0, 46),
@@ -6635,7 +6659,7 @@ console.log(snake_case);
 #[test]
 fn lsp_lint_with_config() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write(
     "deno.lint.jsonc",
@@ -6676,7 +6700,7 @@ fn lsp_lint_with_config() {
 #[test]
 fn lsp_lint_exclude_with_config() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write(
     "deno.lint.jsonc",
@@ -6814,7 +6838,7 @@ struct TestRunResponseParams {
 #[test]
 fn lsp_testing_api() {
   let context = TestContextBuilder::new().build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   let contents = r#"
 Deno.test({
