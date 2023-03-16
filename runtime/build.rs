@@ -8,7 +8,9 @@ use std::path::PathBuf;
   not(feature = "dont_create_runtime_snapshot")
 ))]
 mod startup_snapshot {
-  use std::path::Path;
+  use std::cell::RefCell;
+use std::path::Path;
+use std::rc::Rc;
 
   use super::*;
   use deno_ast::MediaType;
@@ -286,7 +288,7 @@ mod startup_snapshot {
       ),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm(),
-      deno_io::deno_io::init_ops_and_esm(Default::default()),
+      deno_io::deno_io::init_ops_and_esm(Rc::new(RefCell::new(Some(Default::default())))),
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
       deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime_extension,

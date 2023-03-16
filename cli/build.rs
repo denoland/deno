@@ -1,8 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use deno_core::include_js_files;
 use deno_core::snapshot_util::*;
@@ -340,17 +342,17 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_io::init_ops(Default::default()),
-    deno_fs::init_ops::<PermissionsContainer>(false),
-    deno_node::init_ops::<PermissionsContainer>(None), // No --unstable.
-    deno_node::init_polyfill_ops(),
+    deno_io::deno_io::init_ops(Rc::new(RefCell::new(Some(Default::default())))),
+    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false),
+    deno_node::deno_node_loading::init_ops::<PermissionsContainer>(None), // No --unstable.
+    deno_node::deno_node::init_ops(),
     deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(false),
-    deno_net::init_ops::<PermissionsContainer>(
+    deno_net::deno_net::init_ops::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-    deno_http::init_ops(),
+    deno_http::deno_http::init_ops(),
     deno_flash::deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
   ];
 
