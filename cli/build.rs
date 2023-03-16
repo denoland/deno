@@ -92,7 +92,7 @@ mod ts {
         // file.
         let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
           PathBuf::from(op_crate_lib).canonicalize()?
-          // otherwise we are will generate the path ourself
+          // otherwise we will generate the path ourself
         } else {
           path_dts.join(format!("lib.{lib}.d.ts"))
         };
