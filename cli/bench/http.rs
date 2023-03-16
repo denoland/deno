@@ -174,7 +174,7 @@ fn run(
 
   println!("{output}");
   assert!(
-    server.try_wait()?.map_or(true, |s| s.success()),
+    server.try_wait()?.map(|s| s.success()).unwrap_or(true),
     "server ended with error"
   );
 

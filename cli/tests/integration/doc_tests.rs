@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
 use util::assert_contains;
+use util::TestContext;
 
 itest!(deno_doc_builtin {
   args: "doc",
@@ -11,24 +11,18 @@ itest!(deno_doc_builtin {
 
 #[test]
 fn deno_doc() {
-  let dir = TempDir::new();
+  let context = TestContext::default();
   // try this twice to ensure it works with the cache
   for _ in 0..2 {
-    let output = util::deno_cmd_with_deno_dir(&dir)
-      .current_dir(util::testdata_path())
-      .arg("doc")
-      .arg("doc/deno_doc.ts")
+    let output = context
+      .new_command()
       .env("NO_COLOR", "1")
-      .stdout(std::process::Stdio::piped())
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(output.status.success());
-    assert_contains!(
-      std::str::from_utf8(&output.stdout).unwrap(),
-      "function foo"
-    );
+      .args("doc doc/deno_doc.ts")
+      .split_output()
+      .run();
+
+    output.assert_exit_code(0);
+    assert_contains!(output.stdout(), "function foo");
   }
 }
 
@@ -69,4 +63,19 @@ itest!(deno_doc_invalid_url {
   args: "doc https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts",
   output: "doc/invalid_url.out",
   exit_code: 1,
+});
+
+itest!(doc_lock {
+  args: "doc main.ts",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(doc_no_lock {
+  args: "doc --no-lock main.ts",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/doc.nolock.out",
 });

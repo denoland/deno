@@ -20,9 +20,6 @@ delete Object.prototype.__proto__;
   let logDebug = false;
   let logSource = "JS";
 
-  /** @type {string=} */
-  let cwd;
-
   // The map from the normalized specifier to the original.
   // TypeScript normalizes the specifier in its internal processing,
   // but the original specifier is needed when looking up the source from the runtime.
@@ -349,6 +346,7 @@ delete Object.prototype.__proto__;
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
   const ASSETS_URL_PREFIX = "asset:///";
+  const CACHE_URL_PREFIX = "cache:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
@@ -447,8 +445,9 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.fileExists("${specifier}")`);
       }
-      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return ops.op_exists({ specifier });
+      // this is used by typescript to find the libs path
+      // so we can completely ignore it
+      return false;
     },
     readFile(specifier) {
       if (logDebug) {
@@ -527,7 +526,7 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug(`host.getCurrentDirectory()`);
       }
-      return cwd ?? ops.op_cwd();
+      return CACHE_URL_PREFIX;
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -1177,13 +1176,12 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {{ debug: boolean; rootUri?: string; }} init */
-  function serverInit({ debug: debugFlag, rootUri }) {
+  /** @param {{ debug: boolean; }} init */
+  function serverInit({ debug: debugFlag }) {
     if (hasStarted) {
       throw new Error("The language server has already been initialized.");
     }
     hasStarted = true;
-    cwd = rootUri;
     languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
