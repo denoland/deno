@@ -287,7 +287,7 @@ mod startup_snapshot {
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::init_ops_and_esm::<Permissions>(false),
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
       deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they

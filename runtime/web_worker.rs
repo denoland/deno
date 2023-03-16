@@ -429,7 +429,7 @@ impl WebWorker {
       ),
       // Extensions providing Deno.* features
       ops::fs_events::deno_fs_events::init_ops(),
-      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_io::init_ops(options.stdio),
       deno_tls::init_ops(),
       deno_net::init_ops::<PermissionsContainer>(

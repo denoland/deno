@@ -4,12 +4,9 @@
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -118,11 +115,7 @@ use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder("deno_fs")
-}
-
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_fs,
   parameters = [P: FsPermissions],
   ops = [
     op_open_sync<P>,
@@ -184,31 +177,15 @@ deno_core::ops!(deno_ops,
     op_readfile_text_sync<P>,
     op_readfile_async<P>,
     op_readfile_text_async<P>,
-  ]
+  ],
+  esm = [ "30_fs.js" ],
+  config = {
+    unstable: bool
+  },
+  state = |state, unstable| {
+    state.put(UnstableChecker { unstable });
+  },
 );
-
-fn ops<P: FsPermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  unstable: bool,
-) -> &mut ExtensionBuilder {
-  ext
-    .state(move |state| {
-      state.put(UnstableChecker { unstable });
-    })
-    .ops(deno_ops::<P>())
-}
-
-pub fn init_ops_and_esm<P: FsPermissions + 'static>(
-  unstable: bool,
-) -> Extension {
-  ops::<P>(&mut ext(), unstable)
-    .esm(include_js_files!("30_fs.js",))
-    .build()
-}
-
-pub fn init_ops<P: FsPermissions + 'static>(unstable: bool) -> Extension {
-  ops::<P>(&mut ext(), unstable).build()
-}
 
 fn default_err_mapper(err: Error, desc: String) -> Error {
   Error::new(err.kind(), format!("{err}, {desc}"))

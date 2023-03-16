@@ -163,6 +163,7 @@ macro_rules! extension {
     $(deps = [ $( $dep:ident ),* ],)?
     $(parameters = [ $( $param:ident : $type:ident ),+ ], )?
     $(ops_fn = $ops_symbol:ident $( < $ops_param:ident > )?,)?
+    $(ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ],)?
     $(esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ],)?
     $(js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ],)?
     $(config = { $( $config_id:ident : $config_type:ty ),* $(,)? },)?
@@ -191,6 +192,20 @@ macro_rules! extension {
       // If ops were specified, add those ops to the extension.
       #[inline(always)]
       fn with_ops $( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
+        // If individual ops are specified, roll them up into a vector and apply them
+        $(
+          let mut v = vec![];
+          $(
+            $( #[ $m ] )*
+            {
+              let decl = $( $op )::+ :: decl $( :: <$op_param> )? ();
+              v.push(decl);
+            }
+          )+;
+          ext.ops(v);
+        )?
+
+        // Otherwise use the ops_fn, if provided
         $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
       }
 
