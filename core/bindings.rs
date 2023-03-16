@@ -15,7 +15,6 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
@@ -202,7 +201,6 @@ fn add_op_to_deno_core_ops(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   op_ctx: &OpCtx,
-  snapshot_options: SnapshotOptions,
 ) {
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let key =
