@@ -2,9 +2,7 @@
 
 use super::WebGpuResult;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -21,25 +19,21 @@ deno_core::ops!(
   ]
 );
 
-pub fn init_surface(unstable: bool) -> Extension {
-  Extension::builder_with_deps(
-    "deno_webgpu_surface",
-    &["deno_webidl", "deno_web", "deno_webgpu"],
-  )
-  .esm(include_js_files!(
-    "03_surface.js",
-    "04_surface_idl_types.js",
-  ))
-  .ops(deno_ops())
-  .state(move |state| {
+deno_core::extension!(deno_webgpu_surface,
+  deps = [ deno_webidl, deno_web, deno_webgpu ],
+  esm = [ "03_surface.js", "04_surface_idl_types.js" ],
+  ops = deno_ops,
+  config: {
+    unstable: bool,
+  },
+  state = |state, unstable| {
     // TODO: check & possibly streamline this
     // Unstable might be able to be OpMiddleware
     // let unstable_checker = state.borrow::<super::UnstableChecker>();
     // let unstable = unstable_checker.unstable;
     state.put(super::Unstable(unstable));
-  })
-  .build()
-}
+  }
+);
 
 pub struct WebGpuSurface(pub wgpu_core::id::SurfaceId);
 impl Resource for WebGpuSurface {
