@@ -201,7 +201,6 @@ mod startup_snapshot {
     }
   }
 
-<<<<<<< HEAD
   deno_core::extension!(runtime,
     deps = [
       deno_webidl,
@@ -214,7 +213,6 @@ mod startup_snapshot {
       deno_websocket,
       deno_webstorage,
       deno_crypto,
-      deno_webgpu,
       deno_broadcast_channel,
       // FIXME(bartlomieju): this should be reenabled
       // "deno_node",
@@ -227,38 +225,6 @@ mod startup_snapshot {
       deno_fs
     ],
     esm = [
-=======
-  fn create_runtime_snapshot(
-    snapshot_path: PathBuf,
-    maybe_additional_extension: Option<Extension>,
-  ) {
-    let runtime_extension = Extension::builder_with_deps(
-      "runtime",
-      &[
-        "deno_webidl",
-        "deno_console",
-        "deno_url",
-        "deno_tls",
-        "deno_web",
-        "deno_fetch",
-        "deno_cache",
-        "deno_websocket",
-        "deno_webstorage",
-        "deno_crypto",
-        "deno_broadcast_channel",
-        // FIXME(bartlomieju): this should be reenabled
-        // "deno_node",
-        "deno_ffi",
-        "deno_net",
-        "deno_napi",
-        "deno_http",
-        "deno_flash",
-        "deno_io",
-        "deno_fs",
-      ],
-    )
-    .esm(include_js_files!(
->>>>>>> main
       dir "js",
       "01_errors.js",
       "01_version.ts",
