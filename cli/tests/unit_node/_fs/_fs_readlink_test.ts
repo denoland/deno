@@ -45,7 +45,7 @@ Deno.test(
     readlink(pathToAbsoluteFileUrl(symlink), {
       encoding: "utf-8",
     }, (err, symlink) => {
-      assertEquals(err, null)
+      assertEquals(err, null);
       assertEquals(target, symlink);
     });
   },
