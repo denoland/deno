@@ -415,8 +415,7 @@ impl JsRuntime {
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
-    let mut module_map_data = None;
-    let mut module_handles = vec![];
+    let mut maybe_snapshotted_data = None;
 
     let (mut isolate, snapshot_options) = if options.will_snapshot {
       let (snapshot_creator, snapshot_loaded) =
@@ -465,9 +464,8 @@ impl JsRuntime {
 
         // Get module map data from the snapshot
         if has_startup_snapshot {
-          let context_data = snapshot_util::get_context_data(scope, context);
-          module_handles = context_data.0;
-          module_map_data = Some(context_data.1);
+          maybe_snapshotted_data =
+            Some(snapshot_util::get_snapshotted_data(scope, context));
         }
 
         global_context = v8::Global::new(scope, context);
@@ -514,9 +512,8 @@ impl JsRuntime {
 
         // Get module map data from the snapshot
         if has_startup_snapshot {
-          let context_data = snapshot_util::get_context_data(scope, context);
-          module_handles = context_data.0;
-          module_map_data = Some(context_data.1);
+          maybe_snapshotted_data =
+            Some(snapshot_util::get_snapshotted_data(scope, context));
         }
 
         global_context = v8::Global::new(scope, context);
@@ -593,15 +590,11 @@ impl JsRuntime {
       op_state,
       snapshot_options == SnapshotOptions::Load,
     )));
-    if let Some(module_map_data) = module_map_data {
+    if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
       let mut module_map = module_map_rc.borrow_mut();
-      module_map.update_with_snapshot_data(
-        scope,
-        module_map_data,
-        module_handles,
-      );
+      module_map.update_with_snapshotted_data(scope, snapshotted_data);
     }
     isolate.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
@@ -1010,23 +1003,19 @@ impl JsRuntime {
 
     // Serialize the module map and store its data in the snapshot.
     {
-      let module_map_rc = self.module_map.take().unwrap();
-      let module_map = module_map_rc.borrow();
-      let (module_map_data, module_handles) =
-        module_map.serialize_for_snapshotting(&mut self.handle_scope());
+      let snapshotted_data = {
+        let module_map_rc = self.module_map.take().unwrap();
+        let module_map = module_map_rc.borrow();
+        module_map.serialize_for_snapshotting(&mut self.handle_scope())
+      };
 
       let context = self.global_context();
       let mut scope = self.handle_scope();
-      let local_context = v8::Local::new(&mut scope, context);
-      let local_data = v8::Local::new(&mut scope, module_map_data);
-      let offset = scope.add_context_data(local_context, local_data);
-      assert_eq!(offset, 0);
-
-      for (index, handle) in module_handles.into_iter().enumerate() {
-        let module_handle = v8::Local::new(&mut scope, handle);
-        let offset = scope.add_context_data(local_context, module_handle);
-        assert_eq!(offset, index + 1);
-      }
+      snapshot_util::set_snapshotted_data(
+        &mut scope,
+        context,
+        snapshotted_data,
+      );
     }
 
     // Drop existing ModuleMap to drop v8::Global handles
