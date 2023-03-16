@@ -35,6 +35,91 @@ mod ts {
     specifier: String,
   }
 
+  #[op]
+  fn op_build_info(state: &mut OpState) -> Value {
+    let build_specifier = "asset:///bootstrap.ts";
+
+    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|s| s.name)
+      .collect::<Vec<&str>>();
+    let build_libs = state.borrow::<Vec<&str>>();
+    json!({
+      "buildSpecifier": build_specifier,
+      "libs": build_libs,
+      "nodeBuiltInModuleNames": node_built_in_module_names,
+    })
+  }
+
+  #[op]
+  fn op_is_node_file() -> bool {
+    false
+  }
+
+  #[op]
+  fn op_script_version(
+    _state: &mut OpState,
+    _args: Value,
+  ) -> Result<Option<String>, AnyError> {
+    Ok(Some("1".to_string()))
+  }
+
+  #[op]
+  // using the same op that is used in `tsc.rs` for loading modules and reading
+  // files, but a slightly different implementation at build time.
+  fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
+    let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
+    let path_dts = state.borrow::<PathBuf>();
+    let re_asset =
+      Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
+    let build_specifier = "asset:///bootstrap.ts";
+
+    // we need a basic file to send to tsc to warm it up.
+    if args.specifier == build_specifier {
+      Ok(json!({
+        "data": r#"Deno.writeTextFile("hello.txt", "hello deno!");"#,
+        "version": "1",
+        // this corresponds to `ts.ScriptKind.TypeScript`
+        "scriptKind": 3
+      }))
+      // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
+      // parse out just the name so we can lookup the asset.
+    } else if let Some(caps) = re_asset.captures(&args.specifier) {
+      if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
+        // if it comes from an op crate, we were supplied with the path to the
+        // file.
+        let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
+          PathBuf::from(op_crate_lib).canonicalize()?
+          // otherwise we are will generate the path ourself
+        } else {
+          path_dts.join(format!("lib.{lib}.d.ts"))
+        };
+        let data = std::fs::read_to_string(path)?;
+        Ok(json!({
+          "data": data,
+          "version": "1",
+          // this corresponds to `ts.ScriptKind.TypeScript`
+          "scriptKind": 3
+        }))
+      } else {
+        Err(custom_error(
+          "InvalidSpecifier",
+          format!("An invalid specifier was requested: {}", args.specifier),
+        ))
+      }
+    } else {
+      Err(custom_error(
+        "InvalidSpecifier",
+        format!("An invalid specifier was requested: {}", args.specifier),
+      ))
+    }
+  }
+
+  deno_core::ops!(
+    deno_ops,
+    [op_build_info, op_is_node_file, op_load, op_script_version,]
+  );
+
   pub fn create_compiler_snapshot(snapshot_path: PathBuf, cwd: &Path) {
     // libs that are being provided by op crates.
     let mut op_crate_libs = HashMap::new();
@@ -160,91 +245,6 @@ mod ts {
       serde_json::to_string(&build_libs).unwrap(),
     )
     .unwrap();
-
-    #[op]
-    fn op_build_info(state: &mut OpState) -> Value {
-      let build_specifier = "asset:///bootstrap.ts";
-
-      let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
-        .iter()
-        .map(|s| s.name)
-        .collect::<Vec<&str>>();
-      let build_libs = state.borrow::<Vec<&str>>();
-      json!({
-        "buildSpecifier": build_specifier,
-        "libs": build_libs,
-        "nodeBuiltInModuleNames": node_built_in_module_names,
-      })
-    }
-
-    #[op]
-    fn op_is_node_file() -> bool {
-      false
-    }
-
-    #[op]
-    fn op_script_version(
-      _state: &mut OpState,
-      _args: Value,
-    ) -> Result<Option<String>, AnyError> {
-      Ok(Some("1".to_string()))
-    }
-
-    #[op]
-    // using the same op that is used in `tsc.rs` for loading modules and reading
-    // files, but a slightly different implementation at build time.
-    fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
-      let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
-      let path_dts = state.borrow::<PathBuf>();
-      let re_asset =
-        Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
-      let build_specifier = "asset:///bootstrap.ts";
-
-      // we need a basic file to send to tsc to warm it up.
-      if args.specifier == build_specifier {
-        Ok(json!({
-          "data": r#"Deno.writeTextFile("hello.txt", "hello deno!");"#,
-          "version": "1",
-          // this corresponds to `ts.ScriptKind.TypeScript`
-          "scriptKind": 3
-        }))
-        // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
-        // parse out just the name so we can lookup the asset.
-      } else if let Some(caps) = re_asset.captures(&args.specifier) {
-        if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
-          // if it comes from an op crate, we were supplied with the path to the
-          // file.
-          let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-            PathBuf::from(op_crate_lib).canonicalize()?
-            // otherwise we are will generate the path ourself
-          } else {
-            path_dts.join(format!("lib.{lib}.d.ts"))
-          };
-          let data = std::fs::read_to_string(path)?;
-          Ok(json!({
-            "data": data,
-            "version": "1",
-            // this corresponds to `ts.ScriptKind.TypeScript`
-            "scriptKind": 3
-          }))
-        } else {
-          Err(custom_error(
-            "InvalidSpecifier",
-            format!("An invalid specifier was requested: {}", args.specifier),
-          ))
-        }
-      } else {
-        Err(custom_error(
-          "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", args.specifier),
-        ))
-      }
-    }
-
-    deno_core::ops!(
-      deno_ops,
-      [op_build_info, op_is_node_file, op_load, op_script_version,]
-    );
 
     let tsc_extension = Extension::builder("deno_tsc")
       .ops(deno_ops())
