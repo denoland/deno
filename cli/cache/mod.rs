@@ -129,25 +129,23 @@ impl Loader for FetchCacher {
       file_fetcher
         .fetch(&specifier, permissions)
         .await
-        .map_or_else(
-          |err| {
-            if let Some(err) = err.downcast_ref::<std::io::Error>() {
-              if err.kind() == std::io::ErrorKind::NotFound {
-                return Ok(None);
-              }
-            } else if get_error_class_name(&err) == "NotFound" {
+        .map(|file| {
+          Ok(Some(LoadResponse::Module {
+            specifier: file.specifier,
+            maybe_headers: file.maybe_headers,
+            content: file.source,
+          }))
+        })
+        .unwrap_or_else(|err| {
+          if let Some(err) = err.downcast_ref::<std::io::Error>() {
+            if err.kind() == std::io::ErrorKind::NotFound {
               return Ok(None);
             }
-            Err(err)
-          },
-          |file| {
-            Ok(Some(LoadResponse::Module {
-              specifier: file.specifier,
-              maybe_headers: file.maybe_headers,
-              content: file.source,
-            }))
-          },
-        )
+          } else if get_error_class_name(&err) == "NotFound" {
+            return Ok(None);
+          }
+          Err(err)
+        })
     }
     .boxed()
   }
