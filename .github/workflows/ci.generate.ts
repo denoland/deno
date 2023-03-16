@@ -270,7 +270,6 @@ const ci = {
             {
               os: Runners.linux,
               job: "lint",
-              use_sysroot: true,
               profile: "debug",
             },
           ],
@@ -436,8 +435,12 @@ const ci = {
             // Restore cache from the latest 'main' branch build.
             name: "Restore cache build output (PR)",
             uses: "actions/cache/restore@v3",
-            if:
-              "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+            if: [
+              "github.ref != 'refs/heads/main' &&",
+              "!startsWith(github.ref, 'refs/tags/') && ",
+              // cargo clippy seems to do a rebuild, so skip fetching the cache
+              "matrix.job != 'lint'",
+            ].join("\n"),
             with: {
               path: [
                 "./target",
@@ -494,7 +497,6 @@ const ci = {
             if: "matrix.job == 'lint'",
             run:
               "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
-            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
             name: "Build debug",
