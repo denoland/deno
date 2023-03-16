@@ -118,7 +118,7 @@ mod ts {
   }
 
   deno_core::extension!(deno_tsc,
-    ops = [op_build_info, op_is_node_file, op_load, op_script_version,],
+    ops = [op_build_info, op_is_node_file, op_load, op_script_version],
     js = [
       dir "tsc",
       "00_typescript.js",
