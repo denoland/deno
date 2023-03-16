@@ -562,7 +562,10 @@ fn collect_coverages(
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = FileCollector::new(|file_path| {
-    file_path.extension().map_or(false, |ext| ext == "json")
+    file_path
+      .extension()
+      .map(|ext| ext == "json")
+      .unwrap_or(false)
   })
   .ignore_git_folder()
   .ignore_node_modules()
@@ -655,8 +658,10 @@ pub async fn cover_files(
   };
 
   for script_coverage in script_coverages {
-    let module_specifier =
-      deno_core::resolve_url_or_path(&script_coverage.url)?;
+    let module_specifier = deno_core::resolve_url_or_path(
+      &script_coverage.url,
+      ps.options.initial_cwd(),
+    )?;
 
     let maybe_file = if module_specifier.scheme() == "file" {
       ps.file_fetcher.get_source(&module_specifier)

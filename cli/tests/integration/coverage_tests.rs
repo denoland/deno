@@ -3,6 +3,8 @@
 use std::fs;
 use test_util as util;
 use test_util::TempDir;
+use util::TestContext;
+use util::TestContextBuilder;
 
 #[test]
 fn branch() {
@@ -26,7 +28,8 @@ fn no_snaps() {
 
 #[test]
 fn error_if_invalid_cache() {
-  let deno_dir = TempDir::new();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = context.deno_dir();
   let deno_dir_path = deno_dir.path();
   let tempdir = TempDir::new();
   let tempdir = tempdir.path().join("cov");
@@ -51,76 +54,70 @@ fn error_if_invalid_cache() {
   std::fs::copy(mod_test_path, mod_test_temp_path).unwrap();
 
   // Generate coverage
-  let status = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(deno_dir_path)
-    .arg("test")
-    .arg("--quiet")
-    .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
-    .status()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+    ])
+    .run();
 
-  assert!(status.success());
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
   // Modify the file between deno test and deno coverage, thus invalidating the cache
   std::fs::copy(mod_after_path, mod_temp_path).unwrap();
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(deno_dir_path)
-    .arg("coverage")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .run();
 
-  assert!(output.stdout.is_empty());
+  output.assert_exit_code(1);
+  let out = output.combined_output();
 
   // Expect error
-  let error =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stderr).unwrap())
-      .to_string();
+  let error = util::strip_ansi_codes(out).to_string();
   assert!(error.contains("error: Missing transpiled source code"));
   assert!(error.contains("Before generating coverage report, run `deno test --coverage` to ensure consistent state."));
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
-  let deno_dir = TempDir::new();
-  let tempdir = TempDir::new();
+  let context = TestContext::default();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("-A")
-    .arg("--quiet")
-    .arg("--unstable")
-    .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg(format!("coverage/{test_name}_test.{extension}"))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
-    .status()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "-A".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/{test_name}_test.{extension}"),
+    ])
+    .run();
 
-  assert!(status.success());
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--unstable")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .split_output()
+    .run();
 
   // Verify there's no "Check" being printed
-  assert!(output.stderr.is_empty());
+  assert!(output.stderr().is_empty());
 
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
@@ -133,23 +130,19 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     panic!("pattern match failed");
   }
 
-  assert!(output.status.success());
+  output.assert_exit_code(0);
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--quiet")
-    .arg("--unstable")
-    .arg("--lcov")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--quiet".to_string(),
+      "--lcov".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .run();
 
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join(format!("coverage/{test_name}_expected.lcov")),
@@ -162,45 +155,41 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     panic!("pattern match failed");
   }
 
-  assert!(output.status.success());
+  output.assert_exit_code(0);
 }
 
 #[test]
 fn multifile_coverage() {
-  let deno_dir = TempDir::new();
-  let tempdir = TempDir::new();
+  let context = TestContext::default();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--quiet")
-    .arg("--unstable")
-    .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg("coverage/multifile/")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
-    .status()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/multifile/"),
+    ])
+    .run();
 
-  assert!(status.success());
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--unstable")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .split_output()
+    .run();
 
   // Verify there's no "Check" being printed
-  assert!(output.stderr.is_empty());
+  assert!(output.stderr().is_empty());
 
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/multifile/expected.out"),
@@ -212,24 +201,19 @@ fn multifile_coverage() {
     println!("EXPECTED\n{expected}\nEXPECTED");
     panic!("pattern match failed");
   }
+  output.assert_exit_code(0);
 
-  assert!(output.status.success());
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--quiet".to_string(),
+      "--lcov".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .run();
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--quiet")
-    .arg("--unstable")
-    .arg("--lcov")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
-    .output()
-    .unwrap();
-
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/multifile/expected.lcov"),
@@ -242,48 +226,42 @@ fn multifile_coverage() {
     panic!("pattern match failed");
   }
 
-  assert!(output.status.success());
+  output.assert_exit_code(0);
 }
 
 fn no_snaps_included(test_name: &str, extension: &str) {
-  let deno_dir = TempDir::new();
-  let tempdir = TempDir::new();
+  let context = TestContext::default();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--quiet")
-    .arg("--unstable")
-    .arg("--allow-read")
-    .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg(format!(
-      "coverage/no_snaps_included/{test_name}_test.{extension}"
-    ))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .status()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/no_snaps_included/{test_name}_test.{extension}"),
+    ])
+    .run();
 
-  assert!(status.success());
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--unstable")
-    .arg("--include=no_snaps_included.ts")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--include=no_snaps_included.ts".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .split_output()
+    .run();
 
   // Verify there's no "Check" being printed
-  assert!(output.stderr.is_empty());
+  assert!(output.stderr().is_empty());
 
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/no_snaps_included/expected.out"),
@@ -296,41 +274,38 @@ fn no_snaps_included(test_name: &str, extension: &str) {
     panic!("pattern match failed");
   }
 
-  assert!(output.status.success());
+  output.assert_exit_code(0);
 }
 
 #[test]
 fn no_transpiled_lines() {
-  let deno_dir = TempDir::new();
-  let tempdir = TempDir::new();
+  let context = TestContext::default();
+  let tempdir = context.deno_dir();
   let tempdir = tempdir.path().join("cov");
 
-  let status = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--quiet")
-    .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg("coverage/no_transpiled_lines/")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
-    .status()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      "coverage/no_transpiled_lines/".to_string(),
+    ])
+    .run();
 
-  assert!(status.success());
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--include=no_transpiled_lines/index.ts")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--include=no_transpiled_lines/index.ts".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .run();
 
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
@@ -343,22 +318,19 @@ fn no_transpiled_lines() {
     panic!("pattern match failed");
   }
 
-  assert!(output.status.success());
+  output.assert_exit_code(0);
 
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("coverage")
-    .arg("--lcov")
-    .arg("--include=no_transpiled_lines/index.ts")
-    .arg(format!("{}/", tempdir.to_str().unwrap()))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--lcov".to_string(),
+      "--include=no_transpiled_lines/index.ts".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .run();
 
-  let actual =
-    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
-      .to_string();
+  let actual = util::strip_ansi_codes(output.combined_output()).to_string();
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),
@@ -371,5 +343,5 @@ fn no_transpiled_lines() {
     panic!("pattern match failed");
   }
 
-  assert!(output.status.success());
+  output.assert_exit_code(0);
 }

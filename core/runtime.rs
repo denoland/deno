@@ -92,9 +92,6 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
-  // Marks if it's OK to leak the current isolate. Use only by the
-  // CLI main worker.
-  leak_isolate: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -299,10 +296,6 @@ pub struct RuntimeOptions {
   /// Describe if this is the main runtime instance, used by debuggers in some
   /// situation - like disconnecting when program finishes running.
   pub is_main: bool,
-
-  /// Whether it is OK to leak the V8 isolate. Only to be used by CLI
-  /// top-level runtime.
-  pub leak_isolate: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -335,16 +328,6 @@ impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
-    }
-    if self.leak_isolate {
-      if let Some(v8_isolate) = self.v8_isolate.take() {
-        // Clear the GothamState. This allows final env cleanup hooks to run.
-        // Note: that OpState is cloned for every OpCtx, so we can't just drop
-        // one reference to it.
-        let rc_state = self.op_state();
-        rc_state.borrow_mut().clear_state();
-        std::mem::forget(v8_isolate);
-      }
     }
   }
 }
@@ -621,12 +604,14 @@ impl JsRuntime {
         .collect::<Vec<ExtensionFileSource>>();
 
       #[cfg(feature = "include_js_files_for_snapshotting")]
-      for source in &esm_sources {
-        use crate::ExtensionFileSourceCode;
-        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-          &source.code
-        {
-          println!("cargo:rerun-if-changed={}", path.display())
+      if snapshot_options != SnapshotOptions::None {
+        for source in &esm_sources {
+          use crate::ExtensionFileSourceCode;
+          if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+            &source.code
+          {
+            println!("cargo:rerun-if-changed={}", path.display())
+          }
         }
       }
 
@@ -683,7 +668,6 @@ impl JsRuntime {
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
-      leak_isolate: options.leak_isolate,
     };
 
     // Init resources and ops before extensions to make sure they are

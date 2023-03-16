@@ -79,4 +79,4 @@ jobs:
           WPT_FYI_USER: deno
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
         run: |
-          deno run -A --lock=tools/deno.lock.json ./tools/upload_wptfyi.js wptreport.json --from-raw-file
+          deno run -A --lock=tools/deno.lock.json ./tools/upload_wptfyi.js wptreport.json --from-raw-file --daily-run

@@ -69,18 +69,6 @@ pub fn specifier_to_file_path(
   }
 }
 
-/// Ensures a specifier that will definitely be a directory has a trailing slash.
-pub fn ensure_directory_specifier(
-  mut specifier: ModuleSpecifier,
-) -> ModuleSpecifier {
-  let path = specifier.path();
-  if !path.ends_with('/') {
-    let new_path = format!("{path}/");
-    specifier.set_path(&new_path);
-  }
-  specifier
-}
-
 /// Gets the parent of this module specifier.
 pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
   let mut specifier = specifier.clone();
@@ -261,21 +249,6 @@ mod test {
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
           .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
-    }
-  }
-
-  #[test]
-  fn test_ensure_directory_specifier() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///test/");
-    run_test("file:///test/", "file:///test/");
-    run_test("file:///test/other", "file:///test/other/");
-    run_test("file:///test/other/", "file:///test/other/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        ensure_directory_specifier(ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
     }
   }
 

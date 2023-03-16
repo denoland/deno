@@ -2272,10 +2272,11 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function serveWithPromisePrototypeThenOverride() {
+  async function serveWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
+    const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
-      Promise.prototype.then = () => {
+      Promise.prototype.then = Array.prototype[Symbol.iterator] = () => {
         throw new Error();
       };
       const ac = new AbortController();
@@ -2292,6 +2293,7 @@ Deno.test(
       await server;
     } finally {
       Promise.prototype.then = originalThen;
+      Array.prototype[Symbol.iterator] = originalSymbolIterator;
     }
   },
 );

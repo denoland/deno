@@ -127,6 +127,11 @@ mod map_to_vec {
 }
 
 impl NpmResolutionSnapshot {
+  /// Gets if this snapshot is empty.
+  pub fn is_empty(&self) -> bool {
+    self.packages.is_empty() && self.pending_unresolved_packages.is_empty()
+  }
+
   /// Resolve a package from a package requirement.
   pub fn resolve_pkg_from_pkg_req(
     &self,

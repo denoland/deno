@@ -2,6 +2,7 @@
 
 use deno_core::url::Url;
 use test_util as util;
+use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::TestContext;
 
@@ -355,24 +356,17 @@ itest!(test_with_custom_jsx {
 
 #[test]
 fn captured_output() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--allow-run")
-    .arg("--allow-read")
-    .arg("--unstable")
-    .arg("test/captured_output.ts")
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test --allow-run --allow-read --unstable test/captured_output.ts")
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
+    .run();
 
   let output_start = "------- output -------";
   let output_end = "----- output end -----";
-  assert!(output.status.success());
-  let output_text = String::from_utf8(output.stdout).unwrap();
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
   // replace zero width space that may appear in test output due
@@ -392,20 +386,16 @@ fn captured_output() {
 
 #[test]
 fn recursive_permissions_pledge() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("test/recursive_permissions_pledge.js")
-    .stderr(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(String::from_utf8(output.stderr).unwrap().contains(
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test test/recursive_permissions_pledge.js")
+    .run();
+  output.assert_exit_code(1);
+  assert_contains!(
+    output.combined_output(),
     "pledge test permissions called before restoring previous pledge"
-  ));
+  );
 }
 
 #[test]
@@ -418,7 +408,7 @@ fn file_protocol() {
   let context = TestContext::default();
   context
     .new_command()
-    .args(format!("test {file_url}"))
+    .args_vec(vec!["test".to_string(), file_url])
     .run()
     .assert_matches_file("test/file_protocol.out");
 }
@@ -462,4 +452,19 @@ itest!(package_json_basic {
   cwd: Some("package_json/basic"),
   copy_temp_dir: Some("package_json/basic"),
   exit_code: 0,
+});
+
+itest!(test_lock {
+  args: "test",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(test_no_lock {
+  args: "test --no-lock",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/test.nolock.out",
 });
