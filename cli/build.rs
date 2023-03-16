@@ -2,7 +2,6 @@
 
 use std::cell::RefCell;
 use std::env;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -17,7 +16,6 @@ use deno_runtime::*;
 
 mod ts {
   use super::*;
-  use crate::deno_webgpu_get_declaration;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
   use deno_core::op;
@@ -144,7 +142,6 @@ mod ts {
     op_crate_libs.insert("deno.url", deno_url::get_declaration());
     op_crate_libs.insert("deno.web", deno_web::get_declaration());
     op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
-    op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
     op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
@@ -353,7 +350,6 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     ),
     deno_webstorage::deno_webstorage::init_ops(None),
     deno_crypto::deno_crypto::init_ops(None),
-    deno_webgpu::deno_webgpu::init_ops(false),
     deno_broadcast_channel::deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
@@ -499,12 +495,4 @@ fn main() {
     ));
     res.compile().unwrap();
   }
-}
-
-fn deno_webgpu_get_declaration() -> PathBuf {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir
-    .join("tsc")
-    .join("dts")
-    .join("lib.deno_webgpu.d.ts")
 }
