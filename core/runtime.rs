@@ -490,17 +490,13 @@ impl JsRuntime {
       isolate_ptr.read()
     };
 
-    let op_ctxs_rc = Rc::new(RefCell::new(ContextState {
-      op_ctxs,
-      ..Default::default()
-    }));
-
-    global_context
-      .open(&mut isolate)
-      .set_slot(&mut isolate, op_ctxs_rc.clone());
-
-    // TODO(bartlomieju): try to remove this
-    Rc::into_raw(op_ctxs_rc);
+    global_context.open(&mut isolate).set_slot(
+      &mut isolate,
+      Rc::new(RefCell::new(ContextState {
+        op_ctxs,
+        ..Default::default()
+      })),
+    );
 
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
