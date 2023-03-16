@@ -23,6 +23,7 @@ members = [
   "ext/fs",
   "ext/http",
   "ext/io",
+  "ext/kv",
   "ext/net",
   "ext/node",
   "ext/url",
@@ -67,6 +68,7 @@ deno_http = { version = "0.88.0", path = "./ext/http" }
 deno_io = { version = "0.3.0", path = "./ext/io" }
 deno_net = { version = "0.85.0", path = "./ext/net" }
 deno_node = { version = "0.30.0", path = "./ext/node" }
+deno_kv = { version = "0.1.0", path = "./ext/kv" }
 deno_tls = { version = "0.80.0", path = "./ext/tls" }
 deno_url = { version = "0.93.0", path = "./ext/url" }
 deno_web = { version = "0.124.0", path = "./ext/web" }

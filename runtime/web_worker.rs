@@ -33,6 +33,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_io::Stdio;
+use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
@@ -422,6 +423,9 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::init_ops(),
+      deno_kv::init_ops(SqliteDbHandler {
+        default_storage_dir: None,
+      }),
       deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::init_ops(),
       deno_io::init_ops(options.stdio),

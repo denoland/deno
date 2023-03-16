@@ -20,6 +20,7 @@ mod startup_snapshot {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
+  use deno_kv::sqlite::SqliteDbHandler;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
@@ -278,6 +279,9 @@ mod startup_snapshot {
         None,
       ),
       deno_tls::init_ops(),
+      deno_kv::init_ops_and_esm(SqliteDbHandler {
+        default_storage_dir: None,
+      }),
       deno_napi::init_ops::<Permissions>(),
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),
