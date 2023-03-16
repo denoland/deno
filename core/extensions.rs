@@ -167,6 +167,7 @@ macro_rules! extension {
     $(esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ],)?
     $(js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ],)?
     $(config = { $( $config_id:ident : $config_type:ty ),* $(,)? },)?
+    $(middleware = $middleware_fn:expr, )?
     $(state = $state_fn:expr, )?
     $(event_loop_middleware = $event_loop_middleware_fn:ident, )?
   ) => {
@@ -227,6 +228,10 @@ macro_rules! extension {
 
         $(
           ext.event_loop_middleware($event_loop_middleware_fn);
+        )?
+
+        $(
+          ext.middleware($middleware_fn);
         )?
       }
 

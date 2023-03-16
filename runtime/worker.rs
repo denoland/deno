@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
@@ -250,7 +251,7 @@ impl MainWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops(),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_io::init_ops(options.stdio),
+      deno_io::deno_io::init_ops(Rc::new(RefCell::new(Some(options.stdio)))),
       deno_tls::init_ops(),
       deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
@@ -265,7 +266,7 @@ impl MainWorker {
       ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init_ops(),
+      deno_http::deno_http::init_ops(),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
     ];
