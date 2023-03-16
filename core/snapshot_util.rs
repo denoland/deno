@@ -121,6 +121,33 @@ fn data_error_to_panic(err: v8::DataError) -> ! {
   }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(crate) enum SnapshotOptions {
+  Load,
+  CreateFromExisting,
+  Create,
+  None,
+}
+
+impl SnapshotOptions {
+  pub fn loaded(&self) -> bool {
+    matches!(self, Self::Load | Self::CreateFromExisting)
+  }
+
+  pub fn will_snapshot(&self) -> bool {
+    matches!(self, Self::Create | Self::CreateFromExisting)
+  }
+
+  pub fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
+    match (snapshot_loaded, will_snapshot) {
+      (true, true) => Self::CreateFromExisting,
+      (false, true) => Self::Create,
+      (true, false) => Self::Load,
+      (false, false) => Self::None,
+    }
+  }
+}
+
 pub(crate) struct SnapshottedData {
   pub module_map_data: v8::Global<v8::Array>,
   pub module_handles: Vec<v8::Global<v8::Module>>,

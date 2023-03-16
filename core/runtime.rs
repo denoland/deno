@@ -87,7 +87,7 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  snapshot_options: SnapshotOptions,
+  snapshot_options: snapshot_util::SnapshotOptions,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
@@ -299,32 +299,6 @@ pub struct RuntimeOptions {
   pub is_main: bool,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum SnapshotOptions {
-  Load,
-  CreateFromExisting,
-  Create,
-  None,
-}
-
-impl SnapshotOptions {
-  pub fn loaded(&self) -> bool {
-    matches!(
-      self,
-      SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
-    )
-  }
-
-  fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
-    match (snapshot_loaded, will_snapshot) {
-      (true, true) => SnapshotOptions::CreateFromExisting,
-      (false, true) => SnapshotOptions::Create,
-      (true, false) => SnapshotOptions::Load,
-      (false, false) => SnapshotOptions::None,
-    }
-  }
-}
-
 impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
@@ -411,17 +385,17 @@ impl JsRuntime {
       .collect::<Vec<_>>()
       .into_boxed_slice();
 
-    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
+    let snapshot_options = snapshot_util::SnapshotOptions::from_bools(
+      options.startup_snapshot.is_some(),
+      options.will_snapshot,
+    );
+    let refs = bindings::external_references(&op_ctxs, snapshot_options);
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let mut maybe_snapshotted_data = None;
 
-    let (mut isolate, snapshot_options) = if options.will_snapshot {
-      let snapshot_options = SnapshotOptions::from_bools(
-        options.startup_snapshot.is_some(),
-        options.will_snapshot,
-      );
+    let (mut isolate, snapshot_options) = if snapshot_options.will_snapshot() {
       let snapshot_creator =
         snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
 
@@ -442,11 +416,6 @@ impl JsRuntime {
       }
       (isolate, snapshot_options)
     } else {
-      let snapshot_options = SnapshotOptions::from_bools(
-        options.startup_snapshot.is_some(),
-        options.will_snapshot,
-      );
-
       let mut params = options
         .create_params
         .take()
@@ -510,7 +479,7 @@ impl JsRuntime {
       None
     };
 
-    let loader = if snapshot_options != SnapshotOptions::Load {
+    let loader = if snapshot_options != snapshot_util::SnapshotOptions::Load {
       let esm_sources = options
         .extensions
         .iter()
@@ -557,7 +526,7 @@ impl JsRuntime {
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
       loader,
       op_state,
-      snapshot_options == SnapshotOptions::Load,
+      snapshot_options == snapshot_util::SnapshotOptions::Load,
     )));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =

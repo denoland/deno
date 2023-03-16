@@ -16,13 +16,13 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::runtime::SnapshotOptions;
+use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
-pub fn external_references(
+pub(crate) fn external_references(
   ops: &[OpCtx],
-  snapshot_loaded: bool,
+  snapshot_options: SnapshotOptions,
 ) -> v8::ExternalReferences {
   let mut references = vec![
     v8::ExternalReference {
@@ -45,7 +45,7 @@ pub fn external_references(
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
-    if snapshot_loaded {
+    if !snapshot_options.will_snapshot() {
       if let Some(fast_fn) = &ctx.decl.fast_fn {
         references.push(v8::ExternalReference {
           pointer: fast_fn.function() as _,
@@ -99,7 +99,7 @@ pub fn module_origin<'a>(
   )
 }
 
-pub fn initialize_context<'s>(
+pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
   snapshot_options: SnapshotOptions,
@@ -200,7 +200,7 @@ fn initialize_ops(
   }
 }
 
-pub fn set_func(
+fn set_func(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   name: &'static str,
@@ -215,7 +215,7 @@ pub fn set_func(
 
 // Register a raw v8::FunctionCallback
 // with some external data.
-pub fn set_func_raw(
+fn set_func_raw(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   name: &'static str,
