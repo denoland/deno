@@ -4104,6 +4104,7 @@ dependencies = [
  "bencher",
  "bytes",
  "derive_more",
+ "num-bigint",
  "serde",
  "serde_bytes",
  "serde_json",
