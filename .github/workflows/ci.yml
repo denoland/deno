@@ -547,7 +547,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v3
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''test'' && github.ref == ''refs/heads/main''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''test'' || matrix.job == ''lint''))'
         with:
           path: |-
             ./target

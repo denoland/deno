@@ -844,7 +844,8 @@ const ci = {
             // In main branch, always create a fresh cache
             name: "Save cache build output (main)",
             uses: "actions/cache/save@v3",
-            if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
+            //if: "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
+            if: "matrix.job == 'test' || matrix.job == 'lint'", // todo: revert
             with: {
               path: [
                 "./target",
