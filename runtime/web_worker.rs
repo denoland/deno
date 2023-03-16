@@ -388,7 +388,7 @@ impl WebWorker {
       deno_webidl::deno_webidl::init_ops(),
       deno_console::deno_console::init_ops(),
       deno_url::deno_url::init_ops(),
-      deno_web::init_ops::<PermissionsContainer>(
+      deno_web::deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
@@ -431,7 +431,7 @@ impl WebWorker {
       ops::fs_events::deno_fs_events::init_ops(),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_io::deno_io::init_ops(Rc::new(RefCell::new(Some(options.stdio)))),
-      deno_tls::init_ops(),
+      deno_tls::deno_tls::init_ops(),
       deno_net::deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,

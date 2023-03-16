@@ -159,18 +159,19 @@ macro_rules! ops_bundle {
 #[macro_export]
 macro_rules! extension {
   (
-    $name:ident,
-    $(deps = [ $( $dep:ident ),* ],)?
-    $(parameters = [ $( $param:ident : $type:ident ),+ ], )?
-    $(ops_fn = $ops_symbol:ident $( < $ops_param:ident > )?,)?
-    $(ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ],)?
-    $(esm_entry_point = $esm_entry_point:literal ,)?
-    $(esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ],)?
-    $(js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ],)?
-    $(config = { $( $config_id:ident : $config_type:ty ),* $(,)? },)?
-    $(middleware = $middleware_fn:expr, )?
-    $(state = $state_fn:expr, )?
-    $(event_loop_middleware = $event_loop_middleware_fn:ident, )?
+    $name:ident
+    $(, deps = [ $( $dep:ident ),* ] )?
+    $(, parameters = [ $( $param:ident : $type:ident ),+ ] )?
+    $(, ops_fn = $ops_symbol:ident $( < $ops_param:ident > )? )?
+    $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ] )?
+    $(, esm_entry_point = $esm_entry_point:literal )?
+    $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
+    $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
+    $(, config = { $( $config_id:ident : $config_type:ty ),* $(,)? } )?
+    $(, middleware = $middleware_fn:expr )?
+    $(, state = $state_fn:expr )?
+    $(, event_loop_middleware = $event_loop_middleware_fn:ident )?
+    $(,)?
   ) => {
     /// Extension struct.
     pub mod $name {

@@ -8,10 +8,6 @@ use std::path::PathBuf;
   not(feature = "dont_create_runtime_snapshot")
 ))]
 mod startup_snapshot {
-  use std::cell::RefCell;
-use std::path::Path;
-use std::rc::Rc;
-
   use super::*;
   use deno_ast::MediaType;
   use deno_ast::ParseParams;
@@ -19,10 +15,12 @@ use std::rc::Rc;
   use deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_cache::SqliteBackedCache;
   use deno_core::error::AnyError;
-  use deno_core::include_js_files;
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
+  use std::cell::RefCell;
+  use std::path::Path;
+  use std::rc::Rc;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
@@ -204,37 +202,31 @@ use std::rc::Rc;
     }
   }
 
-  fn create_runtime_snapshot(
-    snapshot_path: PathBuf,
-    maybe_additional_extension: Option<Extension>,
-  ) {
-    let runtime_extension = Extension::builder_with_deps(
-      "runtime",
-      &[
-        "deno_webidl",
-        "deno_console",
-        "deno_url",
-        "deno_tls",
-        "deno_web",
-        "deno_fetch",
-        "deno_cache",
-        "deno_websocket",
-        "deno_webstorage",
-        "deno_crypto",
-        "deno_webgpu",
-        "deno_broadcast_channel",
-        // FIXME(bartlomieju): this should be reenabled
-        // "deno_node",
-        "deno_ffi",
-        "deno_net",
-        "deno_napi",
-        "deno_http",
-        "deno_flash",
-        "deno_io",
-        "deno_fs",
-      ],
-    )
-    .esm(include_js_files!(
+  deno_core::extension!(runtime,
+    deps = [
+      deno_webidl,
+      deno_console,
+      deno_url,
+      deno_tls,
+      deno_web,
+      deno_fetch,
+      deno_cache,
+      deno_websocket,
+      deno_webstorage,
+      deno_crypto,
+      deno_webgpu,
+      deno_broadcast_channel,
+      // FIXME(bartlomieju): this should be reenabled
+      // "deno_node",
+      deno_ffi,
+      deno_net,
+      deno_napi,
+      deno_http,
+      deno_flash,
+      deno_io,
+      deno_fs
+    ],
+    esm = [
       dir "js",
       "01_errors.js",
       "01_version.ts",
@@ -250,16 +242,20 @@ use std::rc::Rc;
       "40_tty.js",
       "41_prompt.js",
       "90_deno_ns.js",
-      "98_global_scope.js",
-    ))
-    .build();
+      "98_global_scope.js"
+    ],
+  );
 
+  fn create_runtime_snapshot(
+    snapshot_path: PathBuf,
+    maybe_additional_extension: Option<Extension>,
+  ) {
     let mut extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
-      deno_tls::init_ops(),
-      deno_web::init_ops_and_esm::<Permissions>(
+      deno_tls::deno_tls::init_ops_and_esm(),
+      deno_web::deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
       ),
@@ -288,10 +284,12 @@ use std::rc::Rc;
       ),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm(),
-      deno_io::deno_io::init_ops_and_esm(Rc::new(RefCell::new(Some(Default::default())))),
+      deno_io::deno_io::init_ops_and_esm(Rc::new(RefCell::new(Some(
+        Default::default(),
+      )))),
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
       deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
-      runtime_extension,
+      runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
       deno_node::deno_node_loading::init_ops_and_esm::<Permissions>(None),

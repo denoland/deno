@@ -8,15 +8,12 @@ mod timers;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -58,14 +55,8 @@ use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_webidl", "deno_console", "deno_url"],
-  )
-}
-
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_web,
+  deps = [ deno_webidl, deno_console, deno_url ],
   parameters = [P: TimersPermission],
   ops = [
     op_base64_decode,
@@ -97,56 +88,39 @@ deno_core::ops!(deno_ops,
     op_cancel_handle,
     op_sleep,
     op_transfer_arraybuffer,
-]);
-
-fn ops<P: TimersPermission + 'static>(
-  ext: &mut ExtensionBuilder,
-  blob_store: BlobStore,
-  maybe_location: Option<Url>,
-) -> &mut ExtensionBuilder {
-  ext.ops(deno_ops::<P>()).state(move |state| {
+  ],
+  esm = [
+    "00_infra.js",
+    "01_dom_exception.js",
+    "01_mimesniff.js",
+    "02_event.js",
+    "02_structured_clone.js",
+    "02_timers.js",
+    "03_abort_signal.js",
+    "04_global_interfaces.js",
+    "05_base64.js",
+    "06_streams.js",
+    "08_text_encoding.js",
+    "09_file.js",
+    "10_filereader.js",
+    "11_blob_url.js",
+    "12_location.js",
+    "13_message_port.js",
+    "14_compression.js",
+    "15_performance.js",
+  ],
+  config = {
+    blob_store: BlobStore,
+    maybe_location: Option<Url>,
+  },
+  state = |state, blob_store, maybe_location| {
     state.put(blob_store.clone());
     if let Some(location) = maybe_location.clone() {
       state.put(Location(location));
     }
     state.put(StartTime::now());
-  })
-}
-
-pub fn init_ops_and_esm<P: TimersPermission + 'static>(
-  blob_store: BlobStore,
-  maybe_location: Option<Url>,
-) -> Extension {
-  ops::<P>(&mut ext(), blob_store, maybe_location)
-    .esm(include_js_files!(
-      "00_infra.js",
-      "01_dom_exception.js",
-      "01_mimesniff.js",
-      "02_event.js",
-      "02_structured_clone.js",
-      "02_timers.js",
-      "03_abort_signal.js",
-      "04_global_interfaces.js",
-      "05_base64.js",
-      "06_streams.js",
-      "08_text_encoding.js",
-      "09_file.js",
-      "10_filereader.js",
-      "11_blob_url.js",
-      "12_location.js",
-      "13_message_port.js",
-      "14_compression.js",
-      "15_performance.js",
-    ))
-    .build()
-}
-
-pub fn init_ops<P: TimersPermission + 'static>(
-  blob_store: BlobStore,
-  maybe_location: Option<Url>,
-) -> Extension {
-  ops::<P>(&mut ext(), blob_store, maybe_location).build()
-}
+  }
+);
 
 #[op]
 fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {

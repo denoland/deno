@@ -323,8 +323,8 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_webidl::deno_webidl::init_ops(),
     deno_console::deno_console::init_ops(),
     deno_url::deno_url::init_ops(),
-    deno_tls::init_ops(),
-    deno_web::init_ops::<PermissionsContainer>(
+    deno_tls::deno_tls::init_ops(),
+    deno_web::deno_web::init_ops::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
     ),
