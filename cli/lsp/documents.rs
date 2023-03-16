@@ -1487,9 +1487,8 @@ fn analyze_module(
       parsed_source,
       Some(resolver),
     )),
-    Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
-      specifier.clone(),
-      err.clone(),
+    Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
+      deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
     )),
   }
 }
