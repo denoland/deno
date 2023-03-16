@@ -10,7 +10,7 @@ pub mod bench;
 pub mod testing;
 
 pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
-  vec![deno_cli::init_runtime(ps)]
+  vec![deno_cli::init_ops(ps)]
 }
 
 deno_core::ops!(deno_ops, [op_npm_process_state]);

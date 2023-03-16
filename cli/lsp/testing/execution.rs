@@ -165,7 +165,7 @@ async fn test_specifier(
       &ps,
       specifier.clone(),
       PermissionsContainer::new(permissions),
-      vec![ops::testing::deno_test::init_runtime(
+      vec![ops::testing::deno_test::init_ops(
         sender,
         fail_fast_tracker,
         filter,

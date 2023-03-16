@@ -323,11 +323,11 @@ impl JsRuntime {
     if !has_startup_snapshot {
       options
         .extensions
-        .insert(0, crate::ops_builtin::core::init_esm());
+        .insert(0, crate::ops_builtin::core::init_ops_and_esm());
     } else {
       options
         .extensions
-        .insert(0, crate::ops_builtin::core::init_runtime());
+        .insert(0, crate::ops_builtin::core::init_ops());
     }
 
     let ops = Self::collect_ops(&mut options.extensions);

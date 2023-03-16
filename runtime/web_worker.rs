@@ -385,14 +385,14 @@ impl WebWorker {
 
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
-      deno_webidl::deno_webidl::init_runtime(),
-      deno_console::deno_console::init_runtime(),
-      deno_url::deno_url::init_runtime(),
+      deno_webidl::deno_webidl::init_ops(),
+      deno_console::deno_console::init_ops(),
+      deno_url::deno_url::init_ops(),
       deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::deno_fetch::init_runtime::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
           root_cert_store: options.root_cert_store.clone(),
@@ -403,23 +403,23 @@ impl WebWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_runtime::<SqliteBackedCache>(create_cache),
-      deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
+      deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::deno_webstorage::init_runtime(None).disable(),
-      deno_broadcast_channel::deno_broadcast_channel::init_runtime(
+      deno_webstorage::deno_webstorage::init_ops(None).disable(),
+      deno_broadcast_channel::deno_broadcast_channel::init_ops(
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_crypto::deno_crypto::init_runtime(options.seed),
-      deno_webgpu::deno_webgpu::init_runtime(unstable),
+      deno_crypto::deno_crypto::init_ops(options.seed),
+      deno_webgpu::deno_webgpu::init_ops(unstable),
       // ffi
-      deno_ffi::deno_ffi::init_runtime::<PermissionsContainer>(unstable),
+      deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::deno_web_worker::init_runtime(),
+      ops::web_worker::deno_web_worker::init_ops(),
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
@@ -428,7 +428,7 @@ impl WebWorker {
         options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
-      ops::fs_events::deno_fs_events::init_runtime(),
+      ops::fs_events::deno_fs_events::init_ops(),
       deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_io::init_ops(options.stdio),
       deno_tls::init_ops(),
@@ -437,7 +437,7 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_napi::deno_napi::init_runtime::<PermissionsContainer>(),
+      deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_node::init_polyfill_ops(),
       deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
@@ -446,7 +446,7 @@ impl WebWorker {
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init_ops(),
-      deno_flash::deno_flash::init_runtime::<PermissionsContainer>(unstable),
+      deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,

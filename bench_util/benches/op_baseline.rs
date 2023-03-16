@@ -14,7 +14,7 @@ deno_core::ops!(deno_ops, [op_pi_json, op_pi_async, op_nop,]);
 deno_core::extension!(bench_setup, ops = deno_ops,);
 
 fn setup() -> Vec<Extension> {
-  vec![bench_setup::init_runtime()]
+  vec![bench_setup::init_ops()]
 }
 
 #[op]

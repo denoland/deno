@@ -232,7 +232,7 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_esm $( <  $( $param : $type + Clone + 'static ),+ > )? () -> $crate::Extension {
+      pub fn init_js_only $( <  $( $param : $type + Clone + 'static ),+ > )? () -> $crate::Extension {
         let mut ext = ext();
         // If esm or JS was specified, add JS files
         with_js(&mut ext);
@@ -241,7 +241,7 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_esm_and_state $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops_and_esm $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
         let mut ext = ext();
         // If esm or JS was specified, add JS files
         with_js(&mut ext);
@@ -251,7 +251,7 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_runtime $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
         let mut ext = ext();
         with_ops $( ::<($( $param ),+)> )?(&mut ext);
         with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );

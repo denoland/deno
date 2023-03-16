@@ -269,7 +269,11 @@ mod ts {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![deno_tsc::init_esm_and_state(op_crate_libs, build_libs, path_dts)],
+      extensions: vec![deno_tsc::init_ops_and_esm(
+        op_crate_libs,
+        build_libs,
+        path_dts,
+      )],
 
       // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
       // ~45s on M1 MacBook Pro; without compression it took ~1s.
@@ -314,27 +318,25 @@ mod ts {
 
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   let mut extensions: Vec<Extension> = vec![
-    deno_webidl::deno_webidl::init_runtime(),
-    deno_console::deno_console::init_runtime(),
-    deno_url::deno_url::init_runtime(),
+    deno_webidl::deno_webidl::init_ops(),
+    deno_console::deno_console::init_ops(),
+    deno_url::deno_url::init_ops(),
     deno_tls::init_ops(),
     deno_web::init_ops::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::deno_fetch::init_runtime::<PermissionsContainer>(
-      Default::default(),
-    ),
-    deno_cache::deno_cache::init_runtime::<SqliteBackedCache>(None),
-    deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
+    deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
+    deno_cache::deno_cache::init_ops::<SqliteBackedCache>(None),
+    deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
       "".to_owned(),
       None,
       None,
     ),
-    deno_webstorage::deno_webstorage::init_runtime(None),
-    deno_crypto::deno_crypto::init_runtime(None),
-    deno_webgpu::deno_webgpu::init_runtime(false),
-    deno_broadcast_channel::deno_broadcast_channel::init_runtime(
+    deno_webstorage::deno_webstorage::init_ops(None),
+    deno_crypto::deno_crypto::init_ops(None),
+    deno_webgpu::deno_webgpu::init_ops(false),
+    deno_broadcast_channel::deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
@@ -342,14 +344,14 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_fs::init_ops::<PermissionsContainer>(false),
     deno_node::init_ops::<PermissionsContainer>(None), // No --unstable.
     deno_node::init_polyfill_ops(),
-    deno_ffi::deno_ffi::init_runtime::<PermissionsContainer>(false),
+    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(false),
     deno_net::init_ops::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::deno_napi::init_runtime::<PermissionsContainer>(),
+    deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::init_ops(),
-    deno_flash::deno_flash::init_runtime::<PermissionsContainer>(false), // No --unstable
+    deno_flash::deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
   ];
 
   let mut esm_files = include_js_files!(
