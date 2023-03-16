@@ -148,13 +148,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
     };
 
-    self.maybe_import_map_resolver.as_ref().map_or_else(
-      || {
+    self
+      .maybe_import_map_resolver
+      .as_ref()
+      .map(|r| r.resolve(specifier, &referrer))
+      .unwrap_or_else(|| {
         deno_core::resolve_import(specifier, referrer.as_str())
           .map_err(|err| err.into())
-      },
-      |r| r.resolve(specifier, &referrer),
-    )
+      })
   }
 
   fn load(
@@ -268,7 +269,10 @@ pub async fn run(
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(1),
-      debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
+      debug_flag: metadata
+        .log_level
+        .map(|l| l == Level::Debug)
+        .unwrap_or(false),
       enable_testing_features: false,
       locale: deno_core::v8::icu::get_language_tag(),
       location: metadata.location,
