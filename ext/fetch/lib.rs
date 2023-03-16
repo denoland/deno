@@ -114,12 +114,12 @@ deno_core::extension!(deno_fetch,
     state.put::<Options>(options.clone());
     state.put::<reqwest::Client>({
       create_http_client(
-        options.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.user_agent,
+        options.root_cert_store,
         vec![],
-        options.proxy.clone(),
-        options.unsafely_ignore_certificate_errors.clone(),
-        options.client_cert_chain_and_key.clone(),
+        options.proxy,
+        options.unsafely_ignore_certificate_errors,
+        options.client_cert_chain_and_key
       )
       .unwrap()
     });

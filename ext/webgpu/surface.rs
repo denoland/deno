@@ -12,13 +12,13 @@ use wgpu_types::SurfaceStatus;
 
 deno_core::extension!(deno_webgpu_surface,
   deps = [ deno_webidl, deno_web, deno_webgpu ],
-  esm = [ "03_surface.js", "04_surface_idl_types.js" ],
   ops = [
     op_webgpu_surface_configure,
     op_webgpu_surface_get_current_texture,
     op_webgpu_surface_present,
   ],
-  config: {
+  esm = [ "03_surface.js", "04_surface_idl_types.js" ],
+  config = {
     unstable: bool,
   },
   state = |state, unstable| {

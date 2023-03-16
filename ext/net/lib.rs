@@ -112,11 +112,11 @@ deno_core::extension!(deno_net,
   },
   state = |state, root_cert_store, unstable, unsafely_ignore_certificate_errors| {
     state.put(DefaultTlsOptions {
-      root_cert_store: root_cert_store.clone(),
+      root_cert_store,
     });
     state.put(UnstableChecker { unstable });
     state.put(UnsafelyIgnoreCertificateErrors(
-      unsafely_ignore_certificate_errors.clone(),
+      unsafely_ignore_certificate_errors,
     ));
   },
 );

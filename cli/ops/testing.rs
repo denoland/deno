@@ -40,9 +40,9 @@ deno_core::extension!(deno_test,
     filter: TestFilter,
   },
   state = |state, sender, fail_fast_tracker, filter| {
-    state.put(sender.clone());
-    state.put(fail_fast_tracker.clone());
-    state.put(filter.clone());
+    state.put(sender);
+    state.put(fail_fast_tracker);
+    state.put(filter);
   },
 );
 

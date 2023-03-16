@@ -35,8 +35,8 @@ deno_core::extension!(deno_bench,
     filter: TestFilter,
   },
   state = |state, sender, filter| {
-    state.put(sender.clone());
-    state.put(filter.clone());
+    state.put(sender);
+    state.put(filter);
   },
 );
 

@@ -130,9 +130,9 @@ mod ts {
       path_dts: PathBuf,
     },
     state = |state, op_crate_libs, build_libs, path_dts| {
-      state.put(op_crate_libs.clone());
-      state.put(build_libs.clone());
-      state.put(path_dts.clone());
+      state.put(op_crate_libs);
+      state.put(build_libs);
+      state.put(path_dts);
     },
   );
 

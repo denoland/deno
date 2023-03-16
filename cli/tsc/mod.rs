@@ -841,8 +841,8 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
         request.hash_data.clone(),
         request.maybe_npm_resolver.clone(),
         request.maybe_tsbuildinfo.clone(),
-        root_map.clone(),
-        remapped_specifiers.clone(),
+        root_map,
+        remapped_specifiers,
         std::env::current_dir()
           .context("Unable to get CWD")
           .unwrap(),

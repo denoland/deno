@@ -2840,7 +2840,7 @@ deno_core::extension!(deno_tsc,
   state = |state, performance| {
     state.put(State::new(
       Arc::new(StateSnapshot::default()),
-      performance.clone(),
+      performance,
     ));
   },
 );

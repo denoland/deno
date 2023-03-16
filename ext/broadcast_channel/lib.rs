@@ -119,7 +119,7 @@ deno_core::extension!(deno_broadcast_channel,
     unstable: bool,
   },
   state = |state, bc, unstable| {
-    state.put(bc.clone());
+    state.put(bc);
     state.put(Unstable(unstable));
   },
 );

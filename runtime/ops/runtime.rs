@@ -11,7 +11,7 @@ deno_core::extension!(
   ops = [op_main_module],
   config = { main_module: ModuleSpecifier },
   state = |state, main_module| {
-    state.put::<ModuleSpecifier>(main_module.clone());
+    state.put::<ModuleSpecifier>(main_module);
   }
 );
 

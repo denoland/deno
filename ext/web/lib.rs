@@ -114,8 +114,8 @@ deno_core::extension!(deno_web,
     maybe_location: Option<Url>,
   },
   state = |state, blob_store, maybe_location| {
-    state.put(blob_store.clone());
-    if let Some(location) = maybe_location.clone() {
+    state.put(blob_store);
+    if let Some(location) = maybe_location {
       state.put(Location(location));
     }
     state.put(StartTime::now());

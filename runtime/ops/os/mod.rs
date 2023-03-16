@@ -46,7 +46,7 @@ deno_core::extension!(
     exit_code: ExitCode,
   },
   state = |state, exit_code| {
-    state.put::<ExitCode>(exit_code.clone());
+    state.put::<ExitCode>(exit_code);
   },
 );
 
