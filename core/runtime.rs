@@ -51,7 +51,6 @@ use std::task::Context;
 use std::task::Poll;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
-use v8::fast_api::FastFunction;
 use v8::OwnedIsolate;
 
 type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
@@ -317,13 +316,6 @@ impl SnapshotOptions {
     )
   }
 
-  pub fn will_snapshot(&self) -> bool {
-    matches!(
-      self,
-      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
-    )
-  }
-
   fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
     match (snapshot_loaded, will_snapshot) {
       (true, true) => SnapshotOptions::CreateFromExisting,
@@ -417,6 +409,8 @@ impl JsRuntime {
           let args = CTypeInfo::new_from_slice(fast_fn.args());
           let ret = CTypeInfo::new(fast_fn.return_type());
 
+          // SAFETY: all arguments are coming from the trait and they have
+          // static lifetime
           let c_fn = unsafe {
             CFunctionInfo::new(
               args.as_ptr(),
@@ -539,13 +533,9 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_options.loaded() {
-          bindings::initialize_context_from_existing_snapshot(
-            scope,
-            &op_ctxs,
-            snapshot_options,
-          )
+          bindings::initialize_context_from_existing_snapshot(scope, &op_ctxs)
         } else {
-          bindings::initialize_context(scope, &op_ctxs, snapshot_options)
+          bindings::initialize_context(scope, &op_ctxs)
         };
 
         // Get module map data from the snapshot
@@ -595,13 +585,9 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_options.loaded() {
-          bindings::initialize_context_from_existing_snapshot(
-            scope,
-            &op_ctxs,
-            snapshot_options,
-          )
+          bindings::initialize_context_from_existing_snapshot(scope, &op_ctxs)
         } else {
-          bindings::initialize_context(scope, &op_ctxs, snapshot_options)
+          bindings::initialize_context(scope, &op_ctxs)
         };
 
         // Get module map data from the snapshot
@@ -792,6 +778,8 @@ impl JsRuntime {
             let args = CTypeInfo::new_from_slice(fast_fn.args());
             let ret = CTypeInfo::new(fast_fn.return_type());
 
+            // SAFETY: all arguments are coming from the trait and they have
+            // static lifetime
             let c_fn = unsafe {
               CFunctionInfo::new(
                 args.as_ptr(),
@@ -821,13 +809,9 @@ impl JsRuntime {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
       let context = if self.snapshot_options.loaded() {
-        bindings::initialize_context_from_existing_snapshot(
-          scope,
-          &op_ctxs,
-          self.snapshot_options,
-        )
+        bindings::initialize_context_from_existing_snapshot(scope, &op_ctxs)
       } else {
-        bindings::initialize_context(scope, &op_ctxs, self.snapshot_options)
+        bindings::initialize_context(scope, &op_ctxs)
       };
       context.set_slot(
         scope,
@@ -3750,7 +3734,6 @@ pub mod tests {
         .build()],
       ..Default::default()
     });
-    eprintln!("after first");
     let specifier = crate::resolve_url("file:///0.js").unwrap();
     let source_code =
       r#"export function f0() { return "hello world" }"#.to_string();
@@ -3775,9 +3758,7 @@ pub mod tests {
     modules.extend((1..200).map(|i| create_module(&mut runtime, i, false)));
 
     assert_module_map(&mut runtime, &modules);
-    eprintln!("before snapshot");
     let snapshot = runtime.snapshot();
-    eprintln!("before second");
     let mut runtime2 = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader.clone()),
       will_snapshot: true,
@@ -3787,7 +3768,6 @@ pub mod tests {
         .build()],
       ..Default::default()
     });
-    eprintln!("after second");
     assert_module_map(&mut runtime2, &modules);
 
     modules.extend((200..400).map(|i| create_module(&mut runtime2, i, false)));

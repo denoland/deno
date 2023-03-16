@@ -15,7 +15,6 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::runtime::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
@@ -41,9 +40,6 @@ pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
-  }
-
-  for ctx in ops {
     if let Some(fast_fn) = &ctx.decl.fast_fn {
       references.push(v8::ExternalReference {
         pointer: fast_fn.function() as _,
@@ -102,8 +98,6 @@ pub fn module_origin<'a>(
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
-  // TODO(bartlomieju): remove this option
-  snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let context = v8::Context::new(scope);
   let global = context.global(scope);
@@ -137,11 +131,8 @@ pub fn initialize_context<'s>(
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
 
-  // for op_ctx in op_ctxs. {
-  //   add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
-  // }
   for op_ctx in op_ctxs {
-    add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
+    add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
   }
 
   context
@@ -150,8 +141,6 @@ pub fn initialize_context<'s>(
 pub fn initialize_context_from_existing_snapshot<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
-  // TODO(bartlomieju): remove this option
-  snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let context = v8::Context::new(scope);
   let global = context.global(scope);
@@ -189,7 +178,7 @@ pub fn initialize_context_from_existing_snapshot<'s>(
     .iter()
     .filter(|op_ctx| op_ctx.decl.force_registration)
   {
-    add_op_to_deno_core_ops(scope, ops_obj, op_ctx, snapshot_options);
+    add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
   }
 
   context
@@ -214,8 +203,6 @@ pub fn add_op_to_deno_core_ops(
   scope: &mut v8::HandleScope<'_>,
   deno_core_ops: v8::Local<v8::Object>,
   op_ctx: &OpCtx,
-  // TODO(bartlomieju): remove this
-  snapshot_options: SnapshotOptions,
 ) {
   let ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let key =
@@ -228,7 +215,7 @@ pub fn add_op_to_deno_core_ops(
     builder.build_fast(
       scope,
       &**fast_function,
-      op_ctx.fast_fn_c_info.unwrap().as_ptr(),
+      Some(op_ctx.fast_fn_c_info.unwrap().as_ptr()),
       None,
       None,
     )
