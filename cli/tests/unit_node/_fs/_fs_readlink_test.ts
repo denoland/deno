@@ -54,11 +54,14 @@ Deno.test(
 Deno.test(
   "[node/fs readLink] read link can not found file",
   () => {
+    const expectedMessageError = Deno.build.os == "windows"
+      ? "The system cannot find the file specified. (os error 2), readlink 'bad_filename'"
+      : "No such file or directory (os error 2), readlink 'bad_filename'";
     readlink("bad_filename", { encoding: "utf-8" }, (err, link) => {
       assertEquals(link, undefined);
       assertEquals(
         err?.message,
-        "No such file or directory (os error 2), readlink 'bad_filename'",
+        expectedMessageError,
       );
     });
   },
