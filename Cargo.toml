@@ -101,6 +101,7 @@ log = "=0.4.17"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 lzzzz = "1.0"
 notify = "=5.0.0"
+num-bigint = "0.4"
 once_cell = "1.17.1"
 os_pipe = "=1.0.1"
 parking_lot = "0.12.0"
