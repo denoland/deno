@@ -168,11 +168,10 @@ pub(crate) fn get_snapshotted_data(
     MODULE_MAP_CONTEXT_DATA_INDEX,
   );
 
-  if let Err(err) = result {
-    data_error_to_panic(err);
-  }
-
-  let val = result.unwrap();
+  let val = match result {
+    Ok(v) => v,
+    Err(err) => data_error_to_panic(err),
+  };
 
   let next_module_id = {
     let info_data: v8::Local<v8::Array> =
