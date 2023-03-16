@@ -490,7 +490,8 @@ impl Document {
   pub fn script_version(&self) -> String {
     self
       .maybe_lsp_version()
-      .map_or_else(|| self.fs_version().to_string(), |v| v.to_string())
+      .map(|v| v.to_string())
+      .unwrap_or_else(|| self.fs_version().to_string())
   }
 
   pub fn is_diagnosable(&self) -> bool {
@@ -901,15 +902,13 @@ impl Documents {
         let mut file_system_docs = self.file_system_docs.lock();
         file_system_docs.docs.remove(specifier)
       })
-      .map_or_else(
-        || {
-          Err(custom_error(
-            "NotFound",
-            format!("The specifier \"{specifier}\" was not found."),
-          ))
-        },
-        Ok,
-      )?;
+      .map(Ok)
+      .unwrap_or_else(|| {
+        Err(custom_error(
+          "NotFound",
+          format!("The specifier \"{specifier}\" was not found."),
+        ))
+      })?;
     self.dirty = true;
     let doc = doc.with_change(version, changes, self.get_resolver())?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());

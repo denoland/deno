@@ -10,6 +10,9 @@ const Runners = {
   macos: "macos-12",
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
+// bump the number at the start when you want to purge the cache
+const cacheKeyPrefix =
+  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -217,7 +220,7 @@ const ci = {
             {
               os: Runners.macos,
               job: "test",
-              profile: "fastci",
+              profile: "debug",
             },
             {
               os: Runners.macos,
@@ -228,7 +231,7 @@ const ci = {
             {
               os: Runners.windows,
               job: "test",
-              profile: "fastci",
+              profile: "debug",
             },
             {
               os: Runners.windows,
@@ -442,8 +445,7 @@ const ci = {
                 "!./target/*/*.tar.gz",
               ].join("\n"),
               key: "never_saved",
-              "restore-keys":
-                "19-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
+              "restore-keys": cacheKeyPrefix,
             },
           },
           {
@@ -494,15 +496,7 @@ const ci = {
           },
           {
             name: "Build debug",
-            if: [
-              "(matrix.job == 'test' || matrix.job == 'bench') &&",
-              "matrix.profile == 'debug'",
-            ].join("\n"),
-            run: "cargo build --locked --all-targets",
-          },
-          {
-            name: "Build fastci",
-            if: "(matrix.job == 'test' && matrix.profile == 'fastci')",
+            if: "matrix.job == 'test' && matrix.profile == 'debug'",
             run: "cargo build --locked --all-targets",
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
@@ -605,22 +599,24 @@ const ci = {
             name: "Test debug",
             if: [
               "matrix.job == 'test' && matrix.profile == 'debug' &&",
-              "!startsWith(github.ref, 'refs/tags/')",
+              "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
             ].join("\n"),
             run: "cargo test --locked",
+            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
-            name: "Test fastci",
-            if: "matrix.job == 'test' && matrix.profile == 'fastci'",
+            name: "Test debug (fast)",
+            if: [
+              "matrix.job == 'test' && matrix.profile == 'debug' && ",
+              "!startsWith(matrix.os, 'ubuntu')",
+            ].join("\n"),
             run: [
               // Run unit then integration tests. Skip doc tests here
               // since they are sometimes very slow on Mac.
               "cargo test --locked --lib",
               "cargo test --locked --test '*'",
             ].join("\n"),
-            env: {
-              CARGO_PROFILE_DEV_DEBUG: 0,
-            },
+            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
             name: "Test release",
@@ -764,7 +760,7 @@ const ci = {
           {
             name: "Build product size info",
             if:
-              "matrix.job != 'lint' && matrix.profile != 'fastci' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+              "matrix.job != 'lint' && matrix.profile != 'debug' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
             run: [
               'du -hd1 "./target/${{ matrix.profile }}"',
               'du -ha  "./target/${{ matrix.profile }}/deno"',
@@ -845,11 +841,10 @@ const ci = {
             },
           },
           {
-            // In main branch, always creates fresh cache
+            // In main branch, always create a fresh cache
             name: "Save cache build output (main)",
             uses: "actions/cache/save@v3",
-            if:
-              "(matrix.profile == 'release' || matrix.profile == 'fastci') && github.ref == 'refs/heads/main'",
+            if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
             with: {
               path: [
                 "./target",
@@ -857,8 +852,7 @@ const ci = {
                 "!./target/*/*.zip",
                 "!./target/*/*.tar.gz",
               ].join("\n"),
-              key:
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}",
+              key: cacheKeyPrefix + "${{ github.sha }}",
             },
           },
         ]),
