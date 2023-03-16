@@ -308,11 +308,12 @@ mod ts {
 }
 
 fn create_cli_snapshot(snapshot_path: PathBuf) {
+  // NOTE(bartlomieju): ordering is important here, keep it in sync with
+  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
   let mut extensions: Vec<Extension> = vec![
     deno_webidl::init(),
     deno_console::init(),
     deno_url::init_ops(),
-    deno_tls::init_ops(),
     deno_web::init_ops::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
@@ -327,18 +328,19 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_io::init_ops(Default::default()),
-    deno_fs::init_ops::<PermissionsContainer>(false),
-    deno_node::init_ops::<PermissionsContainer>(None), // No --unstable.
-    deno_node::init_polyfill_ops(),
     deno_ffi::init_ops::<PermissionsContainer>(false),
     deno_net::init_ops::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
+    deno_tls::init_ops(),
     deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::init_ops(),
+    deno_io::init_ops(Default::default()),
+    deno_fs::init_ops::<PermissionsContainer>(false),
     deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
+    deno_node::init_ops::<PermissionsContainer>(None),   // No --unstable.
+    deno_node::init_polyfill_ops(),
   ];
 
   let mut esm_files = include_js_files!(

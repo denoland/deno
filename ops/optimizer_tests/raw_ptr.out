@@ -137,14 +137,17 @@ impl<'scope, FP> deno_core::v8::fast_api::FastFunction for op_ffi_ptr_of_fast<FP
 where
     FP: FfiPermissions + 'static,
 {
+    #[inline(always)]
     fn function(&self) -> *const ::std::ffi::c_void {
         op_ffi_ptr_of_fast_fn::<FP> as *const ::std::ffi::c_void
     }
+    #[inline(always)]
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
         use deno_core::v8::fast_api::CType;
         &[V8Value, TypedArray(CType::Uint8), TypedArray(CType::Uint32), CallbackOptions]
     }
+    #[inline(always)]
     fn return_type(&self) -> deno_core::v8::fast_api::CType {
         deno_core::v8::fast_api::CType::Void
     }

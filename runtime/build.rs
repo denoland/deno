@@ -250,11 +250,12 @@ mod startup_snapshot {
     ))
     .build();
 
+    // NOTE(bartlomieju): ordering is important here, keep it in sync with
+    // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let mut extensions: Vec<Extension> = vec![
       deno_webidl::init_esm(),
       deno_console::init_esm(),
       deno_url::init_ops_and_esm(),
-      deno_tls::init_ops(),
       deno_web::init_ops_and_esm::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
@@ -278,6 +279,7 @@ mod startup_snapshot {
         None, false, // No --unstable.
         None,
       ),
+      deno_tls::init_ops(),
       deno_napi::init_ops::<Permissions>(),
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),
