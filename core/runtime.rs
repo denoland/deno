@@ -49,6 +49,9 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::fast_api::CFunctionInfo;
+use v8::fast_api::CTypeInfo;
+use v8::fast_api::FastFunction;
 use v8::OwnedIsolate;
 
 type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
@@ -407,12 +410,31 @@ impl JsRuntime {
     let op_ctxs = ops
       .into_iter()
       .enumerate()
-      .map(|(id, decl)| OpCtx {
-        id,
-        state: op_state.clone(),
-        runtime_state: weak.clone(),
-        decl: Rc::new(decl),
-        realm_idx: 0,
+      .map(|(id, decl)| {
+        let mut fast_fn_c_info = None;
+
+        if let Some(fast_fn) = &decl.fast_fn {
+          let args = CTypeInfo::new_from_slice(fast_fn.args());
+          let ret = CTypeInfo::new(fast_fn.return_type());
+
+          let c_fn = unsafe {
+            CFunctionInfo::new(
+              args.as_ptr(),
+              fast_fn.args().len(),
+              ret.as_ptr(),
+            )
+          };
+          fast_fn_c_info = Some(c_fn);
+        }
+
+        OpCtx {
+          id,
+          state: op_state.clone(),
+          runtime_state: weak.clone(),
+          decl: Rc::new(decl),
+          fast_fn_c_info,
+          realm_idx: 0,
+        }
       })
       .collect::<Vec<_>>()
       .into_boxed_slice();
@@ -763,12 +785,30 @@ impl JsRuntime {
         .borrow()
         .op_ctxs
         .iter()
-        .map(|op_ctx| OpCtx {
-          id: op_ctx.id,
-          state: op_ctx.state.clone(),
-          decl: op_ctx.decl.clone(),
-          runtime_state: op_ctx.runtime_state.clone(),
-          realm_idx,
+        .map(|op_ctx| {
+          let mut fast_fn_c_info = None;
+
+          if let Some(fast_fn) = &op_ctx.decl.fast_fn {
+            let args = CTypeInfo::new_from_slice(fast_fn.args());
+            let ret = CTypeInfo::new(fast_fn.return_type());
+
+            let c_fn = unsafe {
+              CFunctionInfo::new(
+                args.as_ptr(),
+                fast_fn.args().len(),
+                ret.as_ptr(),
+              )
+            };
+            fast_fn_c_info = Some(c_fn);
+          }
+          OpCtx {
+            id: op_ctx.id,
+            state: op_ctx.state.clone(),
+            decl: op_ctx.decl.clone(),
+            fast_fn_c_info,
+            runtime_state: op_ctx.runtime_state.clone(),
+            realm_idx,
+          }
         })
         .collect();
 

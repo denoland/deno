@@ -49,7 +49,7 @@ pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
         pointer: fast_fn.function() as _,
       });
       references.push(v8::ExternalReference {
-        pointer: fast_fn.type_info().as_ptr() as _,
+        pointer: ctx.fast_fn_c_info.unwrap().as_ptr() as _,
       });
     }
   }
@@ -225,18 +225,13 @@ pub fn add_op_to_deno_core_ops(
   let builder = v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
     .data(external.into());
   let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
-    eprintln!(
-      "ctx_ptr {} {:?} {:?}",
-      op_ctx.decl.name, ctx_ptr, op_ctx.decl.v8_fn_ptr
-    );
-    // TODO(bartlomieju): remove this conditional
-    // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    // if !snapshot_options.will_snapshot() {
-    // TODO(@littledivy): Support fast api overloads in ops.
-    builder.build_fast(scope, &**fast_function, None)
-    // } else {
-    // builder.build(scope)
-    // }
+    builder.build_fast(
+      scope,
+      &**fast_function,
+      op_ctx.fast_fn_c_info.unwrap().as_ptr(),
+      None,
+      None,
+    )
   } else {
     builder.build(scope)
   };

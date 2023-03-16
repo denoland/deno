@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::task::Context;
@@ -155,6 +156,7 @@ pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
   pub decl: Rc<OpDecl>,
+  pub fast_fn_c_info: Option<NonNull<v8::fast_api::CFunctionInfo>>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
   // Index of the current realm into `JsRuntimeState::known_realms`.
   pub realm_idx: RealmIdx,
