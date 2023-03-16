@@ -427,12 +427,6 @@ impl JsRuntime {
 
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
-        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
-        // not overwriting an existing pointer.
-        isolate = unsafe {
-          isolate_ptr.write(isolate);
-          isolate_ptr.read()
-        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
@@ -448,6 +442,11 @@ impl JsRuntime {
       }
       (isolate, snapshot_options)
     } else {
+      let snapshot_options = SnapshotOptions::from_bools(
+        options.startup_snapshot.is_some(),
+        options.will_snapshot,
+      );
+
       let mut params = options
         .create_params
         .take()
@@ -458,29 +457,18 @@ impl JsRuntime {
           )
         })
         .external_references(&**refs);
-      let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
+
+      if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
           Snapshot::Boxed(data) => params.snapshot_blob(data),
         };
-        true
-      } else {
-        false
-      };
-
-      let snapshot_options =
-        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+      }
 
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
-        // not overwriting an existing pointer.
-        isolate = unsafe {
-          isolate_ptr.write(isolate);
-          isolate_ptr.read()
-        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
@@ -497,6 +485,12 @@ impl JsRuntime {
       (isolate, snapshot_options)
     };
 
+    // SAFETY: this is first use of `isolate_ptr` so we are sure we're
+    // not overwriting an existing pointer.
+    isolate = unsafe {
+      isolate_ptr.write(isolate);
+      isolate_ptr.read()
+    };
     global_context.open(&mut isolate).set_slot(
       &mut isolate,
       Rc::new(RefCell::new(ContextState {
