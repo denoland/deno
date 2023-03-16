@@ -39,6 +39,7 @@ use std::sync::Arc;
 
 use super::cdp;
 use super::channel::RustylineSyncMessageSender;
+use super::session::REPL_INTERNALS_NAME;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -159,7 +160,7 @@ impl EditorHelper {
 }
 
 fn is_word_boundary(c: char) -> bool {
-  if c == '.' {
+  if matches!(c, '.' | '_' | '$') {
     false
   } else {
     char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
@@ -207,7 +208,11 @@ impl Completer for EditorHelper {
       let candidates = self
         .get_expression_property_names(sub_expr)
         .into_iter()
-        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+        .filter(|n| {
+          !n.starts_with("Symbol(")
+            && n.starts_with(prop_name)
+            && n != &*REPL_INTERNALS_NAME
+        })
         .collect();
 
       Ok((pos - prop_name.len(), candidates))
@@ -217,7 +222,7 @@ impl Completer for EditorHelper {
         .get_expression_property_names("globalThis")
         .into_iter()
         .chain(self.get_global_lexical_scope_names())
-        .filter(|n| n.starts_with(expr))
+        .filter(|n| n.starts_with(expr) && n != &*REPL_INTERNALS_NAME)
         .collect::<Vec<_>>();
 
       // sort and remove duplicates
