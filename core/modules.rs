@@ -6,6 +6,7 @@ use crate::extensions::ExtensionFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::snapshot_util::SnapshottedData;
 use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
@@ -161,6 +162,7 @@ fn json_module_evaluation_steps<'a>(
 /// the module against an import assertion (if one is present
 /// in the import statement).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub enum ModuleType {
   JavaScript,
   Json,
@@ -275,26 +277,32 @@ pub struct NoopModuleLoader;
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
     &self,
-    _specifier: &str,
-    _referrer: &str,
+    specifier: &str,
+    referrer: &str,
     _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    Err(generic_error("Module loading is not supported"))
+    Err(generic_error(
+      format!("Module loading is not supported; attempted to resolve: \"{specifier}\" from \"{referrer}\"")
+    ))
   }
 
   fn load(
     &self,
-    _module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async { Err(generic_error("Module loading is not supported")) }
-      .boxed_local()
+    let err = generic_error(
+      format!(
+        "Module loading is not supported; attempted to load: \"{module_specifier}\" from \"{maybe_referrer:?}\"",
+      )
+    );
+    async move { Err(err) }.boxed_local()
   }
 }
 
 /// Helper function, that calls into `loader.resolve()`, but denies resolution
-/// of `internal` scheme if we are running with a snapshot loaded and not
+/// of `ext` scheme if we are running with a snapshot loaded and not
 /// creating a snapshot
 pub(crate) fn resolve_helper(
   snapshot_loaded_and_not_snapshotting: bool,
@@ -303,52 +311,82 @@ pub(crate) fn resolve_helper(
   referrer: &str,
   kind: ResolutionKind,
 ) -> Result<ModuleSpecifier, Error> {
-  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("internal:")
-  {
+  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("ext:") {
     return Err(generic_error(
-      "Cannot load internal module from external code",
+      "Cannot load extension module from external code",
     ));
   }
 
   loader.resolve(specifier, referrer, kind)
 }
 
-/// Function that can be passed to the `InternalModuleLoader` that allows to
+/// Function that can be passed to the `ExtModuleLoader` that allows to
 /// transpile sources before passing to V8.
-pub type InternalModuleLoaderCb =
+pub type ExtModuleLoaderCb =
   Box<dyn Fn(&ExtensionFileSource) -> Result<String, Error>>;
 
-pub struct InternalModuleLoader {
+pub struct ExtModuleLoader {
   module_loader: Rc<dyn ModuleLoader>,
   esm_sources: Vec<ExtensionFileSource>,
-  maybe_load_callback: Option<InternalModuleLoaderCb>,
+  used_esm_sources: RefCell<HashMap<String, bool>>,
+  maybe_load_callback: Option<ExtModuleLoaderCb>,
 }
 
-impl Default for InternalModuleLoader {
+impl Default for ExtModuleLoader {
   fn default() -> Self {
     Self {
       module_loader: Rc::new(NoopModuleLoader),
       esm_sources: vec![],
+      used_esm_sources: RefCell::new(HashMap::default()),
       maybe_load_callback: None,
     }
   }
 }
 
-impl InternalModuleLoader {
+impl ExtModuleLoader {
   pub fn new(
     module_loader: Option<Rc<dyn ModuleLoader>>,
     esm_sources: Vec<ExtensionFileSource>,
-    maybe_load_callback: Option<InternalModuleLoaderCb>,
+    maybe_load_callback: Option<ExtModuleLoaderCb>,
   ) -> Self {
-    InternalModuleLoader {
+    let used_esm_sources: HashMap<String, bool> = esm_sources
+      .iter()
+      .map(|file_source| (file_source.specifier.to_string(), false))
+      .collect();
+
+    ExtModuleLoader {
       module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
       esm_sources,
+      used_esm_sources: RefCell::new(used_esm_sources),
       maybe_load_callback,
     }
   }
 }
 
-impl ModuleLoader for InternalModuleLoader {
+impl Drop for ExtModuleLoader {
+  fn drop(&mut self) {
+    let used_esm_sources = self.used_esm_sources.get_mut();
+    let unused_modules: Vec<_> = used_esm_sources
+      .iter()
+      .filter(|(_s, v)| !*v)
+      .map(|(s, _)| s)
+      .collect();
+
+    if !unused_modules.is_empty() {
+      let mut msg =
+        "Following modules were passed to ExtModuleLoader but never used:\n"
+          .to_string();
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m);
+        msg.push('\n');
+      }
+      panic!("{}", msg);
+    }
+  }
+}
+
+impl ModuleLoader for ExtModuleLoader {
   fn resolve(
     &self,
     specifier: &str,
@@ -356,14 +394,13 @@ impl ModuleLoader for InternalModuleLoader {
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
     if let Ok(url_specifier) = ModuleSpecifier::parse(specifier) {
-      if url_specifier.scheme() == "internal" {
+      if url_specifier.scheme() == "ext" {
         let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
-        if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
-        {
+        if referrer == "." || referrer_specifier.unwrap().scheme() == "ext" {
           return Ok(url_specifier);
         } else {
           return Err(generic_error(
-            "Cannot load internal module from external code",
+            "Cannot load extension module from external code",
           ));
         };
       }
@@ -378,7 +415,7 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    if module_specifier.scheme() != "internal" {
+    if module_specifier.scheme() != "ext" {
       return self.module_loader.load(
         module_specifier,
         maybe_referrer,
@@ -393,10 +430,19 @@ impl ModuleLoader for InternalModuleLoader {
       .find(|file_source| file_source.specifier == module_specifier.as_str());
 
     if let Some(file_source) = maybe_file_source {
+      {
+        let mut used_esm_sources = self.used_esm_sources.borrow_mut();
+        let used = used_esm_sources.get_mut(&file_source.specifier).unwrap();
+        *used = true;
+      }
+
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
-        Ok(file_source.code.to_string())
+        match file_source.code.load() {
+          Ok(code) => Ok(code),
+          Err(err) => return futures::future::err(err).boxed_local(),
+        }
       };
 
       return async move {
@@ -414,7 +460,7 @@ impl ModuleLoader for InternalModuleLoader {
 
     async move {
       Err(generic_error(format!(
-        "Cannot find internal module source for specifier {specifier}"
+        "Cannot find extension module source for specifier {specifier}"
       )))
     }
     .boxed_local()
@@ -427,7 +473,7 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
-    if module_specifier.scheme() == "internal" {
+    if module_specifier.scheme() == "ext" {
       return async { Ok(()) }.boxed_local();
     }
 
@@ -765,7 +811,7 @@ impl RecursiveModuleLoad {
     self.visited.insert(module_request.clone());
     while let Some((module_id, module_request)) = already_registered.pop_front()
     {
-      let referrer = module_request.specifier.clone();
+      let referrer = ModuleSpecifier::parse(&module_request.specifier).unwrap();
       let imports = self
         .module_map_rc
         .borrow()
@@ -780,17 +826,15 @@ impl RecursiveModuleLoad {
           ) {
             already_registered.push_back((module_id, module_request.clone()));
           } else {
-            let referrer = referrer.clone();
             let request = module_request.clone();
+            let specifier =
+              ModuleSpecifier::parse(&module_request.specifier).unwrap();
+            let referrer = referrer.clone();
             let loader = self.loader.clone();
             let is_dynamic_import = self.is_dynamic_import();
             let fut = async move {
               let load_result = loader
-                .load(
-                  &request.specifier,
-                  Some(referrer.clone()),
-                  is_dynamic_import,
-                )
+                .load(&specifier, Some(referrer.clone()), is_dynamic_import)
                 .await;
               load_result.map(|s| (request, s))
             };
@@ -842,7 +886,7 @@ impl Stream for RecursiveModuleLoad {
           let asserted_module_type = inner.root_asserted_module_type.unwrap();
           let module_type = inner.root_module_type.unwrap();
           let module_request = ModuleRequest {
-            specifier: module_specifier.clone(),
+            specifier: module_specifier.to_string(),
             asserted_module_type,
           };
           let module_source = ModuleSource {
@@ -866,7 +910,7 @@ impl Stream for RecursiveModuleLoad {
             _ => AssertedModuleType::JavaScriptOrWasm,
           };
           let module_request = ModuleRequest {
-            specifier: module_specifier.clone(),
+            specifier: module_specifier.to_string(),
             asserted_module_type,
           };
           let loader = inner.loader.clone();
@@ -896,6 +940,7 @@ impl Stream for RecursiveModuleLoad {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub(crate) enum AssertedModuleType {
   JavaScriptOrWasm,
   Json,
@@ -925,7 +970,7 @@ impl std::fmt::Display for AssertedModuleType {
 /// which case this will have a `AssertedModuleType::Json`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleRequest {
-  pub specifier: ModuleSpecifier,
+  pub specifier: String,
   pub asserted_module_type: AssertedModuleType,
 }
 
@@ -986,46 +1031,97 @@ impl ModuleMap {
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> (v8::Global<v8::Object>, Vec<v8::Global<v8::Module>>) {
-    let obj = v8::Object::new(scope);
+  ) -> SnapshottedData {
+    let array = v8::Array::new(scope, 3);
 
-    let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
-    obj.set(scope, next_load_id_str.into(), next_load_id.into());
+    array.set_index(scope, 0, next_load_id.into());
 
-    let info_val = serde_v8::to_v8(scope, self.info.clone()).unwrap();
-    let info_str = v8::String::new(scope, "info").unwrap();
-    obj.set(scope, info_str.into(), info_val);
+    let info_arr = v8::Array::new(scope, self.info.len() as i32);
+    for (i, info) in self.info.iter().enumerate() {
+      let module_info_arr = v8::Array::new(scope, 5);
 
-    let by_name_triples: Vec<(String, AssertedModuleType, SymbolicModule)> =
-      self
-        .by_name
-        .clone()
-        .into_iter()
-        .map(|el| (el.0 .0, el.0 .1, el.1))
-        .collect();
-    let by_name_array = serde_v8::to_v8(scope, by_name_triples).unwrap();
-    let by_name_str = v8::String::new(scope, "by_name").unwrap();
-    obj.set(scope, by_name_str.into(), by_name_array);
+      let id = v8::Integer::new(scope, info.id as i32);
+      module_info_arr.set_index(scope, 0, id.into());
 
-    let obj_global = v8::Global::new(scope, obj);
+      let main = v8::Boolean::new(scope, info.main);
+      module_info_arr.set_index(scope, 1, main.into());
+
+      let name = v8::String::new(scope, &info.name).unwrap();
+      module_info_arr.set_index(scope, 2, name.into());
+
+      let array_len = 2 * info.requests.len() as i32;
+      let requests_arr = v8::Array::new(scope, array_len);
+      for (i, request) in info.requests.iter().enumerate() {
+        let specifier = v8::String::new(scope, &request.specifier).unwrap();
+        requests_arr.set_index(scope, 2 * i as u32, specifier.into());
+
+        let asserted_module_type =
+          v8::Integer::new(scope, request.asserted_module_type as i32);
+        requests_arr.set_index(
+          scope,
+          (2 * i) as u32 + 1,
+          asserted_module_type.into(),
+        );
+      }
+      module_info_arr.set_index(scope, 3, requests_arr.into());
+
+      let module_type = v8::Integer::new(scope, info.module_type as i32);
+      module_info_arr.set_index(scope, 4, module_type.into());
+
+      info_arr.set_index(scope, i as u32, module_info_arr.into());
+    }
+    array.set_index(scope, 1, info_arr.into());
+
+    let by_name_array = v8::Array::new(scope, self.by_name.len() as i32);
+    {
+      for (i, elem) in self.by_name.iter().enumerate() {
+        let arr = v8::Array::new(scope, 3);
+
+        let (specifier, asserted_module_type) = elem.0;
+        let specifier = v8::String::new(scope, specifier).unwrap();
+        arr.set_index(scope, 0, specifier.into());
+
+        let asserted_module_type =
+          v8::Integer::new(scope, *asserted_module_type as i32);
+        arr.set_index(scope, 1, asserted_module_type.into());
+
+        let symbolic_module: v8::Local<v8::Value> = match &elem.1 {
+          SymbolicModule::Alias(alias) => {
+            let alias = v8::String::new(scope, alias).unwrap();
+            alias.into()
+          }
+          SymbolicModule::Mod(id) => {
+            let id = v8::Integer::new(scope, *id as i32);
+            id.into()
+          }
+        };
+        arr.set_index(scope, 2, symbolic_module);
+
+        by_name_array.set_index(scope, i as u32, arr.into());
+      }
+    }
+    array.set_index(scope, 2, by_name_array.into());
+
+    let array_global = v8::Global::new(scope, array);
 
     let handles = self.handles.clone();
-    (obj_global, handles)
+    SnapshottedData {
+      module_map_data: array_global,
+      module_handles: handles,
+    }
   }
 
-  pub fn update_with_snapshot_data(
+  pub fn update_with_snapshotted_data(
     &mut self,
     scope: &mut v8::HandleScope,
-    data: v8::Global<v8::Object>,
-    module_handles: Vec<v8::Global<v8::Module>>,
+    snapshotted_data: SnapshottedData,
   ) {
-    let local_data: v8::Local<v8::Object> = v8::Local::new(scope, data);
+    let local_data: v8::Local<v8::Array> =
+      v8::Local::new(scope, snapshotted_data.module_map_data);
 
     {
-      let next_load_id_str = v8::String::new(scope, "next_load_id").unwrap();
-      let next_load_id =
-        local_data.get(scope, next_load_id_str.into()).unwrap();
+      let next_load_id = local_data.get_index(scope, 0).unwrap();
       assert!(next_load_id.is_int32());
       let integer = next_load_id.to_integer(scope).unwrap();
       let val = integer.int32_value(scope).unwrap();
@@ -1033,25 +1129,140 @@ impl ModuleMap {
     }
 
     {
-      let info_str = v8::String::new(scope, "info").unwrap();
-      let info_val = local_data.get(scope, info_str.into()).unwrap();
-      self.info = serde_v8::from_v8(scope, info_val).unwrap();
+      let info_val = local_data.get_index(scope, 1).unwrap();
+
+      let info_arr: v8::Local<v8::Array> = info_val.try_into().unwrap();
+      let len = info_arr.length() as usize;
+      // Over allocate so executing a few scripts doesn't have to resize this vec.
+      let mut info = Vec::with_capacity(len + 16);
+
+      for i in 0..len {
+        let module_info_arr: v8::Local<v8::Array> = info_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let id = module_info_arr
+          .get_index(scope, 0)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value() as ModuleId;
+
+        let main = module_info_arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_boolean(scope)
+          .is_true();
+
+        let name = module_info_arr
+          .get_index(scope, 2)
+          .unwrap()
+          .to_rust_string_lossy(scope);
+
+        let requests_arr: v8::Local<v8::Array> = module_info_arr
+          .get_index(scope, 3)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let len = (requests_arr.length() as usize) / 2;
+        let mut requests = Vec::with_capacity(len);
+        for i in 0..len {
+          let specifier = requests_arr
+            .get_index(scope, (2 * i) as u32)
+            .unwrap()
+            .to_rust_string_lossy(scope);
+          let asserted_module_type_no = requests_arr
+            .get_index(scope, (2 * i + 1) as u32)
+            .unwrap()
+            .to_integer(scope)
+            .unwrap()
+            .value();
+          let asserted_module_type = match asserted_module_type_no {
+            0 => AssertedModuleType::JavaScriptOrWasm,
+            1 => AssertedModuleType::Json,
+            _ => unreachable!(),
+          };
+          requests.push(ModuleRequest {
+            specifier,
+            asserted_module_type,
+          });
+        }
+
+        let module_type_no = module_info_arr
+          .get_index(scope, 4)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value();
+        let module_type = match module_type_no {
+          0 => ModuleType::JavaScript,
+          1 => ModuleType::Json,
+          _ => unreachable!(),
+        };
+
+        let module_info = ModuleInfo {
+          id,
+          main,
+          name,
+          requests,
+          module_type,
+        };
+        info.push(module_info);
+      }
+
+      self.info = info;
     }
 
     {
-      let by_name_str = v8::String::new(scope, "by_name").unwrap();
-      let by_name_data = local_data.get(scope, by_name_str.into()).unwrap();
-      let by_name_deser: Vec<(String, AssertedModuleType, SymbolicModule)> =
-        serde_v8::from_v8(scope, by_name_data).unwrap();
-      self.by_name = by_name_deser
-        .into_iter()
-        .map(|(name, module_type, symbolic_module)| {
-          ((name, module_type), symbolic_module)
-        })
-        .collect();
+      let by_name_arr: v8::Local<v8::Array> =
+        local_data.get_index(scope, 2).unwrap().try_into().unwrap();
+      let len = by_name_arr.length() as usize;
+      let mut by_name = HashMap::with_capacity(len);
+
+      for i in 0..len {
+        let arr: v8::Local<v8::Array> = by_name_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+
+        let specifier =
+          arr.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
+        let asserted_module_type = match arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value()
+        {
+          0 => AssertedModuleType::JavaScriptOrWasm,
+          1 => AssertedModuleType::Json,
+          _ => unreachable!(),
+        };
+        let key = (specifier, asserted_module_type);
+
+        let symbolic_module_val = arr.get_index(scope, 2).unwrap();
+        let val = if symbolic_module_val.is_number() {
+          SymbolicModule::Mod(
+            symbolic_module_val
+              .to_integer(scope)
+              .unwrap()
+              .value()
+              .try_into()
+              .unwrap(),
+          )
+        } else {
+          SymbolicModule::Alias(symbolic_module_val.to_rust_string_lossy(scope))
+        };
+
+        by_name.insert(key, val);
+      }
+
+      self.by_name = by_name;
     }
 
-    self.handles = module_handles;
+    self.handles = snapshotted_data.module_handles;
   }
 
   pub(crate) fn new(
@@ -1214,7 +1425,7 @@ impl ModuleMap {
       let asserted_module_type =
         get_asserted_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
-        specifier: module_specifier,
+        specifier: module_specifier.to_string(),
         asserted_module_type,
       };
       requests.push(request);
@@ -1710,11 +1921,11 @@ import "/a.js";
       modules.get_requested_modules(a_id),
       Some(&vec![
         ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
-          specifier: resolve_url("file:///c.js").unwrap(),
+          specifier: "file:///c.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
       ])
@@ -1722,14 +1933,14 @@ import "/a.js";
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///c.js").unwrap(),
+        specifier: "file:///c.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///d.js").unwrap(),
+        specifier: "file:///d.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
@@ -1830,7 +2041,7 @@ import "/a.js";
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },])
       );
@@ -1938,7 +2149,7 @@ import "/a.js";
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///b.json").unwrap(),
+          specifier: "file:///b.json".to_string(),
           asserted_module_type: AssertedModuleType::Json,
         },])
       );
@@ -2266,7 +2477,7 @@ import "/a.js";
       assert_eq!(
         modules.get_requested_modules(circular1_id),
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///circular2.js").unwrap(),
+          specifier: "file:///circular2.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
@@ -2274,7 +2485,7 @@ import "/a.js";
       assert_eq!(
         modules.get_requested_modules(circular2_id),
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///circular3.js").unwrap(),
+          specifier: "file:///circular3.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
@@ -2289,11 +2500,11 @@ import "/a.js";
         modules.get_requested_modules(circular3_id),
         Some(&vec![
           ModuleRequest {
-            specifier: resolve_url("file:///circular1.js").unwrap(),
+            specifier: "file:///circular1.js".to_string(),
             asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           },
           ModuleRequest {
-            specifier: resolve_url("file:///circular2.js").unwrap(),
+            specifier: "file:///circular2.js".to_string(),
             asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           }
         ])
@@ -2513,11 +2724,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       modules.get_requested_modules(main_id),
       Some(&vec![
         ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
-          specifier: resolve_url("file:///c.js").unwrap(),
+          specifier: "file:///c.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }
       ])
@@ -2525,14 +2736,14 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///c.js").unwrap(),
+        specifier: "file:///c.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///d.js").unwrap(),
+        specifier: "file:///d.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );
@@ -2703,43 +2914,49 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
   }
 
   #[test]
-  fn internal_module_loader() {
-    let loader = InternalModuleLoader::default();
+  fn ext_module_loader() {
+    let loader = ExtModuleLoader::default();
     assert!(loader
-      .resolve("internal:foo", "internal:bar", ResolutionKind::Import)
+      .resolve("ext:foo", "ext:bar", ResolutionKind::Import)
       .is_ok());
     assert_eq!(
       loader
-        .resolve("internal:foo", "file://bar", ResolutionKind::Import)
+        .resolve("ext:foo", "file://bar", ResolutionKind::Import)
         .err()
         .map(|e| e.to_string()),
-      Some("Cannot load internal module from external code".to_string())
+      Some("Cannot load extension module from external code".to_string())
     );
     assert_eq!(
       loader
         .resolve("file://foo", "file://bar", ResolutionKind::Import)
         .err()
         .map(|e| e.to_string()),
-      Some("Module loading is not supported".to_string())
+      Some(
+        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"file://bar\""
+          .to_string()
+      )
     );
     assert_eq!(
       loader
-        .resolve("file://foo", "internal:bar", ResolutionKind::Import)
+        .resolve("file://foo", "ext:bar", ResolutionKind::Import)
         .err()
         .map(|e| e.to_string()),
-      Some("Module loading is not supported".to_string())
+      Some(
+        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"ext:bar\""
+        .to_string()
+      )
     );
     assert_eq!(
       resolve_helper(
         true,
         Rc::new(loader),
-        "internal:core.js",
+        "ext:core.js",
         "file://bar",
         ResolutionKind::Import,
       )
       .err()
       .map(|e| e.to_string()),
-      Some("Cannot load internal module from external code".to_string())
+      Some("Cannot load extension module from external code".to_string())
     );
   }
 }

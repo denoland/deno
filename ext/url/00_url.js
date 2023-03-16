@@ -7,7 +7,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
@@ -47,7 +47,7 @@ function opUrlReparse(href, setter, value) {
     href,
     setter,
     value,
-    componentsBuf.buffer,
+    componentsBuf,
   );
   return getSerialization(status, href);
 }
@@ -55,12 +55,12 @@ function opUrlReparse(href, setter, value) {
 function opUrlParse(href, maybeBase) {
   let status;
   if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf.buffer);
+    status = ops.op_url_parse(href, componentsBuf);
   } else {
     status = ops.op_url_parse_with_base(
       href,
       maybeBase,
-      componentsBuf.buffer,
+      componentsBuf,
     );
   }
   return getSerialization(status, href, maybeBase);
@@ -302,6 +302,11 @@ class URLSearchParams {
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     return ops.op_url_stringify_search_params(this[_list]);
+  }
+
+  get size() {
+    webidl.assertBranded(this, URLSearchParamsPrototype);
+    return this[_list].length;
   }
 }
 

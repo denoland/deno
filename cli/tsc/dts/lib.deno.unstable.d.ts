@@ -97,7 +97,6 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
-   *
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -131,10 +130,10 @@ declare namespace Deno {
    */
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue | null>
-    & Record<NativeFunctionType, PointerValue | null>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>
     & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -191,7 +190,7 @@ declare namespace Deno {
    */
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue>
     & Record<NativeBufferType, PointerValue>
@@ -340,6 +339,9 @@ declare namespace Deno {
     [K in keyof T]: StaticForeignSymbol<T[K]>;
   };
 
+  const brand: unique symbol;
+  type PointerObject = { [brand]: unknown };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Pointer type depends on the architecture and actual pointer value.
@@ -350,7 +352,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = number | bigint;
+  export type PointerValue = null | PointerObject;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -360,8 +362,16 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointer {
+    /** Create a pointer from a numeric value. This is one is <i>really</i> dangerous! */
+    static create(value: number | bigint): PointerValue;
+    /** Returns `true` if the two pointers point to the same address. */
+    static equals(a: PointerValue, b: PointerValue): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    /** Return a new pointer offset from the original by `offset` bytes. */
+    static offset(value: NonNullable<PointerValue>, offset: number): PointerValue
+    /** Get the numeric value of a pointer */
+    static value(value: PointerValue): number | bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -374,9 +384,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: PointerValue);
+    constructor(pointer: NonNullable<PointerValue>);
 
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -400,29 +410,31 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): PointerValue;
+    getBigUint64(offset?: number): number | bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): PointerValue;
+    getBigInt64(offset?: number): number | bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the
      * pointer. */
     getFloat64(offset?: number): number;
+    /** Gets a pointer at the specified byte offset from the pointer */
+    getPointer(offset?: number): PointerValue;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
-    static getCString(pointer: PointerValue, offset?: number): string;
+    static getCString(pointer: NonNullable<PointerValue>, offset?: number): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -438,7 +450,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -453,11 +465,11 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerValue, definition: Const<Fn>);
+    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -499,46 +511,80 @@ declare namespace Deno {
    *
    * The function pointer remains valid until the `close()` method is called.
    *
-   * The callback can be explicitly referenced via `ref()` and dereferenced via
-   * `deref()` to stop Deno's process from exiting.
+   * All `UnsafeCallback` are always thread safe in that they can be called from
+   * foreign threads without crashing. However, they do not wake up the Deno event
+   * loop by default.
+   *
+   * If a callback is to be called from foreign threads, use the `threadSafe()`
+   * static constructor or explicitly call `ref()` to have the callback wake up
+   * the Deno event loop when called from foreign threads. This also stops
+   * Deno's process from exiting while the callback still exists and is not
+   * unref'ed.
+   *
+   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
+   * a ref'ed callback does not stop it from waking up the Deno event loop when
+   * called from foreign threads.
    *
    * @category FFI
    */
   export class UnsafeCallback<
-    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition
   > {
     constructor(
       definition: Const<Definition>,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
-      >,
+      >
     );
 
     /** The pointer to the unsafe callback. */
-    pointer: PointerValue;
+    readonly pointer: NonNullable<PointerValue>;
     /** The definition of the unsafe callback. */
-    definition: Definition;
+    readonly definition: Definition;
     /** The callback function. */
-    callback: UnsafeCallbackFunction<
+    readonly callback: UnsafeCallbackFunction<
       Definition["parameters"],
       Definition["result"]
     >;
 
     /**
-     * Adds one to this callback's reference counting and returns the new
+     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
+     * wake up the Deno event loop when called from foreign threads.
+     *
+     * This also stops Deno's process from exiting while the callback still
+     * exists and is not unref'ed.
+     */
+    static threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition
+    >(
+      definition: Const<Definition>,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >
+    ): UnsafeCallback<Definition>;
+
+    /**
+     * Increments the callback's reference counting and returns the new
      * reference count.
      *
-     * If the callback's reference count is non-zero, it will keep Deno's
+     * After `ref()` has been called, the callback always wakes up the
+     * Deno event loop when called from foreign threads.
+     *
+     * If the callback's reference count is non-zero, it keeps Deno's
      * process from exiting.
      */
     ref(): number;
 
     /**
-     * Removes one from this callback's reference counting and returns the new
+     * Decrements the callback's reference counting and returns the new
      * reference count.
      *
-     * If the callback's reference counter is zero, it will no longer keep
+     * Calling `unref()` does not stop a callback from waking up the Deno
+     * event loop when called from foreign threads.
+     *
+     * If the callback's reference counter is zero, it no longer keeps
      * Deno's process from exiting.
      */
     unref(): number;
@@ -546,11 +592,12 @@ declare namespace Deno {
     /**
      * Removes the C function pointer associated with this instance.
      *
-     * Continuing to use the instance after calling this object will lead to
-     * errors and crashes.
+     * Continuing to use the instance or the C function pointer after closing
+     * the `UnsafeCallback` will lead to errors and crashes.
      *
-     * Calling this method will also immediately set the callback's reference
-     * counting to zero and it will no longer keep Deno's process from exiting.
+     * Calling this method sets the callback's reference counting to zero,
+     * stops the callback from waking up the Deno event loop when called from
+     * foreign threads and no longer keeps Deno's process from exiting.
      */
     close(): void;
   }
@@ -1118,6 +1165,18 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Information for a HTTP request.
+   *
+   * @category HTTP Server
+  */
+   export interface ServeHandlerInfo {
+     /** The remote address of the connection. */
+    remoteAddr: Deno.NetAddr;
+  }
+
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A handler for HTTP requests. Consumes a request and returns a response.
    *
    * If a handler throws, the server calling the handler will assume the impact
@@ -1126,7 +1185,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeHandler = (request: Request) => Response | Promise<Response>;
+  export type ServeHandler = (request: Request, info: ServeHandlerInfo) => Response | Promise<Response>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1406,239 +1465,6 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a child process.
-   *
-   * If any stdio options are not set to `"piped"`, accessing the corresponding
-   * field on the `Command` or its `CommandOutput` will throw a `TypeError`.
-   *
-   * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
-   * needs to be closed manually.
-   *
-   * @example Spawn a subprocess and pipe the output to a file
-   *
-   * ```ts
-   * const command = new Deno.Command(Deno.execPath(), {
-   *   args: [
-   *     "eval",
-   *     "console.log('Hello World')",
-   *   ],
-   *   stdin: "piped",
-   * });
-   * const child = command.spawn();
-   *
-   * // open a file and pipe the subprocess output to it.
-   * child.stdout.pipeTo(Deno.openSync("output").writable);
-   *
-   * // manually close stdin
-   * child.stdin.close();
-   * const status = await child.status;
-   * ```
-   *
-   * @example Spawn a subprocess and collect its output
-   *
-   * ```ts
-   * const command = new Deno.Command(Deno.execPath(), {
-   *   args: [
-   *     "eval",
-   *     "console.log('hello'); console.error('world')",
-   *   ],
-   * });
-   * const { code, stdout, stderr } = await command.output();
-   * console.assert(code === 0);
-   * console.assert("hello\n" === new TextDecoder().decode(stdout));
-   * console.assert("world\n" === new TextDecoder().decode(stderr));
-   * ```
-   *
-   * @example Spawn a subprocess and collect its output synchronously
-   *
-   * ```ts
-   * const command = new Deno.Command(Deno.execPath(), {
-   *   args: [
-   *     "eval",
-   *     "console.log('hello'); console.error('world')",
-   *   ],
-   * });
-   * const { code, stdout, stderr } = command.outputSync();
-   * console.assert(code === 0);
-   * console.assert("hello\n" === new TextDecoder().decode(stdout));
-   * console.assert("world\n" === new TextDecoder().decode(stderr));
-   * ```
-   *
-   * @category Sub Process
-   */
-  export class Command {
-    constructor(command: string | URL, options?: CommandOptions);
-    /**
-     * Executes the {@linkcode Deno.Command}, waiting for it to finish and
-     * collecting all of its output.
-     * If `spawn()` was called, calling this function will collect the remaining
-     * output.
-     *
-     * Will throw an error if `stdin: "piped"` is set.
-     *
-     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
-     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
-     */
-    output(): Promise<CommandOutput>;
-    /**
-     * Synchronously executes the {@linkcode Deno.Command}, waiting for it to
-     * finish and collecting all of its output.
-     *
-     * Will throw an error if `stdin: "piped"` is set.
-     *
-     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
-     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
-     */
-    outputSync(): CommandOutput;
-    /**
-     * Spawns a streamable subprocess, allowing to use the other methods.
-     */
-    spawn(): ChildProcess;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The interface for handling a child process returned from
-   * {@linkcode Deno.Command.spawn}.
-   *
-   * @category Sub Process
-   */
-  export class ChildProcess {
-    get stdin(): WritableStream<Uint8Array>;
-    get stdout(): ReadableStream<Uint8Array>;
-    get stderr(): ReadableStream<Uint8Array>;
-    readonly pid: number;
-    /** Get the status of the child. */
-    readonly status: Promise<CommandStatus>;
-
-    /** Waits for the child to exit completely, returning all its output and
-     * status. */
-    output(): Promise<CommandOutput>;
-    /** Kills the process with given {@linkcode Deno.Signal}.
-     *
-     * @param [signo="SIGTERM"]
-     */
-    kill(signo?: Signal): void;
-
-    /** Ensure that the status of the child process prevents the Deno process
-     * from exiting. */
-    ref(): void;
-    /** Ensure that the status of the child process does not block the Deno
-     * process from exiting. */
-    unref(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Options which can be set when calling {@linkcode Deno.command}.
-   *
-   * @category Sub Process
-   */
-  export interface CommandOptions {
-    /** Arguments to pass to the process. */
-    args?: readonly string[];
-    /**
-     * The working directory of the process.
-     *
-     * If not specified, the `cwd` of the parent process is used.
-     */
-    cwd?: string | URL;
-    /**
-     * Clear environmental variables from parent process.
-     *
-     * Doesn't guarantee that only `env` variables are present, as the OS may
-     * set environmental variables for processes.
-     *
-     * @default {false}
-     */
-    clearEnv?: boolean;
-    /** Environmental variables to pass to the subprocess. */
-    env?: Record<string, string>;
-    /**
-     * Sets the child process’s user ID. This translates to a setuid call in the
-     * child process. Failure in the set uid call will cause the spawn to fail.
-     */
-    uid?: number;
-    /** Similar to `uid`, but sets the group ID of the child process. */
-    gid?: number;
-    /**
-     * An {@linkcode AbortSignal} that allows closing the process using the
-     * corresponding {@linkcode AbortController} by sending the process a
-     * SIGTERM signal.
-     *
-     * Not supported in {@linkcode Deno.Command.outputSync}.
-     */
-    signal?: AbortSignal;
-
-    /** How `stdin` of the spawned process should be handled.
-     *
-     * Defaults to `"inherit"` for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
-    stdin?: "piped" | "inherit" | "null";
-    /** How `stdout` of the spawned process should be handled.
-     *
-     * Defaults to `"piped"` for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
-    stdout?: "piped" | "inherit" | "null";
-    /** How `stderr` of the spawned process should be handled.
-     *
-     * Defaults to `"piped"` for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
-    stderr?: "piped" | "inherit" | "null";
-
-    /** Skips quoting and escaping of the arguments on windows. This option
-     * is ignored on non-windows platforms.
-     *
-     * @default {false} */
-    windowsRawArguments?: boolean;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category Sub Process
-   */
-  export interface CommandStatus {
-    /** If the child process exits with a 0 status code, `success` will be set
-     * to `true`, otherwise `false`. */
-    success: boolean;
-    /** The exit code of the child process. */
-    code: number;
-    /** The signal associated with the child process. */
-    signal: Signal | null;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * The interface returned from calling {@linkcode Command.output} or
-   * {@linkcode Command.outputSync} which represents the result of spawning the
-   * child process.
-   *
-   * @category Sub Process
-   */
-  export interface CommandOutput extends CommandStatus {
-    /** The buffered output from the child process' `stdout`. */
-    readonly stdout: Uint8Array;
-    /** The buffered output from the child process' `stderr`. */
-    readonly stderr: Uint8Array;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns the Operating System uptime in number of seconds.
-   *
-   * ```ts
-   * console.log(Deno.osUptime());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function osUptime(): number;
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

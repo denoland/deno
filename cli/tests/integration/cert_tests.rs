@@ -3,6 +3,7 @@
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_pemfile;
+use lsp_types::Url;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
+use util::TestContext;
 
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cert/cafile_url_imports.ts",
@@ -19,132 +21,111 @@ itest_flaky!(cafile_url_imports {
 });
 
 itest_flaky!(cafile_ts_fetch {
-    args:
-      "run --quiet --reload --allow-net --cert tls/RootCA.pem cert/cafile_ts_fetch.ts",
-    output: "cert/cafile_ts_fetch.ts.out",
-    http_server: true,
-  });
+  args:
+    "run --quiet --reload --allow-net --cert tls/RootCA.pem cert/cafile_ts_fetch.ts",
+  output: "cert/cafile_ts_fetch.ts.out",
+  http_server: true,
+});
 
 itest_flaky!(cafile_eval {
-    args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cert/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
-    output: "cert/cafile_ts_fetch.ts.out",
-    http_server: true,
-  });
+  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cert/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+  output: "cert/cafile_ts_fetch.ts.out",
+  http_server: true,
+});
 
 itest_flaky!(cafile_info {
-    args:
-      "info --quiet --cert tls/RootCA.pem https://localhost:5545/cert/cafile_info.ts",
-    output: "cert/cafile_info.ts.out",
-    http_server: true,
-  });
+  args:
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cert/cafile_info.ts",
+  output: "cert/cafile_info.ts.out",
+  http_server: true,
+});
 
 itest_flaky!(cafile_url_imports_unsafe_ssl {
-    args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cert/cafile_url_imports.ts",
-    output: "cert/cafile_url_imports_unsafe_ssl.ts.out",
-    http_server: true,
-  });
+  args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cert/cafile_url_imports.ts",
+  output: "cert/cafile_url_imports_unsafe_ssl.ts.out",
+  http_server: true,
+});
 
 itest_flaky!(cafile_ts_fetch_unsafe_ssl {
-    args:
-      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cert/cafile_ts_fetch.ts",
-    output: "cert/cafile_ts_fetch_unsafe_ssl.ts.out",
-    http_server: true,
-  });
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cert/cafile_ts_fetch.ts",
+  output: "cert/cafile_ts_fetch_unsafe_ssl.ts.out",
+  http_server: true,
+});
 
 // TODO(bartlomieju): reenable, this test was flaky on macOS CI during 1.30.3 release
 // itest!(deno_land_unsafe_ssl {
-//     args:
-//       "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
-//     output: "cert/deno_land_unsafe_ssl.ts.out",
-//   });
+//   args:
+//     "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
+//   output: "cert/deno_land_unsafe_ssl.ts.out",
+// });
 
 itest!(ip_address_unsafe_ssl {
-    args:
-      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 cert/ip_address_unsafe_ssl.ts",
-    output: "cert/ip_address_unsafe_ssl.ts.out",
-  });
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 cert/ip_address_unsafe_ssl.ts",
+  output: "cert/ip_address_unsafe_ssl.ts.out",
+});
 
 itest!(localhost_unsafe_ssl {
-    args:
-      "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/cafile_url_imports.ts",
-    output: "cert/localhost_unsafe_ssl.ts.out",
-    http_server: true,
-    exit_code: 1,
-  });
+  args: "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/cafile_url_imports.ts",
+  output: "cert/localhost_unsafe_ssl.ts.out",
+  http_server: true,
+  exit_code: 1,
+});
 
 #[flaky_test::flaky_test]
 fn cafile_env_fetch() {
-  use deno_core::url::Url;
-  let _g = util::http_server();
-  let deno_dir = TempDir::new();
   let module_url =
     Url::parse("https://localhost:5545/cert/cafile_url_imports.ts").unwrap();
-  let cafile = util::testdata_path().join("tls/RootCA.pem");
-  let output = Command::new(util::deno_exe_path())
-    .env("DENO_DIR", deno_dir.path())
-    .env("DENO_CERT", cafile)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(module_url.to_string())
-    .output()
-    .expect("Failed to spawn script");
-  assert!(output.status.success());
+  let context = TestContext::with_http_server();
+  let cafile = context.testdata_path().join("tls/RootCA.pem");
+
+  context
+    .new_command()
+    .args(format!("cache {module_url}"))
+    .env("DENO_CERT", cafile.to_string_lossy())
+    .run()
+    .assert_exit_code(0)
+    .skip_output_check();
 }
 
 #[flaky_test::flaky_test]
 fn cafile_fetch() {
-  use deno_core::url::Url;
-  let _g = util::http_server();
-  let deno_dir = TempDir::new();
   let module_url =
     Url::parse("http://localhost:4545/cert/cafile_url_imports.ts").unwrap();
-  let cafile = util::testdata_path().join("tls/RootCA.pem");
-  let output = Command::new(util::deno_exe_path())
-    .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg("--cert")
-    .arg(cafile)
-    .arg(module_url.to_string())
-    .output()
-    .expect("Failed to spawn script");
-  assert!(output.status.success());
-  let out = std::str::from_utf8(&output.stdout).unwrap();
-  assert_eq!(out, "");
+  let context = TestContext::with_http_server();
+  let cafile = context.testdata_path().join("tls/RootCA.pem");
+  context
+    .new_command()
+    .args(format!(
+      "cache --quiet --cert {} {}",
+      cafile.to_string_lossy(),
+      module_url,
+    ))
+    .run()
+    .assert_exit_code(0)
+    .assert_matches_text("");
 }
 
 #[test]
 fn cafile_compile() {
-  let _g = util::http_server();
-  let dir = TempDir::new();
-  let exe = if cfg!(windows) {
-    dir.path().join("cert.exe")
+  let context = TestContext::with_http_server();
+  let temp_dir = context.temp_dir().path();
+  let output_exe = if cfg!(windows) {
+    temp_dir.join("cert.exe")
   } else {
-    dir.path().join("cert")
+    temp_dir.join("cert")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--cert")
-    .arg("./tls/RootCA.pem")
-    .arg("--allow-net")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./cert/cafile_ts_fetch.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"[WILDCARD]\nHello\n")
+  let output = context.new_command()
+    .args(format!("compile --quiet --cert ./tls/RootCA.pem --allow-net --output {} ./cert/cafile_ts_fetch.ts", output_exe.to_string_lossy()))
+    .run();
+  output.skip_output_check();
+
+  context
+    .new_command()
+    .command_name(output_exe.to_string_lossy())
+    .run()
+    .assert_matches_text("[WILDCARD]\nHello\n");
 }
 
 #[flaky_test::flaky_test]

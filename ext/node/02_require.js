@@ -371,10 +371,9 @@ Module._findPath = function (request, paths, isMain, parentPath) {
     const isRelative = ops.op_require_is_request_relative(
       request,
     );
-    const basePath =
-      (isDenoDirPackage && !isRelative && !usesLocalNodeModulesDir)
-        ? pathResolve(curPath, packageSpecifierSubPath(request))
-        : pathResolve(curPath, request);
+    const basePath = (isDenoDirPackage && !isRelative)
+      ? pathResolve(curPath, packageSpecifierSubPath(request))
+      : pathResolve(curPath, request);
     let filename;
 
     const rc = stat(basePath);
@@ -716,7 +715,7 @@ function wrapSafe(
   cjsModuleInstance,
 ) {
   const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(wrapper, filename);
+  const [f, err] = core.evalContext(wrapper, `file://${filename}`);
   if (err) {
     if (node.globalThis.process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);

@@ -851,10 +851,11 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true } },
-  async function commandWithPromisePrototypeThenOverride() {
+  async function commandWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
+    const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
-      Promise.prototype.then = () => {
+      Promise.prototype.then = Array.prototype[Symbol.iterator] = () => {
         throw new Error();
       };
       await new Deno.Command(Deno.execPath(), {
@@ -862,6 +863,7 @@ Deno.test(
       }).output();
     } finally {
       Promise.prototype.then = originalThen;
+      Array.prototype[Symbol.iterator] = originalSymbolIterator;
     }
   },
 );

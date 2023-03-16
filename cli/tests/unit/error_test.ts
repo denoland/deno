@@ -15,6 +15,7 @@ Deno.test("Errors work", () => {
   assert(new Deno.errors.InvalidData("msg") instanceof Error);
   assert(new Deno.errors.TimedOut("msg") instanceof Error);
   assert(new Deno.errors.Interrupted("msg") instanceof Error);
+  assert(new Deno.errors.WouldBlock("msg") instanceof Error);
   assert(new Deno.errors.WriteZero("msg") instanceof Error);
   assert(new Deno.errors.UnexpectedEof("msg") instanceof Error);
   assert(new Deno.errors.BadResource("msg") instanceof Error);

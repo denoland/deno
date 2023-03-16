@@ -2,9 +2,8 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-Deno.core.initializeAsyncOps();
 
-const { ops } = Deno.core;
+const { ops, opAsync } = Deno.core;
 
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
@@ -20,11 +19,11 @@ function listen() {
 
 /** Accepts a connection, returns rid. */
 function accept(serverRid) {
-  return ops.op_accept(serverRid);
+  return opAsync("op_accept", serverRid);
 }
 
 function read(serverRid, buf) {
-  return ops.op_read_socket(serverRid, buf);
+  return opAsync("op_read_socket", serverRid, buf);
 }
 
 async function serve(rid) {
