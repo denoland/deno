@@ -11,8 +11,8 @@ const Runners = {
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
 // bump the number at the start when you want to purge the cache
-const cacheKeyPrefix =
-  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-";
+const prCacheKeyPrefix =
+  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -435,12 +435,8 @@ const ci = {
             // Restore cache from the latest 'main' branch build.
             name: "Restore cache build output (PR)",
             uses: "actions/cache/restore@v3",
-            if: [
-              "github.ref != 'refs/heads/main' &&",
-              "!startsWith(github.ref, 'refs/tags/') && ",
-              // cargo clippy seems to do a rebuild, so skip fetching the cache
-              "matrix.job != 'lint'",
-            ].join("\n"),
+            if:
+              "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
             with: {
               path: [
                 "./target",
@@ -449,7 +445,7 @@ const ci = {
                 "!./target/*/*.tar.gz",
               ].join("\n"),
               key: "never_saved",
-              "restore-keys": cacheKeyPrefix,
+              "restore-keys": prCacheKeyPrefix,
             },
           },
           {
@@ -856,7 +852,7 @@ const ci = {
                 "!./target/*/*.zip",
                 "!./target/*/*.tar.gz",
               ].join("\n"),
-              key: cacheKeyPrefix + "${{ github.sha }}",
+              key: prCacheKeyPrefix + "${{ github.sha }}",
             },
           },
         ]),
