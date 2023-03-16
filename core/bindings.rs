@@ -103,8 +103,6 @@ pub(crate) fn initialize_context<'s>(
   op_ctxs: &[OpCtx],
   snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
-  let scope = &mut v8::EscapableHandleScope::new(scope);
-
   let context = v8::Context::new(scope);
   let global = context.global(scope);
 
@@ -138,7 +136,7 @@ pub(crate) fn initialize_context<'s>(
     for ctx in op_ctxs {
       initialize_op(scope, ops_obj, ctx, snapshot_options);
     }
-    return scope.escape(context);
+    return context;
   }
 
   // global.Deno = { core: { } };
@@ -161,11 +159,11 @@ pub(crate) fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
-
   for ctx in op_ctxs {
     initialize_op(scope, ops_obj, ctx, snapshot_options);
   }
-  scope.escape(context)
+
+  context
 }
 
 fn set_func(

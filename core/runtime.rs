@@ -490,7 +490,7 @@ impl JsRuntime {
         .collect::<Vec<ExtensionFileSource>>();
 
       #[cfg(feature = "include_js_files_for_snapshotting")]
-      if snapshot_options != SnapshotOptions::None {
+      if snapshot_options != snapshot_util::SnapshotOptions::None {
         for source in &esm_sources {
           use crate::ExtensionFileSourceCode;
           if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
