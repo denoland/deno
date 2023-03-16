@@ -510,7 +510,8 @@ async fn create_main_worker_internal(
       debug_flag: ps
         .options
         .log_level()
-        .map_or(false, |l| l == log::Level::Debug),
+        .map(|l| l == log::Level::Debug)
+        .unwrap_or(false),
       enable_testing_features: ps.options.enable_testing_features(),
       locale: deno_core::v8::icu::get_language_tag(),
       location: ps.options.location_flag().clone(),
@@ -677,7 +678,8 @@ fn create_web_worker_callback(
         debug_flag: ps
           .options
           .log_level()
-          .map_or(false, |l| l == log::Level::Debug),
+          .map(|l| l == log::Level::Debug)
+          .unwrap_or(false),
         enable_testing_features: ps.options.enable_testing_features(),
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),

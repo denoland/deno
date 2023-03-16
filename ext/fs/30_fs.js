@@ -211,31 +211,16 @@ async function rename(oldpath, newpath) {
 // 3. u64
 //  offset += 2
 //  high u32 | low u32
-//
-// 4. ?u64 converts a zero u64 value to JS null on Windows.
 function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
-  // `?` prefix means optional on windows.
   let offset = 0;
-  let str =
-    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
+  let str = "return {";
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
-    let { 0: name, 1: type } = typeEntries[i];
-
-    const optional = type.startsWith("?");
-    if (optional) type = type.slice(1);
+    const { 0: name, 1: type } = typeEntries[i];
 
     if (type == "u64") {
-      if (!optional) {
-        str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
-      } else {
-        str += `${name}: (unix ? (view[${offset}] + view[${
-          offset + 1
-        }] * 2**32) : (view[${offset}] + view[${
-          offset + 1
-        }] * 2**32) || null),`;
-      }
+      str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
     } else if (type == "date") {
       str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
         offset + 2
@@ -259,19 +244,18 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   mtime: "date",
   atime: "date",
   birthtime: "date",
-  dev: "?u64",
-  ino: "?u64",
-  mode: "?u64",
-  nlink: "?u64",
-  uid: "?u64",
-  gid: "?u64",
-  rdev: "?u64",
-  blksize: "?u64",
-  blocks: "?u64",
+  dev: "u64",
+  ino: "u64",
+  mode: "u64",
+  nlink: "u64",
+  uid: "u64",
+  gid: "u64",
+  rdev: "u64",
+  blksize: "u64",
+  blocks: "u64",
 });
 
 function parseFileInfo(response) {
-  const unix = core.build.os === "darwin" || core.build.os === "linux";
   return {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
@@ -282,16 +266,15 @@ function parseFileInfo(response) {
     birthtime: response.birthtimeSet !== null
       ? new Date(response.birthtime)
       : null,
-    // Only non-null if on Unix
-    dev: unix ? response.dev : null,
-    ino: unix ? response.ino : null,
-    mode: unix ? response.mode : null,
-    nlink: unix ? response.nlink : null,
-    uid: unix ? response.uid : null,
-    gid: unix ? response.gid : null,
-    rdev: unix ? response.rdev : null,
-    blksize: unix ? response.blksize : null,
-    blocks: unix ? response.blocks : null,
+    dev: response.dev,
+    ino: response.ino,
+    mode: response.mode,
+    nlink: response.nlink,
+    uid: response.uid,
+    gid: response.gid,
+    rdev: response.rdev,
+    blksize: response.blksize,
+    blocks: response.blocks,
   };
 }
 

@@ -39,6 +39,7 @@ use std::sync::Arc;
 
 use super::cdp;
 use super::channel::RustylineSyncMessageSender;
+use super::session::REPL_INTERNALS_NAME;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -159,7 +160,7 @@ impl EditorHelper {
 }
 
 fn is_word_boundary(c: char) -> bool {
-  if c == '.' {
+  if matches!(c, '.' | '_' | '$') {
     false
   } else {
     char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
@@ -167,12 +168,11 @@ fn is_word_boundary(c: char) -> bool {
 }
 
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
-  let start = line[..cursor_pos]
-    .rfind(is_word_boundary)
-    .map_or_else(|| 0, |i| i);
+  let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
   let end = line[cursor_pos..]
     .rfind(is_word_boundary)
-    .map_or_else(|| cursor_pos, |i| cursor_pos + i);
+    .map(|i| cursor_pos + i)
+    .unwrap_or(cursor_pos);
 
   let word = &line[start..end];
   let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
@@ -208,7 +208,11 @@ impl Completer for EditorHelper {
       let candidates = self
         .get_expression_property_names(sub_expr)
         .into_iter()
-        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+        .filter(|n| {
+          !n.starts_with("Symbol(")
+            && n.starts_with(prop_name)
+            && n != &*REPL_INTERNALS_NAME
+        })
         .collect();
 
       Ok((pos - prop_name.len(), candidates))
@@ -218,7 +222,7 @@ impl Completer for EditorHelper {
         .get_expression_property_names("globalThis")
         .into_iter()
         .chain(self.get_global_lexical_scope_names())
-        .filter(|n| n.starts_with(expr))
+        .filter(|n| n.starts_with(expr) && n != &*REPL_INTERNALS_NAME)
         .collect::<Vec<_>>();
 
       // sort and remove duplicates
