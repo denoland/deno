@@ -551,7 +551,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &NextRequestFast, None);
+    let func = builder.build_fast(scope, &NextRequestFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "nextRequest").unwrap();
@@ -574,7 +574,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &GetMethodFast, None);
+    let func = builder.build_fast(scope, &GetMethodFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "getMethod").unwrap();
@@ -612,7 +612,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &RespondFast, None);
+    let func = builder.build_fast(scope, &RespondFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "respond").unwrap();
