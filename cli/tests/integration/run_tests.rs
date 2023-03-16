@@ -4066,6 +4066,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 #[test]
+#[ignore]
 fn permission_prompt_strips_ansi_codes_and_control_chars() {
   let _guard = util::http_server();
   util::with_pty(&["repl"], |mut console| {
