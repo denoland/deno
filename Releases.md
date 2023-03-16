@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.31.3 / 2023.03.16
 
-- Revert "feat(core): prevent isolate drop for CLI main worker (#18059)" (#18157)
-- Update code-of-conduct email (#18162)
 - feat(ext/fetch): support fallible request-builder hooks (#18116)
 - fix(check): regression where config "types" entries caused type checking errors (#18124)
 - fix(core): Upgrades bytes crate from =1.2.1 to ^1.4.0 (#18123)
@@ -25,10 +23,8 @@ https://github.com/denoland/deno_install
 - fix(npm): "not implemented scheme" message should properly show the scheme (#18209)
 - fix(npm): show a progress bar when initializing the node_modules folder (#18136)
 - fix(repl): do not panic deleting `Deno` or deleting all its properties (#18211)
-- fix(wpt): set META_TITLE on global for the testharness (#18193)
 - fix: ensure no node_modules directory is created when a package.json exists and no npm dependencies are used (#18134)
 - perf: do not depend on iana-time-zone (#18088)
-- wpt: only tag daily runs as master (#18155)
 
 ### 1.31.2 / 2023.03.10
 
