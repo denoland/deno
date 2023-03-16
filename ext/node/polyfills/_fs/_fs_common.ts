@@ -74,7 +74,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
   if (!encoding) return null;
 
   encoding = encoding.toLowerCase() as Encodings;
-  if (["utf8", "hex", "base64"].includes(encoding)) return encoding;
+  if (["utf8", "hex", "base64", "ascii"].includes(encoding)) return encoding;
 
   if (encoding === "utf-8") {
     return "utf8";
@@ -85,7 +85,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
     // node -e "require('fs').readFile('../world.txt', 'buffer', console.log)"
   }
 
-  const notImplementedEncodings = ["utf16le", "latin1", "ascii", "ucs2"];
+  const notImplementedEncodings = ["utf16le", "latin1", "ucs2"];
 
   if (notImplementedEncodings.includes(encoding as string)) {
     notImplemented(`"${encoding}" encoding`);
