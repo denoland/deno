@@ -17,6 +17,7 @@ use crate::modules::ModuleMap;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
+use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
@@ -86,16 +87,12 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  snapshot_options: SnapshotOptions,
+  snapshot_options: snapshot_util::SnapshotOptions,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
-  extensions_with_js: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
-  // Marks if it's OK to leak the current isolate. Use only by the
-  // CLI main worker.
-  leak_isolate: bool,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -253,20 +250,12 @@ pub struct RuntimeOptions {
 
   /// JsRuntime extensions, not to be confused with ES modules.
   /// Only ops registered by extensions will be initialized. If you need
-  /// to execute JS code from extensions, use `extensions_with_js` options
-  /// instead.
-  pub extensions: Vec<Extension>,
-
-  /// JsRuntime extensions, not to be confused with ES modules.
-  /// Ops registered by extensions will be initialized and JS code will be
-  /// executed. If you don't need to execute JS code from extensions, use
-  /// `extensions` option instead.
+  /// to execute JS code from extensions, pass source files in `js` or `esm`
+  /// option on `ExtensionBuilder`.
   ///
-  /// This is useful when creating snapshots, in such case you would pass
-  /// extensions using `extensions_with_js`, later when creating a runtime
-  /// from the snapshot, you would pass these extensions using `extensions`
-  /// option.
-  pub extensions_with_js: Vec<Extension>,
+  /// If you are creating a runtime from a snapshot take care not to include
+  /// JavaScript sources in the extensions.
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
@@ -308,52 +297,12 @@ pub struct RuntimeOptions {
   /// Describe if this is the main runtime instance, used by debuggers in some
   /// situation - like disconnecting when program finishes running.
   pub is_main: bool,
-
-  /// Whether it is OK to leak the V8 isolate. Only to be used by CLI
-  /// top-level runtime.
-  pub leak_isolate: bool,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum SnapshotOptions {
-  Load,
-  CreateFromExisting,
-  Create,
-  None,
-}
-
-impl SnapshotOptions {
-  pub fn loaded(&self) -> bool {
-    matches!(
-      self,
-      SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
-    )
-  }
-
-  fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
-    match (snapshot_loaded, will_snapshot) {
-      (true, true) => SnapshotOptions::CreateFromExisting,
-      (false, true) => SnapshotOptions::Create,
-      (true, false) => SnapshotOptions::Load,
-      (false, false) => SnapshotOptions::None,
-    }
-  }
 }
 
 impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
-    }
-    if self.leak_isolate {
-      if let Some(v8_isolate) = self.v8_isolate.take() {
-        // Clear the GothamState. This allows final env cleanup hooks to run.
-        // Note: that OpState is cloned for every OpCtx, so we can't just drop
-        // one reference to it.
-        let rc_state = self.op_state();
-        rc_state.borrow_mut().clear_state();
-        std::mem::forget(v8_isolate);
-      }
     }
   }
 }
@@ -373,18 +322,15 @@ impl JsRuntime {
     let has_startup_snapshot = options.startup_snapshot.is_some();
     if !has_startup_snapshot {
       options
-        .extensions_with_js
-        .insert(0, crate::ops_builtin::init_builtins());
+        .extensions
+        .insert(0, crate::ops_builtin::init_builtin_ops_and_esm());
     } else {
       options
         .extensions
-        .insert(0, crate::ops_builtin::init_builtins());
+        .insert(0, crate::ops_builtin::init_builtin_ops());
     }
 
-    let ops = Self::collect_ops(
-      &mut options.extensions,
-      &mut options.extensions_with_js,
-    );
+    let ops = Self::collect_ops(&mut options.extensions);
     let mut op_state = OpState::new(ops.len());
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -439,113 +385,30 @@ impl JsRuntime {
       .collect::<Vec<_>>()
       .into_boxed_slice();
 
-    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
+    let snapshot_options = snapshot_util::SnapshotOptions::from_bools(
+      options.startup_snapshot.is_some(),
+      options.will_snapshot,
+    );
+    let refs = bindings::external_references(&op_ctxs, snapshot_options);
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
-    let mut module_map_data = None;
-    let mut module_handles = vec![];
+    let mut maybe_snapshotted_data = None;
 
-    fn get_context_data(
-      scope: &mut v8::HandleScope<()>,
-      context: v8::Local<v8::Context>,
-    ) -> (Vec<v8::Global<v8::Module>>, v8::Global<v8::Array>) {
-      fn data_error_to_panic(err: v8::DataError) -> ! {
-        match err {
-          v8::DataError::BadType { actual, expected } => {
-            panic!(
-              "Invalid type for snapshot data: expected {expected}, got {actual}"
-            );
-          }
-          v8::DataError::NoData { expected } => {
-            panic!("No data for snapshot data: expected {expected}");
-          }
-        }
-      }
-
-      let mut scope = v8::ContextScope::new(scope, context);
-      // The 0th element is the module map itself, followed by X number of module
-      // handles. We need to deserialize the "next_module_id" field from the
-      // map to see how many module handles we expect.
-      match scope.get_context_data_from_snapshot_once::<v8::Array>(0) {
-        Ok(val) => {
-          let next_module_id = {
-            let info_data: v8::Local<v8::Array> =
-              val.get_index(&mut scope, 1).unwrap().try_into().unwrap();
-            info_data.length()
-          };
-
-          // Over allocate so executing a few scripts doesn't have to resize this vec.
-          let mut module_handles =
-            Vec::with_capacity(next_module_id as usize + 16);
-          for i in 1..=next_module_id {
-            match scope
-              .get_context_data_from_snapshot_once::<v8::Module>(i as usize)
-            {
-              Ok(val) => {
-                let module_global = v8::Global::new(&mut scope, val);
-                module_handles.push(module_global);
-              }
-              Err(err) => data_error_to_panic(err),
-            }
-          }
-
-          (module_handles, v8::Global::new(&mut scope, val))
-        }
-        Err(err) => data_error_to_panic(err),
-      }
-    }
-
-    let (mut isolate, snapshot_options) = if options.will_snapshot {
-      let (snapshot_creator, snapshot_loaded) =
-        if let Some(snapshot) = options.startup_snapshot {
-          (
-            match snapshot {
-              Snapshot::Static(data) => {
-                v8::Isolate::snapshot_creator_from_existing_snapshot(
-                  data,
-                  Some(refs),
-                )
-              }
-              Snapshot::JustCreated(data) => {
-                v8::Isolate::snapshot_creator_from_existing_snapshot(
-                  data,
-                  Some(refs),
-                )
-              }
-              Snapshot::Boxed(data) => {
-                v8::Isolate::snapshot_creator_from_existing_snapshot(
-                  data,
-                  Some(refs),
-                )
-              }
-            },
-            true,
-          )
-        } else {
-          (v8::Isolate::snapshot_creator(Some(refs)), false)
-        };
-
-      let snapshot_options =
-        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+    let (mut isolate, snapshot_options) = if snapshot_options.will_snapshot() {
+      let snapshot_creator =
+        snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
 
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
-        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
-        // not overwriting an existing pointer.
-        isolate = unsafe {
-          isolate_ptr.write(isolate);
-          isolate_ptr.read()
-        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
         // Get module map data from the snapshot
         if has_startup_snapshot {
-          let context_data = get_context_data(scope, context);
-          module_handles = context_data.0;
-          module_map_data = Some(context_data.1);
+          maybe_snapshotted_data =
+            Some(snapshot_util::get_snapshotted_data(scope, context));
         }
 
         global_context = v8::Global::new(scope, context);
@@ -563,38 +426,26 @@ impl JsRuntime {
           )
         })
         .external_references(&**refs);
-      let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
+
+      if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
           Snapshot::Boxed(data) => params.snapshot_blob(data),
         };
-        true
-      } else {
-        false
-      };
-
-      let snapshot_options =
-        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+      }
 
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
-        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
-        // not overwriting an existing pointer.
-        isolate = unsafe {
-          isolate_ptr.write(isolate);
-          isolate_ptr.read()
-        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
         // Get module map data from the snapshot
         if has_startup_snapshot {
-          let context_data = get_context_data(scope, context);
-          module_handles = context_data.0;
-          module_map_data = Some(context_data.1);
+          maybe_snapshotted_data =
+            Some(snapshot_util::get_snapshotted_data(scope, context));
         }
 
         global_context = v8::Global::new(scope, context);
@@ -603,6 +454,12 @@ impl JsRuntime {
       (isolate, snapshot_options)
     };
 
+    // SAFETY: this is first use of `isolate_ptr` so we are sure we're
+    // not overwriting an existing pointer.
+    isolate = unsafe {
+      isolate_ptr.write(isolate);
+      isolate_ptr.read()
+    };
     global_context.open(&mut isolate).set_slot(
       &mut isolate,
       Rc::new(RefCell::new(ContextState {
@@ -622,20 +479,25 @@ impl JsRuntime {
       None
     };
 
-    let loader = if snapshot_options != SnapshotOptions::Load {
+    let loader = if snapshot_options != snapshot_util::SnapshotOptions::Load {
       let esm_sources = options
-        .extensions_with_js
+        .extensions
         .iter()
-        .flat_map(|ext| ext.get_esm_sources().to_owned())
+        .flat_map(|ext| match ext.get_esm_sources() {
+          Some(s) => s.to_owned(),
+          None => vec![],
+        })
         .collect::<Vec<ExtensionFileSource>>();
 
       #[cfg(feature = "include_js_files_for_snapshotting")]
-      for source in &esm_sources {
-        use crate::ExtensionFileSourceCode;
-        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-          &source.code
-        {
-          println!("cargo:rerun-if-changed={}", path.display())
+      if snapshot_options != snapshot_util::SnapshotOptions::None {
+        for source in &esm_sources {
+          use crate::ExtensionFileSourceCode;
+          if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+            &source.code
+          {
+            println!("cargo:rerun-if-changed={}", path.display())
+          }
         }
       }
 
@@ -666,17 +528,13 @@ impl JsRuntime {
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
       loader,
       op_state,
-      snapshot_options == SnapshotOptions::Load,
+      snapshot_options == snapshot_util::SnapshotOptions::Load,
     )));
-    if let Some(module_map_data) = module_map_data {
+    if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
       let mut module_map = module_map_rc.borrow_mut();
-      module_map.update_with_snapshot_data(
-        scope,
-        module_map_data,
-        module_handles,
-      );
+      module_map.update_with_snapshotted_data(scope, snapshotted_data);
     }
     isolate.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
@@ -689,11 +547,9 @@ impl JsRuntime {
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
-      extensions_with_js: options.extensions_with_js,
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
-      leak_isolate: options.leak_isolate,
     };
 
     // Init resources and ops before extensions to make sure they are
@@ -752,7 +608,7 @@ impl JsRuntime {
 
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
-  /// [`RuntimeOptions::extensions_with_js`] when the [`JsRuntime`] was
+  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was
   /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
@@ -868,50 +724,45 @@ impl JsRuntime {
     }
 
     // Take extensions to avoid double-borrow
-    let extensions = std::mem::take(&mut self.extensions_with_js);
+    let extensions = std::mem::take(&mut self.extensions);
     for ext in &extensions {
       {
-        let esm_files = ext.get_esm_sources();
-        if let Some(entry_point) = ext.get_esm_entry_point() {
-          let file_source = esm_files
-            .iter()
-            .find(|file| file.specifier == entry_point)
-            .unwrap();
-          load_and_evaluate_module(self, file_source)?;
-        } else {
-          for file_source in esm_files {
+        if let Some(esm_files) = ext.get_esm_sources() {
+          if let Some(entry_point) = ext.get_esm_entry_point() {
+            let file_source = esm_files
+              .iter()
+              .find(|file| file.specifier == entry_point)
+              .unwrap();
             load_and_evaluate_module(self, file_source)?;
+          } else {
+            for file_source in esm_files {
+              load_and_evaluate_module(self, file_source)?;
+            }
           }
         }
       }
 
       {
-        let js_files = ext.get_js_sources();
-        for file_source in js_files {
-          // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-          realm.execute_script(
-            self.v8_isolate(),
-            &file_source.specifier,
-            &file_source.code.load()?,
-          )?;
+        if let Some(js_files) = ext.get_js_sources() {
+          for file_source in js_files {
+            // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+            realm.execute_script(
+              self.v8_isolate(),
+              &file_source.specifier,
+              &file_source.code.load()?,
+            )?;
+          }
         }
       }
     }
     // Restore extensions
-    self.extensions_with_js = extensions;
+    self.extensions = extensions;
 
     Ok(())
   }
 
   /// Collects ops from extensions & applies middleware
-  fn collect_ops(
-    extensions: &mut [Extension],
-    extensions_with_js: &mut [Extension],
-  ) -> Vec<OpDecl> {
-    let mut exts = vec![];
-    exts.extend(extensions);
-    exts.extend(extensions_with_js);
-
+  fn collect_ops(exts: &mut [Extension]) -> Vec<OpDecl> {
     for (ext, previous_exts) in
       exts.iter().enumerate().map(|(i, ext)| (ext, &exts[..i]))
     {
@@ -969,24 +820,6 @@ impl JsRuntime {
 
       // Restore extensions
       self.extensions = extensions;
-    }
-    {
-      let mut extensions: Vec<Extension> =
-        std::mem::take(&mut self.extensions_with_js);
-
-      // Setup state
-      for e in extensions.iter_mut() {
-        // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut());
-
-        // Setup event-loop middleware
-        if let Some(middleware) = e.init_event_loop_middleware() {
-          self.event_loop_middlewares.push(middleware);
-        }
-      }
-
-      // Restore extensions
-      self.extensions_with_js = extensions;
     }
     Ok(())
   }
@@ -1110,23 +943,19 @@ impl JsRuntime {
 
     // Serialize the module map and store its data in the snapshot.
     {
-      let module_map_rc = self.module_map.take().unwrap();
-      let module_map = module_map_rc.borrow();
-      let (module_map_data, module_handles) =
-        module_map.serialize_for_snapshotting(&mut self.handle_scope());
+      let snapshotted_data = {
+        let module_map_rc = self.module_map.take().unwrap();
+        let module_map = module_map_rc.borrow();
+        module_map.serialize_for_snapshotting(&mut self.handle_scope())
+      };
 
       let context = self.global_context();
       let mut scope = self.handle_scope();
-      let local_context = v8::Local::new(&mut scope, context);
-      let local_data = v8::Local::new(&mut scope, module_map_data);
-      let offset = scope.add_context_data(local_context, local_data);
-      assert_eq!(offset, 0);
-
-      for (index, handle) in module_handles.into_iter().enumerate() {
-        let module_handle = v8::Local::new(&mut scope, handle);
-        let offset = scope.add_context_data(local_context, module_handle);
-        assert_eq!(offset, index + 1);
-      }
+      snapshot_util::set_snapshotted_data(
+        &mut scope,
+        context,
+        snapshotted_data,
+      );
     }
 
     // Drop existing ModuleMap to drop v8::Global handles

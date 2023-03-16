@@ -268,7 +268,7 @@ async fn create_graph(
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| resolve_url_or_path(p))
+    .map(|p| resolve_url_or_path(p, ps.options.initial_cwd()))
     .collect::<Result<Vec<_>, _>>()?;
 
   ps.create_graph(entry_points).await

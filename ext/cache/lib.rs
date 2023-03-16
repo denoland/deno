@@ -13,6 +13,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ByteString;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -22,12 +23,18 @@ pub use sqlite::SqliteBackedCache;
 #[derive(Clone)]
 pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
 
-pub fn init<CA: Cache + 'static>(
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web", "deno_url", "deno_fetch"],
+  )
+}
+
+fn ops<CA: Cache + 'static>(
+  ext: &mut ExtensionBuilder,
   maybe_create_cache: Option<CreateCache<CA>>,
-) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_fetch"])
-    .esm(include_js_files!("01_cache.js",))
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       op_cache_storage_open::decl::<CA>(),
       op_cache_storage_has::decl::<CA>(),
@@ -41,7 +48,20 @@ pub fn init<CA: Cache + 'static>(
         state.put(create_cache);
       }
     })
+}
+
+pub fn init_ops_and_esm<CA: Cache + 'static>(
+  maybe_create_cache: Option<CreateCache<CA>>,
+) -> Extension {
+  ops::<CA>(&mut ext(), maybe_create_cache)
+    .esm(include_js_files!("01_cache.js",))
     .build()
+}
+
+pub fn init_ops<CA: Cache + 'static>(
+  maybe_create_cache: Option<CreateCache<CA>>,
+) -> Extension {
+  ops::<CA>(&mut ext(), maybe_create_cache).build()
 }
 
 pub fn get_declaration() -> PathBuf {

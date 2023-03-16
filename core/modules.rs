@@ -6,6 +6,7 @@ use crate::extensions::ExtensionFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::snapshot_util::SnapshottedData;
 use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
@@ -1030,7 +1031,7 @@ impl ModuleMap {
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> (v8::Global<v8::Array>, Vec<v8::Global<v8::Module>>) {
+  ) -> SnapshottedData {
     let array = v8::Array::new(scope, 3);
 
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
@@ -1105,16 +1106,19 @@ impl ModuleMap {
     let array_global = v8::Global::new(scope, array);
 
     let handles = self.handles.clone();
-    (array_global, handles)
+    SnapshottedData {
+      module_map_data: array_global,
+      module_handles: handles,
+    }
   }
 
-  pub fn update_with_snapshot_data(
+  pub fn update_with_snapshotted_data(
     &mut self,
     scope: &mut v8::HandleScope,
-    data: v8::Global<v8::Array>,
-    module_handles: Vec<v8::Global<v8::Module>>,
+    snapshotted_data: SnapshottedData,
   ) {
-    let local_data: v8::Local<v8::Array> = v8::Local::new(scope, data);
+    let local_data: v8::Local<v8::Array> =
+      v8::Local::new(scope, snapshotted_data.module_map_data);
 
     {
       let next_load_id = local_data.get_index(scope, 0).unwrap();
@@ -1258,7 +1262,7 @@ impl ModuleMap {
       self.by_name = by_name;
     }
 
-    self.handles = module_handles;
+    self.handles = snapshotted_data.module_handles;
   }
 
   pub(crate) fn new(

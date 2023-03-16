@@ -326,7 +326,7 @@ fn rss() -> usize {
     }
     for n in chars {
       idx += 1;
-      if ('0'..='9').contains(&n) {
+      if n.is_ascii_digit() {
         out *= 10;
         out += n as usize - '0' as usize;
       } else {

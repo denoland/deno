@@ -10,6 +10,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::ExtensionBuilder;
 
 use deno_core::Extension;
 use deno_core::OpState;
@@ -72,10 +73,18 @@ use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
-pub fn init(maybe_seed: Option<u64>) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web"])
-    .esm(include_js_files!("00_crypto.js", "01_webidl.js",))
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_web"],
+  )
+}
+
+fn ops(
+  ext: &mut ExtensionBuilder,
+  maybe_seed: Option<u64>,
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       op_crypto_get_random_values::decl(),
       op_crypto_generate_key::decl(),
@@ -112,7 +121,16 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
         state.put(StdRng::seed_from_u64(seed));
       }
     })
+}
+
+pub fn init_ops_and_esm(maybe_seed: Option<u64>) -> Extension {
+  ops(&mut ext(), maybe_seed)
+    .esm(include_js_files!("00_crypto.js", "01_webidl.js",))
     .build()
+}
+
+pub fn init_ops(maybe_seed: Option<u64>) -> Extension {
+  ops(&mut ext(), maybe_seed).build()
 }
 
 #[op]

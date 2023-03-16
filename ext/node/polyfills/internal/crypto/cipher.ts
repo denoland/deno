@@ -10,12 +10,13 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "ext:deno_node/_stream.mjs";
-import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import { KeyObject } from "./keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
+import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 
@@ -42,21 +43,13 @@ export interface CipherOCBOptions extends TransformOptions {
 }
 
 export interface Cipher extends ReturnType<typeof Transform> {
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
-  update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
   update(
     data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
+    inputEncoding?: Encoding,
+    outputEncoding?: Encoding,
   ): string;
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
+  final(outputEncoding?: BufferEncoding): string;
 
   setAutoPadding(autoPadding?: boolean): this;
 }
@@ -124,21 +117,27 @@ export interface DecipherOCB extends Decipher {
 }
 
 export class Cipheriv extends Transform implements Cipher {
-  constructor(
-    _cipher: string,
-    _key: CipherKey,
-    _iv: BinaryLike | null,
-    _options?: TransformOptions,
-  ) {
-    super();
+  /** CipherContext resource id */
+  #context: number;
 
-    notImplemented("crypto.Cipheriv");
+  /** plaintext data cache */
+  #cache: BlockModeCache;
+
+  constructor(
+    cipher: string,
+    key: CipherKey,
+    iv: BinaryLike | null,
+    options?: TransformOptions,
+  ) {
+    super(options);
+    this.#cache = new BlockModeCache();
+    this.#context = ops.op_node_create_cipheriv(cipher, key, iv);
   }
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
-  final(_outputEncoding?: string): Buffer | string {
-    notImplemented("crypto.Cipheriv.prototype.final");
+  final(encoding: string = getDefaultEncoding()): Buffer | string {
+    const buf = new Buffer(16);
+    ops.op_node_cipheriv_final(this.#context, this.#cache.cache, buf);
+    return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
   getAuthTag(): Buffer {
@@ -152,30 +151,52 @@ export class Cipheriv extends Transform implements Cipher {
     },
   ): this {
     notImplemented("crypto.Cipheriv.prototype.setAAD");
+    return this;
   }
 
   setAutoPadding(_autoPadding?: boolean): this {
     notImplemented("crypto.Cipheriv.prototype.setAutoPadding");
+    return this;
   }
 
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
   update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    _data: string | BinaryLike | ArrayBufferView,
+    data: string | Buffer | ArrayBufferView,
+    // TODO(kt3k): Handle inputEncoding
     _inputEncoding?: Encoding,
-    _outputEncoding?: Encoding,
+    outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
-    notImplemented("crypto.Cipheriv.prototype.update");
+    this.#cache.add(data);
+    const input = this.#cache.get();
+    const output = new Buffer(input.length);
+    ops.op_node_cipheriv_encrypt(this.#context, input, output);
+    return outputEncoding === "buffer"
+      ? output
+      : output.toString(outputEncoding);
+  }
+}
+
+/** Caches data and output the chunk of multiple of 16.
+ * Used by CBC, ECB modes of block ciphers */
+class BlockModeCache {
+  constructor() {
+    this.cache = new Uint8Array(0);
+  }
+
+  add(data: Uint8Array) {
+    const cache = this.cache;
+    this.cache = new Uint8Array(cache.length + data.length);
+    this.cache.set(cache);
+    this.cache.set(data, cache.length);
+  }
+
+  get(): Uint8Array {
+    if (this.cache.length < 16) {
+      return null;
+    }
+    const len = Math.floor(this.cache.length / 16) * 16;
+    const out = this.cache.subarray(0, len);
+    this.cache = this.cache.subarray(len);
+    return out;
   }
 }
 
@@ -191,8 +212,6 @@ export class Decipheriv extends Transform implements Cipher {
     notImplemented("crypto.Decipheriv");
   }
 
-  final(): Buffer;
-  final(outputEncoding: BufferEncoding): string;
   final(_outputEncoding?: string): Buffer | string {
     notImplemented("crypto.Decipheriv.prototype.final");
   }
@@ -214,18 +233,6 @@ export class Decipheriv extends Transform implements Cipher {
     notImplemented("crypto.Decipheriv.prototype.setAutoPadding");
   }
 
-  update(data: BinaryLike): Buffer;
-  update(data: string, inputEncoding: Encoding): Buffer;
-  update(
-    data: ArrayBufferView,
-    inputEncoding: undefined,
-    outputEncoding: Encoding,
-  ): string;
-  update(
-    data: string,
-    inputEncoding: Encoding | undefined,
-    outputEncoding: Encoding,
-  ): string;
   update(
     _data: string | BinaryLike | ArrayBufferView,
     _inputEncoding?: Encoding,

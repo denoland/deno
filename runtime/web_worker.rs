@@ -383,16 +383,18 @@ impl WebWorker {
       CreateCache(Arc::new(create_cache_fn))
     });
 
+    // NOTE(bartlomieju): ordering is important here, keep it in sync with
+    // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
+      deno_url::init_ops(),
+      deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
+      deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
@@ -401,17 +403,32 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
+      deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init(None).disable(),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
+      deno_webstorage::init_ops(None).disable(),
+      deno_crypto::init_ops(options.seed),
+      deno_broadcast_channel::init_ops(
+        options.broadcast_channel.clone(),
+        unstable,
+      ),
+      deno_ffi::init_ops::<PermissionsContainer>(unstable),
+      deno_net::init_ops::<PermissionsContainer>(
+        options.root_cert_store.clone(),
+        unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
+      deno_tls::init_ops(),
+      deno_napi::init_ops::<PermissionsContainer>(),
+      deno_http::init_ops(),
+      deno_io::init_ops(options.stdio),
+      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_flash::init_ops::<PermissionsContainer>(unstable),
+      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
+      deno_node::init_polyfill_ops(),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
@@ -421,33 +438,16 @@ impl WebWorker {
         options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      // Extensions providing Deno.* features
       ops::fs_events::init(),
-      deno_fs::init::<PermissionsContainer>(unstable),
-      deno_io::init(options.stdio),
-      deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
-        options.root_cert_store.clone(),
-        unstable,
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
-      deno_napi::init::<PermissionsContainer>(),
-      // TODO(bartlomieju): this should be conditional on `dont_create_runtime_snapshot`
-      // cargo feature and should use `init_polyfill_ops` or `init_polyfill_ops_and_esm`
-      // if the feature is enabled
-      deno_node::init_polyfill_ops(),
-      deno_node::init::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
       ops::http::init(),
-      // Permissions ext (worker specific state)
-      perm_ext,
     ];
+
+    extensions.push(perm_ext);
 
     // Append exts
     extensions.extend(std::mem::take(&mut options.extensions));

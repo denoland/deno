@@ -826,15 +826,15 @@ itest!(config {
 
 itest!(config_types {
   args:
-    "run --reload --quiet --config run/config_types/tsconfig.json run/config_types/main.ts",
+    "run --reload --quiet --check=all --config run/config_types/tsconfig.json run/config_types/main.ts",
   output: "run/config_types/main.out",
 });
 
 itest!(config_types_remote {
-    http_server: true,
-    args: "run --reload --quiet --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
-    output: "run/config_types/main.out",
-  });
+  http_server: true,
+  args: "run --reload --quiet --check=all --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
+  output: "run/config_types/main.out",
+});
 
 itest!(empty_typescript {
   args: "run --reload --check run/empty.ts",
@@ -2867,6 +2867,44 @@ fn package_json_error_dep_value_test() {
     .assert_matches_file("package_json/invalid_value/task.out");
 }
 
+#[test]
+fn package_json_no_node_modules_dir_created() {
+  // it should not create a node_modules directory
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write("deno.json", "{}");
+  temp_dir.write("package.json", "{}");
+  temp_dir.write("main.ts", "");
+
+  context.new_command().args("run main.ts").run();
+
+  assert!(!temp_dir.path().join("node_modules").exists());
+}
+
+#[test]
+fn node_modules_dir_no_npm_specifiers_no_dir_created() {
+  // it should not create a node_modules directory
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write("deno.json", "{}");
+  temp_dir.write("main.ts", "");
+
+  context
+    .new_command()
+    .args("run --node-modules-dir main.ts")
+    .run();
+
+  assert!(!temp_dir.path().join("node_modules").exists());
+}
+
 itest!(wasm_streaming_panic_test {
   args: "run run/wasm_streaming_panic_test.js",
   output: "run/wasm_streaming_panic_test.js.out",
@@ -4024,6 +4062,52 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 
     let expected_output = r#"\x1b[1;1H\x1b[0JAre you sure you want to continue?"#;
     assert_eq!(output, expected_output);
+  });
+}
+
+#[test]
+#[ignore]
+fn permission_prompt_strips_ansi_codes_and_control_chars() {
+  let _guard = util::http_server();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(
+      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\"."
+    ));
+  });
+
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      r#"
+const boldANSI = "\u001b[1m" // bold
+const unboldANSI = "\u001b[22m" // unbold
+
+const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}
+├ Requested by \`Deno.Command().output()`
+
+const moveANSIUp = "\u001b[1A" // moves to the start of the line
+const clearANSI = "\u001b[2K" // clears the line
+const moveANSIStart = "\u001b[1000D" // moves to the start of the line
+
+Deno[Object.getOwnPropertySymbols(Deno)[0]].core.ops.op_spawn_child({
+    cmd: "cat",
+    args: ["/etc/passwd"],
+    clearEnv: false,
+    env: [],
+    stdin: "null",
+    stdout: "inherit",
+    stderr: "piped"
+}, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
+    );
+    console.write_line("close();");
+    let output = console.read_all_output();
+
+    assert!(output.contains(r#"┌ ⚠️  Deno requests run access to "cat""#));
   });
 }
 
