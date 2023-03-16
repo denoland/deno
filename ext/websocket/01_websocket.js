@@ -22,10 +22,12 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
   DataView,
+  DataViewPrototypeGetByteLength,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -43,6 +45,7 @@ const {
   PromisePrototypeCatch,
   SymbolFor,
   TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
 webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -302,16 +305,19 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    // TODO(petamoriken): use primordials
-    const sendTypedArray = (ta) => {
-      this[_bufferedAmount] += ta.byteLength;
+    /**
+     * @param {ArrayBufferView} view
+     * @param {number} byteLength
+     */
+    const sendTypedArray = (view, byteLength) => {
+      this[_bufferedAmount] += byteLength;
       PromisePrototypeThen(
         core.opAsync("op_ws_send", this[_rid], {
           kind: "binary",
-          value: ta,
+          value: view,
         }),
         () => {
-          this[_bufferedAmount] -= ta.byteLength;
+          this[_bufferedAmount] -= byteLength;
         },
       );
     };
@@ -319,12 +325,18 @@ class WebSocket extends EventTarget {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         data.slice().arrayBuffer(),
-        (ab) => sendTypedArray(new DataView(ab)),
+        (ab) => sendTypedArray(new DataView(ab), ArrayBufferPrototypeGetByteLength(ab)),
       );
     } else if (ArrayBufferIsView(data)) {
-      sendTypedArray(data);
+      if (TypedArrayPrototypeGetSymbolToStringTag(data) === undefined) {
+        // DataView
+        sendTypedArray(data, DataViewPrototypeGetByteLength(data));
+      } else {
+        // TypedArray
+        sendTypedArray(data, TypedArrayPrototypeGetByteLength(data));
+      }
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      sendTypedArray(new DataView(data));
+      sendTypedArray(new DataView(data), ArrayBufferPrototypeGetByteLength(data));
     } else {
       const string = String(data);
       const d = core.encode(string);
