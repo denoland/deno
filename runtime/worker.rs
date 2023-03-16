@@ -253,14 +253,16 @@ impl MainWorker {
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_io::deno_io::init_ops(Rc::new(RefCell::new(Some(options.stdio)))),
       deno_tls::init_ops(),
-      deno_net::init_ops::<PermissionsContainer>(
+      deno_net::deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
-      deno_node::init_polyfill_ops(),
+      deno_node::deno_node_loading::init_ops::<PermissionsContainer>(
+        options.npm_resolver,
+      ),
+      deno_node::deno_node::init_ops(),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init_ops(),

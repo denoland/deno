@@ -280,7 +280,7 @@ mod startup_snapshot {
         false,
       ), // No --unstable.
       deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(false),
-      deno_net::init_ops_and_esm::<Permissions>(
+      deno_net::deno_net::init_ops_and_esm::<Permissions>(
         None, false, // No --unstable.
         None,
       ),
@@ -292,8 +292,8 @@ mod startup_snapshot {
       runtime_extension,
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::init_ops_and_esm::<Permissions>(None),
-      deno_node::init_polyfill_ops_and_esm(),
+      deno_node::deno_node_loading::init_ops_and_esm::<Permissions>(None),
+      deno_node::deno_node::init_ops_and_esm(),
     ];
 
     if let Some(additional_extension) = maybe_additional_extension {

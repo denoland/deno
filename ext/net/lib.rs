@@ -8,9 +8,6 @@ pub mod ops_unix;
 pub mod resolve_addr;
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use std::cell::RefCell;
@@ -88,17 +85,17 @@ deno_core::ops_bundle!(deno_ops,
   ]
 );
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_web"])
-}
-
-fn ops<P: NetPermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  root_cert_store: Option<RootCertStore>,
-  unstable: bool,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-) -> &mut ExtensionBuilder {
-  ext.ops(deno_ops::<P>()).state(move |state| {
+deno_core::extension!(deno_net,
+  deps = [ deno_web ],
+  parameters = [ P: NetPermissions ],
+  ops_fn = deno_ops<P>,
+  esm = [ "01_net.js", "02_tls.js" ],
+  config = {
+    root_cert_store: Option<RootCertStore>,
+    unstable: bool,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  },
+  state = |state, root_cert_store, unstable, unsafely_ignore_certificate_errors| {
     state.put(DefaultTlsOptions {
       root_cert_store: root_cert_store.clone(),
     });
@@ -106,34 +103,5 @@ fn ops<P: NetPermissions + 'static>(
     state.put(UnsafelyIgnoreCertificateErrors(
       unsafely_ignore_certificate_errors.clone(),
     ));
-  })
-}
-
-pub fn init_ops_and_esm<P: NetPermissions + 'static>(
-  root_cert_store: Option<RootCertStore>,
-  unstable: bool,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-) -> Extension {
-  ops::<P>(
-    &mut ext(),
-    root_cert_store,
-    unstable,
-    unsafely_ignore_certificate_errors,
-  )
-  .esm(include_js_files!("01_net.js", "02_tls.js",))
-  .build()
-}
-
-pub fn init_ops<P: NetPermissions + 'static>(
-  root_cert_store: Option<RootCertStore>,
-  unstable: bool,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-) -> Extension {
-  ops::<P>(
-    &mut ext(),
-    root_cert_store,
-    unstable,
-    unsafely_ignore_certificate_errors,
-  )
-  .build()
-}
+  },
+);

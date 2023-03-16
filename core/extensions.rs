@@ -164,6 +164,7 @@ macro_rules! extension {
     $(parameters = [ $( $param:ident : $type:ident ),+ ], )?
     $(ops_fn = $ops_symbol:ident $( < $ops_param:ident > )?,)?
     $(ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ],)?
+    $(esm_entry_point = $esm_entry_point:literal ,)?
     $(esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ],)?
     $(js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ],)?
     $(config = { $( $config_id:ident : $config_type:ty ),* $(,)? },)?
@@ -185,6 +186,9 @@ macro_rules! extension {
         $( ext.esm(
           $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
         ); )?
+        $(
+          ext.esm_entry_point($esm_entry_point);
+        )?
         $( ext.js(
           $crate::include_js_files!( $( dir $dir_js , )? $( $js , )* )
         ); )?

@@ -1,11 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
@@ -96,13 +93,9 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
-fn ext_polyfill() -> ExtensionBuilder {
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_io", "deno_fs"])
-}
-
-deno_core::ops!(
-  deno_ops_polyfill,
-  [
+deno_core::extension!(deno_node,
+  deps = [ deno_io, deno_fs ],
+  ops = [
     crypto::op_node_cipheriv_encrypt,
     crypto::op_node_cipheriv_final,
     crypto::op_node_create_cipheriv,
@@ -123,15 +116,9 @@ deno_core::ops!(
     idna::op_node_idna_punycode_decode,
     idna::op_node_idna_punycode_encode,
     op_node_build_os,
-  ]
-);
-
-pub fn init_polyfill_ops() -> Extension {
-  ext_polyfill().ops(deno_ops_polyfill()).build()
-}
-
-pub fn init_polyfill_ops_and_esm() -> Extension {
-  let esm_files = include_js_files!(
+  ],
+  esm_entry_point = "ext:deno_node/module_all.ts",
+  esm = [
     dir "polyfills",
     "_core.ts",
     "_events.mjs",
@@ -353,20 +340,10 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "wasi.ts",
     "worker_threads.ts",
     "zlib.ts",
-  );
+  ],
+);
 
-  ext_polyfill()
-    .ops(deno_ops_polyfill())
-    .esm(esm_files)
-    .esm_entry_point("ext:deno_node/module_all.ts")
-    .build()
-}
-
-fn ext() -> ExtensionBuilder {
-  Extension::builder("deno_node_loading")
-}
-
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_node_loading,
   parameters = [P: NodePermissions],
   ops = [
     ops::op_require_init_paths,
@@ -391,37 +368,17 @@ deno_core::ops!(deno_ops,
     ops::op_require_read_package_scope<P>,
     ops::op_require_package_imports_resolve<P>,
     ops::op_require_break_on_next_statement,
-  ]
-);
-
-fn ops<P: NodePermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> &mut ExtensionBuilder {
-  ext.ops(deno_ops::<P>()).state(move |state| {
+  ],
+  esm = ["01_node.js", "02_require.js", "module_es_shim.js"],
+  config = {
+    maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  },
+  state = |state, maybe_npm_resolver| {
     if let Some(npm_resolver) = maybe_npm_resolver.clone() {
       state.put(npm_resolver);
     }
-  })
-}
-
-pub fn init_ops_and_esm<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  ops::<P>(&mut ext(), maybe_npm_resolver)
-    .esm(include_js_files!(
-      "01_node.js",
-      "02_require.js",
-      "module_es_shim.js",
-    ))
-    .build()
-}
-
-pub fn init_ops<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  ops::<P>(&mut ext(), maybe_npm_resolver).build()
-}
+  },
+);
 
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
