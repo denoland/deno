@@ -270,6 +270,7 @@ const ci = {
             {
               os: Runners.linux,
               job: "lint",
+              use_sysroot: true,
               profile: "debug",
             },
           ],
