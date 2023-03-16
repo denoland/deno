@@ -6,9 +6,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::include_js_files;
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
@@ -313,10 +313,30 @@ mod ts {
   }
 }
 
+// FIXME(bartlomieju): information about which extensions were
+// already snapshotted is not preserved in the snapshot. This should be
+// fixed, so we can reliably depend on that information.
+// deps = [runtime]
+deno_core::extension!(
+  cli,
+  esm = [
+    dir "js",
+    "40_testing.js"
+  ],
+  customizer = |ext: &mut ExtensionBuilder| {
+    ext.esm(vec![ExtensionFileSource {
+      specifier: "runtime/js/99_main.js".to_string(),
+      code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+        std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
+      ),
+    }]);
+  }
+);
+
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
-  let mut extensions: Vec<Extension> = vec![
+  let extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops(),
     deno_console::deno_console::init_ops(),
     deno_url::deno_url::init_ops(),
@@ -351,27 +371,8 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_flash::deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
     deno_node::deno_node_loading::init_ops::<PermissionsContainer>(None), // No --unstable.
     deno_node::deno_node::init_ops(),
+    cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
-
-  let mut esm_files = include_js_files!(
-    dir "js",
-    "40_testing.js",
-  );
-  esm_files.push(ExtensionFileSource {
-    specifier: "runtime/js/99_main.js".to_string(),
-    code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-      std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
-    ),
-  });
-  extensions.push(
-    Extension::builder("cli")
-      // FIXME(bartlomieju): information about which extensions were
-      // already snapshotted is not preserved in the snapshot. This should be
-      // fixed, so we can reliably depend on that information.
-      // .dependencies(vec!["runtime"])
-      .esm(esm_files)
-      .build(),
-  );
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),

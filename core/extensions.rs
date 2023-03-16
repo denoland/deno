@@ -136,11 +136,13 @@ macro_rules! extension {
     $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
+    $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
     $(, config = { $( $config_id:ident : $config_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr )?
     $(, state = $state_fn:expr )?
     $(, event_loop_middleware = $event_loop_middleware_fn:ident )?
+    $(, customizer = $customizer_fn:expr )?
     $(,)?
   ) => {
     /// Extension struct for
@@ -162,6 +164,12 @@ macro_rules! extension {
         $( ext.esm(
           $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
         ); )?
+        $(
+          ext.esm(vec![ExtensionFileSource {
+            specifier: "ext:setup".to_string(),
+            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
+          }]);
+        )?
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
@@ -213,12 +221,19 @@ macro_rules! extension {
         )?
       }
 
+      #[inline(always)]
+      #[allow(unused_variables)]
+      fn with_customizer(ext: &mut $crate::ExtensionBuilder) {
+        $( ($customizer_fn)(ext); )?
+      }
+
       #[allow(dead_code)]
       pub fn init_js_only $( <  $( $param : $type + Clone + 'static ),+ > )? () -> $crate::Extension {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        Self::with_customizer(&mut ext);
         ext.build()
       }
 
@@ -229,6 +244,7 @@ macro_rules! extension {
         Self::with_js(&mut ext);
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
         Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_customizer(&mut ext);
         ext.build()
       }
 
@@ -237,6 +253,7 @@ macro_rules! extension {
         let mut ext = Self::ext();
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
         Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_customizer(&mut ext);
         ext.build()
       }
     }

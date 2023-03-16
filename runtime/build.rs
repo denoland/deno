@@ -245,13 +245,10 @@ mod startup_snapshot {
     ],
   );
 
-  fn create_runtime_snapshot(
-    snapshot_path: PathBuf,
-    maybe_additional_extension: Option<Extension>,
-  ) {
+  pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
-    let mut extensions: Vec<Extension> = vec![
+    let extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
@@ -293,11 +290,25 @@ mod startup_snapshot {
       // depend on `runtime`, even though it should be other way around
       deno_node::deno_node_loading::init_ops_and_esm::<Permissions>(None),
       deno_node::deno_node::init_ops_and_esm(),
+      #[cfg(not(feature = "snapshot_from_snapshot"))]
+      {
+        use deno_core::ExtensionBuilder;
+        use deno_core::ExtensionFileSourceCode;
+        deno_core::extension!(
+          runtime_main,
+          deps = [runtime],
+          customizer = |ext: &mut ExtensionBuilder| {
+            ext.esm(vec![ExtensionFileSource {
+              specifier: "js/99_main.js".to_string(),
+              code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
+                "js/99_main.js"
+              )),
+            }]);
+          }
+        );
+        runtime_main::init_ops_and_esm()
+      },
     ];
-
-    if let Some(additional_extension) = maybe_additional_extension {
-      extensions.push(additional_extension);
-    }
 
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
@@ -314,28 +325,6 @@ mod startup_snapshot {
       })),
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
-  }
-
-  pub fn build_snapshot(runtime_snapshot_path: PathBuf) {
-    #[allow(unused_mut, unused_assignments)]
-    let mut maybe_additional_extension = None;
-
-    #[cfg(not(feature = "snapshot_from_snapshot"))]
-    {
-      use deno_core::ExtensionFileSourceCode;
-      maybe_additional_extension = Some(
-        Extension::builder_with_deps("runtime_main", &["runtime"])
-          .esm(vec![ExtensionFileSource {
-            specifier: "js/99_main.js".to_string(),
-            code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
-              "js/99_main.js"
-            )),
-          }])
-          .build(),
-      );
-    }
-
-    create_runtime_snapshot(runtime_snapshot_path, maybe_additional_extension);
   }
 }
 
@@ -363,5 +352,5 @@ fn main() {
     not(feature = "docsrs"),
     not(feature = "dont_create_runtime_snapshot")
   ))]
-  startup_snapshot::build_snapshot(runtime_snapshot_path)
+  startup_snapshot::create_runtime_snapshot(runtime_snapshot_path)
 }
