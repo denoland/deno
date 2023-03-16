@@ -134,7 +134,7 @@ pub(crate) fn initialize_context<'s>(
       .try_into()
       .unwrap();
     for ctx in op_ctxs {
-      initialize_op(scope, ops_obj, ctx, snapshot_options);
+      add_op_to_deno_core_ops(scope, ops_obj, ctx, snapshot_options);
     }
     return context;
   }
@@ -160,7 +160,7 @@ pub(crate) fn initialize_context<'s>(
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
   for ctx in op_ctxs {
-    initialize_op(scope, ops_obj, ctx, snapshot_options);
+    add_op_to_deno_core_ops(scope, ops_obj, ctx, snapshot_options);
   }
 
   context
@@ -179,7 +179,7 @@ fn set_func(
   obj.set(scope, key.into(), val.into());
 }
 
-fn initialize_op(
+fn add_op_to_deno_core_ops(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   op_ctx: &OpCtx,
