@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use smallvec::SmallVec;
+
 use super::transl8::FromV8;
 use super::transl8::ToV8;
 use crate::magic::transl8::impl_magic;
@@ -41,7 +43,7 @@ impl FromV8 for BigInt {
     let v8bigint = v8::Local::<v8::BigInt>::try_from(value)
       .map_err(|_| Error::ExpectedBigInt)?;
     let word_count = v8bigint.word_count();
-    let mut words = vec![0; word_count];
+    let mut words = SmallVec::<[u64; 1]>::with_capacity(word_count);
     let (sign_bit, _words) = v8bigint.to_words_array(&mut words);
     let sign = match sign_bit {
       true => num_bigint::Sign::Minus,
