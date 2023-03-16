@@ -291,22 +291,22 @@ Deno.test(
     ignore: Deno.build.os !== "windows",
     permissions: { read: true, write: true },
   },
-  function statNoUnixFields() {
+  function statUnixFieldsOnWindows() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const s = Deno.statSync(filename);
-    assert(s.dev === null);
-    assert(s.ino === null);
-    assert(s.mode === null);
-    assert(s.nlink === null);
-    assert(s.uid === null);
-    assert(s.gid === null);
-    assert(s.rdev === null);
-    assert(s.blksize === null);
-    assert(s.blocks === null);
+    assert(s.dev !== 0);
+    assert(s.ino === 0);
+    assert(s.mode === 0);
+    assert(s.nlink === 0);
+    assert(s.uid === 0);
+    assert(s.gid === 0);
+    assert(s.rdev === 0);
+    assert(s.blksize === 0);
+    assert(s.blocks === 0);
   },
 );
 
