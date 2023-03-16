@@ -220,7 +220,10 @@ function createByteStruct(types) {
     'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
-    const { 0: name, 1: type } = typeEntries[i];
+    let { 0: name, 1: type } = typeEntries[i];
+
+    const optional = type.startsWith("?");
+    if (optional) type = type.slice(1);
 
     if (type == "u64") {
       if (!optional) {
