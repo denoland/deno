@@ -295,6 +295,8 @@ fn make_sync_fn<'s>(
       scope,
       &turbocall::make_template(sym, &trampoline),
       None,
+      None,
+      None,
     );
     fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
     func
