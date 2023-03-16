@@ -18,7 +18,6 @@ use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_web::JsMessageData;
@@ -88,44 +87,39 @@ impl Drop for WorkerThread {
 
 pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_worker_host,
+  ops = [
     op_create_worker,
     op_host_terminate_worker,
     op_host_post_message,
     op_host_recv_ctrl,
     op_host_recv_message,
-  ]
+  ],
+  config = {
+    create_web_worker_cb: Arc<CreateWebWorkerCb>,
+    preload_module_cb: Arc<WorkerEventCb>,
+    pre_execute_module_cb: Arc<WorkerEventCb>,
+    format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
+  },
+  state = |state, create_web_worker_cb, preload_module_cb, pre_execute_module_cb, format_js_error_fn| {
+    state.put::<WorkersTable>(WorkersTable::default());
+    state.put::<WorkerId>(WorkerId::default());
+
+    let create_web_worker_cb_holder =
+      CreateWebWorkerCbHolder(create_web_worker_cb.clone());
+    state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
+    let preload_module_cb_holder =
+      PreloadModuleCbHolder(preload_module_cb.clone());
+    state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
+    let pre_execute_module_cb_holder =
+      PreExecuteModuleCbHolder(pre_execute_module_cb.clone());
+    state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb_holder);
+    let format_js_error_fn_holder =
+      FormatJsErrorFnHolder(format_js_error_fn.clone());
+    state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
+  }
 );
-
-pub fn init(
-  create_web_worker_cb: Arc<CreateWebWorkerCb>,
-  preload_module_cb: Arc<WorkerEventCb>,
-  pre_execute_module_cb: Arc<WorkerEventCb>,
-  format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-) -> Extension {
-  Extension::builder("deno_worker_host")
-    .state(move |state| {
-      state.put::<WorkersTable>(WorkersTable::default());
-      state.put::<WorkerId>(WorkerId::default());
-
-      let create_web_worker_cb_holder =
-        CreateWebWorkerCbHolder(create_web_worker_cb.clone());
-      state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
-      let preload_module_cb_holder =
-        PreloadModuleCbHolder(preload_module_cb.clone());
-      state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
-      let pre_execute_module_cb_holder =
-        PreExecuteModuleCbHolder(pre_execute_module_cb.clone());
-      state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb_holder);
-      let format_js_error_fn_holder =
-        FormatJsErrorFnHolder(format_js_error_fn.clone());
-      state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
-    })
-    .ops(deno_ops())
-    .build()
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

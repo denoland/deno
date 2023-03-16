@@ -7,7 +7,6 @@ use deno_core::op;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -99,9 +98,9 @@ impl StdioOrRid {
   }
 }
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_process,
+  ops = [
     op_spawn_child,
     op_spawn_wait,
     op_spawn_sync,
@@ -110,10 +109,6 @@ deno_core::ops!(
     deprecated::op_kill,
   ]
 );
-
-pub fn init_ops() -> Extension {
-  Extension::builder("deno_process").ops(deno_ops()).build()
-}
 
 struct ChildResource(tokio::process::Child);
 

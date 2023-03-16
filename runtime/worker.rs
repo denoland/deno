@@ -188,16 +188,22 @@ impl MainWorker {
     permissions: PermissionsContainer,
     mut options: WorkerOptions,
   ) -> Self {
-    // Permissions: many ops depend on this
-    let unstable = options.bootstrap.unstable;
-    let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder("deno_permissions_worker")
-      .state(move |state| {
+    deno_core::extension!(deno_permissions_worker,
+      config = {
+        permissions: PermissionsContainer,
+        unstable: bool,
+        enable_testing_features: bool,
+      },
+      state = |state, permissions, unstable, enable_testing_features| {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-      })
-      .build();
+      },
+    );
+
+    // Permissions: many ops depend on this
+    let unstable = options.bootstrap.unstable;
+    let enable_testing_features = options.bootstrap.enable_testing_features;
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
@@ -242,8 +248,8 @@ impl MainWorker {
       // ffi
       deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops
-      ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(
+      ops::runtime::deno_runtime::init_ops(main_module.clone()),
+      ops::worker_host::deno_worker_host::init_ops(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
         options.web_worker_pre_execute_module_cb.clone(),
@@ -263,17 +269,20 @@ impl MainWorker {
         options.npm_resolver,
       ),
       deno_node::deno_node::init_ops(),
-      ops::os::init(exit_code.clone()),
-      ops::permissions::init(),
-      ops::process::init_ops(),
-      ops::signal::init(),
-      ops::tty::init(),
+      ops::os::deno_os::init_ops(exit_code.clone()),
+      ops::permissions::deno_permissions::init_ops(),
+      ops::process::deno_process::init_ops(),
+      ops::signal::deno_signal::init_ops(),
+      ops::tty::deno_tty::init_ops(),
       deno_http::deno_http::init_ops(),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
-      ops::http::init(),
+      ops::http::deno_http_runtime::init_ops(),
+      deno_permissions_worker::init_ops(
+        permissions,
+        unstable,
+        enable_testing_features,
+      ),
     ];
-
-    extensions.push(perm_ext);
 
     extensions.extend(std::mem::take(&mut options.extensions));
 

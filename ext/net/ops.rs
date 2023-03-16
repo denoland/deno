@@ -636,7 +636,6 @@ fn rdata_to_return_record(
 mod tests {
   use super::*;
   use crate::UnstableChecker;
-  use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use socket2::SockRef;
@@ -892,15 +891,17 @@ mod tests {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
     });
-    let my_ext = Extension::builder("test_ext")
-      .state(move |state| {
+
+    deno_core::extension!(
+      test_ext,
+      state = |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });
-      })
-      .build();
+      }
+    );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![my_ext],
+      extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
 

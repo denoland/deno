@@ -7,25 +7,18 @@ use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url;
-use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::path::Path;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_permissions,
+  ops = [
     op_query_permission,
     op_revoke_permission,
     op_request_permission,
   ]
 );
-
-pub fn init() -> Extension {
-  Extension::builder("deno_permissions")
-    .ops(deno_ops())
-    .build()
-}
 
 #[derive(Deserialize)]
 pub struct PermissionArgs {

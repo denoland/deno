@@ -368,16 +368,22 @@ impl WebWorker {
     worker_id: WorkerId,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
-    // Permissions: many ops depend on this
-    let unstable = options.bootstrap.unstable;
-    let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder("deno_permissions_web_worker")
-      .state(move |state| {
+    deno_core::extension!(deno_permissions_web_worker,
+      config = {
+        permissions: PermissionsContainer,
+        unstable: bool,
+        enable_testing_features: bool,
+      },
+      state = |state, permissions, unstable, enable_testing_features| {
         state.put::<PermissionsContainer>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
         state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-      })
-      .build();
+      },
+    );
+
+    // Permissions: many ops depend on this
+    let unstable = options.bootstrap.unstable;
+    let enable_testing_features = options.bootstrap.enable_testing_features;
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
       CreateCache(Arc::new(create_cache_fn))
@@ -420,8 +426,8 @@ impl WebWorker {
       deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::deno_web_worker::init_ops(),
-      ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(
+      ops::runtime::deno_runtime::init_ops(main_module.clone()),
+      ops::worker_host::deno_worker_host::init_ops(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
         options.pre_execute_module_cb.clone(),
@@ -442,16 +448,20 @@ impl WebWorker {
       deno_node::deno_node_loading::init_ops::<PermissionsContainer>(
         options.npm_resolver,
       ),
-      ops::os::init_for_worker(),
-      ops::permissions::init(),
-      ops::process::init_ops(),
-      ops::signal::init(),
-      ops::tty::init(),
+      ops::os::deno_os_worker::init_ops(),
+      ops::permissions::deno_permissions::init_ops(),
+      ops::process::deno_process::init_ops(),
+      ops::signal::deno_signal::init_ops(),
+      ops::tty::deno_tty::init_ops(),
       deno_http::deno_http::init_ops(),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
-      ops::http::init(),
+      ops::http::deno_http_runtime::init_ops(),
       // Permissions ext (worker specific state)
-      perm_ext,
+      deno_permissions_web_worker::init_ops(
+        permissions,
+        unstable,
+        enable_testing_features,
+      ),
     ];
 
     // Append exts

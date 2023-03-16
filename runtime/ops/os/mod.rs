@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
@@ -40,27 +39,25 @@ deno_core::ops!(
   ]
 );
 
-pub fn init(exit_code: ExitCode) -> Extension {
-  let mut builder = Extension::builder("deno_os");
-  builder
-    .ops(deno_ops())
-    .state(move |state| {
-      state.put::<ExitCode>(exit_code.clone());
-    })
-    .build()
-}
+deno_core::extension!(deno_os,
+  ops_fn = deno_ops,
+  config = {
+    exit_code: ExitCode,
+  },
+  state = |state, exit_code| {
+    state.put::<ExitCode>(exit_code.clone());
+  },
+);
 
-pub fn init_for_worker() -> Extension {
-  let mut builder = Extension::builder("deno_os_worker");
-  builder
-    .ops(deno_ops())
-    .middleware(|op| match op.name {
-      "op_exit" => noop_op::decl(),
-      "op_set_exit_code" => noop_op::decl(),
-      _ => op,
-    })
-    .build()
-}
+deno_core::extension!(
+  deno_os_worker,
+  ops_fn = deno_ops,
+  middleware = |op| match op.name {
+    "op_exit" => noop_op::decl(),
+    "op_set_exit_code" => noop_op::decl(),
+    _ => op,
+  },
+);
 
 #[op]
 fn noop_op() -> Result<(), AnyError> {

@@ -5,7 +5,6 @@ use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -30,14 +29,10 @@ use tokio::signal::windows::CtrlBreak;
 #[cfg(windows)]
 use tokio::signal::windows::CtrlC;
 
-deno_core::ops!(
-  deno_ops,
-  [op_signal_bind, op_signal_unbind, op_signal_poll,]
+deno_core::extension!(
+  deno_signal,
+  ops = [op_signal_bind, op_signal_unbind, op_signal_poll]
 );
-
-pub fn init() -> Extension {
-  Extension::builder("deno_signal").ops(deno_ops()).build()
-}
 
 #[cfg(unix)]
 /// The resource for signal stream.

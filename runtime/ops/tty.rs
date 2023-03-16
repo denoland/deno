@@ -2,7 +2,6 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_io::StdFileResource;
 use std::io::Error;
@@ -33,11 +32,10 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-deno_core::ops!(deno_ops, [op_stdin_set_raw, op_isatty, op_console_size,]);
-
-pub fn init() -> Extension {
-  Extension::builder("deno_tty").ops(deno_ops()).build()
-}
+deno_core::extension!(
+  deno_tty,
+  ops = [op_stdin_set_raw, op_isatty, op_console_size]
+);
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
 #[cfg(windows)]

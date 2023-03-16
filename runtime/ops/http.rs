@@ -8,7 +8,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
@@ -28,16 +27,10 @@ use deno_net::io::UnixStreamResource;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
-deno_core::ops!(
-  deno_ops,
-  [op_http_start, op_http_upgrade, op_flash_upgrade_http,]
+deno_core::extension!(
+  deno_http_runtime,
+  ops = [op_http_start, op_http_upgrade, op_flash_upgrade_http],
 );
-
-pub fn init() -> Extension {
-  Extension::builder("deno_http_runtime")
-    .ops(deno_ops())
-    .build()
-}
 
 #[op]
 fn op_http_start(
