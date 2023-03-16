@@ -27,7 +27,7 @@ deno_core::ops!(
   ]
 );
 
-deno_core::extension!(deno_web_worker, ops = deno_ops,);
+deno_core::extension!(deno_web_worker, ops_fn = deno_ops,);
 
 #[op]
 fn op_worker_post_message(

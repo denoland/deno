@@ -34,7 +34,7 @@ deno_core::ops!(
 );
 
 deno_core::extension!(deno_bench,
-  ops = deno_ops,
+  ops_fn = deno_ops,
   config = {
     sender: UnboundedSender<BenchEvent>,
     filter: TestFilter,

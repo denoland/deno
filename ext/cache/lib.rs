@@ -35,7 +35,7 @@ deno_core::ops!(deno_ops,
 deno_core::extension!(deno_cache,
   deps = [ deno_webidl, deno_web, deno_url, deno_fetch ],
   parameters=[CA: Cache],
-  ops = deno_ops<CA>,
+  ops_fn = deno_ops<CA>,
   esm = [ "01_cache.js" ],
   config = {
     maybe_create_cache: Option<CreateCache<CA>>,

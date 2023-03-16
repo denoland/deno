@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-deno_core::extension!(deno_fs_events, ops = deno_ops,);
+deno_core::extension!(deno_fs_events, ops_fn = deno_ops,);
 
 deno_core::ops!(deno_ops, [op_fs_events_open, op_fs_events_poll]);
 

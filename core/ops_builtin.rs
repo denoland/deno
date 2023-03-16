@@ -51,7 +51,7 @@ crate::ops_bundle!(
 
 crate::extension!(
   core,
-  ops = deno_ops,
+  ops_fn = deno_ops,
   js = ["00_primordials.js", "01_core.js", "02_error.js"],
 );
 

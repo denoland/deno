@@ -22,7 +22,7 @@ deno_core::ops!(
 deno_core::extension!(deno_webgpu_surface,
   deps = [ deno_webidl, deno_web, deno_webgpu ],
   esm = [ "03_surface.js", "04_surface_idl_types.js" ],
-  ops = deno_ops,
+  ops_fn = deno_ops,
   config: {
     unstable: bool,
   },

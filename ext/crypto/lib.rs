@@ -107,7 +107,7 @@ deno_core::ops!(
 
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
-  ops = deno_ops,
+  ops_fn = deno_ops,
   esm = [ "00_crypto.js", "01_webidl.js" ],
   config = {
     maybe_seed: Option<u64>,

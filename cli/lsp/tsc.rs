@@ -2838,7 +2838,7 @@ deno_core::ops!(
 );
 
 deno_core::extension!(deno_tsc,
-  ops = deno_ops,
+  ops_fn = deno_ops,
   config = {
     performance: Arc<Performance>
   },

@@ -115,7 +115,7 @@ deno_core::ops!(deno_ops,
 deno_core::extension!(deno_ffi,
   deps = [ deno_web ],
   parameters = [P: FfiPermissions],
-  ops = deno_ops<P>,
+  ops_fn = deno_ops<P>,
   esm = [ "00_ffi.js" ],
   config = {
     unstable: bool,

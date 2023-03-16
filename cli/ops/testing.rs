@@ -38,7 +38,7 @@ deno_core::ops!(
 );
 
 deno_core::extension!(deno_test,
-  ops = deno_ops,
+  ops_fn = deno_ops,
   config = {
     sender: TestEventSender,
     fail_fast_tracker: FailFastTracker,

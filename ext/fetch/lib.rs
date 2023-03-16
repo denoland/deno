@@ -102,7 +102,7 @@ deno_core::ops!(deno_ops,
 deno_core::extension!(deno_fetch,
   deps = [ deno_webidl, deno_web, deno_url, deno_console ],
   parameters = [FP: FetchPermissions],
-  ops = deno_ops<FP>,
+  ops_fn = deno_ops<FP>,
   esm = [
     "20_headers.js",
     "21_formdata.js",

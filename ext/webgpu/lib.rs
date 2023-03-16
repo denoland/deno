@@ -116,7 +116,7 @@ impl Resource for WebGpuQuerySet {
 
 deno_core::extension!(deno_webgpu,
   deps = [ deno_webidl, deno_web ],
-  ops = deno_ops,
+  ops_fn = deno_ops,
   esm = [ "01_webgpu.js", "02_idl_types.js" ],
   config = {
     unstable: bool,

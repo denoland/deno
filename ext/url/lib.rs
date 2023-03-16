@@ -32,7 +32,7 @@ deno_core::ops!(
 deno_core::extension!(
   deno_url,
   deps = [deno_webidl],
-  ops = deno_ops,
+  ops_fn = deno_ops,
   esm = ["00_url.js", "01_urlpattern.js"],
 );
 

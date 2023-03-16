@@ -162,7 +162,7 @@ macro_rules! extension {
     $name:ident,
     $(deps = [ $( $dep:ident ),* ],)?
     $(parameters = [ $( $param:ident : $type:ident ),+ ], )?
-    $(ops = $ops_symbol:ident $( < $ops_param:ident > )?,)?
+    $(ops_fn = $ops_symbol:ident $( < $ops_param:ident > )?,)?
     $(esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ],)?
     $(js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ],)?
     $(config = { $( $config_id:ident : $config_type:ty ),* $(,)? },)?

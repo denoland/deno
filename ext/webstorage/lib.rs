@@ -34,7 +34,7 @@ deno_core::ops!(
 
 deno_core::extension!(deno_webstorage,
   deps = [ deno_webidl ],
-  ops = deno_ops,
+  ops_fn = deno_ops,
   esm = [ "01_webstorage.js" ],
   config = {
     origin_storage_dir: Option<PathBuf>

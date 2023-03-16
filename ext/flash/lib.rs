@@ -1562,7 +1562,7 @@ deno_core::extension!(deno_flash,
     deno_http
   ],
   parameters = [P: FlashPermissions],
-  ops = deno_ops<P>,
+  ops_fn = deno_ops<P>,
   esm = [ "01_http.js" ],
   config = {
     unstable: bool,

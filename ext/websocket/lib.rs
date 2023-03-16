@@ -508,7 +508,7 @@ deno_core::ops!(deno_ops,
 
 deno_core::extension!(deno_websocket,
   parameters = [P: WebSocketPermissions],
-  ops = deno_ops<P>,
+  ops_fn = deno_ops<P>,
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   config = {
     user_agent: String,

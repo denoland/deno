@@ -117,7 +117,7 @@ deno_core::ops!(deno_ops,
 deno_core::extension!(deno_broadcast_channel,
   deps = [ deno_webidl, deno_web ],
   parameters = [BC: BroadcastChannel],
-  ops = deno_ops<BC>,
+  ops_fn = deno_ops<BC>,
   esm = [ "01_broadcast_channel.js" ],
   config = {
     bc: BC,
