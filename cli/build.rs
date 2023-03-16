@@ -120,6 +120,25 @@ mod ts {
     [op_build_info, op_is_node_file, op_load, op_script_version,]
   );
 
+  deno_core::extension!(deno_tsc,
+    ops = deno_ops,
+    js = [
+      dir "tsc",
+      "00_typescript.js",
+      "99_main_compiler.js",
+    ],
+    config = {
+      op_crate_libs: HashMap<&'static str, PathBuf>,
+      build_libs: Vec<&'static str>,
+      path_dts: PathBuf,
+    },
+    state = |state, op_crate_libs, build_libs, path_dts| {
+      state.put(op_crate_libs.clone());
+      state.put(build_libs.clone());
+      state.put(path_dts.clone());
+    },
+  );
+
   pub fn create_compiler_snapshot(snapshot_path: PathBuf, cwd: &Path) {
     // libs that are being provided by op crates.
     let mut op_crate_libs = HashMap::new();
@@ -246,25 +265,11 @@ mod ts {
     )
     .unwrap();
 
-    let tsc_extension = Extension::builder("deno_tsc")
-      .ops(deno_ops())
-      .js(include_js_files! {
-        dir "tsc",
-        "00_typescript.js",
-        "99_main_compiler.js",
-      })
-      .state(move |state| {
-        state.put(op_crate_libs.clone());
-        state.put(build_libs.clone());
-        state.put(path_dts.clone());
-      })
-      .build();
-
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![tsc_extension],
+      extensions: vec![deno_tsc::init_esm_and_state(op_crate_libs, build_libs, path_dts)],
 
       // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
       // ~45s on M1 MacBook Pro; without compression it took ~1s.
@@ -317,7 +322,9 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::deno_fetch::init_runtime::<PermissionsContainer>(Default::default()),
+    deno_fetch::deno_fetch::init_runtime::<PermissionsContainer>(
+      Default::default(),
+    ),
     deno_cache::deno_cache::init_runtime::<SqliteBackedCache>(None),
     deno_websocket::deno_websocket::init_runtime::<PermissionsContainer>(
       "".to_owned(),
