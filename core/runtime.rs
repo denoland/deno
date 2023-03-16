@@ -3633,7 +3633,9 @@ pub mod tests {
     modules.extend((1..200).map(|i| create_module(&mut runtime, i, false)));
 
     assert_module_map(&mut runtime, &modules);
+
     let snapshot = runtime.snapshot();
+
     let mut runtime2 = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader.clone()),
       will_snapshot: true,
@@ -3643,6 +3645,7 @@ pub mod tests {
         .build()],
       ..Default::default()
     });
+
     assert_module_map(&mut runtime2, &modules);
 
     modules.extend((200..400).map(|i| create_module(&mut runtime2, i, false)));
