@@ -104,20 +104,15 @@ where
   bc.recv(&resource).await
 }
 
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_broadcast_channel,
+  deps = [ deno_webidl, deno_web ],
   parameters = [BC: BroadcastChannel],
   ops = [
     op_broadcast_subscribe<BC>,
     op_broadcast_unsubscribe<BC>,
     op_broadcast_send<BC>,
     op_broadcast_recv<BC>,
-  ]
-);
-
-deno_core::extension!(deno_broadcast_channel,
-  deps = [ deno_webidl, deno_web ],
-  parameters = [BC: BroadcastChannel],
-  ops_fn = deno_ops<BC>,
+  ],
   esm = [ "01_broadcast_channel.js" ],
   config = {
     bc: BC,

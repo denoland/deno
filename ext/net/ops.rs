@@ -43,22 +43,6 @@ use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
-deno_core::ops!(deno_ops,
-  parameters = [P: NetPermissions],
-  ops = [
-    op_net_accept_tcp,
-    op_net_connect_tcp<P>,
-    op_net_listen_tcp<P>,
-    op_net_listen_udp<P>,
-    op_node_unstable_net_listen_udp<P>,
-    op_net_recv_udp,
-    op_net_send_udp<P>,
-    op_dns_resolve<P>,
-    op_set_nodelay,
-    op_set_keepalive,
-  ]
-);
-
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {

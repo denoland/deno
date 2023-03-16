@@ -24,9 +24,8 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(deno_test,
+  ops = [
     op_pledge_test_permissions,
     op_restore_test_permissions,
     op_get_test_origin,
@@ -34,11 +33,7 @@ deno_core::ops!(
     op_register_test_step,
     op_dispatch_test_event,
     op_tests_should_stop,
-  ]
-);
-
-deno_core::extension!(deno_test,
-  ops_fn = deno_ops,
+  ],
   config = {
     sender: TestEventSender,
     fail_fast_tracker: FailFastTracker,

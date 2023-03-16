@@ -75,20 +75,35 @@ pub struct DefaultTlsOptions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(pub Option<Vec<String>>);
 
-deno_core::ops_bundle!(deno_ops,
-  parameters = [ P: NetPermissions ],
-  ops = [
-    ops::deno_ops<P>,
-    #[cfg(unix)]
-    ops_unix::deno_ops<P>,
-    ops_tls::deno_ops<P>,
-  ]
-);
-
 deno_core::extension!(deno_net,
   deps = [ deno_web ],
   parameters = [ P: NetPermissions ],
-  ops_fn = deno_ops<P>,
+  ops = [
+    ops::op_net_accept_tcp,
+    ops::op_net_connect_tcp<P>,
+    ops::op_net_listen_tcp<P>,
+    ops::op_net_listen_udp<P>,
+    ops::op_node_unstable_net_listen_udp<P>,
+    ops::op_net_recv_udp,
+    ops::op_net_send_udp<P>,
+    ops::op_dns_resolve<P>,
+    ops::op_set_nodelay,
+    ops::op_set_keepalive,
+
+    ops_tls::op_tls_start<P>,
+    ops_tls::op_net_connect_tls<P>,
+    ops_tls::op_net_listen_tls<P>,
+    ops_tls::op_net_accept_tls,
+    ops_tls::op_tls_handshake,
+
+    #[cfg(unix)] ops_unix::op_net_accept_unix,
+    #[cfg(unix)] ops_unix::op_net_connect_unix<P>,
+    #[cfg(unix)] ops_unix::op_net_listen_unix<P>,
+    #[cfg(unix)] ops_unix::op_net_listen_unixpacket<P>,
+    #[cfg(unix)] ops_unix::op_node_unstable_net_listen_unixpacket<P>,
+    #[cfg(unix)] ops_unix::op_net_recv_unixpacket,
+    #[cfg(unix)] ops_unix::op_net_send_unixpacket<P>,
+  ],
   esm = [ "01_net.js", "02_tls.js" ],
   config = {
     root_cert_store: Option<RootCertStore>,

@@ -70,9 +70,9 @@ use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(deno_crypto,
+  deps = [ deno_webidl, deno_web ],
+  ops = [
     op_crypto_get_random_values,
     op_crypto_generate_key,
     op_crypto_sign_key,
@@ -102,12 +102,7 @@ deno_core::ops!(
     ed25519::op_jwk_x_ed25519,
     x25519::op_export_spki_x25519,
     x25519::op_export_pkcs8_x25519,
-  ]
-);
-
-deno_core::extension!(deno_crypto,
-  deps = [ deno_webidl, deno_web ],
-  ops_fn = deno_ops,
+  ],
   esm = [ "00_crypto.js", "01_webidl.js" ],
   config = {
     maybe_seed: Option<u64>,

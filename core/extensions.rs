@@ -126,36 +126,6 @@ macro_rules! ops {
   }
 }
 
-/// Declares a bundle of Deno `#[op]` blocks.
-#[macro_export]
-macro_rules! ops_bundle {
-  ($name:ident, parameters = [ $( $param:ident : $type:ident ),+ ], ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ]) => {
-    pub(crate) fn $name < $( $param : $type + 'static ),+ > () -> Vec<$crate::OpDecl> {
-      let mut v = vec![];
-      $(
-        $( #[ $m ] )*
-        {
-          let decl = $( $op )::+ $( :: <$op_param> )? ();
-          v.extend(decl);
-        }
-      )+
-      v
-    }
-  };
-  ($name:ident, [ $( $(#[$m:meta])* $( $op:ident )::+ ),+ $(,)? ] ) => {
-    pub(crate) fn $name() -> Vec<$crate::OpDecl> {
-      let mut v = vec![];
-      $(
-        $( #[ $m ] )*
-        {
-          v.extend($( $op )::+ ());
-        }
-      )+
-      v
-    }
-  }
-}
-
 #[macro_export]
 macro_rules! extension {
   (

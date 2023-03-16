@@ -15,9 +15,10 @@ use std::path::PathBuf;
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_url,
+  deps = [deno_webidl],
+  ops = [
     op_url_reparse,
     op_url_parse,
     op_url_get_serialization,
@@ -26,13 +27,7 @@ deno_core::ops!(
     op_url_stringify_search_params,
     op_urlpattern_parse,
     op_urlpattern_process_match_input
-  ]
-);
-
-deno_core::extension!(
-  deno_url,
-  deps = [deno_webidl],
-  ops_fn = deno_ops,
+  ],
   esm = ["00_url.js", "01_urlpattern.js"],
 );
 

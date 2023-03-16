@@ -20,7 +20,8 @@ pub use sqlite::SqliteBackedCache;
 #[derive(Clone)]
 pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
 
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_cache,
+  deps = [ deno_webidl, deno_web, deno_url, deno_fetch ],
   parameters=[CA: Cache],
   ops = [
     op_cache_storage_open<CA>,
@@ -29,13 +30,7 @@ deno_core::ops!(deno_ops,
     op_cache_put<CA>,
     op_cache_match<CA>,
     op_cache_delete<CA>,
-  ]
-);
-
-deno_core::extension!(deno_cache,
-  deps = [ deno_webidl, deno_web, deno_url, deno_fetch ],
-  parameters=[CA: Cache],
-  ops_fn = deno_ops<CA>,
+  ],
   esm = [ "01_cache.js" ],
   config = {
     maybe_create_cache: Option<CreateCache<CA>>,

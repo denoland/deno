@@ -24,19 +24,6 @@ use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
 
-deno_core::ops!(deno_ops,
-  parameters = [P: NetPermissions],
-  ops = [
-    op_net_accept_unix,
-    op_net_connect_unix<P>,
-    op_net_listen_unix<P>,
-    op_net_listen_unixpacket<P>,
-    op_node_unstable_net_listen_unixpacket<P>,
-    op_net_recv_unixpacket,
-    op_net_send_unixpacket<P>,
-  ]
-);
-
 /// A utility function to map OsStrings to Strings
 pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
   s.into_string().map_err(|s| {

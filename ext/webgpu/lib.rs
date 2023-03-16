@@ -114,22 +114,6 @@ impl Resource for WebGpuQuerySet {
   }
 }
 
-deno_core::extension!(deno_webgpu,
-  deps = [ deno_webidl, deno_web ],
-  ops_fn = deno_ops,
-  esm = [ "01_webgpu.js", "02_idl_types.js" ],
-  config = {
-    unstable: bool,
-  },
-  state = |state, unstable| {
-    // TODO: check & possibly streamline this
-    // Unstable might be able to be OpMiddleware
-    // let unstable_checker = state.borrow::<super::UnstableChecker>();
-    // let unstable = unstable_checker.unstable;
-    state.put(Unstable(unstable));
-  },
-);
-
 fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   let mut return_features: Vec<&'static str> = vec![];
 
@@ -558,9 +542,9 @@ pub fn op_webgpu_create_query_set(
   ) => state, WebGpuQuerySet)
 }
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(deno_webgpu,
+  deps = [ deno_webidl, deno_web ],
+  ops = [
     // Request device/adapter
     op_webgpu_request_adapter,
     op_webgpu_request_device,
@@ -656,5 +640,16 @@ deno_core::ops!(
     queue::op_webgpu_write_texture,
     // shader
     shader::op_webgpu_create_shader_module,
-  ]
+  ],
+  esm = [ "01_webgpu.js", "02_idl_types.js" ],
+  config = {
+    unstable: bool,
+  },
+  state = |state, unstable| {
+    // TODO: check & possibly streamline this
+    // Unstable might be able to be OpMiddleware
+    // let unstable_checker = state.borrow::<super::UnstableChecker>();
+    // let unstable = unstable_checker.unstable;
+    state.put(Unstable(unstable));
+  },
 );

@@ -21,20 +21,15 @@ use crate::tools::bench::BenchDescription;
 use crate::tools::bench::BenchEvent;
 use crate::tools::test::TestFilter;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(deno_bench,
+  ops = [
     op_pledge_test_permissions,
     op_restore_test_permissions,
     op_get_bench_origin,
     op_register_bench,
     op_dispatch_bench_event,
     op_bench_now,
-  ]
-);
-
-deno_core::extension!(deno_bench,
-  ops_fn = deno_ops,
+  ],
   config = {
     sender: UnboundedSender<BenchEvent>,
     filter: TestFilter,

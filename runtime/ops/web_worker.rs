@@ -15,9 +15,9 @@ use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_web_worker,
+  ops = [
     op_worker_post_message,
     op_worker_recv_message,
     // Notify host that guest worker closes.
@@ -26,8 +26,6 @@ deno_core::ops!(
     op_worker_sync_fetch,
   ]
 );
-
-deno_core::extension!(deno_web_worker, ops_fn = deno_ops,);
 
 #[op]
 fn op_worker_post_message(

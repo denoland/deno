@@ -19,9 +19,9 @@ struct OriginStorageDir(PathBuf);
 
 const MAX_STORAGE_BYTES: usize = 10 * 1024 * 1024;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(deno_webstorage,
+  deps = [ deno_webidl ],
+  ops = [
     op_webstorage_length,
     op_webstorage_key,
     op_webstorage_set,
@@ -29,12 +29,7 @@ deno_core::ops!(
     op_webstorage_remove,
     op_webstorage_clear,
     op_webstorage_iterate_keys,
-  ]
-);
-
-deno_core::extension!(deno_webstorage,
-  deps = [ deno_webidl ],
-  ops_fn = deno_ops,
+  ],
   esm = [ "01_webstorage.js" ],
   config = {
     origin_storage_dir: Option<PathBuf>

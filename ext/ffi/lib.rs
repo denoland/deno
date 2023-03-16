@@ -79,7 +79,8 @@ pub(crate) struct FfiState {
   pub(crate) async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
 }
 
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_ffi,
+  deps = [ deno_web ],
   parameters = [P: FfiPermissions],
   ops = [
     op_ffi_load<P>,
@@ -109,13 +110,7 @@ deno_core::ops!(deno_ops,
     op_ffi_read_ptr<P>,
     op_ffi_unsafe_callback_create<P>,
     op_ffi_unsafe_callback_ref,
-  ]
-);
-
-deno_core::extension!(deno_ffi,
-  deps = [ deno_web ],
-  parameters = [P: FfiPermissions],
-  ops_fn = deno_ops<P>,
+  ],
   esm = [ "00_ffi.js" ],
   config = {
     unstable: bool,

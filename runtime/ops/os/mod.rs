@@ -39,7 +39,8 @@ deno_core::ops!(
   ]
 );
 
-deno_core::extension!(deno_os,
+deno_core::extension!(
+  deno_os,
   ops_fn = deno_ops,
   config = {
     exit_code: ExitCode,

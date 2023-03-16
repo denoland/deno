@@ -495,7 +495,7 @@ pub async fn op_ws_next_event(
   Ok(res)
 }
 
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_websocket,
   parameters = [P: WebSocketPermissions],
   ops = [
     op_ws_check_permission_and_cancel_handle<P>,
@@ -503,12 +503,7 @@ deno_core::ops!(deno_ops,
     op_ws_send,
     op_ws_close,
     op_ws_next_event,
-  ]
-);
-
-deno_core::extension!(deno_websocket,
-  parameters = [P: WebSocketPermissions],
-  ops_fn = deno_ops<P>,
+  ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   config = {
     user_agent: String,

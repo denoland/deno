@@ -652,17 +652,6 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-deno_core::ops!(deno_ops,
-  parameters = [P: NetPermissions],
-  ops = [
-    op_tls_start<P>,
-    op_net_connect_tls<P>,
-    op_net_listen_tls<P>,
-    op_net_accept_tls,
-    op_tls_handshake,
-  ]
-);
-
 #[derive(Debug)]
 pub struct TlsStreamResource {
   rd: AsyncRefCell<ReadHalf>,

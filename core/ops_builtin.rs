@@ -3,6 +3,7 @@ use crate::error::format_file_name;
 use crate::error::type_error;
 use crate::io::BufMutView;
 use crate::io::BufView;
+use crate::ops_builtin_v8;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
 use crate::OpState;
@@ -16,9 +17,9 @@ use std::io::stdout;
 use std::io::Write;
 use std::rc::Rc;
 
-crate::ops!(
-  deno_ops_builtins,
-  [
+crate::extension!(
+  core,
+  ops = [
     op_close,
     op_try_close,
     op_print,
@@ -38,20 +39,38 @@ crate::ops!(
     op_format_file_name,
     op_is_proxy,
     op_str_byte_length,
-  ]
-);
-
-crate::ops_bundle!(
-  deno_ops,
-  [
-    deno_ops_builtins,
-    crate::ops_builtin_v8::deno_ops_builtins_v8,
-  ]
-);
-
-crate::extension!(
-  core,
-  ops_fn = deno_ops,
+    ops_builtin_v8::op_ref_op,
+    ops_builtin_v8::op_unref_op,
+    ops_builtin_v8::op_set_macrotask_callback,
+    ops_builtin_v8::op_set_next_tick_callback,
+    ops_builtin_v8::op_set_promise_reject_callback,
+    ops_builtin_v8::op_run_microtasks,
+    ops_builtin_v8::op_has_tick_scheduled,
+    ops_builtin_v8::op_set_has_tick_scheduled,
+    ops_builtin_v8::op_eval_context,
+    ops_builtin_v8::op_queue_microtask,
+    ops_builtin_v8::op_create_host_object,
+    ops_builtin_v8::op_encode,
+    ops_builtin_v8::op_decode,
+    ops_builtin_v8::op_serialize,
+    ops_builtin_v8::op_deserialize,
+    ops_builtin_v8::op_set_promise_hooks,
+    ops_builtin_v8::op_get_promise_details,
+    ops_builtin_v8::op_get_proxy_details,
+    ops_builtin_v8::op_memory_usage,
+    ops_builtin_v8::op_set_wasm_streaming_callback,
+    ops_builtin_v8::op_abort_wasm_streaming,
+    ops_builtin_v8::op_destructure_error,
+    ops_builtin_v8::op_dispatch_exception,
+    ops_builtin_v8::op_op_names,
+    ops_builtin_v8::op_apply_source_map,
+    ops_builtin_v8::op_set_format_exception_callback,
+    ops_builtin_v8::op_event_loop_has_more_work,
+    ops_builtin_v8::op_store_pending_promise_rejection,
+    ops_builtin_v8::op_remove_pending_promise_rejection,
+    ops_builtin_v8::op_has_pending_promise_rejection,
+    ops_builtin_v8::op_arraybuffer_was_detached,
+  ],
   js = ["00_primordials.js", "01_core.js", "02_error.js"],
 );
 

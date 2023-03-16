@@ -1525,7 +1525,14 @@ pub trait FlashPermissions {
   ) -> Result<(), AnyError>;
 }
 
-deno_core::ops!(deno_ops,
+deno_core::extension!(deno_flash,
+  deps = [
+    deno_web,
+    deno_net,
+    deno_fetch,
+    deno_websocket,
+    deno_http
+  ],
   parameters = [P: FlashPermissions],
   ops = [
     op_flash_serve<P>,
@@ -1550,19 +1557,7 @@ deno_core::ops!(deno_ops,
     op_flash_make_request,
     op_flash_write_resource,
     op_try_flash_respond_chunked,
-  ]
-);
-
-deno_core::extension!(deno_flash,
-  deps = [
-    deno_web,
-    deno_net,
-    deno_fetch,
-    deno_websocket,
-    deno_http
   ],
-  parameters = [P: FlashPermissions],
-  ops_fn = deno_ops<P>,
   esm = [ "01_http.js" ],
   config = {
     unstable: bool,

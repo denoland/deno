@@ -2824,9 +2824,8 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   })
 }
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(deno_tsc,
+  ops = [
     op_is_cancelled,
     op_is_node_file,
     op_load,
@@ -2834,11 +2833,7 @@ deno_core::ops!(
     op_respond,
     op_script_names,
     op_script_version,
-  ]
-);
-
-deno_core::extension!(deno_tsc,
-  ops_fn = deno_ops,
+  ],
   config = {
     performance: Arc<Performance>
   },
