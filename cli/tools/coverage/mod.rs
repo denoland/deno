@@ -562,7 +562,10 @@ fn collect_coverages(
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = FileCollector::new(|file_path| {
-    file_path.extension().map_or(false, |ext| ext == "json")
+    file_path
+      .extension()
+      .map(|ext| ext == "json")
+      .unwrap_or(false)
   })
   .ignore_git_folder()
   .ignore_node_modules()
