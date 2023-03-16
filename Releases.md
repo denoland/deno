@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.31.3 / 2023.03.16
 
-- feat(ext/fetch): support fallible request-builder hooks (#18116)
 - fix(check): regression where config "types" entries caused type checking errors (#18124)
 - fix(core): Upgrades bytes crate from =1.2.1 to ^1.4.0 (#18123)
 - fix(core): `SafePromiseAll` to be unaffected by `Array#@@iterator` (#17542)
