@@ -177,6 +177,44 @@ macro_rules! extension {
         $crate::Extension::builder_with_deps(stringify!($name), &[ $( $( stringify!($dep) ),* )? ])
       }
 
+      /// If ESM or JS was specified, add those files to the extension.
+      #[inline(always)]
+      fn with_js(ext: &mut $crate::ExtensionBuilder) {
+        $( ext.esm(
+          $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
+        ); )?
+        $( ext.js(
+          $crate::include_js_files!( $( dir $dir_js , )? $( $js , )* )
+        ); )?
+      }
+
+      // If ops were specified, add those ops to the extension.
+      #[inline(always)]
+      fn with_ops $( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
+        $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
+      }
+
+      // Includes the state and middleware functions, if defined.
+      #[inline(always)]
+      #[allow(unused_variables)]
+      fn with_state_and_middleware$( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $config_id : $config_type ),* )? ) {
+        #[allow(unused_variables)]
+        let config = Config {
+          $( $( $config_id , )* )?
+          $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
+        };
+
+        $(
+          ext.state(move |state: &mut $crate::OpState| {
+            config.clone().call_callback(state, $state_fn)
+          });
+        )?
+
+        $(
+          ext.event_loop_middleware($event_loop_middleware_fn);
+        )?
+      }
+
       #[doc(hidden)]
       #[derive(Clone)]
       struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
@@ -193,38 +231,30 @@ macro_rules! extension {
         }
       }
 
-      #[allow(unused_mut)]
+      #[allow(dead_code)]
       pub fn init_esm $( <  $( $param : $type + Clone + 'static ),+ > )? () -> $crate::Extension {
         let mut ext = ext();
         // If esm or JS was specified, add JS files
-        $( let mut ext = ext.esm(
-          $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
-        ); )?
-        $( let mut ext = ext.js(
-          $crate::include_js_files!( $( dir $dir_js , )? $( $js , )* )
-        ); )?
-        let ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
+        with_js(&mut ext);
+        with_ops $( ::<($( $param ),+)> )?(&mut ext);
         ext.build()
       }
 
-      #[allow(unused_mut)]
-      pub fn init_runtime $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
-        #[allow(unused_variables)]
-        let config = Config {
-          $( $( $config_id , )* )?
-          $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
-        };
-
+      #[allow(dead_code)]
+      pub fn init_esm_and_state $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
         let mut ext = ext();
-        let mut ext = $crate::extension!(__ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
-        $(
-          ext.state(move |state: &mut $crate::OpState| {
-            config.clone().call_callback(state, $state_fn)
-          });
-        )?
-        $(
-          ext.event_loop_middleware($event_loop_middleware_fn);
-        )?
+        // If esm or JS was specified, add JS files
+        with_js(&mut ext);
+        with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        ext.build()
+      }
+
+      #[allow(dead_code)]
+      pub fn init_runtime $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+        let mut ext = ext();
+        with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
         ext.build()
       }
     }
