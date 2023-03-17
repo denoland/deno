@@ -1566,13 +1566,11 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export type KvListSelector = {
-    prefix: KvKey;
-    start?: KvKey;
-  } | {
-    start: KvKey;
-    end: KvKey;
-  };
+  export type KvListSelector =
+    | { prefix: KvKey }
+    | { prefix: KvKey; start: KvKey }
+    | { prefix: KvKey; end: KvKey }
+    | { start: KvKey; end: KvKey };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1599,16 +1597,15 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export interface KvMutation {
-    key: KvKey;
-    value: unknown;
-    type:
-      | "set"
-      | "delete"
-      | "sum"
-      | "max"
-      | "min";
-  }
+  export type KvMutation =
+    & { key: KvKey }
+    & (
+      | { type: "set"; value: unknown }
+      | { type: "delete" }
+      | { type: "sum"; value: KvU64 }
+      | { type: "max"; value: KvU64 }
+      | { type: "min"; value: KvU64 }
+    );
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1619,14 +1616,16 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export class KvListIterator {
+  export class KvListIterator implements AsyncIterableIterator<KvEntry> {
     /**
      * Returns the cursor of the current position in the iteration. This cursor
      * can be used to resume the iteration from the current position in the
      * future by passing it to the `cursor` option of the `list` method.
      */
     get cursor(): string;
-    [Symbol.asyncIterator](): AsyncIterator<KvEntry>;
+
+    next(): Promise<IteratorResult<KvEntry, any>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1971,7 +1970,7 @@ declare namespace Deno {
      * is signed or greater than 64-bits, an error will be thrown. */
     constructor(value: bigint);
     /** The value of this unsigned 64-bit integer, represented as a bigint. */
-    value: bigint;
+    readonly value: bigint;
   }
 }
 

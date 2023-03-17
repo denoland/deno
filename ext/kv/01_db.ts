@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-ignore internal api
+const {
+  ObjectGetPrototypeOf,
+  AsyncGeneratorPrototype,
+} = globalThis.__bootstrap.primordials;
 const core = Deno.core;
 const ops = core.ops;
 
@@ -44,7 +48,7 @@ class Database {
     return new AtomicOperation(this.#rid);
   }
 
-  async get(key: Deno.KvKey, opts?: { consistency?: Deno.ConsistencyLevel }) {
+  async get(key: Deno.KvKey, opts?: { consistency?: Deno.KvConsistencyLevel }) {
     key = convertKey(key);
     const [entries]: [RawKvEntry[]] = await core.opAsync(
       "op_kv_snapshot_read",
@@ -111,7 +115,7 @@ class Database {
       batchSize?: number;
       cursor?: string;
       reverse?: boolean;
-      consistency?: Deno.ConsistencyLevel;
+      consistency?: Deno.KvConsistencyLevel;
     } = {},
   ): KvListIterator {
     if (options.limit !== undefined && options.limit <= 0) {
@@ -137,7 +141,7 @@ class Database {
     selector: Deno.KvListSelector,
     cursor: string | undefined,
     reverse: boolean,
-    consistency: Deno.ConsistencyLevel,
+    consistency: Deno.KvConsistencyLevel,
   ) => Promise<Deno.KvEntry[]> {
     return async (selector, cursor, reverse, consistency) => {
       const { firstKey, lastKey } = decodeCursor(selector, cursor, reverse);
@@ -237,24 +241,20 @@ const MIN_U64 = 0n;
 const MAX_U64 = 0xffffffffffffffffn;
 
 class KvU64 {
-  #value: bigint;
+  readonly value: bigint;
 
   constructor(value: bigint) {
     if (typeof value !== "bigint") {
       throw new TypeError("value must be a bigint");
     }
     if (value < MIN_U64) {
-      throw new TypeError("value must be a positive bigint");
+      throw new RangeError("value must be a positive bigint");
     }
     if (value > MAX_U64) {
-      throw new TypeError("value must be a 64-bit unsigned integer");
+      throw new RangeError("value must be a 64-bit unsigned integer");
     }
-    this.#value = value;
+    this.value = value;
     Object.freeze(this);
-  }
-
-  get value(): bigint {
-    return this.#value;
   }
 }
 
@@ -308,7 +308,18 @@ function serializeValue(value: unknown): RawValue {
   }
 }
 
-class KvListIterator {
+// This gets the %AsyncIteratorPrototype% object (which exists but is not a
+// global). We extend the KvListIterator iterator from, so that we immediately
+// support async iterator helpers once they land. The %AsyncIterator% does not
+// yet actually exist however, so right now the AsyncIterator binding refers to
+// %Object%. I know.
+// Once AsyncIterator is a global, we can just use it (from primordials), rather
+// than doing this here.
+const AsyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
+const AsyncIterator = AsyncIteratorPrototype.constructor;
+
+class KvListIterator extends AsyncIterator
+  implements AsyncIterator<Deno.KvEntry> {
   #selector: Deno.KvListSelector;
   #entries: Deno.KvEntry[] | null = null;
   #cursorGen: (() => string) | null = null;
@@ -318,13 +329,13 @@ class KvListIterator {
     selector: Deno.KvListSelector,
     cursor: string | undefined,
     reverse: boolean,
-    consistency: Deno.ConsistencyLevel,
+    consistency: Deno.KvConsistencyLevel,
   ) => Promise<Deno.KvEntry[]>;
   #limit: number | undefined;
   #count = 0;
   #reverse: boolean;
   #batchSize: number;
-  #consistency: Deno.ConsistencyLevel;
+  #consistency: Deno.KvConsistencyLevel;
 
   constructor(
     { limit, selector, cursor, reverse, consistency, batchSize, pullBatch }: {
@@ -333,25 +344,51 @@ class KvListIterator {
       cursor?: string;
       reverse: boolean;
       batchSize: number;
-      consistency: Deno.ConsistencyLevel;
+      consistency: Deno.KvConsistencyLevel;
       pullBatch: (
         selector: Deno.KvListSelector,
         cursor: string | undefined,
         reverse: boolean,
-        consistency: Deno.ConsistencyLevel,
+        consistency: Deno.KvConsistencyLevel,
       ) => Promise<Deno.KvEntry[]>;
     },
   ) {
-    this.#selector = Object.freeze(
-      "prefix" in selector
-        ? {
-          prefix: Object.freeze([...selector.prefix]),
-        }
-        : {
-          start: Object.freeze([...selector.start]),
-          end: Object.freeze([...selector.end]),
-        },
-    );
+    super();
+    let prefix: Deno.KvKey | undefined;
+    let start: Deno.KvKey | undefined;
+    let end: Deno.KvKey | undefined;
+    if ("prefix" in selector && selector.prefix !== undefined) {
+      prefix = Object.freeze([...selector.prefix]);
+    }
+    if ("start" in selector && selector.start !== undefined) {
+      start = Object.freeze([...selector.start]);
+    }
+    if ("end" in selector && selector.end !== undefined) {
+      end = Object.freeze([...selector.end]);
+    }
+    if (prefix) {
+      if (start && end) {
+        throw new TypeError(
+          "Selector can not specify both 'start' and 'end' key when specifying 'prefix'.",
+        );
+      }
+      if (start) {
+        this.#selector = { prefix, start };
+      } else if (end) {
+        this.#selector = { prefix, end };
+      } else {
+        this.#selector = { prefix };
+      }
+    } else {
+      if (start && end) {
+        this.#selector = { start, end };
+      } else {
+        throw new TypeError(
+          "Selector must specify either 'prefix' or both 'start' and 'end' key.",
+        );
+      }
+    }
+    Object.freeze(this.#selector);
     this.#pullBatch = pullBatch;
     this.#limit = limit;
     this.#reverse = reverse;
@@ -368,52 +405,51 @@ class KvListIterator {
     return this.#cursorGen();
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntry> {
+  async next(): Promise<IteratorResult<Deno.KvEntry>> {
+    // Fused or limit exceeded
+    if (
+      this.#done ||
+      (this.#limit !== undefined && this.#count >= this.#limit)
+    ) {
+      return { done: true, value: undefined };
+    }
+
+    // Attempt to fill the buffer
+    if (!this.#entries?.length && !this.#lastBatch) {
+      const batch = await this.#pullBatch(
+        this.#selector,
+        this.#cursorGen ? this.#cursorGen() : undefined,
+        this.#reverse,
+        this.#consistency,
+      );
+
+      // Reverse the batch so we can pop from the end
+      batch.reverse();
+      this.#entries = batch;
+
+      // Last batch, do not attempt to pull more
+      if (batch.length < this.#batchSize) {
+        this.#lastBatch = true;
+      }
+    }
+
+    const entry = this.#entries?.pop();
+    if (!entry) {
+      this.#done = true;
+      this.#cursorGen = () => "";
+      return { done: true, value: undefined };
+    }
+
+    this.#cursorGen = () => encodeCursor(this.#selector, encodeKey(entry.key));
+    this.#count++;
     return {
-      next: async () => {
-        // Fused or limit exceeded
-        if (
-          this.#done ||
-          (this.#limit !== undefined && this.#count >= this.#limit)
-        ) {
-          return { done: true, value: undefined };
-        }
-
-        // Attempt to fill the buffer
-        if (!this.#entries?.length && !this.#lastBatch) {
-          const batch = await this.#pullBatch(
-            this.#selector,
-            this.#cursorGen ? this.#cursorGen() : undefined,
-            this.#reverse,
-            this.#consistency,
-          );
-
-          // Reverse the batch so we can pop from the end
-          batch.reverse();
-          this.#entries = batch;
-
-          // Last batch, do not attempt to pull more
-          if (batch.length < this.#batchSize) {
-            this.#lastBatch = true;
-          }
-        }
-
-        const entry = this.#entries?.pop();
-        if (!entry) {
-          this.#done = true;
-          this.#cursorGen = () => "";
-          return { done: true, value: undefined };
-        }
-
-        this.#cursorGen = () =>
-          encodeCursor(this.#selector, encodeKey(entry.key));
-        this.#count++;
-        return {
-          done: false,
-          value: entry,
-        };
-      },
+      done: false,
+      value: entry,
     };
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntry> {
+    return this;
   }
 }
 
@@ -462,20 +498,27 @@ function decodeCursor(
   cursor: string | undefined,
   reverse: boolean,
 ): { firstKey: Uint8Array; lastKey: Uint8Array } {
-  const getRangeStartKey = () =>
-    encodeKey(
-      "start" in selector ? selector.start : selector.prefix,
-    );
+  const getRangeStartKey = () => {
+    if ("start" in selector) {
+      return encodeKey(selector.start);
+    } else {
+      const prefix = encodeKey(selector.prefix);
+      const firstKey = new Uint8Array(prefix.byteLength + 1);
+      firstKey.set(prefix);
+      firstKey[prefix.byteLength] = 0x00;
+      return firstKey;
+    }
+  };
 
   const getRangeEndKey = () => {
-    if ("prefix" in selector) {
+    if ("end" in selector) {
+      return encodeKey(selector.end);
+    } else {
       const prefix = encodeKey(selector.prefix);
       const lastKey = new Uint8Array(prefix.byteLength + 1);
       lastKey.set(prefix);
       lastKey[prefix.byteLength] = 0xff;
       return lastKey;
-    } else {
-      return encodeKey(selector.end);
     }
   };
 

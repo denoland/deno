@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use async_trait::async_trait;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use rusqlite::params;
@@ -32,8 +33,6 @@ const STATEMENT_KV_RANGE_SCAN_REVERSE: &str =
   "select k, v, v_encoding, version from kv where k >= ? and k < ? order by k desc limit ?";
 const STATEMENT_KV_POINT_GET_VALUE_ONLY: &str =
   "select v, v_encoding from kv where k = ?";
-const STATEMENT_KV_POINT_UPDATE: &str =
-  "update kv set v = ?, v_encoding = ?, version = ? where k = ?";
 const STATEMENT_KV_POINT_GET_VERSION_ONLY: &str =
   "select version from kv where k = ?";
 const STATEMENT_KV_POINT_SET: &str =
@@ -111,9 +110,12 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
   ) -> Result<Self::DB, AnyError> {
-    let conn = match (path, &self.default_storage_dir) {
+    let conn = match (path.as_deref(), &self.default_storage_dir) {
+      (Some(":memory:") | None, None) => {
+        rusqlite::Connection::open_in_memory()?
+      }
       (Some(path), _) => {
-        let path = PathBuf::from(path);
+        let path = Path::new(path);
         {
           let mut state = state.borrow_mut();
           let permissions = state.borrow_mut::<P>();
@@ -127,7 +129,6 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         let path = path.join("state.sqlite3");
         rusqlite::Connection::open(&path)?
       }
-      (None, None) => rusqlite::Connection::open_in_memory()?,
     };
 
     conn.pragma_update(None, "journal_mode", "wal")?;
@@ -229,16 +230,16 @@ impl Database for SqliteDb {
       match mutation.kind {
         MutationKind::Set(value) => {
           let (value, encoding) = encode_value(&value);
-          tx.prepare_cached(STATEMENT_KV_POINT_SET)?.execute(params![
-            mutation.key,
-            &value,
-            &encoding,
-            &version
-          ])?;
+          let changed = tx
+            .prepare_cached(STATEMENT_KV_POINT_SET)?
+            .execute(params![mutation.key, &value, &encoding, &version])?;
+          assert_eq!(changed, 1)
         }
         MutationKind::Delete => {
-          tx.prepare_cached(STATEMENT_KV_POINT_DELETE)?
+          let changed = tx
+            .prepare_cached(STATEMENT_KV_POINT_DELETE)?
             .execute(params![mutation.key])?;
+          assert!(changed == 0 || changed == 1)
         }
         MutationKind::Sum(operand) => {
           mutate_le64(&tx, &mutation.key, "sum", &operand, version, |a, b| {
@@ -266,6 +267,8 @@ impl Database for SqliteDb {
   }
 }
 
+/// Mutates a LE64 value in the database, defaulting to setting it to the
+/// operand if it doesn't exist.
 fn mutate_le64(
   tx: &Transaction,
   key: &[u8],
@@ -275,7 +278,7 @@ fn mutate_le64(
   mutate: impl FnOnce(u64, u64) -> u64,
 ) -> Result<(), AnyError> {
   let Value::U64(operand) = *operand else {
-    anyhow::bail!("Cannot perform operation '{}' with a non-U64 operand", op_name);
+    return Err(type_error(format!("Failed to perform '{op_name}' mutation on a non-U64 operand")));
   };
 
   let old_value = tx
@@ -289,14 +292,22 @@ fn mutate_le64(
     })
     .optional()?;
 
-  let Some(Value::U64(old_value)) = old_value else {
-    anyhow::bail!("Cannot perform operation '{}' on a non-U64 value", op_name);
+  let new_value = match old_value {
+    Some(Value::U64(old_value) ) => mutate(old_value, operand),
+    Some(_) => return Err(type_error(format!("Failed to perform '{op_name}' mutation on a non-U64 value in the database"))),
+    None => operand,
   };
 
-  let new_value = Value::U64(mutate(old_value, operand));
+  let new_value = Value::U64(new_value);
   let (new_value, encoding) = encode_value(&new_value);
-  tx.prepare_cached(STATEMENT_KV_POINT_UPDATE)?
-    .execute(params![&new_value[..], encoding, new_version, key])?;
+
+  let changed = tx.prepare_cached(STATEMENT_KV_POINT_SET)?.execute(params![
+    key,
+    &new_value[..],
+    encoding,
+    new_version
+  ])?;
+  assert_eq!(changed, 1);
 
   Ok(())
 }
