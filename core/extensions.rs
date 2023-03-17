@@ -179,6 +179,7 @@ macro_rules! extension {
     }
 
     impl $name {
+      #[inline(always)]
       fn ext() -> $crate::ExtensionBuilder {
         $crate::Extension::builder_with_deps(stringify!($name), &[ $( $( stringify!($dep) ),* )? ])
       }
@@ -296,6 +297,7 @@ macro_rules! extension {
         /// Call a function of |state, ...| using the fields of this configuration structure.
         #[allow(dead_code)]
         #[doc(hidden)]
+        #[inline(always)]
         fn call_callback<F: Fn(&mut $crate::OpState, $( $( $config_type ),* )?)>(self, state: &mut $crate::OpState, f: F) {
           f(state, $( $( self. $config_id ),* )? )
         }
