@@ -24,13 +24,27 @@ import { inspect as denoInspect, getStringWidth as denoGetStringWidth, inspectAr
 import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 
+const inspectDefaultOptions = {
+  showHidden: false,
+  depth: 3,
+  colors: false,
+  customInspect: true,
+  showProxy: false,
+  maxArrayLength: 100,
+  maxStringLength: 10000,
+  breakLength: 80,
+  compact: true,
+  sorted: false,
+  getters: false,
+};
+
 /**
  * Echos the value of any input. Tries to print the value out
  * in the best way possible given the different types.
  */
 /* Legacy: value, showHidden, depth, colors */
 export function inspect(value, opts) {
-  return denoInspect(value, opts);
+  return denoInspect(value, Object.assign({}, opts, { quotes: ["'", '"', "`"], depth: 3 }));
 }
 const customInspectSymbol = Symbol.for("nodejs.util.inspect.custom");
 inspect.custom = customInspectSymbol;

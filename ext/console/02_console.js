@@ -390,7 +390,7 @@ function inspectFunction(value, inspectOptions) {
     // from MDN spec
     return cyan(`${refStr}[${cstrName}: ${value.name}]`) + suffix;
   }
-  return cyan(`${refStr}[${cstrName}]`) + suffix;
+  return cyan(`${refStr}[${cstrName} (anonymous)]`) + suffix;
 }
 
 function inspectIterable(
