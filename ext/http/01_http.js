@@ -28,13 +28,15 @@ import {
   _rid,
   _server,
   _serverHandleIdleTimeout,
+} from "ext:deno_websocket/01_websocket.js";
+import {
   _connection,
   _closed,
   _closeSent,
   _createWebSocketStreams,
   WebSocket,
   WebSocketStream,
-} from "ext:deno_websocket/01_websocket.js";
+} from "ext:deno_websocket/02_websocketstream.js";
 import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
 import { TlsConn } from "ext:deno_net/02_tls.js";
 import {
