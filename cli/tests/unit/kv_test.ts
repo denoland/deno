@@ -321,7 +321,7 @@ Deno.test("kv list", async () => {
         { key: ["a", "c"], value: 2 },
       ]);
 
-      const cursor = it.cursor();
+      const cursor = it.cursor;
       it = db.list({ prefix: ["a"] }, { limit: 3, cursor });
       out = [];
 
@@ -348,7 +348,7 @@ Deno.test("kv list", async () => {
         { key: ["a", "c"], value: 2 },
       ]);
 
-      const cursor = it.cursor();
+      const cursor = it.cursor;
       it = db.list({ prefix: ["a"] }, { limit: 3, cursor, reverse: true });
       out = [];
 
@@ -375,7 +375,7 @@ Deno.test("kv list", async () => {
         { key: ["a", "c"], value: 2 },
       ]);
 
-      const cursor = it.cursor();
+      const cursor = it.cursor;
       it = db.list(sel, { limit: 1, cursor });
       out = [];
 
@@ -401,7 +401,7 @@ Deno.test("kv list", async () => {
         { key: ["a", "c"], value: 2 },
       ]);
 
-      const cursor = it.cursor();
+      const cursor = it.cursor;
       it = db.list(sel, { limit: 1, cursor, reverse: true });
       out = [];
 

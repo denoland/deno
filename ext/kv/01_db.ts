@@ -360,7 +360,7 @@ class KvListIterator {
     this.#cursorGen = cursor ? () => cursor : null;
   }
 
-  cursor(): string {
+  get cursor(): string {
     if (this.#cursorGen === null) {
       throw new Error("Cannot get cursor before first iteration");
     }
