@@ -250,7 +250,7 @@ fn lint_file(
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from(file_path);
+  let media_type = MediaType::from_path(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 

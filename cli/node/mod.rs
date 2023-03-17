@@ -73,7 +73,7 @@ impl NodeResolution {
   ) -> (ModuleSpecifier, MediaType) {
     match resolution {
       Some(NodeResolution::CommonJs(specifier)) => {
-        let media_type = MediaType::from(&specifier);
+        let media_type = MediaType::from_specifier(&specifier);
         (
           specifier,
           match media_type {
@@ -85,7 +85,7 @@ impl NodeResolution {
         )
       }
       Some(NodeResolution::Esm(specifier)) => {
-        let media_type = MediaType::from(&specifier);
+        let media_type = MediaType::from_specifier(&specifier);
         (
           specifier,
           match media_type {

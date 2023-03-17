@@ -193,7 +193,7 @@ impl CliModuleLoader {
       ModuleCodeSource {
         code,
         found_url: specifier.clone(),
-        media_type: MediaType::from(specifier),
+        media_type: MediaType::from_specifier(specifier),
       }
     } else {
       self.load_prepared_module(specifier, maybe_referrer)?
