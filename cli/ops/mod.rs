@@ -19,7 +19,7 @@ deno_core::extension!(deno_cli,
     ps: ProcState,
   },
   state = |state, options| {
-    state.put(cfg.ps);
+    state.put(options.ps);
   },
 );
 

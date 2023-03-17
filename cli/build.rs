@@ -126,9 +126,9 @@ mod ts {
       path_dts: PathBuf,
     },
     state = |state, options| {
-      state.put(cfg.op_crate_libs);
-      state.put(cfg.build_libs);
-      state.put(cfg.path_dts);
+      state.put(options.op_crate_libs);
+      state.put(options.build_libs);
+      state.put(options.path_dts);
     },
   );
 

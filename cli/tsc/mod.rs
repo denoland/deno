@@ -835,12 +835,12 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     },
     state = |state, options| {
       state.put(State::new(
-        cfg.request.graph,
-        cfg.request.hash_data,
-        cfg.request.maybe_npm_resolver,
-        cfg.request.maybe_tsbuildinfo,
-        cfg.root_map,
-        cfg.remapped_specifiers,
+        options.request.graph,
+        options.request.hash_data,
+        options.request.maybe_npm_resolver,
+        options.request.maybe_tsbuildinfo,
+        options.root_map,
+        options.remapped_specifiers,
         std::env::current_dir()
           .context("Unable to get CWD")
           .unwrap(),

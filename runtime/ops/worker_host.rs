@@ -107,16 +107,16 @@ deno_core::extension!(
     state.put::<WorkerId>(WorkerId::default());
 
     let create_web_worker_cb_holder =
-      CreateWebWorkerCbHolder(cfg.create_web_worker_cb);
+      CreateWebWorkerCbHolder(options.create_web_worker_cb);
     state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
     let preload_module_cb_holder =
-      PreloadModuleCbHolder(cfg.preload_module_cb);
+      PreloadModuleCbHolder(options.preload_module_cb);
     state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
     let pre_execute_module_cb_holder =
-      PreExecuteModuleCbHolder(cfg.pre_execute_module_cb);
+      PreExecuteModuleCbHolder(options.pre_execute_module_cb);
     state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb_holder);
     let format_js_error_fn_holder =
-      FormatJsErrorFnHolder(cfg.format_js_error_fn);
+      FormatJsErrorFnHolder(options.format_js_error_fn);
     state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
   }
 );
