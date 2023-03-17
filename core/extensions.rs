@@ -66,6 +66,264 @@ impl OpDecl {
   }
 }
 
+/// Declares a block of Deno `#[op]`s. The first parameter determines the name of the
+/// op declaration block, and is usually `deno_ops`. This block generates a function that
+/// returns a [`Vec<OpDecl>`].
+///
+/// This can be either a compact form like:
+///
+/// ```no_compile
+/// # use deno_core::*;
+/// #[op]
+/// fn op_xyz() {}
+///
+/// deno_core::ops!(deno_ops, [
+///   op_xyz
+/// ]);
+///
+/// // Use the ops:
+/// deno_ops()
+/// ```
+///
+/// ... or a parameterized form like so that allows passing a number of type parameters
+/// to each `#[op]`:
+///
+/// ```no_compile
+/// # use deno_core::*;
+/// #[op]
+/// fn op_xyz<P>() where P: Clone {}
+///
+/// deno_core::ops!(deno_ops,
+///   parameters = [P: Clone],
+///   ops = [
+///     op_xyz<P>
+///   ]
+/// );
+///
+/// // Use the ops, with `String` as the parameter `P`:
+/// deno_ops::<String>()
+/// ```
+#[macro_export]
+macro_rules! ops {
+  ($name:ident, parameters = [ $( $param:ident : $type:ident ),+ ], ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ]) => {
+    pub(crate) fn $name < $( $param : $type + 'static ),+ > () -> Vec<$crate::OpDecl> {
+      vec![
+      $(
+        $( #[ $m ] )*
+        $( $op )::+ :: decl $( :: <$op_param> )? () ,
+      )+
+      ]
+    }
+  };
+  ($name:ident, [ $( $(#[$m:meta])* $( $op:ident )::+ ),+ $(,)? ] ) => {
+    pub(crate) fn $name() -> Vec<$crate::OpDecl> {
+      vec![
+        $( $( #[ $m ] )* $( $op )::+ :: decl(), )+
+      ]
+    }
+  }
+}
+
+/// Defines a Deno extension. The first parameter is the name of the extension symbol namespace to create. This is the symbol you
+/// will use to refer to the extension.
+///
+/// Most extensions will define a combination of ops and ESM files, like so:
+///
+/// ```no_compile
+/// #[op]
+/// fn op_xyz() {
+/// }
+///
+/// deno_core::extension!(
+///   my_extension,
+///   ops = [ op_xyz ],
+///   esm = [ "my_script.js" ],
+/// );
+/// ```
+///
+/// The following options are available for the [`extension`] macro:
+///
+///  * deps: a comma-separated list of module dependencies, eg: `deps = [ my_other_extension ]`
+///  * parameters: a comma-separated list of parameters and base traits, eg: `parameters = [ P: MyTrait ]`
+///  * ops: a comma-separated list of [`OpDecl`]s to provide, eg: `ops = [ op_foo, op_bar ]`
+///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
+///  * esm_setup_script: see [`ExtensionBuilder::esm_setup_script`]
+///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
+///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
+///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
+///  * state: a state initialization function, with the signature `fn (&mut OpState, ...) -> ()`, where `...` are parameters matching the fields of the config struct
+///  * event_loop_middleware: an event-loop middleware function (see [`ExtensionBuilder::event_loop_middleware`])
+#[macro_export]
+macro_rules! extension {
+  (
+    $name:ident
+    $(, deps = [ $( $dep:ident ),* ] )?
+    $(, parameters = [ $( $param:ident : $type:ident ),+ ] )?
+    $(, ops_fn = $ops_symbol:ident $( < $ops_param:ident > )? )?
+    $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ] )?
+    $(, esm_entry_point = $esm_entry_point:literal )?
+    $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
+    $(, esm_setup_script = $esm_setup_script:expr )?
+    $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
+    $(, config = { $( $config_id:ident : $config_type:ty ),* $(,)? } )?
+    $(, middleware = $middleware_fn:expr )?
+    $(, state = $state_fn:expr )?
+    $(, event_loop_middleware = $event_loop_middleware_fn:ident )?
+    $(, customizer = $customizer_fn:expr )?
+    $(,)?
+  ) => {
+    /// Extension struct for
+    #[doc = stringify!($name)]
+    /// .
+    #[allow(non_camel_case_types)]
+    pub struct $name {
+    }
+
+    impl $name {
+      #[inline(always)]
+      fn ext() -> $crate::ExtensionBuilder {
+        $crate::Extension::builder_with_deps(stringify!($name), &[ $( $( stringify!($dep) ),* )? ])
+      }
+
+      /// If ESM or JS was specified, add those files to the extension.
+      #[inline(always)]
+      #[allow(unused_variables)]
+      fn with_js(ext: &mut $crate::ExtensionBuilder) {
+        $( ext.esm(
+          $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
+        ); )?
+        $(
+          ext.esm(vec![ExtensionFileSource {
+            specifier: "ext:setup".to_string(),
+            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
+          }]);
+        )?
+        $(
+          ext.esm_entry_point($esm_entry_point);
+        )?
+        $( ext.js(
+          $crate::include_js_files!( $( dir $dir_js , )? $( $js , )* )
+        ); )?
+      }
+
+      // If ops were specified, add those ops to the extension.
+      #[inline(always)]
+      #[allow(unused_variables)]
+      fn with_ops $( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
+        // If individual ops are specified, roll them up into a vector and apply them
+        $(
+          let v = vec![
+          $(
+            $( #[ $m ] )*
+            $( $op )::+ :: decl $( :: <$op_param> )? ()
+          ),+
+          ];
+          ext.ops(v);
+        )?
+
+        // Otherwise use the ops_fn, if provided
+        $crate::extension!(! __ops__ ext $( $ops_symbol $( < $ops_param > )? )? __eot__);
+      }
+
+      // Includes the state and middleware functions, if defined.
+      #[inline(always)]
+      #[allow(unused_variables)]
+      fn with_state_and_middleware$( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $config_id : $config_type ),* )? ) {
+        #[allow(unused_variables)]
+        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $config_id : $config_type ),* } )? );
+
+        $(
+          ext.state(move |state: &mut $crate::OpState| {
+            config.clone().call_callback(state, $state_fn)
+          });
+        )?
+
+        $(
+          ext.event_loop_middleware($event_loop_middleware_fn);
+        )?
+
+        $(
+          ext.middleware($middleware_fn);
+        )?
+      }
+
+      #[inline(always)]
+      #[allow(unused_variables)]
+      #[allow(clippy::redundant_closure_call)]
+      fn with_customizer(ext: &mut $crate::ExtensionBuilder) {
+        $( ($customizer_fn)(ext); )?
+      }
+
+      #[allow(dead_code)]
+      pub fn init_js_only $( <  $( $param : $type + Clone + 'static ),+ > )? () -> $crate::Extension {
+        let mut ext = Self::ext();
+        // If esm or JS was specified, add JS files
+        Self::with_js(&mut ext);
+        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        Self::with_customizer(&mut ext);
+        ext.build()
+      }
+
+      #[allow(dead_code)]
+      pub fn init_ops_and_esm $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+        let mut ext = Self::ext();
+        // If esm or JS was specified, add JS files
+        Self::with_js(&mut ext);
+        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_customizer(&mut ext);
+        ext.build()
+      }
+
+      #[allow(dead_code)]
+      pub fn init_ops $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+        let mut ext = Self::ext();
+        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_customizer(&mut ext);
+        ext.build()
+      }
+    }
+  };
+
+  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? $( config = { $( $config_id:ident : $config_type:ty ),* } )? ) => {
+    {
+      #[doc(hidden)]
+      #[derive(Clone)]
+      struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
+        $( $( pub $config_id : $config_type , )* )?
+        $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
+      }
+
+      impl $( <  $( $param : $type + Clone + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
+        /// Call a function of |state, ...| using the fields of this configuration structure.
+        #[allow(dead_code)]
+        #[doc(hidden)]
+        #[inline(always)]
+        fn call_callback<F: Fn(&mut $crate::OpState, $( $( $config_type ),* )?)>(self, state: &mut $crate::OpState, f: F) {
+          f(state, $( $( self. $config_id ),* )? )
+        }
+      }
+
+      Config {
+        $( $( $config_id , )* )?
+        $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
+      }
+    }
+  };
+
+  (! __ops__ $ext:ident __eot__) => {
+  };
+
+  (! __ops__ $ext:ident $ops_symbol:ident __eot__) => {
+    $ext.ops($ops_symbol())
+  };
+
+  (! __ops__ $ext:ident $ops_symbol:ident < $ops_param:ident > __eot__) => {
+    $ext.ops($ops_symbol::<$ops_param>())
+  };
+}
+
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<ExtensionFileSource>>,

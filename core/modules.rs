@@ -1649,7 +1649,6 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::Extension;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use crate::Snapshot;
@@ -1990,12 +1989,10 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder("test_ext")
-      .ops(vec![op_test::decl()])
-      .build();
+    deno_core::extension!(test_ext, ops = [op_test]);
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![ext],
+      extensions: vec![test_ext::init_ops()],
       module_loader: Some(loader),
       ..Default::default()
     });

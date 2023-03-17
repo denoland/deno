@@ -3,19 +3,20 @@
 use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 
-pub fn init(main_module: ModuleSpecifier) -> Extension {
-  Extension::builder("deno_runtime")
-    .ops(vec![op_main_module::decl()])
-    .state(move |state| {
-      state.put::<ModuleSpecifier>(main_module.clone());
-    })
-    .force_op_registration()
-    .build()
-}
+deno_core::extension!(
+  deno_runtime,
+  ops = [op_main_module],
+  config = { main_module: ModuleSpecifier },
+  state = |state, main_module| {
+    state.put::<ModuleSpecifier>(main_module);
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 #[op]
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
