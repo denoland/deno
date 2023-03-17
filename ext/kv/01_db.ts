@@ -233,9 +233,28 @@ class AtomicOperation {
   }
 }
 
+const MIN_U64 = 0n;
+const MAX_U64 = 0xffffffffffffffffn;
+
 class KvU64 {
-  constructor(public value: bigint) {
+  #value: bigint;
+
+  constructor(value: bigint) {
+    if (typeof value !== "bigint") {
+      throw new TypeError("value must be a bigint");
+    }
+    if (value < MIN_U64) {
+      throw new TypeError("value must be a positive bigint");
+    }
+    if (value > MAX_U64) {
+      throw new TypeError("value must be a 64-bit unsigned integer");
+    }
+    this.#value = value;
     Object.freeze(this);
+  }
+
+  get value(): bigint {
+    return this.#value;
   }
 }
 
