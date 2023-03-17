@@ -45,7 +45,7 @@ deno_core::extension!(
   config = {
     exit_code: ExitCode,
   },
-  state = |state, cfg| {
+  state = |state, options| {
     state.put::<ExitCode>(cfg.exit_code);
   },
 );

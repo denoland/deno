@@ -125,7 +125,7 @@ mod ts {
       build_libs: Vec<&'static str>,
       path_dts: PathBuf,
     },
-    state = |state, cfg| {
+    state = |state, options| {
       state.put(cfg.op_crate_libs);
       state.put(cfg.build_libs);
       state.put(cfg.path_dts);

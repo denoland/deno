@@ -35,8 +35,8 @@ deno_core::extension!(deno_cache,
   config = {
     maybe_create_cache: Option<CreateCache<CA>>,
   },
-  state = |state, cfg| {
-    if let Some(create_cache) = cfg.maybe_create_cache {
+  state = |state, options| {
+    if let Some(create_cache) = options.maybe_create_cache {
       state.put(create_cache);
     }
   },

@@ -87,8 +87,8 @@ deno_core::extension!(deno_io,
     "op_print" => op_print::decl(),
     _ => op,
   },
-  state = |state, cfg| {
-    if let Some(stdio) = cfg.stdio {
+  state = |state, options| {
+    if let Some(stdio) = options.stdio {
       let t = &mut state.resource_table;
 
       let rid = t.add(StdFileResource::stdio(

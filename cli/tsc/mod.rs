@@ -833,7 +833,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       root_map: HashMap<String, Url>,
       remapped_specifiers: HashMap<String, Url>,
     },
-    state = |state, cfg| {
+    state = |state, options| {
       state.put(State::new(
         cfg.request.graph,
         cfg.request.hash_data,

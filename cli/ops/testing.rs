@@ -39,7 +39,7 @@ deno_core::extension!(deno_test,
     fail_fast_tracker: FailFastTracker,
     filter: TestFilter,
   },
-  state = |state, cfg| {
+  state = |state, options| {
     state.put(cfg.sender);
     state.put(cfg.fail_fast_tracker);
     state.put(cfg.filter);

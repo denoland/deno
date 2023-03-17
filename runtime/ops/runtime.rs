@@ -10,7 +10,7 @@ deno_core::extension!(
   deno_runtime,
   ops = [op_main_module],
   config = { main_module: ModuleSpecifier },
-  state = |state, cfg| {
+  state = |state, options| {
     state.put::<ModuleSpecifier>(cfg.main_module);
   }
 );

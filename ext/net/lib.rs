@@ -110,13 +110,13 @@ deno_core::extension!(deno_net,
     unstable: bool,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   },
-  state = |state, cfg| {
+  state = |state, options| {
     state.put(DefaultTlsOptions {
-      root_cert_store: cfg.root_cert_store,
+      root_cert_store: options.root_cert_store,
     });
-    state.put(UnstableChecker { unstable: cfg.unstable });
+    state.put(UnstableChecker { unstable: options.unstable });
     state.put(UnsafelyIgnoreCertificateErrors(
-      cfg.unsafely_ignore_certificate_errors,
+      options.unsafely_ignore_certificate_errors,
     ));
   },
 );

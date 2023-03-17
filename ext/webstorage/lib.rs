@@ -34,8 +34,8 @@ deno_core::extension!(deno_webstorage,
   config = {
     origin_storage_dir: Option<PathBuf>
   },
-  state = |state, cfg| {
-    if let Some(origin_storage_dir) = cfg.origin_storage_dir {
+  state = |state, options| {
+    if let Some(origin_storage_dir) = options.origin_storage_dir {
       state.put(OriginStorageDir(origin_storage_dir));
     }
   },

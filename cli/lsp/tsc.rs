@@ -2837,7 +2837,7 @@ deno_core::extension!(deno_tsc,
   config = {
     performance: Arc<Performance>
   },
-  state = |state, cfg| {
+  state = |state, options| {
     state.put(State::new(
       Arc::new(StateSnapshot::default()),
       cfg.performance,

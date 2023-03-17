@@ -374,7 +374,7 @@ impl WebWorker {
         unstable: bool,
         enable_testing_features: bool,
       },
-      state = |state, cfg| {
+      state = |state, options| {
         state.put::<PermissionsContainer>(cfg.permissions);
         state.put(ops::UnstableChecker { unstable: cfg.unstable });
         state.put(ops::TestingFeaturesEnabled(cfg.enable_testing_features));

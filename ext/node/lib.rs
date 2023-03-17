@@ -373,8 +373,8 @@ deno_core::extension!(deno_node_loading,
   config = {
     maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   },
-  state = |state, cfg| {
-    if let Some(npm_resolver) = cfg.maybe_npm_resolver {
+  state = |state, options| {
+    if let Some(npm_resolver) = options.maybe_npm_resolver {
       state.put(npm_resolver);
     }
   },

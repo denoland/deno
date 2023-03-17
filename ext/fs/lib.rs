@@ -183,8 +183,8 @@ deno_core::extension!(deno_fs,
   config = {
     unstable: bool
   },
-  state = |state, cfg| {
-    state.put(UnstableChecker { unstable: cfg.unstable });
+  state = |state, options| {
+    state.put(UnstableChecker { unstable: options.unstable });
   },
 );
 
