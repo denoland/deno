@@ -253,15 +253,12 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops(),
-<<<<<<< HEAD
       deno_kv::deno_kv::init_ops(
         SqliteDbHandler::<PermissionsContainer>::new(
           options.origin_storage_dir.clone(),
         ),
         unstable,
       ),
-=======
->>>>>>> main
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),

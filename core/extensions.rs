@@ -208,7 +208,7 @@ macro_rules! extension {
       // If ops were specified, add those ops to the extension.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_ops $( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
+      fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
           let v = vec![
@@ -227,7 +227,7 @@ macro_rules! extension {
       // Includes the state and middleware functions, if defined.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_state_and_middleware$( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
+      fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
         #[allow(unused_variables)]
         let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? );
 
@@ -253,7 +253,7 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_js_only $( <  $( $param : $type + Clone + 'static ),+ > )? () -> $crate::Extension {
+      pub fn init_js_only $( <  $( $param : $type + 'static ),+ > )? () -> $crate::Extension {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
@@ -263,7 +263,7 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_ops_and_esm $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops_and_esm $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
@@ -274,7 +274,7 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_ops $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
         let mut ext = Self::ext();
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
         Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
@@ -288,12 +288,12 @@ macro_rules! extension {
   (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } ) => {
     {
       #[doc(hidden)]
-      struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
+      struct Config $( <  $( $param : $type + 'static ),+ > )? {
         $( pub $options_id : $options_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
 
-      impl $( <  $( $param : $type + Clone + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
+      impl $( <  $( $param : $type + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
         /// Call a function of |state, cfg| using this configuration structure.
         #[allow(dead_code)]
         #[doc(hidden)]
