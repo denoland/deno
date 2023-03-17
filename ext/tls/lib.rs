@@ -34,6 +34,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+// This extension has no runtime apis, it only exports some shared native functions.
 deno_core::extension!(deno_tls);
 
 struct DefaultSignatureVerification;
