@@ -2273,14 +2273,21 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   }
 
   let total_fields = total_line.split_whitespace().collect::<Vec<_>>();
+
+  let mut usecs_call_offset = 0;
   summary.insert(
     "total".to_string(),
     StraceOutput {
       percent_time: str::parse::<f64>(total_fields[0]).unwrap(),
       seconds: str::parse::<f64>(total_fields[1]).unwrap(),
-      usecs_per_call: None,
-      calls: str::parse::<u64>(total_fields[2]).unwrap(),
-      errors: str::parse::<u64>(total_fields[3]).unwrap(),
+      usecs_per_call: if total_fields.len() > 5 {
+        usecs_call_offset = 1;
+        Some(str::parse::<u64>(total_fields[2]).unwrap())
+      } else {
+        None
+      },
+      calls: str::parse::<u64>(total_fields[2 + usecs_call_offset]).unwrap(),
+      errors: str::parse::<u64>(total_fields[3 + usecs_call_offset]).unwrap(),
     },
   );
 
@@ -2384,6 +2391,7 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 704);
     assert_eq!(strace.get("total").unwrap().errors, 5);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
   }
 
   #[test]
@@ -2399,6 +2407,23 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 821);
     assert_eq!(strace.get("total").unwrap().errors, 107);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
+  }
+
+  #[test]
+  fn strace_parse_3() {
+    const TEXT: &str = include_str!("./testdata/strace_summary3.out");
+    let strace = parse_strace_output(TEXT);
+
+    // first syscall line
+    let futex = strace.get("mprotect").unwrap();
+    assert_eq!(futex.calls, 90);
+    assert_eq!(futex.errors, 0);
+
+    // summary line
+    assert_eq!(strace.get("total").unwrap().calls, 543);
+    assert_eq!(strace.get("total").unwrap().errors, 36);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, Some(6));
   }
 
   #[test]
