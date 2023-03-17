@@ -430,7 +430,10 @@ impl WebWorker {
       deno_flash::init_ops::<PermissionsContainer>(unstable),
       deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       deno_node::init_polyfill_ops(),
-      deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(None)),
+      deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(None),
+        unstable,
+      ),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),

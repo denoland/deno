@@ -250,9 +250,12 @@ impl MainWorker {
       deno_flash::init_ops::<PermissionsContainer>(unstable),
       deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       deno_node::init_polyfill_ops(),
-      deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(
-        options.origin_storage_dir.clone(),
-      )),
+      deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(
+          options.origin_storage_dir.clone(),
+        ),
+        unstable,
+      ),
       // Ops from this crate
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(

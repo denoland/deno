@@ -28,8 +28,25 @@ use serde::Serialize;
 
 pub use crate::interface::*;
 
+struct UnstableChecker {
+  pub unstable: bool,
+}
+
+impl UnstableChecker {
+  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
+  pub fn check_unstable(&self, api_name: &str) {
+    if !self.unstable {
+      eprintln!(
+        "Unstable API '{api_name}'. The --unstable flag must be provided."
+      );
+      std::process::exit(70);
+    }
+  }
+}
+
 fn build_ops<DBH: DatabaseHandler + 'static>(
   handler: DBH,
+  unstable: bool,
   builder: &mut ExtensionBuilder,
 ) -> &mut ExtensionBuilder {
   let handler = Rc::new(handler);
@@ -39,22 +56,32 @@ fn build_ops<DBH: DatabaseHandler + 'static>(
       op_kv_snapshot_read::decl::<DBH::DB>(),
       op_kv_atomic_write::decl::<DBH::DB>(),
       op_kv_encode_key::decl(),
-      op_kv_decode_key::decl(),
     ])
     .state(move |state| {
       state.put(handler.clone());
+      state.put(UnstableChecker { unstable })
     })
 }
 
-pub fn init_ops<DBH: DatabaseHandler + 'static>(handler: DBH) -> Extension {
-  build_ops(handler, &mut Extension::builder(env!("CARGO_PKG_NAME"))).build()
+pub fn init_ops<DBH: DatabaseHandler + 'static>(
+  handler: DBH,
+  unstable: bool,
+) -> Extension {
+  build_ops(
+    handler,
+    unstable,
+    &mut Extension::builder(env!("CARGO_PKG_NAME")),
+  )
+  .build()
 }
 
 pub fn init_ops_and_esm<DBH: DatabaseHandler + 'static>(
   handler: DBH,
+  unstable: bool,
 ) -> Extension {
   build_ops(
     handler,
+    unstable,
     Extension::builder(env!("CARGO_PKG_NAME"))
       .esm(include_js_files!("01_db.js",)),
   )
@@ -81,6 +108,9 @@ where
 {
   let handler = {
     let state = state.borrow();
+    state
+      .borrow::<UnstableChecker>()
+      .check_unstable("Deno.openDatabase");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path)?;
@@ -349,10 +379,4 @@ where
 fn op_kv_encode_key(key: Vec<V8KeyPart>) -> Result<ZeroCopyBuf, AnyError> {
   let key = encode_key(&Key(key.into_iter().map(From::from).collect()))?;
   Ok(ZeroCopyBuf::from(key))
-}
-
-#[op]
-fn op_kv_decode_key(key: ZeroCopyBuf) -> Result<Vec<V8KeyPart>, AnyError> {
-  let key = decode_key(&key)?;
-  Ok(key.0.into_iter().map(Into::into).collect())
 }

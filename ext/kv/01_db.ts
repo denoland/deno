@@ -6,7 +6,6 @@ const ops = core.ops;
 
 const encodeKey: (key: Deno.KvKey) => Uint8Array = (x) =>
   ops.op_kv_encode_key(x);
-//const decodeKey: (key: Uint8Array) => Deno.KvKey = ops.op_kv_decode_key;
 const base64urlEncode: (data: Uint8Array) => string = (x) =>
   ops.op_crypto_base64url_encode(x);
 const base64urlDecode: (data: string) => Uint8Array = (x) =>

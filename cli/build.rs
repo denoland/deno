@@ -331,7 +331,10 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       None,
     ),
     deno_tls::init_ops(),
-    deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(None)),
+    deno_kv::init_ops(
+      SqliteDbHandler::<PermissionsContainer>::new(None),
+      false, // No --unstable.
+    ),
     deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::init_ops(),
     deno_io::init_ops(Default::default()),

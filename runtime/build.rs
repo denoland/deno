@@ -297,7 +297,10 @@ mod startup_snapshot {
         None,
       ),
       deno_tls::init_ops(),
-      deno_kv::init_ops_and_esm(SqliteDbHandler::<Permissions>::new(None)),
+      deno_kv::init_ops_and_esm(
+        SqliteDbHandler::<Permissions>::new(None),
+        false, // No --unstable
+      ),
       deno_napi::init_ops::<Permissions>(),
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),
