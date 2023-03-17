@@ -27,11 +27,12 @@ Deno.test(
     symlinkSync(target, symlink);
 
     const d = deferred();
-    d.resolve(readlink(pathToAbsoluteFileUrl(symlink), {
+    readlink(pathToAbsoluteFileUrl(symlink), {
       encoding: "utf-8",
     }, (_err, targetPath) => {
       assertEquals(targetPath, target);
-    }));
+      d.resolve();
+    });
     await d;
   },
 );
@@ -48,11 +49,12 @@ Deno.test(
     symlinkSync(target, symlink);
 
     const d = deferred();
-    d.resolve(readlink(pathToAbsoluteFileUrl(symlink), {
+    readlink(pathToAbsoluteFileUrl(symlink), {
       encoding: "utf-8",
     }, (_err, targetPath) => {
       assertEquals(targetPath, target);
-    }));
+      d.resolve();
+    });
     await d;
   },
 );
