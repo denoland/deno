@@ -203,6 +203,8 @@ impl MainWorker {
       CreateCache(Arc::new(create_cache_fn))
     });
 
+    // NOTE(bartlomieju): ordering is important here, keep it in sync with
+    // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let mut extensions = vec![
       // Web APIs
       deno_webidl::init(),
@@ -228,15 +230,26 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::init_ops(options.origin_storage_dir.clone()),
+      deno_crypto::init_ops(options.seed),
       deno_broadcast_channel::init_ops(
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_crypto::init_ops(options.seed),
-      deno_webgpu::init_ops(unstable),
-      // ffi
       deno_ffi::init_ops::<PermissionsContainer>(unstable),
-      // Runtime ops
+      deno_net::init_ops::<PermissionsContainer>(
+        options.root_cert_store.clone(),
+        unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
+      deno_tls::init_ops(),
+      deno_napi::init_ops::<PermissionsContainer>(),
+      deno_http::init_ops(),
+      deno_io::init_ops(options.stdio),
+      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_flash::init_ops::<PermissionsContainer>(unstable),
+      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
+      deno_node::init_polyfill_ops(),
+      // Ops from this crate
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
@@ -245,24 +258,11 @@ impl MainWorker {
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::init(),
-      deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_io::init_ops(options.stdio),
-      deno_tls::init_ops(),
-      deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
-        unstable,
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
-      deno_napi::init_ops::<PermissionsContainer>(),
-      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
-      deno_node::init_polyfill_ops(),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init_ops(),
-      deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
     ];
 

@@ -3082,37 +3082,37 @@ declare namespace Deno {
     dev: number;
     /** Inode number.
      *
-     * _Linux/Mac OS only, always returns 0 on Windows_ */
-    ino: number;
+     * _Linux/Mac OS only._ */
+    ino: number | null;
     /** **UNSTABLE**: Match behavior with Go on Windows for `mode`.
      *
      * The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory. */
-    mode: number;
+    mode: number | null;
     /** Number of hard links pointing to this file.
      *
-     * _Linux/Mac OS only, always returns 0 on Windows_ */
-    nlink: number;
+     * _Linux/Mac OS only._ */
+    nlink: number | null;
     /** User ID of the owner of this file.
      *
-     * _Linux/Mac OS only, always returns 0 on Windows_ */
-    uid: number;
+     * _Linux/Mac OS only._ */
+    uid: number | null;
     /** Group ID of the owner of this file.
      *
-     * _Linux/Mac OS only, always returns 0 on Windows_ */
-    gid: number;
+     * _Linux/Mac OS only._ */
+    gid: number | null;
     /** Device ID of this file.
      *
-     * _Linux/Mac OS only, always returns 0 on Windows_ */
-    rdev: number;
+     * _Linux/Mac OS only._ */
+    rdev: number | null;
     /** Blocksize for filesystem I/O.
      *
-     * _Linux/Mac OS only, always returns 0 on Windows_ */
-    blksize: number;
+     * _Linux/Mac OS only._ */
+    blksize: number | null;
     /** Number of blocks allocated to the file, in 512-byte units.
      *
-     * _Linux/Mac OS only, always returns 0 on Windows_ */
-    blocks: number;
+     * _Linux/Mac OS only._ */
+    blocks: number | null;
   }
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.

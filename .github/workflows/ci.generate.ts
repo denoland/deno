@@ -11,8 +11,8 @@ const Runners = {
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
 // bump the number at the start when you want to purge the cache
-const cacheKeyPrefix =
-  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-";
+const prCacheKeyPrefix =
+  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -445,7 +445,7 @@ const ci = {
                 "!./target/*/*.tar.gz",
               ].join("\n"),
               key: "never_saved",
-              "restore-keys": cacheKeyPrefix,
+              "restore-keys": prCacheKeyPrefix,
             },
           },
           {
@@ -844,7 +844,8 @@ const ci = {
             // In main branch, always create a fresh cache
             name: "Save cache build output (main)",
             uses: "actions/cache/save@v3",
-            if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
+            if:
+              "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
             with: {
               path: [
                 "./target",
@@ -852,7 +853,7 @@ const ci = {
                 "!./target/*/*.zip",
                 "!./target/*/*.tar.gz",
               ].join("\n"),
-              key: cacheKeyPrefix + "${{ github.sha }}",
+              key: prCacheKeyPrefix + "${{ github.sha }}",
             },
           },
         ]),

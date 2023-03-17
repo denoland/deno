@@ -383,6 +383,8 @@ impl WebWorker {
       CreateCache(Arc::new(create_cache_fn))
     });
 
+    // NOTE(bartlomieju): ordering is important here, keep it in sync with
+    // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
@@ -408,14 +410,25 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::init_ops(None).disable(),
+      deno_crypto::init_ops(options.seed),
       deno_broadcast_channel::init_ops(
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_crypto::init_ops(options.seed),
-      deno_webgpu::init_ops(unstable),
-      // ffi
       deno_ffi::init_ops::<PermissionsContainer>(unstable),
+      deno_net::init_ops::<PermissionsContainer>(
+        options.root_cert_store.clone(),
+        unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
+      deno_tls::init_ops(),
+      deno_napi::init_ops::<PermissionsContainer>(),
+      deno_http::init_ops(),
+      deno_io::init_ops(options.stdio),
+      deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_flash::init_ops::<PermissionsContainer>(unstable),
+      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
+      deno_node::init_polyfill_ops(),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
@@ -425,30 +438,16 @@ impl WebWorker {
         options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      // Extensions providing Deno.* features
       ops::fs_events::init(),
-      deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_io::init_ops(options.stdio),
-      deno_tls::init_ops(),
-      deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
-        unstable,
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
-      deno_napi::init_ops::<PermissionsContainer>(),
-      deno_node::init_polyfill_ops(),
-      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init_ops(),
       ops::signal::init(),
       ops::tty::init(),
-      deno_http::init_ops(),
-      deno_flash::init_ops::<PermissionsContainer>(unstable),
       ops::http::init(),
-      // Permissions ext (worker specific state)
-      perm_ext,
     ];
+
+    extensions.push(perm_ext);
 
     // Append exts
     extensions.extend(std::mem::take(&mut options.extensions));

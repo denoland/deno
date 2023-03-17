@@ -89,7 +89,6 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.url",
     "deno.web",
     "deno.fetch",
-    "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
     "deno.crypto",
