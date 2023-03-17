@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as fs from "node:fs";
 import {
+  assertRejects,
   assertThrows,
-  assertRejects
 } from "../../../../test_util/std/testing/asserts.ts";
 
 Deno.test(
