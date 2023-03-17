@@ -15,4 +15,4 @@ setTimeout(async () => {
   console.log("Dynamic importing");
   const importPath = (await Deno.readTextFile(IMPORT_PATH_FILE_PATH)).trim();
   import(importPath).then(() => console.log("Dynamic import done."));
-}, 500);
+}, 0);
