@@ -106,15 +106,12 @@ impl OpDecl {
 macro_rules! ops {
   ($name:ident, parameters = [ $( $param:ident : $type:ident ),+ ], ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ]) => {
     pub(crate) fn $name < $( $param : $type + 'static ),+ > () -> Vec<$crate::OpDecl> {
-      let mut v = vec![];
+      vec![
       $(
         $( #[ $m ] )*
-        {
-          let decl = $( $op )::+ :: decl $( :: <$op_param> )? ();
-          v.push(decl);
-        }
+        $( $op )::+ :: decl $( :: <$op_param> )? () ,
       )+
-      v
+      ]
     }
   };
   ($name:ident, [ $( $(#[$m:meta])* $( $op:ident )::+ ),+ $(,)? ] ) => {
