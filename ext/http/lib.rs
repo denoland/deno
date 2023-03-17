@@ -553,7 +553,11 @@ fn req_url(
       .to_string(),
     ),
   };
-  let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
+  let path = req
+    .uri()
+    .path_and_query()
+    .map(|p| p.as_str())
+    .unwrap_or("/");
   [scheme, "://", &host, path].concat()
 }
 

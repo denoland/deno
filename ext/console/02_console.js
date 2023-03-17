@@ -288,6 +288,11 @@ function cliTable(head, columns) {
 }
 /* End of forked part */
 
+// We can match Node's quoting behavior exactly by swapping the double quote and
+// single quote in this array. That would give preference to single quotes.
+// However, we prefer double quotes as the default.
+const QUOTES = ['"', "'", "`"];
+
 const DEFAULT_INSPECT_OPTIONS = {
   depth: 4,
   indentLevel: 0,
@@ -300,6 +305,11 @@ const DEFAULT_INSPECT_OPTIONS = {
   getters: false,
   showHidden: false,
   strAbbreviateSize: 100,
+  /** You can override the quotes preference in inspectString.
+   * Used by util.inspect() */
+  // TODO(kt3k): Consider using symbol as a key to hide this from the public
+  // API.
+  quotes: QUOTES,
 };
 
 const DEFAULT_INDENT = "  "; // Default indent string
@@ -678,7 +688,7 @@ function _inspectValue(
 
   switch (typeof value) {
     case "string":
-      return green(quoteString(value));
+      return green(quoteString(value, inspectOptions));
     case "number": // Numbers are yellow
       // Special handling of -0
       return yellow(ObjectIs(value, -0) ? "-0" : `${value}`);
@@ -687,7 +697,7 @@ function _inspectValue(
     case "undefined": // undefined is gray
       return gray(String(value));
     case "symbol": // Symbols are green
-      return green(maybeQuoteSymbol(value));
+      return green(maybeQuoteSymbol(value, inspectOptions));
     case "bigint": // Bigints are yellow
       return yellow(`${value}n`);
     case "function": // Function string is cyan
@@ -731,11 +741,6 @@ function inspectValue(
   return x;
 }
 
-// We can match Node's quoting behavior exactly by swapping the double quote and
-// single quote in this array. That would give preference to single quotes.
-// However, we prefer double quotes as the default.
-const QUOTES = ['"', "'", "`"];
-
 /** Surround the string in quotes.
  *
  * The quote symbol is chosen by taking the first of the `QUOTES` array which
@@ -744,10 +749,11 @@ const QUOTES = ['"', "'", "`"];
  * Insert a backslash before any occurrence of the chosen quote symbol and
  * before any backslash.
  */
-function quoteString(string) {
+function quoteString(string, inspectOptions = DEFAULT_INSPECT_OPTIONS) {
+  const quotes = inspectOptions.quotes;
   const quote =
-    ArrayPrototypeFind(QUOTES, (c) => !StringPrototypeIncludes(string, c)) ??
-      QUOTES[0];
+    ArrayPrototypeFind(quotes, (c) => !StringPrototypeIncludes(string, c)) ??
+      quotes[0];
   const escapePattern = new SafeRegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
   string = replaceEscapeSequences(string);
@@ -789,20 +795,20 @@ function replaceEscapeSequences(string) {
 const QUOTE_STRING_PATTERN = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_0-9]*$/);
 
 // Surround a string with quotes when it is required (e.g the string not a valid identifier).
-function maybeQuoteString(string) {
+function maybeQuoteString(string, inspectOptions) {
   if (
     RegExpPrototypeTest(QUOTE_STRING_PATTERN, string)
   ) {
     return replaceEscapeSequences(string);
   }
 
-  return quoteString(string);
+  return quoteString(string, inspectOptions);
 }
 
 const QUOTE_SYMBOL_REG = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/);
 
 // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
-function maybeQuoteSymbol(symbol) {
+function maybeQuoteSymbol(symbol, inspectOptions) {
   if (symbol.description === undefined) {
     return SymbolPrototypeToString(symbol);
   }
@@ -816,7 +822,7 @@ function maybeQuoteSymbol(symbol) {
     return SymbolPrototypeToString(symbol);
   }
 
-  return `Symbol(${quoteString(symbol.description)})`;
+  return `Symbol(${quoteString(symbol.description, inspectOptions)})`;
 }
 
 const CTX_STACK = [];
@@ -842,7 +848,7 @@ function inspectValueWithQuotes(
       const trunc = value.length > abbreviateSize
         ? StringPrototypeSlice(value, 0, abbreviateSize) + "..."
         : value;
-      return green(quoteString(trunc)); // Quoted strings are green
+      return green(quoteString(trunc, inspectOptions)); // Quoted strings are green
     }
     default:
       return inspectValue(value, inspectOptions);
@@ -1101,7 +1107,11 @@ function inspectBigIntObject(value, inspectOptions) {
 
 function inspectSymbolObject(value, inspectOptions) {
   const cyan = maybeColor(colors.cyan, inspectOptions);
-  return cyan(`[Symbol: ${maybeQuoteSymbol(SymbolPrototypeValueOf(value))}]`); // wrappers are in cyan
+  return cyan(
+    `[Symbol: ${
+      maybeQuoteSymbol(SymbolPrototypeValueOf(value), inspectOptions)
+    }]`,
+  ); // wrappers are in cyan
 }
 
 const PromiseState = {
@@ -1206,21 +1216,24 @@ function inspectRawObject(
         : red(`[Thrown ${error.name}: ${error.message}]`);
       ArrayPrototypePush(
         entries,
-        `${maybeQuoteString(key)}: ${inspectedValue}`,
+        `${maybeQuoteString(key, inspectOptions)}: ${inspectedValue}`,
       );
     } else {
       const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
       if (descriptor.get !== undefined && descriptor.set !== undefined) {
         ArrayPrototypePush(
           entries,
-          `${maybeQuoteString(key)}: [Getter/Setter]`,
+          `${maybeQuoteString(key, inspectOptions)}: [Getter/Setter]`,
         );
       } else if (descriptor.get !== undefined) {
-        ArrayPrototypePush(entries, `${maybeQuoteString(key)}: [Getter]`);
+        ArrayPrototypePush(
+          entries,
+          `${maybeQuoteString(key, inspectOptions)}: [Getter]`,
+        );
       } else {
         ArrayPrototypePush(
           entries,
-          `${maybeQuoteString(key)}: ${
+          `${maybeQuoteString(key, inspectOptions)}: ${
             inspectValueWithQuotes(value[key], inspectOptions)
           }`,
         );
@@ -1250,21 +1263,24 @@ function inspectRawObject(
         : red(`Thrown ${error.name}: ${error.message}`);
       ArrayPrototypePush(
         entries,
-        `[${maybeQuoteSymbol(key)}]: ${inspectedValue}`,
+        `[${maybeQuoteSymbol(key, inspectOptions)}]: ${inspectedValue}`,
       );
     } else {
       const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
       if (descriptor.get !== undefined && descriptor.set !== undefined) {
         ArrayPrototypePush(
           entries,
-          `[${maybeQuoteSymbol(key)}]: [Getter/Setter]`,
+          `[${maybeQuoteSymbol(key, inspectOptions)}]: [Getter/Setter]`,
         );
       } else if (descriptor.get !== undefined) {
-        ArrayPrototypePush(entries, `[${maybeQuoteSymbol(key)}]: [Getter]`);
+        ArrayPrototypePush(
+          entries,
+          `[${maybeQuoteSymbol(key, inspectOptions)}]: [Getter]`,
+        );
       } else {
         ArrayPrototypePush(
           entries,
-          `[${maybeQuoteSymbol(key)}]: ${
+          `[${maybeQuoteSymbol(key, inspectOptions)}]: ${
             inspectValueWithQuotes(value[key], inspectOptions)
           }`,
         );

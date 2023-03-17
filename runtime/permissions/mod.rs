@@ -70,7 +70,9 @@ impl PermissionState {
     format!(
       "{} access{}",
       name,
-      info().map_or(String::new(), |info| { format!(" to {info}") }),
+      info()
+        .map(|info| { format!(" to {info}") })
+        .unwrap_or_default(),
     )
   }
 
@@ -114,7 +116,9 @@ impl PermissionState {
         let msg = format!(
           "{} access{}",
           name,
-          info().map_or(String::new(), |info| { format!(" to {info}") }),
+          info()
+            .map(|info| { format!(" to {info}") })
+            .unwrap_or_default(),
         );
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
@@ -1569,14 +1573,14 @@ impl Permissions {
   ) -> Result<UnaryPermission<NetDescriptor>, AnyError> {
     Ok(UnaryPermission::<NetDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| NetDescriptor::from_str(x))
             .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1588,9 +1592,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
     Ok(UnaryPermission::<EnvDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1600,8 +1604,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1613,9 +1617,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<SysDescriptor>, AnyError> {
     Ok(UnaryPermission::<SysDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1625,8 +1629,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1638,9 +1642,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
     Ok(UnaryPermission::<RunDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1650,8 +1654,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })

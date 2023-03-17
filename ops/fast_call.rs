@@ -376,11 +376,13 @@ pub(crate) fn generate(
     brace_token: Default::default(),
     items: vec![
       parse_quote! {
+        #[inline(always)]
         fn function(&self) -> *const ::std::ffi::c_void {
           #fast_fn_ident #caller_generics as *const ::std::ffi::c_void
         }
       },
       parse_quote! {
+        #[inline(always)]
         fn args(&self) -> &'static [#core::v8::fast_api::Type] {
           use #core::v8::fast_api::Type::*;
           use #core::v8::fast_api::CType;
@@ -388,6 +390,7 @@ pub(crate) fn generate(
         }
       },
       parse_quote! {
+        #[inline(always)]
         fn return_type(&self) -> #core::v8::fast_api::CType {
           #core::v8::fast_api::CType::#output_variant
         }
