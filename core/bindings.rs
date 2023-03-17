@@ -207,7 +207,7 @@ fn add_op_to_deno_core_ops(
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
     if !snapshot_options.will_snapshot() {
       // TODO(@littledivy): Support fast api overloads in ops.
-      builder.build_fast(scope, &**fast_function, None)
+      builder.build_fast(scope, &**fast_function, None, None, None)
     } else {
       builder.build(scope)
     }
