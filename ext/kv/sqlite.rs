@@ -93,7 +93,7 @@ pub trait SqliteDbHandlerPermissions {
   fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
-impl<P: SqliteDbHandlerPermissions>  SqliteDbHandler<P> {
+impl<P: SqliteDbHandlerPermissions> SqliteDbHandler<P> {
   pub fn new(default_storage_dir: Option<PathBuf>) -> Self {
     Self {
       default_storage_dir,
@@ -102,12 +102,11 @@ impl<P: SqliteDbHandlerPermissions>  SqliteDbHandler<P> {
   }
 }
 
-
 #[async_trait(?Send)]
 impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
   type DB = SqliteDb;
 
-  fn open(
+  async fn open(
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,

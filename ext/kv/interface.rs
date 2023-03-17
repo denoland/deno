@@ -16,7 +16,7 @@ use crate::codec::canonicalize_f64;
 pub trait DatabaseHandler {
   type DB: Database + 'static;
 
-  fn open(
+  async fn open(
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,

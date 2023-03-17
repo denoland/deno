@@ -99,7 +99,7 @@ impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
 }
 
 #[op]
-fn op_kv_database_open<DBH>(
+async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
   path: Option<String>,
 ) -> Result<ResourceId, AnyError>
@@ -113,7 +113,7 @@ where
       .check_unstable("Deno.openDatabase");
     state.borrow::<Rc<DBH>>().clone()
   };
-  let db = handler.open(state.clone(), path)?;
+  let db = handler.open(state.clone(), path).await?;
   let rid = state
     .borrow_mut()
     .resource_table
