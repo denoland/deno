@@ -127,7 +127,7 @@ Deno.test(
     writeFileSync(newName, "newName");
 
     const expectedMessageError = Deno.build.os == "windows"
-      ? `The system cannot find the file specified. (os error 17), link '${oldName}' -> '${newName}'`
+      ? `Cannot create a file when that file already exists. (os error 183), link '${oldName}' -> '${newName}'`
       : `File exists (os error 17), link '${oldName}' -> '${newName}'`;
     link(oldName, newName, (err) => {
       assertEquals(err?.message, expectedMessageError);
