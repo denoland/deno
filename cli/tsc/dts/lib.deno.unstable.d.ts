@@ -1476,10 +1476,12 @@ declare namespace Deno {
      * the upgrade to be successful. */
     response: Response;
     /** The {@linkcode WebSocket} interface to communicate to the client via a
-     * web socket. */
+     * web socket. Accessing this will make accessing the `stream` field error out,
+     * as only one of the two may be used. */
     socket: WebSocket;
     /** The {@linkcode WebSocketStream} interface to communicate to the client via a
-     * web socket. */
+     * web socket. Accessing this will make accessing the `socket` field error out,
+     * as only one of the two may be used. */
     stream: WebSocketStream;
   }
 }
