@@ -13,12 +13,9 @@ use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::serde_v8::BigInt;
 use deno_core::ByteString;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -60,7 +57,7 @@ deno_core::extension!(deno_kv,
     unstable: bool,
   },
   state = |state, options| {
-    state.put(handler.clone());
+    state.put(options.handler);
     state.put(UnstableChecker { unstable })
   }
 );
