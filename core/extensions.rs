@@ -213,14 +213,12 @@ macro_rules! extension {
       fn with_ops $( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
-          let mut v = vec![];
+          let v = vec![
           $(
             $( #[ $m ] )*
-            {
-              let decl = $( $op )::+ :: decl $( :: <$op_param> )? ();
-              v.push(decl);
-            }
-          )+;
+            $( $op )::+ :: decl $( :: <$op_param> )? ()
+          ),+
+          ];
           ext.ops(v);
         )?
 
