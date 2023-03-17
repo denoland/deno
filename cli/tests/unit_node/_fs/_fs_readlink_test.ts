@@ -13,7 +13,7 @@ import {
   readlinkSync,
   symlinkSync,
 } from "node:fs";
-import { pathToAbsoluteFileUrl } from "../../unit/test_util.ts";
+import { deferred, pathToAbsoluteFileUrl } from "../../unit/test_util.ts";
 
 Deno.test(
   "[node/fs readLink] read link match target path",
@@ -26,14 +26,12 @@ Deno.test(
     mkdirSync(target);
     symlinkSync(target, symlink);
 
-    new Promise((resolve) =>
-      readlink(pathToAbsoluteFileUrl(symlink), {
-        encoding: "utf-8",
-      }, (_err, targetPath) => {
-        resolve(targetPath);
-      })
-    ).then((result) => {
-      assertEquals(target, result);
+    readlink(pathToAbsoluteFileUrl(symlink), {
+      encoding: "utf-8",
+    }, async (_err, targetPath) => {
+      const d = deferred<string>();
+      d.resolve(targetPath);
+      assertEquals(await d, target);
     });
   },
 );
@@ -49,14 +47,12 @@ Deno.test(
     mkdirSync(target);
     symlinkSync(target, symlink);
 
-    new Promise((resolve) =>
-      readlink(pathToAbsoluteFileUrl(symlink), {
-        encoding: "utf-8",
-      }, (_err, targetPath) => {
-        resolve(targetPath);
-      })
-    ).then((result) => {
-      assertEquals(target, result);
+    readlink(pathToAbsoluteFileUrl(symlink), {
+      encoding: "utf-8",
+    }, async (_err, targetPath) => {
+      const d = deferred<string>();
+      d.resolve(targetPath);
+      assertEquals(await d, target);
     });
   },
 );
