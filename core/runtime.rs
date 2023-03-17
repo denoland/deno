@@ -319,6 +319,7 @@ impl JsRuntime {
     DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
 
     // Add builtins extension
+    // TODO(bartlomieju): remove this in favor of `SnapshotOptions`.
     let has_startup_snapshot = options.startup_snapshot.is_some();
     if !has_startup_snapshot {
       options
@@ -394,12 +395,16 @@ impl JsRuntime {
     let (mut isolate, snapshot_options) = if snapshot_options.will_snapshot() {
       let snapshot_creator =
         snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
-
+      eprintln!("create snapshot {:#?}", snapshot_options);
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_options.loaded() {
-          bindings::initialize_context_from_existing_snapshot(scope, &op_ctxs)
+          bindings::initialize_context_from_existing_snapshot(
+            scope,
+            &op_ctxs,
+            snapshot_options,
+          )
         } else {
           bindings::initialize_context(scope, &op_ctxs)
         };
@@ -439,7 +444,11 @@ impl JsRuntime {
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = if snapshot_options.loaded() {
-          bindings::initialize_context_from_existing_snapshot(scope, &op_ctxs)
+          bindings::initialize_context_from_existing_snapshot(
+            scope,
+            &op_ctxs,
+            snapshot_options,
+          )
         } else {
           bindings::initialize_context(scope, &op_ctxs)
         };
@@ -643,7 +652,11 @@ impl JsRuntime {
         &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
       });
       let context = if self.snapshot_options.loaded() {
-        bindings::initialize_context_from_existing_snapshot(scope, &op_ctxs)
+        bindings::initialize_context_from_existing_snapshot(
+          scope,
+          &op_ctxs,
+          self.snapshot_options,
+        )
       } else {
         bindings::initialize_context(scope, &op_ctxs)
       };

@@ -15,6 +15,7 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
+use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
@@ -139,9 +140,10 @@ pub(crate) fn initialize_context<'s>(
   context
 }
 
-pub fn initialize_context_from_existing_snapshot<'s>(
+pub(crate) fn initialize_context_from_existing_snapshot<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
+  snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let context = v8::Context::new(scope);
   let global = context.global(scope);
@@ -172,6 +174,26 @@ pub fn initialize_context_from_existing_snapshot<'s>(
     .expect("Deno.core.ops to exist")
     .try_into()
     .unwrap();
+
+  // If we're creating a snapshot from existing snapshot, iterate over all ops
+  // and probe which ones are already registered
+  eprintln!("intialize from existing {:?}", snapshot_options);
+  if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
+    for op_ctx in op_ctxs {
+      eprintln!("check fn {}", &op_ctx.decl.name);
+      let key = v8::String::new_external_onebyte_static(
+        scope,
+        op_ctx.decl.name.as_bytes(),
+      )
+      .unwrap();
+      if ops_obj.get(scope, key.into()).is_some() {
+        continue;
+      }
+      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+    }
+
+    return context;
+  }
 
   // Only register ops that have `force_registration` flag set to true,
   // the remaining ones should already be in the snapshot.
