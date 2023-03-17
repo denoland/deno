@@ -217,7 +217,6 @@ mod startup_snapshot {
         "deno_websocket",
         "deno_webstorage",
         "deno_crypto",
-        "deno_webgpu",
         "deno_broadcast_channel",
         // FIXME(bartlomieju): this should be reenabled
         // "deno_node",
@@ -269,7 +268,6 @@ mod startup_snapshot {
       ),
       deno_webstorage::init_ops_and_esm(None),
       deno_crypto::init_ops_and_esm(None),
-      deno_webgpu::init_ops_and_esm(false),
       deno_broadcast_channel::init_ops_and_esm(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
@@ -301,14 +299,7 @@ mod startup_snapshot {
       snapshot_path,
       startup_snapshot: None,
       extensions,
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        lzzzz::lz4_hc::compress_to_vec(
-          snapshot_slice,
-          vec,
-          lzzzz::lz4_hc::CLEVEL_MAX,
-        )
-        .expect("snapshot compression failed");
-      })),
+      compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
   }
