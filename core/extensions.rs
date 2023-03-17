@@ -284,12 +284,12 @@ macro_rules! extension {
     }
   };
 
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? $( config = { $( $config_id:ident : $config_type:ty ),* } )? ) => {
+  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $config_id:ident : $config_type:ty ),* } ) => {
     {
       #[doc(hidden)]
       #[derive(Clone)]
       struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
-        $( $( pub $config_id : $config_type , )* )?
+        $( pub $config_id : $config_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
 
@@ -298,13 +298,37 @@ macro_rules! extension {
         #[allow(dead_code)]
         #[doc(hidden)]
         #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState, $( $( $config_type ),* )?)>(self, state: &mut $crate::OpState, f: F) {
-          f(state, $( $( self. $config_id ),* )? )
+        fn call_callback<F: Fn(&mut $crate::OpState, $( $config_type ),*)>(self, state: &mut $crate::OpState, f: F) {
+          f(state, $( self. $config_id ),* )
         }
       }
 
       Config {
-        $( $( $config_id , )* )?
+        $( $config_id , )*
+        $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
+      }
+    }
+  };
+
+  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? ) => {
+    {
+      #[doc(hidden)]
+      #[derive(Clone)]
+      struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
+        $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
+      }
+
+      impl $( <  $( $param : $type + Clone + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
+        /// Call a function of |state, ...| using the fields of this configuration structure.
+        #[allow(dead_code)]
+        #[doc(hidden)]
+        #[inline(always)]
+        fn call_callback<F: Fn(&mut $crate::OpState)>(self, state: &mut $crate::OpState, f: F) {
+          f(state)
+        }
+      }
+
+      Config {
         $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
       }
     }
