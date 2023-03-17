@@ -42,7 +42,7 @@ pub struct ExtensionFileSource {
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
-pub type OpStateFn = dyn Fn(&mut OpState);
+pub type OpStateFn = dyn FnOnce(&mut OpState);
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
 pub struct OpDecl {
@@ -259,7 +259,7 @@ macro_rules! extension {
         Self::with_js(&mut ext);
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
         Self::with_customizer(&mut ext);
-        ext.build()
+        ext.take()
       }
 
       #[allow(dead_code)]
@@ -270,7 +270,7 @@ macro_rules! extension {
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
         Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
         Self::with_customizer(&mut ext);
-        ext.build()
+        ext.take()
       }
 
       #[allow(dead_code)]
@@ -279,7 +279,7 @@ macro_rules! extension {
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
         Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
         Self::with_customizer(&mut ext);
-        ext.build()
+        ext.take()
       }
     }
   };
@@ -409,8 +409,8 @@ impl Extension {
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
-  pub fn init_state(&self, state: &mut OpState) {
-    if let Some(op_fn) = &self.opstate_fn {
+  pub fn init_state(&mut self, state: &mut OpState) {
+    if let Some(op_fn) = self.opstate_fn.take() {
       op_fn(state);
     }
   }
@@ -499,7 +499,7 @@ impl ExtensionBuilder {
 
   pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
   where
-    F: Fn(&mut OpState) + 'static,
+    F: FnOnce(&mut OpState) + 'static,
   {
     self.state = Some(Box::new(opstate_fn));
     self
@@ -519,6 +519,27 @@ impl ExtensionBuilder {
   {
     self.event_loop_middleware = Some(Box::new(middleware_fn));
     self
+  }
+
+  /// Consume the [`ExtensionBuilder`] and return an [`Extension`].
+  pub fn take(self) -> Extension {
+    let js_files = Some(self.js);
+    let esm_files = Some(self.esm);
+    let ops = Some(self.ops);
+    let deps = Some(self.deps);
+    Extension {
+      js_files,
+      esm_files,
+      esm_entry_point: self.esm_entry_point,
+      ops,
+      opstate_fn: self.state,
+      middleware_fn: self.middleware,
+      event_loop_middleware: self.event_loop_middleware,
+      initialized: false,
+      enabled: true,
+      name: self.name,
+      deps,
+    }
   }
 
   pub fn build(&mut self) -> Extension {
