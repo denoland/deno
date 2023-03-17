@@ -233,7 +233,7 @@ macro_rules! extension {
 
         $(
           ext.state(move |state: &mut $crate::OpState| {
-            config.clone().call_callback(state, $state_fn)
+            config.call_callback(state, $state_fn)
           });
         )?
 
@@ -284,22 +284,22 @@ macro_rules! extension {
     }
   };
 
+  // This branch of the macro generates a config object that calls the state function with itself.
   (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $config_id:ident : $config_type:ty ),* } ) => {
     {
       #[doc(hidden)]
-      #[derive(Clone)]
       struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
         $( pub $config_id : $config_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
 
       impl $( <  $( $param : $type + Clone + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
-        /// Call a function of |state, ...| using the fields of this configuration structure.
+        /// Call a function of |state, cfg| using this configuration structure.
         #[allow(dead_code)]
         #[doc(hidden)]
         #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState, $( $config_type ),*)>(self, state: &mut $crate::OpState, f: F) {
-          f(state, $( self. $config_id ),* )
+        fn call_callback<F: Fn(&mut $crate::OpState, Self)>(self, state: &mut $crate::OpState, f: F) {
+          f(state, self)
         }
       }
 
@@ -310,16 +310,15 @@ macro_rules! extension {
     }
   };
 
+  // This branch of the macro generates an empty config object that doesn't actually make any callbacks on the state function.
   (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? ) => {
     {
       #[doc(hidden)]
-      #[derive(Clone)]
-      struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
-        $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
+      struct Config {
       }
 
-      impl $( <  $( $param : $type + Clone + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
-        /// Call a function of |state, ...| using the fields of this configuration structure.
+      impl Config {
+        /// Call a function of |state| using the fields of this configuration structure.
         #[allow(dead_code)]
         #[doc(hidden)]
         #[inline(always)]
@@ -328,9 +327,7 @@ macro_rules! extension {
         }
       }
 
-      Config {
-        $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
-      }
+      Config {}
     }
   };
 

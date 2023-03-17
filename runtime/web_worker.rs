@@ -374,10 +374,10 @@ impl WebWorker {
         unstable: bool,
         enable_testing_features: bool,
       },
-      state = |state, permissions, unstable, enable_testing_features| {
-        state.put::<PermissionsContainer>(permissions);
-        state.put(ops::UnstableChecker { unstable });
-        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state = |state, cfg| {
+        state.put::<PermissionsContainer>(cfg.permissions);
+        state.put(ops::UnstableChecker { unstable: cfg.unstable });
+        state.put(ops::TestingFeaturesEnabled(cfg.enable_testing_features));
       },
     );
 
@@ -432,7 +432,7 @@ impl WebWorker {
       deno_tls::deno_tls::init_ops(),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
-      deno_io::deno_io::init_ops(Rc::new(RefCell::new(Some(options.stdio)))),
+      deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
       deno_node::deno_node_loading::init_ops::<PermissionsContainer>(

@@ -107,8 +107,8 @@ deno_core::extension!(deno_crypto,
   config = {
     maybe_seed: Option<u64>,
   },
-  state = |state, maybe_seed| {
-    if let Some(seed) = maybe_seed {
+  state = |state, cfg| {
+    if let Some(seed) = cfg.maybe_seed {
       state.put(StdRng::seed_from_u64(seed));
     }
   },

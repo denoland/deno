@@ -113,9 +113,9 @@ deno_core::extension!(deno_web,
     blob_store: BlobStore,
     maybe_location: Option<Url>,
   },
-  state = |state, blob_store, maybe_location| {
-    state.put(blob_store);
-    if let Some(location) = maybe_location {
+  state = |state, cfg| {
+    state.put(cfg.blob_store);
+    if let Some(location) = cfg.maybe_location {
       state.put(Location(location));
     }
     state.put(StartTime::now());

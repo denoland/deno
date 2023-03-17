@@ -118,9 +118,9 @@ deno_core::extension!(deno_broadcast_channel,
     bc: BC,
     unstable: bool,
   },
-  state = |state, bc, unstable| {
-    state.put(bc);
-    state.put(Unstable(unstable));
+  state = |state, cfg| {
+    state.put(cfg.bc);
+    state.put(Unstable(cfg.unstable));
   },
 );
 

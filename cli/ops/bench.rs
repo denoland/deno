@@ -34,9 +34,9 @@ deno_core::extension!(deno_bench,
     sender: UnboundedSender<BenchEvent>,
     filter: TestFilter,
   },
-  state = |state, sender, filter| {
-    state.put(sender);
-    state.put(filter);
+  state = |state, cfg| {
+    state.put(cfg.sender);
+    state.put(cfg.filter);
   },
 );
 

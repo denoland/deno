@@ -110,16 +110,16 @@ deno_core::extension!(deno_fetch,
   config = {
     options: Options,
   },
-  state = |state, options| {
-    state.put::<Options>(options.clone());
+  state = |state, cfg| {
+    state.put::<Options>(cfg.options.clone());
     state.put::<reqwest::Client>({
       create_http_client(
-        options.user_agent,
-        options.root_cert_store,
+        cfg.options.user_agent,
+        cfg.options.root_cert_store,
         vec![],
-        options.proxy,
-        options.unsafely_ignore_certificate_errors,
-        options.client_cert_chain_and_key
+        cfg.options.proxy,
+        cfg.options.unsafely_ignore_certificate_errors,
+        cfg.options.client_cert_chain_and_key
       )
       .unwrap()
     });

@@ -41,7 +41,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 mod diagnostics;
@@ -830,18 +829,18 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   deno_core::extension!(deno_cli_tsc,
     ops_fn = deno_ops,
     config = {
-      request: Rc<Request>,
+      request: Request,
       root_map: HashMap<String, Url>,
       remapped_specifiers: HashMap<String, Url>,
     },
-    state = |state, request, root_map, remapped_specifiers| {
+    state = |state, cfg| {
       state.put(State::new(
-        request.graph.clone(),
-        request.hash_data.clone(),
-        request.maybe_npm_resolver.clone(),
-        request.maybe_tsbuildinfo.clone(),
-        root_map,
-        remapped_specifiers,
+        cfg.request.graph,
+        cfg.request.hash_data,
+        cfg.request.maybe_npm_resolver,
+        cfg.request.maybe_tsbuildinfo,
+        cfg.root_map,
+        cfg.remapped_specifiers,
         std::env::current_dir()
           .context("Unable to get CWD")
           .unwrap(),
@@ -861,7 +860,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     extensions: vec![deno_cli_tsc::init_ops(
-      Rc::new(request),
+      request,
       root_map,
       remapped_specifiers,
     )],

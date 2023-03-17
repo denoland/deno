@@ -115,9 +115,9 @@ deno_core::extension!(deno_ffi,
   config = {
     unstable: bool,
   },
-  state = |state, unstable| {
+  state = |state, cfg| {
     // Stolen from deno_webgpu, is there a better option?
-    state.put(Unstable(unstable));
+    state.put(Unstable(cfg.unstable));
 
     let (async_work_sender, async_work_receiver) =
       mpsc::unbounded::<PendingFfiAsyncWork>();
