@@ -17,11 +17,8 @@ mod startup_snapshot {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
-<<<<<<< HEAD
   use deno_kv::sqlite::SqliteDbHandler;
-=======
   use std::path::Path;
->>>>>>> main
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
