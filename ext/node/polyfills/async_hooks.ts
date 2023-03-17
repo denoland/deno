@@ -84,14 +84,12 @@ class AsyncContextFrame {
 
     const propagate = (parent: AsyncContextFrame) => {
       parent.storage = parent.storage.filter((entry) => !entry.key.isDead());
-      parent.storage.forEach((entry) => this.storage.push(entry));
+      parent.storage.forEach((entry) => this.storage.push(entry.clone()));
 
-      console.log("propagate", maybeParent, maybeStorageEntry);
       if (maybeStorageEntry) {
         const existingEntry = this.storage.find((entry) =>
           entry.key === maybeStorageEntry.key
         );
-        console.log("existingEntry", maybeStorageEntry, existingEntry);
         if (existingEntry) {
           existingEntry.value = maybeStorageEntry.value;
         } else {
@@ -251,6 +249,10 @@ class StorageEntry {
   constructor(key: StorageKey, value: unknown) {
     this.key = key;
     this.value = value;
+  }
+
+  clone() {
+    return new StorageEntry(this.key, this.value);
   }
 }
 
