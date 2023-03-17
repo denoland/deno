@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.31.2"
+version = "1.31.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -34,8 +34,6 @@ serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true
 glibc_version = "0.1.2"
-
-lzzzz = '1.0'
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -81,7 +79,6 @@ jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-lzzzz = '1.0'
 mitata = "=0.0.7"
 monch = "=0.4.1"
 notify.workspace = true

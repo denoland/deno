@@ -215,7 +215,6 @@ async function rename(oldpath, newpath) {
 // 4. ?u64 converts a zero u64 value to JS null on Windows.
 function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
-  // `?` prefix means optional on windows.
   let offset = 0;
   let str =
     'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
@@ -259,7 +258,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   mtime: "date",
   atime: "date",
   birthtime: "date",
-  dev: "?u64",
+  dev: "u64",
   ino: "?u64",
   mode: "?u64",
   nlink: "?u64",
@@ -282,8 +281,7 @@ function parseFileInfo(response) {
     birthtime: response.birthtimeSet !== null
       ? new Date(response.birthtime)
       : null,
-    // Only non-null if on Unix
-    dev: unix ? response.dev : null,
+    dev: response.dev,
     ino: unix ? response.ino : null,
     mode: unix ? response.mode : null,
     nlink: unix ? response.nlink : null,
