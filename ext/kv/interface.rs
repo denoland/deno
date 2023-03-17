@@ -1,10 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
+use deno_core::OpState;
 use num_bigint::BigInt;
 
 use crate::codec::canonicalize_f64;
@@ -13,7 +16,11 @@ use crate::codec::canonicalize_f64;
 pub trait DatabaseHandler {
   type DB: Database + 'static;
 
-  async fn open(&self, path: Option<String>) -> Result<Self::DB, AnyError>;
+  fn open(
+    &self,
+    state: Rc<RefCell<OpState>>,
+    path: Option<String>,
+  ) -> Result<Self::DB, AnyError>;
 }
 
 #[async_trait(?Send)]

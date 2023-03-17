@@ -423,9 +423,6 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::init_ops(),
-      deno_kv::init_ops(SqliteDbHandler {
-        default_storage_dir: None,
-      }),
       deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::init_ops(),
       deno_io::init_ops(options.stdio),
@@ -433,6 +430,7 @@ impl WebWorker {
       deno_flash::init_ops::<PermissionsContainer>(unstable),
       deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       deno_node::init_polyfill_ops(),
+      deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(None)),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),

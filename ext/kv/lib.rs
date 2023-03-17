@@ -72,7 +72,7 @@ impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
 }
 
 #[op]
-async fn op_kv_database_open<DBH>(
+fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
   path: Option<String>,
 ) -> Result<ResourceId, AnyError>
@@ -83,7 +83,7 @@ where
     let state = state.borrow();
     state.borrow::<Rc<DBH>>().clone()
   };
-  let db = handler.open(path).await?;
+  let db = handler.open(state.clone(), path)?;
   let rid = state
     .borrow_mut()
     .resource_table

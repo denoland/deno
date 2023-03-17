@@ -2,10 +2,14 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::marker::PhantomData;
+use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
+use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::OptionalExtension;
 use rusqlite::Transaction;
@@ -79,19 +83,44 @@ create table queue_running(
 ",
 ];
 
-pub struct SqliteDbHandler {
+pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
   pub default_storage_dir: Option<PathBuf>,
+  _permissions: PhantomData<P>,
 }
 
+pub trait SqliteDbHandlerPermissions {
+  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+}
+
+impl<P: SqliteDbHandlerPermissions>  SqliteDbHandler<P> {
+  pub fn new(default_storage_dir: Option<PathBuf>) -> Self {
+    Self {
+      default_storage_dir,
+      _permissions: PhantomData,
+    }
+  }
+}
+
+
 #[async_trait(?Send)]
-impl DatabaseHandler for SqliteDbHandler {
+impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
   type DB = SqliteDb;
 
-  async fn open(&self, path: Option<String>) -> Result<Self::DB, AnyError> {
+  fn open(
+    &self,
+    state: Rc<RefCell<OpState>>,
+    path: Option<String>,
+  ) -> Result<Self::DB, AnyError> {
     let conn = match (path, &self.default_storage_dir) {
       (Some(path), _) => {
         let path = PathBuf::from(path);
-        // TODO(@lucacasonato): check permissions
+        {
+          let mut state = state.borrow_mut();
+          let permissions = state.borrow_mut::<P>();
+          permissions.check_read(&path, "Deno.openDatabase")?;
+          permissions.check_write(&path, "Deno.openDatabase")?;
+        }
         rusqlite::Connection::open(path)?
       }
       (None, Some(path)) => {

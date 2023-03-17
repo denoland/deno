@@ -201,6 +201,24 @@ mod startup_snapshot {
     }
   }
 
+  impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
+    fn check_read(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   fn create_runtime_snapshot(
     snapshot_path: PathBuf,
     maybe_additional_extension: Option<Extension>,
@@ -279,9 +297,7 @@ mod startup_snapshot {
         None,
       ),
       deno_tls::init_ops(),
-      deno_kv::init_ops_and_esm(SqliteDbHandler {
-        default_storage_dir: None,
-      }),
+      deno_kv::init_ops_and_esm(SqliteDbHandler::<Permissions>::new(None)),
       deno_napi::init_ops::<Permissions>(),
       deno_http::init_ops_and_esm(),
       deno_io::init_ops_and_esm(Default::default()),

@@ -243,9 +243,6 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::init_ops(),
-      deno_kv::init_ops(SqliteDbHandler {
-        default_storage_dir: options.origin_storage_dir.clone(),
-      }),
       deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::init_ops(),
       deno_io::init_ops(options.stdio),
@@ -253,6 +250,9 @@ impl MainWorker {
       deno_flash::init_ops::<PermissionsContainer>(unstable),
       deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
       deno_node::init_polyfill_ops(),
+      deno_kv::init_ops(SqliteDbHandler::<PermissionsContainer>::new(
+        options.origin_storage_dir.clone(),
+      )),
       // Ops from this crate
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(
