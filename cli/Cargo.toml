@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.31.1"
+version = "1.31.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -35,8 +35,6 @@ serde_json.workspace = true
 zstd.workspace = true
 glibc_version = "0.1.2"
 
-lzzzz = '1.0'
-
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
 winres.workspace = true
@@ -58,11 +56,11 @@ atty.workspace = true
 base32 = "=0.4.0"
 base64.workspace = true
 cache_control.workspace = true
-chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
+chrono = { version = "=0.4.22", default-features = false, features = ["std"] }
 clap = "=3.1.12"
 clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
-console_static_text = "=0.3.4"
+console_static_text.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.0"
@@ -81,7 +79,6 @@ jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-lzzzz = '1.0'
 mitata = "=0.0.7"
 monch = "=0.4.1"
 notify.workspace = true
@@ -101,7 +98,7 @@ shell-escape = "=0.1.5"
 tar.workspace = true
 text-size = "=1.1.0"
 text_lines = "=0.6.0"
-thiserror = "=1.0.38"
+thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true

@@ -76,10 +76,6 @@ impl GothamState {
   pub fn take<T: 'static>(&mut self) -> T {
     self.try_take().unwrap_or_else(|| missing::<T>())
   }
-
-  pub fn clear(&mut self) {
-    self.data.clear();
-  }
 }
 
 fn missing<T: 'static>() -> ! {

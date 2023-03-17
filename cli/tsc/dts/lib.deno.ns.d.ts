@@ -3078,10 +3078,8 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
-    /** ID of the device containing the file.
-     *
-     * _Linux/Mac OS only._ */
-    dev: number | null;
+    /** ID of the device containing the file. */
+    dev: number;
     /** Inode number.
      *
      * _Linux/Mac OS only._ */

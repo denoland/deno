@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+pub mod bigint;
 pub mod buffer;
 pub mod bytestring;
 pub mod detached_buffer;

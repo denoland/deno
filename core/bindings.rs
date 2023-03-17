@@ -4,7 +4,6 @@ use std::option::Option;
 use std::os::raw::c_void;
 
 use log::debug;
-use v8::fast_api::FastFunction;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
@@ -16,13 +15,13 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::runtime::SnapshotOptions;
+use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
-pub fn external_references(
+pub(crate) fn external_references(
   ops: &[OpCtx],
-  snapshot_loaded: bool,
+  snapshot_options: SnapshotOptions,
 ) -> v8::ExternalReferences {
   let mut references = vec![
     v8::ExternalReference {
@@ -45,7 +44,7 @@ pub fn external_references(
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
-    if snapshot_loaded {
+    if !snapshot_options.will_snapshot() {
       if let Some(fast_fn) = &ctx.decl.fast_fn {
         references.push(v8::ExternalReference {
           pointer: fast_fn.function() as _,
@@ -99,13 +98,11 @@ pub fn module_origin<'a>(
   )
 }
 
-pub fn initialize_context<'s>(
+pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
   snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
-  let scope = &mut v8::EscapableHandleScope::new(scope);
-
   let context = v8::Context::new(scope);
   let global = context.global(scope);
 
@@ -136,8 +133,10 @@ pub fn initialize_context<'s>(
       .expect("Deno.core.ops to exist")
       .try_into()
       .unwrap();
-    initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
-    return scope.escape(context);
+    for ctx in op_ctxs {
+      add_op_to_deno_core_ops(scope, ops_obj, ctx, snapshot_options);
+    }
+    return context;
   }
 
   // global.Deno = { core: { } };
@@ -160,47 +159,14 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_obj = v8::Object::new(scope);
   core_obj.set(scope, ops_str.into(), ops_obj.into());
-
-  initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
-  scope.escape(context)
-}
-
-fn initialize_ops(
-  scope: &mut v8::HandleScope,
-  ops_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-  snapshot_options: SnapshotOptions,
-) {
   for ctx in op_ctxs {
-    let ctx_ptr = ctx as *const OpCtx as *const c_void;
-
-    // If this is a fast op, we don't want it to be in the snapshot.
-    // Only initialize once snapshot is loaded.
-    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
-      set_func_raw(
-        scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &ctx.decl.fast_fn,
-        snapshot_options,
-      );
-    } else {
-      set_func_raw(
-        scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &None,
-        snapshot_options,
-      );
-    }
+    add_op_to_deno_core_ops(scope, ops_obj, ctx, snapshot_options);
   }
+
+  context
 }
 
-pub fn set_func(
+fn set_func(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   name: &'static str,
@@ -213,30 +179,35 @@ pub fn set_func(
   obj.set(scope, key.into(), val.into());
 }
 
-// Register a raw v8::FunctionCallback
-// with some external data.
-pub fn set_func_raw(
+fn add_op_to_deno_core_ops(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
-  name: &'static str,
-  callback: v8::FunctionCallback,
-  external_data: *const c_void,
-  fast_function: &Option<Box<dyn FastFunction>>,
+  op_ctx: &OpCtx,
   snapshot_options: SnapshotOptions,
 ) {
+  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let key =
-    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
-  let external = v8::External::new(scope, external_data as *mut c_void);
-  let builder =
-    v8::FunctionTemplate::builder_raw(callback).data(external.into());
-  let templ = if let Some(fast_function) = fast_function {
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
+  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let builder = v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
+    .data(external.into());
+
+  // TODO(bartlomieju): this should be cleaned up once we update Fast Calls API
+  // If this is a fast op, we don't want it to be in the snapshot.
+  // Only initialize once snapshot is loaded.
+  let maybe_fast_fn =
+    if op_ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
+      &op_ctx.decl.fast_fn
+    } else {
+      &None
+    };
+
+  let templ = if let Some(fast_function) = maybe_fast_fn {
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    if matches!(
-      snapshot_options,
-      SnapshotOptions::Load | SnapshotOptions::None
-    ) {
+    if !snapshot_options.will_snapshot() {
       // TODO(@littledivy): Support fast api overloads in ops.
-      builder.build_fast(scope, &**fast_function, None)
+      builder.build_fast(scope, &**fast_function, None, None, None)
     } else {
       builder.build(scope)
     }

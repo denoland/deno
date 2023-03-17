@@ -308,7 +308,8 @@ async fn resolve_shim_data(
   let installation_dir = root.join("bin");
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path(&install_flags.module_url)?;
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let module_url = resolve_url_or_path(&install_flags.module_url, &cwd)?;
 
   let name = if install_flags.name.is_some() {
     install_flags.name.clone()
@@ -408,7 +409,7 @@ async fn resolve_shim_data(
   }
 
   if let Some(import_map_path) = &flags.import_map_path {
-    let import_map_url = resolve_url_or_path(import_map_path)?;
+    let import_map_url = resolve_url_or_path(import_map_path, &cwd)?;
     executable_args.push("--import-map".to_string());
     executable_args.push(import_map_url.to_string());
   }
