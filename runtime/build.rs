@@ -244,6 +244,20 @@ mod startup_snapshot {
     ],
   );
 
+  #[cfg(not(feature = "snapshot_from_snapshot"))]
+  deno_core::extension!(
+    runtime_main,
+    deps = [runtime],
+    customizer = |ext: &mut deno_core::ExtensionBuilder| {
+      ext.esm(vec![ExtensionFileSource {
+        specifier: "js/99_main.js".to_string(),
+        code: deno_core::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!("js/99_main.js"),
+        ),
+      }]);
+    }
+  );
+
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
@@ -289,23 +303,7 @@ mod startup_snapshot {
       deno_node::deno_node_loading::init_ops_and_esm::<Permissions>(None),
       deno_node::deno_node::init_ops_and_esm(),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
-      {
-        use deno_core::ExtensionBuilder;
-        use deno_core::ExtensionFileSourceCode;
-        deno_core::extension!(
-          runtime_main,
-          deps = [runtime],
-          customizer = |ext: &mut ExtensionBuilder| {
-            ext.esm(vec![ExtensionFileSource {
-              specifier: "js/99_main.js".to_string(),
-              code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
-                "js/99_main.js"
-              )),
-            }]);
-          }
-        );
-        runtime_main::init_ops_and_esm()
-      },
+      runtime_main::init_ops_and_esm(),
     ];
 
     create_snapshot(CreateSnapshotOptions {
