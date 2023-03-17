@@ -83,7 +83,7 @@ pub fn init_ops_and_esm<DBH: DatabaseHandler + 'static>(
     handler,
     unstable,
     Extension::builder(env!("CARGO_PKG_NAME"))
-      .esm(include_js_files!("01_db.js",)),
+      .esm(include_js_files!("01_db.ts",)),
   )
   .build()
 }
