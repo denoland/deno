@@ -19,7 +19,6 @@ use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -28,8 +27,6 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -78,35 +75,21 @@ use crate::reader_stream::ShutdownHandle;
 pub mod compressible;
 mod reader_stream;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_web", "deno_net", "deno_fetch", "deno_websocket"],
-  )
-}
-
-fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  ext.ops(vec![
-    op_http_accept::decl(),
-    op_http_write_headers::decl(),
-    op_http_headers::decl(),
-    op_http_write::decl(),
-    op_http_write_resource::decl(),
-    op_http_shutdown::decl(),
-    op_http_websocket_accept_header::decl(),
-    op_http_upgrade_websocket::decl(),
-  ])
-}
-
-pub fn init_ops_and_esm() -> Extension {
-  ops(&mut ext())
-    .esm(include_js_files!("01_http.js",))
-    .build()
-}
-
-pub fn init_ops() -> Extension {
-  ops(&mut ext()).build()
-}
+deno_core::extension!(
+  deno_http,
+  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  ops = [
+    op_http_accept,
+    op_http_write_headers,
+    op_http_headers,
+    op_http_write,
+    op_http_write_resource,
+    op_http_shutdown,
+    op_http_websocket_accept_header,
+    op_http_upgrade_websocket,
+  ],
+  esm = ["01_http.js"],
+);
 
 pub enum HttpSocketAddr {
   IpSocket(std::net::SocketAddr),
