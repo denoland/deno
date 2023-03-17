@@ -84,7 +84,7 @@ class AsyncContextFrame {
 
     const propagate = (parent: AsyncContextFrame) => {
       parent.storage = parent.storage.filter((entry) => !entry.key.isDead());
-      parent.storage.forEach((entry) => this.storage.push(entry));
+      parent.storage.forEach((entry) => this.storage.push(entry.clone()));
 
       if (maybeStorageEntry) {
         const existingEntry = this.storage.find((entry) =>
@@ -249,6 +249,10 @@ class StorageEntry {
   constructor(key: StorageKey, value: unknown) {
     this.key = key;
     this.value = value;
+  }
+
+  clone() {
+    return new StorageEntry(this.key, this.value);
   }
 }
 

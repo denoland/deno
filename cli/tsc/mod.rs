@@ -22,7 +22,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
-use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -35,12 +34,14 @@ use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
+use lsp_types::Url;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 mod diagnostics;
@@ -89,7 +90,6 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.url",
     "deno.web",
     "deno.fetch",
-    "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
     "deno.crypto",
@@ -115,12 +115,12 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
+  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops,);
+
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(get_tsc_ops())
-      .build()],
+    extensions: vec![deno_cli_tsc::init_ops()],
     ..Default::default()
   });
   let global =
@@ -826,26 +826,28 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       }
     })
     .collect();
-  let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(get_tsc_ops())
-      .state(move |state| {
-        state.put(State::new(
-          request.graph.clone(),
-          request.hash_data.clone(),
-          request.maybe_npm_resolver.clone(),
-          request.maybe_tsbuildinfo.clone(),
-          root_map.clone(),
-          remapped_specifiers.clone(),
-          std::env::current_dir()
-            .context("Unable to get CWD")
-            .unwrap(),
-        ));
-      })
-      .build()],
-    ..Default::default()
-  });
+
+  deno_core::extension!(deno_cli_tsc,
+    ops_fn = deno_ops,
+    config = {
+      request: Rc<Request>,
+      root_map: HashMap<String, Url>,
+      remapped_specifiers: HashMap<String, Url>,
+    },
+    state = |state, request, root_map, remapped_specifiers| {
+      state.put(State::new(
+        request.graph.clone(),
+        request.hash_data.clone(),
+        request.maybe_npm_resolver.clone(),
+        request.maybe_tsbuildinfo.clone(),
+        root_map,
+        remapped_specifiers,
+        std::env::current_dir()
+          .context("Unable to get CWD")
+          .unwrap(),
+      ));
+    },
+  );
 
   let startup_source = "globalThis.startup({ legacyFlag: false })";
   let request_value = json!({
@@ -855,6 +857,16 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   });
   let request_str = request_value.to_string();
   let exec_source = format!("globalThis.exec({request_str})");
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![deno_cli_tsc::init_ops(
+      Rc::new(request),
+      root_map,
+      remapped_specifiers,
+    )],
+    ..Default::default()
+  });
 
   runtime
     .execute_script(&located_script_name!(), startup_source)
@@ -880,16 +892,17 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   }
 }
 
-fn get_tsc_ops() -> Vec<deno_core::OpDecl> {
-  vec![
-    op_create_hash::decl(),
-    op_emit::decl(),
-    op_is_node_file::decl(),
-    op_load::decl(),
-    op_resolve::decl(),
-    op_respond::decl(),
+deno_core::ops!(
+  deno_ops,
+  [
+    op_create_hash,
+    op_emit,
+    op_is_node_file,
+    op_load,
+    op_resolve,
+    op_respond,
   ]
-}
+);
 
 #[cfg(test)]
 mod tests {

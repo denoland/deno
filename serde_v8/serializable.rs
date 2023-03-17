@@ -2,6 +2,7 @@
 use std::any::TypeId;
 use std::mem::transmute_copy;
 
+use crate::BigInt;
 use crate::ByteString;
 use crate::U16String;
 use crate::ZeroCopyBuf;
@@ -65,6 +66,7 @@ pub enum Primitive {
   ZeroCopyBuf(ZeroCopyBuf),
   ByteString(ByteString),
   U16String(U16String),
+  BigInt(BigInt),
 }
 
 impl serde::Serialize for Primitive {
@@ -89,6 +91,7 @@ impl serde::Serialize for Primitive {
       Self::ZeroCopyBuf(x) => x.serialize(s),
       Self::ByteString(x) => x.serialize(s),
       Self::U16String(x) => x.serialize(s),
+      Self::BigInt(x) => x.serialize(s),
     }
   }
 }
@@ -137,6 +140,8 @@ impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
       Self::Primitive(Primitive::ByteString(tc(x)))
     } else if tid == TypeId::of::<U16String>() {
       Self::Primitive(Primitive::U16String(tc(x)))
+    } else if tid == TypeId::of::<BigInt>() {
+      Self::Primitive(Primitive::BigInt(tc(x)))
     } else {
       Self::Serializable(Box::new(x))
     }
