@@ -97,7 +97,7 @@ fn macos_shared_libraries() {
   // 	/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 60420.60.24)
   // 	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
-  const EXPECTED: [&'static str; 5] =
+  const EXPECTED: [&str; 5] =
     ["/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
      "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
      "/System/Library/Frameworks/Security.framework/Versions/A/Security",
@@ -113,7 +113,7 @@ fn macos_shared_libraries() {
   let output = std::str::from_utf8(&otool.stdout).unwrap();
   // Ensure that the output contains only the expected shared libraries.
   for line in output.lines().skip(1) {
-    let path = line.trim().split_whitespace().next().unwrap();
+    let path = line.split_whitespace().next().unwrap();
     assert!(
       EXPECTED.contains(&path),
       "Unexpected shared library: {}",
