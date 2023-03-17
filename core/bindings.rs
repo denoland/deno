@@ -15,7 +15,6 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
@@ -100,7 +99,6 @@ pub fn module_origin<'a>(
 pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
-  snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let context = v8::Context::new(scope);
   let global = context.global(scope);
@@ -112,38 +110,6 @@ pub(crate) fn initialize_context<'s>(
   let core_str =
     v8::String::new_external_onebyte_static(scope, b"core").unwrap();
   let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
-
-  if snapshot_options.loaded() {
-    // Snapshot already registered `Deno.core.ops` but
-    // extensions may provide ops that aren't part of the snapshot.
-    // Grab the Deno.core.ops object & init it
-    let deno_obj: v8::Local<v8::Object> = global
-      .get(scope, deno_str.into())
-      .unwrap()
-      .try_into()
-      .unwrap();
-    let core_obj: v8::Local<v8::Object> = deno_obj
-      .get(scope, core_str.into())
-      .unwrap()
-      .try_into()
-      .unwrap();
-    let ops_obj: v8::Local<v8::Object> = core_obj
-      .get(scope, ops_str.into())
-      .expect("Deno.core.ops to exist")
-      .try_into()
-      .unwrap();
-
-    // Only register ops that have `force_registration` flag set to true,
-    // the remaining ones should already be in the snapshot.
-    for op_ctx in op_ctxs
-      .iter()
-      .filter(|op_ctx| op_ctx.decl.force_registration)
-    {
-      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
-    }
-
-    return context;
-  }
 
   // globalThis.Deno = { core: { } };
   let deno_obj = v8::Object::new(scope);
@@ -167,6 +133,52 @@ pub(crate) fn initialize_context<'s>(
   core_obj.set(scope, ops_str.into(), ops_obj.into());
 
   for op_ctx in op_ctxs {
+    add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+  }
+
+  context
+}
+
+pub fn initialize_context_from_existing_snapshot<'s>(
+  scope: &mut v8::HandleScope<'s, ()>,
+  op_ctxs: &[OpCtx],
+) -> v8::Local<'s, v8::Context> {
+  let context = v8::Context::new(scope);
+  let global = context.global(scope);
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let deno_str =
+    v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
+  let core_str =
+    v8::String::new_external_onebyte_static(scope, b"core").unwrap();
+  let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
+
+  // Snapshot already registered `Deno.core.ops` but
+  // extensions may provide ops that aren't part of the snapshot.
+  // Grab the Deno.core.ops object & init it
+  let deno_obj: v8::Local<v8::Object> = global
+    .get(scope, deno_str.into())
+    .unwrap()
+    .try_into()
+    .unwrap();
+  let core_obj: v8::Local<v8::Object> = deno_obj
+    .get(scope, core_str.into())
+    .unwrap()
+    .try_into()
+    .unwrap();
+  let ops_obj: v8::Local<v8::Object> = core_obj
+    .get(scope, ops_str.into())
+    .expect("Deno.core.ops to exist")
+    .try_into()
+    .unwrap();
+
+  // Only register ops that have `force_registration` flag set to true,
+  // the remaining ones should already be in the snapshot.
+  for op_ctx in op_ctxs
+    .iter()
+    .filter(|op_ctx| op_ctx.decl.force_registration)
+  {
     add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
   }
 
