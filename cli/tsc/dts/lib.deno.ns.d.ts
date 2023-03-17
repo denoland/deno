@@ -4563,7 +4563,6 @@ declare namespace Deno {
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
-
     /** Requests the permission, and returns the state of the permission.
      *
      * If the permission is already granted, the user will not be prompted to
@@ -4675,7 +4674,15 @@ declare namespace Deno {
     arch: "x86_64" | "aarch64";
     /** The operating system that the Deno CLI was built for. `"darwin"` is
      * also known as OSX or MacOS. */
-    os: "darwin" | "linux" | "windows" | "freebsd" | "netbsd" | "aix" | "solaris" | "illumos";
+    os:
+      | "darwin"
+      | "linux"
+      | "windows"
+      | "freebsd"
+      | "netbsd"
+      | "aix"
+      | "solaris"
+      | "illumos";
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */
