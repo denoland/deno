@@ -136,6 +136,7 @@ impl ProcState {
   /// Reset all runtime state to its default. This should be used on file
   /// watcher restarts.
   pub fn reset_for_file_watcher(&mut self) {
+    
     self.0 = Arc::new(Inner {
       dir: self.dir.clone(),
       options: self.options.clone(),
@@ -149,7 +150,7 @@ impl ProcState {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_inspector_server: self.maybe_inspector_server.clone(),
       root_cert_store: self.root_cert_store.clone(),
-      blob_store: Default::default(),
+      blob_store: self.blob_store.clone(),
       broadcast_channel: Default::default(),
       shared_array_buffer_store: Default::default(),
       compiled_wasm_module_store: Default::default(),
