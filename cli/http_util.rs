@@ -202,7 +202,8 @@ impl CacheSemantics {
         && self
           .cache_control
           .max_stale
-          .map_or(true, |val| val > self.age() - self.max_age());
+          .map(|val| val > self.age() - self.max_age())
+          .unwrap_or(true);
       if !allows_stale {
         return false;
       }
@@ -300,7 +301,7 @@ impl HttpClient {
       .map(Some)
   }
 
-  async fn get_redirected_response<U: reqwest::IntoUrl>(
+  pub async fn get_redirected_response<U: reqwest::IntoUrl>(
     &self,
     url: U,
   ) -> Result<Response, AnyError> {

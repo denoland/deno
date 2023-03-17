@@ -291,7 +291,7 @@ fn throw_invalid_package_target(
     subpath,
     target,
     internal,
-    Some(referrer.as_str().to_string()),
+    Some(referrer.to_string()),
   )
 }
 

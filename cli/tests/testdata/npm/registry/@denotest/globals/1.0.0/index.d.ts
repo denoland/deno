@@ -11,3 +11,5 @@ type AssertTrue<T extends true> = never;
 type _TestHasProcessGlobal = AssertTrue<
   typeof globalThis extends { process: any } ? true : false
 >;
+
+export function withNodeGlobalThis(action: (global: typeof globalThis) => void): void;

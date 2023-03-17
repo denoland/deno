@@ -16,7 +16,6 @@ use crate::args::LintOptions;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::node;
-use crate::npm::NpmPackageReference;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
@@ -27,8 +26,9 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::npm::NpmPackageReqReference;
+use deno_graph::Resolution;
 use deno_graph::ResolutionError;
-use deno_graph::Resolved;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -88,6 +88,7 @@ impl DiagnosticsPublisher {
 
       self
         .client
+        .when_outside_lsp_lock()
         .publish_diagnostics(specifier, version_diagnostics.clone(), version)
         .await;
     }
@@ -490,7 +491,7 @@ async fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
   lint_options: &LintOptions,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
@@ -614,7 +615,7 @@ pub enum DenoDiagnostic {
   /// A data module was not found in the cache.
   NoCacheData(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
-  NoCacheNpm(NpmPackageReference, ModuleSpecifier),
+  NoCacheNpm(NpmPackageReqReference, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -852,18 +853,17 @@ impl DenoDiagnostic {
   }
 }
 
-fn diagnose_resolved(
+fn diagnose_resolution(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
-  resolved: &deno_graph::Resolved,
+  resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
 ) {
-  match resolved {
-    Resolved::Ok {
-      specifier, range, ..
-    } => {
-      let range = documents::to_lsp_range(range);
+  match resolution {
+    Resolution::Ok(resolved) => {
+      let specifier = &resolved.specifier;
+      let range = documents::to_lsp_range(&resolved.range);
       // If the module is a remote module and has a `X-Deno-Warning` header, we
       // want a warning diagnostic with that message.
       if let Some(metadata) = snapshot.cache_metadata.get(specifier) {
@@ -906,12 +906,13 @@ fn diagnose_resolved(
               .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
-      } else if let Ok(pkg_ref) = NpmPackageReference::from_specifier(specifier)
+      } else if let Ok(pkg_ref) =
+        NpmPackageReqReference::from_specifier(specifier)
       {
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           if npm_resolver
-            .resolve_package_folder_from_deno_module(&pkg_ref.req)
+            .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
             diagnostics.push(
@@ -930,9 +931,9 @@ fn diagnose_resolved(
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_ref =
-            NpmPackageReference::from_str("npm:@types/node").unwrap();
+            NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
-            .resolve_package_folder_from_deno_module(&types_node_ref.req)
+            .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
             diagnostics.push(
@@ -959,8 +960,8 @@ fn diagnose_resolved(
     }
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
-    Resolved::Err(err) => diagnostics.push(
-      DenoDiagnostic::ResolutionError(err.clone())
+    Resolution::Err(err) => diagnostics.push(
+      DenoDiagnostic::ResolutionError(*err.clone())
         .to_lsp_diagnostic(&documents::to_lsp_range(err.range())),
     ),
     _ => (),
@@ -984,31 +985,28 @@ fn diagnose_dependency(
   }
 
   if let Some(import_map) = &snapshot.maybe_import_map {
-    if let Resolved::Ok {
-      specifier, range, ..
-    } = &dependency.maybe_code
-    {
-      if let Some(to) = import_map.lookup(specifier, referrer) {
+    if let Resolution::Ok(resolved) = &dependency.maybe_code {
+      if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
           diagnostics.push(
             DenoDiagnostic::ImportMapRemap {
               from: dependency_key.to_string(),
               to,
             }
-            .to_lsp_diagnostic(&documents::to_lsp_range(range)),
+            .to_lsp_diagnostic(&documents::to_lsp_range(&resolved.range)),
           );
         }
       }
     }
   }
-  diagnose_resolved(
+  diagnose_resolution(
     diagnostics,
     snapshot,
     &dependency.maybe_code,
     dependency.is_dynamic,
     dependency.maybe_assert_type.as_deref(),
   );
-  diagnose_resolved(
+  diagnose_resolution(
     diagnostics,
     snapshot,
     &dependency.maybe_type,
@@ -1064,6 +1062,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
+  use pretty_assertions::assert_eq;
   use std::path::Path;
   use std::path::PathBuf;
   use std::sync::Arc;
@@ -1179,14 +1178,11 @@ let c: number = "a";
       let mut disabled_config = mock_config();
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
-        (
-          specifier.clone(),
-          SpecifierSettings {
-            enable: false,
-            enable_paths: Vec::new(),
-            code_lens: Default::default(),
-          },
-        ),
+        SpecifierSettings {
+          enable: false,
+          enable_paths: Vec::new(),
+          code_lens: Default::default(),
+        },
       );
 
       let diagnostics = generate_lint_diagnostics(

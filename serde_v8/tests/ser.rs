@@ -3,6 +3,7 @@ use serde::Serialize;
 use serde_json::json;
 use serde_v8::utils::js_exec;
 use serde_v8::utils::v8_do;
+use serde_v8::BigInt;
 
 #[derive(Debug, Serialize, PartialEq)]
 struct MathOp {
@@ -135,6 +136,61 @@ sertest!(
     operator: None
   },
   "objEqual(x, {a: 1, b: 3, operator: null})"
+);
+
+sertest!(
+  ser_bigint_u8,
+  BigInt::from(num_bigint::BigInt::from(255_u8)),
+  "x === 255n"
+);
+sertest!(
+  ser_bigint_i8,
+  BigInt::from(num_bigint::BigInt::from(-128_i8)),
+  "x === -128n"
+);
+sertest!(
+  ser_bigint_u16,
+  BigInt::from(num_bigint::BigInt::from(65535_u16)),
+  "x === 65535n"
+);
+sertest!(
+  ser_bigint_i16,
+  BigInt::from(num_bigint::BigInt::from(-32768_i16)),
+  "x === -32768n"
+);
+sertest!(
+  ser_bigint_u32,
+  BigInt::from(num_bigint::BigInt::from(4294967295_u32)),
+  "x === 4294967295n"
+);
+sertest!(
+  ser_bigint_i32,
+  BigInt::from(num_bigint::BigInt::from(-2147483648_i32)),
+  "x === -2147483648n"
+);
+sertest!(
+  ser_bigint_u64,
+  BigInt::from(num_bigint::BigInt::from(9007199254740991_u64)),
+  "x === 9007199254740991n"
+);
+sertest!(
+  ser_bigint_i64,
+  BigInt::from(num_bigint::BigInt::from(-9007199254740991_i64)),
+  "x === -9007199254740991n"
+);
+sertest!(
+  ser_bigint_u128,
+  BigInt::from(num_bigint::BigInt::from(
+    340282366920938463463374607431768211455_u128
+  )),
+  "x === 340282366920938463463374607431768211455n"
+);
+sertest!(
+  ser_bigint_i128,
+  BigInt::from(num_bigint::BigInt::from(
+    -170141183460469231731687303715884105728_i128
+  )),
+  "x === -170141183460469231731687303715884105728n"
 );
 
 sertest!(

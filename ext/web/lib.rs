@@ -16,6 +16,7 @@ use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::Extension;
+use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -57,34 +58,19 @@ use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
 
-/// Load and execute the javascript code.
-pub fn init<P: TimersPermission + 'static>(
+fn ext() -> ExtensionBuilder {
+  Extension::builder_with_deps(
+    env!("CARGO_PKG_NAME"),
+    &["deno_webidl", "deno_console", "deno_url"],
+  )
+}
+
+fn ops<P: TimersPermission + 'static>(
+  ext: &mut ExtensionBuilder,
   blob_store: BlobStore,
   maybe_location: Option<Url>,
-) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
-    .js(include_js_files!(
-      prefix "deno:ext/web",
-      "00_infra.js",
-      "01_dom_exception.js",
-      "01_mimesniff.js",
-      "02_event.js",
-      "02_structured_clone.js",
-      "02_timers.js",
-      "03_abort_signal.js",
-      "04_global_interfaces.js",
-      "05_base64.js",
-      "06_streams.js",
-      "08_text_encoding.js",
-      "09_file.js",
-      "10_filereader.js",
-      "11_blob_url.js",
-      "12_location.js",
-      "13_message_port.js",
-      "14_compression.js",
-      "15_performance.js",
-    ))
+) -> &mut ExtensionBuilder {
+  ext
     .ops(vec![
       op_base64_decode::decl(),
       op_base64_encode::decl(),
@@ -122,9 +108,42 @@ pub fn init<P: TimersPermission + 'static>(
         state.put(Location(location));
       }
       state.put(StartTime::now());
-      Ok(())
     })
+}
+
+pub fn init_ops_and_esm<P: TimersPermission + 'static>(
+  blob_store: BlobStore,
+  maybe_location: Option<Url>,
+) -> Extension {
+  ops::<P>(&mut ext(), blob_store, maybe_location)
+    .esm(include_js_files!(
+      "00_infra.js",
+      "01_dom_exception.js",
+      "01_mimesniff.js",
+      "02_event.js",
+      "02_structured_clone.js",
+      "02_timers.js",
+      "03_abort_signal.js",
+      "04_global_interfaces.js",
+      "05_base64.js",
+      "06_streams.js",
+      "08_text_encoding.js",
+      "09_file.js",
+      "10_filereader.js",
+      "11_blob_url.js",
+      "12_location.js",
+      "13_message_port.js",
+      "14_compression.js",
+      "15_performance.js",
+    ))
     .build()
+}
+
+pub fn init_ops<P: TimersPermission + 'static>(
+  blob_store: BlobStore,
+  maybe_location: Option<Url>,
+) -> Extension {
+  ops::<P>(&mut ext(), blob_store, maybe_location).build()
 }
 
 #[op]
@@ -270,7 +289,7 @@ fn op_encoding_decode_single(
 #[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
-  label: String,
+  label: &str,
   fatal: bool,
   ignore_bom: bool,
 ) -> Result<ResourceId, AnyError> {
@@ -352,7 +371,7 @@ impl Resource for TextDecoderResource {
 }
 
 #[op(v8)]
-fn op_encoding_encode_into(
+fn op_encoding_encode_into_fallback(
   scope: &mut v8::HandleScope,
   input: serde_v8::Value,
   buffer: &mut [u8],
@@ -370,6 +389,45 @@ fn op_encoding_encode_into(
   ) as u32;
   out_buf[0] = nchars as u32;
   Ok(())
+}
+
+#[op(fast, slow = op_encoding_encode_into_fallback)]
+fn op_encoding_encode_into(
+  input: Cow<'_, str>,
+  buffer: &mut [u8],
+  out_buf: &mut [u32],
+) {
+  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
+  // point boundary from input that fits in `buffer`, and copy the bytes up to
+  // that point.
+  let boundary = if buffer.len() >= input.len() {
+    input.len()
+  } else {
+    let mut boundary = buffer.len();
+
+    // The maximum length of a UTF-8 code point is 4 bytes.
+    for _ in 0..4 {
+      if input.is_char_boundary(boundary) {
+        break;
+      }
+      debug_assert!(boundary > 0);
+      boundary -= 1;
+    }
+
+    debug_assert!(input.is_char_boundary(boundary));
+    boundary
+  };
+
+  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
+
+  // The `read` output parameter is measured in UTF-16 code units.
+  out_buf[0] = match input {
+    // Borrowed Cow strings are zero-copy views into the V8 heap.
+    // Thus, they are guarantee to be SeqOneByteString.
+    Cow::Borrowed(v) => v[..boundary].len() as u32,
+    Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
+  };
+  out_buf[1] = boundary as u32;
 }
 
 #[op(v8)]

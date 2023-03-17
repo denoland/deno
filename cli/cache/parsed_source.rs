@@ -67,19 +67,23 @@ impl ParsedSourceCache {
     }
   }
 
-  pub fn get_parsed_source_from_module(
-    &self,
-    module: &deno_graph::Module,
-  ) -> Result<Option<ParsedSource>, AnyError> {
-    if let Some(source) = &module.maybe_source {
-      Ok(Some(self.get_or_parse_module(
-        &module.specifier,
-        source.clone(),
-        module.media_type,
-      )?))
-    } else {
-      Ok(None)
+  pub fn reset_for_file_watcher(&self) -> Self {
+    Self {
+      db_cache_path: self.db_cache_path.clone(),
+      cli_version: self.cli_version.clone(),
+      sources: Default::default(),
     }
+  }
+
+  pub fn get_parsed_source_from_esm_module(
+    &self,
+    module: &deno_graph::EsmModule,
+  ) -> Result<ParsedSource, deno_ast::Diagnostic> {
+    self.get_or_parse_module(
+      &module.specifier,
+      module.source.clone(),
+      module.media_type,
+    )
   }
 
   /// Gets the matching `ParsedSource` from the cache
@@ -183,7 +187,7 @@ impl ParsedSourceCacheModuleAnalyzer {
     let mut stmt = self.conn.prepare_cached(query)?;
     let mut rows = stmt.query(params![
       &specifier.as_str(),
-      &media_type.to_string(),
+      serialize_media_type(media_type),
       &expected_source_hash,
     ])?;
     if let Some(row) = rows.next()? {
@@ -210,11 +214,35 @@ impl ParsedSourceCacheModuleAnalyzer {
     let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier.as_str(),
-      &media_type.to_string(),
+      serialize_media_type(media_type),
       &source_hash,
       &serde_json::to_string(&module_info)?,
     ])?;
     Ok(())
+  }
+}
+
+// todo(dsherret): change this to be stored as an integer next time
+// the cache version is bumped
+fn serialize_media_type(media_type: MediaType) -> &'static str {
+  use MediaType::*;
+  match media_type {
+    JavaScript => "1",
+    Jsx => "2",
+    Mjs => "3",
+    Cjs => "4",
+    TypeScript => "5",
+    Mts => "6",
+    Cts => "7",
+    Dts => "8",
+    Dmts => "9",
+    Dcts => "10",
+    Tsx => "11",
+    Json => "12",
+    Wasm => "13",
+    TsBuildInfo => "14",
+    SourceMap => "15",
+    Unknown => "16",
   }
 }
 

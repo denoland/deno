@@ -1,213 +1,212 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-"use strict";
 
 /// <reference path="../../core/internal.d.ts" />
 
-((window) => {
-  const core = window.Deno.core;
-  const ops = core.ops;
-  const webidl = window.__bootstrap.webidl;
-  const { writableStreamClose, Deferred } = window.__bootstrap.streams;
-  const { DOMException } = window.__bootstrap.domException;
-  const { add, remove } = window.__bootstrap.abortSignal;
-  const { headersFromHeaderList, headerListFromHeaders, fillHeaders } =
-    window.__bootstrap.headers;
-  const {
-    _rid,
-    _server,
-    _idleTimeoutDuration,
-    _idleTimeoutTimeout,
-    _serverHandleIdleTimeout,
-  } = window.__bootstrap.webSocket;
+const core = globalThis.Deno.core;
+const ops = core.ops;
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
+import { add, remove } from "ext:deno_web/03_abort_signal.js";
+import {
+  fillHeaders,
+  headerListFromHeaders,
+  headersFromHeaderList,
+} from "ext:deno_fetch/20_headers.js";
+import {
+  _rid,
+  _server,
+  _idleTimeoutDuration,
+  _idleTimeoutTimeout,
+  _serverHandleIdleTimeout,
+} from "ext:deno_websocket/01_websocket.js";
+const primordials = globalThis.__bootstrap.primordials;
+const {
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  Set,
+  StringPrototypeEndsWith,
+  StringPrototypeToLowerCase,
+  Symbol,
+  SymbolFor,
+  TypeError,
+  Uint8ArrayPrototype,
+} = primordials;
 
-  const {
-    ArrayPrototypeJoin,
-    ArrayPrototypeMap,
-    Error,
-    ObjectPrototypeIsPrototypeOf,
-    PromisePrototypeCatch,
-    PromisePrototypeThen,
-    Set,
-    StringPrototypeEndsWith,
-    StringPrototypeToLowerCase,
-    Symbol,
-    SymbolFor,
-    TypeError,
-    Uint8ArrayPrototype,
-  } = window.__bootstrap.primordials;
+webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
+  "WebSocketStreamOptions",
+  [
+    {
+      key: "protocols",
+      converter: webidl.converters["sequence<USVString>"],
+      get defaultValue() {
+        return [];
+      },
+    },
+    {
+      key: "signal",
+      converter: webidl.converters.AbortSignal,
+    },
+    {
+      key: "headers",
+      converter: webidl.converters.HeadersInit,
+    },
+  ],
+);
+webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
+  "WebSocketCloseInfo",
+  [
+    {
+      key: "code",
+      converter: webidl.converters["unsigned short"],
+    },
+    {
+      key: "reason",
+      converter: webidl.converters.USVString,
+      defaultValue: "",
+    },
+  ],
+);
 
-  webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
-    "WebSocketStreamOptions",
-    [
-      {
-        key: "protocols",
-        converter: webidl.converters["sequence<USVString>"],
-        get defaultValue() {
-          return [];
-        },
-      },
-      {
-        key: "signal",
-        converter: webidl.converters.AbortSignal,
-      },
-      {
-        key: "headers",
-        converter: webidl.converters.HeadersInit,
-      },
-    ],
-  );
-  webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
-    "WebSocketCloseInfo",
-    [
-      {
-        key: "code",
-        converter: webidl.converters["unsigned short"],
-      },
-      {
-        key: "reason",
-        converter: webidl.converters.USVString,
-        defaultValue: "",
-      },
-    ],
-  );
+const CLOSE_RESPONSE_TIMEOUT = 5000;
 
-  const CLOSE_RESPONSE_TIMEOUT = 5000;
+const _url = Symbol("[[url]]");
+const _connection = Symbol("[[connection]]");
+const _closed = Symbol("[[closed]]");
+const _earlyClose = Symbol("[[earlyClose]]");
+const _closeSent = Symbol("[[closeSent]]");
+const _createWebSocketStreams = Symbol("[[createWebSocketStreams]]");
+class WebSocketStream {
+  [_rid];
 
-  const _url = Symbol("[[url]]");
-  const _connection = Symbol("[[connection]]");
-  const _closed = Symbol("[[closed]]");
-  const _earlyClose = Symbol("[[earlyClose]]");
-  const _closeSent = Symbol("[[closeSent]]");
-  const _createWebSocketStreams = Symbol("[[createWebSocketStreams]]");
-  class WebSocketStream {
-    [_rid];
+  [_url];
+  get url() {
+    webidl.assertBranded(this, WebSocketStreamPrototype);
+    return this[_url];
+  }
 
-    [_url];
-    get url() {
-      webidl.assertBranded(this, WebSocketStreamPrototype);
-      return this[_url];
+  constructor(url, options) {
+    this[webidl.brand] = webidl.brand;
+    const prefix = "Failed to construct 'WebSocketStream'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    url = webidl.converters.USVString(url, {
+      prefix,
+      context: "Argument 1",
+    });
+    options = webidl.converters.WebSocketStreamOptions(options, {
+      prefix,
+      context: "Argument 2",
+    });
+
+    const wsURL = new URL(url);
+
+    if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
+      throw new DOMException(
+        "Only ws & wss schemes are allowed in a WebSocket URL.",
+        "SyntaxError",
+      );
     }
 
-    constructor(url, options) {
-      this[webidl.brand] = webidl.brand;
-      const prefix = "Failed to construct 'WebSocketStream'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      url = webidl.converters.USVString(url, {
-        prefix,
-        context: "Argument 1",
-      });
-      options = webidl.converters.WebSocketStreamOptions(options, {
-        prefix,
-        context: "Argument 2",
-      });
-
-      const wsURL = new URL(url);
-
-      if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
-        throw new DOMException(
-          "Only ws & wss schemes are allowed in a WebSocket URL.",
-          "SyntaxError",
-        );
-      }
-
-      if (wsURL.hash !== "" || StringPrototypeEndsWith(wsURL.href, "#")) {
-        throw new DOMException(
-          "Fragments are not allowed in a WebSocket URL.",
-          "SyntaxError",
-        );
-      }
-
-      this[_url] = wsURL.href;
-
-      if (
-        options.protocols.length !==
-          new Set(
-            ArrayPrototypeMap(
-              options.protocols,
-              (p) => StringPrototypeToLowerCase(p),
-            ),
-          ).size
-      ) {
-        throw new DOMException(
-          "Can't supply multiple times the same protocol.",
-          "SyntaxError",
-        );
-      }
-
-      const headers = headersFromHeaderList([], "request");
-      if (options.headers !== undefined) {
-        fillHeaders(headers, options.headers);
-      }
-
-      const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
-        "WebSocketStream.abort()",
-        this[_url],
-        true,
+    if (wsURL.hash !== "" || StringPrototypeEndsWith(wsURL.href, "#")) {
+      throw new DOMException(
+        "Fragments are not allowed in a WebSocket URL.",
+        "SyntaxError",
       );
+    }
 
-      if (options.signal?.aborted) {
-        core.close(cancelRid);
-        const err = options.signal.reason;
-        this[_connection].reject(err);
-        this[_closed].reject(err);
-      } else {
-        const abort = () => {
-          core.close(cancelRid);
-        };
-        options.signal?.[add](abort);
-        PromisePrototypeThen(
-          core.opAsync(
-            "op_ws_create",
-            "new WebSocketStream()",
-            this[_url],
-            options.protocols
-              ? ArrayPrototypeJoin(options.protocols, ", ")
-              : "",
-            cancelRid,
-            headerListFromHeaders(headers),
+    this[_url] = wsURL.href;
+
+    if (
+      options.protocols.length !==
+        new Set(
+          ArrayPrototypeMap(
+            options.protocols,
+            (p) => StringPrototypeToLowerCase(p),
           ),
-          (create) => {
-            options.signal?.[remove](abort);
-            if (this[_earlyClose]) {
-              PromisePrototypeThen(
-                core.opAsync("op_ws_close", create.rid),
-                () => {
-                  PromisePrototypeThen(
-                    (async () => {
-                      while (true) {
-                        const { kind } = await core.opAsync(
-                          "op_ws_next_event",
-                          create.rid,
-                        );
+        ).size
+    ) {
+      throw new DOMException(
+        "Can't supply multiple times the same protocol.",
+        "SyntaxError",
+      );
+    }
 
-                        if (kind === "close") {
-                          break;
-                        }
-                      }
-                    })(),
-                    () => {
-                      const err = new DOMException(
-                        "Closed while connecting",
-                        "NetworkError",
+    const headers = headersFromHeaderList([], "request");
+    if (options.headers !== undefined) {
+      fillHeaders(headers, options.headers);
+    }
+
+    const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+      "WebSocketStream.abort()",
+      this[_url],
+      true,
+    );
+
+    if (options.signal?.aborted) {
+      core.close(cancelRid);
+      const err = options.signal.reason;
+      this[_connection].reject(err);
+      this[_closed].reject(err);
+    } else {
+      const abort = () => {
+        core.close(cancelRid);
+      };
+      options.signal?.[add](abort);
+      PromisePrototypeThen(
+        core.opAsync(
+          "op_ws_create",
+          "new WebSocketStream()",
+          this[_url],
+          options.protocols ? ArrayPrototypeJoin(options.protocols, ", ") : "",
+          cancelRid,
+          headerListFromHeaders(headers),
+        ),
+        (create) => {
+          options.signal?.[remove](abort);
+          if (this[_earlyClose]) {
+            PromisePrototypeThen(
+              core.opAsync("op_ws_close", create.rid),
+              () => {
+                PromisePrototypeThen(
+                  (async () => {
+                    while (true) {
+                      const { kind } = await core.opAsync(
+                        "op_ws_next_event",
+                        create.rid,
                       );
-                      this[_connection].reject(err);
-                      this[_closed].reject(err);
-                    },
-                  );
-                },
-                () => {
-                  const err = new DOMException(
-                    "Closed while connecting",
-                    "NetworkError",
-                  );
-                  this[_connection].reject(err);
-                  this[_closed].reject(err);
-                },
-              );
-            } else {
-              this[_rid] = create.rid;
 
-              const { readable, writable } = this[_createWebSocketStreams]();
+                      if (kind === "close") {
+                        break;
+                      }
+                    }
+                  })(),
+                  () => {
+                    const err = new DOMException(
+                      "Closed while connecting",
+                      "NetworkError",
+                    );
+                    this[_connection].reject(err);
+                    this[_closed].reject(err);
+                  },
+                );
+              },
+              () => {
+                const err = new DOMException(
+                  "Closed while connecting",
+                  "NetworkError",
+                );
+                this[_connection].reject(err);
+                this[_closed].reject(err);
+              },
+            );
+          } else {
+            this[_rid] = create.rid;
+
+            const { readable, writable } = this[_createWebSocketStreams]();
 
               this[_connection].resolve({
                 readable,
@@ -357,30 +356,30 @@
       });
 
       return { writable, readable };
-    }
+  }
 
-    [_connection] = new Deferred();
-    get connection() {
-      webidl.assertBranded(this, WebSocketStreamPrototype);
-      return this[_connection].promise;
-    }
+  [_connection] = new Deferred();
+  get connection() {
+    webidl.assertBranded(this, WebSocketStreamPrototype);
+    return this[_connection].promise;
+  }
 
-    [_earlyClose] = false;
-    [_closed] = new Deferred();
-    [_closeSent] = new Deferred();
-    get closed() {
-      webidl.assertBranded(this, WebSocketStreamPrototype);
-      return this[_closed].promise;
-    }
+  [_earlyClose] = false;
+  [_closed] = new Deferred();
+  [_closeSent] = new Deferred();
+  get closed() {
+    webidl.assertBranded(this, WebSocketStreamPrototype);
+    return this[_closed].promise;
+  }
 
-    close(closeInfo) {
-      webidl.assertBranded(this, WebSocketStreamPrototype);
-      closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
-        prefix: "Failed to execute 'close' on 'WebSocketStream'",
-        context: "Argument 1",
-      });
+  close(closeInfo) {
+    webidl.assertBranded(this, WebSocketStreamPrototype);
+    closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
+      prefix: "Failed to execute 'close' on 'WebSocketStream'",
+      context: "Argument 1",
+    });
 
-      if (!this[_server]) {
+    if (!this[_server]) {
         if (
           closeInfo.code &&
           !(closeInfo.code === 1000 ||
@@ -392,40 +391,40 @@
           );
         }
       }
-      const encoder = new TextEncoder();
-      if (
-        closeInfo.reason && encoder.encode(closeInfo.reason).byteLength > 123
-      ) {
-        throw new DOMException(
-          "The close reason may not be longer than 123 bytes.",
-          "SyntaxError",
-        );
-      }
-
-      let code = closeInfo.code;
-      if (closeInfo.reason && code === undefined) {
-        code = 1000;
-      }
-
-      if (this[_connection].state === "pending") {
-        this[_earlyClose] = true;
-      } else if (this[_closed].state === "pending") {
-        PromisePrototypeThen(
-          core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
-          () => {
-            setTimeout(() => {
-              this[_closeSent].resolve(new Date().getTime());
-            }, 0);
-          },
-          (err) => {
-            this[_rid] && core.tryClose(this[_rid]);
-            this[_closed].reject(err);
-          },
-        );
-      }
+    const encoder = new TextEncoder();
+    if (
+      closeInfo.reason && encoder.encode(closeInfo.reason).byteLength > 123
+    ) {
+      throw new DOMException(
+        "The close reason may not be longer than 123 bytes.",
+        "SyntaxError",
+      );
     }
 
-    [_serverHandleIdleTimeout]() {
+    let code = closeInfo.code;
+    if (closeInfo.reason && code === undefined) {
+      code = 1000;
+    }
+
+    if (this[_connection].state === "pending") {
+      this[_earlyClose] = true;
+    } else if (this[_closed].state === "pending") {
+      PromisePrototypeThen(
+        core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+        () => {
+          setTimeout(() => {
+            this[_closeSent].resolve(new Date().getTime());
+          }, 0);
+        },
+        (err) => {
+          this[_rid] && core.tryClose(this[_rid]);
+          this[_closed].reject(err);
+        },
+      );
+    }
+  }
+
+  [_serverHandleIdleTimeout]() {
       if (this[_idleTimeoutDuration]) {
         clearTimeout(this[_idleTimeoutTimeout]);
         this[_idleTimeoutTimeout] = setTimeout(async () => {
@@ -446,20 +445,18 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({
-          url: this.url,
-        })
-      }`;
-    }
+    return `${this.constructor.name} ${
+      inspect({
+        url: this.url,
+      })
+    }`;
   }
+}
 
-  const WebSocketStreamPrototype = WebSocketStream.prototype;
+const WebSocketStreamPrototype = WebSocketStream.prototype;
 
-  window.__bootstrap.webSocket.WebSocketStream = WebSocketStream;
-  window.__bootstrap.webSocket._connection = _connection;
-  window.__bootstrap.webSocket._closed = _closed;
-  window.__bootstrap.webSocket._closeSent = _closeSent;
-  window.__bootstrap.webSocket._createWebSocketStreams =
-    _createWebSocketStreams;
-})(this);
+export { WebSocketStream, _connection,
+  _closed,
+  _closeSent,
+  _createWebSocketStreams,
+};

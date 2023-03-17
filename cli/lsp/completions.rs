@@ -48,7 +48,7 @@ pub struct CompletionItemData {
 async fn check_auto_config_registry(
   url_str: &str,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
@@ -78,14 +78,12 @@ async fn check_auto_config_registry(
           // incompatible.
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
-            client
-              .send_registry_state_notification(
-                lsp_custom::RegistryStateNotificationParams {
-                  origin,
-                  suggestions,
-                },
-              )
-              .await;
+            client.send_registry_state_notification(
+              lsp_custom::RegistryStateNotificationParams {
+                origin,
+                suggestions,
+              },
+            );
           }
         }
       }
@@ -139,7 +137,7 @@ pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,
@@ -368,6 +366,7 @@ fn get_local_completions(
   } else {
     false
   };
+  let cwd = std::env::current_dir().ok()?;
   if current_path.is_dir() {
     let items = std::fs::read_dir(current_path).ok()?;
     Some(
@@ -375,7 +374,7 @@ fn get_local_completions(
         .filter_map(|de| {
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier = resolve_path(de.path().to_str()?).ok()?;
+          let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
           if &entry_specifier == base {
             return None;
           }
@@ -681,6 +680,7 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,
@@ -705,6 +705,7 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,

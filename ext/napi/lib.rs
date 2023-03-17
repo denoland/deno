@@ -418,6 +418,7 @@ pub struct Env {
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
   pub tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
   pub last_error: napi_extended_error_info,
+  pub global: NonNull<v8::Value>,
 }
 
 unsafe impl Send for Env {}
@@ -427,6 +428,7 @@ impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
+    global: v8::Global<v8::Value>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
     cleanup_hooks: Rc<
@@ -446,6 +448,7 @@ impl Env {
     Self {
       isolate_ptr,
       context: context.into_raw(),
+      global: global.into_raw(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
@@ -511,7 +514,7 @@ impl Env {
   }
 }
 
-pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
+pub fn init_ops<P: NapiPermissions + 'static>() -> Extension {
   Extension::builder(env!("CARGO_PKG_NAME"))
     .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
@@ -575,8 +578,6 @@ pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
         env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
         tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
       });
-      state.put(Unstable(unstable));
-      Ok(())
     })
     .build()
 }
@@ -586,27 +587,16 @@ pub trait NapiPermissions {
     -> std::result::Result<(), AnyError>;
 }
 
-pub struct Unstable(pub bool);
-
-fn check_unstable(state: &OpState) {
-  let unstable = state.borrow::<Unstable>();
-
-  if !unstable.0 {
-    eprintln!("Unstable API 'node-api'. The --unstable flag must be provided.");
-    std::process::exit(70);
-  }
-}
-
 #[op(v8)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: &mut OpState,
   path: String,
+  global: serde_v8::Value,
 ) -> std::result::Result<serde_v8::Value<'scope>, AnyError>
 where
   NP: NapiPermissions + 'static,
 {
-  check_unstable(op_state);
   let permissions = op_state.borrow_mut::<NP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
 
@@ -644,6 +634,7 @@ where
   let mut env = Env::new(
     isolate_ptr,
     v8::Global::new(scope, ctx),
+    v8::Global::new(scope, global.v8_value),
     async_work_sender,
     tsfn_sender,
     cleanup_hooks,

@@ -8,7 +8,7 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::v8::construct_v8_flags;
 use crate::version;
-use crate::CliResolver;
+use crate::CliGraphResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -63,7 +63,7 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
-/// binary by checking for the magic trailer string `D3N0` at EOF-12.
+/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-24.
 /// The magic trailer is followed by:
 /// - a u64 pointer to the JS bundle embedded in the binary
 /// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
@@ -127,7 +127,7 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 struct EmbeddedModuleLoader {
   eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<CliResolver>,
+  maybe_import_map_resolver: Option<CliGraphResolver>,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -140,18 +140,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
       Some(eszip::Module { ref specifier, .. }) => {
-        deno_core::resolve_url_or_path(specifier)?
+        ModuleSpecifier::parse(specifier)?
       }
-      None => deno_core::resolve_url_or_path(referrer)?,
+      None => {
+        let cwd = std::env::current_dir().context("Unable to get CWD")?;
+        deno_core::resolve_url_or_path(referrer, &cwd)?
+      }
     };
 
-    self.maybe_import_map_resolver.as_ref().map_or_else(
-      || {
+    self
+      .maybe_import_map_resolver
+      .as_ref()
+      .map(|r| r.resolve(specifier, &referrer))
+      .unwrap_or_else(|| {
         deno_core::resolve_import(specifier, referrer.as_str())
           .map_err(|err| err.into())
-      },
-      |r| r.resolve(specifier, &referrer),
-    )
+      })
   }
 
   fn load(
@@ -235,9 +239,16 @@ pub async fn run(
     eszip,
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        CliResolver::with_import_map(Arc::new(
-          parse_from_json(&base, &source).unwrap().import_map,
-        ))
+        CliGraphResolver::new(
+          None,
+          Some(Arc::new(
+            parse_from_json(&base, &source).unwrap().import_map,
+          )),
+          false,
+          ps.npm_api.clone(),
+          ps.npm_resolution.clone(),
+          ps.package_json_deps_installer.clone(),
+        )
       },
     ),
   });
@@ -258,7 +269,10 @@ pub async fn run(
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(1),
-      debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
+      debug_flag: metadata
+        .log_level
+        .map(|l| l == Level::Debug)
+        .unwrap_or(false),
       enable_testing_features: false,
       locale: deno_core::v8::icu::get_language_tag(),
       location: metadata.location,
@@ -271,7 +285,6 @@ pub async fn run(
       inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps),
-    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,

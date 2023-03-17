@@ -12,6 +12,7 @@ pub mod r#async;
 pub mod callback;
 pub mod coerce;
 pub mod date;
+pub mod env;
 pub mod error;
 pub mod mem;
 pub mod numbers;
@@ -26,7 +27,7 @@ pub mod typedarray;
 #[macro_export]
 macro_rules! cstr {
   ($s: literal) => {{
-    std::ffi::CString::new($s).unwrap().as_ptr()
+    std::ffi::CString::new($s).unwrap().into_raw()
   }};
 }
 
@@ -143,6 +144,7 @@ unsafe extern "C" fn napi_register_module_v1(
   typedarray::init(env, exports);
   arraybuffer::init(env, exports);
   array::init(env, exports);
+  env::init(env, exports);
   error::init(env, exports);
   primitives::init(env, exports);
   properties::init(env, exports);
