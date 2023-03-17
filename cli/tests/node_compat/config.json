@@ -42,6 +42,7 @@
       "test-child-process-stdio-inherit.js",
       "test-child-process-stdout-flush-exit.js",
       "test-child-process-stdout-flush.js",
+      "test-console-group.js",
       "test-console-instance.js",
       "test-crypto-hmac.js",
       "test-dgram-custom-lookup.js",
