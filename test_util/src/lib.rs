@@ -1474,7 +1474,7 @@ async fn wrap_client_auth_https_server() {
             }
 
             Err(e) => {
-              eprintln!("https-client-auth accept error: {:?}", e);
+              eprintln!("https-client-auth accept error: {e:?}");
               yield Err(e);
             }
           }

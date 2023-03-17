@@ -178,7 +178,6 @@ class HmacImpl extends Transform {
     const u8Key = prepareSecretKey(key, options?.encoding) as Buffer;
 
     const alg = hmac.toLowerCase();
-    this.#hash = new Hash(alg, options);
     this.#algorithm = alg;
     const blockSize = (alg === "sha512" || alg === "sha384") ? 128 : 64;
     const keySize = u8Key.length;
@@ -186,7 +185,8 @@ class HmacImpl extends Transform {
     let bufKey: Buffer;
 
     if (keySize > blockSize) {
-      bufKey = this.#hash.update(u8Key).digest() as Buffer;
+      const hash = new Hash(alg, options);
+      bufKey = hash.update(u8Key).digest() as Buffer;
     } else {
       bufKey = Buffer.concat([u8Key, this.#ZEROES], blockSize);
     }
