@@ -1474,15 +1474,47 @@ declare namespace Deno {
    */
   export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
 
-  /** **Experimental addon API**
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Open a new {@link Deno.Database} connection to persist data.
+   * Open a new {@linkcode Deno.Database} connection to persist data.
+   *
+   * @category KV
    */
   export function openDatabase(path?: string): Promise<Deno.Database>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A key.
+   *
+   * @category KV
+   */
   export type KvKey = readonly KvKeyPart[];
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A part of a key.
+   *
+   * @category KV
+   */
   export type KvKeyPart = string | number | boolean | bigint | Uint8Array;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Consistency level of a KV operation.
+   *
+   * - `strong` - This operation must be strongly-consistent.
+   * - `eventual` - Eventually-consistent behavior is allowed.
+   *
+   * @category KV
+   */
   export type ConsistencyLevel = "strong" | "eventual";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A selector that selects the range of data returned by a list operation.
+   *
+   * @category KV
+   */
   export type KvListSelector = { prefix: KvKey } | {
     start: KvKey;
     end: KvKey;
@@ -1491,6 +1523,12 @@ declare namespace Deno {
     start: KvKey;
   };
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A mutation to the KV store.
+   *
+   * @category KV
+   */
   export interface KvMutation {
     key: KvKey;
     value: unknown;
@@ -1502,22 +1540,46 @@ declare namespace Deno {
       | "min";
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An iterator over a range of KV pairs.
+   *
+   * @category KV
+   */
   export class KvListIterator {
     cursor(): string;
     [Symbol.asyncIterator](): AsyncIterator<KvEntry>;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An entry in the KV store.
+   *
+   * @category KV
+   */
   export interface KvEntry {
     key: KvKey;
     value: unknown;
     versionstamp: string | null;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A check to perform as part of an atomic operation.
+   *
+   * @category KV
+   */
   export interface AtomicCheck {
     key: KvKey;
     versionstamp: string | null;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An operation on the KV store that is executed atomically.
+   *
+   * @category KV
+   */
   export class AtomicOperation {
     check(...c: AtomicCheck[]): this;
     mutate(...m: KvMutation[]): this;
@@ -1526,6 +1588,12 @@ declare namespace Deno {
     commit(): Promise<boolean>;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A key-value database.
+   *
+   * @category KV
+   */
   export class Database {
     get(
       key: KvKey,
@@ -1558,6 +1626,12 @@ declare namespace Deno {
     close(): Promise<void>;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Wrapper type for 64-bit unsigned integers for use as KV values.
+   *
+   * @category KV
+   */
   export class KvU64 {
     constructor(value: bigint);
   }
