@@ -382,8 +382,6 @@ function createRespondWith(
   };
 }
 
-const _ws = Symbol("[[associated_ws]]");
-
 async function handleWS(resp, getWSRid, httpConn) {
   if (resp[_ws]) {
     if (resp[_ws].kind === null) {
