@@ -126,25 +126,25 @@ macro_rules! ops {
   }
 }
 
-/// Defines a Deno extension. The first parameter is the name of the extension symbol namespace to create. This is the symbol you 
+/// Defines a Deno extension. The first parameter is the name of the extension symbol namespace to create. This is the symbol you
 /// will use to refer to the extension.
-/// 
+///
 /// Most extensions will define a combination of ops and ESM files, like so:
-/// 
+///
 /// ```no_compile
 /// #[op]
 /// fn op_xyz() {
 /// }
-/// 
+///
 /// deno_core::extension!(
 ///   my_extension,
 ///   ops = [ op_xyz ],
 ///   esm = [ "my_script.js" ],
 /// );
 /// ```
-/// 
+///
 /// The following options are available for the [`extension`] macro:
-/// 
+///
 ///  * deps: a comma-separated list of module dependencies, eg: `deps = [ my_other_extension ]`
 ///  * parameters: a comma-separated list of parameters and base traits, eg: `parameters = [ P: MyTrait ]`
 ///  * ops: a comma-separated list of [`OpDecl`]s to provide, eg: `ops = [ op_foo, op_bar ]`
