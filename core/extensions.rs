@@ -42,7 +42,7 @@ pub struct ExtensionFileSource {
 }
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
-pub type OpStateFn = dyn Fn(&mut OpState);
+pub type OpStateFn = dyn FnOnce(&mut OpState);
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
 pub struct OpDecl {
@@ -164,7 +164,7 @@ macro_rules! extension {
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
     $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
-    $(, config = { $( $config_id:ident : $config_type:ty ),* $(,)? } )?
+    $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr )?
     $(, state = $state_fn:expr )?
     $(, event_loop_middleware = $event_loop_middleware_fn:ident )?
@@ -227,13 +227,13 @@ macro_rules! extension {
       // Includes the state and middleware functions, if defined.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_state_and_middleware$( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $config_id : $config_type ),* )? ) {
+      fn with_state_and_middleware$( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
         #[allow(unused_variables)]
-        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $config_id : $config_type ),* } )? );
+        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? );
 
         $(
           ext.state(move |state: &mut $crate::OpState| {
-            config.clone().call_callback(state, $state_fn)
+            config.call_callback(state, $state_fn)
           });
         )?
 
@@ -259,54 +259,75 @@ macro_rules! extension {
         Self::with_js(&mut ext);
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
         Self::with_customizer(&mut ext);
-        ext.build()
+        ext.take()
       }
 
       #[allow(dead_code)]
-      pub fn init_ops_and_esm $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops_and_esm $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
-        ext.build()
+        ext.take()
       }
 
       #[allow(dead_code)]
-      pub fn init_ops $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
         let mut ext = Self::ext();
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
-        ext.build()
+        ext.take()
       }
     }
   };
 
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? $( config = { $( $config_id:ident : $config_type:ty ),* } )? ) => {
+  // This branch of the macro generates a config object that calls the state function with itself.
+  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } ) => {
     {
       #[doc(hidden)]
-      #[derive(Clone)]
       struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
-        $( $( pub $config_id : $config_type , )* )?
+        $( pub $options_id : $options_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
 
       impl $( <  $( $param : $type + Clone + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
-        /// Call a function of |state, ...| using the fields of this configuration structure.
+        /// Call a function of |state, cfg| using this configuration structure.
         #[allow(dead_code)]
         #[doc(hidden)]
         #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState, $( $( $config_type ),* )?)>(self, state: &mut $crate::OpState, f: F) {
-          f(state, $( $( self. $config_id ),* )? )
+        fn call_callback<F: Fn(&mut $crate::OpState, Self)>(self, state: &mut $crate::OpState, f: F) {
+          f(state, self)
         }
       }
 
       Config {
-        $( $( $config_id , )* )?
+        $( $options_id , )*
         $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
       }
+    }
+  };
+
+  // This branch of the macro generates an empty config object that doesn't actually make any callbacks on the state function.
+  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? ) => {
+    {
+      #[doc(hidden)]
+      struct Config {
+      }
+
+      impl Config {
+        /// Call a function of |state| using the fields of this configuration structure.
+        #[allow(dead_code)]
+        #[doc(hidden)]
+        #[inline(always)]
+        fn call_callback<F: Fn(&mut $crate::OpState)>(self, state: &mut $crate::OpState, f: F) {
+          f(state)
+        }
+      }
+
+      Config {}
     }
   };
 
@@ -409,8 +430,8 @@ impl Extension {
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
-  pub fn init_state(&self, state: &mut OpState) {
-    if let Some(op_fn) = &self.opstate_fn {
+  pub fn init_state(&mut self, state: &mut OpState) {
+    if let Some(op_fn) = self.opstate_fn.take() {
       op_fn(state);
     }
   }
@@ -499,7 +520,7 @@ impl ExtensionBuilder {
 
   pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
   where
-    F: Fn(&mut OpState) + 'static,
+    F: FnOnce(&mut OpState) + 'static,
   {
     self.state = Some(Box::new(opstate_fn));
     self
@@ -519,6 +540,27 @@ impl ExtensionBuilder {
   {
     self.event_loop_middleware = Some(Box::new(middleware_fn));
     self
+  }
+
+  /// Consume the [`ExtensionBuilder`] and return an [`Extension`].
+  pub fn take(self) -> Extension {
+    let js_files = Some(self.js);
+    let esm_files = Some(self.esm);
+    let ops = Some(self.ops);
+    let deps = Some(self.deps);
+    Extension {
+      js_files,
+      esm_files,
+      esm_entry_point: self.esm_entry_point,
+      ops,
+      opstate_fn: self.state,
+      middleware_fn: self.middleware,
+      event_loop_middleware: self.event_loop_middleware,
+      initialized: false,
+      enabled: true,
+      name: self.name,
+      deps,
+    }
   }
 
   pub fn build(&mut self) -> Extension {

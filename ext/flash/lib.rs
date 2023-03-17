@@ -1559,11 +1559,11 @@ deno_core::extension!(deno_flash,
     op_try_flash_respond_chunked,
   ],
   esm = [ "01_http.js" ],
-  config = {
+  options = {
     unstable: bool,
   },
-  state = |state, unstable| {
-    state.put(Unstable(unstable));
+  state = |state, options| {
+    state.put(Unstable(options.unstable));
     state.put(FlashContext {
       next_server_id: 0,
       join_handles: HashMap::default(),

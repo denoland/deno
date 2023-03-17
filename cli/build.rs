@@ -1,9 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
 use std::env;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
@@ -122,15 +120,15 @@ mod ts {
       "00_typescript.js",
       "99_main_compiler.js",
     ],
-    config = {
+    options = {
       op_crate_libs: HashMap<&'static str, PathBuf>,
       build_libs: Vec<&'static str>,
       path_dts: PathBuf,
     },
-    state = |state, op_crate_libs, build_libs, path_dts| {
-      state.put(op_crate_libs);
-      state.put(build_libs);
-      state.put(path_dts);
+    state = |state, options| {
+      state.put(options.op_crate_libs);
+      state.put(options.build_libs);
+      state.put(options.path_dts);
     },
   );
 
@@ -362,7 +360,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_tls::deno_tls::init_ops(),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::deno_http::init_ops(),
-    deno_io::deno_io::init_ops(Rc::new(RefCell::new(Some(Default::default())))),
+    deno_io::deno_io::init_ops(Default::default()),
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(false),
     deno_flash::deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
     deno_node::deno_node_loading::init_ops::<PermissionsContainer>(None), // No --unstable.

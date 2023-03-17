@@ -2731,14 +2731,14 @@ pub mod tests {
     deno_core::extension!(
       test_ext,
       ops = [op_test],
-      config = {
+      options = {
         mode: Mode,
         dispatch_count: Arc<AtomicUsize>,
       },
-      state = |state, mode, dispatch_count| {
+      state = |state, options| {
         state.put(TestState {
-          mode,
-          dispatch_count
+          mode: options.mode,
+          dispatch_count: options.dispatch_count
         })
       }
     );
