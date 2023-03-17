@@ -17,11 +17,12 @@ mod startup_snapshot {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
+  use deno_core::ModuleCode;
   use std::path::Path;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
-  ) -> Result<String, AnyError> {
+  ) -> Result<ModuleCode, AnyError> {
     let media_type = MediaType::from_path(Path::new(&file_source.specifier));
 
     let should_transpile = match media_type {
@@ -36,12 +37,12 @@ mod startup_snapshot {
     let code = file_source.code.load()?;
 
     if !should_transpile {
-      return Ok(code);
+      return Ok(code.into());
     }
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(code),
+      text_info: SourceTextInfo::from_string(code.to_string()),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
@@ -53,7 +54,7 @@ mod startup_snapshot {
       ..Default::default()
     })?;
 
-    Ok(transpiled_source.text)
+    Ok(transpiled_source.text.into())
   }
 
   #[derive(Clone)]

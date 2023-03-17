@@ -823,7 +823,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   runtime
     .execute_script(&located_script_name!(), startup_source)
     .context("Could not properly start the compiler runtime.")?;
-  runtime.execute_script(&located_script_name!(), &exec_source)?;
+  runtime.execute_script(&located_script_name!(), exec_source)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

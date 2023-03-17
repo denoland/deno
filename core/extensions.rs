@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use crate::modules::ModuleCode;
 use crate::OpState;
 use anyhow::Context as _;
 use anyhow::Error;
@@ -23,13 +24,12 @@ pub enum ExtensionFileSourceCode {
 }
 
 impl ExtensionFileSourceCode {
-  pub fn load(&self) -> Result<String, Error> {
+  pub fn load(&self) -> Result<ModuleCode, Error> {
     match self {
-      ExtensionFileSourceCode::IncludedInBinary(code) => Ok(code.to_string()),
+      ExtensionFileSourceCode::IncludedInBinary(code) => Ok((*code).into()),
       ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
-        let msg = format!("Failed to read \"{}\"", path.display());
-        let code = std::fs::read_to_string(path).context(msg)?;
-        Ok(code)
+        let msg = || format!("Failed to read \"{}\"", path.display());
+        Ok(std::fs::read_to_string(path).with_context(msg)?.into())
       }
     }
   }
