@@ -15,7 +15,6 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -43,35 +42,6 @@ use trust_dns_resolver::config::ResolverOpts;
 use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
-
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
-  vec![
-    op_net_accept_tcp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_accept_unix::decl(),
-    op_net_connect_tcp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_connect_unix::decl::<P>(),
-    op_net_listen_tcp::decl::<P>(),
-    op_net_listen_udp::decl::<P>(),
-    op_node_unstable_net_listen_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unix::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unixpacket::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_node_unstable_net_listen_unixpacket::decl::<P>(),
-    op_net_recv_udp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_recv_unixpacket::decl(),
-    op_net_send_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_send_unixpacket::decl::<P>(),
-    op_dns_resolve::decl::<P>(),
-    op_set_nodelay::decl(),
-    op_set_keepalive::decl(),
-  ]
-}
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -650,7 +620,6 @@ fn rdata_to_return_record(
 mod tests {
   use super::*;
   use crate::UnstableChecker;
-  use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use socket2::SockRef;
@@ -906,15 +875,17 @@ mod tests {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
     });
-    let my_ext = Extension::builder("test_ext")
-      .state(move |state| {
+
+    deno_core::extension!(
+      test_ext,
+      state = |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });
-      })
-      .build();
+      }
+    );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![my_ext],
+      extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
 

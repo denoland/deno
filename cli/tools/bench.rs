@@ -441,7 +441,7 @@ async fn bench_specifier(
     &ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::bench::init(channel, filter)],
+    vec![ops::bench::deno_bench::init_ops(channel, filter)],
     Default::default(),
   )
   .await?;
