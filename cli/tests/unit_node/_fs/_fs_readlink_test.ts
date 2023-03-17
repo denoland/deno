@@ -25,9 +25,15 @@ Deno.test(
       (Deno.build.os == "windows" ? "\\symlink" : "/symlink");
     mkdirSync(target);
     symlinkSync(target, symlink);
-    readlink(symlink, { encoding: "utf-8" }, async (err, targetPath) => {
-      assertEquals(err, null);
-      assertEquals(targetPath, await target);
+
+    new Promise((resolve) =>
+      readlink(pathToAbsoluteFileUrl(symlink), {
+        encoding: "utf-8",
+      }, (_err, targetPath) => {
+        resolve(targetPath);
+      })
+    ).then((result) => {
+      assertEquals(target, result);
     });
   },
 );
@@ -42,11 +48,15 @@ Deno.test(
       (Deno.build.os == "windows" ? "\\symlink" : "/symlink");
     mkdirSync(target);
     symlinkSync(target, symlink);
-    readlink(pathToAbsoluteFileUrl(symlink), {
-      encoding: "utf-8",
-    }, async (err, targetPath) => {
-      assertEquals(err, null);
-      assertEquals(target, await targetPath);
+
+    new Promise((resolve) =>
+      readlink(pathToAbsoluteFileUrl(symlink), {
+        encoding: "utf-8",
+      }, (_err, targetPath) => {
+        resolve(targetPath);
+      })
+    ).then((result) => {
+      assertEquals(target, result);
     });
   },
 );
