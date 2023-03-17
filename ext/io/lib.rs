@@ -80,7 +80,7 @@ deno_core::extension!(deno_io,
   deps = [ deno_web ],
   ops = [op_read_sync, op_write_sync],
   esm = [ "12_io.js" ],
-  config = {
+  options = {
     stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {

@@ -42,7 +42,7 @@ deno_core::ops!(
 deno_core::extension!(
   deno_os,
   ops_fn = deno_ops,
-  config = {
+  options = {
     exit_code: ExitCode,
   },
   state = |state, options| {

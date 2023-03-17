@@ -109,7 +109,7 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
   ],
-  config = {
+  options = {
     blob_store: BlobStore,
     maybe_location: Option<Url>,
   },

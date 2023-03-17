@@ -120,7 +120,7 @@ mod ts {
       "00_typescript.js",
       "99_main_compiler.js",
     ],
-    config = {
+    options = {
       op_crate_libs: HashMap<&'static str, PathBuf>,
       build_libs: Vec<&'static str>,
       path_dts: PathBuf,

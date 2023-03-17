@@ -107,7 +107,7 @@ deno_core::extension!(deno_fetch,
     "23_response.js",
     "26_fetch.js"
   ],
-  config = {
+  options = {
     options: Options,
   },
   state = |state, options| {

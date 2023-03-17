@@ -30,7 +30,7 @@ deno_core::extension!(deno_bench,
     op_dispatch_bench_event,
     op_bench_now,
   ],
-  config = {
+  options = {
     sender: UnboundedSender<BenchEvent>,
     filter: TestFilter,
   },

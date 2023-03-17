@@ -369,7 +369,7 @@ impl WebWorker {
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     deno_core::extension!(deno_permissions_web_worker,
-      config = {
+      options = {
         permissions: PermissionsContainer,
         unstable: bool,
         enable_testing_features: bool,

@@ -188,7 +188,7 @@ impl MainWorker {
     mut options: WorkerOptions,
   ) -> Self {
     deno_core::extension!(deno_permissions_worker,
-      config = {
+      options = {
         permissions: PermissionsContainer,
         unstable: bool,
         enable_testing_features: bool,

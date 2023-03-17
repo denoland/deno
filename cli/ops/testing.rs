@@ -34,7 +34,7 @@ deno_core::extension!(deno_test,
     op_dispatch_test_event,
     op_tests_should_stop,
   ],
-  config = {
+  options = {
     sender: TestEventSender,
     fail_fast_tracker: FailFastTracker,
     filter: TestFilter,

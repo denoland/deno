@@ -2731,7 +2731,7 @@ pub mod tests {
     deno_core::extension!(
       test_ext,
       ops = [op_test],
-      config = {
+      options = {
         mode: Mode,
         dispatch_count: Arc<AtomicUsize>,
       },

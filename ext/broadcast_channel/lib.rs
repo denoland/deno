@@ -114,7 +114,7 @@ deno_core::extension!(deno_broadcast_channel,
     op_broadcast_recv<BC>,
   ],
   esm = [ "01_broadcast_channel.js" ],
-  config = {
+  options = {
     bc: BC,
     unstable: bool,
   },

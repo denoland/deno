@@ -96,7 +96,7 @@ deno_core::extension!(
     op_host_recv_ctrl,
     op_host_recv_message,
   ],
-  config = {
+  options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
     preload_module_cb: Arc<WorkerEventCb>,
     pre_execute_module_cb: Arc<WorkerEventCb>,

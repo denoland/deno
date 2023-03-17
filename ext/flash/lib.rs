@@ -1559,7 +1559,7 @@ deno_core::extension!(deno_flash,
     op_try_flash_respond_chunked,
   ],
   esm = [ "01_http.js" ],
-  config = {
+  options = {
     unstable: bool,
   },
   state = |state, options| {

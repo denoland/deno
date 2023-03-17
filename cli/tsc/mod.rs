@@ -828,7 +828,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
   deno_core::extension!(deno_cli_tsc,
     ops_fn = deno_ops,
-    config = {
+    options = {
       request: Request,
       root_map: HashMap<String, Url>,
       remapped_specifiers: HashMap<String, Url>,

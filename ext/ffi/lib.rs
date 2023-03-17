@@ -112,7 +112,7 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
   ],
   esm = [ "00_ffi.js" ],
-  config = {
+  options = {
     unstable: bool,
   },
   state = |state, options| {

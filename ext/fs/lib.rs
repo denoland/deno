@@ -180,7 +180,7 @@ deno_core::extension!(deno_fs,
     op_readfile_text_async<P>,
   ],
   esm = [ "30_fs.js" ],
-  config = {
+  options = {
     unstable: bool
   },
   state = |state, options| {

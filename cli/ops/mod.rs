@@ -15,7 +15,7 @@ pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
 
 deno_core::extension!(deno_cli,
   ops = [op_npm_process_state],
-  config = {
+  options = {
     ps: ProcState,
   },
   state = |state, options| {

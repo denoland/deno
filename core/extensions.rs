@@ -164,7 +164,7 @@ macro_rules! extension {
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
     $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
-    $(, config = { $( $config_id:ident : $config_type:ty ),* $(,)? } )?
+    $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr )?
     $(, state = $state_fn:expr )?
     $(, event_loop_middleware = $event_loop_middleware_fn:ident )?
@@ -227,9 +227,9 @@ macro_rules! extension {
       // Includes the state and middleware functions, if defined.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_state_and_middleware$( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $config_id : $config_type ),* )? ) {
+      fn with_state_and_middleware$( <  $( $param : $type + Clone + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
         #[allow(unused_variables)]
-        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $config_id : $config_type ),* } )? );
+        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? );
 
         $(
           ext.state(move |state: &mut $crate::OpState| {
@@ -263,21 +263,21 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_ops_and_esm $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops_and_esm $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
         ext.take()
       }
 
       #[allow(dead_code)]
-      pub fn init_ops $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $config_id : $config_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops $( <  $( $param : $type + Clone + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
         let mut ext = Self::ext();
         Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $config_id , )* )? );
+        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
         ext.take()
       }
@@ -285,11 +285,11 @@ macro_rules! extension {
   };
 
   // This branch of the macro generates a config object that calls the state function with itself.
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $config_id:ident : $config_type:ty ),* } ) => {
+  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } ) => {
     {
       #[doc(hidden)]
       struct Config $( <  $( $param : $type + Clone + 'static ),+ > )? {
-        $( pub $config_id : $config_type , )*
+        $( pub $options_id : $options_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
 
@@ -304,7 +304,7 @@ macro_rules! extension {
       }
 
       Config {
-        $( $config_id , )*
+        $( $options_id , )*
         $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
       }
     }

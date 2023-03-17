@@ -32,7 +32,7 @@ deno_core::extension!(deno_cache,
     op_cache_delete<CA>,
   ],
   esm = [ "01_cache.js" ],
-  config = {
+  options = {
     maybe_create_cache: Option<CreateCache<CA>>,
   },
   state = |state, options| {
