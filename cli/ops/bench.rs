@@ -7,7 +7,6 @@ use std::time;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
@@ -22,25 +21,24 @@ use crate::tools::bench::BenchDescription;
 use crate::tools::bench::BenchEvent;
 use crate::tools::test::TestFilter;
 
-pub fn init(
-  sender: UnboundedSender<BenchEvent>,
-  filter: TestFilter,
-) -> Extension {
-  Extension::builder("deno_bench")
-    .ops(vec![
-      op_pledge_test_permissions::decl(),
-      op_restore_test_permissions::decl(),
-      op_get_bench_origin::decl(),
-      op_register_bench::decl(),
-      op_dispatch_bench_event::decl(),
-      op_bench_now::decl(),
-    ])
-    .state(move |state| {
-      state.put(sender.clone());
-      state.put(filter.clone());
-    })
-    .build()
-}
+deno_core::extension!(deno_bench,
+  ops = [
+    op_pledge_test_permissions,
+    op_restore_test_permissions,
+    op_get_bench_origin,
+    op_register_bench,
+    op_dispatch_bench_event,
+    op_bench_now,
+  ],
+  config = {
+    sender: UnboundedSender<BenchEvent>,
+    filter: TestFilter,
+  },
+  state = |state, sender, filter| {
+    state.put(sender);
+    state.put(filter);
+  },
+);
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);

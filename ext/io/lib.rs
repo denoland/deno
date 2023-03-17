@@ -2,7 +2,6 @@
 
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncMutFuture;
@@ -12,8 +11,6 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -79,80 +76,61 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
 });
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps("deno_io", &["deno_web"])
-}
+deno_core::extension!(deno_io,
+  deps = [ deno_web ],
+  ops = [op_read_sync, op_write_sync],
+  esm = [ "12_io.js" ],
+  config = {
+    stdio: Rc<RefCell<Option<Stdio>>>,
+  },
+  middleware = |op| match op.name {
+    "op_print" => op_print::decl(),
+    _ => op,
+  },
+  state = |state, stdio| {
+    let stdio = stdio
+      .borrow_mut()
+      .take()
+      .expect("Extension only supports being used once.");
+    let t = &mut state.resource_table;
 
-fn ops(
-  ext: &mut ExtensionBuilder,
-  stdio: Rc<RefCell<Option<Stdio>>>,
-) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
-    .middleware(|op| match op.name {
-      "op_print" => op_print::decl(),
-      _ => op,
-    })
-    .state(move |state| {
-      let stdio = stdio
-        .borrow_mut()
-        .take()
-        .expect("Extension only supports being used once.");
-      let t = &mut state.resource_table;
-
-      let rid = t.add(StdFileResource::stdio(
-        match stdio.stdin {
-          StdioPipe::Inherit => StdFileResourceInner {
-            kind: StdFileResourceKind::Stdin,
-            file: STDIN_HANDLE.try_clone().unwrap(),
-          },
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+    let rid = t.add(StdFileResource::stdio(
+      match stdio.stdin {
+        StdioPipe::Inherit => StdFileResourceInner {
+          kind: StdFileResourceKind::Stdin,
+          file: STDIN_HANDLE.try_clone().unwrap(),
         },
-        "stdin",
-      ));
-      assert_eq!(rid, 0, "stdin must have ResourceId 0");
+        StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+      },
+      "stdin",
+    ));
+    assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
-      let rid = t.add(StdFileResource::stdio(
-        match stdio.stdout {
-          StdioPipe::Inherit => StdFileResourceInner {
-            kind: StdFileResourceKind::Stdout,
-            file: STDOUT_HANDLE.try_clone().unwrap(),
-          },
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+    let rid = t.add(StdFileResource::stdio(
+      match stdio.stdout {
+        StdioPipe::Inherit => StdFileResourceInner {
+          kind: StdFileResourceKind::Stdout,
+          file: STDOUT_HANDLE.try_clone().unwrap(),
         },
-        "stdout",
-      ));
-      assert_eq!(rid, 1, "stdout must have ResourceId 1");
+        StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+      },
+      "stdout",
+    ));
+    assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
-      let rid = t.add(StdFileResource::stdio(
-        match stdio.stderr {
-          StdioPipe::Inherit => StdFileResourceInner {
-            kind: StdFileResourceKind::Stderr,
-            file: STDERR_HANDLE.try_clone().unwrap(),
-          },
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+    let rid = t.add(StdFileResource::stdio(
+      match stdio.stderr {
+        StdioPipe::Inherit => StdFileResourceInner {
+          kind: StdFileResourceKind::Stderr,
+          file: STDERR_HANDLE.try_clone().unwrap(),
         },
-        "stderr",
-      ));
-      assert_eq!(rid, 2, "stderr must have ResourceId 2");
-    })
-}
-
-pub fn init_ops_and_esm(stdio: Stdio) -> Extension {
-  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
-  let stdio = Rc::new(RefCell::new(Some(stdio)));
-
-  ops(&mut ext(), stdio)
-    .esm(include_js_files!("12_io.js",))
-    .build()
-}
-
-pub fn init_ops(stdio: Stdio) -> Extension {
-  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
-  let stdio = Rc::new(RefCell::new(Some(stdio)));
-
-  ops(&mut ext(), stdio).build()
-}
+        StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+      },
+      "stderr",
+    ));
+    assert_eq!(rid, 2, "stderr must have ResourceId 2");
+  },
+);
 
 pub enum StdioPipe {
   Inherit,
