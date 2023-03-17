@@ -1,12 +1,15 @@
-const process = new Deno.Command(Deno.execPath(), {
-  args: [
-    "test",
-    "--quiet",
-    "--no-check",
-    new URL("hanging_test.ts", import.meta.url).href,
-  ],
-}).spawn();
-await new Promise((r) => setTimeout(r, 1000));
-process.kill("SIGINT");
-const output = await process.output();
-console.assert(output.code == 130, "Exit code should be 130");
+setInterval(() => {}, 10000);
+
+Deno.test({
+  name: "test",
+  sanitizeOps: false,
+  sanitizeExit: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await t.step("step 1", async (t) => {
+      await t.step("step 2", async () => {
+        await new Promise(() => {});
+      });
+    });
+  },
+});
