@@ -280,62 +280,6 @@ fn maybe_remap_specifier(
   }
 }
 
-/// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
-/// and so we have to detect the apparent media type based on extensions it
-/// supports.
-fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
-  let path = if specifier.scheme() == "file" {
-    if let Ok(path) = specifier.to_file_path() {
-      path
-    } else {
-      PathBuf::from(specifier.path())
-    }
-  } else {
-    PathBuf::from(specifier.path())
-  };
-  match path.extension() {
-    None => MediaType::Unknown,
-    Some(os_str) => match os_str.to_str() {
-      Some("ts") => {
-        if let Some(os_str) = path.file_stem() {
-          if let Some(file_name) = os_str.to_str() {
-            if file_name.ends_with(".d") {
-              return MediaType::Dts;
-            }
-          }
-        }
-        MediaType::TypeScript
-      }
-      Some("mts") => {
-        if let Some(os_str) = path.file_stem() {
-          if let Some(file_name) = os_str.to_str() {
-            if file_name.ends_with(".d") {
-              return MediaType::Dmts;
-            }
-          }
-        }
-        MediaType::Mts
-      }
-      Some("cts") => {
-        if let Some(os_str) = path.file_stem() {
-          if let Some(file_name) = os_str.to_str() {
-            if file_name.ends_with(".d") {
-              return MediaType::Dcts;
-            }
-          }
-        }
-        MediaType::Cts
-      }
-      Some("tsx") => MediaType::Tsx,
-      Some("js") => MediaType::JavaScript,
-      Some("mjs") => MediaType::Mjs,
-      Some("cjs") => MediaType::Cjs,
-      Some("jsx") => MediaType::Jsx,
-      _ => MediaType::Unknown,
-    },
-  }
-}
-
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct EmittedFile {
   pub data: String,
@@ -815,8 +759,14 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
         specifier_str
       }
       _ => {
-        let ext_media_type = get_tsc_media_type(s);
+        let ext_media_type = MediaType::from_path(s);
         if *mt != ext_media_type {
+          // we can't just add on the extension because typescript considers
+          // all .d.*.ts files as declaration files in TS 5.0+
+          if mt == MediaType::TypeScript
+            && s.path().split('/').last().map(|last| last.contains(".d."))
+          {
+          }
           let new_specifier = format!("{}{}", s, mt.as_ts_extension());
           root_map.insert(new_specifier.clone(), s.clone());
           new_specifier

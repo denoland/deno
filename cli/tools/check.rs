@@ -313,6 +313,7 @@ fn get_tsc_roots(
       maybe_get_check_entry(module, check_js)
     }
   }));
+
   result
 }
 

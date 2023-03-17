@@ -67,6 +67,8 @@ mod ts {
       "deno.ns",
       "deno.unstable",
       // Deno built-in type libraries
+      "decorators",
+      "decorators.legacy",
       "es5",
       "es2015.collection",
       "es2015.core",
@@ -117,8 +119,11 @@ mod ts {
       "es2022.error",
       "es2022.intl",
       "es2022.object",
+      "es2022.regexp",
       "es2022.sharedmemory",
       "es2022.string",
+      "es2023",
+      "es2023.array",
       "esnext",
       "esnext.array",
       "esnext.intl",
@@ -287,20 +292,11 @@ mod ts {
 
   pub(crate) fn version() -> String {
     let file_text = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-    let mut version = String::new();
+    let version_text = "  version = \"";
     for line in file_text.lines() {
-      let major_minor_text = "ts.versionMajorMinor = \"";
-      let version_text = "ts.version = \"\".concat(ts.versionMajorMinor, \"";
-      if version.is_empty() {
-        if let Some(index) = line.find(major_minor_text) {
-          let remaining_line = &line[index + major_minor_text.len()..];
-          version
-            .push_str(&remaining_line[..remaining_line.find('"').unwrap()]);
-        }
-      } else if let Some(index) = line.find(version_text) {
+      if let Some(index) = line.find(version_text) {
         let remaining_line = &line[index + version_text.len()..];
-        version.push_str(&remaining_line[..remaining_line.find('"').unwrap()]);
-        return version;
+        return remaining_line[..remaining_line.find('"').unwrap()].to_string();
       }
     }
     panic!("Could not find ts version.")
@@ -463,7 +459,9 @@ fn main() {
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
   println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
 
-  println!("cargo:rustc-env=TS_VERSION={}", ts::version());
+  let ts_version = ts::version();
+  debug_assert_eq!(ts_version, "5.0.2"); // bump this assertion when it changes
+  println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());

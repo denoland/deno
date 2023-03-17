@@ -135,7 +135,7 @@ delete Object.prototype.__proto__;
   // We need to use a custom document registry in order to provide source files
   // with an impliedNodeFormat to the ts language service
 
-  /** @type {Map<string, ts.SourceFile} */
+  /** @type {Map<string, ts.SourceFile>} */
   const documentRegistrySourceFileCache = new Map();
   const { getKeyForCompilationSettings } = ts.createDocumentRegistry(); // reuse this code
   /** @type {ts.DocumentRegistry} */
