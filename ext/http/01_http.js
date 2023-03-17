@@ -20,20 +20,20 @@ import {
 } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
-  WebSocket,
-  WebSocketStream,
-  _rid,
-  _readyState,
   _eventLoop,
-  _protocol,
-  _server,
   _idleTimeoutDuration,
   _idleTimeoutTimeout,
+  _protocol,
+  _readyState,
+  _rid,
+  _server,
   _serverHandleIdleTimeout,
   _connection,
   _closed,
   _closeSent,
   _createWebSocketStreams,
+  WebSocket,
+  WebSocketStream,
 } from "ext:deno_websocket/01_websocket.js";
 import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
 import { TlsConn } from "ext:deno_net/02_tls.js";
@@ -48,7 +48,6 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeSome,
   Error,
   ObjectPrototypeIsPrototypeOf,
   SafeSetIterator,
