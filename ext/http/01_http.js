@@ -31,9 +31,9 @@ import {
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 import {
-  _connection,
   _closed,
   _closeSent,
+  _connection,
   _createWebSocketStreams,
   WebSocketStream,
 } from "ext:deno_websocket/02_websocketstream.js";
