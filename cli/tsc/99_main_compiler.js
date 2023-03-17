@@ -1212,6 +1212,43 @@ delete Object.prototype.__proto__;
   const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
 
   ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+  // list of globals that should be kept in Node's globalThis
+  ts.deno.setNodeOnlyGlobalNames([
+    "NodeRequire",
+    "RequireResolve",
+    "RequireResolve",
+    "process",
+    "console",
+    "__filename",
+    "__dirname",
+    "require",
+    "module",
+    "exports",
+    "gc",
+    "BufferEncoding",
+    "BufferConstructor",
+    "WithImplicitCoercion",
+    "Buffer",
+    "Console",
+    "ImportMeta",
+    "setTimeout",
+    "setInterval",
+    "setImmediate",
+    "Global",
+    "AbortController",
+    "AbortSignal",
+    "Blob",
+    "BroadcastChannel",
+    "MessageChannel",
+    "MessagePort",
+    "Event",
+    "EventTarget",
+    "performance",
+    "TextDecoder",
+    "TextEncoder",
+    "URL",
+    "URLSearchParams",
+  ]);
 
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
