@@ -723,7 +723,7 @@ async fn test_specifier(
     ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::testing::init(
+    vec![ops::testing::deno_test::init_ops(
       sender,
       fail_fast_tracker,
       options.filter,

@@ -44,49 +44,26 @@ impl UnstableChecker {
   }
 }
 
-fn build_ops<DBH: DatabaseHandler + 'static>(
-  handler: DBH,
-  unstable: bool,
-  builder: &mut ExtensionBuilder,
-) -> &mut ExtensionBuilder {
-  let handler = Rc::new(handler);
-  builder
-    .ops(vec![
-      op_kv_database_open::decl::<DBH>(),
-      op_kv_snapshot_read::decl::<DBH::DB>(),
-      op_kv_atomic_write::decl::<DBH::DB>(),
-      op_kv_encode_key::decl(),
-    ])
-    .state(move |state| {
-      state.put(handler.clone());
-      state.put(UnstableChecker { unstable })
-    })
-}
-
-pub fn init_ops<DBH: DatabaseHandler + 'static>(
-  handler: DBH,
-  unstable: bool,
-) -> Extension {
-  build_ops(
-    handler,
-    unstable,
-    &mut Extension::builder(env!("CARGO_PKG_NAME")),
-  )
-  .build()
-}
-
-pub fn init_ops_and_esm<DBH: DatabaseHandler + 'static>(
-  handler: DBH,
-  unstable: bool,
-) -> Extension {
-  build_ops(
-    handler,
-    unstable,
-    Extension::builder(env!("CARGO_PKG_NAME"))
-      .esm(include_js_files!("01_db.ts",)),
-  )
-  .build()
-}
+deno_core::extension!(deno_kv,
+  // TODO(bartlomieju): specify deps
+  deps = [ ],
+  parameters = [ DBH: DatabaseHandler ],
+  ops = [
+    op_kv_database_open<DBH>,
+    op_kv_snapshot_read<DBH>,
+    op_kv_atomic_write<DBH>,
+    op_kv_encode_key,
+  ],
+  esm = [ "01_db.ts" ],
+  options = {
+    handler: DBH,
+    unstable: bool,
+  },
+  state = |state, options| {
+    state.put(handler.clone());
+    state.put(UnstableChecker { unstable })
+  }
+);
 
 struct DatabaseResource<DB: Database + 'static> {
   db: Rc<DB>,
@@ -228,18 +205,19 @@ impl From<V8Consistency> for Consistency {
 type SnapshotReadRange = (ZeroCopyBuf, Option<ZeroCopyBuf>, u32, bool);
 
 #[op]
-async fn op_kv_snapshot_read<DB>(
+async fn op_kv_snapshot_read<DBH>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   ranges: Vec<SnapshotReadRange>,
   consistency: V8Consistency,
 ) -> Result<Vec<Vec<V8KvEntry>>, AnyError>
 where
-  DB: Database + 'static,
+  DBH: DatabaseHandler + 'static,
 {
   let db = {
     let state = state.borrow();
-    let resource = state.resource_table.get::<DatabaseResource<DB>>(rid)?;
+    let resource =
+      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
     resource.db.clone()
   };
   let read_ranges = ranges
@@ -332,7 +310,7 @@ impl TryFrom<V8Enqueue> for Enqueue {
 }
 
 #[op]
-async fn op_kv_atomic_write<DB>(
+async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   checks: Vec<V8KvCheck>,
@@ -340,11 +318,12 @@ async fn op_kv_atomic_write<DB>(
   enqueues: Vec<V8Enqueue>,
 ) -> Result<bool, AnyError>
 where
-  DB: Database + 'static,
+  DBH: DatabaseHandler + 'static,
 {
   let db = {
     let state = state.borrow();
-    let resource = state.resource_table.get::<DatabaseResource<DB>>(rid)?;
+    let resource =
+      state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
     resource.db.clone()
   };
 
