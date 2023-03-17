@@ -444,6 +444,11 @@ itest!(parallel_output {
   exit_code: 1,
 });
 
+itest!(sigint_with_hanging_test {
+  args: "run --quiet -A test/sigint_with_hanging_test.ts",
+  output: "test/sigint_with_hanging_test.out",
+});
+
 itest!(package_json_basic {
   args: "test",
   output: "package_json/basic/lib.test.out",

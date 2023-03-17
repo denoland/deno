@@ -46,6 +46,8 @@ use regex::Regex;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io::Read;
@@ -57,8 +59,10 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::signal;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::WeakUnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -193,14 +197,13 @@ pub enum TestStepResult {
   Ok,
   Ignored,
   Failed(Option<Box<JsError>>),
-  Pending(Option<Box<JsError>>),
+  Pending,
 }
 
 impl TestStepResult {
   fn error(&self) -> Option<&JsError> {
     match self {
       TestStepResult::Failed(Some(error)) => Some(error),
-      TestStepResult::Pending(Some(error)) => Some(error),
       _ => None,
     }
   }
@@ -227,6 +230,7 @@ pub enum TestEvent {
   StepRegister(TestStepDescription),
   StepWait(usize),
   StepResult(usize, TestStepResult, u64),
+  Sigint,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -279,10 +283,12 @@ struct PrettyTestReporter {
   parallel: bool,
   echo_output: bool,
   in_new_line: bool,
-  last_wait_id: Option<usize>,
+  scope_test_id: Option<usize>,
   cwd: Url,
   did_have_user_output: bool,
   started_tests: bool,
+  child_results_buffer:
+    HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
 }
 
 impl PrettyTestReporter {
@@ -291,10 +297,11 @@ impl PrettyTestReporter {
       parallel,
       echo_output,
       in_new_line: true,
-      last_wait_id: None,
+      scope_test_id: None,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
       started_tests: false,
+      child_results_buffer: Default::default(),
     }
   }
 
@@ -315,7 +322,7 @@ impl PrettyTestReporter {
     self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
-    self.last_wait_id = Some(description.id);
+    self.scope_test_id = Some(description.id);
   }
 
   fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
@@ -340,7 +347,7 @@ impl PrettyTestReporter {
     self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
-    self.last_wait_id = Some(description.id);
+    self.scope_test_id = Some(description.id);
   }
 
   fn force_report_step_result(
@@ -352,13 +359,26 @@ impl PrettyTestReporter {
     let status = match result {
       TestStepResult::Ok => colors::green("ok").to_string(),
       TestStepResult::Ignored => colors::yellow("ignored").to_string(),
-      TestStepResult::Pending(_) => colors::gray("pending").to_string(),
+      TestStepResult::Pending => colors::gray("pending").to_string(),
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
     self.write_output_end();
-    if self.in_new_line || self.last_wait_id != Some(description.id) {
+    if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
+    }
+
+    if !self.parallel {
+      let child_results = self
+        .child_results_buffer
+        .remove(&description.id)
+        .unwrap_or_default();
+      for (desc, result, elapsed) in child_results.values() {
+        self.force_report_step_result(desc, result, *elapsed);
+      }
+      if !child_results.is_empty() {
+        self.force_report_step_wait(description);
+      }
     }
 
     println!(
@@ -375,6 +395,16 @@ impl PrettyTestReporter {
       }
     }
     self.in_new_line = true;
+    if self.parallel {
+      self.scope_test_id = None;
+    } else {
+      self.scope_test_id = Some(description.parent_id);
+    }
+    self
+      .child_results_buffer
+      .entry(description.parent_id)
+      .or_default()
+      .remove(&description.id);
   }
 
   fn write_output_end(&mut self) {
@@ -441,7 +471,7 @@ impl PrettyTestReporter {
     }
 
     self.write_output_end();
-    if self.in_new_line || self.last_wait_id != Some(description.id) {
+    if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_wait(description);
     }
 
@@ -458,6 +488,7 @@ impl PrettyTestReporter {
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
     self.in_new_line = true;
+    self.scope_test_id = None;
   }
 
   fn report_uncaught_error(&mut self, origin: &str, _error: &JsError) {
@@ -476,14 +507,14 @@ impl PrettyTestReporter {
   fn report_step_register(&mut self, _description: &TestStepDescription) {}
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
-    if !self.parallel {
+    if !self.parallel && self.scope_test_id == Some(description.parent_id) {
       self.force_report_step_wait(description);
     }
   }
 
   fn report_step_result(
     &mut self,
-    description: &TestStepDescription,
+    desc: &TestStepDescription,
     result: &TestStepResult,
     elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
@@ -491,35 +522,34 @@ impl PrettyTestReporter {
   ) {
     if self.parallel {
       self.write_output_end();
-      let root;
-      let mut ancestor_names = vec![];
-      let mut current_desc = description;
-      loop {
-        if let Some(step_desc) = test_steps.get(&current_desc.parent_id) {
-          ancestor_names.push(&step_desc.name);
-          current_desc = step_desc;
-        } else {
-          root = tests.get(&current_desc.parent_id).unwrap();
-          break;
-        }
-      }
-      ancestor_names.reverse();
       print!(
-        "{}",
+        "{} {} ...",
         colors::gray(format!(
           "{} =>",
-          self.to_relative_path_or_remote_url(&description.origin)
-        ))
+          self.to_relative_path_or_remote_url(&desc.origin)
+        )),
+        self.format_test_step_ancestry(desc, tests, test_steps)
       );
-      print!(" {} ...", root.name);
-      for name in ancestor_names {
-        print!(" {name} ...");
-      }
-      print!(" {} ...", description.name);
       self.in_new_line = false;
-      self.last_wait_id = Some(description.id);
+      self.scope_test_id = Some(desc.id);
+      self.force_report_step_result(desc, result, elapsed);
+    } else {
+      let sibling_results =
+        self.child_results_buffer.entry(desc.parent_id).or_default();
+      if self.scope_test_id == Some(desc.id)
+        || self.scope_test_id == Some(desc.parent_id)
+      {
+        let sibling_results = std::mem::take(sibling_results);
+        self.force_report_step_result(desc, result, elapsed);
+        // Flush buffered sibling results.
+        for (desc, result, elapsed) in sibling_results.values() {
+          self.force_report_step_result(desc, result, *elapsed);
+        }
+      } else {
+        sibling_results
+          .insert(desc.id, (desc.clone(), result.clone(), elapsed));
+      }
     }
-    self.force_report_step_result(description, result, elapsed);
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
@@ -544,18 +574,7 @@ impl PrettyTestReporter {
       println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
         for (description, js_error) in failures {
-          let failure_title = format!(
-            "{} {}",
-            &description.name,
-            colors::gray(format!(
-              "=> {}:{}:{}",
-              self.to_relative_path_or_remote_url(
-                &description.location.file_name
-              ),
-              description.location.line_number,
-              description.location.column_number
-            ))
-          );
+          let failure_title = self.format_test_for_summary(description);
           println!("{}", &failure_title);
           println!(
             "{}: {}",
@@ -645,6 +664,98 @@ impl PrettyTestReporter {
       )),
     );
     self.in_new_line = true;
+  }
+
+  fn report_sigint(
+    &mut self,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    if tests_pending.is_empty() {
+      return;
+    }
+    let mut formatted_pending = BTreeSet::new();
+    for id in tests_pending {
+      if let Some(desc) = tests.get(id) {
+        formatted_pending.insert(self.format_test_for_summary(desc));
+      }
+      if let Some(desc) = test_steps.get(id) {
+        formatted_pending
+          .insert(self.format_test_step_for_summary(desc, tests, test_steps));
+      }
+    }
+    println!(
+      "\n{} The following tests were pending:\n",
+      colors::intense_blue("SIGINT")
+    );
+    for entry in formatted_pending {
+      println!("{}", entry);
+    }
+    println!();
+    self.in_new_line = true;
+  }
+
+  fn format_test_step_ancestry(
+    &self,
+    desc: &TestStepDescription,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> String {
+    let root;
+    let mut ancestor_names = vec![];
+    let mut current_desc = desc;
+    loop {
+      if let Some(step_desc) = test_steps.get(&current_desc.parent_id) {
+        ancestor_names.push(&step_desc.name);
+        current_desc = step_desc;
+      } else {
+        root = tests.get(&current_desc.parent_id).unwrap();
+        break;
+      }
+    }
+    ancestor_names.reverse();
+    let mut result = String::new();
+    result.push_str(&root.name);
+    result.push_str(" ... ");
+    for name in ancestor_names {
+      result.push_str(name);
+      result.push_str(" ... ");
+    }
+    result.push_str(&desc.name);
+    result
+  }
+
+  fn format_test_for_summary(&self, desc: &TestDescription) -> String {
+    format!(
+      "{} {}",
+      &desc.name,
+      colors::gray(format!(
+        "=> {}:{}:{}",
+        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        desc.location.line_number,
+        desc.location.column_number
+      ))
+    )
+  }
+
+  fn format_test_step_for_summary(
+    &self,
+    desc: &TestStepDescription,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> String {
+    let long_name = self.format_test_step_ancestry(desc, tests, test_steps);
+    format!(
+      "{} {}",
+      long_name,
+      colors::gray(format!(
+        "=> {}:{}:{}",
+        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        desc.location.line_number,
+        desc.location.column_number
+      ))
+    )
   }
 }
 
@@ -1013,6 +1124,12 @@ async fn test_specifiers(
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
 
+  let sender_ = sender.downgrade();
+  let sigint_handler_handle = tokio::task::spawn(async move {
+    signal::ctrl_c().await.unwrap();
+    sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
+  });
+
   let join_handles =
     specifiers_with_mode
       .into_iter()
@@ -1066,6 +1183,7 @@ async fn test_specifiers(
       let earlier = Instant::now();
       let mut tests = IndexMap::new();
       let mut test_steps = IndexMap::new();
+      let mut tests_started = HashSet::new();
       let mut tests_with_result = HashSet::new();
       let mut summary = TestSummary::new();
       let mut used_only = false;
@@ -1089,7 +1207,9 @@ async fn test_specifiers(
           }
 
           TestEvent::Wait(id) => {
-            reporter.report_wait(tests.get(&id).unwrap());
+            if tests_started.insert(id) {
+              reporter.report_wait(tests.get(&id).unwrap());
+            }
           }
 
           TestEvent::Output(output) => {
@@ -1136,35 +1256,55 @@ async fn test_specifiers(
           }
 
           TestEvent::StepWait(id) => {
-            reporter.report_step_wait(test_steps.get(&id).unwrap());
+            if tests_started.insert(id) {
+              reporter.report_step_wait(test_steps.get(&id).unwrap());
+            }
           }
 
           TestEvent::StepResult(id, result, duration) => {
-            match &result {
-              TestStepResult::Ok => {
-                summary.passed_steps += 1;
+            if tests_with_result.insert(id) {
+              // Steps which fail pre-validation don't get a wait event.
+              tests_started.insert(id);
+              match &result {
+                TestStepResult::Ok => {
+                  summary.passed_steps += 1;
+                }
+                TestStepResult::Ignored => {
+                  summary.ignored_steps += 1;
+                }
+                TestStepResult::Failed(_) => {
+                  summary.failed_steps += 1;
+                }
+                TestStepResult::Pending => {
+                  summary.pending_steps += 1;
+                }
               }
-              TestStepResult::Ignored => {
-                summary.ignored_steps += 1;
-              }
-              TestStepResult::Failed(_) => {
-                summary.failed_steps += 1;
-              }
-              TestStepResult::Pending(_) => {
-                summary.pending_steps += 1;
-              }
-            }
 
-            reporter.report_step_result(
-              test_steps.get(&id).unwrap(),
-              &result,
-              duration,
+              reporter.report_step_result(
+                test_steps.get(&id).unwrap(),
+                &result,
+                duration,
+                &tests,
+                &test_steps,
+              );
+            }
+          }
+
+          TestEvent::Sigint => {
+            reporter.report_sigint(
+              &tests_started
+                .difference(&tests_with_result)
+                .copied()
+                .collect(),
               &tests,
               &test_steps,
             );
+            std::process::exit(130);
           }
         }
       }
+
+      sigint_handler_handle.abort();
 
       let elapsed = Instant::now().duration_since(earlier);
       reporter.report_summary(&summary, &elapsed);
@@ -1602,6 +1742,10 @@ impl TestEventSender {
 
     self.sender.send(message)?;
     Ok(())
+  }
+
+  fn downgrade(&self) -> WeakUnboundedSender<TestEvent> {
+    self.sender.downgrade()
   }
 
   fn flush_stdout_and_stderr(&mut self) -> Result<(), AnyError> {

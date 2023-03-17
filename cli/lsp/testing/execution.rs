@@ -435,7 +435,7 @@ impl TestRun {
                 test::TestStepResult::Failed(_) => {
                   summary.failed_steps += 1;
                 }
-                test::TestStepResult::Pending(_) => {
+                test::TestStepResult::Pending => {
                   summary.pending_steps += 1;
                 }
               }
@@ -445,6 +445,7 @@ impl TestRun {
                 duration,
               );
             }
+            test::TestEvent::Sigint => {}
           }
         }
 
@@ -839,7 +840,7 @@ impl LspTestReporter {
           duration: Some(elapsed as u32),
         })
       }
-      test::TestStepResult::Pending(_) => {
+      test::TestStepResult::Pending => {
         self.progress(lsp_custom::TestRunProgressMessage::Enqueued {
           test: desc.into(),
         })

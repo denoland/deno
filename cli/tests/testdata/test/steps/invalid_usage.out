@@ -9,9 +9,6 @@ top level missing await ... FAILED ([WILDCARD])
 inner missing await ...
   step ...
     inner ... pending ([WILDCARD])
-      error: Error: Parent scope completed before test step finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
-          at [WILDCARD]
-          at async TestContext.step [WILDCARD]
   step ... FAILED ([WILDCARD])
     error: Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
         await t.step("step", (t) => {
@@ -30,7 +27,7 @@ parallel steps with sanitizers ...
         at [WILDCARD]/invalid_usage.ts:[WILDCARD]
 parallel steps with sanitizers ... FAILED ([WILDCARD])
 parallel steps when first has sanitizer ...
-  step 1 ... pending ([WILDCARD])
+  step 1 ... ok ([WILDCARD])
   step 2 ... FAILED ([WILDCARD])
     error: Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps when first has sanitizer > step 1
@@ -95,6 +92,11 @@ error: Error: 1 test step failed.
     at runTest ([WILDCARD])
     at [WILDCARD]
 
+parallel steps where only inner tests have sanitizers => ./test/steps/invalid_usage.ts:[WILDCARD]
+error: Error: 1 test step failed.
+    at runTest ([WILDCARD])
+    at [WILDCARD]
+
  FAILURES 
 
 capturing => ./test/steps/invalid_usage.ts:[WILDCARD]
@@ -105,6 +107,6 @@ parallel steps when first has sanitizer => ./test/steps/invalid_usage.ts:[WILDCA
 parallel steps when second has sanitizer => ./test/steps/invalid_usage.ts:[WILDCARD]
 parallel steps where only inner tests have sanitizers => ./test/steps/invalid_usage.ts:[WILDCARD]
 
-FAILED | 0 passed (4 steps) | 7 failed (10 steps) ([WILDCARD])
+FAILED | 0 passed (5 steps) | 7 failed (9 steps) ([WILDCARD])
 
 error: Test failed

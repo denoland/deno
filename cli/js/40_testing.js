@@ -443,8 +443,8 @@ function assertTestStepScopes(fn) {
   return async function testStepSanitizer(desc) {
     preValidation();
     // only report waiting after pre-validation
-    if (canStreamReporting(desc) && "parent" in desc) {
-      stepReportWait(desc);
+    if ("parent" in desc) {
+      ops.op_dispatch_test_event({ stepWait: desc.id });
     }
     await fn(MapPrototypeGet(testStates, desc.id).context);
     testStepPostValidation(desc);
@@ -502,17 +502,6 @@ function testStepPostValidation(desc) {
         "There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
       );
     }
-  }
-
-  // check if an ancestor already completed
-  let currentDesc = desc.parent;
-  while (currentDesc != null) {
-    if (MapPrototypeGet(testStates, currentDesc.id).finalized) {
-      throw new Error(
-        "Parent scope completed before test step finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
-      );
-    }
-    currentDesc = currentDesc.parent;
   }
 }
 
@@ -584,7 +573,6 @@ function withPermissions(fn, permissions) {
  *   error: unknown,
  *   elapsed: number | null,
  *   reportedWait: boolean,
- *   reportedResult: boolean,
  * }} TestStepState
  *
  * @typedef {{
@@ -1162,43 +1150,13 @@ function usesSanitizer(desc) {
   return desc.sanitizeResources || desc.sanitizeOps || desc.sanitizeExit;
 }
 
-function canStreamReporting(desc) {
-  let currentDesc = desc;
-  while (currentDesc != null) {
-    if (!usesSanitizer(currentDesc)) {
-      return false;
-    }
-    currentDesc = currentDesc.parent;
-  }
-  for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-    const state = MapPrototypeGet(testStates, childDesc.id);
-    if (!usesSanitizer(childDesc) && !state.finalized) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function stepReportWait(desc) {
-  const state = MapPrototypeGet(testStates, desc.id);
-  if (state.reportedWait) {
-    return;
-  }
-  ops.op_dispatch_test_event({ stepWait: desc.id });
-  state.reportedWait = true;
-}
-
 function stepReportResult(desc) {
   const state = MapPrototypeGet(testStates, desc.id);
-  if (state.reportedResult) {
-    return;
-  }
-  stepReportWait(desc);
   for (const childDesc of state.children) {
     stepReportResult(childDesc);
   }
   let result;
-  if (state.status == "pending" || state.status == "failed") {
+  if (state.status == "failed") {
     result = {
       [state.status]: state.error && core.destructureError(state.error),
     };
@@ -1208,7 +1166,6 @@ function stepReportResult(desc) {
   ops.op_dispatch_test_event({
     stepResult: [desc.id, result, state.elapsed],
   });
-  state.reportedResult = true;
 }
 
 function failedChildStepsCount(desc) {
@@ -1327,7 +1284,6 @@ function createTestContext(desc) {
         error: null,
         elapsed: null,
         reportedWait: false,
-        reportedResult: false,
       };
       MapPrototypeSet(testStates, stepDesc.id, state);
       ArrayPrototypePush(
@@ -1335,56 +1291,39 @@ function createTestContext(desc) {
         stepDesc,
       );
 
-      try {
-        if (stepDesc.ignore) {
-          state.status = "ignored";
-          state.finalized = true;
-          if (canStreamReporting(stepDesc)) {
-            stepReportResult(stepDesc);
-          }
-          return false;
-        }
-
-        const testFn = wrapTestFnWithSanitizers(stepDesc.fn, stepDesc);
-        const start = DateNow();
-
-        try {
-          await testFn(stepDesc);
-
-          if (failedChildStepsCount(stepDesc) > 0) {
-            state.status = "failed";
-          } else {
-            state.status = "ok";
-          }
-        } catch (error) {
-          state.error = error;
-          state.status = "failed";
-        }
-
-        state.elapsed = DateNow() - start;
-
-        if (MapPrototypeGet(testStates, stepDesc.parent.id).finalized) {
-          // always point this test out as one that was still running
-          // if the parent step finalized
-          state.status = "pending";
-        }
-
+      if (stepDesc.ignore) {
+        state.status = "ignored";
         state.finalized = true;
-
-        if (state.reportedWait && canStreamReporting(stepDesc)) {
-          stepReportResult(stepDesc);
-        }
-
-        return state.status === "ok";
-      } finally {
-        if (canStreamReporting(stepDesc.parent)) {
-          const parentState = MapPrototypeGet(testStates, stepDesc.parent.id);
-          // flush any buffered steps
-          for (const childDesc of parentState.children) {
-            stepReportResult(childDesc);
-          }
-        }
+        stepReportResult(stepDesc);
+        return false;
       }
+
+      const testFn = wrapTestFnWithSanitizers(stepDesc.fn, stepDesc);
+      const start = DateNow();
+
+      try {
+        await testFn(stepDesc);
+        if (failedChildStepsCount(stepDesc) > 0) {
+          state.status = "failed";
+        } else {
+          state.status = "ok";
+        }
+      } catch (error) {
+        state.error = error;
+        state.status = "failed";
+      }
+
+      state.elapsed = DateNow() - start;
+      state.finalized = true;
+
+      // Report children that are erroneously still pending.
+      for (const childDesc of state.children) {
+        stepReportResult(childDesc);
+      }
+
+      stepReportResult(stepDesc);
+
+      return state.status === "ok";
     },
   };
 }
