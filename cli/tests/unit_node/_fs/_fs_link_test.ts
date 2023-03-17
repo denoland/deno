@@ -143,7 +143,7 @@ Deno.test(
     const newName = testDir + "/newname";
 
     const expectedMessageError = Deno.build.os == "windows"
-      ? `The system cannot find the file specified. (os error 17), link '${oldName}' -> '${newName}'`
+      ? `The system cannot find the file specified. (os error 2), link '${oldName}' -> '${newName}'`
       : `No such file or directory (os error 2), link '${oldName}' -> '${newName}'`;
     link(oldName, newName, (err) => {
       assertEquals(err?.message, expectedMessageError);
