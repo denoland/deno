@@ -1921,12 +1921,6 @@ pub fn deno_cmd() -> DenoCmd {
   deno_cmd_with_deno_dir(&deno_dir)
 }
 
-pub fn otool_cmd() -> Command {
-  let mut cmd = Command::new("otool");
-  cmd.arg("-L");
-  cmd
-}
-
 pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
   let exe_path = deno_exe_path();
   assert!(exe_path.exists());
