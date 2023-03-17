@@ -1484,7 +1484,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A key.
+   * A key to be persisted in a {@linkcode Deno.Database}.
    *
    * @category KV
    */
@@ -1492,7 +1492,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A part of a key.
+   * A single part of a {@linkcode Deno.KvKey}.
    *
    * @category KV
    */
@@ -1507,20 +1507,26 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export type ConsistencyLevel = "strong" | "eventual";
+  export type KvConsistencyLevel = "strong" | "eventual";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A selector that selects the range of data returned by a list operation.
+   * A selector that selects the range of data returned by a list operation on a
+   * {@linkcode Deno.Database}.
+   *
+   * The selector can either be a prefix selector or a range selector. A prefix
+   * selector selects all keys that start with the given prefix (optionally
+   * starting at a given key). A range selector selects all keys that are
+   * lexicographically between the given start and end keys.
    *
    * @category KV
    */
-  export type KvListSelector = { prefix: KvKey } | {
+  export type KvListSelector = {
+    prefix: KvKey;
+    start?: KvKey;
+  } | {
     start: KvKey;
     end: KvKey;
-  } | {
-    prefix: KvKey;
-    start: KvKey;
   };
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1542,18 +1548,32 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An iterator over a range of KV pairs.
+   * An iterator over a range of data entries in a {@linkcode Deno.Database}.
+   *
+   * The cursor getter returns the cursor that can be used to resume the
+   * iteration from the current position in the future.
    *
    * @category KV
    */
   export class KvListIterator {
-    cursor(): string;
+    /**
+     * Returns the cursor of the current position in the iteration. This cursor
+     * can be used to resume the iteration from the current position in the
+     * future by passing it to the `cursor` option of the `list` method.
+     */
+    get cursor(): string;
     [Symbol.asyncIterator](): AsyncIterator<KvEntry>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An entry in the KV store.
+   * A versioned pair of key and value in a {@linkcode Deno.Database}.
+   *
+   * The `versionstamp` is a string that represents the current version of the
+   * key-value pair. It can be used to perform atomic operations on the KV store
+   * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
+   * A `null` versionstamp indicates that no value exists for the given key in
+   * the KV store.
    *
    * @category KV
    */
@@ -1565,7 +1585,10 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A check to perform as part of an atomic operation.
+   * A check to perform as part of a {@linkcode Deno.AtomicOperation}. The check
+   * will fail if the versionstamp for the key-value pair in the KV store does
+   * not match the given versionstamp. A check with a `null` versionstamp checks
+   * that the key-value pair does not currently exist in the KV store.
    *
    * @category KV
    */
@@ -1576,13 +1599,13 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An operation on the KV store that is executed atomically.
+   * An operation on a {@link Deno.Database} that can be performed atomically.
    *
    * @category KV
    */
   export class AtomicOperation {
-    check(...c: AtomicCheck[]): this;
-    mutate(...m: KvMutation[]): this;
+    check(...checks: AtomicCheck[]): this;
+    mutate(...mutations: KvMutation[]): this;
     set(key: KvKey, value: unknown): this;
     delete(key: KvKey): this;
     commit(): Promise<boolean>;
@@ -1597,15 +1620,16 @@ declare namespace Deno {
   export class Database {
     get(
       key: KvKey,
-      options?: { consistency?: ConsistencyLevel },
+      options?: { consistency?: KvConsistencyLevel },
     ): Promise<KvEntry>;
 
     getMany(
       keys: KvKey[],
-      options?: { consistency?: ConsistencyLevel },
+      options?: { consistency?: KvConsistencyLevel },
     ): Promise<KvEntry[]>;
 
     set(key: KvKey, value: unknown): Promise<void>;
+
     delete(key: KvKey): Promise<void>;
 
     list(
@@ -1615,11 +1639,9 @@ declare namespace Deno {
         batchSize?: number;
         cursor?: string;
         reverse?: boolean;
-        consistency?: ConsistencyLevel;
+        consistency?: KvConsistencyLevel;
       },
     ): KvListIterator;
-
-    listen(onMessage: (message: unknown) => Promise<void> | void): void;
 
     atomic(): AtomicOperation;
 
