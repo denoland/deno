@@ -17,7 +17,7 @@ import { deferred, pathToAbsoluteFileUrl } from "../../unit/test_util.ts";
 
 Deno.test(
   "[node/fs readLink] read link match target path",
-  () => {
+  async () => {
     const testDir = mkdtempSync(join(tmpdir(), "foo-"));
     const target = testDir +
       (Deno.build.os == "windows" ? "\\target" : "/target");
@@ -26,19 +26,19 @@ Deno.test(
     mkdirSync(target);
     symlinkSync(target, symlink);
 
-    readlink(pathToAbsoluteFileUrl(symlink), {
+    const d = deferred();
+    d.resolve(readlink(pathToAbsoluteFileUrl(symlink), {
       encoding: "utf-8",
-    }, async (_err, targetPath) => {
-      const d = deferred<string>();
-      d.resolve(targetPath);
-      assertEquals(await d, target);
-    });
+    }, (_err, targetPath) => {
+      assertEquals(targetPath, target);
+    }));
+    await d;
   },
 );
 
 Deno.test(
   "[node/fs readLink] read link match target absolute file url",
-  () => {
+  async () => {
     const testDir = mkdtempSync(join(tmpdir(), "foo-"));
     const target = testDir +
       (Deno.build.os == "windows" ? "\\target" : "/target");
@@ -47,13 +47,13 @@ Deno.test(
     mkdirSync(target);
     symlinkSync(target, symlink);
 
-    readlink(pathToAbsoluteFileUrl(symlink), {
+    const d = deferred();
+    d.resolve(readlink(pathToAbsoluteFileUrl(symlink), {
       encoding: "utf-8",
-    }, async (_err, targetPath) => {
-      const d = deferred<string>();
-      d.resolve(targetPath);
-      assertEquals(await d, target);
-    });
+    }, (_err, targetPath) => {
+      assertEquals(targetPath, target);
+    }));
+    await d;
   },
 );
 
