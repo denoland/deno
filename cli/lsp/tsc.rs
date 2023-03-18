@@ -2834,14 +2834,17 @@ deno_core::extension!(deno_tsc,
     op_script_names,
     op_script_version,
   ],
-  config = {
+  options = {
     performance: Arc<Performance>
   },
-  state = |state, performance| {
+  state = |state, options| {
     state.put(State::new(
       Arc::new(StateSnapshot::default()),
-      performance,
+      options.performance,
     ));
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
   },
 );
 

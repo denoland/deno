@@ -72,3 +72,41 @@ Deno.test({
     assertEquals(cipher.final("hex"), "e11901dde4a2f99fe4efc707e48c6aed");
   },
 });
+
+Deno.test({
+  name: "createCipheriv - input encoding",
+  fn() {
+    const cipher = crypto.createCipheriv(
+      "aes-128-cbc",
+      new Uint8Array(16),
+      new Uint8Array(16),
+    );
+    assertEquals(
+      cipher.update("hello, world! hello, world!", "utf-8", "hex"),
+      "ca7df4d74f51b77a7440ead38343ab0f",
+    );
+    assertEquals(cipher.final("hex"), "d0da733dec1fa61125c80a6f97e6166e");
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - basic",
+  fn() {
+    const decipher = crypto.createDecipheriv(
+      "aes-128-cbc",
+      new Uint8Array(16),
+      new Uint8Array(16),
+    );
+    assertEquals(
+      decipher.update(
+        "66e94bd4ef8a2c3b884cfa59ca342b2ef795bd4a52e29ed713d313fa20e98dbca10cf66d0fddf3405370b4bf8df5bfb347c78395e0d8ae2194da0a90abc9888a94ee48f6c78fcd518a941c3896102cb1e11901dde4a2f99fe4efc707e48c6aed",
+        "hex",
+      ),
+      Buffer.alloc(80),
+    );
+    assertEquals(
+      decipher.final(),
+      Buffer.alloc(10), // Checks the padding
+    );
+  },
+});

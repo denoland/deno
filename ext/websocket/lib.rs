@@ -506,17 +506,17 @@ deno_core::extension!(deno_websocket,
     op_ws_next_event,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
-  config = {
+  options = {
     user_agent: String,
     root_cert_store: Option<RootCertStore>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>
   },
-  state = |state, user_agent, root_cert_store, unsafely_ignore_certificate_errors| {
-    state.put::<WsUserAgent>(WsUserAgent(user_agent));
+  state = |state, options| {
+    state.put::<WsUserAgent>(WsUserAgent(options.user_agent));
     state.put(UnsafelyIgnoreCertificateErrors(
-      unsafely_ignore_certificate_errors,
+      options.unsafely_ignore_certificate_errors,
     ));
-    state.put::<WsRootStore>(WsRootStore(root_cert_store));
+    state.put::<WsRootStore>(WsRootStore(options.root_cert_store));
   },
 );
 

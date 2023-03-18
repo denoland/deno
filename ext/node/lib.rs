@@ -96,10 +96,13 @@ fn op_node_build_os() -> String {
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   ops = [
+    crypto::op_node_create_decipheriv,
     crypto::op_node_cipheriv_encrypt,
     crypto::op_node_cipheriv_final,
     crypto::op_node_create_cipheriv,
     crypto::op_node_create_hash,
+    crypto::op_node_decipheriv_decrypt,
+    crypto::op_node_decipheriv_final,
     crypto::op_node_hash_update,
     crypto::op_node_hash_update_str,
     crypto::op_node_hash_digest,
@@ -370,11 +373,11 @@ deno_core::extension!(deno_node_loading,
     ops::op_require_break_on_next_statement,
   ],
   esm = ["01_node.js", "02_require.js", "module_es_shim.js"],
-  config = {
+  options = {
     maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   },
-  state = |state, maybe_npm_resolver| {
-    if let Some(npm_resolver) = maybe_npm_resolver.clone() {
+  state = |state, options| {
+    if let Some(npm_resolver) = options.maybe_npm_resolver {
       state.put(npm_resolver);
     }
   },
