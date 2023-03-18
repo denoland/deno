@@ -810,3 +810,27 @@ dbTest("list range with manual cursor reverse", async (db) => {
     { key: ["a", "b"], value: 1, versionstamp: "00000000000000010000" },
   ]);
 });
+
+dbTest("list invalid selector", async (db) => {
+  await setupData(db);
+
+  await assertRejects(async () => {
+    await collect(
+      db.list({ prefix: ["a"], start: ["a", "b"], end: ["a", "c"] }),
+    );
+  }, TypeError);
+
+  await assertRejects(async () => {
+    await collect(
+      // @ts-expect-error missing end
+      db.list({ start: ["a", "b"] }),
+    );
+  }, TypeError);
+
+  await assertRejects(async () => {
+    await collect(
+      // @ts-expect-error missing start
+      db.list({ end: ["a", "b"] }),
+    );
+  }, TypeError);
+});
