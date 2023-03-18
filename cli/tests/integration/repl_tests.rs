@@ -655,6 +655,52 @@ fn missing_deno_dir() {
 }
 
 #[test]
+fn custom_history_path() {
+  use std::fs::read;
+  let temp_dir = TempDir::new();
+  let history_path = temp_dir.path().join("history.txt");
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["1"]),
+    Some(vec![
+      (
+        "DENO_REPL_HISTORY".to_owned(),
+        history_path.to_str().unwrap().to_owned(),
+      ),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert!(read(&history_path).is_ok());
+  assert_ends_with!(out, "1\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn disable_history_file() {
+  let deno_dir = util::new_deno_dir();
+  let default_history_path = deno_dir.path().join("deno_history.txt");
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["1"]),
+    Some(vec![
+      (
+        "DENO_DIR".to_owned(),
+        deno_dir.path().to_str().unwrap().to_owned(),
+      ),
+      ("DENO_REPL_HISTORY".to_owned(), "".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert!(!default_history_path.try_exists().unwrap());
+  assert_ends_with!(out, "1\n");
+  assert!(err.is_empty());
+}
+
+#[test]
 fn save_last_eval() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -1010,4 +1056,20 @@ fn npm_packages() {
     assert_contains!(out, "no");
     assert!(err.is_empty());
   }
+}
+
+#[test]
+fn pty_tab_indexable_props() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const arr = [1, 2, 3]");
+    console.write_line("arr.\t\t");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    println!("output");
+    assert_contains!(output, "constructor");
+    assert_contains!(output, "sort");
+    assert_contains!(output, "at");
+    assert_not_contains!(output, "0", "1", "2");
+  });
 }

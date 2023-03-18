@@ -27,7 +27,6 @@ members = [
   "ext/node",
   "ext/url",
   "ext/web",
-  "ext/webgpu",
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
@@ -43,7 +42,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.64.0", default-features = false }
+v8 = { version = "0.65.0", default-features = false }
 deno_ast = { version = "0.24.0", features = ["transpiling"] }
 
 deno_core = { version = "0.175.0", path = "./core" }
@@ -71,7 +70,6 @@ deno_node = { version = "0.30.0", path = "./ext/node" }
 deno_tls = { version = "0.80.0", path = "./ext/tls" }
 deno_url = { version = "0.93.0", path = "./ext/url" }
 deno_web = { version = "0.124.0", path = "./ext/web" }
-deno_webgpu = { version = "0.94.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.93.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.98.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.88.0", path = "./ext/webstorage" }
@@ -99,8 +97,8 @@ indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.17"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
-lzzzz = "1.0"
 notify = "=5.0.0"
+num-bigint = "0.4"
 once_cell = "1.17.1"
 os_pipe = "=1.0.1"
 parking_lot = "0.12.0"
@@ -134,11 +132,6 @@ zstd = "=0.11.2"
 
 # crypto
 rsa = { version = "0.7.0", default-features = false, features = ["std", "pem"] }
-
-# webgpu
-raw-window-handle = "0.5.0"
-wgpu-core = "0.15"
-wgpu-types = "0.15"
 
 # macros
 proc-macro2 = "1"
@@ -238,8 +231,6 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.zstd]
 opt-level = 3
-[profile.bench.package.lzzzz]
-opt-level = 3
 [profile.bench.package.zstd-sys]
 opt-level = 3
 [profile.bench.package.base64-simd]
@@ -311,8 +302,6 @@ opt-level = 3
 [profile.release.package.tokio]
 opt-level = 3
 [profile.release.package.zstd]
-opt-level = 3
-[profile.release.package.lzzzz]
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3

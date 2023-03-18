@@ -83,6 +83,7 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub include: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -593,13 +594,15 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
+    DENO_REPL_HISTORY    Set REPL history file path
+                         History file is disabled when the value is empty
+                         (defaults to $DENO_DIR/deno_history.txt)
     DENO_NO_PACKAGE_JSON Disables auto-resolution of package.json
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
     DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
     DENO_V8_FLAGS        Set V8 command line options
-    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
@@ -906,6 +909,20 @@ fn compile_subcommand<'a>() -> Command<'a> {
   runtime_args(Command::new("compile"), true, false)
     .trailing_var_arg(true)
     .arg(script_arg().required(true))
+    .arg(
+      Arg::new("include")
+        .long("include")
+        .help("UNSTABLE: Additional module to include in the module graph")
+        .long_help(
+          "Includes an additional module in the compiled executable's module \
+    graph. Use this flag if a dynamically imported module or a web worker main \
+    module fails to load in the executable. This flag can be passed multiple \
+    times, to include multiple additional modules.",
+        )
+        .takes_value(true)
+        .multiple_occurrences(true)
+        .value_hint(ValueHint::FilePath),
+    )
     .arg(
       Arg::new("output")
         .long("output")
@@ -2484,12 +2501,17 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
   let target = matches.value_of("target").map(String::from);
+  let include = match matches.values_of("include") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
     args,
     target,
+    include,
   });
 }
 
@@ -6240,6 +6262,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6259,6 +6282,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
+          include: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
