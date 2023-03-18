@@ -320,7 +320,7 @@ deno_core::extension!(
   ],
   customizer = |ext: &mut ExtensionBuilder| {
     ext.esm(vec![ExtensionFileSource {
-      specifier: "runtime/js/99_main.js".to_string(),
+      specifier: "ext:cli/runtime/js/99_main.js",
       code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
         std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
       ),

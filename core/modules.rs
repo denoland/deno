@@ -432,7 +432,7 @@ impl ModuleLoader for ExtModuleLoader {
     if let Some(file_source) = maybe_file_source {
       {
         let mut used_esm_sources = self.used_esm_sources.borrow_mut();
-        let used = used_esm_sources.get_mut(&file_source.specifier).unwrap();
+        let used = used_esm_sources.get_mut(file_source.specifier).unwrap();
         *used = true;
       }
 
