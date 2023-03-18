@@ -6204,7 +6204,7 @@ mod tests {
     assert!(r.is_err());
     let error_message = r.unwrap_err().to_string();
     assert!(&error_message
-      .contains("error: The following required arguments were not provided:"));
+      .contains("error: the following required arguments were not provided:"));
     assert!(&error_message.contains("--watch[=<FILES>...]"));
   }
 
