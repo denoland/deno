@@ -1,9 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "../../testing/asserts.ts";
+import {
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { rename, renameSync } from "./_fs_rename.ts";
-import { existsSync } from "../../fs/exists.ts";
-import { join, parse } from "../../path/mod.ts";
+import { rename, renameSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { join, parse } from "../../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "ASYNC: renaming a file",
@@ -40,7 +43,7 @@ Deno.test({
 
 Deno.test("[std/node/fs] rename callback isn't called twice if error is thrown", async () => {
   const tempFile = await Deno.makeTempFile();
-  const importUrl = new URL("./_fs_rename.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { rename } from ${JSON.stringify(importUrl)}`,
     invocation: `rename(${JSON.stringify(tempFile)},

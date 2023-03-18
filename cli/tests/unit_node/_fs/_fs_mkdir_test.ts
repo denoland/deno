@@ -1,9 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as path from "../../path/mod.ts";
-import { assert } from "../../testing/asserts.ts";
+import * as path from "../../../../test_util/std/path/mod.ts";
+import { assert } from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { mkdir, mkdirSync } from "./_fs_mkdir.ts";
-import { existsSync } from "./_fs_exists.ts";
+import { existsSync, mkdir, mkdirSync } from "node:fs";
 
 const tmpDir = "./tmpdir";
 
@@ -33,7 +32,7 @@ Deno.test({
 Deno.test("[std/node/fs] mkdir callback isn't called twice if error is thrown", async () => {
   const tempDir = await Deno.makeTempDir();
   const subdir = path.join(tempDir, "subdir");
-  const importUrl = new URL("./_fs_mkdir.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { mkdir } from ${JSON.stringify(importUrl)}`,
     invocation: `mkdir(${JSON.stringify(subdir)}, `,

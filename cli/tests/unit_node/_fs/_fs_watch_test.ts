@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { watch } from "./_fs_watch.ts";
-import { assertEquals } from "../../testing/asserts.ts";
+import { watch } from "node:fs";
+import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
 
 function wait(time: number) {
   return new Promise((resolve) => {

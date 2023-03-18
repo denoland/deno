@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { BigIntStats, stat, Stats, statSync } from "./_fs_stat.ts";
-import { assertEquals, fail } from "../../testing/asserts.ts";
+import { BigIntStats, stat, Stats, statSync } from "node:fs";
+import {
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
 
 export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.dev, expected.dev);
@@ -120,7 +123,7 @@ Deno.test({
 
 Deno.test("[std/node/fs] stat callback isn't called twice if error is thrown", async () => {
   const tempFile = await Deno.makeTempFile();
-  const importUrl = new URL("./_fs_stat.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { stat } from ${JSON.stringify(importUrl)}`,
     invocation: `stat(${JSON.stringify(tempFile)}, `,

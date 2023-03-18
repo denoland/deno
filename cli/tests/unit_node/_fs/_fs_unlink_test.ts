@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "../../testing/asserts.ts";
-import { existsSync } from "../../fs/exists.ts";
+import {
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { existsSync } from "node:fs";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { unlink, unlinkSync } from "./_fs_unlink.ts";
+import { unlink, unlinkSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: deleting a file",
@@ -32,7 +35,7 @@ Deno.test({
 
 Deno.test("[std/node/fs] unlink callback isn't called twice if error is thrown", async () => {
   const tempFile = await Deno.makeTempFile();
-  const importUrl = new URL("./_fs_unlink.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { unlink } from ${JSON.stringify(importUrl)}`,
     invocation: `unlink(${JSON.stringify(tempFile)}, `,

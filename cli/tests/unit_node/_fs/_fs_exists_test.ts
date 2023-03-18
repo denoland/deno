@@ -3,9 +3,9 @@ import {
   assert,
   assertEquals,
   assertStringIncludes,
-} from "../../testing/asserts.ts";
-import { exists, existsSync } from "./_fs_exists.ts";
-import { promisify } from "../util.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
+import { exists, existsSync } from "node:fs";
+import { promisify } from "node:util";
 
 Deno.test("[std/node/fs] exists", async function () {
   const availableFile = await new Promise((resolve) => {
@@ -43,7 +43,7 @@ Deno.test("[std/node/fs] promisify(exists)", async () => {
 Deno.test("[std/node/fs] exists callback isn't called twice if error is thrown", async () => {
   // This doesn't use `assertCallbackErrorUncaught()` because `exists()` doesn't return a standard node callback, which is what it expects.
   const tempFile = await Deno.makeTempFile();
-  const importUrl = new URL("./_fs_exists.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   const command = new Deno.Command(Deno.execPath(), {
     args: [
       "eval",

@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
-import { utimes, utimesSync } from "./_fs_utimes.ts";
+import {
+  assertEquals,
+  assertThrows,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { utimes, utimesSync } from "node:fs";
 
 const randomDate = new Date(Date.now() + 1000);
 

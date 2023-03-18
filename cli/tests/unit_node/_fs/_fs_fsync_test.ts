@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "../../testing/asserts.ts";
-import { fsync, fsyncSync } from "./_fs_fsync.ts";
+import {
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { fsync, fsyncSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: flush any pending data of the given file stream to disk",

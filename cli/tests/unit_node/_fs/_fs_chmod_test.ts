@@ -4,14 +4,13 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "../../testing/asserts.ts";
-import { isWindows } from "../../_util/os.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { chmod, chmodSync } from "./_fs_chmod.ts";
+import { chmod, chmodSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: Permissions are changed (non-Windows)",
-  ignore: isWindows,
+  ignore: Deno.build.os === "windows",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const originalFileMode: number | null = (await Deno.lstat(tempFile)).mode;
@@ -36,7 +35,7 @@ Deno.test({
 
 Deno.test({
   name: "ASYNC: don't throw NotSupportedError (Windows)",
-  ignore: !isWindows,
+  ignore: Deno.build.os !== "windows",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     await new Promise<void>((resolve, reject) => {
@@ -52,7 +51,7 @@ Deno.test({
 
 Deno.test({
   name: "ASYNC: don't swallow NotFoundError (Windows)",
-  ignore: !isWindows,
+  ignore: Deno.build.os !== "windows",
   async fn() {
     await assertRejects(async () => {
       await new Promise<void>((resolve, reject) => {
@@ -67,7 +66,7 @@ Deno.test({
 
 Deno.test({
   name: "SYNC: Permissions are changed (non-Windows)",
-  ignore: isWindows,
+  ignore: Deno.build.os === "windows",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
     try {
@@ -85,7 +84,7 @@ Deno.test({
 
 Deno.test({
   name: "SYNC: don't throw NotSupportedError (Windows)",
-  ignore: !isWindows,
+  ignore: Deno.build.os !== "windows",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
     try {
@@ -98,7 +97,7 @@ Deno.test({
 
 Deno.test({
   name: "SYNC: don't swallow NotFoundError (Windows)",
-  ignore: !isWindows,
+  ignore: Deno.build.os !== "windows",
   fn() {
     assertThrows(() => {
       chmodSync("./__non_existent_file__", "777");
@@ -110,7 +109,7 @@ Deno.test({
   name: "[std/node/fs] chmod callback isn't called twice if error is thrown",
   async fn() {
     const tempFile = await Deno.makeTempFile();
-    const importUrl = new URL("./_fs_chmod.ts", import.meta.url);
+    const importUrl = new URL("node:fs", import.meta.url);
     await assertCallbackErrorUncaught({
       prelude: `import { chmod } from ${JSON.stringify(importUrl)}`,
       invocation: `chmod(${JSON.stringify(tempFile)}, 0o777, `,

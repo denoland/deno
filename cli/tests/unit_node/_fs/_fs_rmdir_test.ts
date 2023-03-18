@@ -1,11 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "../../testing/asserts.ts";
-import { rmdir, rmdirSync } from "./_fs_rmdir.ts";
-import { closeSync } from "./_fs_close.ts";
-import { existsSync } from "../../fs/exists.ts";
-import { join } from "../../path/mod.ts";
+import {
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { rmdir, rmdirSync } from "node:fs";
+import { closeSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { join } from "../../../../test_util/std/path/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { isWindows } from "../../_util/os.ts";
 
 Deno.test({
   name: "ASYNC: removing empty folder",
@@ -67,7 +69,7 @@ Deno.test({
         closeRes(rBefore, rAfter);
       });
   },
-  ignore: isWindows,
+  ignore: Deno.build.os === "windows",
 });
 
 Deno.test({
@@ -85,7 +87,7 @@ Deno.test({
     const rAfter = Deno.resources();
     closeRes(rBefore, rAfter);
   },
-  ignore: isWindows,
+  ignore: Deno.build.os === "windows",
 });
 
 Deno.test("[std/node/fs] rmdir callback isn't called twice if error is thrown", async () => {
@@ -94,7 +96,7 @@ Deno.test("[std/node/fs] rmdir callback isn't called twice if error is thrown", 
   // So the only way to test this is to spawn a subprocess, and succeed if it has a non-zero exit code.
   // (assertRejects won't work because there's no way to catch the error.)
   const tempDir = await Deno.makeTempDir();
-  const importUrl = new URL("./_fs_rmdir.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { rmdir } from ${JSON.stringify(importUrl)}`,
     invocation: `rmdir(${JSON.stringify(tempDir)}, `,

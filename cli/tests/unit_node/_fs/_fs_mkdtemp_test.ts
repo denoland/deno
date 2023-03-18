@@ -1,14 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assert, assertRejects, assertThrows } from "../../testing/asserts.ts";
-import { mkdtemp, mkdtempSync } from "./_fs_mkdtemp.ts";
-import { existsSync } from "./_fs_exists.ts";
-import { env } from "../process.ts";
-import { isWindows } from "../../_util/os.ts";
-import { promisify } from "../internal/util.mjs";
+import {
+  assert,
+  assertRejects,
+  assertThrows,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { EncodingOption, existsSync, mkdtemp, mkdtempSync } from "node:fs";
+import { env } from "node:process";
+import { promisify } from "node:util";
 
-const prefix = isWindows ? env.TEMP + "\\" : (env.TMPDIR || "/tmp") + "/";
+const prefix = Deno.build.os === "windows"
+  ? env.TEMP + "\\"
+  : (env.TMPDIR || "/tmp") + "/";
 const doesNotExists = "/does/not/exists/";
-const options = { encoding: "ascii" };
+const options: EncodingOption = { encoding: "ascii" };
 const badOptions = { encoding: "bogus" };
 
 const mkdtempP = promisify(mkdtemp);
@@ -41,6 +45,7 @@ Deno.test({
 Deno.test({
   name: "[node/fs] mkdtemp (with bad options)",
   fn: async () => {
+    // @ts-expect-error No overload matches this call
     await assertRejects(() => mkdtempP(prefix, badOptions));
   },
 });
@@ -75,6 +80,7 @@ Deno.test({
 Deno.test({
   name: "[node/fs] mkdtempSync (with bad options)",
   fn: () => {
+    // @ts-expect-error No overload matches this call
     assertThrows(() => mkdtempSync(prefix, badOptions));
   },
 });

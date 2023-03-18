@@ -6,9 +6,9 @@ import {
   assertFalse,
   assertInstanceOf,
   assertThrows,
-} from "../../testing/asserts.ts";
-import { opendir, opendirSync } from "./_fs_opendir.ts";
-import { Buffer } from "../buffer.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
+import { opendir, opendirSync } from "node:fs";
+import { Buffer } from "node:buffer";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
 Deno.test("[node/fs] opendir()", async (t) => {
@@ -20,6 +20,7 @@ Deno.test("[node/fs] opendir()", async (t) => {
     () =>
       opendir(
         path,
+        // @ts-expect-error Type '"invalid-encoding"' is not assignable to type 'BufferEncoding | undefined'
         { encoding: "invalid-encoding" },
         (err) => assertInstanceOf(err, TypeError),
       ),
@@ -90,7 +91,7 @@ Deno.test("[node/fs] opendir()", async (t) => {
   );
 
   await t.step("passes if callback isn't called twice", async () => {
-    const importUrl = new URL("./_fs_opendir.ts", import.meta.url);
+    const importUrl = new URL("node:fs", import.meta.url);
     await assertCallbackErrorUncaught({
       prelude: `import { opendir } from ${JSON.stringify(importUrl)}`,
       invocation: `opendir(${JSON.stringify(path)}, `,
@@ -107,6 +108,7 @@ Deno.test("[node/fs] opendirSync()", async (t) => {
 
   await t.step("fails if encoding is invalid", () => {
     assertThrows(
+      // @ts-expect-error Type '"invalid-encoding"' is not assignable to type 'BufferEncoding | undefined'
       () => opendirSync(path, { encoding: "invalid-encoding" }),
       TypeError,
     );

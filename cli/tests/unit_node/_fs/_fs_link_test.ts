@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as path from "../../path/mod.ts";
-import { assert, assertEquals, fail } from "../../testing/asserts.ts";
+import * as path from "../../../../test_util/std/path/mod.ts";
+import {
+  assert,
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { link, linkSync } from "./_fs_link.ts";
+import { link, linkSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: hard linking files works as expected",
@@ -65,7 +69,7 @@ Deno.test("[std/node/fs] link callback isn't called twice if error is thrown", a
   const tempFile = path.join(tempDir, "file.txt");
   const linkFile = path.join(tempDir, "link.txt");
   await Deno.writeTextFile(tempFile, "hello world");
-  const importUrl = new URL("./_fs_link.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { link } from ${JSON.stringify(importUrl)}`,
     invocation: `link(${JSON.stringify(tempFile)}, 

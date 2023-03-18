@@ -1,12 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
-import { ftruncate, ftruncateSync } from "./_fs_ftruncate.ts";
+import {
+  assertEquals,
+  assertThrows,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { ftruncate, ftruncateSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: no callback function results in Error",
   fn() {
     assertThrows(
       () => {
+        // @ts-expect-error Argument of type 'number' is not assignable to parameter of type 'NoParamCallback'
         ftruncate(123, 0);
       },
       Error,

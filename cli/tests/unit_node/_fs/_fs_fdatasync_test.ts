@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "../../testing/asserts.ts";
-import { fdatasync, fdatasyncSync } from "./_fs_fdatasync.ts";
+import {
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { fdatasync, fdatasyncSync } from "node:fs";
 
 Deno.test({
   name:

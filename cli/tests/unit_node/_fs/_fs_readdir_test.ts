@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertNotEquals, fail } from "../../testing/asserts.ts";
+import {
+  assertEquals,
+  assertNotEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { readdir, readdirSync } from "./_fs_readdir.ts";
-import { join } from "../../path/mod.ts";
+import { readdir, readdirSync } from "node:fs";
+import { join } from "../../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "ASYNC: reading empty directory",
@@ -81,7 +85,7 @@ Deno.test("[std/node/fs] readdir callback isn't called twice if error is thrown"
   // So the only way to test this is to spawn a subprocess, and succeed if it has a non-zero exit code.
   // (assertRejects won't work because there's no way to catch the error.)
   const tempDir = await Deno.makeTempDir();
-  const importUrl = new URL("./_fs_readdir.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { readdir } from ${JSON.stringify(importUrl)}`,
     invocation: `readdir(${JSON.stringify(tempDir)}, `,

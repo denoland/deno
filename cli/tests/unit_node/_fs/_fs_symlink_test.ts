@@ -1,12 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assert, assertThrows, fail } from "../../testing/asserts.ts";
-import { symlink, symlinkSync } from "./_fs_symlink.ts";
+import {
+  assert,
+  assertThrows,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { symlink, symlinkSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: no callback function results in Error",
   fn() {
     assertThrows(
       () => {
+        // @ts-expect-error Argument of type 'string' is not assignable to parameter of type 'NoParamCallback'
         symlink("some/path", "some/other/path", "dir");
       },
       Error,

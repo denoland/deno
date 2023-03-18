@@ -1,7 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
-import { appendFile, appendFileSync } from "./_fs_appendFile.ts";
-import { fromFileUrl } from "../path.ts";
+import {
+  assertEquals,
+  assertThrows,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
+import { appendFile, appendFileSync } from "node:fs";
+import { fromFileUrl } from "../../../../test_util/std/path/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
 const decoder = new TextDecoder("utf-8");
@@ -11,6 +15,7 @@ Deno.test({
   fn() {
     assertThrows(
       () => {
+        // @ts-expect-error Argument of type 'string' is not assignable to parameter of type 'NoParamCallback'
         appendFile("some/path", "some data", "utf8");
       },
       Error,
@@ -243,7 +248,7 @@ Deno.test({
 
 Deno.test("[std/node/fs] appendFile callback isn't called twice if error is thrown", async () => {
   const tempFile = await Deno.makeTempFile();
-  const importUrl = new URL("./_fs_appendFile.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { appendFile } from ${JSON.stringify(importUrl)}`,
     invocation: `appendFile(${JSON.stringify(tempFile)}, "hello world", `,

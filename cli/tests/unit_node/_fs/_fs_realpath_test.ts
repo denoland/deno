@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as path from "../../path/mod.ts";
-import { assertEquals } from "../../testing/asserts.ts";
+import * as path from "../../../../test_util/std/path/mod.ts";
+import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { realpath, realpathSync } from "./_fs_realpath.ts";
+import { realpath, realpathSync } from "node:fs";
 
 Deno.test("realpath", async function () {
   const tempFile = await Deno.makeTempFile();
@@ -44,7 +44,7 @@ Deno.test("[std/node/fs] realpath callback isn't called twice if error is thrown
   const linkFile = path.join(tempDir, "link.txt");
   await Deno.writeTextFile(tempFile, "hello world");
   await Deno.symlink(tempFile, linkFile, { type: "file" });
-  const importUrl = new URL("./_fs_realpath.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { realpath } from ${JSON.stringify(importUrl)}`,
     invocation: `realpath(${JSON.stringify(`${tempDir}/link.txt`)}, `,

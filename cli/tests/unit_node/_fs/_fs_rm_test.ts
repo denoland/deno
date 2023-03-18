@@ -4,11 +4,10 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "../../testing/asserts.ts";
-import { rm, rmSync } from "./_fs_rm.ts";
-import { closeSync, existsSync } from "../fs.ts";
-import { join } from "../../path/mod.ts";
-import { isWindows } from "../../_util/os.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
+import { rm, rmSync } from "node:fs";
+import { closeSync, existsSync } from "node:fs";
+import { join } from "../../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "ASYNC: removing empty folder",
@@ -61,7 +60,7 @@ Deno.test({
         closeRes(rBefore, rAfter);
       });
   },
-  ignore: isWindows,
+  ignore: Deno.build.os === "windows",
 });
 
 Deno.test({
@@ -129,7 +128,7 @@ Deno.test({
     const rAfter = Deno.resources();
     closeRes(rBefore, rAfter);
   },
-  ignore: isWindows,
+  ignore: Deno.build.os === "windows",
 });
 
 Deno.test({

@@ -1,7 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assert, assertThrows, fail } from "../../testing/asserts.ts";
+import {
+  assert,
+  assertThrows,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { close, closeSync } from "./_fs_close.ts";
+import { close, closeSync } from "node:fs";
 
 Deno.test({
   name: "ASYNC: File is closed",
@@ -78,7 +82,7 @@ Deno.test({
 
 Deno.test("[std/node/fs] close callback isn't called twice if error is thrown", async () => {
   const tempFile = await Deno.makeTempFile();
-  const importUrl = new URL("./_fs_close.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `
     import { close } from ${JSON.stringify(importUrl)};
