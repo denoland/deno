@@ -48,22 +48,22 @@ deno_core::extension!(
   state = |state, options| {
     state.put::<ExitCode>(options.exit_code);
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  }
 );
 
 deno_core::extension!(
   deno_os_worker,
   ops_fn = deno_ops,
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" => op.disable(),
+    "op_exit" => noop_op::decl(),
+    "op_set_exit_code" => noop_op::decl(),
     _ => op,
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  }
 );
+
+#[op]
+fn noop_op() -> Result<(), AnyError> {
+  Ok(())
+}
 
 #[op]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {

@@ -121,7 +121,7 @@ fn data_error_to_panic(err: v8::DataError) -> ! {
   }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub(crate) enum SnapshotOptions {
   Load,
   CreateFromExisting,

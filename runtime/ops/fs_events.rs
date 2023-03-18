@@ -30,10 +30,7 @@ use tokio::sync::mpsc;
 
 deno_core::extension!(
   deno_fs_events,
-  ops = [op_fs_events_open, op_fs_events_poll],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
+  ops = [op_fs_events_open, op_fs_events_poll]
 );
 
 struct FsEventsResource {

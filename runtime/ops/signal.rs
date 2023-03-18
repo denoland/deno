@@ -31,10 +31,7 @@ use tokio::signal::windows::CtrlC;
 
 deno_core::extension!(
   deno_signal,
-  ops = [op_signal_bind, op_signal_unbind, op_signal_poll],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
+  ops = [op_signal_bind, op_signal_unbind, op_signal_poll]
 );
 
 #[cfg(unix)]
