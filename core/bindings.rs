@@ -100,49 +100,6 @@ pub fn module_origin<'a>(
 pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
-) -> v8::Local<'s, v8::Context> {
-  let context = v8::Context::new(scope);
-  let global = context.global(scope);
-
-  let scope = &mut v8::ContextScope::new(scope, context);
-
-  let deno_str =
-    v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
-  let core_str =
-    v8::String::new_external_onebyte_static(scope, b"core").unwrap();
-  let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
-
-  // globalThis.Deno = { core: { } };
-  let deno_obj = v8::Object::new(scope);
-  global.set(scope, deno_str.into(), deno_obj.into());
-
-  let core_obj = v8::Object::new(scope);
-  deno_obj.set(scope, core_str.into(), core_obj.into());
-
-  // Bind functions to Deno.core.*
-  set_func(scope, core_obj, "callConsole", call_console);
-
-  // Bind v8 console object to Deno.core.console
-  let extra_binding_obj = context.get_extras_binding_object(scope);
-  let console_str =
-    v8::String::new_external_onebyte_static(scope, b"console").unwrap();
-  let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
-  core_obj.set(scope, console_str.into(), console_obj);
-
-  // Bind functions to Deno.core.ops.*
-  let ops_obj = v8::Object::new(scope);
-  core_obj.set(scope, ops_str.into(), ops_obj.into());
-
-  for op_ctx in op_ctxs {
-    add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
-  }
-
-  context
-}
-
-pub(crate) fn initialize_context_from_existing_snapshot<'s>(
-  scope: &mut v8::HandleScope<'s, ()>,
-  op_ctxs: &[OpCtx],
   snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let context = v8::Context::new(scope);
@@ -156,31 +113,62 @@ pub(crate) fn initialize_context_from_existing_snapshot<'s>(
     v8::String::new_external_onebyte_static(scope, b"core").unwrap();
   let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
 
-  // Snapshot already registered `Deno.core.ops` but
-  // extensions may provide ops that aren't part of the snapshot.
-  // Grab the Deno.core.ops object & init it
-  let deno_obj: v8::Local<v8::Object> = global
-    .get(scope, deno_str.into())
-    .unwrap()
-    .try_into()
-    .unwrap();
-  let core_obj: v8::Local<v8::Object> = deno_obj
-    .get(scope, core_str.into())
-    .unwrap()
-    .try_into()
-    .unwrap();
-  let ops_obj: v8::Local<v8::Object> = core_obj
-    .get(scope, ops_str.into())
-    .expect("Deno.core.ops to exist")
-    .try_into()
-    .unwrap();
+  let ops_obj = if snapshot_options.loaded() {
+    // Snapshot already registered `Deno.core.ops` but
+    // extensions may provide ops that aren't part of the snapshot.
+    // Grab the Deno.core.ops object & init it
+    let deno_obj: v8::Local<v8::Object> = global
+      .get(scope, deno_str.into())
+      .unwrap()
+      .try_into()
+      .unwrap();
+    let core_obj: v8::Local<v8::Object> = deno_obj
+      .get(scope, core_str.into())
+      .unwrap()
+      .try_into()
+      .unwrap();
+    let ops_obj: v8::Local<v8::Object> = core_obj
+      .get(scope, ops_str.into())
+      .expect("Deno.core.ops to exist")
+      .try_into()
+      .unwrap();
+    ops_obj
+  } else {
+    // globalThis.Deno = { core: { } };
+    let deno_obj = v8::Object::new(scope);
+    global.set(scope, deno_str.into(), deno_obj.into());
 
-  // If we're creating a snapshot from existing snapshot, iterate over all ops
-  // and probe which ones are already registered
-  eprintln!("intialize from existing {:?}", snapshot_options);
-  if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
+    let core_obj = v8::Object::new(scope);
+    deno_obj.set(scope, core_str.into(), core_obj.into());
+
+    // Bind functions to Deno.core.*
+    set_func(scope, core_obj, "callConsole", call_console);
+
+    // Bind v8 console object to Deno.core.console
+    let extra_binding_obj = context.get_extras_binding_object(scope);
+    let console_str =
+      v8::String::new_external_onebyte_static(scope, b"console").unwrap();
+    let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
+    core_obj.set(scope, console_str.into(), console_obj);
+
+    // Bind functions to Deno.core.ops.*
+    let ops_obj = v8::Object::new(scope);
+    core_obj.set(scope, ops_str.into(), ops_obj.into());
+    ops_obj
+  };
+
+  if matches!(snapshot_options, SnapshotOptions::Load) {
+    // Only register ops that have `force_registration` flag set to true,
+    // the remaining ones should already be in the snapshot.
+    for op_ctx in op_ctxs
+      .iter()
+      .filter(|op_ctx| op_ctx.decl.force_registration)
+    {
+      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+    }
+  } else if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
+    // Register all ops, probing for which ones are already registered.
     for op_ctx in op_ctxs {
-      eprintln!("check fn {}", &op_ctx.decl.name);
       let key = v8::String::new_external_onebyte_static(
         scope,
         op_ctx.decl.name.as_bytes(),
@@ -191,17 +179,11 @@ pub(crate) fn initialize_context_from_existing_snapshot<'s>(
       }
       add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
     }
-
-    return context;
-  }
-
-  // Only register ops that have `force_registration` flag set to true,
-  // the remaining ones should already be in the snapshot.
-  for op_ctx in op_ctxs
-    .iter()
-    .filter(|op_ctx| op_ctx.decl.force_registration)
-  {
-    add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+  } else {
+    // In other cases register all ops unconditionally.
+    for op_ctx in op_ctxs {
+      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+    }
   }
 
   context
