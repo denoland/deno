@@ -795,7 +795,7 @@ fn bench_subcommand() -> Command {
       Arg::new("filter")
         .allow_hyphen_values(true)
         .long("filter")
-        .num_args(1..)
+        .action(ArgAction::Set)
         .help("Run benchmarks with this string or pattern in the bench name"),
     )
     .arg(
