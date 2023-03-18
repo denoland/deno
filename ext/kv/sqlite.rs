@@ -126,7 +126,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       }
       (None, Some(path)) => {
         std::fs::create_dir_all(path)?;
-        let path = path.join("state.sqlite3");
+        let path = path.join("kv.sqlite3");
         rusqlite::Connection::open(&path)?
       }
     };
