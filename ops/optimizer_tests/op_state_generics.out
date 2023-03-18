@@ -32,6 +32,7 @@ impl op_foo {
             is_async: false,
             is_unstable: false,
             is_v8: false,
+            force_registration: false,
         }
     }
     #[inline]
