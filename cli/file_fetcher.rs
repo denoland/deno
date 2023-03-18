@@ -337,21 +337,6 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
-    match self.fetch_cached(specifier, 0) {
-      Ok(Some(file)) => return Ok(file),
-      Ok(None) => {}
-      Err(err) => return Err(err),
-    }
-
-    if self.cache_setting == CacheSetting::Only {
-      return Err(custom_error(
-        "NotCached",
-        format!(
-          "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
-        ),
-      ));
-    }
-
     let blob = {
       let blob_store = self.blob_store.borrow();
       blob_store
@@ -568,11 +553,7 @@ impl FileFetcher {
       }
       result
     } else if scheme == "blob" {
-      let result = self.fetch_blob_url(specifier).await;
-      if let Ok(file) = &result {
-        self.cache.insert(specifier.clone(), file.clone());
-      }
-      result
+      self.fetch_blob_url(specifier).await
     } else if !self.allow_remote {
       Err(custom_error(
         "NoRemote",
