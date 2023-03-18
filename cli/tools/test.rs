@@ -407,7 +407,7 @@ impl PrettyTestReporter {
       TestStepResult::Ok => colors::green("ok").to_string(),
       TestStepResult::Ignored => colors::yellow("ignored").to_string(),
       TestStepResult::Failed(TestFailure::Incomplete) => {
-        colors::gray("incomplete").to_string()
+        colors::gray("INCOMPLETE").to_string()
       }
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };

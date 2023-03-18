@@ -4,18 +4,18 @@ capturing ...
   some step ... ok ([WILDCARD])
 capturing ... FAILED ([WILDCARD])
 top level missing await ...
-  step ... incomplete
+  step ... INCOMPLETE
     error: Didn't complete before parent. Await step with `await t.step(...)`.
 top level missing await ... FAILED ([WILDCARD])
 inner missing await ...
   step ...
-    inner ... incomplete
+    inner ... INCOMPLETE
       error: Didn't complete before parent. Await step with `await t.step(...)`.
   step ... FAILED ([WILDCARD])
     error: Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.
 inner missing await ... FAILED ([WILDCARD])
 parallel steps with sanitizers ...
-  step 1 ... incomplete
+  step 1 ... INCOMPLETE
     error: Didn't complete before parent. Await step with `await t.step(...)`.
   step 2 ... FAILED ([WILDCARD])
     error: Started test step while another test step with sanitizers was running:
