@@ -57,7 +57,7 @@ deno_core::extension!(deno_kv,
     unstable: bool,
   },
   state = |state, options| {
-    state.put(options.handler);
+    state.put(Rc::new(options.handler));
     state.put(UnstableChecker { unstable })
   }
 );
