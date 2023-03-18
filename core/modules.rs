@@ -1047,14 +1047,23 @@ impl ModuleMap {
       let main = v8::Boolean::new(scope, info.main);
       module_info_arr.set_index(scope, 1, main.into());
 
-      let name = v8::String::new_from_one_byte(scope, &info.name).unwrap();
+      let name = v8::String::new_from_one_byte(
+        scope,
+        &info.name.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap();
       module_info_arr.set_index(scope, 2, name.into());
 
       let array_len = 2 * info.requests.len() as i32;
       let requests_arr = v8::Array::new(scope, array_len);
       for (i, request) in info.requests.iter().enumerate() {
-        let specifier =
-          v8::String::new_from_one_byte(scope, &request.specifier).unwrap();
+        let specifier = v8::String::new_from_one_byte(
+          scope,
+          &request.specifier.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
         requests_arr.set_index(scope, 2 * i as u32, specifier.into());
 
         let asserted_module_type =
@@ -1080,8 +1089,12 @@ impl ModuleMap {
         let arr = v8::Array::new(scope, 3);
 
         let (specifier, asserted_module_type) = elem.0;
-        let specifier =
-          v8::String::new_from_one_byte(scope, specifier).unwrap();
+        let specifier = v8::String::new_from_one_byte(
+          scope,
+          specifier.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
         arr.set_index(scope, 0, specifier.into());
 
         let asserted_module_type =
@@ -1090,7 +1103,12 @@ impl ModuleMap {
 
         let symbolic_module: v8::Local<v8::Value> = match &elem.1 {
           SymbolicModule::Alias(alias) => {
-            let alias = v8::String::new_from_one_byte(scope, alias).unwrap();
+            let alias = v8::String::new_from_one_byte(
+              scope,
+              alias.as_bytes(),
+              v8::NewStringType::Normal,
+            )
+            .unwrap();
             alias.into()
           }
           SymbolicModule::Mod(id) => {
