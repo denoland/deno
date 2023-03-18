@@ -6,7 +6,7 @@ const internals = globalThis.__bootstrap.internals;
 import { setExitHandler } from "ext:runtime/30_os.js";
 import { Console } from "ext:deno_console/02_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { assert } from "ext:deno_web/00_infra.js";
+import { assert, AssertionError } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayFrom,
@@ -142,7 +142,8 @@ function assertOps(fn) {
     const pre = core.metrics();
     const preTraces = new Map(core.opCallTraces);
     try {
-      await fn(desc);
+      const innerResult = await fn(desc);
+      if (innerResult) return innerResult;
     } finally {
       // Defer until next event loop turn - that way timeouts and intervals
       // cleared can actually be removed from resource table, otherwise
@@ -158,7 +159,7 @@ function assertOps(fn) {
     const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
     const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
 
-    if (dispatchedDiff === completedDiff) return;
+    if (dispatchedDiff === completedDiff) return null;
 
     const details = [];
     for (const key in post.ops) {
@@ -224,7 +225,9 @@ function assertOps(fn) {
       msg += "\n";
     }
 
-    throw assert(false, msg);
+    return {
+      failed: { jsError: core.destructureError(new AssertionError(msg)) },
+    };
   };
 }
 
@@ -369,7 +372,8 @@ function assertResources(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function resourceSanitizer(desc) {
     const pre = core.resources();
-    await fn(desc);
+    const innerResult = await fn(desc);
+    if (innerResult) return innerResult;
     const post = core.resources();
 
     const allResources = new Set([
@@ -397,13 +401,19 @@ function assertResources(fn) {
       }
     }
 
+    if (details.length == 0) {
+      return null;
+    }
+
     const message = `Test case is leaking ${details.length} resource${
       details.length === 1 ? "" : "s"
     }:
 
  - ${details.join("\n - ")}
 `;
-    assert(details.length === 0, message);
+    return {
+      failed: { jsError: core.destructureError(new AssertionError(message)) },
+    };
   };
 }
 
@@ -421,7 +431,8 @@ function assertExit(fn, isTest) {
     });
 
     try {
-      await fn(...new SafeArrayIterator(params));
+      const innerResult = await fn(...new SafeArrayIterator(params));
+      if (innerResult) return innerResult;
     } finally {
       setExitHandler(null);
     }
@@ -431,13 +442,21 @@ function assertExit(fn, isTest) {
 function assertTestStepScopes(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function testStepSanitizer(desc) {
-    preValidation();
+    try {
+      preValidation();
+    } catch (error) {
+      return { failed: { jsError: core.destructureError(error) } };
+    }
     // only report waiting after pre-validation
     if ("parent" in desc) {
       ops.op_dispatch_test_event({ stepWait: desc.id });
     }
     await fn(MapPrototypeGet(testStates, desc.id).context);
-    testStepPostValidation(desc);
+    try {
+      testStepPostValidation(desc);
+    } catch (error) {
+      return { failed: { jsError: core.destructureError(error) } };
+    }
 
     function preValidation() {
       const runningStepDescs = getRunningStepDescs();
@@ -810,7 +829,8 @@ async function runTest(desc) {
   }
 
   try {
-    await desc.fn(desc);
+    const result = await desc.fn(desc);
+    if (result) return result;
     const failedSteps = failedChildStepsCount(desc);
     return failedSteps === 0 ? "ok" : { failed: { failedSteps } };
   } catch (error) {
@@ -1261,9 +1281,11 @@ function createTestContext(desc) {
       const start = DateNow();
 
       try {
-        await testFn(stepDesc);
+        const result = await testFn(stepDesc);
         const failedSteps = failedChildStepsCount(stepDesc);
-        if (failedSteps > 0) {
+        if (result) {
+          state.result = result;
+        } else if (failedSteps > 0) {
           state.result = { failed: { failedSteps } };
         } else {
           state.result = "ok";
