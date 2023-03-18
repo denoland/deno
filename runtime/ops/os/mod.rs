@@ -61,6 +61,9 @@ deno_core::extension!(
     "op_set_exit_code" => noop_op::decl(),
     _ => op,
   },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  }
 );
 
 #[op]
