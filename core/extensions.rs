@@ -211,13 +211,12 @@ macro_rules! extension {
       fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
-          let v = vec![
-          $(
-            $( #[ $m ] )*
-            $( $op )::+ :: decl $( :: <$op_param> )? ()
-          ),+
-          ];
-          ext.ops(v);
+          ext.ops(vec![
+            $(
+              $( #[ $m ] )*
+              $( $op )::+ :: decl $( :: <$op_param> )? ()
+            ),+
+          ]);
         )?
 
         // Otherwise use the ops_fn, if provided
@@ -228,14 +227,7 @@ macro_rules! extension {
       #[inline(always)]
       #[allow(unused_variables)]
       fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
-        #[allow(unused_variables)]
-        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? );
-
-        $(
-          ext.state(move |state: &mut $crate::OpState| {
-            config.call_callback(state, $state_fn)
-          });
-        )?
+        $crate::extension!(! __config__ ext $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? $( state_fn = $state_fn )? );
 
         $(
           ext.event_loop_middleware($event_loop_middleware_fn);
@@ -285,50 +277,27 @@ macro_rules! extension {
   };
 
   // This branch of the macro generates a config object that calls the state function with itself.
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } ) => {
+  (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } $( state_fn = $state_fn:expr )? ) => {
     {
       #[doc(hidden)]
       struct Config $( <  $( $param : $type + 'static ),+ > )? {
         $( pub $options_id : $options_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
-
-      impl $( <  $( $param : $type + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
-        /// Call a function of |state, cfg| using this configuration structure.
-        #[allow(dead_code)]
-        #[doc(hidden)]
-        #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState, Self)>(self, state: &mut $crate::OpState, f: F) {
-          f(state, self)
-        }
-      }
-
-      Config {
+      let config = Config {
         $( $options_id , )*
         $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
-      }
+      };
+
+      let state_fn: fn(&mut $crate::OpState, Config $( <  $( $param ),+ > )? ) = $(  $state_fn  )?;
+      $ext.state(move |state: &mut $crate::OpState| {
+        state_fn(state, config);
+      });
     }
   };
 
-  // This branch of the macro generates an empty config object that doesn't actually make any callbacks on the state function.
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? ) => {
-    {
-      #[doc(hidden)]
-      struct Config {
-      }
-
-      impl Config {
-        /// Call a function of |state| using the fields of this configuration structure.
-        #[allow(dead_code)]
-        #[doc(hidden)]
-        #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState)>(self, state: &mut $crate::OpState, f: F) {
-          f(state)
-        }
-      }
-
-      Config {}
-    }
+  (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? $( state_fn = $state_fn:expr )? ) => {
+    $(  $ext.state($state_fn);  )?
   };
 
   (! __ops__ $ext:ident __eot__) => {
