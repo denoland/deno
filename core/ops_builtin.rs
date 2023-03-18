@@ -1,13 +1,11 @@
-use crate::ExtensionBuilder;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
 use crate::error::type_error;
-use crate::include_js_files;
 use crate::io::BufMutView;
 use crate::io::BufView;
+use crate::ops_builtin_v8;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
-use crate::Extension;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
@@ -19,49 +17,62 @@ use std::io::stdout;
 use std::io::Write;
 use std::rc::Rc;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder("core")
-}
-
-fn ops(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  let mut ops = vec![
-    op_close::decl(),
-    op_try_close::decl(),
-    op_print::decl(),
-    op_resources::decl(),
-    op_wasm_streaming_feed::decl(),
-    op_wasm_streaming_set_url::decl(),
-    op_void_sync::decl(),
-    op_void_async::decl(),
-    op_add::decl(),
-    // // TODO(@AaronO): track IO metrics for builtin streams
-    op_read::decl(),
-    op_read_all::decl(),
-    op_write::decl(),
-    op_write_all::decl(),
-    op_shutdown::decl(),
-    op_metrics::decl(),
-    op_format_file_name::decl(),
-    op_is_proxy::decl(),
-    op_str_byte_length::decl(),
-  ];
-  ops.extend(crate::ops_builtin_v8::init_builtins_v8());
-  ext.ops(ops)
-}
-
-pub(crate) fn init_builtin_ops_and_esm() -> Extension {
-  ops(&mut ext())
-    .js(include_js_files!(
-      "00_primordials.js",
-      "01_core.js",
-      "02_error.js",
-    ))
-    .build()
-}
-
-pub(crate) fn init_builtin_ops() -> Extension {
-  ops(&mut ext()).build()
-}
+crate::extension!(
+  core,
+  ops = [
+    op_close,
+    op_try_close,
+    op_print,
+    op_resources,
+    op_wasm_streaming_feed,
+    op_wasm_streaming_set_url,
+    op_void_sync,
+    op_void_async,
+    op_add,
+    // TODO(@AaronO): track IO metrics for builtin streams
+    op_read,
+    op_read_all,
+    op_write,
+    op_write_all,
+    op_shutdown,
+    op_metrics,
+    op_format_file_name,
+    op_is_proxy,
+    op_str_byte_length,
+    ops_builtin_v8::op_ref_op,
+    ops_builtin_v8::op_unref_op,
+    ops_builtin_v8::op_set_macrotask_callback,
+    ops_builtin_v8::op_set_next_tick_callback,
+    ops_builtin_v8::op_set_promise_reject_callback,
+    ops_builtin_v8::op_run_microtasks,
+    ops_builtin_v8::op_has_tick_scheduled,
+    ops_builtin_v8::op_set_has_tick_scheduled,
+    ops_builtin_v8::op_eval_context,
+    ops_builtin_v8::op_queue_microtask,
+    ops_builtin_v8::op_create_host_object,
+    ops_builtin_v8::op_encode,
+    ops_builtin_v8::op_decode,
+    ops_builtin_v8::op_serialize,
+    ops_builtin_v8::op_deserialize,
+    ops_builtin_v8::op_set_promise_hooks,
+    ops_builtin_v8::op_get_promise_details,
+    ops_builtin_v8::op_get_proxy_details,
+    ops_builtin_v8::op_memory_usage,
+    ops_builtin_v8::op_set_wasm_streaming_callback,
+    ops_builtin_v8::op_abort_wasm_streaming,
+    ops_builtin_v8::op_destructure_error,
+    ops_builtin_v8::op_dispatch_exception,
+    ops_builtin_v8::op_op_names,
+    ops_builtin_v8::op_apply_source_map,
+    ops_builtin_v8::op_set_format_exception_callback,
+    ops_builtin_v8::op_event_loop_has_more_work,
+    ops_builtin_v8::op_store_pending_promise_rejection,
+    ops_builtin_v8::op_remove_pending_promise_rejection,
+    ops_builtin_v8::op_has_pending_promise_rejection,
+    ops_builtin_v8::op_arraybuffer_was_detached,
+  ],
+  js = ["00_primordials.js", "01_core.js", "02_error.js"],
+);
 
 /// Return map of resources with id as key
 /// and string representation as value.
