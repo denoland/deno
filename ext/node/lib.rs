@@ -1,11 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
@@ -96,41 +93,32 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
-fn ext_polyfill() -> ExtensionBuilder {
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_io", "deno_fs"])
-}
-
-fn ops_polyfill(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  ext.ops(vec![
-    crypto::op_node_cipheriv_encrypt::decl(),
-    crypto::op_node_cipheriv_final::decl(),
-    crypto::op_node_create_cipheriv::decl(),
-    crypto::op_node_create_hash::decl(),
-    crypto::op_node_hash_update::decl(),
-    crypto::op_node_hash_update_str::decl(),
-    crypto::op_node_hash_digest::decl(),
-    crypto::op_node_hash_digest_hex::decl(),
-    crypto::op_node_hash_clone::decl(),
-    crypto::op_node_private_encrypt::decl(),
-    crypto::op_node_private_decrypt::decl(),
-    crypto::op_node_public_encrypt::decl(),
-    winerror::op_node_sys_to_uv_error::decl(),
-    v8::op_v8_cached_data_version_tag::decl(),
-    v8::op_v8_get_heap_statistics::decl(),
-    idna::op_node_idna_domain_to_ascii::decl(),
-    idna::op_node_idna_domain_to_unicode::decl(),
-    idna::op_node_idna_punycode_decode::decl(),
-    idna::op_node_idna_punycode_encode::decl(),
-    op_node_build_os::decl(),
-  ])
-}
-
-pub fn init_polyfill_ops() -> Extension {
-  ops_polyfill(&mut ext_polyfill()).build()
-}
-
-pub fn init_polyfill_ops_and_esm() -> Extension {
-  let esm_files = include_js_files!(
+deno_core::extension!(deno_node,
+  deps = [ deno_io, deno_fs ],
+  ops = [
+    crypto::op_node_cipheriv_encrypt,
+    crypto::op_node_cipheriv_final,
+    crypto::op_node_create_cipheriv,
+    crypto::op_node_create_hash,
+    crypto::op_node_hash_update,
+    crypto::op_node_hash_update_str,
+    crypto::op_node_hash_digest,
+    crypto::op_node_hash_digest_hex,
+    crypto::op_node_hash_clone,
+    crypto::op_node_private_encrypt,
+    crypto::op_node_private_decrypt,
+    crypto::op_node_public_encrypt,
+    winerror::op_node_sys_to_uv_error,
+    v8::op_v8_cached_data_version_tag,
+    v8::op_v8_get_heap_statistics,
+    idna::op_node_idna_domain_to_ascii,
+    idna::op_node_idna_domain_to_unicode,
+    idna::op_node_idna_punycode_decode,
+    idna::op_node_idna_punycode_encode,
+    op_node_build_os,
+  ],
+  esm_entry_point = "ext:deno_node/module_all.ts",
+  esm = [
     dir "polyfills",
     "_core.ts",
     "_events.mjs",
@@ -352,71 +340,45 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "wasi.ts",
     "worker_threads.ts",
     "zlib.ts",
-  );
+  ],
+);
 
-  ops_polyfill(&mut ext_polyfill())
-    .esm(esm_files)
-    .esm_entry_point("ext:deno_node/module_all.ts")
-    .build()
-}
-
-fn ext() -> ExtensionBuilder {
-  Extension::builder("deno_node_loading")
-}
-
-fn ops<P: NodePermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      ops::op_require_init_paths::decl(),
-      ops::op_require_node_module_paths::decl::<P>(),
-      ops::op_require_proxy_path::decl(),
-      ops::op_require_is_deno_dir_package::decl(),
-      ops::op_require_resolve_deno_dir::decl(),
-      ops::op_require_is_request_relative::decl(),
-      ops::op_require_resolve_lookup_paths::decl(),
-      ops::op_require_try_self_parent_path::decl::<P>(),
-      ops::op_require_try_self::decl::<P>(),
-      ops::op_require_real_path::decl::<P>(),
-      ops::op_require_path_is_absolute::decl(),
-      ops::op_require_path_dirname::decl(),
-      ops::op_require_stat::decl::<P>(),
-      ops::op_require_path_resolve::decl(),
-      ops::op_require_path_basename::decl(),
-      ops::op_require_read_file::decl::<P>(),
-      ops::op_require_as_file_path::decl(),
-      ops::op_require_resolve_exports::decl::<P>(),
-      ops::op_require_read_closest_package_json::decl::<P>(),
-      ops::op_require_read_package_scope::decl::<P>(),
-      ops::op_require_package_imports_resolve::decl::<P>(),
-      ops::op_require_break_on_next_statement::decl(),
-    ])
-    .state(move |state| {
-      if let Some(npm_resolver) = maybe_npm_resolver.clone() {
-        state.put(npm_resolver);
-      }
-    })
-}
-
-pub fn init_ops_and_esm<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  ops::<P>(&mut ext(), maybe_npm_resolver)
-    .esm(include_js_files!(
-      "01_node.js",
-      "02_require.js",
-      "module_es_shim.js",
-    ))
-    .build()
-}
-
-pub fn init_ops<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  ops::<P>(&mut ext(), maybe_npm_resolver).build()
-}
+deno_core::extension!(deno_node_loading,
+  parameters = [P: NodePermissions],
+  ops = [
+    ops::op_require_init_paths,
+    ops::op_require_node_module_paths<P>,
+    ops::op_require_proxy_path,
+    ops::op_require_is_deno_dir_package,
+    ops::op_require_resolve_deno_dir,
+    ops::op_require_is_request_relative,
+    ops::op_require_resolve_lookup_paths,
+    ops::op_require_try_self_parent_path<P>,
+    ops::op_require_try_self<P>,
+    ops::op_require_real_path<P>,
+    ops::op_require_path_is_absolute,
+    ops::op_require_path_dirname,
+    ops::op_require_stat<P>,
+    ops::op_require_path_resolve,
+    ops::op_require_path_basename,
+    ops::op_require_read_file<P>,
+    ops::op_require_as_file_path,
+    ops::op_require_resolve_exports<P>,
+    ops::op_require_read_closest_package_json<P>,
+    ops::op_require_read_package_scope<P>,
+    ops::op_require_package_imports_resolve<P>,
+    ops::op_require_break_on_next_statement,
+  ],
+  esm = ["01_node.js", "02_require.js", "module_es_shim.js"],
+  options = {
+    maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  },
+  state = |state, options| {
+    if let Some(npm_resolver) = options.maybe_npm_resolver {
+      state.put(npm_resolver);
+    }
+  },
+);
 
 pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,

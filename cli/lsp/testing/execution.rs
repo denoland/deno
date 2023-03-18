@@ -165,7 +165,11 @@ async fn test_specifier(
       &ps,
       specifier.clone(),
       PermissionsContainer::new(permissions),
-      vec![ops::testing::init(sender, fail_fast_tracker, filter)],
+      vec![ops::testing::deno_test::init_ops(
+        sender,
+        fail_fast_tracker,
+        filter,
+      )],
       Stdio {
         stdin: StdioPipe::Inherit,
         stdout,
