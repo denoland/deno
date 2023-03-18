@@ -80,55 +80,53 @@ deno_core::extension!(deno_io,
   deps = [ deno_web ],
   ops = [op_read_sync, op_write_sync],
   esm = [ "12_io.js" ],
-  config = {
-    stdio: Rc<RefCell<Option<Stdio>>>,
+  options = {
+    stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {
     "op_print" => op_print::decl(),
     _ => op,
   },
-  state = |state, stdio| {
-    let stdio = stdio
-      .borrow_mut()
-      .take()
-      .expect("Extension only supports being used once.");
-    let t = &mut state.resource_table;
+  state = |state, options| {
+    if let Some(stdio) = options.stdio {
+      let t = &mut state.resource_table;
 
-    let rid = t.add(StdFileResource::stdio(
-      match stdio.stdin {
-        StdioPipe::Inherit => StdFileResourceInner {
-          kind: StdFileResourceKind::Stdin,
-          file: STDIN_HANDLE.try_clone().unwrap(),
+      let rid = t.add(StdFileResource::stdio(
+        match stdio.stdin {
+          StdioPipe::Inherit => StdFileResourceInner {
+            kind: StdFileResourceKind::Stdin,
+            file: STDIN_HANDLE.try_clone().unwrap(),
+          },
+          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
-        StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
-      },
-      "stdin",
-    ));
-    assert_eq!(rid, 0, "stdin must have ResourceId 0");
+        "stdin",
+      ));
+      assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
-    let rid = t.add(StdFileResource::stdio(
-      match stdio.stdout {
-        StdioPipe::Inherit => StdFileResourceInner {
-          kind: StdFileResourceKind::Stdout,
-          file: STDOUT_HANDLE.try_clone().unwrap(),
+      let rid = t.add(StdFileResource::stdio(
+        match stdio.stdout {
+          StdioPipe::Inherit => StdFileResourceInner {
+            kind: StdFileResourceKind::Stdout,
+            file: STDOUT_HANDLE.try_clone().unwrap(),
+          },
+          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
-        StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
-      },
-      "stdout",
-    ));
-    assert_eq!(rid, 1, "stdout must have ResourceId 1");
+        "stdout",
+      ));
+      assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
-    let rid = t.add(StdFileResource::stdio(
-      match stdio.stderr {
-        StdioPipe::Inherit => StdFileResourceInner {
-          kind: StdFileResourceKind::Stderr,
-          file: STDERR_HANDLE.try_clone().unwrap(),
+      let rid = t.add(StdFileResource::stdio(
+        match stdio.stderr {
+          StdioPipe::Inherit => StdFileResourceInner {
+            kind: StdFileResourceKind::Stderr,
+            file: STDERR_HANDLE.try_clone().unwrap(),
+          },
+          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
-        StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
-      },
-      "stderr",
-    ));
-    assert_eq!(rid, 2, "stderr must have ResourceId 2");
+        "stderr",
+      ));
+      assert_eq!(rid, 2, "stderr must have ResourceId 2");
+    }
   },
 );
 
