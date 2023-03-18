@@ -53,6 +53,7 @@ pub struct OpDecl {
   pub is_unstable: bool,
   pub is_v8: bool,
   pub fast_fn: Option<Box<dyn FastFunction>>,
+  pub force_registration: bool,
 }
 
 impl OpDecl {
@@ -211,13 +212,12 @@ macro_rules! extension {
       fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
-          let v = vec![
-          $(
-            $( #[ $m ] )*
-            $( $op )::+ :: decl $( :: <$op_param> )? ()
-          ),+
-          ];
-          ext.ops(v);
+          ext.ops(vec![
+            $(
+              $( #[ $m ] )*
+              $( $op )::+ :: decl $( :: <$op_param> )? ()
+            ),+
+          ]);
         )?
 
         // Otherwise use the ops_fn, if provided
@@ -228,14 +228,7 @@ macro_rules! extension {
       #[inline(always)]
       #[allow(unused_variables)]
       fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
-        #[allow(unused_variables)]
-        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? );
-
-        $(
-          ext.state(move |state: &mut $crate::OpState| {
-            config.call_callback(state, $state_fn)
-          });
-        )?
+        $crate::extension!(! __config__ ext $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? $( state_fn = $state_fn )? );
 
         $(
           ext.event_loop_middleware($event_loop_middleware_fn);
@@ -248,6 +241,7 @@ macro_rules! extension {
 
       #[inline(always)]
       #[allow(unused_variables)]
+      #[allow(clippy::redundant_closure_call)]
       fn with_customizer(ext: &mut $crate::ExtensionBuilder) {
         $( ($customizer_fn)(ext); )?
       }
@@ -285,50 +279,27 @@ macro_rules! extension {
   };
 
   // This branch of the macro generates a config object that calls the state function with itself.
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } ) => {
+  (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } $( state_fn = $state_fn:expr )? ) => {
     {
       #[doc(hidden)]
       struct Config $( <  $( $param : $type + 'static ),+ > )? {
         $( pub $options_id : $options_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
-
-      impl $( <  $( $param : $type + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
-        /// Call a function of |state, cfg| using this configuration structure.
-        #[allow(dead_code)]
-        #[doc(hidden)]
-        #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState, Self)>(self, state: &mut $crate::OpState, f: F) {
-          f(state, self)
-        }
-      }
-
-      Config {
+      let config = Config {
         $( $options_id , )*
         $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
-      }
+      };
+
+      let state_fn: fn(&mut $crate::OpState, Config $( <  $( $param ),+ > )? ) = $(  $state_fn  )?;
+      $ext.state(move |state: &mut $crate::OpState| {
+        state_fn(state, config);
+      });
     }
   };
 
-  // This branch of the macro generates an empty config object that doesn't actually make any callbacks on the state function.
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? ) => {
-    {
-      #[doc(hidden)]
-      struct Config {
-      }
-
-      impl Config {
-        /// Call a function of |state| using the fields of this configuration structure.
-        #[allow(dead_code)]
-        #[doc(hidden)]
-        #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState)>(self, state: &mut $crate::OpState, f: F) {
-          f(state)
-        }
-      }
-
-      Config {}
-    }
+  (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? $( state_fn = $state_fn:expr )? ) => {
+    $(  $ext.state($state_fn);  )?
   };
 
   (! __ops__ $ext:ident __eot__) => {
@@ -356,6 +327,7 @@ pub struct Extension {
   enabled: bool,
   name: &'static str,
   deps: Option<&'static [&'static str]>,
+  force_op_registration: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -425,6 +397,7 @@ impl Extension {
     let mut ops = self.ops.take()?;
     for op in ops.iter_mut() {
       op.enabled = self.enabled && op.enabled;
+      op.force_registration = self.force_op_registration;
     }
     Some(ops)
   }
@@ -478,6 +451,7 @@ pub struct ExtensionBuilder {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   name: &'static str,
   deps: &'static [&'static str],
+  force_op_registration: bool,
 }
 
 impl ExtensionBuilder {
@@ -542,6 +516,15 @@ impl ExtensionBuilder {
     self
   }
 
+  /// Mark that ops from this extension should be added to `Deno.core.ops`
+  /// unconditionally. This is useful is some ops are not available
+  /// during snapshotting, as ops are not registered by default when a
+  /// `JsRuntime` is created with an existing snapshot.
+  pub fn force_op_registration(&mut self) -> &mut Self {
+    self.force_op_registration = true;
+    self
+  }
+
   /// Consume the [`ExtensionBuilder`] and return an [`Extension`].
   pub fn take(self) -> Extension {
     let js_files = Some(self.js);
@@ -559,6 +542,7 @@ impl ExtensionBuilder {
       initialized: false,
       enabled: true,
       name: self.name,
+      force_op_registration: self.force_op_registration,
       deps,
     }
   }
@@ -580,6 +564,7 @@ impl ExtensionBuilder {
       enabled: true,
       name: self.name,
       deps,
+      force_op_registration: self.force_op_registration,
     }
   }
 }
