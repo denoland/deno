@@ -6,6 +6,7 @@ use crate::extensions::ExtensionFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::snapshot_util::SnapshottedData;
 use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
@@ -301,7 +302,7 @@ impl ModuleLoader for NoopModuleLoader {
 }
 
 /// Helper function, that calls into `loader.resolve()`, but denies resolution
-/// of `internal` scheme if we are running with a snapshot loaded and not
+/// of `ext` scheme if we are running with a snapshot loaded and not
 /// creating a snapshot
 pub(crate) fn resolve_helper(
   snapshot_loaded_and_not_snapshotting: bool,
@@ -310,52 +311,82 @@ pub(crate) fn resolve_helper(
   referrer: &str,
   kind: ResolutionKind,
 ) -> Result<ModuleSpecifier, Error> {
-  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("internal:")
-  {
+  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("ext:") {
     return Err(generic_error(
-      "Cannot load internal module from external code",
+      "Cannot load extension module from external code",
     ));
   }
 
   loader.resolve(specifier, referrer, kind)
 }
 
-/// Function that can be passed to the `InternalModuleLoader` that allows to
+/// Function that can be passed to the `ExtModuleLoader` that allows to
 /// transpile sources before passing to V8.
-pub type InternalModuleLoaderCb =
+pub type ExtModuleLoaderCb =
   Box<dyn Fn(&ExtensionFileSource) -> Result<String, Error>>;
 
-pub struct InternalModuleLoader {
+pub struct ExtModuleLoader {
   module_loader: Rc<dyn ModuleLoader>,
   esm_sources: Vec<ExtensionFileSource>,
-  maybe_load_callback: Option<InternalModuleLoaderCb>,
+  used_esm_sources: RefCell<HashMap<String, bool>>,
+  maybe_load_callback: Option<ExtModuleLoaderCb>,
 }
 
-impl Default for InternalModuleLoader {
+impl Default for ExtModuleLoader {
   fn default() -> Self {
     Self {
       module_loader: Rc::new(NoopModuleLoader),
       esm_sources: vec![],
+      used_esm_sources: RefCell::new(HashMap::default()),
       maybe_load_callback: None,
     }
   }
 }
 
-impl InternalModuleLoader {
+impl ExtModuleLoader {
   pub fn new(
     module_loader: Option<Rc<dyn ModuleLoader>>,
     esm_sources: Vec<ExtensionFileSource>,
-    maybe_load_callback: Option<InternalModuleLoaderCb>,
+    maybe_load_callback: Option<ExtModuleLoaderCb>,
   ) -> Self {
-    InternalModuleLoader {
+    let used_esm_sources: HashMap<String, bool> = esm_sources
+      .iter()
+      .map(|file_source| (file_source.specifier.to_string(), false))
+      .collect();
+
+    ExtModuleLoader {
       module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
       esm_sources,
+      used_esm_sources: RefCell::new(used_esm_sources),
       maybe_load_callback,
     }
   }
 }
 
-impl ModuleLoader for InternalModuleLoader {
+impl Drop for ExtModuleLoader {
+  fn drop(&mut self) {
+    let used_esm_sources = self.used_esm_sources.get_mut();
+    let unused_modules: Vec<_> = used_esm_sources
+      .iter()
+      .filter(|(_s, v)| !*v)
+      .map(|(s, _)| s)
+      .collect();
+
+    if !unused_modules.is_empty() {
+      let mut msg =
+        "Following modules were passed to ExtModuleLoader but never used:\n"
+          .to_string();
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m);
+        msg.push('\n');
+      }
+      panic!("{}", msg);
+    }
+  }
+}
+
+impl ModuleLoader for ExtModuleLoader {
   fn resolve(
     &self,
     specifier: &str,
@@ -363,14 +394,13 @@ impl ModuleLoader for InternalModuleLoader {
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
     if let Ok(url_specifier) = ModuleSpecifier::parse(specifier) {
-      if url_specifier.scheme() == "internal" {
+      if url_specifier.scheme() == "ext" {
         let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
-        if referrer == "." || referrer_specifier.unwrap().scheme() == "internal"
-        {
+        if referrer == "." || referrer_specifier.unwrap().scheme() == "ext" {
           return Ok(url_specifier);
         } else {
           return Err(generic_error(
-            "Cannot load internal module from external code",
+            "Cannot load extension module from external code",
           ));
         };
       }
@@ -385,7 +415,7 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    if module_specifier.scheme() != "internal" {
+    if module_specifier.scheme() != "ext" {
       return self.module_loader.load(
         module_specifier,
         maybe_referrer,
@@ -400,6 +430,12 @@ impl ModuleLoader for InternalModuleLoader {
       .find(|file_source| file_source.specifier == module_specifier.as_str());
 
     if let Some(file_source) = maybe_file_source {
+      {
+        let mut used_esm_sources = self.used_esm_sources.borrow_mut();
+        let used = used_esm_sources.get_mut(&file_source.specifier).unwrap();
+        *used = true;
+      }
+
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
@@ -424,7 +460,7 @@ impl ModuleLoader for InternalModuleLoader {
 
     async move {
       Err(generic_error(format!(
-        "Cannot find internal module source for specifier {specifier}"
+        "Cannot find extension module source for specifier {specifier}"
       )))
     }
     .boxed_local()
@@ -437,7 +473,7 @@ impl ModuleLoader for InternalModuleLoader {
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
-    if module_specifier.scheme() == "internal" {
+    if module_specifier.scheme() == "ext" {
       return async { Ok(()) }.boxed_local();
     }
 
@@ -995,7 +1031,7 @@ impl ModuleMap {
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> (v8::Global<v8::Array>, Vec<v8::Global<v8::Module>>) {
+  ) -> SnapshottedData {
     let array = v8::Array::new(scope, 3);
 
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
@@ -1070,16 +1106,19 @@ impl ModuleMap {
     let array_global = v8::Global::new(scope, array);
 
     let handles = self.handles.clone();
-    (array_global, handles)
+    SnapshottedData {
+      module_map_data: array_global,
+      module_handles: handles,
+    }
   }
 
-  pub fn update_with_snapshot_data(
+  pub fn update_with_snapshotted_data(
     &mut self,
     scope: &mut v8::HandleScope,
-    data: v8::Global<v8::Array>,
-    module_handles: Vec<v8::Global<v8::Module>>,
+    snapshotted_data: SnapshottedData,
   ) {
-    let local_data: v8::Local<v8::Array> = v8::Local::new(scope, data);
+    let local_data: v8::Local<v8::Array> =
+      v8::Local::new(scope, snapshotted_data.module_map_data);
 
     {
       let next_load_id = local_data.get_index(scope, 0).unwrap();
@@ -1094,7 +1133,8 @@ impl ModuleMap {
 
       let info_arr: v8::Local<v8::Array> = info_val.try_into().unwrap();
       let len = info_arr.length() as usize;
-      let mut info = Vec::with_capacity(len);
+      // Over allocate so executing a few scripts doesn't have to resize this vec.
+      let mut info = Vec::with_capacity(len + 16);
 
       for i in 0..len {
         let module_info_arr: v8::Local<v8::Array> = info_arr
@@ -1222,7 +1262,7 @@ impl ModuleMap {
       self.by_name = by_name;
     }
 
-    self.handles = module_handles;
+    self.handles = snapshotted_data.module_handles;
   }
 
   pub(crate) fn new(
@@ -1609,7 +1649,6 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::Extension;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use crate::Snapshot;
@@ -1950,12 +1989,10 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder("test_ext")
-      .ops(vec![op_test::decl()])
-      .build();
+    deno_core::extension!(test_ext, ops = [op_test]);
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![ext],
+      extensions: vec![test_ext::init_ops()],
       module_loader: Some(loader),
       ..Default::default()
     });
@@ -2874,17 +2911,17 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
   }
 
   #[test]
-  fn internal_module_loader() {
-    let loader = InternalModuleLoader::default();
+  fn ext_module_loader() {
+    let loader = ExtModuleLoader::default();
     assert!(loader
-      .resolve("internal:foo", "internal:bar", ResolutionKind::Import)
+      .resolve("ext:foo", "ext:bar", ResolutionKind::Import)
       .is_ok());
     assert_eq!(
       loader
-        .resolve("internal:foo", "file://bar", ResolutionKind::Import)
+        .resolve("ext:foo", "file://bar", ResolutionKind::Import)
         .err()
         .map(|e| e.to_string()),
-      Some("Cannot load internal module from external code".to_string())
+      Some("Cannot load extension module from external code".to_string())
     );
     assert_eq!(
       loader
@@ -2898,11 +2935,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     );
     assert_eq!(
       loader
-        .resolve("file://foo", "internal:bar", ResolutionKind::Import)
+        .resolve("file://foo", "ext:bar", ResolutionKind::Import)
         .err()
         .map(|e| e.to_string()),
       Some(
-        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"internal:bar\""
+        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"ext:bar\""
         .to_string()
       )
     );
@@ -2910,13 +2947,13 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       resolve_helper(
         true,
         Rc::new(loader),
-        "internal:core.js",
+        "ext:core.js",
         "file://bar",
         ResolutionKind::Import,
       )
       .err()
       .map(|e| e.to_string()),
-      Some("Cannot load internal module from external code".to_string())
+      Some("Cannot load extension module from external code".to_string())
     );
   }
 }

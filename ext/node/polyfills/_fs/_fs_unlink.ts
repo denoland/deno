@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { promisify } from "internal:deno_node/internal/util.mjs";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function unlink(path: string | URL, callback: (err?: Error) => void) {
   if (!callback) throw new Error("No callback function supplied");

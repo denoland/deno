@@ -441,7 +441,7 @@ async fn bench_specifier(
     &ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::bench::init(channel, filter)],
+    vec![ops::bench::deno_bench::init_ops(channel, filter)],
     Default::default(),
   )
   .await?;
@@ -691,9 +691,10 @@ pub async fn run_benchmarks_with_watch(
         );
 
         if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-          }) {
+          for path in changed
+            .iter()
+            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+          {
             if modules.contains(&path) {
               modules_to_reload.push(specifier);
               break;

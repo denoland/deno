@@ -11,22 +11,22 @@ const {
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { URL } from "internal:deno_url/00_url.js";
-import { getLocationHref } from "internal:deno_web/12_location.js";
-import { serializePermissions } from "internal:runtime/10_permissions.js";
-import { log } from "internal:runtime/06_util.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { URL } from "ext:deno_url/00_url.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
+import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { log } from "ext:runtime/06_util.js";
 import {
   defineEventHandler,
   ErrorEvent,
   EventTarget,
   MessageEvent,
-} from "internal:deno_web/02_event.js";
+} from "ext:deno_web/02_event.js";
 import {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "internal:deno_web/13_message_port.js";
+} from "ext:deno_web/13_message_port.js";
 
 function createWorker(
   specifier,

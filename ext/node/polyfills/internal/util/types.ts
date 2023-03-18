@@ -21,11 +21,11 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import * as bindingTypes from "internal:deno_node/internal_binding/types.ts";
+import * as bindingTypes from "ext:deno_node/internal_binding/types.ts";
 export {
   isCryptoKey,
   isKeyObject,
-} from "internal:deno_node/internal/crypto/_keys.ts";
+} from "ext:deno_node/internal/crypto/_keys.ts";
 
 // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
 const _getTypedArrayToStringTag = Object.getOwnPropertyDescriptor(

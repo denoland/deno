@@ -14,11 +14,11 @@ import {
   WritableStream,
   WritableStreamDefaultController,
   WritableStreamDefaultWriter,
-} from "internal:deno_web/06_streams.js";
+} from "ext:deno_web/06_streams.js";
 import {
   TextDecoderStream,
   TextEncoderStream,
-} from "internal:deno_web/08_text_encoding.js";
+} from "ext:deno_web/08_text_encoding.js";
 
 export {
   ByteLengthQueuingStrategy,

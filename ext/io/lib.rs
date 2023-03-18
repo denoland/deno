@@ -2,7 +2,6 @@
 
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncMutFuture;
@@ -12,7 +11,6 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -78,23 +76,19 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
 });
 
-pub fn init(stdio: Stdio) -> Extension {
-  // todo(dsheret): don't do this? Taking out the writers was necessary to prevent invalid handle panics
-  let stdio = Rc::new(RefCell::new(Some(stdio)));
-
-  Extension::builder("deno_io")
-    .ops(vec![op_read_sync::decl(), op_write_sync::decl()])
-    .dependencies(vec!["deno_web"])
-    .esm(include_js_files!("12_io.js",))
-    .middleware(|op| match op.name {
-      "op_print" => op_print::decl(),
-      _ => op,
-    })
-    .state(move |state| {
-      let stdio = stdio
-        .borrow_mut()
-        .take()
-        .expect("Extension only supports being used once.");
+deno_core::extension!(deno_io,
+  deps = [ deno_web ],
+  ops = [op_read_sync, op_write_sync],
+  esm = [ "12_io.js" ],
+  options = {
+    stdio: Option<Stdio>,
+  },
+  middleware = |op| match op.name {
+    "op_print" => op_print::decl(),
+    _ => op,
+  },
+  state = |state, options| {
+    if let Some(stdio) = options.stdio {
       let t = &mut state.resource_table;
 
       let rid = t.add(StdFileResource::stdio(
@@ -132,10 +126,9 @@ pub fn init(stdio: Stdio) -> Extension {
         "stderr",
       ));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
-      Ok(())
-    })
-    .build()
-}
+    }
+  },
+);
 
 pub enum StdioPipe {
   Inherit,

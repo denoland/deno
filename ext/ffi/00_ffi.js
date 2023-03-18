@@ -2,7 +2,6 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
@@ -28,6 +27,7 @@ const {
   SymbolFor,
   WeakMap,
 } = primordials;
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
@@ -542,9 +542,6 @@ class DynamicLibrary {
 }
 
 function dlopen(path, symbols) {
-  // TODO(@crowlKats): remove me
-  // URL support is progressively enhanced by util in `runtime/js`.
-  const pathFromURL = internals.pathFromURL ?? ((p) => p);
   return new DynamicLibrary(pathFromURL(path), symbols);
 }
 

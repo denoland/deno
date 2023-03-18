@@ -4,10 +4,10 @@ pub const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 pub const TYPESCRIPT: &str = env!("TS_VERSION");
 
 pub fn deno() -> String {
-  let semver = env!("CARGO_PKG_VERSION");
-  option_env!("DENO_CANARY").map_or(semver.to_string(), |_| {
-    format!("{}+{}", semver, &GIT_COMMIT_HASH[..7])
-  })
+  let version = env!("CARGO_PKG_VERSION");
+  option_env!("DENO_CANARY")
+    .map(|_| format!("{}+{}", version, &GIT_COMMIT_HASH[..7]))
+    .unwrap_or_else(|| version.to_string())
 }
 
 pub fn is_canary() -> bool {

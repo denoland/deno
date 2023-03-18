@@ -1,29 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { type Deferred, deferred } from "internal:deno_node/_util/async.ts";
-import {
-  _normalizeArgs,
-  ListenOptions,
-  Socket,
-} from "internal:deno_node/net.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { ERR_SERVER_NOT_RUNNING } from "internal:deno_node/internal/errors.ts";
-import { EventEmitter } from "internal:deno_node/events.ts";
-import { nextTick } from "internal:deno_node/_next_tick.ts";
-import { validatePort } from "internal:deno_node/internal/validators.mjs";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
+import { _normalizeArgs, ListenOptions, Socket } from "ext:deno_node/net.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { validatePort } from "ext:deno_node/internal/validators.mjs";
 import {
   Readable as NodeReadable,
   Writable as NodeWritable,
-} from "internal:deno_node/stream.ts";
-import { OutgoingMessage } from "internal:deno_node/_http_outgoing.ts";
-import { Agent } from "internal:deno_node/_http_agent.mjs";
-import { chunkExpression as RE_TE_CHUNKED } from "internal:deno_node/_http_common.ts";
-import { urlToHttpOptions } from "internal:deno_node/internal/url.ts";
-import {
-  constants,
-  TCP,
-} from "internal:deno_node/internal_binding/tcp_wrap.ts";
+} from "ext:deno_node/stream.ts";
+import { OutgoingMessage } from "ext:deno_node/_http_outgoing.ts";
+import { Agent } from "ext:deno_node/_http_agent.mjs";
+import { chunkExpression as RE_TE_CHUNKED } from "ext:deno_node/_http_common.ts";
+import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
+import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */

@@ -1,28 +1,28 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "internal:deno_node/internal/util/types.ts";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/internal/util/types.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateString,
-} from "internal:deno_node/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/buffer.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   getDefaultEncoding,
   toBuf,
-} from "internal:deno_node/internal/crypto/util.ts";
+} from "ext:deno_node/internal/crypto/util.ts";
 import type {
   BinaryLike,
   BinaryToTextEncoding,
   ECDHKeyFormat,
-} from "internal:deno_node/internal/crypto/types.ts";
-import { KeyObject } from "internal:deno_node/internal/crypto/keys.ts";
-import type { BufferEncoding } from "internal:deno_node/_global.d.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
+import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 const DH_GENERATOR = 2;
 

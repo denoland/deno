@@ -1,14 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::check_unstable;
-use super::signal;
 use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -100,18 +98,20 @@ impl StdioOrRid {
   }
 }
 
-pub fn init_ops() -> Extension {
-  Extension::builder("deno_process")
-    .ops(vec![
-      op_spawn_child::decl(),
-      op_spawn_wait::decl(),
-      op_spawn_sync::decl(),
-      deprecated::op_run::decl(),
-      deprecated::op_run_status::decl(),
-      deprecated::op_kill::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_process,
+  ops = [
+    op_spawn_child,
+    op_spawn_wait,
+    op_spawn_sync,
+    deprecated::op_run,
+    deprecated::op_run_status,
+    deprecated::op_kill,
+  ],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 struct ChildResource(tokio::process::Child);
 
@@ -565,7 +565,7 @@ mod deprecated {
 
   #[cfg(unix)]
   pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
-    let signo = super::signal::signal_str_to_int(signal)?;
+    let signo = super::super::signal::signal_str_to_int(signal)?;
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
@@ -593,8 +593,8 @@ mod deprecated {
     } else if pid <= 0 {
       Err(type_error("Invalid pid"))
     } else {
-      // SAFETY: winapi call
       let handle =
+        // SAFETY: winapi call
         unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
 
       if handle.is_null() {

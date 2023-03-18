@@ -180,8 +180,14 @@ async function generateBundle(location: URL): Promise<string> {
   const doc = new DOMParser().parseFromString(body, "text/html");
   assert(doc, "document should have been parsed");
   const scripts = doc.getElementsByTagName("script");
+  const title = doc.getElementsByTagName("title")[0]?.childNodes[0].nodeValue;
   const scriptContents = [];
   let inlineScriptCount = 0;
+  if (title) {
+    const url = new URL(`#${inlineScriptCount}`, location);
+    inlineScriptCount++;
+    scriptContents.push([url.href, `globalThis.META_TITLE="${title}"`]);
+  }
   for (const script of scripts) {
     const src = script.getAttribute("src");
     if (src === "/resources/testharnessreport.js") {

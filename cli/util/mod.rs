@@ -12,6 +12,7 @@ pub mod logger;
 pub mod path;
 pub mod progress_bar;
 pub mod text_encoding;
+pub mod time;
 pub mod unix;
 pub mod v8;
 pub mod windows;

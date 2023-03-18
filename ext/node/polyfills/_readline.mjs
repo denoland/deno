@@ -27,13 +27,13 @@ import {
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "internal:deno_node/internal/readline/callbacks.mjs";
-import { emitKeypressEvents } from "internal:deno_node/internal/readline/emitKeypressEvents.mjs";
-import promises from "internal:deno_node/readline/promises.ts";
-import { validateAbortSignal } from "internal:deno_node/internal/validators.mjs";
-import { promisify } from "internal:deno_node/internal/util.mjs";
-import { AbortError } from "internal:deno_node/internal/errors.ts";
-import process from "internal:deno_node/process.ts";
+} from "ext:deno_node/internal/readline/callbacks.mjs";
+import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
+import promises from "ext:deno_node/readline/promises.ts";
+import { validateAbortSignal } from "ext:deno_node/internal/validators.mjs";
+import { promisify } from "ext:deno_node/internal/util.mjs";
+import { AbortError } from "ext:deno_node/internal/errors.ts";
+import process from "ext:deno_node/process.ts";
 
 import {
   Interface as _Interface,
@@ -71,7 +71,7 @@ import {
   kWordLeft,
   kWordRight,
   kWriteToOutput,
-} from "internal:deno_node/internal/readline/interface.mjs";
+} from "ext:deno_node/internal/readline/interface.mjs";
 
 function Interface(input, output, completer, terminal) {
   if (!(this instanceof Interface)) {

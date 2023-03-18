@@ -23,6 +23,7 @@ flate2.workspace = true
 futures.workspace = true
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
 lazy_static = "1.4.0"
+lsp-types.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true
