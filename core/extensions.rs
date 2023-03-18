@@ -37,7 +37,7 @@ impl ExtensionFileSourceCode {
 
 #[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
-  pub specifier: &'static str,
+  pub specifier: String,
   pub code: ExtensionFileSourceCode,
 }
 pub type OpFnRef = v8::FunctionCallback;
@@ -189,11 +189,11 @@ macro_rules! extension {
       #[allow(unused_variables)]
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
         $( ext.esm(
-          $crate::include_js_files!( $name $( dir $dir_esm , )? $( $esm , )* )
+          $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
         ); )?
         $(
           ext.esm(vec![ExtensionFileSource {
-            specifier: "ext:setup",
+            specifier: "ext:setup".to_string(),
             code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
           }]);
         )?
@@ -201,7 +201,7 @@ macro_rules! extension {
           ext.esm_entry_point($esm_entry_point);
         )?
         $( ext.js(
-          $crate::include_js_files!( $name $( dir $dir_js , )? $( $js , )* )
+          $crate::include_js_files!( $( dir $dir_js , )? $( $js , )* )
         ); )?
       }
 
@@ -451,11 +451,28 @@ pub struct ExtensionBuilder {
 
 impl ExtensionBuilder {
   pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
+    let js_files =
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
+      js_files.into_iter().map(|file_source| ExtensionFileSource {
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
+        code: file_source.code,
+      });
     self.js.extend(js_files);
     self
   }
 
   pub fn esm(&mut self, esm_files: Vec<ExtensionFileSource>) -> &mut Self {
+    let esm_files = esm_files
+      .into_iter()
+      // TODO(bartlomieju): if we're automatically remapping here, then we should
+      // use a different result struct that `ExtensionFileSource` as it's confusing
+      // when (and why) the remapping happens.
+      .map(|file_source| ExtensionFileSource {
+        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
+        code: file_source.code,
+      });
     self.esm.extend(esm_files);
     self
   }
@@ -567,10 +584,10 @@ impl ExtensionBuilder {
 #[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]
 macro_rules! include_js_files {
-  ($name:ident dir $dir:literal, $($file:literal,)+) => {
+  (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!(concat!($dir, "/", $file)
         )),
@@ -578,10 +595,10 @@ macro_rules! include_js_files {
     ]
   };
 
-  ($name:ident $($file:literal,)+) => {
+  ($($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
+        specifier: $file.to_string(),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!($file)
         ),
@@ -593,10 +610,10 @@ macro_rules! include_js_files {
 #[cfg(feature = "include_js_files_for_snapshotting")]
 #[macro_export]
 macro_rules! include_js_files {
-  ($name:ident dir $dir:literal, $($file:literal,)+) => {
+  (dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
+        specifier: concat!($file).to_string(),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),
@@ -604,10 +621,10 @@ macro_rules! include_js_files {
     ]
   };
 
-  ($name:ident $($file:literal,)+) => {
+  ($($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
+        specifier: $file.to_string(),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
         ),
