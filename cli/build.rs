@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
@@ -318,7 +317,7 @@ deno_core::extension!(
     dir "js",
     "40_testing.js"
   ],
-  customizer = |ext: &mut ExtensionBuilder| {
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.esm(vec![ExtensionFileSource {
       specifier: "runtime/js/99_main.js".to_string(),
       code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
