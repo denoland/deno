@@ -182,6 +182,9 @@ fn run_exec_time(
     benchmark_file,
     "--warmup",
     "3",
+    // don't use shell
+    "-S",
+    "none",
   ]
   .iter()
   .map(|s| s.to_string())
