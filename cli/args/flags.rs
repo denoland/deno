@@ -1249,6 +1249,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .alias("options-use-tabs")
         .num_args(0..=1)
         .value_parser(value_parser!(bool))
+        .default_missing_value("true")
+        .require_equals(true)
         .help("Use tabs instead of spaces for indentation. Defaults to false."),
     )
     .arg(
@@ -1273,6 +1275,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .alias("options-single-quote")
         .num_args(0..=1)
         .value_parser(value_parser!(bool))
+        .default_missing_value("true")
+        .require_equals(true)
         .help("Use single quotes. Defaults to false."),
     )
     .arg(
@@ -1289,6 +1293,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .alias("options-no-semicolons")
         .num_args(0..=1)
         .value_parser(value_parser!(bool))
+        .default_missing_value("true")
+        .require_equals(true)
         .help("Don't use semicolons except where necessary."),
     )
 }
@@ -2331,6 +2337,8 @@ fn local_npm_arg() -> Arg {
     .long("node-modules-dir")
     .num_args(0..=1)
     .value_parser(value_parser!(bool))
+    .default_missing_value("true")
+    .require_equals(true)
     .help("Creates a local node_modules folder")
 }
 
