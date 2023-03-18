@@ -452,10 +452,10 @@ function assertTestStepScopes(fn) {
       ops.op_dispatch_test_event({ stepWait: desc.id });
     }
     await fn(MapPrototypeGet(testStates, desc.id).context);
-    try {
-      testStepPostValidation(desc);
-    } catch (error) {
-      return { failed: { jsError: core.destructureError(error) } };
+    for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
+      if (!MapPrototypeGet(testStates, childDesc.id).finalized) {
+        return { failed: "incompleteSteps" };
+      }
     }
 
     function preValidation() {
@@ -501,17 +501,6 @@ function assertTestStepScopes(fn) {
       }
     }
   };
-}
-
-function testStepPostValidation(desc) {
-  // check for any running steps
-  for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-    if (!MapPrototypeGet(testStates, childDesc.id).finalized) {
-      throw new Error(
-        "There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
-      );
-    }
-  }
 }
 
 function pledgePermissions(permissions) {

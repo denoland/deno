@@ -163,6 +163,7 @@ pub enum TestOutput {
 pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
+  IncompleteSteps,
   Incomplete,
 }
 
@@ -172,10 +173,8 @@ impl ToString for TestFailure {
       TestFailure::JsError(js_error) => format_test_error(js_error),
       TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
       TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
-      TestFailure::Incomplete => {
-        "Didn't complete before parent. Await step with `await t.step(...)`."
-          .to_string()
-      }
+      TestFailure::IncompleteSteps => "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.".to_string(),
+      TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string()
     }
   }
 }

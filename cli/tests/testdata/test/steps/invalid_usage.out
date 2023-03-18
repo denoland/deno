@@ -12,11 +12,7 @@ inner missing await ...
     inner ... incomplete
       error: Didn't complete before parent. Await step with `await t.step(...)`.
   step ... FAILED ([WILDCARD])
-    error: Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
-        await t.step("step", (t) => {
-        ^
-        at [WILDCARD]
-        at async fn ([WILDCARD]/invalid_usage.ts:[WILDCARD])
+    error: Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.
 inner missing await ... FAILED ([WILDCARD])
 parallel steps with sanitizers ...
   step 1 ... incomplete
@@ -74,15 +70,13 @@ error: Error: Cannot run test step after parent scope has finished execution. En
     at [WILDCARD]/invalid_usage.ts:[WILDCARD]
 
 top level missing await => ./test/steps/invalid_usage.ts:[WILDCARD]
-error: Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
-    [WILDCARD]
+error: Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.
 
 inner missing await => ./test/steps/invalid_usage.ts:[WILDCARD]
 error: 1 test step failed.
 
 parallel steps with sanitizers => ./test/steps/invalid_usage.ts:[WILDCARD]
-error: Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
-    [WILDCARD]
+error: Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.
 
 parallel steps when first has sanitizer => ./test/steps/invalid_usage.ts:[WILDCARD]
 error: 1 test step failed.
