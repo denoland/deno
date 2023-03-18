@@ -326,7 +326,11 @@ class WebSocket extends EventTarget {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         data.slice().arrayBuffer(),
-        (ab) => sendTypedArray(new DataView(ab), ArrayBufferPrototypeGetByteLength(ab)),
+        (ab) =>
+          sendTypedArray(
+            new DataView(ab),
+            ArrayBufferPrototypeGetByteLength(ab),
+          ),
       );
     } else if (ArrayBufferIsView(data)) {
       if (TypedArrayPrototypeGetSymbolToStringTag(data) === undefined) {
@@ -337,7 +341,10 @@ class WebSocket extends EventTarget {
         sendTypedArray(data, TypedArrayPrototypeGetByteLength(data));
       }
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      sendTypedArray(new DataView(data), ArrayBufferPrototypeGetByteLength(data));
+      sendTypedArray(
+        new DataView(data),
+        ArrayBufferPrototypeGetByteLength(data),
+      );
     } else {
       const string = String(data);
       const d = core.encode(string);
