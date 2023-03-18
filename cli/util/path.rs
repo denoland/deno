@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -62,22 +64,9 @@ pub fn specifier_to_file_path(
   match result {
     Ok(path) => Ok(path),
     Err(()) => Err(uri_error(format!(
-      "Invalid file path.\n  Specifier: {}",
-      specifier
+      "Invalid file path.\n  Specifier: {specifier}"
     ))),
   }
-}
-
-/// Ensures a specifier that will definitely be a directory has a trailing slash.
-pub fn ensure_directory_specifier(
-  mut specifier: ModuleSpecifier,
-) -> ModuleSpecifier {
-  let path = specifier.path();
-  if !path.ends_with('/') {
-    let new_path = format!("{}/", path);
-    specifier.set_path(&new_path);
-  }
-  specifier
 }
 
 /// Gets the parent of this module specifier.
@@ -133,7 +122,7 @@ pub fn relative_specifier(
   Some(if text.starts_with("../") || text.starts_with("./") {
     text
   } else {
-    format!("./{}", text)
+    format!("./{text}")
   })
 }
 
@@ -168,12 +157,12 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
             ext
           ))
         } else {
-          path.with_file_name(format!("{}{}.{}", file_stem, suffix, ext))
+          path.with_file_name(format!("{file_stem}{suffix}.{ext}"))
         };
       }
     }
 
-    path.with_file_name(format!("{}{}", file_name, suffix))
+    path.with_file_name(format!("{file_name}{suffix}"))
   } else {
     path.with_file_name(suffix)
   }
@@ -260,21 +249,6 @@ mod test {
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
           .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
-    }
-  }
-
-  #[test]
-  fn test_ensure_directory_specifier() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///test/");
-    run_test("file:///test/", "file:///test/");
-    run_test("file:///test/other", "file:///test/other/");
-    run_test("file:///test/other/", "file:///test/other/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        ensure_directory_specifier(ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
     }
   }
 
@@ -378,9 +352,7 @@ mod test {
       assert_eq!(
         actual.as_deref(),
         expected,
-        "from: \"{}\" to: \"{}\"",
-        from_str,
-        to_str
+        "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
   }

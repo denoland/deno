@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::Context;
 use anyhow::Error;
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
@@ -21,6 +22,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSourceFuture;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::ResolutionKind;
 use deno_core::RuntimeOptions;
 use futures::FutureExt;
 
@@ -31,7 +33,7 @@ impl ModuleLoader for TypescriptModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
     Ok(resolve_import(specifier, referrer)?)
   }
@@ -46,7 +48,7 @@ impl ModuleLoader for TypescriptModuleLoader {
     async move {
       let path = module_specifier
         .to_file_path()
-        .map_err(|_| anyhow!("Only file: URLs are supported."))?;
+        .map_err(|_| anyhow!("Only file:// URLs are supported."))?;
 
       let media_type = MediaType::from(&path);
       let (module_type, should_transpile) = match MediaType::from(&path) {
@@ -98,14 +100,17 @@ fn main() -> Result<(), Error> {
     std::process::exit(1);
   }
   let main_url = &args[1];
-  println!("Run {}", main_url);
+  println!("Run {main_url}");
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(Rc::new(TypescriptModuleLoader)),
     ..Default::default()
   });
 
-  let main_module = resolve_path(main_url)?;
+  let main_module = resolve_path(
+    main_url,
+    &std::env::current_dir().context("Unable to get CWD")?,
+  )?;
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;

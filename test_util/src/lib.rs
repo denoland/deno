@@ -15,7 +15,6 @@ use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
-use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use rustls::Certificate;
@@ -31,6 +30,7 @@ use std::mem::replace;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -43,6 +43,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -52,11 +53,16 @@ use tokio_tungstenite::accept_async;
 use url::Url;
 
 pub mod assertions;
+mod builders;
 pub mod lsp;
 mod npm;
 pub mod pty;
 mod temp_dir;
 
+pub use builders::TestCommandBuilder;
+pub use builders::TestCommandOutput;
+pub use builders::TestContext;
+pub use builders::TestContextBuilder;
 pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
@@ -79,6 +85,7 @@ const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_PING_PORT: u16 = 4245;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -96,7 +103,6 @@ lazy_static! {
 
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
-    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
@@ -214,7 +220,7 @@ async fn hyper_hello(port: u16) {
 
   let server = Server::bind(&addr).serve(hello_svc);
   if let Err(e) = server.await {
-    eprintln!("server error: {}", e);
+    eprintln!("server error: {e}");
   }
 }
 
@@ -232,7 +238,7 @@ fn redirect_resp(url: String) -> Response<Body> {
 async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", PORT, p);
+  let url = format!("http://localhost:{PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -240,7 +246,7 @@ async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", REDIRECT_PORT, p);
+  let url = format!("http://localhost:{REDIRECT_PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -248,7 +254,7 @@ async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", INF_REDIRECTS_PORT, p);
+  let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -256,7 +262,7 @@ async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}/subdir{}", PORT, p);
+  let url = format!("http://localhost:{PORT}/subdir{p}");
 
   Ok(redirect_resp(url))
 }
@@ -267,10 +273,10 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
     .get("authorization")
     .map(|v| v.to_str().unwrap())
   {
-    if auth.to_lowercase() == format!("bearer {}", TEST_AUTH_TOKEN) {
+    if auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}") {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{}{}", PORT, p);
+      let url = format!("http://localhost:{PORT}{p}");
       return Ok(redirect_resp(url));
     }
   }
@@ -289,11 +295,11 @@ async fn basic_auth_redirect(
     .map(|v| v.to_str().unwrap())
   {
     let credentials =
-      format!("{}:{}", TEST_BASIC_AUTH_USERNAME, TEST_BASIC_AUTH_PASSWORD);
+      format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
     if auth == format!("Basic {}", base64::encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{}{}", PORT, p);
+      let url = format!("http://localhost:{PORT}{p}");
       return Ok(redirect_resp(url));
     }
   }
@@ -316,10 +322,40 @@ async fn run_ws_server(addr: &SocketAddr) {
         rx.forward(tx)
           .map(|result| {
             if let Err(e) = result {
-              println!("websocket server error: {:?}", e);
+              println!("websocket server error: {e:?}");
             }
           })
           .await;
+      }
+    });
+  }
+}
+
+async fn run_ws_ping_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: ws"); // Eye catcher for HttpServerCount
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream = accept_async(stream).await;
+      use futures::SinkExt;
+      use tokio_tungstenite::tungstenite::Message;
+      if let Ok(mut ws_stream) = ws_stream {
+        for i in 0..9 {
+          ws_stream.send(Message::Ping(vec![])).await.unwrap();
+
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Pong(vec![]));
+
+          ws_stream
+            .send(Message::Text(format!("hello {}", i)))
+            .await
+            .unwrap();
+
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Text(format!("hello {}", i)));
+        }
+
+        ws_stream.close(None).await.unwrap();
       }
     });
   }
@@ -339,15 +375,12 @@ async fn run_ws_close_server(addr: &SocketAddr) {
   }
 }
 
+#[derive(Default)]
 enum SupportedHttpVersions {
+  #[default]
   All,
   Http1Only,
   Http2Only,
-}
-impl Default for SupportedHttpVersions {
-  fn default() -> SupportedHttpVersions {
-    SupportedHttpVersions::All
-  }
 }
 
 async fn get_tls_config(
@@ -452,14 +485,14 @@ async fn run_wss_server(addr: &SocketAddr) {
             rx.forward(tx)
               .map(|result| {
                 if let Err(e) = result {
-                  println!("Websocket server error: {:?}", e);
+                  println!("Websocket server error: {e:?}");
                 }
               })
               .await;
           }
         }
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -490,12 +523,12 @@ async fn run_tls_client_auth_server() {
     .boxed()
   };
 
-  let host_and_port = &format!("localhost:{}", TLS_CLIENT_AUTH_PORT);
+  let host_and_port = &format!("localhost:{TLS_CLIENT_AUTH_PORT}");
 
   let listeners = tokio::net::lookup_host(host_and_port)
     .await
     .expect(host_and_port)
-    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .inspect(|address| println!("{host_and_port} -> {address}"))
     .map(tokio::net::TcpListener::bind)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
@@ -525,7 +558,7 @@ async fn run_tls_client_auth_server() {
         }
 
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -554,12 +587,12 @@ async fn run_tls_server() {
     .boxed()
   };
 
-  let host_and_port = &format!("localhost:{}", TLS_PORT);
+  let host_and_port = &format!("localhost:{TLS_PORT}");
 
   let listeners = tokio::net::lookup_host(host_and_port)
     .await
     .expect(host_and_port)
-    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .inspect(|address| println!("{host_and_port} -> {address}"))
     .map(tokio::net::TcpListener::bind)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
@@ -582,7 +615,7 @@ async fn run_tls_server() {
         }
 
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -594,9 +627,31 @@ async fn absolute_redirect(
 ) -> hyper::Result<Response<Body>> {
   let path = req.uri().path();
 
+  if path == "/" {
+    // We have to manually extract query params here,
+    // as `req.uri()` returns `PathAndQuery` only,
+    // and we cannot use `Url::parse(req.uri()).query_pairs()`,
+    // as it requires url to have a proper base.
+    let query_params: HashMap<_, _> = req
+      .uri()
+      .query()
+      .unwrap_or_default()
+      .split('&')
+      .filter_map(|s| {
+        s.split_once('=').map(|t| (t.0.to_owned(), t.1.to_owned()))
+      })
+      .collect();
+
+    if let Some(url) = query_params.get("redirect_to") {
+      println!("URL: {url:?}");
+      let redirect = redirect_resp(url.to_owned());
+      return Ok(redirect);
+    }
+  }
+
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    println!("URL: {:?}", url);
+    println!("URL: {url:?}");
     let redirect = redirect_resp(url.to_string());
     return Ok(redirect);
   }
@@ -971,6 +1026,17 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/echo_accept") => {
       let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
       let res = Response::new(Body::from(
@@ -998,7 +1064,7 @@ async fn main_server(
           Err(err) => {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{:#}", err).into());
+              .body(format!("{err:#}").into());
           }
         }
       } else if req.uri().path().starts_with("/npm/registry/") {
@@ -1016,7 +1082,7 @@ async fn main_server(
           {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{:#}", err).into());
+              .body(format!("{err:#}").into());
           };
 
           // serve the file
@@ -1025,6 +1091,20 @@ async fn main_server(
             return Ok(file_resp);
           }
         }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+        let mut file_path = std_path();
+        file_path.push(suffix);
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
+        let duration = suffix.parse::<u64>().unwrap();
+        tokio::time::sleep(Duration::from_millis(duration)).await;
+        return Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "application/typescript")
+          .body(Body::empty());
       }
 
       Response::builder()
@@ -1084,12 +1164,9 @@ async fn download_npm_registry_file(
   };
   let url = if is_tarball {
     let file_name = file_path.file_name().unwrap().to_string_lossy();
-    format!(
-      "https://registry.npmjs.org/{}/-/{}",
-      package_name, file_name
-    )
+    format!("https://registry.npmjs.org/{package_name}/-/{file_name}")
   } else {
-    format!("https://registry.npmjs.org/{}", package_name)
+    format!("https://registry.npmjs.org/{package_name}")
   };
   let client = reqwest::Client::new();
   let response = client.get(url).send().await?;
@@ -1100,8 +1177,8 @@ async fn download_npm_registry_file(
     String::from_utf8(bytes.to_vec())
       .unwrap()
       .replace(
-        &format!("https://registry.npmjs.org/{}/-/", package_name),
-        &format!("http://localhost:4545/npm/registry/{}/", package_name),
+        &format!("https://registry.npmjs.org/{package_name}/-/"),
+        &format!("http://localhost:4545/npm/registry/{package_name}/"),
       )
       .into_bytes()
   };
@@ -1142,7 +1219,7 @@ async fn wrap_redirect_server() {
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
   if let Err(e) = redirect_server.await {
-    eprintln!("Redirect error: {:?}", e);
+    eprintln!("Redirect error: {e:?}");
   }
 }
 
@@ -1155,7 +1232,7 @@ async fn wrap_double_redirect_server() {
   let double_redirects_server =
     Server::bind(&double_redirects_addr).serve(double_redirects_svc);
   if let Err(e) = double_redirects_server.await {
-    eprintln!("Double redirect error: {:?}", e);
+    eprintln!("Double redirect error: {e:?}");
   }
 }
 
@@ -1168,7 +1245,7 @@ async fn wrap_inf_redirect_server() {
   let inf_redirects_server =
     Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
   if let Err(e) = inf_redirects_server.await {
-    eprintln!("Inf redirect error: {:?}", e);
+    eprintln!("Inf redirect error: {e:?}");
   }
 }
 
@@ -1181,7 +1258,7 @@ async fn wrap_another_redirect_server() {
   let another_redirect_server =
     Server::bind(&another_redirect_addr).serve(another_redirect_svc);
   if let Err(e) = another_redirect_server.await {
-    eprintln!("Another redirect error: {:?}", e);
+    eprintln!("Another redirect error: {e:?}");
   }
 }
 
@@ -1194,7 +1271,7 @@ async fn wrap_auth_redirect_server() {
   let auth_redirect_server =
     Server::bind(&auth_redirect_addr).serve(auth_redirect_svc);
   if let Err(e) = auth_redirect_server.await {
-    eprintln!("Auth redirect error: {:?}", e);
+    eprintln!("Auth redirect error: {e:?}");
   }
 }
 
@@ -1207,7 +1284,7 @@ async fn wrap_basic_auth_redirect_server() {
   let basic_auth_redirect_server =
     Server::bind(&basic_auth_redirect_addr).serve(basic_auth_redirect_svc);
   if let Err(e) = basic_auth_redirect_server.await {
-    eprintln!("Basic auth redirect error: {:?}", e);
+    eprintln!("Basic auth redirect error: {e:?}");
   }
 }
 
@@ -1220,7 +1297,7 @@ async fn wrap_abs_redirect_server() {
   let abs_redirect_server =
     Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
   if let Err(e) = abs_redirect_server.await {
-    eprintln!("Absolute redirect error: {:?}", e);
+    eprintln!("Absolute redirect error: {e:?}");
   }
 }
 
@@ -1230,7 +1307,7 @@ async fn wrap_main_server() {
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
-    eprintln!("HTTP server error: {:?}", e);
+    eprintln!("HTTP server error: {e:?}");
   }
 }
 
@@ -1378,7 +1455,7 @@ async fn wrap_client_auth_https_server() {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
-    println!("ready: https_client_auth on :{:?}", HTTPS_CLIENT_AUTH_PORT); // Eye catcher for HttpServerCount
+    println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = async_stream::stream! {
@@ -1397,7 +1474,7 @@ async fn wrap_client_auth_https_server() {
             }
 
             Err(e) => {
-              eprintln!("https-client-auth accept error: {:?}", e);
+              eprintln!("https-client-auth accept error: {e:?}");
               yield Err(e);
             }
           }
@@ -1440,6 +1517,8 @@ pub async fn run_all_servers() {
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
   let ws_server_fut = run_ws_server(&ws_addr);
+  let ws_ping_addr = SocketAddr::from(([127, 0, 0, 1], WS_PING_PORT));
+  let ws_ping_server_fut = run_ws_ping_server(&ws_ping_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
@@ -1457,6 +1536,7 @@ pub async fn run_all_servers() {
     futures::join!(
       redirect_server_fut,
       ws_server_fut,
+      ws_ping_server_fut,
       wss_server_fut,
       tls_server_fut,
       tls_client_auth_server_fut,
@@ -1527,7 +1607,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     response.headers_mut().insert(
       "Content-Type",
       HeaderValue::from_str(
-        &format!("application/typescript;charset={}", charset)[..],
+        &format!("application/typescript;charset={charset}")[..],
       )
       .unwrap(),
     );
@@ -1599,7 +1679,8 @@ impl HttpServerCount {
         .spawn()
         .expect("failed to execute test_server");
       let stdout = test_server.stdout.as_mut().unwrap();
-      use std::io::{BufRead, BufReader};
+      use std::io::BufRead;
+      use std::io::BufReader;
       let lines = BufReader::new(stdout).lines();
 
       // Wait for all the servers to report being ready.
@@ -1631,9 +1712,9 @@ impl HttpServerCount {
           let _ = test_server.wait();
         }
         Ok(Some(status)) => {
-          panic!("test_server exited unexpectedly {}", status)
+          panic!("test_server exited unexpectedly {status}")
         }
-        Err(e) => panic!("test_server error: {}", e),
+        Err(e) => panic!("test_server error: {e}"),
       }
     }
   }
@@ -1743,8 +1824,8 @@ pub fn run_collect(
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
-    eprintln!("stdout: <<<{}>>>", stdout);
-    eprintln!("stderr: <<<{}>>>", stderr);
+    eprintln!("stdout: <<<{stdout}>>>");
+    eprintln!("stderr: <<<{stderr}>>>");
     panic!("Unexpected exit code: {:?}", status.code());
   }
   (stdout, stderr)
@@ -1805,8 +1886,8 @@ pub fn run_and_collect_output_with_args(
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
-    eprintln!("stdout: <<<{}>>>", stdout);
-    eprintln!("stderr: <<<{}>>>", stderr);
+    eprintln!("stdout: <<<{stdout}>>>");
+    eprintln!("stderr: <<<{stderr}>>>");
     panic!("Unexpected exit code: {:?}", status.code());
   }
   (stdout, stderr)
@@ -1871,11 +1952,10 @@ pub fn run_powershell_script_file(
   let output = command.output().expect("failed to spawn script");
   let stdout = String::from_utf8(output.stdout).unwrap();
   let stderr = String::from_utf8(output.stderr).unwrap();
-  println!("{}", stdout);
+  println!("{stdout}");
   if !output.status.success() {
     panic!(
-      "{} executed with failing error code\n{}{}",
-      script_file_path, stdout, stderr
+      "{script_file_path} executed with failing error code\n{stdout}{stderr}"
     );
   }
 
@@ -1894,124 +1974,52 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
   pub temp_cwd: bool,
+  /// Copies the files at the specified directory in the "testdata" directory
+  /// to the temp folder and runs the test from there. This is useful when
+  /// the test creates files in the testdata directory (ex. a node_modules folder)
+  pub copy_temp_dir: Option<&'a str>,
+  /// Relative to "testdata" directory
+  pub cwd: Option<&'a str>,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
-  pub fn run(&self) {
-    let args = if self.args_vec.is_empty() {
-      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
-    } else {
-      assert!(
-        self.args.is_empty(),
-        "Do not provide args when providing args_vec."
-      );
-      std::borrow::Cow::Borrowed(&self.args_vec)
-    };
-    let testdata_dir = testdata_path();
-    let args = args
-      .iter()
-      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
-      .collect::<Vec<_>>();
-    let deno_exe = deno_exe_path();
-    println!("deno_exe path {}", deno_exe.display());
+  pub fn output(&self) -> TestCommandOutput {
+    let mut context_builder = TestContextBuilder::default();
+    if self.temp_cwd {
+      context_builder.use_temp_cwd();
+    }
+    if let Some(dir) = &self.copy_temp_dir {
+      context_builder.use_copy_temp_dir(dir);
+    }
+    if self.http_server {
+      context_builder.use_http_server();
+    }
 
-    let _http_server_guard = if self.http_server {
-      Some(http_server())
-    } else {
-      None
-    };
+    let context = context_builder.build();
 
-    let (mut reader, writer) = pipe().unwrap();
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    let cwd = if self.temp_cwd {
-      deno_dir.path()
-    } else {
-      testdata_dir.as_path()
-    };
-    println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &cwd);
-    command.args(args.iter());
+    let mut command_builder = context.new_command();
+
+    if !self.args.is_empty() {
+      command_builder.args(self.args);
+    }
+    if !self.args_vec.is_empty() {
+      command_builder
+        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+    }
+    if let Some(input) = &self.input {
+      command_builder.stdin(input);
+    }
+    for (key, value) in &self.envs {
+      command_builder.env(key, value);
+    }
     if self.env_clear {
-      command.env_clear();
+      command_builder.env_clear();
     }
-    command.envs(self.envs.clone());
-    command.current_dir(cwd);
-    command.stdin(Stdio::piped());
-    let writer_clone = writer.try_clone().unwrap();
-    command.stderr(writer_clone);
-    command.stdout(writer);
-
-    let mut process = command.spawn().expect("failed to execute process");
-
-    if let Some(input) = self.input {
-      let mut p_stdin = process.stdin.take().unwrap();
-      write!(p_stdin, "{}", input).unwrap();
+    if let Some(cwd) = &self.cwd {
+      command_builder.cwd(cwd);
     }
 
-    // Very important when using pipes: This parent process is still
-    // holding its copies of the write ends, and we have to close them
-    // before we read, otherwise the read end will never report EOF. The
-    // Command object owns the writers now, and dropping it closes them.
-    drop(command);
-
-    let mut actual = String::new();
-    reader.read_to_string(&mut actual).unwrap();
-
-    let status = process.wait().expect("failed to finish process");
-
-    if let Some(exit_code) = status.code() {
-      if self.exit_code != exit_code {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        panic!(
-          "bad exit code, expected: {:?}, actual: {:?}",
-          self.exit_code, exit_code
-        );
-      }
-    } else {
-      #[cfg(unix)]
-      {
-        use std::os::unix::process::ExitStatusExt;
-        let signal = status.signal().unwrap();
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          self.exit_code, signal
-        );
-      }
-      #[cfg(not(unix))]
-      {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
-      }
-    }
-
-    actual = strip_ansi_codes(&actual).to_string();
-
-    // deno test's output capturing flushes with a zero-width space in order to
-    // synchronize the output pipes. Occassionally this zero width space
-    // might end up in the output so strip it from the output comparison here.
-    if args.first().map(|s| s.as_str()) == Some("test") {
-      actual = actual.replace('\u{200B}', "");
-    }
-
-    let expected = if let Some(s) = self.output_str {
-      s.to_owned()
-    } else if self.output.is_empty() {
-      String::new()
-    } else {
-      let output_path = testdata_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      std::fs::read_to_string(output_path).expect("cannot read output")
-    };
-
-    if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected)
-    } else if !wildcard_match(&expected, &actual) {
-      println!("OUTPUT\n{}\nOUTPUT", actual);
-      println!("EXPECTED\n{}\nEXPECTED", expected);
-      panic!("pattern match failed");
-    }
+    command_builder.run()
   }
 }
 
@@ -2265,14 +2273,21 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   }
 
   let total_fields = total_line.split_whitespace().collect::<Vec<_>>();
+
+  let mut usecs_call_offset = 0;
   summary.insert(
     "total".to_string(),
     StraceOutput {
       percent_time: str::parse::<f64>(total_fields[0]).unwrap(),
       seconds: str::parse::<f64>(total_fields[1]).unwrap(),
-      usecs_per_call: None,
-      calls: str::parse::<u64>(total_fields[2]).unwrap(),
-      errors: str::parse::<u64>(total_fields[3]).unwrap(),
+      usecs_per_call: if total_fields.len() > 5 {
+        usecs_call_offset = 1;
+        Some(str::parse::<u64>(total_fields[2]).unwrap())
+      } else {
+        None
+      },
+      calls: str::parse::<u64>(total_fields[2 + usecs_call_offset]).unwrap(),
+      errors: str::parse::<u64>(total_fields[3 + usecs_call_offset]).unwrap(),
     },
   );
 
@@ -2293,6 +2308,37 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   }
 
   None
+}
+
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), anyhow::Error> {
+  use anyhow::Context;
+
+  std::fs::create_dir_all(to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      copy_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      std::fs::copy(&new_from, &new_to).with_context(|| {
+        format!("Copying {} to {}", new_from.display(), new_to.display())
+      })?;
+    }
+  }
+
+  Ok(())
 }
 
 #[cfg(test)]
@@ -2345,6 +2391,7 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 704);
     assert_eq!(strace.get("total").unwrap().errors, 5);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
   }
 
   #[test]
@@ -2360,6 +2407,23 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 821);
     assert_eq!(strace.get("total").unwrap().errors, 107);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
+  }
+
+  #[test]
+  fn strace_parse_3() {
+    const TEXT: &str = include_str!("./testdata/strace_summary3.out");
+    let strace = parse_strace_output(TEXT);
+
+    // first syscall line
+    let futex = strace.get("mprotect").unwrap();
+    assert_eq!(futex.calls, 90);
+    assert_eq!(futex.errors, 0);
+
+    // summary line
+    assert_eq!(strace.get("total").unwrap().calls, 543);
+    assert_eq!(strace.get("total").unwrap().errors, 36);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, Some(6));
   }
 
   #[test]
@@ -2420,14 +2484,13 @@ foo:
     fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
       // If there is leading text add a newline so it's on it's own line
       let head = match leading_text {
-        Some(v) => format!("{}\n", v),
+        Some(v) => format!("{v}\n"),
         None => "".to_string(),
       };
       format!(
-        "{}foo:
-quuz {} corge
-grault",
-        head, input
+        "{head}foo:
+quuz {input} corge
+grault"
       )
     }
 

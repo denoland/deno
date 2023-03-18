@@ -80,8 +80,14 @@ impl LspUrlMapInner {
   }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum LspUrlKind {
+  File,
+  Folder,
+}
+
 /// A bi-directional map of URLs sent to the LSP client and internal module
-/// specifiers.  We need to map internal specifiers into `deno:` schema URLs
+/// specifiers. We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
 #[derive(Debug, Default, Clone)]
 pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
@@ -104,10 +110,10 @@ impl LspUrlMap {
           format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
           let data_url = DataUrl::process(specifier.as_str())
-            .map_err(|e| uri_error(format!("{:?}", e)))?;
+            .map_err(|e| uri_error(format!("{e:?}")))?;
           let mime = data_url.mime_type();
           let (media_type, _) =
-            map_content_type(specifier, Some(format!("{}", mime)));
+            map_content_type(specifier, Some(&format!("{mime}")));
           let extension = if media_type == MediaType::Unknown {
             ""
           } else {
@@ -128,7 +134,7 @@ impl LspUrlMap {
             })
             .collect();
           path.push_str(&parts.join("/"));
-          format!("deno:/{}", path)
+          format!("deno:/{path}")
         };
         let url = Url::parse(&specifier_str)?;
         inner.put(specifier.clone(), url.clone());
@@ -142,16 +148,26 @@ impl LspUrlMap {
   /// converted into proper module specifiers, as well as handle situations
   /// where the client encodes a file URL differently than Rust does by default
   /// causing issues with string matching of URLs.
-  pub fn normalize_url(&self, url: &Url) -> ModuleSpecifier {
-    if let Some(specifier) = self.0.lock().get_specifier(url).cloned() {
-      return specifier;
+  ///
+  /// Note: Sometimes the url provided by the client may not have a trailing slash,
+  /// so we need to force it to in the mapping and nee to explicitly state whether
+  /// this is a file or directory url.
+  pub fn normalize_url(&self, url: &Url, kind: LspUrlKind) -> ModuleSpecifier {
+    let mut inner = self.0.lock();
+    if let Some(specifier) = inner.get_specifier(url).cloned() {
+      specifier
+    } else {
+      let specifier = if let Ok(path) = url.to_file_path() {
+        match kind {
+          LspUrlKind::Folder => Url::from_directory_path(path).unwrap(),
+          LspUrlKind::File => Url::from_file_path(path).unwrap(),
+        }
+      } else {
+        url.clone()
+      };
+      inner.put(specifier.clone(), url.clone());
+      specifier
     }
-    if url.scheme() == "file" {
-      if let Ok(path) = url.to_file_path() {
-        return Url::from_file_path(path).unwrap();
-      }
-    }
-    url.clone()
   }
 }
 
@@ -181,7 +197,7 @@ mod tests {
       Url::parse("deno:/https/deno.land/x/pkg%401.0.0/mod.ts").unwrap();
     assert_eq!(actual_url, expected_url);
 
-    let actual_specifier = map.normalize_url(&actual_url);
+    let actual_specifier = map.normalize_url(&actual_url, LspUrlKind::File);
     assert_eq!(actual_specifier, fixture);
   }
 
@@ -196,7 +212,7 @@ mod tests {
     let expected_url = Url::parse("deno:/https/cdn.skypack.dev/-/postcss%40v8.2.9-E4SktPp9c0AtxrJHp8iV/dist%3Des2020%2Cmode%3Dtypes/lib/postcss.d.ts").unwrap();
     assert_eq!(actual_url, expected_url);
 
-    let actual_specifier = map.normalize_url(&actual_url);
+    let actual_specifier = map.normalize_url(&actual_url, LspUrlKind::File);
     assert_eq!(actual_specifier, fixture);
   }
 
@@ -210,7 +226,7 @@ mod tests {
     let expected_url = Url::parse("deno:/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37/data_url.ts").unwrap();
     assert_eq!(actual_url, expected_url);
 
-    let actual_specifier = map.normalize_url(&actual_url);
+    let actual_specifier = map.normalize_url(&actual_url, LspUrlKind::File);
     assert_eq!(actual_specifier, fixture);
   }
 
@@ -222,7 +238,7 @@ mod tests {
       "file:///c%3A/Users/deno/Desktop/file%20with%20spaces%20in%20name.txt",
     )
     .unwrap();
-    let actual = map.normalize_url(&fixture);
+    let actual = map.normalize_url(&fixture, LspUrlKind::File);
     let expected =
       Url::parse("file:///C:/Users/deno/Desktop/file with spaces in name.txt")
         .unwrap();
@@ -237,7 +253,7 @@ mod tests {
       "file:///Users/deno/Desktop/file%20with%20spaces%20in%20name.txt",
     )
     .unwrap();
-    let actual = map.normalize_url(&fixture);
+    let actual = map.normalize_url(&fixture, LspUrlKind::File);
     let expected =
       Url::parse("file:///Users/deno/Desktop/file with spaces in name.txt")
         .unwrap();

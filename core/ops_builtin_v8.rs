@@ -6,12 +6,11 @@ use crate::error::range_error;
 use crate::error::type_error;
 use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
-use crate::resolve_url_or_path;
+use crate::resolve_url;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRealm;
 use crate::JsRuntime;
-use crate::OpDecl;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
@@ -20,42 +19,6 @@ use serde::Serialize;
 use std::cell::RefCell;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
-
-pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
-  vec![
-    op_ref_op::decl(),
-    op_unref_op::decl(),
-    op_set_macrotask_callback::decl(),
-    op_set_next_tick_callback::decl(),
-    op_set_promise_reject_callback::decl(),
-    op_run_microtasks::decl(),
-    op_has_tick_scheduled::decl(),
-    op_set_has_tick_scheduled::decl(),
-    op_eval_context::decl(),
-    op_queue_microtask::decl(),
-    op_create_host_object::decl(),
-    op_encode::decl(),
-    op_decode::decl(),
-    op_serialize::decl(),
-    op_deserialize::decl(),
-    op_set_promise_hooks::decl(),
-    op_get_promise_details::decl(),
-    op_get_proxy_details::decl(),
-    op_memory_usage::decl(),
-    op_set_wasm_streaming_callback::decl(),
-    op_abort_wasm_streaming::decl(),
-    op_destructure_error::decl(),
-    op_dispatch_exception::decl(),
-    op_op_names::decl(),
-    op_apply_source_map::decl(),
-    op_set_format_exception_callback::decl(),
-    op_event_loop_has_more_work::decl(),
-    op_store_pending_promise_exception::decl(),
-    op_remove_pending_promise_exception::decl(),
-    op_has_pending_promise_exception::decl(),
-    op_arraybuffer_was_detached::decl(),
-  ]
-}
 
 fn to_v8_fn(
   scope: &mut v8::HandleScope,
@@ -76,14 +39,14 @@ fn to_v8_local_fn(
 
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.insert(promise_id);
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.insert(promise_id);
 }
 
 #[op(v8)]
@@ -114,8 +77,11 @@ fn op_set_promise_reject_callback<'a>(
   cb: serde_v8::Value,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let old = state_rc.borrow_mut().js_promise_reject_cb.replace(cb);
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let old = context_state_rc
+    .borrow_mut()
+    .js_promise_reject_cb
+    .replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
@@ -156,15 +122,12 @@ struct EvalContextResult<'s>(
 fn op_eval_context<'a>(
   scope: &mut v8::HandleScope<'a>,
   source: serde_v8::Value<'a>,
-  specifier: Option<String>,
+  specifier: String,
 ) -> Result<EvalContextResult<'a>, Error> {
   let tc_scope = &mut v8::TryCatch::new(scope);
   let source = v8::Local::<v8::String>::try_from(source.v8_value)
     .map_err(|_| type_error("Invalid source"))?;
-  let specifier = match specifier {
-    Some(s) => resolve_url_or_path(&s)?.to_string(),
-    None => crate::DUMMY_SPECIFIER.to_string(),
-  };
+  let specifier = resolve_url(&specifier)?.to_string();
   let specifier = v8::String::new(tc_scope, &specifier).unwrap();
   let origin = script_origin(tc_scope, specifier);
 
@@ -468,7 +431,7 @@ fn op_serialize(
         if buf.was_detached() {
           return Err(custom_error(
             "DOMExceptionOperationError",
-            format!("ArrayBuffer at index {} is already detached", index),
+            format!("ArrayBuffer at index {index} is already detached"),
           ));
         }
 
@@ -590,27 +553,29 @@ fn op_get_promise_details<'a>(
 }
 
 #[op(v8)]
-fn op_set_promise_hooks<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  init_cb: serde_v8::Value,
-  before_cb: serde_v8::Value,
-  after_cb: serde_v8::Value,
-  resolve_cb: serde_v8::Value,
+fn op_set_promise_hooks(
+  scope: &mut v8::HandleScope,
+  init_hook: serde_v8::Value,
+  before_hook: serde_v8::Value,
+  after_hook: serde_v8::Value,
+  resolve_hook: serde_v8::Value,
 ) -> Result<(), Error> {
-  let init_hook_global = to_v8_fn(scope, init_cb)?;
-  let before_hook_global = to_v8_fn(scope, before_cb)?;
-  let after_hook_global = to_v8_fn(scope, after_cb)?;
-  let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
-  let init_hook = v8::Local::new(scope, init_hook_global);
-  let before_hook = v8::Local::new(scope, before_hook_global);
-  let after_hook = v8::Local::new(scope, after_hook_global);
-  let resolve_hook = v8::Local::new(scope, resolve_hook_global);
+  let v8_fns = [init_hook, before_hook, after_hook, resolve_hook]
+    .into_iter()
+    .enumerate()
+    .filter(|(_, hook)| !hook.v8_value.is_undefined())
+    .try_fold([None; 4], |mut v8_fns, (i, hook)| {
+      let v8_fn = v8::Local::<v8::Function>::try_from(hook.v8_value)
+        .map_err(|err| type_error(err.to_string()))?;
+      v8_fns[i] = Some(v8_fn);
+      Ok::<_, Error>(v8_fns)
+    })?;
 
-  scope.get_current_context().set_promise_hooks(
-    init_hook,
-    before_hook,
-    after_hook,
-    resolve_hook,
+  scope.set_promise_hooks(
+    v8_fns[0], // init
+    v8_fns[1], // before
+    v8_fns[2], // after
+    v8_fns[3], // resolve
   );
 
   Ok(())
@@ -682,22 +647,28 @@ fn op_set_wasm_streaming_callback(
   cb: serde_v8::Value,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   // The callback to pass to the v8 API has to be a unit type, so it can't
   // borrow or move any local variables. Therefore, we're storing the JS
   // callback in a JsRuntimeState slot.
-  if state.js_wasm_streaming_cb.is_some() {
+  if context_state.js_wasm_streaming_cb.is_some() {
     return Err(type_error("op_set_wasm_streaming_callback already called"));
   }
-  state.js_wasm_streaming_cb = Some(cb);
+  context_state.js_wasm_streaming_cb = Some(cb);
 
   scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
     let (cb_handle, streaming_rid) = {
+      let context_state_rc = JsRealm::state_from_scope(scope);
+      let cb_handle = context_state_rc
+        .borrow()
+        .js_wasm_streaming_cb
+        .as_ref()
+        .unwrap()
+        .clone();
       let state_rc = JsRuntime::state(scope);
-      let state = state_rc.borrow();
-      let cb_handle = state.js_wasm_streaming_cb.as_ref().unwrap().clone();
-      let streaming_rid = state
+      let streaming_rid = state_rc
+        .borrow()
         .op_state
         .borrow_mut()
         .resource_table
@@ -835,8 +806,11 @@ fn op_set_format_exception_callback<'a>(
   cb: serde_v8::Value<'a>,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let old = state_rc.borrow_mut().js_format_exception_cb.replace(cb);
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let old = context_state_rc
+    .borrow_mut()
+    .js_format_exception_cb
+    .replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
@@ -847,47 +821,49 @@ fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
 }
 
 #[op(v8)]
-fn op_store_pending_promise_exception<'a>(
+fn op_store_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
   reason: serde_v8::Value<'a>,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
   let error_global = v8::Global::new(scope, reason.v8_value);
-  state
-    .pending_promise_exceptions
+  context_state
+    .pending_promise_rejections
     .insert(promise_global, error_global);
 }
 
 #[op(v8)]
-fn op_remove_pending_promise_exception<'a>(
+fn op_remove_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let mut context_state = context_state_rc.borrow_mut();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state.pending_promise_exceptions.remove(&promise_global);
+  context_state
+    .pending_promise_rejections
+    .remove(&promise_global);
 }
 
 #[op(v8)]
-fn op_has_pending_promise_exception<'a>(
+fn op_has_pending_promise_rejection<'a>(
   scope: &mut v8::HandleScope<'a>,
   promise: serde_v8::Value<'a>,
 ) -> bool {
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let context_state = context_state_rc.borrow();
   let promise_value =
     v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
   let promise_global = v8::Global::new(scope, promise_value);
-  state
-    .pending_promise_exceptions
+  context_state
+    .pending_promise_rejections
     .contains_key(&promise_global)
 }
 

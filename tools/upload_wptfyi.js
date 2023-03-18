@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 // This script pushes new WPT results to wpt.fyi. When the `--ghstatus` flag is
 // passed, will automatically add a status check to the commit with a link to
 // the wpt.fyi page.
@@ -8,9 +10,14 @@ const user = Deno.env.get("WPT_FYI_USER");
 const password = Deno.env.get("WPT_FYI_PW");
 
 const fromRawFile = Deno.args.includes("--from-raw-file");
+const dailyRun = Deno.args.includes("--daily-run");
 
 const form = new FormData();
-form.set("labels", "master,actions");
+if (dailyRun) {
+  form.set("labels", "master,actions");
+} else {
+  form.set("labels", "actions");
+}
 
 if (fromRawFile) {
   const file = Deno.args[0];

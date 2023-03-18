@@ -20,7 +20,7 @@ pub extern "C" fn print_something() {
 #[no_mangle]
 pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) {
   let buf = std::slice::from_raw_parts(ptr, len);
-  println!("{:?}", buf);
+  println!("{buf:?}");
 }
 
 /// # Safety
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn print_buffer2(
 ) {
   let buf1 = std::slice::from_raw_parts(ptr1, len1);
   let buf2 = std::slice::from_raw_parts(ptr2, len2);
-  println!("{:?} {:?}", buf1, buf2);
+  println!("{buf1:?} {buf2:?}");
 }
 
 #[no_mangle]
@@ -189,7 +189,7 @@ pub extern "C" fn call_fn_ptr_return_buffer(
   let func = func.unwrap();
   let ptr = func();
   let buf = unsafe { std::slice::from_raw_parts(ptr, 8) };
-  println!("buf: {:?}", buf);
+  println!("buf: {buf:?}");
 }
 
 static mut STORED_FUNCTION: Option<extern "C" fn()> = None;
@@ -502,7 +502,7 @@ pub extern "C" fn make_rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
 
 #[no_mangle]
 pub extern "C" fn print_rect(rect: Rect) {
-  println!("{:?}", rect);
+  println!("{rect:?}");
 }
 
 #[derive(Debug)]
@@ -541,5 +541,5 @@ pub unsafe extern "C" fn create_mixed(
 
 #[no_mangle]
 pub extern "C" fn print_mixed(mixed: Mixed) {
-  println!("{:?}", mixed);
+  println!("{mixed:?}");
 }

@@ -217,10 +217,10 @@ fn get_endpoint_with_match(
         Token::Key(k) if k.name == *key => Some(k),
         _ => None,
       });
-      url = url
-        .replace(&format!("${{{}}}", name), &value.to_string(maybe_key, true));
+      url =
+        url.replace(&format!("${{{name}}}"), &value.to_string(maybe_key, true));
       url = url.replace(
-        &format!("${{{{{}}}}}", name),
+        &format!("${{{{{name}}}}}"),
         &percent_encoding::percent_encode(
           value.to_string(maybe_key, true).as_bytes(),
           COMPONENT,
@@ -278,8 +278,8 @@ fn replace_variable(
   let value = maybe_value.unwrap_or("");
   if let StringOrNumber::String(name) = &variable.name {
     url_str
-      .replace(&format!("${{{}}}", name), value)
-      .replace(&format! {"${{{{{}}}}}", name}, value)
+      .replace(&format!("${{{name}}}"), value)
+      .replace(&format! {"${{{{{name}}}}}"}, value)
   } else {
     url_str
   }
@@ -295,18 +295,20 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   }
   for registry in &config.registries {
     let (_, keys) = string_to_regex(&registry.schema, None)?;
-    let key_names: Vec<String> = keys.map_or_else(Vec::new, |keys| {
-      keys
-        .iter()
-        .filter_map(|k| {
-          if let StringOrNumber::String(s) = &k.name {
-            Some(s.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
-    });
+    let key_names: Vec<String> = keys
+      .map(|keys| {
+        keys
+          .iter()
+          .filter_map(|k| {
+            if let StringOrNumber::String(s) = &k.name {
+              Some(s.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      })
+      .unwrap_or_default();
 
     for key_name in &key_names {
       if !registry
@@ -442,7 +444,7 @@ impl ModuleRegistry {
       http_client,
       BlobStore::default(),
       None,
-    )?;
+    );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
     Ok(Self {
@@ -664,18 +666,20 @@ impl ModuleRegistry {
               })
               .ok()?;
             let mut i = tokens.len();
-            let last_key_name =
-              StringOrNumber::String(tokens.iter().last().map_or_else(
-                || "".to_string(),
-                |t| {
+            let last_key_name = StringOrNumber::String(
+              tokens
+                .iter()
+                .last()
+                .map(|t| {
                   if let Token::Key(key) = t {
                     if let StringOrNumber::String(s) = &key.name {
                       return s.clone();
                     }
                   }
                   "".to_string()
-                },
-              ));
+                })
+                .unwrap_or_default(),
+            );
             loop {
               let matcher = Matcher::new(&tokens[..i], None)
                 .map_err(|e| {
@@ -723,7 +727,7 @@ impl ModuleRegistry {
                         }
                         for (idx, item) in items.into_iter().enumerate() {
                           let mut label = if let Some(p) = &prefix {
-                            format!("{}{}", p, item)
+                            format!("{p}{item}")
                           } else {
                             item.clone()
                           };
@@ -880,7 +884,7 @@ impl ModuleRegistry {
                             is_incomplete = true;
                           }
                           for (idx, item) in items.into_iter().enumerate() {
-                            let path = format!("{}{}", prefix, item);
+                            let path = format!("{prefix}{item}");
                             let kind = Some(lsp::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();
@@ -988,7 +992,7 @@ impl ModuleRegistry {
       .origins
       .keys()
       .filter_map(|k| {
-        let mut origin = k.as_str().to_string();
+        let mut origin = k.to_string();
         if origin.ends_with('/') {
           origin.pop();
         }

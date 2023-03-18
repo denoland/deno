@@ -97,7 +97,6 @@ pub async fn lint(
 
   let has_error = Arc::new(AtomicBool::new(false));
   let deno_dir = cli_options.resolve_deno_dir()?;
-
   let operation = |paths: Vec<PathBuf>| async {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.lint_incremental_cache_db_file_path(),
@@ -111,8 +110,9 @@ pub async fn lint(
       &paths,
     ));
     let target_files_len = paths.len();
-    let reporter_kind = reporter_kind.clone();
-    let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+    let reporter_lock =
+      Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
+
     run_parallelized(paths, {
       let has_error = has_error.clone();
       let lint_rules = lint_rules.clone();
@@ -126,7 +126,7 @@ pub async fn lint(
           return Ok(());
         }
 
-        let r = lint_file(file_path.clone(), file_text, lint_rules.clone());
+        let r = lint_file(&file_path, file_text, lint_rules);
         if let Ok((file_diagnostics, file_text)) = &r {
           if file_diagnostics.is_empty() {
             // update the incremental cache if there were no diagnostics
@@ -167,8 +167,7 @@ pub async fn lint(
     .await?;
   } else {
     if lint_options.is_stdin {
-      let reporter_lock =
-        Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
+      let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
       let r = lint_stdin(lint_rules);
       handle_lint_result(
         STDIN_FILE_NAME,
@@ -220,7 +219,7 @@ pub fn print_rules_list(json: bool) {
       })
       .collect();
     let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
-    println!("{}", json_str);
+    println!("{json_str}");
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
@@ -235,7 +234,7 @@ pub fn print_rules_list(json: bool) {
 
 pub fn create_linter(
   media_type: MediaType,
-  rules: Vec<Arc<dyn LintRule>>,
+  rules: Vec<&'static dyn LintRule>,
 ) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
@@ -246,12 +245,12 @@ pub fn create_linter(
 }
 
 fn lint_file(
-  file_path: PathBuf,
+  file_path: &PathBuf,
   source_code: String,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from(&file_path);
+  let media_type = MediaType::from(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 
@@ -264,7 +263,7 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
@@ -334,7 +333,7 @@ impl LintReporter for PrettyLintReporter {
       &d.code,
       &pretty_message,
       &source_lines,
-      d.range.clone(),
+      &d.range,
       d.hint.as_ref(),
       &format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
@@ -346,12 +345,12 @@ impl LintReporter for PrettyLintReporter {
       )),
     );
 
-    eprintln!("{}\n", message);
+    eprintln!("{message}\n");
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
-    eprintln!("Error linting: {}", file_path);
-    eprintln!("   {}", err);
+    eprintln!("Error linting: {file_path}");
+    eprintln!("   {err}");
   }
 
   fn close(&mut self, check_count: usize) {
@@ -394,8 +393,8 @@ impl LintReporter for CompactLintReporter {
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
-    eprintln!("Error linting: {}", file_path);
-    eprintln!("   {}", err);
+    eprintln!("Error linting: {file_path}");
+    eprintln!("   {err}");
   }
 
   fn close(&mut self, check_count: usize) {
@@ -417,7 +416,7 @@ pub fn format_diagnostic(
   diagnostic_code: &str,
   message_line: &str,
   source_lines: &[&str],
-  range: deno_lint::diagnostic::Range,
+  range: &deno_lint::diagnostic::Range,
   maybe_hint: Option<&String>,
   formatted_location: &str,
 ) -> String {
@@ -531,7 +530,9 @@ fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   });
 }
 
-pub fn get_configured_rules(rules: LintRulesConfig) -> Vec<Arc<dyn LintRule>> {
+pub fn get_configured_rules(
+  rules: LintRulesConfig,
+) -> Vec<&'static dyn LintRule> {
   if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
   {
     rules::get_recommended_rules()

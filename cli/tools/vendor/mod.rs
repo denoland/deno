@@ -156,7 +156,7 @@ fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
 
   let fmt_config = ps
     .options
-    .get_maybe_config_file()
+    .maybe_config_file()
     .as_ref()
     .and_then(|config| config.to_fmt_config().ok())
     .unwrap_or_default()
@@ -268,11 +268,8 @@ async fn create_graph(
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| {
-      let url = resolve_url_or_path(p)?;
-      Ok((url, deno_graph::ModuleKind::Esm))
-    })
-    .collect::<Result<Vec<_>, AnyError>>()?;
+    .map(|p| resolve_url_or_path(p, ps.options.initial_cwd()))
+    .collect::<Result<Vec<_>, _>>()?;
 
   ps.create_graph(entry_points).await
 }

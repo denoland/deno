@@ -2,16 +2,13 @@
 
 // deno-lint-ignore-file
 
-import {
-  Buffer,
-  BufReader,
-  BufWriter,
-} from "../../../test_util/std/io/buffer.ts";
+import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
   Deferred,
   deferred,
@@ -92,12 +89,13 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const listeningPromise = deferred();
 
   const server = Deno.serve({
-    handler: async (request) => {
+    handler: async (request, { remoteAddr }) => {
       // FIXME(bartlomieju):
       // make sure that request can be inspected
       console.log(request);
       assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
       assertEquals(await request.text(), "");
+      assertEquals(remoteAddr.hostname, "127.0.0.1");
       promise.resolve();
       return new Response("Hello World", { headers: { "foo": "bar" } });
     },
@@ -490,6 +488,51 @@ Deno.test(
     const respBody = await resp.text();
 
     assertEquals("", respBody);
+    ac.abort();
+    await server;
+  },
+);
+
+// https://github.com/denoland/deno/issues/17291
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerIncorrectChunkedResponse() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const errorPromise = deferred();
+    const server = Deno.serve({
+      handler: () => {
+        const body = new ReadableStream({
+          start(controller) {
+            // Non-encoded string is not a valid readable chunk.
+            controller.enqueue("wat");
+          },
+        });
+        return new Response(body);
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: (err) => {
+        const errResp = new Response(
+          `Internal server error: ${(err as Error).message}`,
+          { status: 500 },
+        );
+        ac.abort();
+        errorPromise.resolve(errResp);
+        return errResp;
+      },
+    });
+
+    await listeningPromise;
+
+    const resp = await fetch("http://127.0.0.1:4501/");
+    // Incorrectly implemented reader ReadableStream should reject.
+    await assertRejects(() => resp.body!.getReader().read());
+
+    const err = await errorPromise as Response;
+    assertStringIncludes(await err.text(), "Expected ArrayBufferView");
+
     ac.abort();
     await server;
   },
@@ -1659,7 +1702,7 @@ Deno.test(
     const server = Deno.serve({
       handler: () => {
         promise.resolve();
-        return new Response("foo bar baz");
+        return new Response("NaN".repeat(100));
       },
       port: 4503,
       signal: ac.signal,
@@ -1684,7 +1727,7 @@ Deno.test(
     assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
 
-    assert(msg.endsWith("Content-Length: 11\r\n\r\n"));
+    assert(msg.endsWith("Content-Length: 300\r\n\r\n"));
 
     conn.close();
 
@@ -2229,10 +2272,11 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function serveWithPromisePrototypeThenOverride() {
+  async function serveWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
+    const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
-      Promise.prototype.then = () => {
+      Promise.prototype.then = Array.prototype[Symbol.iterator] = () => {
         throw new Error();
       };
       const ac = new AbortController();
@@ -2249,6 +2293,7 @@ Deno.test(
       await server;
     } finally {
       Promise.prototype.then = originalThen;
+      Array.prototype[Symbol.iterator] = originalSymbolIterator;
     }
   },
 );
@@ -2279,6 +2324,45 @@ Deno.test(
 
     await promise;
     await server;
+  },
+);
+
+// https://github.com/denoland/deno/issues/15858
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCanCloneRequest() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        const cloned = req.clone();
+        assertEquals(req.headers, cloned.headers);
+
+        // both requests can read body
+        await req.text();
+        await cloned.json();
+
+        return new Response("ok");
+      },
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://localhost:9000/", {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"sus":true}',
+      });
+      const text = await resp.text();
+      assertEquals(text, "ok");
+    } finally {
+      ac.abort();
+      await server;
+    }
   },
 );
 

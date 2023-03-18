@@ -220,6 +220,12 @@ declare namespace Deno {
      * @category Errors */
     export class Interrupted extends Error {}
     /**
+     * Raised when the underlying operating system would need to block to
+     * complete but an asynchronous (non-blocking) API is used.
+     *
+     * @category Errors */
+    export class WouldBlock extends Error {}
+    /**
      * Raised when expecting to write to a IO buffer resulted in zero bytes
      * being written.
      *
@@ -326,6 +332,8 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-sys` permission.
+   *
+   * On Windows there is no API available to retrieve this information and this method returns `[ 0, 0, 0 ]`.
    *
    * @tags allow-sys
    * @category Observability
@@ -439,6 +447,20 @@ declare namespace Deno {
    * @category Runtime Environment
    */
   export function osRelease(): string;
+
+  /**
+   * Returns the Operating System uptime in number of seconds.
+   *
+   * ```ts
+   * console.log(Deno.osUptime());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function osUptime(): number;
 
   /**
    * Options which define the permissions within a test or worker context.
@@ -668,6 +690,25 @@ declare namespace Deno {
       name: string,
       fn: (t: TestContext) => void | Promise<void>,
     ): Promise<boolean>;
+
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     *
+     * The returned promise never rejects unless the arguments are invalid.
+     *
+     * If the test was ignored the promise returns `false`.
+     *
+     * ```ts
+     * Deno.test(async function aParentTest(t) {
+     *   console.log("before the step");
+     *   await t.step(function step1(t) {
+     *     console.log("current step:", t.name);
+     *   });
+     *   console.log("after the step");
+     * });
+     * ```
+     */
+    step(fn: (t: TestContext) => void | Promise<void>): Promise<boolean>;
   }
 
   /** @category Testing */
@@ -1231,6 +1272,19 @@ declare namespace Deno {
      */
     delete(key: string): void;
 
+    /** Check whether an environment variable is present or not.
+     *
+     * ```ts
+     * Deno.env.set("SOME_VAR", "Value");
+     * Deno.env.has("SOME_VAR");  // outputs true
+     * ```
+     *
+     * Requires `allow-env` permission.
+     *
+     * @tags allow-env
+     */
+    has(key: string): boolean;
+
     /** Returns a snapshot of the environment variables at invocation as a
      * simple object of keys and values.
      *
@@ -1379,9 +1433,9 @@ declare namespace Deno {
      * Implementations should not retain a reference to `p`.
      *
      * Use
-     * [`itereateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+     * [`itereateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
      * from
-     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
      * to turn a `Reader` into an {@linkcode AsyncIterator}.
      */
     read(p: Uint8Array): Promise<number | null>;
@@ -1413,9 +1467,9 @@ declare namespace Deno {
      * Implementations should not retain a reference to `p`.
      *
      * Use
-     * [`itereateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+     * [`itereateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
      * from from
-     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
      * to turn a `ReaderSync` into an {@linkcode Iterator}.
      */
     readSync(p: Uint8Array): number | null;
@@ -1485,7 +1539,7 @@ declare namespace Deno {
      *
      * It resolves with the updated offset.
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
   }
 
   /**
@@ -1514,8 +1568,8 @@ declare namespace Deno {
    * the first error encountered while copying.
    *
    * @deprecated Use
-   * [`copy`](https://deno.land/std/streams/conversion.ts?s=copy) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`copy`](https://deno.land/std/streams/copy.ts?s=copy) from
+   * [`std/streams/copy.ts`](https://deno.land/std/streams/copy.ts)
    * instead. `Deno.copy` will be removed in the future.
    *
    * @category I/O
@@ -1534,9 +1588,9 @@ declare namespace Deno {
    * Turns a Reader, `r`, into an async iterator.
    *
    * @deprecated Use
-   * [`iterateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+   * [`iterateReader`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReader)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
    * instead. `Deno.iter` will be removed in the future.
    *
    * @category I/O
@@ -1550,9 +1604,9 @@ declare namespace Deno {
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * @deprecated Use
-   * [`iterateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+   * [`iterateReaderSync`](https://deno.land/std/streams/iterate_reader.ts?s=iterateReaderSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/iterate_reader.ts`](https://deno.land/std/streams/iterate_reader.ts)
    * instead. `Deno.iterSync` will be removed in the future.
    *
    * @category I/O
@@ -1643,8 +1697,8 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * [`readAll()`](https://deno.land/std/streams/conversion.ts?s=readAll) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`readAll()`](https://deno.land/std/streams/read_all.ts?s=readAll) from
+   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
@@ -1673,9 +1727,9 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * [`readAllSync()`](https://deno.land/std/streams/conversion.ts?s=readAllSync)
+   * [`readAllSync()`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single
@@ -1698,8 +1752,8 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * [`writeAll()`](https://deno.land/std/streams/conversion.ts?s=writeAll) from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`writeAll()`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
@@ -1723,9 +1777,9 @@ declare namespace Deno {
    * Returns the number of bytes written. This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather
    * use
-   * [`writeAllSync()`](https://deno.land/std/streams/conversion.ts?s=writeAllSync)
+   * [`writeAllSync()`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
    * from
-   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
@@ -1786,7 +1840,7 @@ declare namespace Deno {
    */
   export function seek(
     rid: number,
-    offset: number,
+    offset: number | bigint,
     whence: SeekMode,
   ): Promise<number>;
 
@@ -2150,7 +2204,7 @@ declare namespace Deno {
      * console.log(await file.seek(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
      * ```
      */
-    seek(offset: number, whence: SeekMode): Promise<number>;
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
     /** Synchronously seek to the given `offset` under mode given by `whence`.
      * The new position within the resource (bytes from the start) is returned.
      *
@@ -2189,7 +2243,7 @@ declare namespace Deno {
      * file.close();
      * ```
      */
-    seekSync(offset: number, whence: SeekMode): number;
+    seekSync(offset: number | bigint, whence: SeekMode): number;
     /** Resolves to a {@linkcode Deno.FileInfo} for the file.
      *
      * ```ts
@@ -2496,8 +2550,8 @@ declare namespace Deno {
    * Uint8Array`.
    *
    * @deprecated Use
-   *   [`readAll`](https://deno.land/std/streams/conversion.ts?s=readAll) from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`readAll`](https://deno.land/std/streams/read_all.ts?s=readAll) from
+   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    *   instead. `Deno.readAll` will be removed in the future.
    *
    * @category I/O
@@ -2509,9 +2563,9 @@ declare namespace Deno {
    * as `Uint8Array`.
    *
    * @deprecated Use
-   *   [`readAllSync`](https://deno.land/std/streams/conversion.ts?s=readAllSync)
+   *   [`readAllSync`](https://deno.land/std/streams/read_all.ts?s=readAllSync)
    *   from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`std/streams/read_all.ts`](https://deno.land/std/streams/read_all.ts)
    *   instead. `Deno.readAllSync` will be removed in the future.
    *
    * @category I/O
@@ -2522,8 +2576,8 @@ declare namespace Deno {
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * @deprecated Use
-   *   [`writeAll`](https://deno.land/std/streams/conversion.ts?s=writeAll) from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`writeAll`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    *   instead. `Deno.writeAll` will be removed in the future.
    *
    * @category I/O
@@ -2535,9 +2589,9 @@ declare namespace Deno {
    * writer (`w`).
    *
    * @deprecated Use
-   *   [`writeAllSync`](https://deno.land/std/streams/conversion.ts?s=writeAllSync)
+   *   [`writeAllSync`](https://deno.land/std/streams/write_all.ts?s=writeAllSync)
    *   from
-   *   [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   *   [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
    *   instead. `Deno.writeAllSync` will be removed in the future.
    *
    * @category I/O
@@ -3024,10 +3078,8 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
-    /** ID of the device containing the file.
-     *
-     * _Linux/Mac OS only._ */
-    dev: number | null;
+    /** ID of the device containing the file. */
+    dev: number;
     /** Inode number.
      *
      * _Linux/Mac OS only._ */
@@ -3309,7 +3361,7 @@ declare namespace Deno {
     /** If set to `true`, will append to a file instead of overwriting previous
      * contents.
      *
-     * @∂efault {false} */
+     * @default {false} */
     append?: boolean;
     /** Sets the option to allow creating a new file, if one doesn't already
      * exist at the specified path.
@@ -3319,7 +3371,7 @@ declare namespace Deno {
     /** If set to `true`, no file, directory, or symlink is allowed to exist at
      * the target location. When createNew is set to `true`, `create` is ignored.
      *
-     * @∂efault {false} */
+     * @default {false} */
     createNew?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
@@ -3351,7 +3403,7 @@ declare namespace Deno {
    */
   export function writeFile(
     path: string | URL,
-    data: Uint8Array,
+    data: Uint8Array | ReadableStream<Uint8Array>,
     options?: WriteFileOptions,
   ): Promise<void>;
 
@@ -3394,7 +3446,7 @@ declare namespace Deno {
    */
   export function writeTextFile(
     path: string | URL,
-    data: string,
+    data: string | ReadableStream<string>,
     options?: WriteFileOptions,
   ): Promise<void>;
 
@@ -3427,7 +3479,7 @@ declare namespace Deno {
    *
    * ### Truncate part of the file
    *
-   * ```
+   * ```ts
    * const file = await Deno.makeTempFile();
    * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
    * await Deno.truncate(file, 7);
@@ -3920,6 +3972,218 @@ declare namespace Deno {
    */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
+  /** Create a child process.
+   *
+   * If any stdio options are not set to `"piped"`, accessing the corresponding
+   * field on the `Command` or its `CommandOutput` will throw a `TypeError`.
+   *
+   * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
+   * needs to be closed manually.
+   *
+   * @example Spawn a subprocess and pipe the output to a file
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   *   stdin: "piped",
+   * });
+   * const child = command.spawn();
+   *
+   * // open a file and pipe the subprocess output to it.
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   *
+   * // manually close stdin
+   * child.stdin.close();
+   * const status = await child.status;
+   * ```
+   *
+   * @example Spawn a subprocess and collect its output
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * const { code, stdout, stderr } = await command.output();
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * @example Spawn a subprocess and collect its output synchronously
+   *
+   * ```ts
+   * const command = new Deno.Command(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * const { code, stdout, stderr } = command.outputSync();
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * @category Sub Process
+   */
+  export class Command {
+    constructor(command: string | URL, options?: CommandOptions);
+    /**
+     * Executes the {@linkcode Deno.Command}, waiting for it to finish and
+     * collecting all of its output.
+     * If `spawn()` was called, calling this function will collect the remaining
+     * output.
+     *
+     * Will throw an error if `stdin: "piped"` is set.
+     *
+     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
+     */
+    output(): Promise<CommandOutput>;
+    /**
+     * Synchronously executes the {@linkcode Deno.Command}, waiting for it to
+     * finish and collecting all of its output.
+     *
+     * Will throw an error if `stdin: "piped"` is set.
+     *
+     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
+     */
+    outputSync(): CommandOutput;
+    /**
+     * Spawns a streamable subprocess, allowing to use the other methods.
+     */
+    spawn(): ChildProcess;
+  }
+
+  /**
+   * The interface for handling a child process returned from
+   * {@linkcode Deno.Command.spawn}.
+   *
+   * @category Sub Process
+   */
+  export class ChildProcess {
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
+    readonly pid: number;
+    /** Get the status of the child. */
+    readonly status: Promise<CommandStatus>;
+
+    /** Waits for the child to exit completely, returning all its output and
+     * status. */
+    output(): Promise<CommandOutput>;
+    /** Kills the process with given {@linkcode Deno.Signal}.
+     *
+     * @param [signo="SIGTERM"]
+     */
+    kill(signo?: Signal): void;
+
+    /** Ensure that the status of the child process prevents the Deno process
+     * from exiting. */
+    ref(): void;
+    /** Ensure that the status of the child process does not block the Deno
+     * process from exiting. */
+    unref(): void;
+  }
+
+  /**
+   * Options which can be set when calling {@linkcode Deno.Command}.
+   *
+   * @category Sub Process
+   */
+  export interface CommandOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     *
+     * If not specified, the `cwd` of the parent process is used.
+     */
+    cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     *
+     * Doesn't guarantee that only `env` variables are present, as the OS may
+     * set environmental variables for processes.
+     *
+     * @default {false}
+     */
+    clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call in the
+     * child process. Failure in the set uid call will cause the spawn to fail.
+     */
+    uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
+    /**
+     * An {@linkcode AbortSignal} that allows closing the process using the
+     * corresponding {@linkcode AbortController} by sending the process a
+     * SIGTERM signal.
+     *
+     * Not supported in {@linkcode Deno.Command.outputSync}.
+     */
+    signal?: AbortSignal;
+
+    /** How `stdin` of the spawned process should be handled.
+     *
+     * Defaults to `"inherit"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
+    stdin?: "piped" | "inherit" | "null";
+    /** How `stdout` of the spawned process should be handled.
+     *
+     * Defaults to `"piped"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
+    stdout?: "piped" | "inherit" | "null";
+    /** How `stderr` of the spawned process should be handled.
+     *
+     * Defaults to `"piped"` for `output` & `outputSync`,
+     * and `"inherit"` for `spawn`. */
+    stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on windows. This option
+     * is ignored on non-windows platforms.
+     *
+     * @default {false} */
+    windowsRawArguments?: boolean;
+  }
+
+  /**
+   * @category Sub Process
+   */
+  export interface CommandStatus {
+    /** If the child process exits with a 0 status code, `success` will be set
+     * to `true`, otherwise `false`. */
+    success: boolean;
+    /** The exit code of the child process. */
+    code: number;
+    /** The signal associated with the child process. */
+    signal: Signal | null;
+  }
+
+  /**
+   * The interface returned from calling {@linkcode Deno.Command.output} or
+   * {@linkcode Deno.Command.outputSync} which represents the result of spawning the
+   * child process.
+   *
+   * @category Sub Process
+   */
+  export interface CommandOutput extends CommandStatus {
+    /** The buffered output from the child process' `stdout`. */
+    readonly stdout: Uint8Array;
+    /** The buffered output from the child process' `stderr`. */
+    readonly stderr: Uint8Array;
+  }
+
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *
    * @category Console and Debugging */
@@ -4247,6 +4511,20 @@ declare namespace Deno {
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
+    /** Returns the current status of a permission.
+     *
+     * Note, if the permission is already granted, `request()` will not prompt
+     * the user again, therefore `querySync()` is only necessary if you are going
+     * to react differently existing permissions without wanting to modify them
+     * or prompt the user to modify them.
+     *
+     * ```ts
+     * const status = Deno.permissions.querySync({ name: "read", path: "/etc" });
+     * console.log(status.state);
+     * ```
+     */
+    querySync(desc: PermissionDescriptor): PermissionStatus;
+
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
@@ -4257,6 +4535,17 @@ declare namespace Deno {
      * ```
      */
     revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Revokes a permission, and returns the state of the permission.
+     *
+     * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * const status = Deno.permissions.revokeSync({ name: "run" });
+     * assert(status.state !== "granted")
+     * ```
+     */
+    revokeSync(desc: PermissionDescriptor): PermissionStatus;
 
     /** Requests the permission, and resolves to the state of the permission.
      *
@@ -4273,6 +4562,23 @@ declare namespace Deno {
      * ```
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+
+    /** Requests the permission, and returns the state of the permission.
+     *
+     * If the permission is already granted, the user will not be prompted to
+     * grant the permission again.
+     *
+     * ```ts
+     * const status = Deno.permissions.requestSync({ name: "env" });
+     * if (status.state === "granted") {
+     *   console.log("'env' permission is granted.");
+     * } else {
+     *   console.log("'env' permission is denied.");
+     * }
+     * ```
+     */
+    requestSync(desc: PermissionDescriptor): PermissionStatus;
   }
 
   /** Deno's permission management API.
@@ -4304,6 +4610,11 @@ declare namespace Deno {
    * console.log(status.state);
    * ```
    *
+   * ```ts
+   * const status = Deno.permissions.querySync({ name: "read", path: "/etc" });
+   * console.log(status.state);
+   * ```
+   *
    * ### Revoking
    *
    * ```ts
@@ -4313,10 +4624,26 @@ declare namespace Deno {
    * assert(status.state !== "granted")
    * ```
    *
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   *
+   * const status = Deno.permissions.revokeSync({ name: "run" });
+   * assert(status.state !== "granted")
+   * ```
+   *
    * ### Requesting
    *
    * ```ts
    * const status = await Deno.permissions.request({ name: "env" });
+   * if (status.state === "granted") {
+   *   console.log("'env' permission is granted.");
+   * } else {
+   *   console.log("'env' permission is denied.");
+   * }
+   * ```
+   *
+   * ```ts
+   * const status = Deno.permissions.requestSync({ name: "env" });
    * if (status.state === "granted") {
    *   console.log("'env' permission is granted.");
    * } else {
@@ -4348,7 +4675,7 @@ declare namespace Deno {
     arch: "x86_64" | "aarch64";
     /** The operating system that the Deno CLI was built for. `"darwin"` is
      * also known as OSX or MacOS. */
-    os: "darwin" | "linux" | "windows";
+    os: "darwin" | "linux" | "windows" | "freebsd" | "netbsd" | "aix" | "solaris" | "illumos";
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */
@@ -4391,7 +4718,7 @@ declare namespace Deno {
    *
    * Then `Deno.args` will contain:
    *
-   * ```
+   * ```ts
    * [ "/etc/passwd" ]
    * ```
    *
@@ -4894,6 +5221,12 @@ declare namespace Deno {
        * @default {53} */
       port?: number;
     };
+    /**
+     * An abort signal to allow cancellation of the DNS resolution operation.
+     * If the signal becomes aborted the resolveDns operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
   }
 
   /** If {@linkcode Deno.resolveDns} is called with `"CAA"` record type

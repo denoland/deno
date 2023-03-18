@@ -2,7 +2,6 @@
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
-use crate::args::TaskFlags;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
@@ -18,6 +17,8 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use indexmap::IndexMap;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -26,8 +27,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub type MaybeImportsResult =
-  Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
+  Result<Vec<deno_graph::ReferrerImports>, AnyError>;
 
+#[derive(Hash)]
 pub struct JsxImportSourceConfig {
   pub default_specifier: Option<String>,
   pub module: String,
@@ -163,7 +165,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
   match (a, b) {
-    (&mut Value::Object(ref mut a), &Value::Object(ref b)) => {
+    (&mut Value::Object(ref mut a), Value::Object(b)) => {
       for (k, v) in b {
         json_merge(a.entry(k.clone()).or_insert(Value::Null), v);
       }
@@ -183,10 +185,16 @@ fn parse_compiler_options(
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if IGNORED_COMPILER_OPTIONS.contains(&key) {
-      items.push(key.to_string());
-    } else {
-      filtered.insert(key.to_string(), value.to_owned());
+    // We don't pass "types" entries to typescript via the compiler
+    // options and instead provide those to tsc as "roots". This is
+    // because our "types" behavior is at odds with how TypeScript's
+    // "types" works.
+    if key != "types" {
+      if IGNORED_COMPILER_OPTIONS.contains(&key) {
+        items.push(key.to_string());
+      } else {
+        filtered.insert(key.to_string(), value.to_owned());
+      }
     }
   }
   let value = serde_json::to_value(filtered)?;
@@ -213,7 +221,7 @@ impl TsConfig {
   }
 
   pub fn as_bytes(&self) -> Vec<u8> {
-    let map = self.0.as_object().unwrap();
+    let map = self.0.as_object().expect("invalid tsconfig");
     let ordered: BTreeMap<_, _> = map.iter().collect();
     let value = json!(ordered);
     value.to_string().as_bytes().to_owned()
@@ -381,6 +389,7 @@ pub struct FmtOptionsConfig {
   pub indent_width: Option<u8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<ProseWrap>,
+  pub semi_colons: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -464,6 +473,8 @@ pub enum LockConfig {
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub import_map: Option<String>,
+  pub imports: Option<Value>,
+  pub scopes: Option<Value>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
@@ -479,33 +490,31 @@ pub struct ConfigFile {
 }
 
 impl ConfigFile {
-  pub fn discover(flags: &Flags) -> Result<Option<ConfigFile>, AnyError> {
+  pub fn discover(
+    flags: &Flags,
+    cwd: &Path,
+  ) -> Result<Option<ConfigFile>, AnyError> {
     match &flags.config_flag {
       ConfigFlag::Disabled => Ok(None),
-      ConfigFlag::Path(config_path) => Ok(Some(ConfigFile::read(config_path)?)),
+      ConfigFlag::Path(config_path) => {
+        let config_path = PathBuf::from(config_path);
+        let config_path = if config_path.is_absolute() {
+          config_path
+        } else {
+          cwd.join(config_path)
+        };
+        Ok(Some(ConfigFile::read(&config_path)?))
+      }
       ConfigFlag::Discover => {
-        if let Some(config_path_args) = flags.config_path_args() {
+        if let Some(config_path_args) = flags.config_path_args(cwd) {
           let mut checked = HashSet::new();
           for f in config_path_args {
             if let Some(cf) = Self::discover_from(&f, &mut checked)? {
               return Ok(Some(cf));
             }
           }
-          // attempt to resolve the config file from the task subcommand's
-          // `--cwd` when specified
-          if let crate::args::DenoSubcommand::Task(TaskFlags {
-            cwd: Some(path),
-            ..
-          }) = &flags.subcommand
-          {
-            let task_cwd = canonicalize_path(&PathBuf::from(path))?;
-            if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
-              return Ok(Some(path));
-            }
-          };
           // From CWD walk up to root looking for deno.json or deno.jsonc
-          let cwd = std::env::current_dir()?;
-          Self::discover_from(&cwd, &mut checked)
+          Self::discover_from(cwd, &mut checked)
         } else {
           Ok(None)
         }
@@ -520,12 +529,21 @@ impl ConfigFile {
     /// Filenames that Deno will recognize when discovering config.
     const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
+    // todo(dsherret): in the future, we should force all callers
+    // to provide a resolved path
+    let start = if start.is_absolute() {
+      Cow::Borrowed(start)
+    } else {
+      Cow::Owned(std::env::current_dir()?.join(start))
+    };
+
     for ancestor in start.ancestors() {
       if checked.insert(ancestor.to_path_buf()) {
         for config_filename in CONFIG_FILE_NAMES {
           let f = ancestor.join(config_filename);
-          match ConfigFile::read(f) {
+          match ConfigFile::read(&f) {
             Ok(cf) => {
+              log::debug!("Config file found at '{}'", f.display());
               return Ok(Some(cf));
             }
             Err(e) => {
@@ -551,34 +569,29 @@ impl ConfigFile {
     Ok(None)
   }
 
-  pub fn read(path_ref: impl AsRef<Path>) -> Result<Self, AnyError> {
-    let path = Path::new(path_ref.as_ref());
-    let config_file = if path.is_absolute() {
-      path.to_path_buf()
-    } else {
-      std::env::current_dir()?.join(path_ref)
-    };
+  pub fn read(config_path: &Path) -> Result<Self, AnyError> {
+    debug_assert!(config_path.is_absolute());
 
     // perf: Check if the config file exists before canonicalizing path.
-    if !config_file.exists() {
+    if !config_path.exists() {
       return Err(
         std::io::Error::new(
           std::io::ErrorKind::InvalidInput,
           format!(
             "Could not find the config file: {}",
-            config_file.to_string_lossy()
+            config_path.to_string_lossy()
           ),
         )
         .into(),
       );
     }
 
-    let config_path = canonicalize_path(&config_file).map_err(|_| {
+    let config_path = canonicalize_path(config_path).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
         format!(
           "Could not find the config file: {}",
-          config_file.to_string_lossy()
+          config_path.to_string_lossy()
         ),
       )
     })?;
@@ -665,6 +678,21 @@ impl ConfigFile {
     self.json.import_map.clone()
   }
 
+  pub fn to_import_map_value(&self) -> Value {
+    let mut value = serde_json::Map::with_capacity(2);
+    if let Some(imports) = &self.json.imports {
+      value.insert("imports".to_string(), imports.clone());
+    }
+    if let Some(scopes) = &self.json.scopes {
+      value.insert("scopes".to_string(), scopes.clone());
+    }
+    value.into()
+  }
+
+  pub fn is_an_import_map(&self) -> bool {
+    self.json.imports.is_some() || self.json.scopes.is_some()
+  }
+
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
     if let Some(config) = self.json.fmt.clone() {
       let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
@@ -726,9 +754,9 @@ impl ConfigFile {
 
   pub fn to_tasks_config(
     &self,
-  ) -> Result<Option<BTreeMap<String, String>>, AnyError> {
+  ) -> Result<Option<IndexMap<String, String>>, AnyError> {
     if let Some(config) = self.json.tasks.clone() {
-      let tasks_config: BTreeMap<String, String> =
+      let tasks_config: IndexMap<String, String> =
         serde_json::from_value(config)
           .context("Failed to parse \"tasks\" configuration")?;
       Ok(Some(tasks_config))
@@ -745,7 +773,7 @@ impl ConfigFile {
       if let Some(value) = self.json.compiler_options.as_ref() {
         value
       } else {
-        return Ok(None);
+        return Ok(Vec::new());
       };
     let compiler_options: CompilerOptions =
       serde_json::from_value(compiler_options_value.clone())?;
@@ -754,9 +782,9 @@ impl ConfigFile {
     }
     if !imports.is_empty() {
       let referrer = self.specifier.clone();
-      Ok(Some(vec![(referrer, imports)]))
+      Ok(vec![deno_graph::ReferrerImports { referrer, imports }])
     } else {
-      Ok(None)
+      Ok(Vec::new())
     }
   }
 
@@ -781,25 +809,22 @@ impl ConfigFile {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<BTreeMap<String, String>, AnyError> {
+  ) -> Result<IndexMap<String, String>, AnyError> {
     let maybe_tasks_config = self.to_tasks_config()?;
-    if let Some(tasks_config) = maybe_tasks_config {
-      for key in tasks_config.keys() {
-        if key.is_empty() {
-          bail!("Configuration file task names cannot be empty");
-        } else if !key
-          .chars()
-          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
-        {
-          bail!("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {}", key);
-        } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
-          bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
-        }
+    let tasks_config = maybe_tasks_config.unwrap_or_default();
+    for key in tasks_config.keys() {
+      if key.is_empty() {
+        bail!("Configuration file task names cannot be empty");
+      } else if !key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
+      {
+        bail!("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {}", key);
+      } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
+        bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
       }
-      Ok(tasks_config)
-    } else {
-      bail!("No tasks found in configuration file")
     }
+    Ok(tasks_config)
   }
 
   pub fn to_lock_config(&self) -> Result<Option<LockConfig>, AnyError> {
@@ -905,7 +930,7 @@ pub fn get_ts_config_for_emit(
       "sourceMap": false,
       "strict": true,
       "target": "esnext",
-      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "tsBuildInfoFile": "internal:///.tsbuildinfo",
       "useDefineForClassFields": true,
       // TODO(@kitsonk) remove for Deno 2.0
       "useUnknownInCatchVariables": false,
@@ -971,24 +996,16 @@ mod tests {
   use pretty_assertions::assert_eq;
 
   #[test]
-  fn read_config_file_relative() {
-    let config_file =
-      ConfigFile::read("tests/testdata/module_graph/tsconfig.json")
-        .expect("Failed to load config file");
-    assert!(config_file.json.compiler_options.is_some());
-  }
-
-  #[test]
   fn read_config_file_absolute() {
     let path = test_util::testdata_path().join("module_graph/tsconfig.json");
-    let config_file = ConfigFile::read(path.to_str().unwrap())
-      .expect("Failed to load config file");
+    let config_file = ConfigFile::read(&path).unwrap();
     assert!(config_file.json.compiler_options.is_some());
   }
 
   #[test]
   fn include_config_path_on_error() {
-    let error = ConfigFile::read("404.json").err().unwrap();
+    let path = test_util::testdata_path().join("404.json");
+    let error = ConfigFile::read(&path).err().unwrap();
     assert!(error.to_string().contains("404.json"));
   }
 
@@ -1209,11 +1226,6 @@ mod tests {
     let mut checked = HashSet::new();
     let err = ConfigFile::discover_from(&d, &mut checked).unwrap_err();
     assert!(err.to_string().contains("Unable to parse config file"));
-  }
-
-  #[test]
-  fn tasks_no_tasks() {
-    run_task_error_test(r#"{}"#, "No tasks found in configuration file");
   }
 
   #[test]

@@ -2,6 +2,7 @@
 
 use super::DiskCache;
 
+use std::env;
 use std::path::PathBuf;
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
@@ -109,8 +110,17 @@ impl DenoDir {
   }
 
   /// Path used for the REPL history file.
-  pub fn repl_history_file_path(&self) -> PathBuf {
-    self.root.join("deno_history.txt")
+  /// Can be overridden or disabled by setting `DENO_REPL_HISTORY` environment variable.
+  pub fn repl_history_file_path(&self) -> Option<PathBuf> {
+    if let Some(deno_repl_history) = env::var_os("DENO_REPL_HISTORY") {
+      if deno_repl_history.is_empty() {
+        None
+      } else {
+        Some(PathBuf::from(deno_repl_history))
+      }
+    } else {
+      Some(self.root.join("deno_history.txt"))
+    }
   }
 
   /// Folder path used for downloading new versions of deno.
@@ -184,7 +194,12 @@ mod dirs {
   use std::os::windows::ffi::OsStringExt;
   use std::path::PathBuf;
   use winapi::shared::winerror;
-  use winapi::um::{combaseapi, knownfolders, shlobj, shtypes, winbase, winnt};
+  use winapi::um::combaseapi;
+  use winapi::um::knownfolders;
+  use winapi::um::shlobj;
+  use winapi::um::shtypes;
+  use winapi::um::winbase;
+  use winapi::um::winnt;
 
   fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
     // SAFETY: winapi calls

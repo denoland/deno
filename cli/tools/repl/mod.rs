@@ -6,7 +6,7 @@ use crate::colors;
 use crate::proc_state::ProcState;
 use crate::worker::create_main_worker;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
+use deno_core::resolve_path;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
@@ -69,7 +69,8 @@ async fn read_eval_file(
   ps: &ProcState,
   eval_file: &str,
 ) -> Result<String, AnyError> {
-  let specifier = deno_core::resolve_url_or_path(eval_file)?;
+  let specifier =
+    deno_core::resolve_url_or_path(eval_file, ps.options.initial_cwd())?;
 
   let file = ps
     .file_fetcher
@@ -80,11 +81,12 @@ async fn read_eval_file(
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let ps = ProcState::build(flags).await?;
+  let main_module =
+    resolve_path("./$deno$repl.ts", ps.options.initial_cwd()).unwrap();
   let mut worker = create_main_worker(
     &ps,
-    main_module.clone(),
+    main_module,
     PermissionsContainer::new(Permissions::from_options(
       &ps.options.permissions_options(),
     )?),
@@ -112,14 +114,11 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
             .await;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
-            println!(
-              "Error in --eval-file file \"{}\": {}",
-              eval_file, error_text
-            );
+            println!("Error in --eval-file file \"{eval_file}\": {error_text}");
           }
         }
         Err(e) => {
-          println!("Error in --eval-file file \"{}\": {}", eval_file, e);
+          println!("Error in --eval-file file \"{eval_file}\": {e}");
         }
       }
     }
@@ -129,7 +128,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     let output = repl_session.evaluate_line_and_get_output(&eval).await;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
-      println!("Error in --eval flag: {}", error_text);
+      println!("Error in --eval flag: {error_text}");
     }
   }
 
@@ -166,7 +165,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
           break;
         }
 
-        println!("{}", output);
+        println!("{output}");
       }
       Err(ReadlineError::Interrupted) => {
         if editor.should_exit_on_interrupt() {
@@ -180,7 +179,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
         break;
       }
       Err(err) => {
-        println!("Error: {:?}", err);
+        println!("Error: {err:?}");
         break;
       }
     }

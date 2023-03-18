@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use super::buffer::ZeroCopyBuf;
-use super::transl8::{FromV8, ToV8};
+use super::transl8::FromV8;
+use super::transl8::ToV8;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
 use std::ops::Deref;
@@ -19,6 +20,16 @@ impl Deref for StringOrBuffer {
     match self {
       Self::Buffer(b) => b.as_ref(),
       Self::String(s) => s.as_bytes(),
+    }
+  }
+}
+
+impl<'a> TryFrom<&'a StringOrBuffer> for &'a str {
+  type Error = std::str::Utf8Error;
+  fn try_from(value: &'a StringOrBuffer) -> Result<Self, Self::Error> {
+    match value {
+      StringOrBuffer::String(s) => Ok(s.as_str()),
+      StringOrBuffer::Buffer(b) => std::str::from_utf8(b.as_ref()),
     }
   }
 }
