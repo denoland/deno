@@ -157,10 +157,6 @@ pub(crate) fn initialize_context<'s>(
     ops_obj
   };
 
-  //
-
-  eprintln!("snapshot options {:?}", snapshot_options);
-
   if matches!(snapshot_options, SnapshotOptions::Load) {
     // Only register ops that have `force_registration` flag set to true,
     // the remaining ones should already be in the snapshot.
