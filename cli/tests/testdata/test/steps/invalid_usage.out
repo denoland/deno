@@ -75,27 +75,20 @@ error: Error: There were still test steps running after the current scope finish
     [WILDCARD]
 
 inner missing await => ./test/steps/invalid_usage.ts:[WILDCARD]
-error: Error: 1 test step failed.
-    at [WILDCARD]
+error: 1 test step failed.
 
 parallel steps with sanitizers => ./test/steps/invalid_usage.ts:[WILDCARD]
 error: Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
     [WILDCARD]
 
 parallel steps when first has sanitizer => ./test/steps/invalid_usage.ts:[WILDCARD]
-error: Error: 1 test step failed.
-    at runTest ([WILDCARD])
-    at [WILDCARD]
+error: 1 test step failed.
 
 parallel steps when second has sanitizer => ./test/steps/invalid_usage.ts:[WILDCARD]
-error: Error: 1 test step failed.
-    at runTest ([WILDCARD])
-    at [WILDCARD]
+error: 1 test step failed.
 
 parallel steps where only inner tests have sanitizers => ./test/steps/invalid_usage.ts:[WILDCARD]
-error: Error: 1 test step failed.
-    at runTest ([WILDCARD])
-    at [WILDCARD]
+error: 1 test step failed.
 
  FAILURES 
 

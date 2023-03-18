@@ -717,11 +717,10 @@ impl LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestResult::Failed(js_error) => {
-        let err_string = test::format_test_error(js_error);
+      test::TestResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages: as_test_messages(err_string, false),
+          messages: as_test_messages(failure.to_string(), false),
           duration: Some(elapsed as u32),
         })
       }

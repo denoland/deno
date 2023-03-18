@@ -36,14 +36,10 @@ failing step in failing test ... FAILED ([WILDCARD])
  ERRORS 
 
 nested failure => ./test/steps/failing_steps.ts:[WILDCARD]
-error: Error: 1 test step failed.
-    at runTest (ext:cli/40_testing.js:[WILDCARD])
-    at async runTests (ext:cli/40_testing.js:[WILDCARD])
+error: 1 test step failed.
 
 multiple test step failures => ./test/steps/failing_steps.ts:[WILDCARD]
-error: Error: 2 test steps failed.
-    at runTest (ext:cli/40_testing.js:[WILDCARD])
-    at async runTests (ext:cli/40_testing.js:[WILDCARD])
+error: 2 test steps failed.
 
 failing step in failing test => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: Fail test.

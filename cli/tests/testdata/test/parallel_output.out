@@ -40,12 +40,10 @@ Hello, world! (from step 4)
  ERRORS 
 
 step failures => ./test/parallel_output.ts:12:6
-error: Error: 2 test steps failed.
-    at [WILDCARD]
+error: 2 test steps failed.
 
 step nested failure => ./test/parallel_output.ts:20:6
-error: Error: 1 test step failed.
-    at [WILDCARD]
+error: 1 test step failed.
 
  FAILURES 
 

@@ -160,10 +160,28 @@ pub enum TestOutput {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum TestFailure {
+  JsError(Box<JsError>),
+  FailedSteps(usize),
+}
+
+impl ToString for TestFailure {
+  fn to_string(&self) -> String {
+    match self {
+      TestFailure::JsError(js_error) => format_test_error(js_error),
+      TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
+      TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
+    }
+  }
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
   Ignored,
-  Failed(Box<JsError>),
+  Failed(TestFailure),
   Cancelled,
 }
 
@@ -245,7 +263,7 @@ pub struct TestSummary {
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(TestDescription, Box<JsError>)>,
+  pub failures: Vec<(TestDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
@@ -557,14 +575,14 @@ impl PrettyTestReporter {
       #[allow(clippy::type_complexity)] // Type alias doesn't look better here
       let mut failures_by_origin: BTreeMap<
         String,
-        (Vec<(&TestDescription, &JsError)>, Option<&JsError>),
+        (Vec<(&TestDescription, &TestFailure)>, Option<&JsError>),
       > = BTreeMap::default();
       let mut failure_titles = vec![];
-      for (description, js_error) in &summary.failures {
+      for (description, failure) in &summary.failures {
         let (failures, _) = failures_by_origin
           .entry(description.origin.clone())
           .or_default();
-        failures.push((description, js_error.as_ref()));
+        failures.push((description, failure));
       }
       for (origin, js_error) in &summary.uncaught_errors {
         let (_, uncaught_error) =
@@ -573,14 +591,10 @@ impl PrettyTestReporter {
       }
       println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
-        for (description, js_error) in failures {
+        for (description, failure) in failures {
           let failure_title = self.format_test_for_summary(description);
           println!("{}", &failure_title);
-          println!(
-            "{}: {}",
-            colors::red_bold("error"),
-            format_test_error(js_error)
-          );
+          println!("{}: {}", colors::red_bold("error"), failure.to_string());
           println!();
           failure_titles.push(failure_title);
         }
@@ -1226,9 +1240,11 @@ async fn test_specifiers(
                 TestResult::Ignored => {
                   summary.ignored += 1;
                 }
-                TestResult::Failed(error) => {
+                TestResult::Failed(failure) => {
                   summary.failed += 1;
-                  summary.failures.push((description.clone(), error.clone()));
+                  summary
+                    .failures
+                    .push((description.clone(), failure.clone()));
                 }
                 TestResult::Cancelled => {
                   unreachable!("should be handled in TestEvent::UncaughtError");

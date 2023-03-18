@@ -824,17 +824,9 @@ async function runTest(desc) {
   try {
     await desc.fn(desc);
     const failCount = failedChildStepsCount(desc);
-    return failCount === 0 ? "ok" : {
-      "failed": core.destructureError(
-        new Error(
-          `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
-        ),
-      ),
-    };
+    return failCount === 0 ? "ok" : { failed: { failedSteps: failCount } };
   } catch (error) {
-    return {
-      "failed": core.destructureError(error),
-    };
+    return { failed: { jsError: core.destructureError(error) } };
   } finally {
     const state = MapPrototypeGet(testStates, desc.id);
     state.finalized = true;
