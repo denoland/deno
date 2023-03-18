@@ -1049,7 +1049,7 @@ impl ModuleMap {
 
       let name = v8::String::new_from_one_byte(
         scope,
-        &info.name.as_bytes(),
+        info.name.as_bytes(),
         v8::NewStringType::Normal,
       )
       .unwrap();
@@ -1060,7 +1060,7 @@ impl ModuleMap {
       for (i, request) in info.requests.iter().enumerate() {
         let specifier = v8::String::new_from_one_byte(
           scope,
-          &request.specifier.as_bytes(),
+          request.specifier.as_bytes(),
           v8::NewStringType::Normal,
         )
         .unwrap();
