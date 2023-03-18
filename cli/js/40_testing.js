@@ -6,7 +6,7 @@ const internals = globalThis.__bootstrap.internals;
 import { setExitHandler } from "ext:runtime/30_os.js";
 import { Console } from "ext:deno_console/02_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { assert, AssertionError } from "ext:deno_web/00_infra.js";
+import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayFrom,
@@ -213,21 +213,7 @@ function assertOps(fn) {
         );
       }
     }
-
-    let msg = `Test case is leaking async ops.
-
- - ${ArrayPrototypeJoin(details, "\n - ")}`;
-
-    if (!core.isOpCallTracingEnabled()) {
-      msg +=
-        `\n\nTo get more details where ops were leaked, run again with --trace-ops flag.`;
-    } else {
-      msg += "\n";
-    }
-
-    return {
-      failed: { jsError: core.destructureError(new AssertionError(msg)) },
-    };
+    return { failed: { leakedOps: [details, core.isOpCallTracingEnabled()] } };
   };
 }
 
@@ -400,20 +386,10 @@ function assertResources(fn) {
         ArrayPrototypePush(details, detail);
       }
     }
-
     if (details.length == 0) {
       return null;
     }
-
-    const message = `Test case is leaking ${details.length} resource${
-      details.length === 1 ? "" : "s"
-    }:
-
- - ${details.join("\n - ")}
-`;
-    return {
-      failed: { jsError: core.destructureError(new AssertionError(message)) },
-    };
+    return { failed: { leakedResources: details } };
   };
 }
 
@@ -442,10 +418,44 @@ function assertExit(fn, isTest) {
 function assertTestStepScopes(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function testStepSanitizer(desc) {
-    try {
-      preValidation();
-    } catch (error) {
-      return { failed: { jsError: core.destructureError(error) } };
+    function getRunningStepDescs() {
+      const results = [];
+      let childDesc = desc;
+      while (childDesc.parent != null) {
+        const state = MapPrototypeGet(testStates, childDesc.parent.id);
+        for (const siblingDesc of state.children) {
+          if (siblingDesc.id == childDesc.id) {
+            continue;
+          }
+          const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
+          if (!siblingState.finalized) {
+            ArrayPrototypePush(results, siblingDesc);
+          }
+        }
+        childDesc = childDesc.parent;
+      }
+      return results;
+    }
+    const runningStepDescs = getRunningStepDescs();
+    const runningStepDescsWithSanitizers = ArrayPrototypeFilter(
+      runningStepDescs,
+      (d) => usesSanitizer(d),
+    );
+
+    if (runningStepDescsWithSanitizers.length > 0) {
+      return {
+        failed: {
+          overlapsWithSanitizers: runningStepDescsWithSanitizers.map(
+            getFullName,
+          ),
+        },
+      };
+    }
+
+    if (usesSanitizer(desc) && runningStepDescs.length > 0) {
+      return {
+        failed: { hasSanitizersAndOverlaps: runningStepDescs.map(getFullName) },
+      };
     }
     // only report waiting after pre-validation
     if ("parent" in desc) {
@@ -455,49 +465,6 @@ function assertTestStepScopes(fn) {
     for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
       if (!MapPrototypeGet(testStates, childDesc.id).finalized) {
         return { failed: "incompleteSteps" };
-      }
-    }
-
-    function preValidation() {
-      const runningStepDescs = getRunningStepDescs();
-      const runningStepDescsWithSanitizers = ArrayPrototypeFilter(
-        runningStepDescs,
-        (d) => usesSanitizer(d),
-      );
-
-      if (runningStepDescsWithSanitizers.length > 0) {
-        throw new Error(
-          "Cannot start test step while another test step with sanitizers is running.\n" +
-            runningStepDescsWithSanitizers
-              .map((d) => ` * ${getFullName(d)}`)
-              .join("\n"),
-        );
-      }
-
-      if (usesSanitizer(desc) && runningStepDescs.length > 0) {
-        throw new Error(
-          "Cannot start test step with sanitizers while another test step is running.\n" +
-            runningStepDescs.map((d) => ` * ${getFullName(d)}`).join("\n"),
-        );
-      }
-
-      function getRunningStepDescs() {
-        const results = [];
-        let childDesc = desc;
-        while (childDesc.parent != null) {
-          const state = MapPrototypeGet(testStates, childDesc.parent.id);
-          for (const siblingDesc of state.children) {
-            if (siblingDesc.id == childDesc.id) {
-              continue;
-            }
-            const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
-            if (!siblingState.finalized) {
-              ArrayPrototypePush(results, siblingDesc);
-            }
-          }
-          childDesc = childDesc.parent;
-        }
-        return results;
       }
     }
   };
@@ -1130,7 +1097,7 @@ async function runBenchmarks() {
 
 function getFullName(desc) {
   if ("parent" in desc) {
-    return `${desc.parent.name} > ${desc.name}`;
+    return `${getFullName(desc.parent)} ... ${desc.name}`;
   }
   return desc.name;
 }

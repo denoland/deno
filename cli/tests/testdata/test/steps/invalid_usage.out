@@ -18,32 +18,20 @@ parallel steps with sanitizers ...
   step 1 ... incomplete
     error: Didn't complete before parent. Await step with `await t.step(...)`.
   step 2 ... FAILED ([WILDCARD])
-    error: Error: Cannot start test step while another test step with sanitizers is running.
-     * parallel steps with sanitizers > step 1
-      await t.step("step 2", () => {});
-              ^
-        at [WILDCARD]
-        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+    error: Started test step while another test step with sanitizers was running:
+      * parallel steps with sanitizers ... step 1
 parallel steps with sanitizers ... FAILED ([WILDCARD])
 parallel steps when first has sanitizer ...
   step 1 ... ok ([WILDCARD])
   step 2 ... FAILED ([WILDCARD])
-    error: Error: Cannot start test step while another test step with sanitizers is running.
-     * parallel steps when first has sanitizer > step 1
-      await t.step({
-              ^
-        at [WILDCARD]
-        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+    error: Started test step while another test step with sanitizers was running:
+      * parallel steps when first has sanitizer ... step 1
 parallel steps when first has sanitizer ... FAILED ([WILDCARD])
 parallel steps when second has sanitizer ...
   step 1 ... ok ([WILDCARD])
   step 2 ... FAILED ([WILDCARD])
-    error: Error: Cannot start test step with sanitizers while another test step is running.
-     * parallel steps when second has sanitizer > step 1
-      await t.step({
-              ^
-        at [WILDCARD]
-        at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+    error: Started test step with sanitizers while another test step was running:
+      * parallel steps when second has sanitizer ... step 1
 parallel steps when second has sanitizer ... FAILED ([WILDCARD])
 parallel steps where only inner tests have sanitizers ...
   step 1 ...
@@ -51,12 +39,8 @@ parallel steps where only inner tests have sanitizers ...
   step 1 ... ok ([WILDCARD])
   step 2 ...
     step inner ... FAILED ([WILDCARD])
-      error: Error: Cannot start test step with sanitizers while another test step is running.
-       * parallel steps where only inner tests have sanitizers > step 1
-            await t.step({
-                    ^
-          at [WILDCARD]
-          at [WILDCARD]/invalid_usage.ts:[WILDCARD]
+      error: Started test step with sanitizers while another test step was running:
+        * parallel steps where only inner tests have sanitizers ... step 1
   step 2 ... FAILED ([WILDCARD])
 parallel steps where only inner tests have sanitizers ... FAILED ([WILDCARD])
 

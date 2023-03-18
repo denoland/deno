@@ -38,6 +38,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
@@ -164,7 +165,12 @@ pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
+  LeakedOps(Vec<String>, bool), // Details, isOpCallTracingEnabled
+  LeakedResources(Vec<String>), // Details
+  // The rest are for steps only.
   Incomplete,
+  OverlapsWithSanitizers(IndexSet<String>), // Long names of overlapped tests
+  HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
 impl ToString for TestFailure {
@@ -174,7 +180,38 @@ impl ToString for TestFailure {
       TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
       TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
       TestFailure::IncompleteSteps => "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.".to_string(),
-      TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string()
+      TestFailure::Incomplete => "Didn't complete before parent. Await step with `await t.step(...)`.".to_string(),
+      TestFailure::LeakedOps(details, is_op_call_tracing_enabled) => {
+        let mut string = "Leaking async ops:".to_string();
+        for detail in details {
+          string.push_str(&format!("\n  - {}", detail));
+        }
+        if !is_op_call_tracing_enabled {
+          string.push_str("\nTo get more details where ops were leaked, run again with --trace-ops flag.");
+        }
+        string
+      }
+      TestFailure::LeakedResources(details) => {
+        let mut string = "Leaking resources:".to_string();
+        for detail in details {
+          string.push_str(&format!("\n  - {}", detail));
+        }
+        string
+      }
+      TestFailure::OverlapsWithSanitizers(long_names) => {
+        let mut string = "Started test step while another test step with sanitizers was running:".to_string();
+        for long_name in long_names {
+          string.push_str(&format!("\n  * {}", long_name));
+        }
+        string
+      }
+      TestFailure::HasSanitizersAndOverlaps(long_names) => {
+        let mut string = "Started test step with sanitizers while another test step was running:".to_string();
+        for long_name in long_names {
+          string.push_str(&format!("\n  * {}", long_name));
+        }
+        string
+      }
     }
   }
 }
