@@ -606,7 +606,7 @@ fn dynamic_import_unanalyzable() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--allow-read")
-    .arg("--side-module")
+    .arg("--include")
     .arg(util::testdata_path().join("./compile/dynamic_imports/import1.ts"))
     .arg("--output")
     .arg(&exe)

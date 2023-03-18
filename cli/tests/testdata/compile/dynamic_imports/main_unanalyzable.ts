@@ -4,8 +4,8 @@ console.log("Starting the main module");
 
 // We load the dynamic import path from the file system, to make sure any
 // improvements in static analysis can't defeat the purpose of this test, which
-// is to make sure the `--site-module` flag works to add non-analyzed imports
-// to the module graph.
+// is to make sure the `--include` flag works to add non-analyzed imports to the
+// module graph.
 const IMPORT_PATH_FILE_PATH = join(
   Deno.cwd(),
   "tests/testdata/compile/dynamic_imports/import_path",

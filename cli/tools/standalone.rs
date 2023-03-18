@@ -42,9 +42,9 @@ pub async fn compile(
   let module_specifier =
     resolve_url_or_path(&compile_flags.source_file, ps.options.initial_cwd())?;
   let module_roots = {
-    let mut vec = Vec::with_capacity(compile_flags.side_modules.len() + 1);
+    let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
     vec.push(module_specifier.clone());
-    for side_module in &compile_flags.side_modules {
+    for side_module in &compile_flags.include {
       vec.push(resolve_url_or_path(side_module, ps.options.initial_cwd())?);
     }
     vec
@@ -358,7 +358,7 @@ mod test {
         output: Some(PathBuf::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
-        side_modules: vec![],
+        include: vec![],
       },
       &std::env::current_dir().unwrap(),
     )
@@ -379,7 +379,7 @@ mod test {
         output: Some(PathBuf::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
-        side_modules: vec![],
+        include: vec![],
       },
       &std::env::current_dir().unwrap(),
     )

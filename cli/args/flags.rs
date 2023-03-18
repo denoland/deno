@@ -83,7 +83,7 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
-  pub side_modules: Vec<String>,
+  pub include: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -910,8 +910,8 @@ fn compile_subcommand<'a>() -> Command<'a> {
     .trailing_var_arg(true)
     .arg(script_arg().required(true))
     .arg(
-      Arg::new("side-module")
-        .long("side-module")
+      Arg::new("include")
+        .long("include")
         .help("UNSTABLE: Additional module to include in the module graph")
         .long_help(
           "Includes an additional module in the compiled executable's module \
@@ -2501,7 +2501,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
   let target = matches.value_of("target").map(String::from);
-  let side_modules = match matches.values_of("side-module") {
+  let include = match matches.values_of("include") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
@@ -2511,7 +2511,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     output,
     args,
     target,
-    side_modules,
+    include,
   });
 }
 
@@ -6262,7 +6262,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
-          side_modules: vec![]
+          include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6282,7 +6282,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
-          side_modules: vec![]
+          include: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
