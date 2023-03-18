@@ -37,7 +37,7 @@ impl ExtensionFileSourceCode {
 
 #[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
-  pub specifier: String,
+  pub specifier: &'static str,
   pub code: ExtensionFileSourceCode,
 }
 pub type OpFnRef = v8::FunctionCallback;
@@ -189,11 +189,11 @@ macro_rules! extension {
       #[allow(unused_variables)]
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
         $( ext.esm(
-          $crate::include_js_files!( $( dir $dir_esm , )? $( $esm , )* )
+          $crate::include_js_files!( $name $( dir $dir_esm , )? $( $esm , )* )
         ); )?
         $(
           ext.esm(vec![ExtensionFileSource {
-            specifier: "ext:setup".to_string(),
+            specifier: "ext:setup",
             code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
           }]);
         )?
@@ -201,7 +201,7 @@ macro_rules! extension {
           ext.esm_entry_point($esm_entry_point);
         )?
         $( ext.js(
-          $crate::include_js_files!( $( dir $dir_js , )? $( $js , )* )
+          $crate::include_js_files!( $name $( dir $dir_js , )? $( $js , )* )
         ); )?
       }
 
@@ -211,13 +211,12 @@ macro_rules! extension {
       fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
-          let v = vec![
-          $(
-            $( #[ $m ] )*
-            $( $op )::+ :: decl $( :: <$op_param> )? ()
-          ),+
-          ];
-          ext.ops(v);
+          ext.ops(vec![
+            $(
+              $( #[ $m ] )*
+              $( $op )::+ :: decl $( :: <$op_param> )? ()
+            ),+
+          ]);
         )?
 
         // Otherwise use the ops_fn, if provided
@@ -228,14 +227,7 @@ macro_rules! extension {
       #[inline(always)]
       #[allow(unused_variables)]
       fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
-        #[allow(unused_variables)]
-        let config = $crate::extension!(! __config__ $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? );
-
-        $(
-          ext.state(move |state: &mut $crate::OpState| {
-            config.call_callback(state, $state_fn)
-          });
-        )?
+        $crate::extension!(! __config__ ext $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? $( state_fn = $state_fn )? );
 
         $(
           ext.event_loop_middleware($event_loop_middleware_fn);
@@ -285,50 +277,27 @@ macro_rules! extension {
   };
 
   // This branch of the macro generates a config object that calls the state function with itself.
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } ) => {
+  (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } $( state_fn = $state_fn:expr )? ) => {
     {
       #[doc(hidden)]
       struct Config $( <  $( $param : $type + 'static ),+ > )? {
         $( pub $options_id : $options_type , )*
         $( __phantom_data: ::std::marker::PhantomData<($( $param ),+)>, )?
       }
-
-      impl $( <  $( $param : $type + 'static ),+ > )? Config $( <  $( $param ),+ > )? {
-        /// Call a function of |state, cfg| using this configuration structure.
-        #[allow(dead_code)]
-        #[doc(hidden)]
-        #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState, Self)>(self, state: &mut $crate::OpState, f: F) {
-          f(state, self)
-        }
-      }
-
-      Config {
+      let config = Config {
         $( $options_id , )*
         $( __phantom_data: ::std::marker::PhantomData::<($( $param ),+)>::default() )?
-      }
+      };
+
+      let state_fn: fn(&mut $crate::OpState, Config $( <  $( $param ),+ > )? ) = $(  $state_fn  )?;
+      $ext.state(move |state: &mut $crate::OpState| {
+        state_fn(state, config);
+      });
     }
   };
 
-  // This branch of the macro generates an empty config object that doesn't actually make any callbacks on the state function.
-  (! __config__ $( parameters = [ $( $param:ident : $type:ident ),+ ] )? ) => {
-    {
-      #[doc(hidden)]
-      struct Config {
-      }
-
-      impl Config {
-        /// Call a function of |state| using the fields of this configuration structure.
-        #[allow(dead_code)]
-        #[doc(hidden)]
-        #[inline(always)]
-        fn call_callback<F: Fn(&mut $crate::OpState)>(self, state: &mut $crate::OpState, f: F) {
-          f(state)
-        }
-      }
-
-      Config {}
-    }
+  (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? $( state_fn = $state_fn:expr )? ) => {
+    $(  $ext.state($state_fn);  )?
   };
 
   (! __ops__ $ext:ident __eot__) => {
@@ -482,28 +451,11 @@ pub struct ExtensionBuilder {
 
 impl ExtensionBuilder {
   pub fn js(&mut self, js_files: Vec<ExtensionFileSource>) -> &mut Self {
-    let js_files =
-      // TODO(bartlomieju): if we're automatically remapping here, then we should
-      // use a different result struct that `ExtensionFileSource` as it's confusing
-      // when (and why) the remapping happens.
-      js_files.into_iter().map(|file_source| ExtensionFileSource {
-        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
-        code: file_source.code,
-      });
     self.js.extend(js_files);
     self
   }
 
   pub fn esm(&mut self, esm_files: Vec<ExtensionFileSource>) -> &mut Self {
-    let esm_files = esm_files
-      .into_iter()
-      // TODO(bartlomieju): if we're automatically remapping here, then we should
-      // use a different result struct that `ExtensionFileSource` as it's confusing
-      // when (and why) the remapping happens.
-      .map(|file_source| ExtensionFileSource {
-        specifier: format!("ext:{}/{}", self.name, file_source.specifier),
-        code: file_source.code,
-      });
     self.esm.extend(esm_files);
     self
   }
@@ -615,10 +567,10 @@ impl ExtensionBuilder {
 #[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]
 macro_rules! include_js_files {
-  (dir $dir:literal, $($file:literal,)+) => {
+  ($name:ident dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($file).to_string(),
+        specifier: concat!("ext:", stringify!($name), "/", $file),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!(concat!($dir, "/", $file)
         )),
@@ -626,10 +578,10 @@ macro_rules! include_js_files {
     ]
   };
 
-  ($($file:literal,)+) => {
+  ($name:ident $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: $file.to_string(),
+        specifier: concat!("ext:", stringify!($name), "/", $file),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
           include_str!($file)
         ),
@@ -641,10 +593,10 @@ macro_rules! include_js_files {
 #[cfg(feature = "include_js_files_for_snapshotting")]
 #[macro_export]
 macro_rules! include_js_files {
-  (dir $dir:literal, $($file:literal,)+) => {
+  ($name:ident dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: concat!($file).to_string(),
+        specifier: concat!("ext:", stringify!($name), "/", $file),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),
@@ -652,10 +604,10 @@ macro_rules! include_js_files {
     ]
   };
 
-  ($($file:literal,)+) => {
+  ($name:ident $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
-        specifier: $file.to_string(),
+        specifier: concat!("ext:", stringify!($name), "/", $file),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
         ),
