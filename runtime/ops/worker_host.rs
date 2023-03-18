@@ -96,27 +96,27 @@ deno_core::extension!(
     op_host_recv_ctrl,
     op_host_recv_message,
   ],
-  config = {
+  options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
     preload_module_cb: Arc<WorkerEventCb>,
     pre_execute_module_cb: Arc<WorkerEventCb>,
     format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   },
-  state = |state, create_web_worker_cb, preload_module_cb, pre_execute_module_cb, format_js_error_fn| {
+  state = |state, options| {
     state.put::<WorkersTable>(WorkersTable::default());
     state.put::<WorkerId>(WorkerId::default());
 
     let create_web_worker_cb_holder =
-      CreateWebWorkerCbHolder(create_web_worker_cb.clone());
+      CreateWebWorkerCbHolder(options.create_web_worker_cb);
     state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
     let preload_module_cb_holder =
-      PreloadModuleCbHolder(preload_module_cb.clone());
+      PreloadModuleCbHolder(options.preload_module_cb);
     state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
     let pre_execute_module_cb_holder =
-      PreExecuteModuleCbHolder(pre_execute_module_cb.clone());
+      PreExecuteModuleCbHolder(options.pre_execute_module_cb);
     state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb_holder);
     let format_js_error_fn_holder =
-      FormatJsErrorFnHolder(format_js_error_fn.clone());
+      FormatJsErrorFnHolder(options.format_js_error_fn);
     state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
   },
   customizer = |ext: &mut deno_core::ExtensionBuilder| {

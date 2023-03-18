@@ -104,11 +104,11 @@ deno_core::extension!(deno_crypto,
     x25519::op_export_pkcs8_x25519,
   ],
   esm = [ "00_crypto.js", "01_webidl.js" ],
-  config = {
+  options = {
     maybe_seed: Option<u64>,
   },
-  state = |state, maybe_seed| {
-    if let Some(seed) = maybe_seed {
+  state = |state, options| {
+    if let Some(seed) = options.maybe_seed {
       state.put(StdRng::seed_from_u64(seed));
     }
   },

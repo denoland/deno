@@ -370,11 +370,11 @@ deno_core::extension!(deno_node_loading,
     ops::op_require_break_on_next_statement,
   ],
   esm = ["01_node.js", "02_require.js", "module_es_shim.js"],
-  config = {
+  options = {
     maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   },
-  state = |state, maybe_npm_resolver| {
-    if let Some(npm_resolver) = maybe_npm_resolver.clone() {
+  state = |state, options| {
+    if let Some(npm_resolver) = options.maybe_npm_resolver {
       state.put(npm_resolver);
     }
   },
