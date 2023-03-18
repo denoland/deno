@@ -197,3 +197,46 @@ pub fn op_node_cipheriv_final(
     .map_err(|_| type_error("Cipher context is already in use"))?;
   context.r#final(input, output)
 }
+
+#[op(fast)]
+pub fn op_node_create_decipheriv(
+  state: &mut OpState,
+  algorithm: &str,
+  key: &[u8],
+  iv: &[u8],
+) -> u32 {
+  state.resource_table.add(
+    match cipher::DecipherContext::new(algorithm, key, iv) {
+      Ok(context) => context,
+      Err(_) => return 0,
+    },
+  )
+}
+
+#[op(fast)]
+pub fn op_node_decipheriv_decrypt(
+  state: &mut OpState,
+  rid: u32,
+  input: &[u8],
+  output: &mut [u8],
+) -> bool {
+  let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.decrypt(input, output);
+  true
+}
+
+#[op]
+pub fn op_node_decipheriv_final(
+  state: &mut OpState,
+  rid: u32,
+  input: &[u8],
+  output: &mut [u8],
+) -> Result<(), AnyError> {
+  let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
+  let context = Rc::try_unwrap(context)
+    .map_err(|_| type_error("Cipher context is already in use"))?;
+  context.r#final(input, output)
+}

@@ -96,10 +96,13 @@ fn op_node_build_os() -> String {
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   ops = [
+    crypto::op_node_create_decipheriv,
     crypto::op_node_cipheriv_encrypt,
     crypto::op_node_cipheriv_final,
     crypto::op_node_create_cipheriv,
     crypto::op_node_create_hash,
+    crypto::op_node_decipheriv_decrypt,
+    crypto::op_node_decipheriv_final,
     crypto::op_node_hash_update,
     crypto::op_node_hash_update_str,
     crypto::op_node_hash_digest,
