@@ -150,9 +150,6 @@ function assertOps(fn) {
       await opSanitizerDelay();
       await opSanitizerDelay();
     }
-
-    if (shouldSkipSanitizers(desc)) return;
-
     const post = core.metrics();
     const postTraces = new Map(core.opCallTraces);
 
@@ -373,11 +370,6 @@ function assertResources(fn) {
   return async function resourceSanitizer(desc) {
     const pre = core.resources();
     await fn(desc);
-
-    if (shouldSkipSanitizers(desc)) {
-      return;
-    }
-
     const post = core.resources();
 
     const allResources = new Set([
@@ -1154,18 +1146,6 @@ function failedChildStepsCount(desc) {
     MapPrototypeGet(testStates, desc.id).children,
     (d) => MapPrototypeGet(testStates, d.id).result?.failed,
   ).length;
-}
-
-/** If a test validation error already occurred then don't bother checking
- * the sanitizers as that will create extra noise.
- */
-function shouldSkipSanitizers(desc) {
-  try {
-    testStepPostValidation(desc);
-    return false;
-  } catch {
-    return true;
-  }
 }
 
 /** @param desc {TestDescription | TestStepDescription} */
