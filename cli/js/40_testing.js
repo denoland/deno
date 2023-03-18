@@ -430,8 +430,6 @@ function assertExit(fn, isTest) {
 
     try {
       await fn(...new SafeArrayIterator(params));
-    } catch (err) {
-      throw err;
     } finally {
       setExitHandler(null);
     }
@@ -497,7 +495,7 @@ function assertTestStepScopes(fn) {
 function testStepPostValidation(desc) {
   // check for any running steps
   for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-    if (MapPrototypeGet(testStates, childDesc.id).status == "pending") {
+    if (!MapPrototypeGet(testStates, childDesc.id).finalized) {
       throw new Error(
         "There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
       );
@@ -569,8 +567,7 @@ function withPermissions(fn, permissions) {
  *   context: TestContext,
  *   children: TestStepDescription[],
  *   finalized: boolean,
- *   status: "pending" | "ok" | ""failed" | ignored",
- *   error: unknown,
+ *   result: "ok" | { failed: object } | ignored" | null,
  *   elapsed: number | null,
  *   reportedWait: boolean,
  * }} TestStepState
@@ -823,8 +820,8 @@ async function runTest(desc) {
 
   try {
     await desc.fn(desc);
-    const failCount = failedChildStepsCount(desc);
-    return failCount === 0 ? "ok" : { failed: { failedSteps: failCount } };
+    const failedSteps = failedChildStepsCount(desc);
+    return failedSteps === 0 ? "ok" : { failed: { failedSteps } };
   } catch (error) {
     return { failed: { jsError: core.destructureError(error) } };
   } finally {
@@ -1147,23 +1144,15 @@ function stepReportResult(desc) {
   for (const childDesc of state.children) {
     stepReportResult(childDesc);
   }
-  let result;
-  if (state.status == "failed") {
-    result = {
-      [state.status]: state.error && core.destructureError(state.error),
-    };
-  } else {
-    result = state.status;
-  }
   ops.op_dispatch_test_event({
-    stepResult: [desc.id, result, state.elapsed],
+    stepResult: [desc.id, state.result ?? "pending", state.elapsed],
   });
 }
 
 function failedChildStepsCount(desc) {
   return ArrayPrototypeFilter(
     MapPrototypeGet(testStates, desc.id).children,
-    (d) => MapPrototypeGet(testStates, d.id).status === "failed",
+    (d) => MapPrototypeGet(testStates, d.id).result?.failed,
   ).length;
 }
 
@@ -1272,8 +1261,7 @@ function createTestContext(desc) {
         context: createTestContext(stepDesc),
         children: [],
         finalized: false,
-        status: "pending",
-        error: null,
+        result: null,
         elapsed: null,
         reportedWait: false,
       };
@@ -1284,7 +1272,7 @@ function createTestContext(desc) {
       );
 
       if (stepDesc.ignore) {
-        state.status = "ignored";
+        state.result = "ignored";
         state.finalized = true;
         stepReportResult(stepDesc);
         return false;
@@ -1295,14 +1283,14 @@ function createTestContext(desc) {
 
       try {
         await testFn(stepDesc);
-        if (failedChildStepsCount(stepDesc) > 0) {
-          state.status = "failed";
+        const failedSteps = failedChildStepsCount(stepDesc);
+        if (failedSteps > 0) {
+          state.result = { failed: { failedSteps } };
         } else {
-          state.status = "ok";
+          state.result = "ok";
         }
       } catch (error) {
-        state.error = error;
-        state.status = "failed";
+        state.result = { failed: { jsError: core.destructureError(error) } };
       }
 
       state.elapsed = DateNow() - start;
@@ -1315,7 +1303,7 @@ function createTestContext(desc) {
 
       stepReportResult(stepDesc);
 
-      return state.status === "ok";
+      return state.result === "ok";
     },
   };
 }

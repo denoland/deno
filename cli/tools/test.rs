@@ -214,17 +214,8 @@ impl TestStepDescription {
 pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed(Option<Box<JsError>>),
+  Failed(TestFailure),
   Pending,
-}
-
-impl TestStepResult {
-  fn error(&self) -> Option<&JsError> {
-    match self {
-      TestStepResult::Failed(Some(error)) => Some(error),
-      _ => None,
-    }
-  }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -405,11 +396,13 @@ impl PrettyTestReporter {
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
 
-    if let Some(js_error) = result.error() {
-      let err_string = format_test_error(js_error);
-      let err_string = format!("{}: {}", colors::red_bold("error"), err_string);
-      for line in err_string.lines() {
-        println!("{}{}", "  ".repeat(description.level + 1), line);
+    if let TestStepResult::Failed(failure) = result {
+      if !matches!(failure, TestFailure::FailedSteps(_)) {
+        let err_string =
+          format!("{}: {}", colors::red_bold("error"), failure.to_string());
+        for line in err_string.lines() {
+          println!("{}{}", "  ".repeat(description.level + 1), line);
+        }
       }
     }
     self.in_new_line = true;

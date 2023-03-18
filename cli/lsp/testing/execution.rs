@@ -830,8 +830,8 @@ impl LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestStepResult::Failed(js_error) => {
-        let messages = if let Some(js_error) = js_error {
+      test::TestStepResult::Failed(failure) => {
+        let messages = if let test::TestFailure::JsError(js_error) = failure {
           let err_string = test::format_test_error(js_error);
           as_test_messages(err_string, false)
         } else {
