@@ -80,7 +80,7 @@ impl BlobStore {
     blob_store.remove(url);
   }
 
-  pub fn reset_for_file_watcher(&self) {
+  pub fn clear(&self) {
     self.parts.lock().clear();
     self.object_urls.lock().clear();
   }
