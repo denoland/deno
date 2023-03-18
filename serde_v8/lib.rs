@@ -15,6 +15,7 @@ pub use de::Deserializer;
 pub use error::Error;
 pub use error::Result;
 pub use keys::KeyCache;
+pub use magic::bigint::BigInt;
 pub use magic::buffer::ZeroCopyBuf;
 pub use magic::bytestring::ByteString;
 pub use magic::detached_buffer::DetachedBuffer;
