@@ -569,7 +569,6 @@ function withPermissions(fn, permissions) {
  *   finalized: boolean,
  *   result: "ok" | { failed: object } | ignored" | null,
  *   elapsed: number | null,
- *   reportedWait: boolean,
  * }} TestStepState
  *
  * @typedef {{
@@ -1144,8 +1143,9 @@ function stepReportResult(desc) {
   for (const childDesc of state.children) {
     stepReportResult(childDesc);
   }
+  const result = state.result ?? { failed: "incomplete" };
   ops.op_dispatch_test_event({
-    stepResult: [desc.id, state.result ?? "pending", state.elapsed],
+    stepResult: [desc.id, result, state.elapsed],
   });
 }
 
@@ -1263,7 +1263,6 @@ function createTestContext(desc) {
         finalized: false,
         result: null,
         elapsed: null,
-        reportedWait: false,
       };
       MapPrototypeSet(testStates, stepDesc.id, state);
       ArrayPrototypePush(

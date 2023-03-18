@@ -163,6 +163,7 @@ pub enum TestOutput {
 pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
+  Incomplete,
 }
 
 impl ToString for TestFailure {
@@ -171,6 +172,10 @@ impl ToString for TestFailure {
       TestFailure::JsError(js_error) => format_test_error(js_error),
       TestFailure::FailedSteps(1) => "1 test step failed.".to_string(),
       TestFailure::FailedSteps(n) => format!("{} test steps failed.", n),
+      TestFailure::Incomplete => {
+        "Didn't complete before parent. Await step with `await t.step(...)`."
+          .to_string()
+      }
     }
   }
 }
@@ -215,7 +220,6 @@ pub enum TestStepResult {
   Ok,
   Ignored,
   Failed(TestFailure),
-  Pending,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -250,7 +254,6 @@ pub struct TestSummary {
   pub ignored: usize,
   pub passed_steps: usize,
   pub failed_steps: usize,
-  pub pending_steps: usize,
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
@@ -274,7 +277,6 @@ impl TestSummary {
       ignored: 0,
       passed_steps: 0,
       failed_steps: 0,
-      pending_steps: 0,
       ignored_steps: 0,
       filtered_out: 0,
       measured: 0,
@@ -365,10 +367,12 @@ impl PrettyTestReporter {
     result: &TestStepResult,
     elapsed: u64,
   ) {
-    let status = match result {
+    let status = match &result {
       TestStepResult::Ok => colors::green("ok").to_string(),
       TestStepResult::Ignored => colors::yellow("ignored").to_string(),
-      TestStepResult::Pending => colors::gray("pending").to_string(),
+      TestStepResult::Failed(TestFailure::Incomplete) => {
+        colors::gray("incomplete").to_string()
+      }
       TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
@@ -390,11 +394,15 @@ impl PrettyTestReporter {
       }
     }
 
-    println!(
-      " {} {}",
-      status,
-      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-    );
+    if let TestStepResult::Failed(TestFailure::Incomplete) = &result {
+      println!(" {}", status);
+    } else {
+      println!(
+        " {} {}",
+        status,
+        colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+      );
+    }
 
     if let TestStepResult::Failed(failure) = result {
       if !matches!(failure, TestFailure::FailedSteps(_)) {
@@ -638,7 +646,7 @@ impl PrettyTestReporter {
       summary.passed,
       get_steps_text(summary.passed_steps),
       summary.failed,
-      get_steps_text(summary.failed_steps + summary.pending_steps),
+      get_steps_text(summary.failed_steps),
     )
     .unwrap();
 
@@ -1283,9 +1291,6 @@ async fn test_specifiers(
                 }
                 TestStepResult::Failed(_) => {
                   summary.failed_steps += 1;
-                }
-                TestStepResult::Pending => {
-                  summary.pending_steps += 1;
                 }
               }
 

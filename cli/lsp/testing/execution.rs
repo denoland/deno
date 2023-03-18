@@ -439,9 +439,6 @@ impl TestRun {
                 test::TestStepResult::Failed(_) => {
                   summary.failed_steps += 1;
                 }
-                test::TestStepResult::Pending => {
-                  summary.pending_steps += 1;
-                }
               }
               reporter.report_step_result(
                 test_steps.get(&id).unwrap(),
@@ -831,21 +828,10 @@ impl LspTestReporter {
         })
       }
       test::TestStepResult::Failed(failure) => {
-        let messages = if let test::TestFailure::JsError(js_error) = failure {
-          let err_string = test::format_test_error(js_error);
-          as_test_messages(err_string, false)
-        } else {
-          vec![]
-        };
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages,
+          messages: as_test_messages(failure.to_string(), false),
           duration: Some(elapsed as u32),
-        })
-      }
-      test::TestStepResult::Pending => {
-        self.progress(lsp_custom::TestRunProgressMessage::Enqueued {
-          test: desc.into(),
         })
       }
     }

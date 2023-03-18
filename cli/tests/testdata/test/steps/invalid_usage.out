@@ -4,11 +4,13 @@ capturing ...
   some step ... ok ([WILDCARD])
 capturing ... FAILED ([WILDCARD])
 top level missing await ...
-  step ... pending ([WILDCARD])
+  step ... incomplete
+    error: Didn't complete before parent. Await step with `await t.step(...)`.
 top level missing await ... FAILED ([WILDCARD])
 inner missing await ...
   step ...
-    inner ... pending ([WILDCARD])
+    inner ... incomplete
+      error: Didn't complete before parent. Await step with `await t.step(...)`.
   step ... FAILED ([WILDCARD])
     error: Error: There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
         await t.step("step", (t) => {
@@ -17,7 +19,8 @@ inner missing await ...
         at async fn ([WILDCARD]/invalid_usage.ts:[WILDCARD])
 inner missing await ... FAILED ([WILDCARD])
 parallel steps with sanitizers ...
-  step 1 ... pending ([WILDCARD])
+  step 1 ... incomplete
+    error: Didn't complete before parent. Await step with `await t.step(...)`.
   step 2 ... FAILED ([WILDCARD])
     error: Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps with sanitizers > step 1
