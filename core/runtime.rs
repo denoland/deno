@@ -2485,7 +2485,7 @@ impl JsRealm {
   /// Executes traditional JavaScript code (traditional = not ES modules) in the
   /// realm's context.
   ///
-  /// The `isolate` parameter must be extracted from e pre-existing [`JsRuntime`]. E.g.:
+  /// The `isolate` parameter must be extracted from a pre-existing [`JsRuntime`]. E.g.:
   /// ```
   /// use deno_core::JsRuntime;
   /// use deno_core::RuntimeOptions;
