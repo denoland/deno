@@ -24,7 +24,10 @@ deno_core::extension!(
     op_worker_close,
     op_worker_get_type,
     op_worker_sync_fetch,
-  ]
+  ],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
 );
 
 #[op]

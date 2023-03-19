@@ -45,7 +45,8 @@ pub async fn bundle(
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
       let graph =
-        create_graph_and_maybe_check(module_specifier.clone(), &ps).await?;
+        create_graph_and_maybe_check(vec![module_specifier.clone()], &ps)
+          .await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()

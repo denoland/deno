@@ -34,7 +34,10 @@ fn get_windows_handle(
 
 deno_core::extension!(
   deno_tty,
-  ops = [op_stdin_set_raw, op_isatty, op_console_size]
+  ops = [op_stdin_set_raw, op_isatty, op_console_size],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
 );
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
