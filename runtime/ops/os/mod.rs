@@ -16,9 +16,9 @@ use std::env;
 
 mod sys_info;
 
-deno_core::ops!(
-  deno_ops,
-  [
+deno_core::extension!(
+  deno_os,
+  ops = [
     op_env,
     op_exec_path,
     op_exit,
@@ -36,12 +36,7 @@ deno_core::ops!(
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
-  ]
-);
-
-deno_core::extension!(
-  deno_os,
-  ops_fn = deno_ops,
+  ],
   options = {
     exit_code: ExitCode,
   },
@@ -52,7 +47,25 @@ deno_core::extension!(
 
 deno_core::extension!(
   deno_os_worker,
-  ops_fn = deno_ops,
+  ops = [
+    op_env,
+    op_exec_path,
+    op_exit,
+    op_delete_env,
+    op_get_env,
+    op_gid,
+    op_hostname,
+    op_loadavg,
+    op_network_interfaces,
+    op_os_release,
+    op_os_uptime,
+    op_node_unstable_os_uptime,
+    op_set_env,
+    op_set_exit_code,
+    op_system_memory_info,
+    op_uid,
+    op_runtime_memory_usage,
+  ],
   middleware = |op| match op.name {
     "op_exit" => noop_op::decl(),
     "op_set_exit_code" => noop_op::decl(),

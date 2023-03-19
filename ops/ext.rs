@@ -12,7 +12,6 @@ use syn::GenericParam;
 use syn::Ident;
 use syn::Lit;
 use syn::LitStr;
-use syn::Member;
 use syn::Token;
 
 #[derive(Debug)]
@@ -103,6 +102,7 @@ fn parse_js_files(
 
         // The next string literal is the directory
         dir = Some(content.parse::<LitStr>()?);
+        let _ = content.parse::<Token![,]>();
       }
 
       let files = content.parse_terminated(Lit::parse)?;
@@ -187,7 +187,7 @@ fn generate_with_js(
             files: &ext.esm.1
           },
           {
-            ext.esm(core::include_js_files!(name dir directory files));
+            ext.esm(core::include_js_files!(name dir directory, files));
           }
         ));
       }
@@ -237,7 +237,7 @@ fn generate_with_js(
             files: &ext.js.1
           },
           {
-            ext.js(core::include_js_files!(name dir directory files));
+            ext.js(core::include_js_files!(name dir directory, files));
           }
         ));
       }
@@ -337,8 +337,8 @@ fn generate_with_state(
         });
       }));
     } else {
-      builder.push_tokens(&q!(Vars { state: state }, {
-        ext.state(state);
+      builder.push_tokens(&q!(Vars { state_fn: state }, {
+        ext.state(state_fn);
       }));
     }
   }
@@ -390,6 +390,17 @@ fn generate_builder(
   };
   generate_with_ops(&ext, &mut builder);
   generate_with_state(core, &ext, params, &mut builder);
+
+  if let Some(ref custom_fn) = ext.customizer {
+    builder.push_tokens(&q!(
+      Vars {
+        custom_fn: custom_fn
+      },
+      {
+        (custom_fn)(&mut ext);
+      }
+    ));
+  }
 
   builder.push_tokens(&q!({ ext.take() }));
 

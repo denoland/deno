@@ -514,9 +514,9 @@ impl Env {
 }
 
 deno_core::extension!(deno_napi,
-  parameters = [P: NapiPermissions],
+  parameters = [P: NapiPermissions + 'static],
   ops = [
-    op_napi_open<P>
+    op_napi_open::<P>,
   ],
   state = |state| {
     let (async_work_sender, async_work_receiver) =

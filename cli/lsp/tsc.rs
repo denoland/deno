@@ -2835,7 +2835,7 @@ deno_core::extension!(deno_tsc,
     op_script_version,
   ],
   options = {
-    performance: Arc<Performance>
+    performance: Arc<Performance>,
   },
   state = |state, options| {
     state.put(State::new(

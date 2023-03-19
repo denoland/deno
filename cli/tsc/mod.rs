@@ -114,7 +114,17 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops,);
+  deno_core::extension!(
+    deno_cli_tsc,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_resolve,
+      op_respond,
+    ]
+  );
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -827,7 +837,14 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .collect();
 
   deno_core::extension!(deno_cli_tsc,
-    ops_fn = deno_ops,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_resolve,
+      op_respond,
+    ],
     options = {
       request: Request,
       root_map: HashMap<String, Url>,
@@ -890,18 +907,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     Err(anyhow!("The response for the exec request was not set."))
   }
 }
-
-deno_core::ops!(
-  deno_ops,
-  [
-    op_create_hash,
-    op_emit,
-    op_is_node_file,
-    op_load,
-    op_resolve,
-    op_respond,
-  ]
-);
 
 #[cfg(test)]
 mod tests {
