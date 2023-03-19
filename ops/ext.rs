@@ -357,10 +357,10 @@ fn generate_with_state(
   if let Some(ref middleware) = ext.middleware {
     builder.push_tokens(&q!(
       Vars {
-        middleware: middleware
+        middleware_fn: middleware
       },
       {
-        ext.middleware(middleware);
+        ext.middleware(middleware_fn);
       }
     ));
   }

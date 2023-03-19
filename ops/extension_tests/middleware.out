@@ -1,0 +1,53 @@
+#[allow(non_camel_case_types)]
+pub struct deno_io;
+impl deno_io {
+    pub fn init_ops_and_esm(stdio: Option<Stdio>) -> deno_core::Extension {
+        let mut ext = deno_core::Extension::builder_with_deps(
+            stringify!(deno_io),
+            &["deno_web"],
+        );
+        ext.esm(deno_core::include_js_files!(deno_io "12_io.js"));
+        ext.ops(vec![op_read_sync::decl(), op_write_sync::decl()]);
+        struct Config {
+            stdio: Option<Stdio>,
+            _phantom: std::marker::PhantomData<()>,
+        }
+        let config = Config {
+            stdio,
+            _phantom: ::std::marker::PhantomData,
+        };
+        let state_fn: fn(&mut deno_core::OpState, Config) = |state, options| {};
+        ext.state(move |s: &mut deno_core::OpState| {
+            state_fn(s, config);
+        });
+        ext.middleware(|op| match op.name {
+            "op_print" => op_print::decl(),
+            _ => op,
+        });
+        ext.take()
+    }
+    pub fn init_ops(stdio: Option<Stdio>) -> deno_core::Extension {
+        let mut ext = deno_core::Extension::builder_with_deps(
+            stringify!(deno_io),
+            &["deno_web"],
+        );
+        ext.ops(vec![op_read_sync::decl(), op_write_sync::decl()]);
+        struct Config {
+            stdio: Option<Stdio>,
+            _phantom: std::marker::PhantomData<()>,
+        }
+        let config = Config {
+            stdio,
+            _phantom: ::std::marker::PhantomData,
+        };
+        let state_fn: fn(&mut deno_core::OpState, Config) = |state, options| {};
+        ext.state(move |s: &mut deno_core::OpState| {
+            state_fn(s, config);
+        });
+        ext.middleware(|op| match op.name {
+            "op_print" => op_print::decl(),
+            _ => op,
+        });
+        ext.take()
+    }
+}
