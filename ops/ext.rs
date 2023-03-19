@@ -175,29 +175,35 @@ fn literals<T: ToString + syn::spanned::Spanned>(
     .collect()
 }
 
-fn generate_with_js(ext: &ExtensionDef, builder: &mut Quote) {
+fn generate_with_js(
+  core: &proc_macro2::TokenStream,
+  ext: &ExtensionDef,
+  builder: &mut Quote,
+) {
   if !ext.esm.1.is_empty() {
     match ext.esm.0 {
       Some(ref dir) => {
         builder.push_tokens(&q!(
           Vars {
+            core: core,
             name: &ext.name,
             directory: dir,
             files: &ext.esm.1
           },
           {
-            ext.esm(include_js_files!(name dir directory files));
+            ext.esm(core::include_js_files!(name dir directory files));
           }
         ));
       }
       None => {
         builder.push_tokens(&q!(
           Vars {
+            core: core,
             name: &ext.name,
             files: &ext.esm.1
           },
           {
-            ext.esm(include_js_files!(name files));
+            ext.esm(core::include_js_files!(name files));
           }
         ));
       }
@@ -291,7 +297,11 @@ fn generate_with_ops(ext: &ExtensionDef, builder: &mut Quote) {
   }
 }
 
-fn generate_with_state(ext: &ExtensionDef, builder: &mut Quote) {
+fn generate_with_state(
+  core: &proc_macro2::TokenStream,
+  ext: &ExtensionDef,
+  builder: &mut Quote,
+) {
   if let Some(ref state) = ext.state {
     if !ext.options.is_empty() {
       let member_names = ext
@@ -299,13 +309,13 @@ fn generate_with_state(ext: &ExtensionDef, builder: &mut Quote) {
         .iter()
         .map(|f| f.member.clone())
         .collect::<Punctuated<Member, Token![,]>>();
-      builder.push_tokens(&q!(Vars { state_cl: state, fieldvalues: &ext.options, member_names: member_names }, {
+      builder.push_tokens(&q!(Vars { core: core, state_cl: state, fieldvalues: &ext.options, member_names: member_names }, {
         struct Config {
           fieldvalues
         }
         let config = Config { member_names };
-        let state_fn: fn(&mut OpState, Config) = state_cl;
-        ext.state(move |s: &mut OpState| {
+        let state_fn: fn(&mut core::OpState, Config) = state_cl;
+        ext.state(move |s: &mut core::OpState| {
           state_fn(s, config);
         });
       }));
@@ -339,24 +349,29 @@ fn generate_with_state(ext: &ExtensionDef, builder: &mut Quote) {
   }
 }
 
-fn generate_builder(ext: &ExtensionDef, generate_js: bool) -> Quote {
+fn generate_builder(
+  core: &proc_macro2::TokenStream,
+  ext: &ExtensionDef,
+  generate_js: bool,
+) -> Quote {
   let deps = literals(&ext.deps);
   let mut builder = q!(
     Vars {
+      core: core,
       name: &ext.name,
       deps: deps
     },
     {
       let mut ext =
-        crate::Extension::builder_with_deps(stringify!(name), &[deps]);
+        core::Extension::builder_with_deps(stringify!(name), &[deps]);
     }
   );
 
   if generate_js {
-    generate_with_js(&ext, &mut builder)
+    generate_with_js(core, &ext, &mut builder)
   };
   generate_with_ops(&ext, &mut builder);
-  generate_with_state(&ext, &mut builder);
+  generate_with_state(core, &ext, &mut builder);
 
   builder.push_tokens(&q!({ ext.take() }));
 
@@ -364,24 +379,29 @@ fn generate_builder(ext: &ExtensionDef, generate_js: bool) -> Quote {
 }
 
 pub(crate) fn generate(ext: ExtensionDef) -> proc_macro2::TokenStream {
-  let builder = generate_builder(&ext, true);
-  let builder2 = generate_builder(&ext, false);
+  #[cfg(test)]
+  let core = quote::quote!(deno_core);
+  #[cfg(not(test))]
+  let core = crate::deno::import();
+
+  let builder = generate_builder(&core, &ext, true);
+  let builder2 = generate_builder(&core, &ext, false);
 
   let params = if !ext.parameters.is_empty() {
     q!(Vars { params: &ext.parameters }, { < params > })
   } else {
     q!({})
   };
-  let mut tokens = q!(Vars { name: &ext.name, params: params, options: &ext.options, ops_and_esm: builder, ops: builder2 }, {
+  let mut tokens = q!(Vars { core: core, name: &ext.name, params: params, options: &ext.options, ops_and_esm: builder, ops: builder2 }, {
     #[allow(non_camel_case_types)]
     pub struct name;
 
     impl name {
-      pub fn init_ops_and_esm params ( options ) -> crate::Extension {
+      pub fn init_ops_and_esm params ( options ) -> core::Extension {
         ops_and_esm
       }
 
-      pub fn init_ops params ( options ) -> crate::Extension {
+      pub fn init_ops params ( options ) -> core::Extension {
         ops
       }
     }

@@ -231,11 +231,11 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   op.gen().into()
 }
 
-// #[proc_macro]
-// pub fn extension(item: TokenStream) -> TokenStream {
-//   let ext = parse_macro_input!(item as Extension);
-//   ext.gen().into()
-// }
+#[proc_macro]
+pub fn extension(item: TokenStream) -> TokenStream {
+  let ext = parse_macro_input!(item as ext::ExtensionDef);
+  ext::generate(ext).into()
+}
 
 /// Generate the body of a v8 func for an async op
 fn codegen_v8_async(
