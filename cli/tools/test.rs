@@ -216,6 +216,35 @@ impl ToString for TestFailure {
   }
 }
 
+impl TestFailure {
+  fn format_label(&self) -> String {
+    match self {
+      TestFailure::Incomplete => colors::gray("INCOMPLETE").to_string(),
+      _ => colors::red("FAILED").to_string(),
+    }
+  }
+
+  fn format_inline_summary(&self) -> Option<String> {
+    match self {
+      TestFailure::FailedSteps(1) => Some("due to 1 failed step".to_string()),
+      TestFailure::FailedSteps(n) => Some(format!("due to {} failed steps", n)),
+      TestFailure::IncompleteSteps => {
+        Some("due to incomplete steps".to_string())
+      }
+      _ => None,
+    }
+  }
+
+  fn hide_in_summary(&self) -> bool {
+    // These failure variants are hidden in summaries because they are caused
+    // by child errors that will be summarized separately.
+    matches!(
+      self,
+      TestFailure::FailedSteps(_) | TestFailure::IncompleteSteps
+    )
+  }
+}
+
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -403,15 +432,6 @@ impl PrettyTestReporter {
     result: &TestStepResult,
     elapsed: u64,
   ) {
-    let status = match &result {
-      TestStepResult::Ok => colors::green("ok").to_string(),
-      TestStepResult::Ignored => colors::yellow("ignored").to_string(),
-      TestStepResult::Failed(TestFailure::Incomplete) => {
-        colors::gray("INCOMPLETE").to_string()
-      }
-      TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
-    };
-
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
@@ -430,28 +450,24 @@ impl PrettyTestReporter {
       }
     }
 
-    if let TestStepResult::Failed(TestFailure::Incomplete) = &result {
-      println!(" {}", status);
-    } else {
-      println!(
-        " {} {}",
-        status,
+    let status = match &result {
+      TestStepResult::Ok => colors::green("ok").to_string(),
+      TestStepResult::Ignored => colors::yellow("ignored").to_string(),
+      TestStepResult::Failed(failure) => failure.format_label(),
+    };
+    print!(" {}", status);
+    if let TestStepResult::Failed(failure) = result {
+      if let Some(inline_summary) = failure.format_inline_summary() {
+        print!(" ({})", inline_summary)
+      }
+    }
+    if !matches!(result, TestStepResult::Failed(TestFailure::Incomplete)) {
+      print!(
+        " {}",
         colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
       );
     }
-
-    if let TestStepResult::Failed(failure) = result {
-      if !matches!(failure, TestFailure::FailedSteps(_)) {
-        let err_string =
-          format!("{}: {}", colors::red_bold("error"), failure.to_string());
-        for line in err_string.lines() {
-          if !self.parallel {
-            print!("{}", "  ".repeat(description.level + 1));
-          }
-          println!("{}", line);
-        }
-      }
-    }
+    println!();
     self.in_new_line = true;
     if self.parallel {
       self.scope_test_id = None;
@@ -536,13 +552,17 @@ impl PrettyTestReporter {
     let status = match result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
-      TestResult::Failed(_) => colors::red("FAILED").to_string(),
+      TestResult::Failed(failure) => failure.format_label(),
       TestResult::Cancelled => colors::gray("cancelled").to_string(),
     };
-
+    print!(" {}", status);
+    if let TestResult::Failed(failure) = result {
+      if let Some(inline_summary) = failure.format_inline_summary() {
+        print!(" ({})", inline_summary)
+      }
+    }
     println!(
-      " {} {}",
-      status,
+      " {}",
       colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
     );
     self.in_new_line = true;
@@ -632,11 +652,13 @@ impl PrettyTestReporter {
       println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
         for (description, failure) in failures {
-          let failure_title = self.format_test_for_summary(description);
-          println!("{}", &failure_title);
-          println!("{}: {}", colors::red_bold("error"), failure.to_string());
-          println!();
-          failure_titles.push(failure_title);
+          if !failure.hide_in_summary() {
+            let failure_title = self.format_test_for_summary(description);
+            println!("{}", &failure_title);
+            println!("{}: {}", colors::red_bold("error"), failure.to_string());
+            println!();
+            failure_titles.push(failure_title);
+          }
         }
         if let Some(js_error) = uncaught_error {
           let failure_title = format!(
@@ -1319,6 +1341,7 @@ async fn test_specifiers(
 
           TestEvent::StepResult(id, result, duration) => {
             if tests_with_result.insert(id) {
+              let description = test_steps.get(&id).unwrap();
               // Steps which fail pre-validation don't get a wait event.
               tests_started.insert(id);
               match &result {
@@ -1328,13 +1351,26 @@ async fn test_specifiers(
                 TestStepResult::Ignored => {
                   summary.ignored_steps += 1;
                 }
-                TestStepResult::Failed(_) => {
+                TestStepResult::Failed(failure) => {
                   summary.failed_steps += 1;
+                  summary.failures.push((
+                    TestDescription {
+                      id: description.id,
+                      name: reporter.format_test_step_ancestry(
+                        description,
+                        &tests,
+                        &test_steps,
+                      ),
+                      origin: description.origin.clone(),
+                      location: description.location.clone(),
+                    },
+                    failure.clone(),
+                  ))
                 }
               }
 
               reporter.report_step_result(
-                test_steps.get(&id).unwrap(),
+                description,
                 &result,
                 duration,
                 &tests,
