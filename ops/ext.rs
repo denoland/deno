@@ -1,15 +1,13 @@
 use pmutil::q;
 use pmutil::Quote;
-use quote::format_ident;
 use syn::parse::Parse;
 use syn::parse::ParseStream;
 use syn::parse::Result;
-use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::Expr;
 use syn::ExprClosure;
-use syn::FieldValue;
+use syn::FieldsNamed;
 use syn::GenericParam;
 use syn::Ident;
 use syn::Lit;
@@ -29,8 +27,8 @@ pub struct ExtensionDef {
   // ops_fn
   esm_entry_point: Option<LitStr>,
   esm_setup_script: Option<LitStr>,
-  options: Punctuated<FieldValue, Token![,]>,
-  middleware: Option<Expr>,
+  options: Option<FieldsNamed>,
+  middleware: Option<ExprClosure>,
   state: Option<ExprClosure>,
   event_loop_middleware: Option<Ident>,
   customizer: Option<Expr>,
@@ -47,11 +45,11 @@ macro_rules! parse_optional_list {
         if i.to_string() != stringify!($ident) {
           Punctuated::new()
         } else {
-            let _ = $input.parse::<Ident>()?;
-            $input.parse::<Token![=]>()?;
-            let content;
-            let _ = syn::$encl!(content in $input);
-            content.parse_terminated(<$item_ty> ::parse)?
+          let _ = $input.parse::<Ident>()?;
+          $input.parse::<Token![=]>()?;
+          let content;
+          let _ = syn::$encl!(content in $input);
+          content.parse_terminated(<$item_ty> ::parse)?
         }
       } else {
         Punctuated::new()
@@ -69,9 +67,9 @@ macro_rules! parse_optional {
         if i.to_string() != stringify!($ident) {
           None
         } else {
-            let _ = $input.parse::<Ident>()?;
-            $input.parse::<Token![=]>()?;
-            Some($input.parse()?)
+          let _ = $input.parse::<Ident>()?;
+          $input.parse::<Token![=]>()?;
+          Some($input.parse()?)
         }
       } else {
         None
@@ -126,7 +124,7 @@ fn parse_js_files(
 impl Parse for ExtensionDef {
   fn parse(mut input: ParseStream) -> Result<Self> {
     let name = input.parse()?;
-    input.parse::<Token![,]>()?;
+    let _ = input.parse::<Token![,]>();
 
     let deps = parse_optional_list!(input, deps, Ident);
     let parameters = parse_optional_list!(input, parameters, GenericParam);
@@ -140,12 +138,10 @@ impl Parse for ExtensionDef {
     let esm = parse_js_files(&mut input, "esm")?;
     let esm_setup_script = parse_optional!(input, esm_setup_script);
     let js = parse_js_files(&mut input, "js")?;
-    let options = parse_optional_list!(input, options, FieldValue, braced);
-
-    let event_loop_middleware = parse_optional!(input, event_loop_middleware);
+    let options = parse_optional!(input, options);
     let middleware = parse_optional!(input, middleware);
-
     let state = parse_optional!(input, state);
+    let event_loop_middleware = parse_optional!(input, event_loop_middleware);
     let customizer = parse_optional!(input, customizer);
 
     Ok(Self {
@@ -235,23 +231,25 @@ fn generate_with_js(
       Some(ref dir) => {
         builder.push_tokens(&q!(
           Vars {
+            core: core,
             name: &ext.name,
             directory: dir,
             files: &ext.js.1
           },
           {
-            ext.js(include_js_files!(name dir directory files));
+            ext.js(core::include_js_files!(name dir directory files));
           }
         ));
       }
       None => {
         builder.push_tokens(&q!(
           Vars {
+            core: core,
             name: &ext.name,
             files: &ext.js.1
           },
           {
-            ext.js(include_js_files!(name files));
+            ext.js(core::include_js_files!(name files));
           }
         ));
       }
@@ -300,21 +298,40 @@ fn generate_with_ops(ext: &ExtensionDef, builder: &mut Quote) {
 fn generate_with_state(
   core: &proc_macro2::TokenStream,
   ext: &ExtensionDef,
+  params: &Quote,
   builder: &mut Quote,
 ) {
   if let Some(ref state) = ext.state {
-    if !ext.options.is_empty() {
-      let member_names = ext
-        .options
+    if let Some(ref options) = ext.options {
+      let member_names = options
+        .named
         .iter()
-        .map(|f| f.member.clone())
-        .collect::<Punctuated<Member, Token![,]>>();
-      builder.push_tokens(&q!(Vars { core: core, state_cl: state, fieldvalues: &ext.options, member_names: member_names }, {
-        struct Config {
+        .map(|f| f.ident.clone().unwrap())
+        .collect::<Punctuated<Ident, Token![,]>>();
+
+      let generic_names = ext
+        .parameters
+        .iter()
+        .filter_map(|p| {
+          if let syn::GenericParam::Type(syn::TypeParam { ident, .. }) = p {
+            Some(ident.clone())
+          } else {
+            None
+          }
+        })
+        .collect::<Punctuated<Ident, Token![,]>>();
+      let generic_names_angle = match generic_names.len() {
+        0 => quote::quote!(),
+        _ => quote::quote!(< #generic_names >),
+      };
+      builder.push_tokens(&q!(Vars { core: core, params: params, generic_names_angle: generic_names_angle, generic_names: generic_names, state_cl: state, fieldvalues: &options.named, member_names: member_names }, {
+        struct Config params {
           fieldvalues
+          _phantom: std::marker::PhantomData<( generic_names )>,
         }
-        let config = Config { member_names };
-        let state_fn: fn(&mut core::OpState, Config) = state_cl;
+
+        let config = Config { member_names, _phantom: ::std::marker::PhantomData };
+        let state_fn: fn(&mut core::OpState, Config generic_names_angle) = state_cl;
         ext.state(move |s: &mut core::OpState| {
           state_fn(s, config);
         });
@@ -352,6 +369,7 @@ fn generate_with_state(
 fn generate_builder(
   core: &proc_macro2::TokenStream,
   ext: &ExtensionDef,
+  params: &Quote,
   generate_js: bool,
 ) -> Quote {
   let deps = literals(&ext.deps);
@@ -371,7 +389,7 @@ fn generate_builder(
     generate_with_js(core, &ext, &mut builder)
   };
   generate_with_ops(&ext, &mut builder);
-  generate_with_state(core, &ext, &mut builder);
+  generate_with_state(core, &ext, params, &mut builder);
 
   builder.push_tokens(&q!({ ext.take() }));
 
@@ -384,15 +402,21 @@ pub(crate) fn generate(ext: ExtensionDef) -> proc_macro2::TokenStream {
   #[cfg(not(test))]
   let core = crate::deno::import();
 
-  let builder = generate_builder(&core, &ext, true);
-  let builder2 = generate_builder(&core, &ext, false);
-
   let params = if !ext.parameters.is_empty() {
     q!(Vars { params: &ext.parameters }, { < params > })
   } else {
     q!({})
   };
-  let mut tokens = q!(Vars { core: core, name: &ext.name, params: params, options: &ext.options, ops_and_esm: builder, ops: builder2 }, {
+
+  let builder = generate_builder(&core, &ext, &params, true);
+  let builder2 = generate_builder(&core, &ext, &params, false);
+  let binding = Punctuated::new();
+  let member_names = match &ext.options {
+    Some(options) => &options.named,
+    None => &binding,
+  };
+
+  let tokens = q!(Vars { core: core, name: &ext.name, params: params, options: &member_names, ops_and_esm: builder, ops: builder2 }, {
     #[allow(non_camel_case_types)]
     pub struct name;
 
@@ -444,6 +468,7 @@ mod tests {
       .expect("Failed to read expected output file");
 
     let actual = generate(syn::parse2::<ExtensionDef>(item).unwrap());
+
     // Validate syntax tree.
     let tree = syn::parse2(actual).unwrap();
     let actual = prettyplease::unparse(&tree);

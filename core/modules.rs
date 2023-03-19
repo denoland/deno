@@ -2009,7 +2009,7 @@ import "/a.js";
       43
     }
 
-    deno_core::extension!(test_ext, ops = [op_test]);
+    deno_ops::extension!(test_ext, ops = [op_test]);
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],

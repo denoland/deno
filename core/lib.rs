@@ -38,6 +38,7 @@ pub use sourcemap;
 pub use url;
 pub use v8;
 
+pub use deno_ops::extension;
 pub use deno_ops::op;
 
 pub use crate::async_cancel::CancelFuture;

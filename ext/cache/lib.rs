@@ -22,14 +22,14 @@ pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
 
 deno_core::extension!(deno_cache,
   deps = [ deno_webidl, deno_web, deno_url, deno_fetch ],
-  parameters=[CA: Cache],
+  parameters = [CA: Cache + 'static],
   ops = [
-    op_cache_storage_open<CA>,
-    op_cache_storage_has<CA>,
-    op_cache_storage_delete<CA>,
-    op_cache_put<CA>,
-    op_cache_match<CA>,
-    op_cache_delete<CA>,
+    op_cache_storage_open::<CA>,
+    op_cache_storage_has::<CA>,
+    op_cache_storage_delete::<CA>,
+    op_cache_put::<CA>,
+    op_cache_match::<CA>,
+    op_cache_delete::<CA>,
   ],
   esm = [ "01_cache.js" ],
   options = {

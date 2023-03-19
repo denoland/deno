@@ -1533,10 +1533,10 @@ deno_core::extension!(deno_flash,
     deno_websocket,
     deno_http
   ],
-  parameters = [P: FlashPermissions],
+  parameters = [P: FlashPermissions + 'static],
   ops = [
-    op_flash_serve<P>,
-    op_node_unstable_flash_serve<P>,
+    op_flash_serve::<P>,
+    op_node_unstable_flash_serve::<P>,
     op_flash_respond,
     op_flash_respond_async,
     op_flash_respond_chunked,

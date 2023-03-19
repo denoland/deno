@@ -8,11 +8,15 @@ impl my_extension {
         );
         ext.esm(deno_core::include_js_files!(my_extension "my_script.js"));
         ext.ops(vec![op_foo::decl(), op_bar::decl:: < P > ()]);
-        struct Config {
+        struct Config<P: Permissions> {
             unstable: bool,
+            _phantom: std::marker::PhantomData<(P)>,
         }
-        let config = Config { unstable };
-        let state_fn: fn(&mut deno_core::OpState, Config) = |state| {};
+        let config = Config {
+            unstable,
+            _phantom: ::std::marker::PhantomData,
+        };
+        let state_fn: fn(&mut deno_core::OpState, Config<P>) = |state| {};
         ext.state(move |s: &mut deno_core::OpState| {
             state_fn(s, config);
         });
@@ -24,11 +28,15 @@ impl my_extension {
             &["deno_core", "deno_web"],
         );
         ext.ops(vec![op_foo::decl(), op_bar::decl:: < P > ()]);
-        struct Config {
+        struct Config<P: Permissions> {
             unstable: bool,
+            _phantom: std::marker::PhantomData<(P)>,
         }
-        let config = Config { unstable };
-        let state_fn: fn(&mut deno_core::OpState, Config) = |state| {};
+        let config = Config {
+            unstable,
+            _phantom: ::std::marker::PhantomData,
+        };
+        let state_fn: fn(&mut deno_core::OpState, Config<P>) = |state| {};
         ext.state(move |s: &mut deno_core::OpState| {
             state_fn(s, config);
         });

@@ -497,10 +497,10 @@ pub async fn op_ws_next_event(
 
 deno_core::extension!(deno_websocket,
   deps = [ deno_url, deno_webidl ],
-  parameters = [P: WebSocketPermissions],
+  parameters = [P: WebSocketPermissions + 'static],
   ops = [
-    op_ws_check_permission_and_cancel_handle<P>,
-    op_ws_create<P>,
+    op_ws_check_permission_and_cancel_handle::<P>,
+    op_ws_create::<P>,
     op_ws_send,
     op_ws_close,
     op_ws_next_event,
@@ -509,7 +509,7 @@ deno_core::extension!(deno_websocket,
   options = {
     user_agent: String,
     root_cert_store: Option<RootCertStore>,
-    unsafely_ignore_certificate_errors: Option<Vec<String>>
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
   },
   state = |state, options| {
     state.put::<WsUserAgent>(WsUserAgent(options.user_agent));

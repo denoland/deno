@@ -106,12 +106,12 @@ where
 
 deno_core::extension!(deno_broadcast_channel,
   deps = [ deno_webidl, deno_web ],
-  parameters = [BC: BroadcastChannel],
+  parameters = [BC: BroadcastChannel + 'static],
   ops = [
-    op_broadcast_subscribe<BC>,
-    op_broadcast_unsubscribe<BC>,
-    op_broadcast_send<BC>,
-    op_broadcast_recv<BC>,
+    op_broadcast_subscribe::<BC>,
+    op_broadcast_unsubscribe::<BC>,
+    op_broadcast_send::<BC>,
+    op_broadcast_recv::<BC>,
   ],
   esm = [ "01_broadcast_channel.js" ],
   options = {

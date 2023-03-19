@@ -32,7 +32,7 @@ deno_core::extension!(deno_webstorage,
   ],
   esm = [ "01_webstorage.js" ],
   options = {
-    origin_storage_dir: Option<PathBuf>
+    origin_storage_dir: Option<PathBuf>,
   },
   state = |state, options| {
     if let Some(origin_storage_dir) = options.origin_storage_dir {

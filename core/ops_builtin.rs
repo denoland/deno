@@ -17,7 +17,7 @@ use std::io::stdout;
 use std::io::Write;
 use std::rc::Rc;
 
-crate::extension!(
+deno_ops::extension!(
   core,
   ops = [
     op_close,

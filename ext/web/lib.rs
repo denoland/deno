@@ -57,7 +57,7 @@ pub use crate::timers::TimersPermission;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl, deno_console, deno_url ],
-  parameters = [P: TimersPermission],
+  parameters = [P: TimersPermission + 'static],
   ops = [
     op_base64_decode,
     op_base64_encode,
@@ -83,7 +83,7 @@ deno_core::extension!(deno_web,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,
-    op_now<P>,
+    op_now::<P>,
     op_timer_handle,
     op_cancel_handle,
     op_sleep,

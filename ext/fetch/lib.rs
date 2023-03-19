@@ -92,11 +92,11 @@ impl Default for Options {
 
 deno_core::extension!(deno_fetch,
   deps = [ deno_webidl, deno_web, deno_url, deno_console ],
-  parameters = [FP: FetchPermissions],
+  parameters = [FP: FetchPermissions + 'static],
   ops = [
-    op_fetch<FP>,
+    op_fetch::<FP>,
     op_fetch_send,
-    op_fetch_custom_client<FP>,
+    op_fetch_custom_client::<FP>,
   ],
   esm = [
     "20_headers.js",

@@ -1,0 +1,71 @@
+#[allow(non_camel_case_types)]
+pub struct deno_cache;
+impl deno_cache {
+    pub fn init_ops_and_esm<CA: Cache>(
+        maybe_create_cache: Option<CreateCache<CA>>,
+    ) -> deno_core::Extension {
+        let mut ext = deno_core::Extension::builder_with_deps(
+            stringify!(deno_cache),
+            &["deno_webidl", "deno_web", "deno_url", "deno_fetch"],
+        );
+        ext.esm(deno_core::include_js_files!(deno_cache "01_cache.js"));
+        ext.ops(
+            vec![
+                op_cache_storage_open::decl:: < CA > (), op_cache_storage_has::decl:: <
+                CA > (), op_cache_storage_delete::decl:: < CA > (), op_cache_put::decl::
+                < CA > (), op_cache_match::decl:: < CA > (), op_cache_delete::decl:: < CA
+                > ()
+            ],
+        );
+        struct Config<CA: Cache> {
+            maybe_create_cache: Option<CreateCache<CA>>,
+            _phantom: std::marker::PhantomData<(CA)>,
+        }
+        let config = Config {
+            maybe_create_cache,
+            _phantom: ::std::marker::PhantomData,
+        };
+        let state_fn: fn(&mut deno_core::OpState, Config<CA>) = |state, options| {
+            if let Some(create_cache) = options.maybe_create_cache {
+                state.put(create_cache);
+            }
+        };
+        ext.state(move |s: &mut deno_core::OpState| {
+            state_fn(s, config);
+        });
+        ext.take()
+    }
+    pub fn init_ops<CA: Cache>(
+        maybe_create_cache: Option<CreateCache<CA>>,
+    ) -> deno_core::Extension {
+        let mut ext = deno_core::Extension::builder_with_deps(
+            stringify!(deno_cache),
+            &["deno_webidl", "deno_web", "deno_url", "deno_fetch"],
+        );
+        ext.ops(
+            vec![
+                op_cache_storage_open::decl:: < CA > (), op_cache_storage_has::decl:: <
+                CA > (), op_cache_storage_delete::decl:: < CA > (), op_cache_put::decl::
+                < CA > (), op_cache_match::decl:: < CA > (), op_cache_delete::decl:: < CA
+                > ()
+            ],
+        );
+        struct Config<CA: Cache> {
+            maybe_create_cache: Option<CreateCache<CA>>,
+            _phantom: std::marker::PhantomData<(CA)>,
+        }
+        let config = Config {
+            maybe_create_cache,
+            _phantom: ::std::marker::PhantomData,
+        };
+        let state_fn: fn(&mut deno_core::OpState, Config<CA>) = |state, options| {
+            if let Some(create_cache) = options.maybe_create_cache {
+                state.put(create_cache);
+            }
+        };
+        ext.state(move |s: &mut deno_core::OpState| {
+            state_fn(s, config);
+        });
+        ext.take()
+    }
+}
