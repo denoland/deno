@@ -445,7 +445,10 @@ impl PrettyTestReporter {
         let err_string =
           format!("{}: {}", colors::red_bold("error"), failure.to_string());
         for line in err_string.lines() {
-          println!("{}{}", "  ".repeat(description.level + 1), line);
+          if !self.parallel {
+            print!("{}", "  ".repeat(description.level + 1));
+          }
+          println!("{}", line);
         }
       }
     }

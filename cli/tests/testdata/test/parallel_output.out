@@ -12,28 +12,28 @@ Hello, world! (from step 4)
 ./test/parallel_output.ts => step output ... ok ([WILDCARD]ms)
 ./test/parallel_output.ts => step failures ... step 1 ... ok ([WILDCARD]ms)
 ./test/parallel_output.ts => step failures ... step 2 ... FAILED ([WILDCARD]ms)
-    error: Error: Fail.
-        throw new Error("Fail.");
-              ^
-        at file:///[WILDCARD]/test/parallel_output.ts:15:11
-        at [WILDCARD]
-        at file:///[WILDCARD]/test/parallel_output.ts:14:11
+error: Error: Fail.
+    throw new Error("Fail.");
+          ^
+    at file:///[WILDCARD]/test/parallel_output.ts:15:11
+    at [WILDCARD]
+    at file:///[WILDCARD]/test/parallel_output.ts:14:11
 ./test/parallel_output.ts => step failures ... step 3 ... FAILED ([WILDCARD]ms)
-    error: Error: Fail.
-      await t.step("step 3", () => Promise.reject(new Error("Fail.")));
-                                                  ^
-        at file:///[WILDCARD]/test/parallel_output.ts:17:47
-        at [WILDCARD]
-        at file:///[WILDCARD]/test/parallel_output.ts:17:11
+error: Error: Fail.
+  await t.step("step 3", () => Promise.reject(new Error("Fail.")));
+                                              ^
+    at file:///[WILDCARD]/test/parallel_output.ts:17:47
+    at [WILDCARD]
+    at file:///[WILDCARD]/test/parallel_output.ts:17:11
 ./test/parallel_output.ts => step failures ... FAILED ([WILDCARD]ms)
 ./test/parallel_output.ts => step nested failure ... step 1 ... inner 1 ... ok ([WILDCARD]ms)
 ./test/parallel_output.ts => step nested failure ... step 1 ... inner 2 ... FAILED ([WILDCARD]ms)
-      error: Error: Failed.
-            throw new Error("Failed.");
-                  ^
-          at file:///[WILDCARD]/test/parallel_output.ts:24:13
-          at [WILDCARD]
-          at file:///[WILDCARD]/test/parallel_output.ts:23:13
+error: Error: Failed.
+      throw new Error("Failed.");
+            ^
+    at file:///[WILDCARD]/test/parallel_output.ts:24:13
+    at [WILDCARD]
+    at file:///[WILDCARD]/test/parallel_output.ts:23:13
 ./test/parallel_output.ts => step nested failure ... step 1 ... FAILED ([WILDCARD]ms)
 ./test/parallel_output.ts => step nested failure ... FAILED ([WILDCARD]ms)
 
