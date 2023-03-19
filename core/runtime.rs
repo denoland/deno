@@ -2471,6 +2471,7 @@ impl JsRealm {
       .clone()
   }
 
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   pub fn handle_scope<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2478,6 +2479,7 @@ impl JsRealm {
     v8::HandleScope::with_context(isolate, &self.0)
   }
 
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   pub fn global_object<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2503,6 +2505,8 @@ impl JsRealm {
 
   /// Executes traditional JavaScript code (traditional = not ES modules) in the
   /// realm's context.
+  ///
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   ///
   /// The `name` parameter can be a filepath or any other string. E.g.:
   ///
