@@ -931,8 +931,4 @@ internals.require = {
     hasInspectBrk = true;
   },
   Module,
-  wrapSafe,
-  toRealPath,
-  cjsParseCache,
-  readPackageScope,
 };
