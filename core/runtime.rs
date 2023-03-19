@@ -712,7 +712,7 @@ impl JsRuntime {
       futures::executor::block_on(async {
         let id = runtime
           .load_side_module(
-            &ModuleSpecifier::parse(&file_source.specifier)?,
+            &ModuleSpecifier::parse(file_source.specifier)?,
             None,
           )
           .await?;
@@ -748,7 +748,7 @@ impl JsRuntime {
             // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
             realm.execute_script(
               self.v8_isolate(),
-              &file_source.specifier,
+              file_source.specifier,
               &file_source.code.load()?,
             )?;
           }
