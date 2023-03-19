@@ -114,13 +114,13 @@ deno_core::extension!(deno_broadcast_channel,
     op_broadcast_recv<BC>,
   ],
   esm = [ "01_broadcast_channel.js" ],
-  config = {
+  options = {
     bc: BC,
     unstable: bool,
   },
-  state = |state, bc, unstable| {
-    state.put(bc);
-    state.put(Unstable(unstable));
+  state = |state, options| {
+    state.put(options.bc);
+    state.put(Unstable(options.unstable));
   },
 );
 

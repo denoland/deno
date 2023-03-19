@@ -105,18 +105,18 @@ deno_core::extension!(deno_net,
     #[cfg(unix)] ops_unix::op_net_send_unixpacket<P>,
   ],
   esm = [ "01_net.js", "02_tls.js" ],
-  config = {
+  options = {
     root_cert_store: Option<RootCertStore>,
     unstable: bool,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   },
-  state = |state, root_cert_store, unstable, unsafely_ignore_certificate_errors| {
+  state = |state, options| {
     state.put(DefaultTlsOptions {
-      root_cert_store,
+      root_cert_store: options.root_cert_store,
     });
-    state.put(UnstableChecker { unstable });
+    state.put(UnstableChecker { unstable: options.unstable });
     state.put(UnsafelyIgnoreCertificateErrors(
-      unsafely_ignore_certificate_errors,
+      options.unsafely_ignore_certificate_errors,
     ));
   },
 );

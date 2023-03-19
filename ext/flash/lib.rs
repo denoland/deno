@@ -22,11 +22,11 @@ use deno_core::ZeroCopyBuf;
 use deno_core::V8_WRAPPER_OBJECT_INDEX;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
-use http::header::HeaderName;
 use http::header::CONNECTION;
 use http::header::CONTENT_LENGTH;
 use http::header::EXPECT;
 use http::header::TRANSFER_ENCODING;
+use http::HeaderName;
 use http::HeaderValue;
 use log::trace;
 use mio::net::TcpListener;
@@ -1559,11 +1559,11 @@ deno_core::extension!(deno_flash,
     op_try_flash_respond_chunked,
   ],
   esm = [ "01_http.js" ],
-  config = {
+  options = {
     unstable: bool,
   },
-  state = |state, unstable| {
-    state.put(Unstable(unstable));
+  state = |state, options| {
+    state.put(Unstable(options.unstable));
     state.put(FlashContext {
       next_server_id: 0,
       join_handles: HashMap::default(),

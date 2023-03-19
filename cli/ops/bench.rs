@@ -30,13 +30,16 @@ deno_core::extension!(deno_bench,
     op_dispatch_bench_event,
     op_bench_now,
   ],
-  config = {
+  options = {
     sender: UnboundedSender<BenchEvent>,
     filter: TestFilter,
   },
-  state = |state, sender, filter| {
-    state.put(sender);
-    state.put(filter);
+  state = |state, options| {
+    state.put(options.sender);
+    state.put(options.filter);
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
   },
 );
 
