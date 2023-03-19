@@ -12,7 +12,7 @@ use deno_core::ExtensionFileSourceCode;
 fn setup() -> Vec<Extension> {
   vec![Extension::builder("bench_setup")
     .js(vec![ExtensionFileSource {
-      specifier: "setup.js".to_string(),
+      specifier: "ext:bench_setup/setup.js",
       code: ExtensionFileSourceCode::IncludedInBinary(
         r#"
       const hello = "hello world\n";
