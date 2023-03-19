@@ -25,8 +25,7 @@ if (Deno.args.includes("--rs")) {
 if (!didLint) {
   await Promise.all([
     dlint(),
-    // todo(dsherret): re-enable
-    // dlintPreferPrimordials(),
+    dlintPreferPrimordials(),
     checkCopyright(),
     clippy(),
   ]);
@@ -96,7 +95,9 @@ async function dlintPreferPrimordials() {
     "runtime/**/*.js",
     "ext/**/*.js",
     // TODO(petamoriken): enable for node polyfills
-    ":!:ext/node/polyfills/**",
+    // "ext/node/polyfills/*.mjs",
+    // "ext/node/polyfills/*.ts",
+    // ":!:ext/node/polyfills/*.d.ts",
     "core/*.js",
     ":!:core/*_test.js",
     ":!:core/examples/**",
