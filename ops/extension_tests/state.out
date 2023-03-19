@@ -1,0 +1,37 @@
+#[allow(non_camel_case_types)]
+pub struct my_extension;
+impl my_extension {
+    pub fn init_ops_and_esm<P: Permissions>(unstable: bool) -> crate::Extension {
+        let mut ext = crate::Extension::builder_with_deps(
+            stringify!(my_extension),
+            &["deno_core", "deno_web"],
+        );
+        ext.esm(include_js_files!(my_extension "my_script.js"));
+        ext.ops(vec![op_foo::decl(), op_bar::decl:: < P > ()]);
+        struct Config {
+            unstable: bool,
+        }
+        let config = Config { unstable };
+        let state_fn: fn(&mut OpState, Config) = |state| {};
+        ext.state(move |s: &mut OpState| {
+            state_fn(s, config);
+        });
+        ext.take()
+    }
+    pub fn init_ops<P: Permissions>(unstable: bool) -> crate::Extension {
+        let mut ext = crate::Extension::builder_with_deps(
+            stringify!(my_extension),
+            &["deno_core", "deno_web"],
+        );
+        ext.ops(vec![op_foo::decl(), op_bar::decl:: < P > ()]);
+        struct Config {
+            unstable: bool,
+        }
+        let config = Config { unstable };
+        let state_fn: fn(&mut OpState, Config) = |state| {};
+        ext.state(move |s: &mut OpState| {
+            state_fn(s, config);
+        });
+        ext.take()
+    }
+}

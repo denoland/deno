@@ -1,0 +1,21 @@
+#[allow(non_camel_case_types)]
+pub struct my_extension;
+impl my_extension {
+    pub fn init_ops_and_esm<P: Permissions>() -> crate::Extension {
+        let mut ext = crate::Extension::builder_with_deps(
+            stringify!(my_extension),
+            &["deno_core", "deno_web"],
+        );
+        ext.esm(include_js_files!(my_extension "my_script.js"));
+        ext.ops(vec![op_foo::decl(), op_bar::decl:: < P > ()]);
+        ext.take()
+    }
+    pub fn init_ops<P: Permissions>() -> crate::Extension {
+        let mut ext = crate::Extension::builder_with_deps(
+            stringify!(my_extension),
+            &["deno_core", "deno_web"],
+        );
+        ext.ops(vec![op_foo::decl(), op_bar::decl:: < P > ()]);
+        ext.take()
+    }
+}

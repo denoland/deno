@@ -23,6 +23,7 @@ use syn::LifetimeDef;
 
 mod attrs;
 mod deno;
+mod ext;
 mod fast_call;
 mod optimizer;
 
@@ -229,6 +230,12 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let op = Op::new(func, margs);
   op.gen().into()
 }
+
+// #[proc_macro]
+// pub fn extension(item: TokenStream) -> TokenStream {
+//   let ext = parse_macro_input!(item as Extension);
+//   ext.gen().into()
+// }
 
 /// Generate the body of a v8 func for an async op
 fn codegen_v8_async(
