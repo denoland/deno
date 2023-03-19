@@ -13,7 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::resolve_url_or_path_deprecated;
+use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -22,7 +22,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
-use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -35,10 +34,12 @@ use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::permissions::PermissionsContainer;
+use lsp_types::Url;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -88,7 +89,6 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
     "deno.url",
     "deno.web",
     "deno.fetch",
-    "deno.webgpu",
     "deno.websocket",
     "deno.webstorage",
     "deno.crypto",
@@ -114,12 +114,18 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
+  deno_core::extension!(
+    deno_cli_tsc,
+    ops_fn = deno_ops,
+    customizer = |ext: &mut deno_core::ExtensionBuilder| {
+      ext.force_op_registration();
+    },
+  );
+
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(get_tsc_ops())
-      .build()],
+    extensions: vec![deno_cli_tsc::init_ops()],
     ..Default::default()
   });
   let global =
@@ -378,6 +384,7 @@ struct State {
   maybe_npm_resolver: Option<NpmPackageResolver>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
+  current_dir: PathBuf,
 }
 
 impl State {
@@ -388,6 +395,7 @@ impl State {
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
+    current_dir: PathBuf,
   ) -> Self {
     State {
       hash_data,
@@ -397,12 +405,16 @@ impl State {
       maybe_response: None,
       remapped_specifiers,
       root_map,
+      current_dir,
     }
   }
 }
 
-fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path_deprecated(specifier).map_err(|err| err.into())
+fn normalize_specifier(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, AnyError> {
+  resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
 #[derive(Debug, Deserialize)]
@@ -481,7 +493,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = normalize_specifier(&v.specifier)
+  let specifier = normalize_specifier(&v.specifier, &state.current_dir)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -584,7 +596,7 @@ fn op_resolve(
   } else if let Some(remapped_base) = state.root_map.get(&args.base) {
     remapped_base.clone()
   } else {
-    normalize_specifier(&args.base).context(
+    normalize_specifier(&args.base, &state.current_dir).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
@@ -819,23 +831,31 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       }
     })
     .collect();
-  let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![Extension::builder("deno_cli_tsc")
-      .ops(get_tsc_ops())
-      .state(move |state| {
-        state.put(State::new(
-          request.graph.clone(),
-          request.hash_data.clone(),
-          request.maybe_npm_resolver.clone(),
-          request.maybe_tsbuildinfo.clone(),
-          root_map.clone(),
-          remapped_specifiers.clone(),
-        ));
-      })
-      .build()],
-    ..Default::default()
-  });
+
+  deno_core::extension!(deno_cli_tsc,
+    ops_fn = deno_ops,
+    options = {
+      request: Request,
+      root_map: HashMap<String, Url>,
+      remapped_specifiers: HashMap<String, Url>,
+    },
+    state = |state, options| {
+      state.put(State::new(
+        options.request.graph,
+        options.request.hash_data,
+        options.request.maybe_npm_resolver,
+        options.request.maybe_tsbuildinfo,
+        options.root_map,
+        options.remapped_specifiers,
+        std::env::current_dir()
+          .context("Unable to get CWD")
+          .unwrap(),
+      ));
+    },
+    customizer = |ext: &mut deno_core::ExtensionBuilder| {
+      ext.force_op_registration();
+    },
+  );
 
   let startup_source = "globalThis.startup({ legacyFlag: false })";
   let request_value = json!({
@@ -845,6 +865,16 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   });
   let request_str = request_value.to_string();
   let exec_source = format!("globalThis.exec({request_str})");
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![deno_cli_tsc::init_ops(
+      request,
+      root_map,
+      remapped_specifiers,
+    )],
+    ..Default::default()
+  });
 
   runtime
     .execute_script(&located_script_name!(), startup_source)
@@ -870,16 +900,17 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   }
 }
 
-fn get_tsc_ops() -> Vec<deno_core::OpDecl> {
-  vec![
-    op_create_hash::decl(),
-    op_emit::decl(),
-    op_is_node_file::decl(),
-    op_load::decl(),
-    op_resolve::decl(),
-    op_respond::decl(),
+deno_core::ops!(
+  deno_ops,
+  [
+    op_create_hash,
+    op_emit,
+    op_is_node_file,
+    op_load,
+    op_resolve,
+    op_respond,
   ]
-}
+);
 
 #[cfg(test)]
 mod tests {
@@ -943,6 +974,9 @@ mod tests {
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
+      std::env::current_dir()
+        .context("Unable to get CWD")
+        .unwrap(),
     );
     let mut op_state = OpState::new(1);
     op_state.put(state);

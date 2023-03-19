@@ -14,6 +14,7 @@ use crate::magic::transl8::opaque_recv;
 use crate::magic::transl8::MagicType;
 use crate::magic::transl8::ToV8;
 use crate::magic::transl8::MAGIC_FIELD;
+use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::ExternalPointer;
@@ -277,6 +278,7 @@ pub enum StructSerializers<'a, 'b, 'c> {
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
   MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
   MagicStringOrBuffer(MagicalSerializer<'a, 'b, 'c, StringOrBuffer>),
+  MagicBigInt(MagicalSerializer<'a, 'b, 'c, BigInt>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -299,6 +301,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::MagicStringOrBuffer(s) => {
         s.serialize_field(key, value)
       }
+      StructSerializers::MagicBigInt(s) => s.serialize_field(key, value),
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
   }
@@ -312,6 +315,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::MagicU16String(s) => s.end(),
       StructSerializers::MagicStringOrBuffer(s) => s.end(),
+      StructSerializers::MagicBigInt(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
   }
@@ -591,6 +595,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       StringOrBuffer::MAGIC_NAME => {
         let m = MagicalSerializer::<StringOrBuffer>::new(self.scope);
         Ok(StructSerializers::MagicStringOrBuffer(m))
+      }
+      BigInt::MAGIC_NAME => {
+        let m = MagicalSerializer::<BigInt>::new(self.scope);
+        Ok(StructSerializers::MagicBigInt(m))
       }
       magic::Value::MAGIC_NAME => {
         let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);

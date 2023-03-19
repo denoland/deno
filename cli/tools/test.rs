@@ -724,7 +724,7 @@ async fn test_specifier(
     ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::testing::init(
+    vec![ops::testing::deno_test::init_ops(
       sender,
       fail_fast_tracker,
       options.filter,
@@ -741,6 +741,7 @@ async fn test_specifier(
 }
 
 fn extract_files_from_regex_blocks(
+  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
@@ -800,13 +801,16 @@ fn extract_files_from_regex_blocks(
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
-      let file_specifier = deno_core::resolve_url_or_path_deprecated(&format!(
-        "{}${}-{}{}",
-        specifier,
-        file_line_index + line_offset + 1,
-        file_line_index + line_offset + line_count + 1,
-        file_media_type.as_ts_extension(),
-      ))
+      let file_specifier = deno_core::resolve_url_or_path(
+        &format!(
+          "{}${}-{}{}",
+          specifier,
+          file_line_index + line_offset + 1,
+          file_line_index + line_offset + line_count + 1,
+          file_media_type.as_ts_extension(),
+        ),
+        current_dir,
+      )
       .unwrap();
 
       Some(File {
@@ -824,6 +828,7 @@ fn extract_files_from_regex_blocks(
 }
 
 fn extract_files_from_source_comments(
+  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: Arc<str>,
   media_type: MediaType,
@@ -851,6 +856,7 @@ fn extract_files_from_source_comments(
     })
     .flat_map(|comment| {
       extract_files_from_regex_blocks(
+        current_dir,
         specifier,
         &comment.text,
         media_type,
@@ -866,6 +872,7 @@ fn extract_files_from_source_comments(
 }
 
 fn extract_files_from_fenced_blocks(
+  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
@@ -878,6 +885,7 @@ fn extract_files_from_fenced_blocks(
   let lines_regex = regex!(r"(?:\# ?)?(.*)");
 
   extract_files_from_regex_blocks(
+    current_dir,
     specifier,
     source,
     media_type,
@@ -898,12 +906,14 @@ async fn fetch_inline_files(
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
+        ps.options.initial_cwd(),
         &file.specifier,
         &file.source,
         file.media_type,
       )
     } else {
       extract_files_from_source_comments(
+        ps.options.initial_cwd(),
         &file.specifier,
         file.source,
         file.media_type,
@@ -1427,10 +1437,10 @@ pub async fn run_tests_with_watch(
         );
 
         if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path_deprecated(&path.to_string_lossy())
-              .ok()
-          }) {
+          for path in changed
+            .iter()
+            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+          {
             if modules.contains(&path) {
               modules_to_reload.push(specifier);
               break;

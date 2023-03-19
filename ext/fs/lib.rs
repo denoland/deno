@@ -4,12 +4,9 @@
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -118,92 +115,78 @@ use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder("deno_fs")
-}
-
-fn ops<P: FsPermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  unstable: bool,
-) -> &mut ExtensionBuilder {
-  ext
-    .state(move |state| {
-      state.put(UnstableChecker { unstable });
-    })
-    .ops(vec![
-      op_open_sync::decl::<P>(),
-      op_open_async::decl::<P>(),
-      op_write_file_sync::decl::<P>(),
-      op_write_file_async::decl::<P>(),
-      op_seek_sync::decl(),
-      op_seek_async::decl(),
-      op_fdatasync_sync::decl(),
-      op_fdatasync_async::decl(),
-      op_fsync_sync::decl(),
-      op_fsync_async::decl(),
-      op_fstat_sync::decl(),
-      op_fstat_async::decl(),
-      op_flock_sync::decl(),
-      op_flock_async::decl(),
-      op_funlock_sync::decl(),
-      op_funlock_async::decl(),
-      op_umask::decl(),
-      op_chdir::decl::<P>(),
-      op_mkdir_sync::decl::<P>(),
-      op_mkdir_async::decl::<P>(),
-      op_chmod_sync::decl::<P>(),
-      op_chmod_async::decl::<P>(),
-      op_chown_sync::decl::<P>(),
-      op_chown_async::decl::<P>(),
-      op_remove_sync::decl::<P>(),
-      op_remove_async::decl::<P>(),
-      op_copy_file_sync::decl::<P>(),
-      op_copy_file_async::decl::<P>(),
-      op_stat_sync::decl::<P>(),
-      op_stat_async::decl::<P>(),
-      op_realpath_sync::decl::<P>(),
-      op_realpath_async::decl::<P>(),
-      op_read_dir_sync::decl::<P>(),
-      op_read_dir_async::decl::<P>(),
-      op_rename_sync::decl::<P>(),
-      op_rename_async::decl::<P>(),
-      op_link_sync::decl::<P>(),
-      op_link_async::decl::<P>(),
-      op_symlink_sync::decl::<P>(),
-      op_symlink_async::decl::<P>(),
-      op_read_link_sync::decl::<P>(),
-      op_read_link_async::decl::<P>(),
-      op_ftruncate_sync::decl(),
-      op_ftruncate_async::decl(),
-      op_truncate_sync::decl::<P>(),
-      op_truncate_async::decl::<P>(),
-      op_make_temp_dir_sync::decl::<P>(),
-      op_make_temp_dir_async::decl::<P>(),
-      op_make_temp_file_sync::decl::<P>(),
-      op_make_temp_file_async::decl::<P>(),
-      op_cwd::decl::<P>(),
-      op_futime_sync::decl(),
-      op_futime_async::decl(),
-      op_utime_sync::decl::<P>(),
-      op_utime_async::decl::<P>(),
-      op_readfile_sync::decl::<P>(),
-      op_readfile_text_sync::decl::<P>(),
-      op_readfile_async::decl::<P>(),
-      op_readfile_text_async::decl::<P>(),
-    ])
-}
-
-pub fn init_ops_and_esm<P: FsPermissions + 'static>(
-  unstable: bool,
-) -> Extension {
-  ops::<P>(&mut ext(), unstable)
-    .esm(include_js_files!("30_fs.js",))
-    .build()
-}
-
-pub fn init_ops<P: FsPermissions + 'static>(unstable: bool) -> Extension {
-  ops::<P>(&mut ext(), unstable).build()
-}
+deno_core::extension!(deno_fs,
+  deps = [ deno_web, deno_io ],
+  parameters = [P: FsPermissions],
+  ops = [
+    op_open_sync<P>,
+    op_open_async<P>,
+    op_write_file_sync<P>,
+    op_write_file_async<P>,
+    op_seek_sync,
+    op_seek_async,
+    op_fdatasync_sync,
+    op_fdatasync_async,
+    op_fsync_sync,
+    op_fsync_async,
+    op_fstat_sync,
+    op_fstat_async,
+    op_flock_sync,
+    op_flock_async,
+    op_funlock_sync,
+    op_funlock_async,
+    op_umask,
+    op_chdir<P>,
+    op_mkdir_sync<P>,
+    op_mkdir_async<P>,
+    op_chmod_sync<P>,
+    op_chmod_async<P>,
+    op_chown_sync<P>,
+    op_chown_async<P>,
+    op_remove_sync<P>,
+    op_remove_async<P>,
+    op_copy_file_sync<P>,
+    op_copy_file_async<P>,
+    op_stat_sync<P>,
+    op_stat_async<P>,
+    op_realpath_sync<P>,
+    op_realpath_async<P>,
+    op_read_dir_sync<P>,
+    op_read_dir_async<P>,
+    op_rename_sync<P>,
+    op_rename_async<P>,
+    op_link_sync<P>,
+    op_link_async<P>,
+    op_symlink_sync<P>,
+    op_symlink_async<P>,
+    op_read_link_sync<P>,
+    op_read_link_async<P>,
+    op_ftruncate_sync,
+    op_ftruncate_async,
+    op_truncate_sync<P>,
+    op_truncate_async<P>,
+    op_make_temp_dir_sync<P>,
+    op_make_temp_dir_async<P>,
+    op_make_temp_file_sync<P>,
+    op_make_temp_file_async<P>,
+    op_cwd<P>,
+    op_futime_sync,
+    op_futime_async,
+    op_utime_sync<P>,
+    op_utime_async<P>,
+    op_readfile_sync<P>,
+    op_readfile_text_sync<P>,
+    op_readfile_async<P>,
+    op_readfile_text_async<P>,
+  ],
+  esm = [ "30_fs.js" ],
+  options = {
+    unstable: bool
+  },
+  state = |state, options| {
+    state.put(UnstableChecker { unstable: options.unstable });
+  },
+);
 
 fn default_err_mapper(err: Error, desc: String) -> Error {
   Error::new(err.kind(), format!("{err}, {desc}"))
@@ -1244,11 +1227,164 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
   }
 }
 
+#[cfg(windows)]
+#[inline(always)]
+fn get_stat2(metadata: std::fs::Metadata, dev: u64) -> FsStat {
+  let (mtime, mtime_set) = to_msec(metadata.modified());
+  let (atime, atime_set) = to_msec(metadata.accessed());
+  let (birthtime, birthtime_set) = to_msec(metadata.created());
+
+  FsStat {
+    is_file: metadata.is_file(),
+    is_directory: metadata.is_dir(),
+    is_symlink: metadata.file_type().is_symlink(),
+    size: metadata.len(),
+    mtime_set,
+    mtime,
+    atime_set,
+    atime,
+    birthtime_set,
+    birthtime,
+    dev,
+    ino: 0,
+    mode: 0,
+    nlink: 0,
+    uid: 0,
+    gid: 0,
+    rdev: 0,
+    blksize: 0,
+    blocks: 0,
+  }
+}
+
+#[cfg(not(windows))]
+#[inline(always)]
+fn get_stat2(metadata: std::fs::Metadata) -> FsStat {
+  #[cfg(unix)]
+  use std::os::unix::fs::MetadataExt;
+  let (mtime, mtime_set) = to_msec(metadata.modified());
+  let (atime, atime_set) = to_msec(metadata.accessed());
+  let (birthtime, birthtime_set) = to_msec(metadata.created());
+
+  FsStat {
+    is_file: metadata.is_file(),
+    is_directory: metadata.is_dir(),
+    is_symlink: metadata.file_type().is_symlink(),
+    size: metadata.len(),
+    mtime_set,
+    mtime,
+    atime_set,
+    atime,
+    birthtime_set,
+    birthtime,
+    dev: metadata.dev(),
+    ino: metadata.ino(),
+    mode: metadata.mode(),
+    nlink: metadata.nlink(),
+    uid: metadata.uid(),
+    gid: metadata.gid(),
+    rdev: metadata.rdev(),
+    blksize: metadata.blksize(),
+    blocks: metadata.blocks(),
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatArgs {
   path: String,
   lstat: bool,
+}
+
+#[cfg(not(windows))]
+fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
+  let err_mapper =
+    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path).map_err(err_mapper)?
+  } else {
+    std::fs::metadata(&path).map_err(err_mapper)?
+  };
+
+  Ok(get_stat2(metadata))
+}
+
+#[cfg(windows)]
+fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
+  use std::os::windows::prelude::OsStrExt;
+
+  use winapi::um::fileapi::CreateFileW;
+  use winapi::um::fileapi::OPEN_EXISTING;
+  use winapi::um::handleapi::CloseHandle;
+  use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+  use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
+  use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
+  use winapi::um::winnt::FILE_SHARE_DELETE;
+  use winapi::um::winnt::FILE_SHARE_READ;
+  use winapi::um::winnt::FILE_SHARE_WRITE;
+
+  let err_mapper =
+    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path).map_err(err_mapper)?
+  } else {
+    std::fs::metadata(&path).map_err(err_mapper)?
+  };
+
+  let (p, file_flags) = if lstat {
+    (
+      path,
+      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+    )
+  } else {
+    (path.canonicalize()?, FILE_FLAG_BACKUP_SEMANTICS)
+  };
+  unsafe {
+    let mut path: Vec<_> = p.as_os_str().encode_wide().collect();
+    path.push(0);
+    let file_handle = CreateFileW(
+      path.as_ptr(),
+      0,
+      FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE,
+      std::ptr::null_mut(),
+      OPEN_EXISTING,
+      file_flags,
+      std::ptr::null_mut(),
+    );
+    if file_handle == INVALID_HANDLE_VALUE {
+      return Err(std::io::Error::last_os_error().into());
+    }
+
+    let result = get_dev(file_handle);
+    CloseHandle(file_handle);
+    let dev = result?;
+
+    Ok(get_stat2(metadata, dev))
+  }
+}
+
+#[cfg(windows)]
+use winapi::um::fileapi::GetFileInformationByHandle;
+#[cfg(windows)]
+use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
+
+#[cfg(windows)]
+unsafe fn get_dev(
+  handle: winapi::shared::ntdef::HANDLE,
+) -> std::io::Result<u64> {
+  use winapi::shared::minwindef::FALSE;
+
+  let info = {
+    let mut info =
+      std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+    if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
+      return Err(std::io::Error::last_os_error());
+    }
+
+    info.assume_init()
+  };
+
+  Ok(info.dwVolumeSerialNumber as u64)
 }
 
 #[op]
@@ -1265,15 +1401,8 @@ where
   state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.statSync()")?;
-  let err_mapper =
-    |err| default_err_mapper(err, format!("stat '{}'", path.display()));
-  let metadata = if lstat {
-    std::fs::symlink_metadata(&path).map_err(err_mapper)?
-  } else {
-    std::fs::metadata(&path).map_err(err_mapper)?
-  };
 
-  let stat = get_stat(metadata);
+  let stat = do_stat(path, lstat)?;
   stat.write(out_buf);
 
   Ok(())
@@ -1297,14 +1426,7 @@ where
 
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
-    let err_mapper =
-      |err| default_err_mapper(err, format!("stat '{}'", path.display()));
-    let metadata = if lstat {
-      std::fs::symlink_metadata(&path).map_err(err_mapper)?
-    } else {
-      std::fs::metadata(&path).map_err(err_mapper)?
-    };
-    Ok(get_stat(metadata))
+    do_stat(path, lstat)
   })
   .await
   .unwrap()
@@ -1410,13 +1532,16 @@ where
           name,
           is_file: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_file()),
+            .map(|file_type| file_type.is_file())
+            .unwrap_or(false),
           is_directory: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_dir()),
+            .map(|file_type| file_type.is_dir())
+            .unwrap_or(false),
           is_symlink: entry
             .file_type()
-            .map_or(false, |file_type| file_type.is_symlink()),
+            .map(|file_type| file_type.is_symlink())
+            .unwrap_or(false),
         })
       } else {
         None
@@ -1457,13 +1582,16 @@ where
             name,
             is_file: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_file()),
+              .map(|file_type| file_type.is_file())
+              .unwrap_or(false),
             is_directory: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_dir()),
+              .map(|file_type| file_type.is_dir())
+              .unwrap_or(false),
             is_symlink: entry
               .file_type()
-              .map_or(false, |file_type| file_type.is_symlink()),
+              .map(|file_type| file_type.is_symlink())
+              .unwrap_or(false),
           })
         } else {
           None

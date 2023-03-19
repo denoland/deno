@@ -144,6 +144,7 @@ impl Op {
               is_async: #is_async,
               is_unstable: #is_unstable,
               is_v8: #is_v8,
+              force_registration: false,
             }
           }
 
@@ -200,6 +201,7 @@ impl Op {
             is_async: #is_async,
             is_unstable: #is_unstable,
             is_v8: #is_v8,
+            force_registration: false,
           }
         }
 
