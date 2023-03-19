@@ -2417,6 +2417,25 @@ impl JsRuntime {
 /// Every method of [`JsRealm`] will panic if you call it with a reference to a
 /// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
+/// In other words, the [`v8::Isolate`] parameter for all the related [`JsRealm`] methods
+/// must be extracted from the pre-existing [`JsRuntime`].
+///
+/// Example usage with the [`JsRealm::execute_script`] method:
+/// ```
+/// use deno_core::JsRuntime;
+/// use deno_core::RuntimeOptions;
+///
+/// let mut runtime = JsRuntime::new(RuntimeOptions::default());
+/// let new_realm = runtime
+///         .create_realm()
+///         .expect("Handle the error properly");
+/// let source_code = "var a = 0; a + 1";
+/// let result = new_realm
+///         .execute_script(runtime.v8_isolate(), "<anon>", source_code)
+///         .expect("Handle the error properly");
+/// # drop(result);
+/// ```
+///
 /// # Lifetime of the realm
 ///
 /// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
@@ -2484,24 +2503,6 @@ impl JsRealm {
 
   /// Executes traditional JavaScript code (traditional = not ES modules) in the
   /// realm's context.
-  ///
-  /// The `isolate` parameter must be extracted from a pre-existing [`JsRuntime`]. E.g.:
-  /// ```
-  /// use deno_core::JsRuntime;
-  /// use deno_core::RuntimeOptions;
-  ///
-  /// let mut runtime = JsRuntime::new(RuntimeOptions::default());
-  ///
-  /// let new_realm = runtime
-  ///         .create_realm()
-  ///         .expect("Handle the error properly");
-  ///
-  /// let code = "var a = 0; a + 1";
-  /// let result = new_realm
-  ///         .execute_script(runtime.v8_isolate(), "<anon>", code)
-  ///         .expect("Handle the error properly");
-  /// # drop(result);
-  /// ```
   ///
   /// The `name` parameter can be a filepath or any other string. E.g.:
   ///
