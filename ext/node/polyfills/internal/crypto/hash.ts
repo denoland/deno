@@ -1,24 +1,24 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { Transform } from "internal:deno_node/stream.ts";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { Transform } from "ext:deno_node/stream.ts";
 import {
   forgivingBase64Encode as encodeToBase64,
   forgivingBase64UrlEncode as encodeToBase64Url,
-} from "internal:deno_web/00_infra.js";
-import type { TransformOptions } from "internal:deno_node/_stream.d.ts";
-import { validateString } from "internal:deno_node/internal/validators.mjs";
+} from "ext:deno_web/00_infra.js";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import type {
   BinaryToTextEncoding,
   Encoding,
-} from "internal:deno_node/internal/crypto/types.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
 import {
   KeyObject,
   prepareSecretKey,
-} from "internal:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
+} from "ext:deno_node/internal/crypto/keys.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 
@@ -178,7 +178,6 @@ class HmacImpl extends Transform {
     const u8Key = prepareSecretKey(key, options?.encoding) as Buffer;
 
     const alg = hmac.toLowerCase();
-    this.#hash = new Hash(alg, options);
     this.#algorithm = alg;
     const blockSize = (alg === "sha512" || alg === "sha384") ? 128 : 64;
     const keySize = u8Key.length;
@@ -186,7 +185,8 @@ class HmacImpl extends Transform {
     let bufKey: Buffer;
 
     if (keySize > blockSize) {
-      bufKey = this.#hash.update(u8Key).digest() as Buffer;
+      const hash = new Hash(alg, options);
+      bufKey = hash.update(u8Key).digest() as Buffer;
     } else {
       bufKey = Buffer.concat([u8Key, this.#ZEROES], blockSize);
     }

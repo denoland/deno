@@ -3,22 +3,22 @@ const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { InnerBody } from "internal:deno_fetch/22_body.js";
-import { Event, setEventTargetData } from "internal:deno_web/02_event.js";
-import { BlobPrototype } from "internal:deno_web/09_file.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { InnerBody } from "ext:deno_fetch/22_body.js";
+import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
+import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "internal:deno_fetch/23_response.js";
+} from "ext:deno_fetch/23_response.js";
 import {
   _flash,
   fromInnerRequest,
   newInnerRequest,
-} from "internal:deno_fetch/23_request.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+} from "ext:deno_fetch/23_request.js";
+import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -29,16 +29,16 @@ import {
   _server,
   _serverHandleIdleTimeout,
   WebSocket,
-} from "internal:deno_websocket/01_websocket.js";
-import { TcpConn, UnixConn } from "internal:deno_net/01_net.js";
-import { TlsConn } from "internal:deno_net/02_tls.js";
+} from "ext:deno_websocket/01_websocket.js";
+import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
+import { TlsConn } from "ext:deno_net/02_tls.js";
 import {
   Deferred,
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "internal:deno_web/06_streams.js";
+} from "ext:deno_web/06_streams.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
@@ -135,10 +135,10 @@ class HttpConn {
       body !== null ? new InnerBody(body) : null,
       false,
     );
-    const signal = abortSignal.newSignal();
+    const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
-      signal,
+      abortController.signal,
       "immutable",
       false,
     );
@@ -149,6 +149,7 @@ class HttpConn {
       request,
       this.#remoteAddr,
       this.#localAddr,
+      abortController,
     );
 
     return { request, respondWith };
@@ -185,6 +186,7 @@ function createRespondWith(
   request,
   remoteAddr,
   localAddr,
+  abortController,
 ) {
   return async function respondWith(resp) {
     try {
@@ -381,6 +383,9 @@ function createRespondWith(
         }
         ws[_serverHandleIdleTimeout]();
       }
+    } catch (error) {
+      abortController.abort(error);
+      throw error;
     } finally {
       if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
         core.close(streamRid);
@@ -510,7 +515,8 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 
   /** @param value {string} */
   function hasWord(value) {
-    for (const [cLower, cUpper] of charCodes) {
+    for (let j = 0; j < charCodes.length; ++j) {
+      const { 0: cLower, 1: cUpper } = charCodes[j];
       if (cLower === char || cUpper === char) {
         char = StringPrototypeCharCodeAt(value, ++i);
       } else {

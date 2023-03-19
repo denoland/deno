@@ -23,6 +23,7 @@ use deno_runtime::colors;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
+use crate::graph_util::graph_lock_or_exit;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
@@ -33,12 +34,16 @@ use crate::util::checksum;
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier)?;
+    let specifier = resolve_url_or_path(&specifier, ps.options.initial_cwd())?;
     let mut loader = ps.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = ps
       .create_graph_with_loader(vec![specifier], &mut loader)
       .await?;
+
+    if let Some(lockfile) = &ps.lockfile {
+      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    }
 
     if info_flags.json {
       let mut json_graph = json!(graph);

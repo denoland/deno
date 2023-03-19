@@ -9,10 +9,10 @@ use crate::profiling::is_profiling;
 
 pub fn create_js_runtime(setup: impl FnOnce() -> Vec<Extension>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions_with_js: setup(),
-    module_loader: Some(std::rc::Rc::new(
-      deno_core::InternalModuleLoader::default(),
-    )),
+    extensions: setup(),
+    module_loader: Some(
+      std::rc::Rc::new(deno_core::ExtModuleLoader::default()),
+    ),
     ..Default::default()
   })
 }

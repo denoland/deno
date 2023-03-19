@@ -2,33 +2,30 @@
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
-import { assert } from "internal:deno_node/_util/asserts.ts";
-import { EventEmitter } from "internal:deno_node/events.ts";
-import { os } from "internal:deno_node/internal_binding/constants.ts";
-import {
-  notImplemented,
-  warnNotImplemented,
-} from "internal:deno_node/_utils.ts";
-import { Readable, Stream, Writable } from "internal:deno_node/stream.ts";
-import { deferred } from "internal:deno_node/_util/async.ts";
-import { isWindows } from "internal:deno_node/_util/os.ts";
-import { nextTick } from "internal:deno_node/_next_tick.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { Readable, Stream, Writable } from "ext:deno_node/stream.ts";
+import { deferred } from "ext:deno_node/_util/async.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_SIGNAL,
-} from "internal:deno_node/internal/errors.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { errnoException } from "internal:deno_node/internal/errors.ts";
-import { ErrnoException } from "internal:deno_node/_global.d.ts";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { errnoException } from "ext:deno_node/internal/errors.ts";
+import { ErrnoException } from "ext:deno_node/_global.d.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   isInt32,
   validateBoolean,
   validateObject,
   validateString,
-} from "internal:deno_node/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 import {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -39,10 +36,10 @@ import {
   ArrayPrototypeUnshift,
   ObjectPrototypeHasOwnProperty,
   StringPrototypeToUpperCase,
-} from "internal:deno_node/internal/primordials.mjs";
-import { kEmptyObject } from "internal:deno_node/internal/util.mjs";
-import { getValidatedPath } from "internal:deno_node/internal/fs/utils.mjs";
-import process from "internal:deno_node/process.ts";
+} from "ext:deno_node/internal/primordials.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import process from "ext:deno_node/process.ts";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,

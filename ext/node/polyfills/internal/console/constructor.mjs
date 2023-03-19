@@ -8,12 +8,12 @@ import {
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   isStackOverflowError,
-} from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   validateArray,
   validateInteger,
   validateObject,
-} from "internal:deno_node/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 const previewEntries = (iter, isKeyValue) => {
   if (isKeyValue) {
     const arr = [...iter];
@@ -25,24 +25,24 @@ const previewEntries = (iter, isKeyValue) => {
     return [...iter];
   }
 };
-import { Buffer } from "internal:deno_node/buffer.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 const { isBuffer } = Buffer;
-import { formatWithOptions, inspect } from "internal:deno_node/internal/util/inspect.mjs";
+import { formatWithOptions, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   isMap,
   isMapIterator,
   isSet,
   isSetIterator,
   isTypedArray,
-} from "internal:deno_node/internal/util/types.ts";
+} from "ext:deno_node/internal/util/types.ts";
 import {
   CHAR_LOWERCASE_B as kTraceBegin,
   CHAR_LOWERCASE_E as kTraceEnd,
   CHAR_LOWERCASE_N as kTraceInstant,
   CHAR_UPPERCASE_C as kTraceCount,
-} from "internal:deno_node/internal/constants.ts";
-import { clearScreenDown, cursorTo } from "internal:deno_node/internal/readline/callbacks.mjs";
-import cliTable from "internal:deno_node/internal/cli_table.ts";
+} from "ext:deno_node/internal/constants.ts";
+import { clearScreenDown, cursorTo } from "ext:deno_node/internal/readline/callbacks.mjs";
+import cliTable from "ext:deno_node/internal/cli_table.ts";
 const kCounts = Symbol("counts");
 
 const kTraceConsoleCategory = "node,node.console";

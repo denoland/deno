@@ -7,7 +7,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
@@ -301,6 +301,11 @@ class URLSearchParams {
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     return ops.op_url_stringify_search_params(this[_list]);
+  }
+
+  get size() {
+    webidl.assertBranded(this, URLSearchParamsPrototype);
+    return this[_list].length;
   }
 }
 

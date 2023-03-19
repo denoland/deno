@@ -24,17 +24,17 @@
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.h
 
-import type { ErrnoException } from "internal:deno_node/internal/errors.ts";
-import { isIPv4 } from "internal:deno_node/internal/net.ts";
-import { codeMap } from "internal:deno_node/internal_binding/uv.ts";
+import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+import { isIPv4 } from "ext:deno_node/internal/net.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/internal_binding/async_wrap.ts";
+} from "ext:deno_node/internal_binding/async_wrap.ts";
 // deno-lint-ignore camelcase
-import { ares_strerror } from "internal:deno_node/internal_binding/ares.ts";
-import { notImplemented } from "internal:deno_node/_utils.ts";
-import { isWindows } from "internal:deno_node/_util/os.ts";
+import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 
 interface LookupAddress {
   address: string;

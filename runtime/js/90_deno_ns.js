@@ -2,27 +2,27 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as timers from "internal:deno_web/02_timers.js";
-import * as httpClient from "internal:deno_fetch/22_http_client.js";
-import * as console from "internal:deno_console/02_console.js";
-import * as ffi from "internal:deno_ffi/00_ffi.js";
-import * as net from "internal:deno_net/01_net.js";
-import * as tls from "internal:deno_net/02_tls.js";
-import * as http from "internal:deno_http/01_http.js";
-import * as flash from "internal:deno_flash/01_http.js";
-import * as errors from "internal:runtime/01_errors.js";
-import * as version from "internal:runtime/01_version.ts";
-import * as permissions from "internal:runtime/10_permissions.js";
-import * as io from "internal:deno_io/12_io.js";
-import * as buffer from "internal:runtime/13_buffer.js";
-import * as fs from "internal:deno_fs/30_fs.js";
-import * as os from "internal:runtime/30_os.js";
-import * as fsEvents from "internal:runtime/40_fs_events.js";
-import * as process from "internal:runtime/40_process.js";
-import * as signals from "internal:runtime/40_signals.js";
-import * as tty from "internal:runtime/40_tty.js";
+import * as timers from "ext:deno_web/02_timers.js";
+import * as httpClient from "ext:deno_fetch/22_http_client.js";
+import * as console from "ext:deno_console/02_console.js";
+import * as ffi from "ext:deno_ffi/00_ffi.js";
+import * as net from "ext:deno_net/01_net.js";
+import * as tls from "ext:deno_net/02_tls.js";
+import * as http from "ext:deno_http/01_http.js";
+import * as flash from "ext:deno_flash/01_http.js";
+import * as errors from "ext:runtime/01_errors.js";
+import * as version from "ext:runtime/01_version.ts";
+import * as permissions from "ext:runtime/10_permissions.js";
+import * as io from "ext:deno_io/12_io.js";
+import * as buffer from "ext:runtime/13_buffer.js";
+import * as fs from "ext:deno_fs/30_fs.js";
+import * as os from "ext:runtime/30_os.js";
+import * as fsEvents from "ext:runtime/40_fs_events.js";
+import * as process from "ext:runtime/40_process.js";
+import * as signals from "ext:runtime/40_signals.js";
+import * as tty from "ext:runtime/40_tty.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
-import * as httpRuntime from "internal:runtime/40_http.js";
+import * as httpRuntime from "ext:runtime/40_http.js";
 
 const denoNs = {
   metrics: core.metrics,

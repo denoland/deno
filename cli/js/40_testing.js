@@ -3,10 +3,10 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
-import { setExitHandler } from "internal:runtime/30_os.js";
-import { Console } from "internal:deno_console/02_console.js";
-import { serializePermissions } from "internal:runtime/10_permissions.js";
-import { assert } from "internal:deno_web/00_infra.js";
+import { setExitHandler } from "ext:runtime/30_os.js";
+import { Console } from "ext:deno_console/02_console.js";
+import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayFrom,
@@ -124,9 +124,6 @@ const OP_DETAILS = {
   "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
   "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
   "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-  "op_webgpu_buffer_get_map_async": ["map a WebGPU buffer", "awaiting the result of a `GPUBuffer#mapAsync` call"],
-  "op_webgpu_request_adapter": ["request a WebGPU adapter", "awaiting the result of a `navigator.gpu.requestAdapter` call"],
-  "op_webgpu_request_device": ["request a WebGPU device", "awaiting the result of a `GPUAdapter#requestDevice` call"],
   "op_worker_recv_message":  ["receive a message from a web worker", "terminating a `Worker`"],
   "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
   "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
@@ -1424,6 +1421,6 @@ internals.testing = {
   enableBench,
 };
 
-import { denoNs } from "internal:runtime/90_deno_ns.js";
+import { denoNs } from "ext:runtime/90_deno_ns.js";
 denoNs.bench = bench;
 denoNs.test = test;

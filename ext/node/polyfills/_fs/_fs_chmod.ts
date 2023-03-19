@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import type { CallbackWithError } from "internal:deno_node/_fs/_fs_common.ts";
-import { getValidatedPath } from "internal:deno_node/internal/fs/utils.mjs";
-import * as pathModule from "internal:deno_node/path.ts";
-import { parseFileMode } from "internal:deno_node/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import * as pathModule from "ext:deno_node/path.ts";
+import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function chmod(
   path: string | Buffer | URL,

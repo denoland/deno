@@ -4,15 +4,15 @@ import {
   FileOptionsArgument,
   getEncoding,
   TextOptionsArgument,
-} from "internal:deno_node/_fs/_fs_common.ts";
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { fromFileUrl } from "internal:deno_node/path.ts";
+} from "ext:deno_node/_fs/_fs_common.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { fromFileUrl } from "ext:deno_node/path.ts";
 import {
   BinaryEncodings,
   Encodings,
   TextEncodings,
-} from "internal:deno_node/_utils.ts";
-import { promisify } from "internal:deno_node/internal/util.mjs";
+} from "ext:deno_node/_utils.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(

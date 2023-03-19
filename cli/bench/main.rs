@@ -13,6 +13,8 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 
+include!("../util/time.rs");
+
 mod http;
 mod lsp;
 
@@ -256,8 +258,11 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> i64 {
   size as i64
 }
 
-const BINARY_TARGET_FILES: &[&str] =
-  &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
+const BINARY_TARGET_FILES: &[&str] = &[
+  "CLI_SNAPSHOT.bin",
+  "RUNTIME_SNAPSHOT.bin",
+  "COMPILER_SNAPSHOT.bin",
+];
 fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();
   let mut mtimes = HashMap::<String, SystemTime>::new();
@@ -436,8 +441,7 @@ async fn main() -> Result<()> {
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: chrono::Utc::now()
-      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
@@ -472,7 +476,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"lsp") {
-    let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
+    let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
   }
 

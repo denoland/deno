@@ -5,14 +5,14 @@
 import type {
   FormatInputPathObject,
   ParsedPath,
-} from "internal:deno_node/path/_interface.ts";
+} from "ext:deno_node/path/_interface.ts";
 import {
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
   CHAR_DOT,
   CHAR_QUESTION_MARK,
-} from "internal:deno_node/path/_constants.ts";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
+} from "ext:deno_node/path/_constants.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 import {
   _format,
@@ -21,8 +21,8 @@ import {
   isPathSeparator,
   isWindowsDeviceRoot,
   normalizeString,
-} from "internal:deno_node/path/_util.ts";
-import { assert } from "internal:deno_node/_util/asserts.ts";
+} from "ext:deno_node/path/_util.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
 
 export const sep = "\\";
 export const delimiter = ";";

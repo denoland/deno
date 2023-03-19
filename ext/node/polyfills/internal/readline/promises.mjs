@@ -1,12 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
-import { ArrayPrototypeJoin, ArrayPrototypePush } from "internal:deno_node/internal/primordials.mjs";
+import { ArrayPrototypeJoin, ArrayPrototypePush } from "ext:deno_node/internal/primordials.mjs";
 
-import { CSI } from "internal:deno_node/internal/readline/utils.mjs";
-import { validateBoolean, validateInteger } from "internal:deno_node/internal/validators.mjs";
-import { isWritable } from "internal:deno_node/internal/streams/utils.mjs";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
+import { CSI } from "ext:deno_node/internal/readline/utils.mjs";
+import { validateBoolean, validateInteger } from "ext:deno_node/internal/validators.mjs";
+import { isWritable } from "ext:deno_node/internal/streams/utils.mjs";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 const {
   kClearToLineBeginning,

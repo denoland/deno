@@ -1,14 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Buffer } from "internal:deno_node/buffer.ts";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/internal/errors.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateOffsetLengthRead,
   validatePosition,
-} from "internal:deno_node/internal/fs/utils.mjs";
+} from "ext:deno_node/internal/fs/utils.mjs";
 import {
   validateBuffer,
   validateInteger,
-} from "internal:deno_node/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 
 type readOptions = {
   buffer: Buffer | Uint8Array;

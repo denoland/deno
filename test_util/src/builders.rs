@@ -18,6 +18,7 @@ use crate::copy_dir_recursive;
 use crate::deno_exe_path;
 use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::http_server;
+use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -29,12 +30,14 @@ use crate::TempDir;
 pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
+  use_separate_deno_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   copy_temp_dir: Option<String>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
+  deno_exe: Option<PathBuf>,
 }
 
 impl TestContextBuilder {
@@ -55,6 +58,15 @@ impl TestContextBuilder {
 
   pub fn use_temp_cwd(&mut self) -> &mut Self {
     self.use_temp_cwd = true;
+    self
+  }
+
+  /// By default, the temp_dir and the deno_dir will be shared.
+  /// In some cases, that might cause an issue though, so calling
+  /// this will use a separate directory for the deno dir and the
+  /// temp directory.
+  pub fn use_separate_deno_dir(&mut self) -> &mut Self {
+    self.use_separate_deno_dir = true;
     self
   }
 
@@ -100,17 +112,22 @@ impl TestContextBuilder {
 
   pub fn build(&self) -> TestContext {
     let deno_dir = new_deno_dir(); // keep this alive for the test
+    let temp_dir = if self.use_separate_deno_dir {
+      TempDir::new()
+    } else {
+      deno_dir.clone()
+    };
     let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
       let test_data_path = testdata_path().join(temp_copy_dir);
-      let temp_copy_dir = deno_dir.path().join(temp_copy_dir);
+      let temp_copy_dir = temp_dir.path().join(temp_copy_dir);
       std::fs::create_dir_all(&temp_copy_dir).unwrap();
       copy_dir_recursive(&test_data_path, &temp_copy_dir).unwrap();
-      deno_dir.path().to_owned()
+      temp_dir.path().to_owned()
     } else {
       testdata_path()
     };
 
-    let deno_exe = deno_exe_path();
+    let deno_exe = self.deno_exe.clone().unwrap_or_else(deno_exe_path);
     println!("deno_exe path {}", deno_exe.display());
 
     let http_server_guard = if self.use_http_server {
@@ -121,10 +138,12 @@ impl TestContextBuilder {
 
     TestContext {
       cwd: self.cwd.clone(),
+      deno_exe,
       envs: self.envs.clone(),
       use_temp_cwd: self.use_temp_cwd,
       _http_server_guard: http_server_guard,
       deno_dir,
+      temp_dir,
       testdata_dir,
     }
   }
@@ -132,11 +151,13 @@ impl TestContextBuilder {
 
 #[derive(Clone)]
 pub struct TestContext {
+  deno_exe: PathBuf,
   envs: HashMap<String, String>,
   use_temp_cwd: bool,
   cwd: Option<String>,
   _http_server_guard: Option<Rc<HttpServerGuard>>,
   deno_dir: TempDir,
+  temp_dir: TempDir,
   testdata_dir: PathBuf,
 }
 
@@ -159,9 +180,13 @@ impl TestContext {
     &self.deno_dir
   }
 
+  pub fn temp_dir(&self) -> &TempDir {
+    &self.temp_dir
+  }
+
   pub fn new_command(&self) -> TestCommandBuilder {
     TestCommandBuilder {
-      command_name: Default::default(),
+      command_name: self.deno_exe.to_string_lossy().to_string(),
       args: Default::default(),
       args_vec: Default::default(),
       stdin: Default::default(),
@@ -172,10 +197,16 @@ impl TestContext {
       context: self.clone(),
     }
   }
+
+  pub fn new_lsp_command(&self) -> LspClientBuilder {
+    let mut builder = LspClientBuilder::new();
+    builder.deno_exe(&self.deno_exe).set_test_context(self);
+    builder
+  }
 }
 
 pub struct TestCommandBuilder {
-  command_name: Option<String>,
+  command_name: String,
   args: String,
   args_vec: Vec<String>,
   stdin: Option<String>,
@@ -188,7 +219,7 @@ pub struct TestCommandBuilder {
 
 impl TestCommandBuilder {
   pub fn command_name(&mut self, name: impl AsRef<str>) -> &mut Self {
-    self.command_name = Some(name.as_ref().to_string());
+    self.command_name = name.as_ref().to_string();
     self
   }
 
@@ -258,7 +289,7 @@ impl TestCommandBuilder {
     let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
     let cwd = if self.context.use_temp_cwd {
       assert!(cwd.is_none());
-      self.context.deno_dir.path().to_owned()
+      self.context.temp_dir.path().to_owned()
     } else if let Some(cwd_) = cwd {
       self.context.testdata_dir.join(cwd_)
     } else {
@@ -284,15 +315,11 @@ impl TestCommandBuilder {
       arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
     .collect::<Vec<_>>();
-    let command_name = self
-      .command_name
-      .as_ref()
-      .cloned()
-      .unwrap_or("deno".to_string());
+    let command_name = &self.command_name;
     let mut command = if command_name == "deno" {
       Command::new(deno_exe_path())
     } else {
-      Command::new(&command_name)
+      Command::new(command_name)
     };
     command.env("DENO_DIR", self.context.deno_dir.path());
 
