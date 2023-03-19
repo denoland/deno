@@ -2485,7 +2485,25 @@ impl JsRealm {
   /// Executes traditional JavaScript code (traditional = not ES modules) in the
   /// realm's context.
   ///
-  /// `name` can be a filepath or any other string, eg.
+  /// The `isolate` parameter must be extracted from e pre-existing [`JsRuntime`]. E.g.:
+  /// ```
+  /// use deno_core::JsRuntime;
+  /// use deno_core::RuntimeOptions;
+  ///
+  /// let mut runtime = JsRuntime::new(RuntimeOptions::default());
+  ///
+  /// let new_realm = runtime
+  ///         .create_realm()
+  ///         .expect("Handle the error properly");
+  ///
+  /// let code = "var a = 0; a + 1";
+  /// let result = new_realm
+  ///         .execute_script(runtime.v8_isolate(), "<anon>", code)
+  ///         .expect("Handle the error properly");
+  /// # drop(result);
+  /// ```
+  ///
+  /// The `name` parameter can be a filepath or any other string. E.g.:
   ///
   ///   - "/some/file/path.js"
   ///   - "<anon>"
