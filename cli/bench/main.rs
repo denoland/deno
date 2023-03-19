@@ -258,8 +258,11 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> i64 {
   size as i64
 }
 
-const BINARY_TARGET_FILES: &[&str] =
-  &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
+const BINARY_TARGET_FILES: &[&str] = &[
+  "CLI_SNAPSHOT.bin",
+  "RUNTIME_SNAPSHOT.bin",
+  "COMPILER_SNAPSHOT.bin",
+];
 fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();
   let mut mtimes = HashMap::<String, SystemTime>::new();
