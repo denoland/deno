@@ -692,7 +692,6 @@
       "test-stream2-push.js",
       "test-stream2-read-sync-stack.js",
       "test-stream2-readable-empty-buffer-no-eof.js",
-      "test-stream2-readable-from-list.js",
       "test-stream2-readable-legacy-drain.js",
       "test-stream2-readable-non-empty-end.js",
       "test-stream2-readable-wrap-destroy.js",
