@@ -302,6 +302,7 @@ impl CliMainWorker {
 
   fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     let mut maybe_binary_command_name = None;
+
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
