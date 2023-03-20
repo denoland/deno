@@ -369,15 +369,15 @@ impl WebWorker {
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     deno_core::extension!(deno_permissions_web_worker,
-      config = {
+      options = {
         permissions: PermissionsContainer,
         unstable: bool,
         enable_testing_features: bool,
       },
-      state = |state, permissions, unstable, enable_testing_features| {
-        state.put::<PermissionsContainer>(permissions);
-        state.put(ops::UnstableChecker { unstable });
-        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state = |state, options| {
+        state.put::<PermissionsContainer>(options.permissions);
+        state.put(ops::UnstableChecker { unstable: options.unstable });
+        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
     );
 
@@ -432,13 +432,12 @@ impl WebWorker {
       deno_tls::deno_tls::init_ops(),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
-      deno_io::deno_io::init_ops(Rc::new(RefCell::new(Some(options.stdio)))),
+      deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node_loading::init_ops::<PermissionsContainer>(
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
       ),
-      deno_node::deno_node::init_ops(),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::deno_web_worker::init_ops(),
       ops::runtime::deno_runtime::init_ops(main_module.clone()),

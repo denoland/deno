@@ -17,9 +17,7 @@ mod startup_snapshot {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
-  use std::cell::RefCell;
   use std::path::Path;
-  use std::rc::Rc;
 
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
@@ -250,7 +248,7 @@ mod startup_snapshot {
     deps = [runtime],
     customizer = |ext: &mut deno_core::ExtensionBuilder| {
       ext.esm(vec![ExtensionFileSource {
-        specifier: "js/99_main.js".to_string(),
+        specifier: "ext:runtime_main/js/99_main.js",
         code: deno_core::ExtensionFileSourceCode::IncludedInBinary(
           include_str!("js/99_main.js"),
         ),
@@ -292,16 +290,13 @@ mod startup_snapshot {
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm(),
-      deno_io::deno_io::init_ops_and_esm(Rc::new(RefCell::new(Some(
-        Default::default(),
-      )))),
+      deno_io::deno_io::init_ops_and_esm(Default::default()),
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
       deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node_loading::init_ops_and_esm::<Permissions>(None),
-      deno_node::deno_node::init_ops_and_esm(),
+      deno_node::deno_node::init_ops_and_esm::<Permissions>(None),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];

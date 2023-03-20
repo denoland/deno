@@ -13,6 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::io::AllowStdIo;
+use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::futures::FutureExt;
@@ -26,12 +27,14 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::ops::worker_host::CreateWebWorkerCb;
+use deno_runtime::ops::worker_host::WorkerEventCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::permissions::PermissionsOptions;
+use deno_runtime::web_worker::WebWorker;
+use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
@@ -125,9 +128,10 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
+#[derive(Clone)]
 struct EmbeddedModuleLoader {
-  eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<CliGraphResolver>,
+  eszip: Arc<eszip::EszipV2>,
+  maybe_import_map_resolver: Option<Arc<CliGraphResolver>>,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -223,6 +227,79 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
   }
 }
 
+fn web_worker_callback() -> Arc<WorkerEventCb> {
+  Arc::new(|worker| {
+    let fut = async move { Ok(worker) };
+    LocalFutureObj::new(Box::new(fut))
+  })
+}
+
+fn create_web_worker_callback(
+  ps: &ProcState,
+  module_loader: &Rc<EmbeddedModuleLoader>,
+) -> Arc<CreateWebWorkerCb> {
+  let ps = ps.clone();
+  let module_loader = module_loader.as_ref().clone();
+  Arc::new(move |args| {
+    let module_loader = Rc::new(module_loader.clone());
+
+    let create_web_worker_cb = create_web_worker_callback(&ps, &module_loader);
+    let web_worker_cb = web_worker_callback();
+
+    let options = WebWorkerOptions {
+      bootstrap: BootstrapOptions {
+        args: ps.options.argv().clone(),
+        cpu_count: std::thread::available_parallelism()
+          .map(|p| p.get())
+          .unwrap_or(1),
+        debug_flag: ps.options.log_level().map_or(false, |l| l == Level::Debug),
+        enable_testing_features: false,
+        locale: deno_core::v8::icu::get_language_tag(),
+        location: Some(args.main_module.clone()),
+        no_color: !colors::use_color(),
+        is_tty: colors::is_tty(),
+        runtime_version: version::deno(),
+        ts_version: version::TYPESCRIPT.to_string(),
+        unstable: ps.options.unstable(),
+        user_agent: version::get_user_agent(),
+        inspect: ps.options.is_inspecting(),
+      },
+      extensions: ops::cli_exts(ps.clone()),
+      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      unsafely_ignore_certificate_errors: ps
+        .options
+        .unsafely_ignore_certificate_errors()
+        .clone(),
+      root_cert_store: Some(ps.root_cert_store.clone()),
+      seed: ps.options.seed(),
+      module_loader,
+      npm_resolver: None, // not currently supported
+      create_web_worker_cb,
+      preload_module_cb: web_worker_cb.clone(),
+      pre_execute_module_cb: web_worker_cb,
+      format_js_error_fn: Some(Arc::new(format_js_error)),
+      source_map_getter: None,
+      worker_type: args.worker_type,
+      maybe_inspector_server: None,
+      get_error_class_fn: Some(&get_error_class_name),
+      blob_store: ps.blob_store.clone(),
+      broadcast_channel: ps.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
+      cache_storage_dir: None,
+      stdio: Default::default(),
+    };
+
+    WebWorker::bootstrap_from_options(
+      args.name,
+      args.permissions,
+      args.main_module,
+      args.worker_id,
+      options,
+    )
+  })
+}
+
 pub async fn run(
   eszip: eszip::EszipV2,
   metadata: Metadata,
@@ -233,13 +310,11 @@ pub async fn run(
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &metadata.permissions,
   )?);
-  let blob_store = BlobStore::default();
-  let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {
-    eszip,
+    eszip: Arc::new(eszip),
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        CliGraphResolver::new(
+        Arc::new(CliGraphResolver::new(
           None,
           Some(Arc::new(
             parse_from_json(&base, &source).unwrap().import_map,
@@ -248,20 +323,14 @@ pub async fn run(
           ps.npm_api.clone(),
           ps.npm_resolution.clone(),
           ps.package_json_deps_installer.clone(),
-        )
+        ))
       },
     ),
   });
-  let create_web_worker_cb = Arc::new(|_| {
-    todo!("Workers are currently not supported in standalone binaries");
-  });
-  let web_worker_cb = Arc::new(|_| {
-    todo!("Workers are currently not supported in standalone binaries");
-  });
+  let create_web_worker_cb = create_web_worker_callback(&ps, &module_loader);
+  let web_worker_cb = web_worker_callback();
 
   v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
-
-  let root_cert_store = ps.root_cert_store.clone();
 
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
@@ -284,11 +353,11 @@ pub async fn run(
       user_agent: version::get_user_agent(),
       inspect: ps.options.is_inspecting(),
     },
-    extensions: ops::cli_exts(ps),
+    extensions: ops::cli_exts(ps.clone()),
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    root_cert_store: Some(root_cert_store),
+    root_cert_store: Some(ps.root_cert_store.clone()),
     seed: metadata.seed,
     source_map_getter: None,
     format_js_error_fn: Some(Arc::new(format_js_error)),
@@ -303,10 +372,10 @@ pub async fn run(
     get_error_class_fn: Some(&get_error_class_name),
     cache_storage_dir: None,
     origin_storage_dir: None,
-    blob_store,
-    broadcast_channel,
-    shared_array_buffer_store: None,
-    compiled_wasm_module_store: None,
+    blob_store: ps.blob_store.clone(),
+    broadcast_channel: ps.broadcast_channel.clone(),
+    shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
+    compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio: Default::default(),
   };
   let mut worker = MainWorker::bootstrap_from_options(

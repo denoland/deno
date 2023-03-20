@@ -109,13 +109,13 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
   ],
-  config = {
+  options = {
     blob_store: BlobStore,
     maybe_location: Option<Url>,
   },
-  state = |state, blob_store, maybe_location| {
-    state.put(blob_store);
-    if let Some(location) = maybe_location {
+  state = |state, options| {
+    state.put(options.blob_store);
+    if let Some(location) = options.maybe_location {
       state.put(Location(location));
     }
     state.put(StartTime::now());
