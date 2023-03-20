@@ -8,12 +8,11 @@ const {
 const core = Deno.core;
 const ops = core.ops;
 
-const encodeKey: (key: Deno.KvKey) => Uint8Array = (x) =>
-  ops.op_kv_encode_key(x);
-const base64urlEncode: (data: Uint8Array) => string = (x) =>
-  ops.op_crypto_base64url_encode(x);
-const base64urlDecode: (data: string) => Uint8Array = (x) =>
-  ops.op_crypto_base64url_decode(x);
+const encodeCursor: (
+  selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
+  boundaryKey: Deno.KvKey,
+) => string = (selector, boundaryKey) =>
+  ops.op_kv_encode_cursor(selector, boundaryKey);
 
 async function openDatabase(path: string) {
   const rid = await core.opAsync("op_kv_database_open", path);
@@ -54,10 +53,12 @@ class Database {
       "op_kv_snapshot_read",
       this.#rid,
       [[
-        encodeKey(key),
+        null,
+        key,
         null,
         1,
         false,
+        null,
       ]],
       opts?.consistency ?? "strong",
     );
@@ -144,16 +145,16 @@ class Database {
     consistency: Deno.KvConsistencyLevel,
   ) => Promise<Deno.KvEntry[]> {
     return async (selector, cursor, reverse, consistency) => {
-      const { firstKey, lastKey } = decodeCursor(selector, cursor, reverse);
-
       const [entries]: [RawKvEntry[]] = await core.opAsync(
         "op_kv_snapshot_read",
         this.#rid,
         [[
-          firstKey,
-          lastKey,
+          "prefix" in selector ? selector.prefix : null,
+          "start" in selector ? selector.start : null,
+          "end" in selector ? selector.end : null,
           batchSize,
           reverse,
+          cursor,
         ]],
         consistency,
       );
@@ -440,7 +441,14 @@ class KvListIterator extends AsyncIterator
       return { done: true, value: undefined };
     }
 
-    this.#cursorGen = () => encodeCursor(this.#selector, encodeKey(entry.key));
+    this.#cursorGen = () => {
+      const selector = this.#selector;
+      return encodeCursor([
+        "prefix" in selector ? selector.prefix : null,
+        "start" in selector ? selector.start : null,
+        "end" in selector ? selector.end : null,
+      ], entry.key);
+    };
     this.#count++;
     return {
       done: false,
@@ -450,146 +458,6 @@ class KvListIterator extends AsyncIterator
 
   [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntry> {
     return this;
-  }
-}
-
-function getCommonPrefixForBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const minLen = Math.min(a.byteLength, b.byteLength);
-  let maxCommonPrefixLength = minLen;
-  for (let i = 0; i < minLen; i++) {
-    if (a[i] !== b[i]) {
-      maxCommonPrefixLength = i;
-      break;
-    }
-  }
-
-  return a.subarray(0, maxCommonPrefixLength);
-}
-
-function getCommonPrefixForSelector(selector: Deno.KvListSelector): Uint8Array {
-  if ("prefix" in selector) {
-    return encodeKey(selector.prefix);
-  } else {
-    return getCommonPrefixForBytes(
-      encodeKey(selector.start),
-      encodeKey(selector.end),
-    );
-  }
-}
-
-function encodeCursor(
-  selector: Deno.KvListSelector,
-  boundaryKey: Uint8Array,
-): string {
-  const commonPrefix = getCommonPrefixForSelector(selector);
-
-  if (
-    commonPrefix.byteLength > boundaryKey.byteLength ||
-    commonPrefix.findIndex((x, i) => x !== boundaryKey[i]) !== -1
-  ) {
-    throw new Error("Invalid boundaryKey");
-  }
-
-  return base64urlEncode(boundaryKey.subarray(commonPrefix.byteLength));
-}
-
-function decodeCursor(
-  selector: Deno.KvListSelector,
-  cursor: string | undefined,
-  reverse: boolean,
-): { firstKey: Uint8Array; lastKey: Uint8Array } {
-  const getRangeStartKey = () => {
-    if ("start" in selector) {
-      return encodeKey(selector.start);
-    } else {
-      const prefix = encodeKey(selector.prefix);
-      const firstKey = new Uint8Array(prefix.byteLength + 1);
-      firstKey.set(prefix);
-      firstKey[prefix.byteLength] = 0x00;
-      return firstKey;
-    }
-  };
-
-  const getRangeEndKey = () => {
-    if ("end" in selector) {
-      return encodeKey(selector.end);
-    } else {
-      const prefix = encodeKey(selector.prefix);
-      const lastKey = new Uint8Array(prefix.byteLength + 1);
-      lastKey.set(prefix);
-      lastKey[prefix.byteLength] = 0xff;
-      return lastKey;
-    }
-  };
-
-  // If no cursor is provided, start from beginning
-  if (!cursor) {
-    return {
-      firstKey: getRangeStartKey(),
-      lastKey: getRangeEndKey(),
-    };
-  }
-
-  const commonPrefix = getCommonPrefixForSelector(selector);
-  const decodedCursor = base64urlDecode(cursor);
-
-  let firstKey: Uint8Array;
-  let lastKey: Uint8Array;
-
-  if (reverse) {
-    firstKey = getRangeStartKey();
-
-    // Last key is exclusive - no need to append a zero byte
-    lastKey = new Uint8Array(
-      commonPrefix.byteLength + decodedCursor.byteLength,
-    );
-    lastKey.set(commonPrefix);
-    lastKey.set(decodedCursor, commonPrefix.byteLength);
-  } else {
-    // append a zero byte - `${key}\0` immediately follows `${key}`
-    firstKey = new Uint8Array(
-      commonPrefix.byteLength + decodedCursor.byteLength + 1,
-    );
-    firstKey.set(commonPrefix);
-    firstKey.set(decodedCursor, commonPrefix.byteLength);
-
-    lastKey = getRangeEndKey();
-  }
-
-  // Defend against out-of-bounds reading
-  if ("start" in selector) {
-    const start = encodeKey(selector.start);
-    if (compareBytes(firstKey, start) < 0) {
-      throw new Error("cursor out of bounds");
-    }
-  }
-
-  if ("end" in selector) {
-    const end = encodeKey(selector.end);
-    if (compareBytes(lastKey, end) > 0) {
-      throw new Error("cursor out of bounds");
-    }
-  }
-
-  return { firstKey, lastKey };
-}
-
-// Three-way comparison
-function compareBytes(lhs: Uint8Array, rhs: Uint8Array): 1 | 0 | -1 {
-  const minLen = Math.min(lhs.byteLength, rhs.byteLength);
-  for (let i = 0; i < minLen; i++) {
-    if (lhs[i] < rhs[i]) {
-      return -1;
-    } else if (lhs[i] > rhs[i]) {
-      return 1;
-    }
-  }
-  if (lhs.byteLength < rhs.byteLength) {
-    return -1;
-  } else if (lhs.byteLength > rhs.byteLength) {
-    return 1;
-  } else {
-    return 0;
   }
 }
 

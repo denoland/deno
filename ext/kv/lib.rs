@@ -50,7 +50,7 @@ deno_core::extension!(deno_kv,
     op_kv_database_open<DBH>,
     op_kv_snapshot_read<DBH>,
     op_kv_atomic_write<DBH>,
-    op_kv_encode_key,
+    op_kv_encode_cursor,
   ],
   esm = [ "01_db.ts" ],
   options = {
@@ -191,8 +191,15 @@ impl From<V8Consistency> for Consistency {
   }
 }
 
-// (start, end, limit, reverse)
-type SnapshotReadRange = (ZeroCopyBuf, Option<ZeroCopyBuf>, u32, bool);
+// (prefix, start, end, limit, reverse, cursor)
+type SnapshotReadRange = (
+  Option<KvKey>,
+  Option<KvKey>,
+  Option<KvKey>,
+  u32,
+  bool,
+  Option<ByteString>,
+);
 
 #[op]
 async fn op_kv_snapshot_read<DBH>(
@@ -212,14 +219,11 @@ where
   };
   let read_ranges = ranges
     .into_iter()
-    .map(|(start, end, limit, reverse)| {
-      let start = start.to_vec();
-      let end = end.map(|x| x.to_vec()).unwrap_or_else(|| {
-        let mut out = Vec::with_capacity(start.len() + 1);
-        out.extend_from_slice(&start);
-        out.push(0);
-        out
-      });
+    .map(|(prefix, start, end, limit, reverse, cursor)| {
+      let selector = RawSelector::from_tuple(prefix, start, end)?;
+
+      let (start, end) =
+        decode_selector_and_cursor(&selector, reverse, cursor.as_ref())?;
       Ok(ReadRange {
         start,
         end,
@@ -232,17 +236,19 @@ where
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
   };
-  let ranges = db.snapshot_read(read_ranges, opts).await?;
-  let ranges = ranges
+  let output_ranges = db.snapshot_read(read_ranges, opts).await?;
+  let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
-      x.entries
-        .into_iter()
-        .map(TryInto::try_into)
-        .collect::<Result<Vec<_>, AnyError>>()
+      Ok(
+        x.entries
+          .into_iter()
+          .map(TryInto::try_into)
+          .collect::<Result<Vec<_>, AnyError>>()?,
+      )
     })
     .collect::<Result<Vec<_>, AnyError>>()?;
-  Ok(ranges)
+  Ok(output_ranges)
 }
 
 type V8KvCheck = (KvKey, Option<ByteString>);
@@ -299,6 +305,173 @@ impl TryFrom<V8Enqueue> for Enqueue {
   }
 }
 
+fn encode_v8_key(key: KvKey) -> Result<Vec<u8>, std::io::Error> {
+  encode_key(&Key(key.into_iter().map(From::from).collect()))
+}
+
+enum RawSelector {
+  Prefixed {
+    prefix: Vec<u8>,
+    start: Option<Vec<u8>>,
+    end: Option<Vec<u8>>,
+  },
+  Range {
+    start: Vec<u8>,
+    end: Vec<u8>,
+  },
+}
+
+impl RawSelector {
+  fn from_tuple(
+    prefix: Option<KvKey>,
+    start: Option<KvKey>,
+    end: Option<KvKey>,
+  ) -> Result<Self, AnyError> {
+    let prefix = prefix.map(encode_v8_key).transpose()?;
+    let start = start.map(encode_v8_key).transpose()?;
+    let end = end.map(encode_v8_key).transpose()?;
+
+    match (prefix, start, end) {
+      (Some(prefix), None, None) => Ok(Self::Prefixed {
+        prefix,
+        start: None,
+        end: None,
+      }),
+      (Some(prefix), Some(start), None) => Ok(Self::Prefixed {
+        prefix,
+        start: Some(start),
+        end: None,
+      }),
+      (Some(prefix), None, Some(end)) => Ok(Self::Prefixed {
+        prefix,
+        start: None,
+        end: Some(end),
+      }),
+      (None, Some(start), Some(end)) => Ok(Self::Range { start, end }),
+      (None, Some(start), None) => {
+        let end = start.iter().copied().chain(Some(0)).collect();
+        Ok(Self::Range { start, end })
+      }
+      _ => Err(anyhow::anyhow!("invalid range")),
+    }
+  }
+
+  fn start(&self) -> Option<&[u8]> {
+    match self {
+      Self::Prefixed { start, .. } => start.as_deref(),
+      Self::Range { start, .. } => Some(start),
+    }
+  }
+
+  fn end(&self) -> Option<&[u8]> {
+    match self {
+      Self::Prefixed { end, .. } => end.as_deref(),
+      Self::Range { end, .. } => Some(end),
+    }
+  }
+
+  fn common_prefix(&self) -> &[u8] {
+    match self {
+      Self::Prefixed { prefix, .. } => prefix,
+      Self::Range { start, end } => common_prefix_for_bytes(start, end),
+    }
+  }
+
+  fn range_start_key(&self) -> Vec<u8> {
+    match self {
+      Self::Prefixed {
+        start: Some(start), ..
+      } => start.clone(),
+      Self::Range { start, .. } => start.clone(),
+      Self::Prefixed { prefix, .. } => {
+        prefix.iter().copied().chain(Some(0)).collect()
+      }
+    }
+  }
+
+  fn range_end_key(&self) -> Vec<u8> {
+    match self {
+      Self::Prefixed { end: Some(end), .. } => end.clone(),
+      Self::Range { end, .. } => end.clone(),
+      Self::Prefixed { prefix, .. } => {
+        prefix.iter().copied().chain(Some(0xff)).collect()
+      }
+    }
+  }
+}
+
+fn common_prefix_for_bytes<'a>(a: &'a [u8], b: &'a [u8]) -> &'a [u8] {
+  let mut i = 0;
+  while i < a.len() && i < b.len() && a[i] == b[i] {
+    i += 1;
+  }
+  &a[..i]
+}
+
+fn encode_cursor(
+  selector: &RawSelector,
+  boundary_key: &[u8],
+) -> Result<String, AnyError> {
+  let common_prefix = selector.common_prefix();
+  if !boundary_key.starts_with(common_prefix) {
+    anyhow::bail!("invalid boundary key");
+  }
+
+  Ok(base64::encode_config(
+    &boundary_key[common_prefix.len()..],
+    base64::URL_SAFE,
+  ))
+}
+
+fn decode_selector_and_cursor(
+  selector: &RawSelector,
+  reverse: bool,
+  cursor: Option<&ByteString>,
+) -> Result<(Vec<u8>, Vec<u8>), AnyError> {
+  let Some(cursor) = cursor else {
+    return Ok((selector.range_start_key(), selector.range_end_key()));
+  };
+
+  let common_prefix = selector.common_prefix();
+  let cursor = base64::decode_config(cursor, base64::URL_SAFE)
+    .with_context(|| "invalid cursor")?;
+
+  let first_key: Vec<u8>;
+  let last_key: Vec<u8>;
+
+  if reverse {
+    first_key = selector.range_start_key();
+    last_key = common_prefix
+      .iter()
+      .copied()
+      .chain(cursor.iter().copied())
+      .collect();
+  } else {
+    first_key = common_prefix
+      .iter()
+      .copied()
+      .chain(cursor.iter().copied())
+      .chain(Some(0))
+      .collect();
+    last_key = selector.range_end_key();
+  }
+
+  // Defend against out-of-bounds reading
+  if let Some(start) = selector.start() {
+    if &first_key[..] < start {
+      anyhow::bail!("cursor out of bounds");
+    }
+  }
+
+  if let Some(end) = selector.end() {
+    if &last_key[..] > end {
+      anyhow::bail!("cursor out of bounds");
+    }
+  }
+
+  Ok((first_key, last_key))
+}
+
 #[op]
 async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -344,8 +517,16 @@ where
   Ok(result)
 }
 
+// (prefix, start, end)
+type EncodeCursorRangeSelector = (Option<KvKey>, Option<KvKey>, Option<KvKey>);
+
 #[op]
-fn op_kv_encode_key(key: KvKey) -> Result<ZeroCopyBuf, AnyError> {
-  let key = encode_key(&Key(key.into_iter().map(From::from).collect()))?;
-  Ok(ZeroCopyBuf::from(key))
+fn op_kv_encode_cursor(
+  (prefix, start, end): EncodeCursorRangeSelector,
+  boundary_key: KvKey,
+) -> Result<String, AnyError> {
+  let selector = RawSelector::from_tuple(prefix, start, end)?;
+  let boundary_key = encode_v8_key(boundary_key)?;
+  let cursor = encode_cursor(&selector, &boundary_key)?;
+  Ok(cursor)
 }

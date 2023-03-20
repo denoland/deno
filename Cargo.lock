@@ -1084,6 +1084,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.13.1",
  "deno_core",
  "hex",
  "num-bigint",
