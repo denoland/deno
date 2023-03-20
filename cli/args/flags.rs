@@ -1624,6 +1624,7 @@ Specifying the filename '-' to read the file from stdin.
 
 fn task_subcommand() -> Command {
   Command::new("task")
+    .allow_external_subcommands(true)
     .arg(config_arg())
     .arg(
       Arg::new("cwd")
@@ -1632,14 +1633,6 @@ fn task_subcommand() -> Command {
         .help("Specify the directory to run the task in")
         .num_args(1)
         .value_hint(ValueHint::DirPath),
-    )
-    .arg(Arg::new("task").help("Task to be executed"))
-    .arg(
-      Arg::new("task-args")
-        .num_args(0..)
-        .trailing_var_arg(true)
-        .allow_hyphen_values(true)
-        .help("Additional arguments passed to the task"),
     )
     .about("Run a task defined in the configuration file")
     .long_about(
@@ -2732,12 +2725,17 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     cwd: matches.remove_one::<String>("cwd"),
     task: None,
   };
-  if let Some(task) = matches.remove_one::<String>("task") {
+
+  if let Some((task, mut matches)) = matches.remove_subcommand() {
     task_flags.task = Some(task);
 
-    if let Some(args) = matches.remove_many::<String>("task-args") {
-      flags.argv.extend(args);
-    }
+    flags.argv.extend(
+      matches
+        .remove_many::<std::ffi::OsString>("")
+        .into_iter()
+        .flatten()
+        .filter_map(|arg| arg.into_string().ok()),
+    );
   }
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
