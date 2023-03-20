@@ -96,10 +96,13 @@ fn op_node_build_os() -> String {
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   ops = [
+    crypto::op_node_create_decipheriv,
     crypto::op_node_cipheriv_encrypt,
     crypto::op_node_cipheriv_final,
     crypto::op_node_create_cipheriv,
     crypto::op_node_create_hash,
+    crypto::op_node_decipheriv_decrypt,
+    crypto::op_node_decipheriv_final,
     crypto::op_node_hash_update,
     crypto::op_node_hash_update_str,
     crypto::op_node_hash_digest,
@@ -380,12 +383,12 @@ deno_core::extension!(deno_node_loading,
   },
 );
 
-pub async fn initialize_runtime(
+pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
+    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
       Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName);
       if (usesLocalNodeModulesDir) {{
         Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
@@ -395,9 +398,7 @@ pub async fn initialize_runtime(
     uses_local_node_modules_dir,
   );
 
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
   Ok(())
 }
 
@@ -427,13 +428,13 @@ pub fn load_cjs_module(
   Ok(())
 }
 
-pub async fn initialize_binary_command(
+pub fn initialize_binary_command(
   js_runtime: &mut JsRuntime,
   binary_name: &str,
 ) -> Result<(), AnyError> {
   // overwrite what's done in deno_std in order to set the binary arg name
   let source_code = &format!(
-    r#"(async function initializeBinaryCommand(binaryName) {{
+    r#"(function initializeBinaryCommand(binaryName) {{
       const process = Deno[Deno.internal].node.globalThis.process;
       Object.defineProperty(process.argv, "0", {{
         get: () => binaryName,
@@ -441,8 +442,6 @@ pub async fn initialize_binary_command(
     }})('{binary_name}');"#,
   );
 
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
   Ok(())
 }

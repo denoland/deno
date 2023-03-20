@@ -38,6 +38,9 @@ deno_core::extension!(deno_bench,
     state.put(options.sender);
     state.put(options.filter);
   },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
 );
 
 #[derive(Clone)]

@@ -267,7 +267,7 @@ mod startup_snapshot {
     deps = [runtime],
     customizer = |ext: &mut deno_core::ExtensionBuilder| {
       ext.esm(vec![ExtensionFileSource {
-        specifier: "js/99_main.js".to_string(),
+        specifier: "ext:runtime_main/js/99_main.js",
         code: deno_core::ExtensionFileSourceCode::IncludedInBinary(
           include_str!("js/99_main.js"),
         ),

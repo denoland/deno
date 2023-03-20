@@ -17,7 +17,10 @@ deno_core::extension!(
     op_query_permission,
     op_revoke_permission,
     op_request_permission,
-  ]
+  ],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
 );
 
 #[derive(Deserialize)]
