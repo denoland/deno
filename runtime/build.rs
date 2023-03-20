@@ -296,8 +296,8 @@ mod startup_snapshot {
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node_loading::init_ops_and_esm::<Permissions>(None),
-      deno_node::deno_node::init_ops_and_esm(),
+      deno_node::deno_node::init_ops_and_esm::<Permissions>(None),
+      deno_node::deno_node_loading::init_ops_and_esm(),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];

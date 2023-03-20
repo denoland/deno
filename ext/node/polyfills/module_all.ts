@@ -89,6 +89,7 @@ import wasi from "ext:deno_node/wasi.ts";
 import zlib from "ext:deno_node/zlib.ts";
 
 import "ext:deno_node/00_globals.js";
+import "ext:deno_node/01_require.js";
 
 // Canonical mapping of supported modules
 const moduleAll = {
