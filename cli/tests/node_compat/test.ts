@@ -123,7 +123,7 @@ Deno.test("Node.js compatibility", async (t) => {
 });
 
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
-  for (let testFileList of testFileLists) {
+  for (const testFileList of testFileLists) {
     const sortedTestList = JSON.parse(JSON.stringify(testFileList));
     sortedTestList.sort();
     if (JSON.stringify(testFileList) !== JSON.stringify(sortedTestList)) {
