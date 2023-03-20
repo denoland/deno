@@ -928,12 +928,14 @@ function packageSpecifierSubPath(specifier) {
 }
 
 function setupBuiltinModules(nodeModules) {
-  for (const [name, exports] of ObjectEntries(nodeModules)) {
-    nativeModuleExports[name] = exports;
+  for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
+    nativeModuleExports[name] = moduleExports;
     ArrayPrototypePush(builtinModules, name);
   }
 }
 
+// This is a temporary namespace, that will be removed when initializing
+// in `02_init.js`.
 internals.requireImpl = {
   setUsesLocalNodeModulesDir() {
     usesLocalNodeModulesDir = true;
