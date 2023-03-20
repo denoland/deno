@@ -36,6 +36,7 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
+import { Command } from "ext:runtime/40_process.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -60,10 +61,6 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
-
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoCommand = Deno[Deno.internal]?.nodeUnstable?.Command ||
-  Deno.Command;
 
 const notImplementedEvents = [
   "disconnect",
@@ -272,11 +269,11 @@ function _kill(pid: number, sig: number): number {
   if (sig === 0) {
     let status;
     if (Deno.build.os === "windows") {
-      status = (new DenoCommand("powershell.exe", {
+      status = (new Command("powershell.exe", {
         args: ["Get-Process", "-pid", pid],
       })).outputSync();
     } else {
-      status = (new DenoCommand("kill", {
+      status = (new Command("kill", {
         args: ["-0", pid],
       })).outputSync();
     }
