@@ -62,7 +62,6 @@ function loadCjsModule(moduleName, isMain, inspectBrk) {
 }
 
 internals.node = {
-  globalThis: nodeGlobalThis,
   initialize,
   loadCjsModule,
 };

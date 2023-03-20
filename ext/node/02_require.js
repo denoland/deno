@@ -40,7 +40,7 @@ const {
   Error,
   TypeError,
 } = primordials;
-const node = internals.node;
+import { nodeGlobalThis } from "ext:deno_node_loading/00_globals.js";
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -153,7 +153,7 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
       err.requestPath = originalPath;
       throw err;
     } else {
-      node.globalThis.process.emitWarning(
+      nodeGlobalThis.process.emitWarning(
         `Invalid 'main' field in '${packageJsonPath}' of '${pkg}'. ` +
           "Please either fix that or report it to the module author",
         "DeprecationWarning",
@@ -225,7 +225,7 @@ function getExportsForCircularRequire(module) {
 }
 
 function emitCircularRequireWarning(prop) {
-  node.globalThis.process.emitWarning(
+  nodeGlobalThis.process.emitWarning(
     `Accessing non-existent property '${String(prop)}' of module exports ` +
       "inside circular dependency",
   );
@@ -502,7 +502,7 @@ Module._load = function (request, parent, isMain) {
   const module = cachedModule || new Module(filename, parent);
 
   if (isMain) {
-    node.globalThis.process.mainModule = module;
+    nodeGlobalThis.process.mainModule = module;
     mainModule = module;
     module.id = ".";
   }
@@ -721,7 +721,7 @@ function wrapSafe(
   const wrapper = Module.wrap(content);
   const [f, err] = core.evalContext(wrapper, `file://${filename}`);
   if (err) {
-    if (node.globalThis.process.mainModule === cjsModuleInstance) {
+    if (nodeGlobalThis.process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
     }
     throw err.thrown;
@@ -753,7 +753,7 @@ Module.prototype._compile = function (content, filename) {
     this,
     filename,
     dirname,
-    node.globalThis,
+    nodeGlobalThis,
   );
   if (requireDepth === 0) {
     statCache = null;
@@ -806,7 +806,7 @@ Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("fsevents.node")) {
     throw new Error("Using fsevents module is currently not supported");
   }
-  module.exports = ops.op_napi_open(filename, node.globalThis);
+  module.exports = ops.op_napi_open(filename, nodeGlobalThis);
 };
 
 function createRequireFromPath(filename) {
