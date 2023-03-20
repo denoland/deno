@@ -84,6 +84,7 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub include: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -911,6 +912,19 @@ Unless --reload is specified, this command will not re-download already cached d
 fn compile_subcommand() -> Command {
   runtime_args(Command::new("compile"), true, false)
     .arg(script_arg().required(true))
+    .arg(
+      Arg::new("include")
+        .long("include")
+        .help("UNSTABLE: Additional module to include in the module graph")
+        .long_help(
+          "Includes an additional module in the compiled executable's module \
+    graph. Use this flag if a dynamically imported module or a web worker main \
+    module fails to load in the executable. This flag can be passed multiple \
+    times, to include multiple additional modules.",
+        )
+        .num_args(1..)
+        .value_hint(ValueHint::FilePath),
+    )
     .arg(
       Arg::new("output")
         .long("output")
@@ -2431,12 +2445,14 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = script.collect();
   let output = matches.remove_one::<PathBuf>("output");
   let target = matches.remove_one::<String>("target");
+  let include = matches.remove_many::<String>("include").collect();
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
     args,
     target,
+    include,
   });
 }
 
@@ -6068,6 +6084,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6087,6 +6104,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
+          include: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,

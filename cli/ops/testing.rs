@@ -44,6 +44,9 @@ deno_core::extension!(deno_test,
     state.put(options.fail_fast_tracker);
     state.put(options.filter);
   },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
 );
 
 #[derive(Clone)]
