@@ -240,12 +240,10 @@ where
   let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
-      Ok(
-        x.entries
-          .into_iter()
-          .map(TryInto::try_into)
-          .collect::<Result<Vec<_>, AnyError>>()?,
-      )
+      x.entries
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<Vec<_>, AnyError>>()
     })
     .collect::<Result<Vec<_>, AnyError>>()?;
   Ok(output_ranges)
@@ -262,7 +260,7 @@ impl TryFrom<V8KvCheck> for KvCheck {
       out
     });
     Ok(KvCheck {
-      key: encode_key(&Key(value.0.into_iter().map(From::from).collect()))?,
+      key: encode_v8_key(value.0)?,
       versionstamp,
     })
   }
@@ -273,7 +271,7 @@ type V8KvMutation = (KvKey, String, Option<V8Value>);
 impl TryFrom<V8KvMutation> for KvMutation {
   type Error = AnyError;
   fn try_from(value: V8KvMutation) -> Result<Self, AnyError> {
-    let key = encode_key(&Key(value.0.into_iter().map(From::from).collect()))?;
+    let key = encode_v8_key(value.0)?;
     let kind = match value.1.as_str() {
       // TODO(lucacasonato): error handling (when value == None)
       "set" => MutationKind::Set(value.2.unwrap().try_into()?),
@@ -298,7 +296,7 @@ impl TryFrom<V8Enqueue> for Enqueue {
       keys_if_undelivered: value
         .2
         .into_iter()
-        .map(|k| encode_key(&Key(k.into_iter().map(From::from).collect())))
+        .map(|k| encode_v8_key(k))
         .collect::<std::io::Result<_>>()?,
       backoff_schedule: value.3,
     })
