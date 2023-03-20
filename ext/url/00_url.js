@@ -65,6 +65,20 @@ function opUrlParse(href, maybeBase) {
   return getSerialization(status, href, maybeBase);
 }
 
+function opUrlCanParse(href, maybeBase) {
+  let status;
+  if (maybeBase === undefined) {
+    status = ops.op_url_parse(href, componentsBuf);
+  } else {
+    status = ops.op_url_parse_with_base(
+      href,
+      maybeBase,
+      componentsBuf,
+    );
+  }
+  return status === 0 || status === 1;
+}
+
 function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
@@ -367,6 +381,22 @@ class URL {
     this[webidl.brand] = webidl.brand;
     this.#serialization = opUrlParse(url, base);
     this.#updateComponents();
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} base
+   */
+  static canParse(url, base = undefined) {
+    const prefix = "Failed to call 'URL.canParse'";
+    url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, {
+        prefix,
+        context: "Argument 2",
+      });
+    }
+    return opUrlCanParse(url, base);
   }
 
   #updateComponents() {
