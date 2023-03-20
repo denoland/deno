@@ -79,10 +79,18 @@ const nodeGlobalThis = new Proxy(globalThis, {
   },
 });
 
-function initialize(nodeModules, nodeGlobalThisName, argv0) {
+function initialize(
+  nodeModules,
+  nodeGlobalThisName,
+  usesLocalNodeModulesDir,
+  argv0,
+) {
   assert(!initialized);
   initialized = true;
   internals.require.setupBuiltinModules(nodeModules);
+  if (usesLocalNodeModulesDir) {
+    internals.require.setUsesLocalNodeModulesDir();
+  }
   const nativeModuleExports = internals.require.nativeModuleExports;
   nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
   nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
@@ -107,7 +115,15 @@ function initialize(nodeModules, nodeGlobalThisName, argv0) {
   internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
 }
 
+function loadCjsModule(moduleName, isMain, inspectBrk) {
+  if (inspectBrk) {
+    internals.require.setInspectBrk();
+  }
+  internals.require.Module._load(moduleName, null, { main: isMain });
+}
+
 internals.node = {
   globalThis: nodeGlobalThis,
   initialize,
+  loadCjsModule,
 };

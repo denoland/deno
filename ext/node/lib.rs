@@ -395,10 +395,12 @@ pub fn initialize_runtime(
   };
   let source_code = &format!(
     r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
-      Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName, argv0);
-      if (usesLocalNodeModulesDir) {{
-        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
-      }}
+      Deno[Deno.internal].node.initialize(
+        Deno[Deno.internal].nodeModuleAll, 
+        nodeGlobalThisName, 
+        usesLocalNodeModulesDir,
+        argv0
+      );
     }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME.as_str(),
     uses_local_node_modules_dir,
@@ -420,12 +422,9 @@ pub fn load_cjs_module(
   }
 
   let source_code = &format!(
-    r#"(function loadCjsModule(module, inspectBrk) {{
-      if (inspectBrk) {{
-        Deno[Deno.internal].require.setInspectBrk();
-      }}
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}', {inspect_brk});"#,
+    r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
+      Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
+    }})('{module}', {main}, {inspect_brk});"#,
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
