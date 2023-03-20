@@ -144,11 +144,12 @@ deno_core::extension!(deno_node,
     ops::op_require_package_imports_resolve<P>,
     ops::op_require_break_on_next_statement,
   ],
-  esm_entry_point = "ext:deno_node/module_all.ts",
+  esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
     "00_globals.js",
     "01_require.js",
+    "02_init.js",
     "_core.ts",
     "_events.mjs",
     "_fs/_fs_access.ts",
@@ -380,8 +381,6 @@ deno_core::extension!(deno_node,
   },
 );
 
-deno_core::extension!(deno_node_loading, esm = ["02_init.js"],);
-
 pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
@@ -395,7 +394,6 @@ pub fn initialize_runtime(
   let source_code = &format!(
     r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
       Deno[Deno.internal].node.initialize(
-        Deno[Deno.internal].nodeModuleAll, 
         nodeGlobalThisName, 
         usesLocalNodeModulesDir,
         argv0

@@ -363,7 +363,6 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(false),
     deno_flash::deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
     deno_node::deno_node::init_ops::<PermissionsContainer>(None),
-    deno_node::deno_node_loading::init_ops(),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 

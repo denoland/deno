@@ -438,7 +438,6 @@ impl WebWorker {
       deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
       ),
-      deno_node::deno_node_loading::init_ops(),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::deno_web_worker::init_ops(),
       ops::runtime::deno_runtime::init_ops(main_module.clone()),

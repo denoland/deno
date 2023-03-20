@@ -260,7 +260,6 @@ impl MainWorker {
       deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
       ),
-      deno_node::deno_node_loading::init_ops(),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops(

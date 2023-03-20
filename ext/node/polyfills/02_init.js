@@ -6,6 +6,8 @@ const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { ObjectDefineProperty } = primordials;
 import { nodeGlobals, nodeGlobalThis } from "ext:deno_node/00_globals.js";
+import "ext:deno_node/01_require.js";
+import nodeModules from "ext:deno_node/module_all.ts";
 const requireImpl = internals.requireImpl;
 
 function assert(cond) {
@@ -17,7 +19,6 @@ function assert(cond) {
 let initialized = false;
 
 function initialize(
-  nodeModules,
   nodeGlobalThisName,
   usesLocalNodeModulesDir,
   argv0,
