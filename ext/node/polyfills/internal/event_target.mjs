@@ -752,7 +752,7 @@ class EventTarget extends WebEventTarget {
       return name;
     }
 
-    const opts = ObjectAssign({}, options, {
+    const opts = Object.assign({}, options, {
       depth: Number.isInteger(options.depth)
         ? options.depth - 1
         : options.depth,

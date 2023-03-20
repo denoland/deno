@@ -1340,7 +1340,9 @@ function inspectObject(value, inspectOptions, proxyDetails) {
   ) {
     // TODO(kt3k): The last inspect needs to be util.inspect of Node.js.
     // We need to move the implementation of util.inspect to this file.
-    return String(value[nodeCustomInspect](inspectOptions.depth, inspectOptions, inspect))
+    return String(
+      value[nodeCustomInspect](inspectOptions.depth, inspectOptions, inspect),
+    );
   }
   // This non-unique symbol is used to support op_crates, ie.
   // in extensions/web we don't want to depend on public
