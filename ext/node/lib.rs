@@ -20,6 +20,7 @@ mod polyfill;
 mod resolution;
 mod v8;
 mod winerror;
+mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -118,6 +119,10 @@ deno_core::extension!(deno_node,
     idna::op_node_idna_domain_to_unicode,
     idna::op_node_idna_punycode_decode,
     idna::op_node_idna_punycode_encode,
+
+    zlib::op_zlib_deflate_sync,
+
+    zlib::op_zlib_new_zstream,
     op_node_build_os,
   ],
   esm_entry_point = "ext:deno_node/module_all.ts",

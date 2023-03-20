@@ -5,7 +5,7 @@
 // deno-lint-ignore-file
 
 import assert from "ext:deno_node/assert.ts";
-import { constants, zlib_deflate, zlib_inflate, Zstream } from "ext:deno_node/_pako.mjs";
+import { constants, zlib_deflate, zlib_inflate } from "ext:deno_node/_pako.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 export const Z_NO_FLUSH = constants.Z_NO_FLUSH;
@@ -55,22 +55,23 @@ var GZIP_HEADER_ID2 = 0x8b;
  * Emulate Node's zlib C++ layer for use by the JS layer in index.js
  */
 function Zlib(mode) {
-  if (typeof mode !== "number" || mode < DEFLATE || mode > UNZIP) {
-    throw new TypeError("Bad argument");
-  }
+  // if (typeof mode !== "number" || mode < DEFLATE || mode > UNZIP) {
+  //   throw new TypeError("Bad argument");
+  // }
 
-  this.dictionary = null;
-  this.err = 0;
-  this.flush = 0;
-  this.init_done = false;
-  this.level = 0;
-  this.memLevel = 0;
-  this.mode = mode;
-  this.strategy = 0;
-  this.windowBits = 0;
-  this.write_in_progress = false;
-  this.pending_close = false;
-  this.gzip_id_bytes_read = 0;
+  // this.dictionary = null;
+  // this.err = 0;
+  // this.flush = 0;
+  // this.init_done = false;
+  // this.level = 0;
+  // this.memLevel = 0;
+  // this.mode = mode;
+  // this.strategy = 0;
+  // this.windowBits = 0;
+  // this.write_in_progress = false;
+  // this.pending_close = false;
+  // this.gzip_id_bytes_read = 0;
+  this.handle = ops.op_zlib_new(mode);
 }
 
 Zlib.prototype.close = function () {
@@ -85,12 +86,12 @@ Zlib.prototype.close = function () {
   assert(this.mode <= UNZIP);
 
   if (this.mode === DEFLATE || this.mode === GZIP || this.mode === DEFLATERAW) {
-    zlib_deflate.deflateEnd(this.strm);
+    zlib_deflate.deflateEnd(this.strm.handle);
   } else if (
     this.mode === INFLATE || this.mode === GUNZIP || this.mode === INFLATERAW ||
     this.mode === UNZIP
   ) {
-    zlib_inflate.inflateEnd(this.strm);
+    zlib_inflate.inflateEnd(this.strm.handle);
   }
 
   this.mode = NONE;
@@ -215,7 +216,7 @@ Zlib.prototype._process = function () {
     case DEFLATE:
     case GZIP:
     case DEFLATERAW:
-      this.err = zlib_deflate.deflate(this.strm, this.flush);
+      this.err = zlib_deflate.deflate(this.strm.handle, this.flush);
       break;
     case UNZIP:
       if (this.strm.avail_in > 0) {
@@ -267,18 +268,18 @@ Zlib.prototype._process = function () {
     case INFLATE:
     case GUNZIP:
     case INFLATERAW:
-      this.err = zlib_inflate.inflate(this.strm, this.flush);
+      this.err = zlib_inflate.inflate(this.strm.handle, this.flush);
 
       // If data was encoded with dictionary
       if (this.err === Z_NEED_DICT && this.dictionary) {
         // Load it
         this.err = zlib_inflate.inflateSetDictionary(
-          this.strm,
+          this.strm.handle,
           this.dictionary,
         );
         if (this.err === Z_OK) {
           // And try to decode again
-          this.err = zlib_inflate.inflate(this.strm, this.flush);
+          this.err = zlib_inflate.inflate(this.strm.handle, this.flush);
         } else if (this.err === Z_DATA_ERROR) {
           // Both inflateSetDictionary() and inflate() return Z_DATA_ERROR.
           // Make it possible for After() to tell a bad dictionary from bad
@@ -296,7 +297,7 @@ Zlib.prototype._process = function () {
         // used for padding.
 
         this.reset();
-        this.err = zlib_inflate.inflate(this.strm, this.flush);
+        this.err = zlib_inflate.inflate(this.strm.handle, this.flush);
       }
       break;
     default:
@@ -436,7 +437,7 @@ Zlib.prototype._init = function (
     case GZIP:
     case DEFLATERAW:
       this.err = zlib_deflate.deflateInit2(
-        this.strm,
+        this.strm.handle,
         this.level,
         Z_DEFLATED,
         this.windowBits,
@@ -448,7 +449,7 @@ Zlib.prototype._init = function (
     case GUNZIP:
     case INFLATERAW:
     case UNZIP:
-      this.err = zlib_inflate.inflateInit2(this.strm, this.windowBits);
+      this.err = zlib_inflate.inflateInit2(this.strm.handle, this.windowBits);
       break;
     default:
       throw new Error("Unknown mode " + this.mode);
@@ -474,7 +475,7 @@ Zlib.prototype._setDictionary = function () {
   switch (this.mode) {
     case DEFLATE:
     case DEFLATERAW:
-      this.err = zlib_deflate.deflateSetDictionary(this.strm, this.dictionary);
+      this.err = zlib_deflate.deflateSetDictionary(this.strm.handle, this.dictionary);
       break;
     default:
       break;
@@ -492,12 +493,12 @@ Zlib.prototype._reset = function () {
     case DEFLATE:
     case DEFLATERAW:
     case GZIP:
-      this.err = zlib_deflate.deflateReset(this.strm);
+      this.err = zlib_deflate.deflateReset(this.strm.handle);
       break;
     case INFLATE:
     case INFLATERAW:
     case GUNZIP:
-      this.err = zlib_inflate.inflateReset(this.strm);
+      this.err = zlib_inflate.inflateReset(this.strm.handle);
       break;
     default:
       break;
