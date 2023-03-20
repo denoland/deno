@@ -248,7 +248,6 @@
       "test-console-no-swallow-stack-overflow.js",
       "test-console-sync-write-error.js",
       "test-console-table.js",
-      "test-console-tty-colors.js",
       "test-crypto-hmac.js",
       "TODO:test-dgram-address.js",
       "TODO:test-dgram-bind-default-address.js",
