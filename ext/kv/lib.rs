@@ -12,6 +12,7 @@ use std::rc::Rc;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8::AnyValue;
@@ -350,7 +351,7 @@ impl RawSelector {
         let end = start.iter().copied().chain(Some(0)).collect();
         Ok(Self::Range { start, end })
       }
-      _ => Err(anyhow::anyhow!("invalid range")),
+      _ => Err(type_error("invalid range")),
     }
   }
 
@@ -412,7 +413,7 @@ fn encode_cursor(
 ) -> Result<String, AnyError> {
   let common_prefix = selector.common_prefix();
   if !boundary_key.starts_with(common_prefix) {
-    anyhow::bail!("invalid boundary key");
+    return Err(type_error("invalid boundary key"));
   }
 
   Ok(base64::encode_config(
@@ -432,7 +433,7 @@ fn decode_selector_and_cursor(
 
   let common_prefix = selector.common_prefix();
   let cursor = base64::decode_config(cursor, base64::URL_SAFE)
-    .with_context(|| "invalid cursor")?;
+    .map_err(|_| type_error("invalid cursor"))?;
 
   let first_key: Vec<u8>;
   let last_key: Vec<u8>;
@@ -457,13 +458,13 @@ fn decode_selector_and_cursor(
   // Defend against out-of-bounds reading
   if let Some(start) = selector.start() {
     if &first_key[..] < start {
-      anyhow::bail!("cursor out of bounds");
+      return Err(type_error("cursor out of bounds"));
     }
   }
 
   if let Some(end) = selector.end() {
     if &last_key[..] > end {
-      anyhow::bail!("cursor out of bounds");
+      return Err(type_error("cursor out of bounds"));
     }
   }
 

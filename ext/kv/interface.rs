@@ -199,7 +199,7 @@ pub enum Value {
 ///
 /// The mutations are performed in the order that they are specified in the
 /// `mutations` field. The order of checks is not specified, and is also not
-/// important.
+/// important because this ordering is un-observable.
 pub struct AtomicWrite {
   pub checks: Vec<KvCheck>,
   pub mutations: Vec<KvMutation>,
@@ -261,34 +261,30 @@ pub struct Enqueue {
 ///
 /// The sum mutation adds the specified value to the existing value of the key.
 ///
-/// This operand supports only value types [Value::Float] and [Value::Int]. The
-/// existing value in the database must match the type of the value specified in
-/// the mutation. If the key does not exist in the database, then the value
-/// specified in the mutation is used as the new value of the key.
+/// This operand supports only value types [Value::U64]. The existing value in
+/// the database must match the type of the value specified in the mutation. If
+/// the key does not exist in the database, then the value specified in the
+/// mutation is used as the new value of the key.
 ///
 /// ## Min
 ///
 /// The min mutation sets the value of the key to the minimum of the existing
 /// value of the key and the specified value.
 ///
-/// This operand supports only value types [Value::Float] and [Value::Int]. The
-/// existing value of the key in the database must match the type of the value
-/// specified in the mutation.
-///
-/// If no value exists for the key in the database, then the value specified in
-/// the mutation is used as the new value of the key.
+/// This operand supports only value types [Value::U64]. The existing value in
+/// the database must match the type of the value specified in the mutation. If
+/// the key does not exist in the database, then the value specified in the
+/// mutation is used as the new value of the key.
 ///
 /// ## Max
 ///
 /// The max mutation sets the value of the key to the maximum of the existing
 /// value of the key and the specified value.
 ///
-/// This operand supports only value types [Value::Float] and [Value::Int]. The
-/// existing value of the key in the database must match the type of the value
-/// specified in the mutation.
-///
-/// If no value exists for the key in the database, then the value specified in
-/// the mutation is used as the new value of the key.
+/// This operand supports only value types [Value::U64]. The existing value in
+/// the database must match the type of the value specified in the mutation. If
+/// the key does not exist in the database, then the value specified in the
+/// mutation is used as the new value of the key.
 pub enum MutationKind {
   Set(Value),
   Delete,
