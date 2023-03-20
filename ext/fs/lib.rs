@@ -4,12 +4,9 @@
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -118,95 +115,81 @@ use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder("deno_fs")
-}
+deno_core::extension!(deno_fs,
+  deps = [ deno_web, deno_io ],
+  parameters = [P: FsPermissions],
+  ops = [
+    op_open_sync<P>,
+    op_open_async<P>,
+    op_write_file_sync<P>,
+    op_write_file_async<P>,
+    op_seek_sync,
+    op_seek_async,
+    op_fdatasync_sync,
+    op_fdatasync_async,
+    op_fsync_sync,
+    op_fsync_async,
+    op_fstat_sync,
+    op_fstat_async,
+    op_flock_sync,
+    op_flock_async,
+    op_funlock_sync,
+    op_funlock_async,
+    op_umask,
+    op_chdir<P>,
+    op_mkdir_sync<P>,
+    op_mkdir_async<P>,
+    op_chmod_sync<P>,
+    op_chmod_async<P>,
+    op_chown_sync<P>,
+    op_chown_async<P>,
+    op_remove_sync<P>,
+    op_remove_async<P>,
+    op_copy_file_sync<P>,
+    op_copy_file_async<P>,
+    op_stat_sync<P>,
+    op_stat_async<P>,
+    op_realpath_sync<P>,
+    op_realpath_async<P>,
+    op_read_dir_sync<P>,
+    op_read_dir_async<P>,
+    op_rename_sync<P>,
+    op_rename_async<P>,
+    op_link_sync<P>,
+    op_link_async<P>,
+    op_symlink_sync<P>,
+    op_symlink_async<P>,
+    op_read_link_sync<P>,
+    op_read_link_async<P>,
+    op_ftruncate_sync,
+    op_ftruncate_async,
+    op_truncate_sync<P>,
+    op_truncate_async<P>,
+    op_make_temp_dir_sync<P>,
+    op_make_temp_dir_async<P>,
+    op_make_temp_file_sync<P>,
+    op_make_temp_file_async<P>,
+    op_cwd<P>,
+    op_futime_sync,
+    op_futime_async,
+    op_utime_sync<P>,
+    op_utime_async<P>,
+    op_readfile_sync<P>,
+    op_readfile_text_sync<P>,
+    op_readfile_async<P>,
+    op_readfile_text_async<P>,
+  ],
+  esm = [ "30_fs.js" ],
+  options = {
+    unstable: bool
+  },
+  state = |state, options| {
+    state.put(UnstableChecker { unstable: options.unstable });
+  },
+);
 
-fn ops<P: FsPermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  unstable: bool,
-) -> &mut ExtensionBuilder {
-  ext
-    .state(move |state| {
-      state.put(UnstableChecker { unstable });
-    })
-    .ops(vec![
-      op_open_sync::decl::<P>(),
-      op_open_async::decl::<P>(),
-      op_write_file_sync::decl::<P>(),
-      op_write_file_async::decl::<P>(),
-      op_seek_sync::decl(),
-      op_seek_async::decl(),
-      op_fdatasync_sync::decl(),
-      op_fdatasync_async::decl(),
-      op_fsync_sync::decl(),
-      op_fsync_async::decl(),
-      op_fstat_sync::decl(),
-      op_fstat_async::decl(),
-      op_flock_sync::decl(),
-      op_flock_async::decl(),
-      op_funlock_sync::decl(),
-      op_funlock_async::decl(),
-      op_umask::decl(),
-      op_chdir::decl::<P>(),
-      op_mkdir_sync::decl::<P>(),
-      op_mkdir_async::decl::<P>(),
-      op_chmod_sync::decl::<P>(),
-      op_chmod_async::decl::<P>(),
-      op_chown_sync::decl::<P>(),
-      op_chown_async::decl::<P>(),
-      op_remove_sync::decl::<P>(),
-      op_remove_async::decl::<P>(),
-      op_copy_file_sync::decl::<P>(),
-      op_copy_file_async::decl::<P>(),
-      op_stat_sync::decl::<P>(),
-      op_stat_async::decl::<P>(),
-      op_realpath_sync::decl::<P>(),
-      op_realpath_async::decl::<P>(),
-      op_read_dir_sync::decl::<P>(),
-      op_read_dir_async::decl::<P>(),
-      op_rename_sync::decl::<P>(),
-      op_rename_async::decl::<P>(),
-      op_link_sync::decl::<P>(),
-      op_link_async::decl::<P>(),
-      op_symlink_sync::decl::<P>(),
-      op_symlink_async::decl::<P>(),
-      op_read_link_sync::decl::<P>(),
-      op_read_link_async::decl::<P>(),
-      op_ftruncate_sync::decl(),
-      op_ftruncate_async::decl(),
-      op_truncate_sync::decl::<P>(),
-      op_truncate_async::decl::<P>(),
-      op_make_temp_dir_sync::decl::<P>(),
-      op_make_temp_dir_async::decl::<P>(),
-      op_make_temp_file_sync::decl::<P>(),
-      op_make_temp_file_async::decl::<P>(),
-      op_cwd::decl::<P>(),
-      op_futime_sync::decl(),
-      op_futime_async::decl(),
-      op_utime_sync::decl::<P>(),
-      op_utime_async::decl::<P>(),
-      op_readfile_sync::decl::<P>(),
-      op_readfile_text_sync::decl::<P>(),
-      op_readfile_async::decl::<P>(),
-      op_readfile_text_async::decl::<P>(),
-    ])
-}
-
-pub fn init_ops_and_esm<P: FsPermissions + 'static>(
-  unstable: bool,
-) -> Extension {
-  ops::<P>(&mut ext(), unstable)
-    .esm(include_js_files!("30_fs.js",))
-    .build()
-}
-
-pub fn init_ops<P: FsPermissions + 'static>(unstable: bool) -> Extension {
-  ops::<P>(&mut ext(), unstable).build()
-}
-
-fn default_err_mapper(err: Error, desc: String) -> Error {
-  Error::new(err.kind(), format!("{err}, {desc}"))
+fn default_err_mapper(err: Error, desc: String) -> AnyError {
+  AnyError::new(Error::new(err.kind(), desc)).context(err)
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -1034,7 +1017,7 @@ where
       let mut st = std::mem::zeroed();
       let ret = stat(from.as_ptr(), &mut st);
       if ret != 0 {
-        return Err(err_mapper(Error::last_os_error()).into());
+        return Err(err_mapper(Error::last_os_error()));
       }
 
       if st.st_size > 128 * 1024 {
@@ -2364,9 +2347,9 @@ where
 
   let read_future = tokio::task::spawn_blocking(move || {
     let path = Path::new(&path);
-    Ok(std::fs::read(path).map(ZeroCopyBuf::from).map_err(|err| {
+    std::fs::read(path).map(ZeroCopyBuf::from).map_err(|err| {
       default_err_mapper(err, format!("readfile '{}'", path.display()))
-    })?)
+    })
   });
 
   let cancel_handle = cancel_rid.and_then(|rid| {

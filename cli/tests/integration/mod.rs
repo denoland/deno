@@ -125,6 +125,8 @@ mod js_unit_tests;
 mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "macos_tests.rs"]
+mod macos;
 #[path = "node_compat_tests.rs"]
 mod node_compat_tests;
 #[path = "node_unit_tests.rs"]
