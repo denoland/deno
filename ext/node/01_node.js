@@ -7,8 +7,6 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePush,
   ArrayPrototypeFilter,
-  ObjectEntries,
-  ObjectCreate,
   ObjectDefineProperty,
   Proxy,
   ReflectDefineProperty,
@@ -81,16 +79,11 @@ const nodeGlobalThis = new Proxy(globalThis, {
   },
 });
 
-const nativeModuleExports = ObjectCreate(null);
-const builtinModules = [];
-
 function initialize(nodeModules, nodeGlobalThisName, argv0) {
   assert(!initialized);
   initialized = true;
-  for (const [name, exports] of ObjectEntries(nodeModules)) {
-    nativeModuleExports[name] = exports;
-    ArrayPrototypePush(builtinModules, name);
-  }
+  internals.require.setupBuiltinModules(nodeModules);
+  const nativeModuleExports = internals.require.nativeModuleExports;
   nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
   nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
   nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
@@ -117,6 +110,4 @@ function initialize(nodeModules, nodeGlobalThisName, argv0) {
 internals.node = {
   globalThis: nodeGlobalThis,
   initialize,
-  nativeModuleExports,
-  builtinModules,
 };

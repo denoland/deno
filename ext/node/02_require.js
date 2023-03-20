@@ -19,6 +19,7 @@ const {
   ObjectPrototypeHasOwnProperty,
   ObjectSetPrototypeOf,
   ObjectKeys,
+  ObjectEntries,
   ObjectPrototype,
   ObjectCreate,
   Proxy,
@@ -40,6 +41,9 @@ const {
   TypeError,
 } = primordials;
 const node = internals.node;
+
+const nativeModuleExports = ObjectCreate(null);
+const builtinModules = [];
 
 // Map used to store CJS parsing data.
 const cjsParseCache = new SafeWeakMap();
@@ -262,7 +266,7 @@ function Module(id = "", parent) {
   this.children = [];
 }
 
-Module.builtinModules = node.builtinModules;
+Module.builtinModules = builtinModules;
 
 Module._extensions = ObjectCreate(null);
 Module._cache = ObjectCreate(null);
@@ -887,13 +891,13 @@ Module.syncBuiltinESMExports = function syncBuiltinESMExports() {
 
 Module.Module = Module;
 
-node.nativeModuleExports.module = Module;
+nativeModuleExports.module = Module;
 
 function loadNativeModule(_id, request) {
   if (nativeModulePolyfill.has(request)) {
     return nativeModulePolyfill.get(request);
   }
-  const modExports = node.nativeModuleExports[request];
+  const modExports = nativeModuleExports[request];
   if (modExports) {
     const nodeMod = new Module(request);
     nodeMod.exports = modExports;
@@ -905,7 +909,7 @@ function loadNativeModule(_id, request) {
 }
 
 function nativeModuleCanBeRequiredByUsers(request) {
-  return !!node.nativeModuleExports[request];
+  return !!nativeModuleExports[request];
 }
 
 function readPackageScope() {
@@ -923,6 +927,13 @@ function packageSpecifierSubPath(specifier) {
   return ArrayPrototypeJoin(parts, "/");
 }
 
+function setupBuiltinModules(nodeModules) {
+  for (const [name, exports] of ObjectEntries(nodeModules)) {
+    nativeModuleExports[name] = exports;
+    ArrayPrototypePush(builtinModules, name);
+  }
+}
+
 internals.require = {
   setUsesLocalNodeModulesDir() {
     usesLocalNodeModulesDir = true;
@@ -931,4 +942,6 @@ internals.require = {
     hasInspectBrk = true;
   },
   Module,
+  setupBuiltinModules,
+  nativeModuleExports,
 };
