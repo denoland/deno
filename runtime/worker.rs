@@ -257,10 +257,9 @@ impl MainWorker {
       deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node_loading::init_ops::<PermissionsContainer>(
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
       ),
-      deno_node::deno_node::init_ops(),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops(
