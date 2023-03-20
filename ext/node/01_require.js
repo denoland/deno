@@ -934,7 +934,7 @@ function setupBuiltinModules(nodeModules) {
   }
 }
 
-internals.require = {
+internals.requireImpl = {
   setUsesLocalNodeModulesDir() {
     usesLocalNodeModulesDir = true;
   },

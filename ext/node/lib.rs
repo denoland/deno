@@ -372,7 +372,7 @@ deno_core::extension!(deno_node_loading,
     ops::op_require_package_imports_resolve<P>,
     ops::op_require_break_on_next_statement,
   ],
-  esm = ["00_globals.js", "01_node.js", "02_require.js", "module_es_shim.js"],
+  esm = ["00_globals.js", "01_require.js", "02_init.js", "module_es_shim.js"],
   options = {
     maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   },

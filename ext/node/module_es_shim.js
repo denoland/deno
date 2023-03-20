@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 const internals = globalThis.__bootstrap.internals;
-const m = internals.require.Module;
+const m = internals.requireImpl.Module;
 export const _cache = m._cache;
 export const _extensions = m._extensions;
 export const _findPath = m._findPath;

@@ -9,6 +9,7 @@ import {
   nodeGlobals,
   nodeGlobalThis,
 } from "ext:deno_node_loading/00_globals.js";
+const requireImpl = internals.requireImpl;
 
 function assert(cond) {
   if (!cond) {
@@ -26,11 +27,11 @@ function initialize(
 ) {
   assert(!initialized);
   initialized = true;
-  internals.require.setupBuiltinModules(nodeModules);
+  requireImpl.setupBuiltinModules(nodeModules);
   if (usesLocalNodeModulesDir) {
-    internals.require.setUsesLocalNodeModulesDir();
+    requireImpl.setUsesLocalNodeModulesDir();
   }
-  const nativeModuleExports = internals.require.nativeModuleExports;
+  const nativeModuleExports = requireImpl.nativeModuleExports;
   nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
   nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
   nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
@@ -52,13 +53,15 @@ function initialize(
   // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
   // but it's the only way to get `args` and `version` and this point.
   internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
+  // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
+  delete internals.requireImpl;
 }
 
 function loadCjsModule(moduleName, isMain, inspectBrk) {
   if (inspectBrk) {
-    internals.require.setInspectBrk();
+    requireImpl.setInspectBrk();
   }
-  internals.require.Module._load(moduleName, null, { main: isMain });
+  requireImpl.Module._load(moduleName, null, { main: isMain });
 }
 
 internals.node = {
