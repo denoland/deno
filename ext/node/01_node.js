@@ -84,7 +84,7 @@ const nodeGlobalThis = new Proxy(globalThis, {
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
-function initialize(nodeModules, nodeGlobalThisName) {
+function initialize(nodeModules, nodeGlobalThisName, argv0) {
   assert(!initialized);
   initialized = true;
   for (const [name, exports] of ObjectEntries(nodeModules)) {
@@ -110,7 +110,8 @@ function initialize(nodeModules, nodeGlobalThisName) {
     value: nodeGlobalThis,
   });
   // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
-  internals.__bootstrapNodeProcess(Deno.args, Deno.version);
+  // but it's the only way to get `args` and `version` and this point.
+  internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
 }
 
 internals.node = {

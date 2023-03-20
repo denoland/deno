@@ -75,28 +75,6 @@ const notImplementedEvents = [
 
 export const argv: string[] = [];
 
-// Overwrites the 1st item with getter.
-// TODO(bartlomieju): added "configurable: true" to make this work for binary
-// commands, but that is probably a wrong solution
-// TODO(bartlomieju): move the configuration for all "argv" to
-// "internals.__bootstrapNodeProcess"
-Object.defineProperty(argv, "0", {
-  get: () => {
-    return Deno.execPath();
-  },
-  configurable: true,
-});
-// Overwrites the 2st item with getter.
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule.startsWith("file:")) {
-      return fromFileUrl(Deno.mainModule);
-    } else {
-      return join(Deno.cwd(), "$deno$node.js");
-    }
-  },
-});
-
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
@@ -689,9 +667,35 @@ export const removeAllListeners = process.removeAllListeners;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
+  argv0: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
 ) {
+  // Overwrites the 1st item with getter.
+  if (typeof argv0 === "string") {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return argv0;
+      },
+    });
+  } else {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return Deno.execPath();
+      },
+    });
+  }
+
+  // Overwrites the 2st item with getter.
+  Object.defineProperty(argv, "1", {
+    get: () => {
+      if (Deno.mainModule.startsWith("file:")) {
+        return fromFileUrl(Deno.mainModule);
+      } else {
+        return join(Deno.cwd(), "$deno$node.js");
+      }
+    },
+  });
   for (let i = 0; i < args.length; i++) {
     argv[i + 2] = args[i];
   }

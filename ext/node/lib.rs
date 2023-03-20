@@ -386,16 +386,23 @@ deno_core::extension!(deno_node_loading,
 pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
+  maybe_binary_command_name: Option<String>,
 ) -> Result<(), AnyError> {
+  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
+    format!("\"{}\"", binary_command_name)
+  } else {
+    "undefined".to_string()
+  };
   let source_code = &format!(
-    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName);
+    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
+      Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName, argv0);
       if (usesLocalNodeModulesDir) {{
         Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
       }}
-    }})('{}', {});"#,
+    }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME.as_str(),
     uses_local_node_modules_dir,
+    argv0
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
@@ -422,24 +429,6 @@ pub fn load_cjs_module(
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
-  );
-
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
-}
-
-pub fn initialize_binary_command(
-  js_runtime: &mut JsRuntime,
-  binary_name: &str,
-) -> Result<(), AnyError> {
-  // overwrite what's done in deno_std in order to set the binary arg name
-  let source_code = &format!(
-    r#"(function initializeBinaryCommand(binaryName) {{
-      const process = Deno[Deno.internal].node.globalThis.process;
-      Object.defineProperty(process.argv, "0", {{
-        get: () => binaryName,
-      }});
-    }})('{binary_name}');"#,
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
