@@ -255,11 +255,15 @@ type V8KvCheck = (KvKey, Option<ByteString>);
 impl TryFrom<V8KvCheck> for KvCheck {
   type Error = AnyError;
   fn try_from(value: V8KvCheck) -> Result<Self, AnyError> {
-    let versionstamp = value.1.as_ref().map(|x| {
-      let mut out = [0u8; 10];
-      hex::decode_to_slice(x, &mut out).unwrap();
-      out
-    });
+    let versionstamp = match value.1 {
+      Some(data) => {
+        let mut out = [0u8; 10];
+        hex::decode_to_slice(data, &mut out)
+          .map_err(|_| type_error("invalid versionstamp"))?;
+        Some(out)
+      }
+      None => None,
+    };
     Ok(KvCheck {
       key: encode_v8_key(value.0)?,
       versionstamp,
@@ -273,14 +277,20 @@ impl TryFrom<V8KvMutation> for KvMutation {
   type Error = AnyError;
   fn try_from(value: V8KvMutation) -> Result<Self, AnyError> {
     let key = encode_v8_key(value.0)?;
-    let kind = match value.1.as_str() {
-      // TODO(lucacasonato): error handling (when value == None)
-      "set" => MutationKind::Set(value.2.unwrap().try_into()?),
-      "delete" => MutationKind::Delete,
-      "sum" => MutationKind::Sum(value.2.unwrap().try_into()?),
-      "min" => MutationKind::Min(value.2.unwrap().try_into()?),
-      "max" => MutationKind::Max(value.2.unwrap().try_into()?),
-      _ => todo!(),
+    let kind = match (value.1.as_str(), value.2) {
+      ("set", Some(value)) => MutationKind::Set(value.try_into()?),
+      ("delete", None) => MutationKind::Delete,
+      ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
+      ("min", Some(value)) => MutationKind::Min(value.try_into()?),
+      ("max", Some(value)) => MutationKind::Max(value.try_into()?),
+      (op, Some(_)) => {
+        return Err(type_error(format!("invalid mutation '{op}' with value")))
+      }
+      (op, None) => {
+        return Err(type_error(format!(
+          "invalid mutation '{op}' without value"
+        )))
+      }
     };
     Ok(KvMutation { key, kind })
   }

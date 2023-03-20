@@ -885,3 +885,49 @@ dbTest("list invalid selector", async (db) => {
     );
   }, TypeError);
 });
+
+dbTest("invalid versionstamp in atomic check rejects", async (db) => {
+  await assertRejects(async () => {
+    await db.atomic().check({ key: ["a"], versionstamp: "" }).commit();
+  }, TypeError);
+
+  await assertRejects(async () => {
+    await db.atomic().check({ key: ["a"], versionstamp: "xx".repeat(10) })
+      .commit();
+  }, TypeError);
+
+  await assertRejects(async () => {
+    await db.atomic().check({ key: ["a"], versionstamp: "aa".repeat(11) })
+      .commit();
+  }, TypeError);
+});
+
+dbTest("invalid mutation type rejects", async (db) => {
+  await assertRejects(async () => {
+    await db.atomic()
+      // @ts-expect-error invalid type + value combo
+      .mutate({ key: ["a"], type: "set" })
+      .commit();
+  }, TypeError);
+
+  await assertRejects(async () => {
+    await db.atomic()
+      // @ts-expect-error invalid type + value combo
+      .mutate({ key: ["a"], type: "delete", value: "123" })
+      .commit();
+  }, TypeError);
+
+  await assertRejects(async () => {
+    await db.atomic()
+      // @ts-expect-error invalid type
+      .mutate({ key: ["a"], type: "foobar" })
+      .commit();
+  }, TypeError);
+
+  await assertRejects(async () => {
+    await db.atomic()
+      // @ts-expect-error invalid type
+      .mutate({ key: ["a"], type: "foobar", value: "123" })
+      .commit();
+  }, TypeError);
+});

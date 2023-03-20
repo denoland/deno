@@ -193,13 +193,18 @@ class AtomicOperation {
       switch (mutation.type) {
         case "delete":
           type = "delete";
-          value = null;
+          if (mutation.value) {
+            throw new TypeError("invalid mutation 'delete' with value");
+          }
           break;
         case "set":
         case "sum":
         case "min":
         case "max":
           type = mutation.type;
+          if (!("value" in mutation)) {
+            throw new TypeError(`invalid mutation '${type}' without value`);
+          }
           value = serializeValue(mutation.value);
           break;
         default:
