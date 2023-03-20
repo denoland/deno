@@ -1,6 +1,10 @@
 #!/usr/bin/env -S deno run --allow-read=. --allow-write=. --allow-net=nodejs.org
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+/** This script downloads Node.js source tarball, extracts it and copies the
+ * test files according to the config file `cli/tests/node_compat/config.json`
+ */
+
 import { Foras, gunzip } from "https://deno.land/x/denoflate@2.0.2/deno/mod.ts";
 import { Untar } from "../../test_util/std/archive/untar.ts";
 import { walk } from "../../test_util/std/fs/walk.ts";
@@ -21,19 +25,6 @@ import { relative } from "../../test_util/std/path/posix.ts";
 import { config, ignoreList } from "../../cli/tests/node_compat/common.ts";
 
 const encoder = new TextEncoder();
-
-/**
- * This script will download and extract the test files specified in the
- * configuration file
- *
- * It will delete any previous tests unless they are specified on the `ignore`
- * section of the configuration file
- *
- * Usage: `deno run --allow-read --allow-net --allow-write setup.ts`
- *
- * You can additionally pass a flag to indicate if cache should be used for generating
- * the tests, or to generate the tests from scratch (-y/-n)
- */
 
 const NODE_VERSION = config.nodeVersion;
 const NODE_NAME = "node-v" + NODE_VERSION;
@@ -76,9 +67,10 @@ Foras.initSyncBundledOnce();
 
 async function getNodeTests(): Promise<string[]> {
   const paths: string[] = [];
-  const root = NODE_LOCAL_TEST_URL;
-  const rootPath = root.href.slice(7);
-  for await (const item of walk(root, { includeDirs: false, exts: [".js"] })) {
+  const rootPath = NODE_LOCAL_TEST_URL.href.slice(7);
+  for await (
+    const item of walk(NODE_LOCAL_TEST_URL, { exts: [".js"] })
+  ) {
     const path = relative(rootPath, item.path);
     if (NODE_IGNORED_TEST_DIRS.every((dir) => !path.startsWith(dir))) {
       paths.push(path);

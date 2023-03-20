@@ -100,8 +100,7 @@
       "test-zlib-zero-byte.js",
       "test-zlib-zero-windowBits.js"
     ],
-    "pummel": [
-    ],
+    "pummel": [],
     "sequential": [
       "test-child-process-exit.js"
     ]
@@ -665,8 +664,7 @@
       "test-tty-stdin-end.js",
       "test-tty-stdout-end.js"
     ],
-    "pummel": [
-    ],
+    "pummel": [],
     "sequential": [
       "test-child-process-exit.js"
     ]
