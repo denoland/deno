@@ -922,7 +922,7 @@ fn compile_subcommand() -> Command {
     module fails to load in the executable. This flag can be passed multiple \
     times, to include multiple additional modules.",
         )
-        .num_args(1..)
+        .action(ArgAction::Append)
         .value_hint(ValueHint::FilePath),
     )
     .arg(
@@ -2445,7 +2445,10 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = script.collect();
   let output = matches.remove_one::<PathBuf>("output");
   let target = matches.remove_one::<String>("target");
-  let include = matches.remove_many::<String>("include").collect();
+  let include = match matches.remove_many::<String>("include") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
