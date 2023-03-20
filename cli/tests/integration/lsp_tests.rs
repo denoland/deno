@@ -723,7 +723,7 @@ fn lsp_hover_asset() {
       "textDocument": {
         "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
       },
-      "position": { "line": 109, "character": 13 }
+      "position": { "line": 111, "character": 13 }
     }),
   );
   assert_eq!(
@@ -737,8 +737,8 @@ fn lsp_hover_asset() {
         "Enables basic storage and retrieval of dates and times."
       ],
       "range": {
-        "start": { "line": 109, "character": 10, },
-        "end": { "line": 109, "character": 14, }
+        "start": { "line": 111, "character": 10, },
+        "end": { "line": 111, "character": 14, }
       }
     })
   );
@@ -3830,6 +3830,19 @@ fn lsp_code_actions_refactor() {
   assert_eq!(
     res,
     json!([{
+      "title": "Move to a new file",
+      "kind": "refactor.move.newFile",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Move to a new file",
+        "actionName": "Move to a new file"
+      }
+    }, {
       "title": "Extract to function in module scope",
       "kind": "refactor.extract.function",
       "isPreferred": false,
@@ -3854,19 +3867,6 @@ fn lsp_code_actions_refactor() {
         },
         "refactorName": "Extract Symbol",
         "actionName": "constant_scope_0"
-      }
-    }, {
-      "title": "Move to a new file",
-      "kind": "refactor.move.newFile",
-      "isPreferred": false,
-      "data": {
-        "specifier": "file:///a/file.ts",
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 }
-        },
-        "refactorName": "Move to a new file",
-        "actionName": "Move to a new file"
       }
     }, {
       "title": "Convert default export to named export",
@@ -4047,19 +4047,6 @@ fn lsp_code_actions_refactor_no_disabled_support() {
   assert_eq!(
     res,
     json!([{
-      "title": "Extract to function in module scope",
-      "kind": "refactor.extract.function",
-      "isPreferred": false,
-      "data": {
-        "specifier": "file:///a/file.ts",
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 14, "character": 0 }
-        },
-        "refactorName": "Extract Symbol",
-        "actionName": "function_scope_0"
-      }
-    }, {
       "title": "Move to a new file",
       "kind": "refactor.move.newFile",
       "isPreferred": false,
@@ -4071,6 +4058,19 @@ fn lsp_code_actions_refactor_no_disabled_support() {
         },
         "refactorName": "Move to a new file",
         "actionName": "Move to a new file"
+      }
+    }, {
+      "title": "Extract to function in module scope",
+      "kind": "refactor.extract.function",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 14, "character": 0 }
+        },
+        "refactorName": "Extract Symbol",
+        "actionName": "function_scope_0"
       }
     }])
   );
@@ -6357,53 +6357,68 @@ fn lsp_workspace_symbol() {
   );
   assert_eq!(
     res,
-    json!([
-      {
-        "name": "fieldA",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file.ts",
-          "range": {
-            "start": { "line": 1, "character": 2 },
-            "end": { "line": 1, "character": 17 }
-          }
+    json!([{
+      "name": "fieldA",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 17 }
+        }
+      },
+      "containerName": "A"
+    }, {
+      "name": "fieldB",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 2, "character": 2 },
+          "end": { "line": 2, "character": 17 }
+        }
+      },
+      "containerName": "A"
+    }, {
+      "name": "fieldC",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file_01.ts",
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 17 }
+        }
+      },
+      "containerName": "B"
+    }, {
+      "name": "fieldD",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file_01.ts",
+        "range": {
+          "start": { "line": 2, "character": 2 },
+          "end": { "line": 2, "character": 17 }
+        }
+      },
+      "containerName": "B"
+    }, {
+      "name": "ClassFieldDecoratorContext",
+      "kind": 11,
+      "location": {
+        "uri": "deno:/asset/lib.decorators.d.ts",
+        "range": {
+          "start": {
+            "line": 331,
+            "character": 0,
+          },
+          "end": {
+            "line": 371,
+            "character": 1,
+          },
         },
-        "containerName": "A"
-      }, {
-        "name": "fieldB",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file.ts",
-          "range": {
-            "start": { "line": 2, "character": 2 },
-            "end": { "line": 2, "character": 17 }
-          }
-        },
-        "containerName": "A"
-      }, {
-        "name": "fieldC",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": { "line": 1, "character": 2 },
-            "end": { "line": 1, "character": 17 }
-          }
-        },
-        "containerName": "B"
-      }, {
-        "name": "fieldD",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": { "line": 2, "character": 2 },
-            "end": { "line": 2, "character": 17 }
-          }
-        },
-        "containerName": "B"
-      }
-    ])
+      },
+      "containerName": "",
+    }])
   );
   client.shutdown();
 }
