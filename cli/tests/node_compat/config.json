@@ -112,7 +112,7 @@
       "dns.js",
       "duplexpair.js",
       "fixtures.js",
-      "hijackstdio",
+      "hijackstdio.js",
       "index.mjs",
       "internet.js"
     ],
