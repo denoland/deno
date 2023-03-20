@@ -790,7 +790,8 @@ fn bench_subcommand() -> Command {
         .num_args(1..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Ignore files"),
+        .help("Ignore files")
+        .value_parser(value_parser!(PathBuf)),
     )
     .arg(
       Arg::new("filter")
