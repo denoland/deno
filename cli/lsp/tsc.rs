@@ -37,7 +37,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -2819,31 +2818,35 @@ fn op_script_version(
 /// server.
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![init_extension(performance)],
+    extensions: vec![deno_tsc::init_ops(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
 }
 
-fn init_extension(performance: Arc<Performance>) -> Extension {
-  Extension::builder("deno_tsc")
-    .ops(vec![
-      op_is_cancelled::decl(),
-      op_is_node_file::decl(),
-      op_load::decl(),
-      op_resolve::decl(),
-      op_respond::decl(),
-      op_script_names::decl(),
-      op_script_version::decl(),
-    ])
-    .state(move |state| {
-      state.put(State::new(
-        Arc::new(StateSnapshot::default()),
-        performance.clone(),
-      ));
-    })
-    .build()
-}
+deno_core::extension!(deno_tsc,
+  ops = [
+    op_is_cancelled,
+    op_is_node_file,
+    op_load,
+    op_resolve,
+    op_respond,
+    op_script_names,
+    op_script_version,
+  ],
+  options = {
+    performance: Arc<Performance>
+  },
+  state = |state, options| {
+    state.put(State::new(
+      Arc::new(StateSnapshot::default()),
+      options.performance,
+    ));
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.

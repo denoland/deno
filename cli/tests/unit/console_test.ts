@@ -2155,3 +2155,16 @@ Deno.test(function inspectorMethods() {
   console.profile("test");
   console.profileEnd("test");
 });
+
+Deno.test(function inspectQuotesOverride() {
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("foo", { quotes: ["'", '"', "`"] }),
+    "'foo'",
+  );
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("'foo'", { quotes: ["'", '"', "`"] }),
+    `"'foo'"`,
+  );
+});

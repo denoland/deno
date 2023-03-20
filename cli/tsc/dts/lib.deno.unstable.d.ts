@@ -362,7 +362,7 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointer {
-    /** Create a pointer from a numeric value. This is one is <i>really</i> dangerous! */
+    /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
     static create(value: number | bigint): PointerValue;
     /** Returns `true` if the two pointers point to the same address. */
     static equals(a: PointerValue, b: PointerValue): boolean;

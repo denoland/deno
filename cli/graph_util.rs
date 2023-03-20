@@ -150,7 +150,7 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 }
 
 pub async fn create_graph_and_maybe_check(
-  root: ModuleSpecifier,
+  roots: Vec<ModuleSpecifier>,
   ps: &ProcState,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
@@ -176,7 +176,7 @@ pub async fn create_graph_and_maybe_check(
   build_graph_with_npm_resolution(
     &mut graph,
     &ps.npm_resolver,
-    vec![root],
+    roots,
     &mut cache,
     deno_graph::BuildOptions {
       is_dynamic: false,

@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 bytes.workspace = true
 derive_more = "0.99.17"
+num-bigint.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 smallvec = { workspace = true, features = ["union"] }

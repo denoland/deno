@@ -6,6 +6,7 @@ use crate::extensions::ExtensionFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::snapshot_util::SnapshottedData;
 use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
@@ -431,7 +432,7 @@ impl ModuleLoader for ExtModuleLoader {
     if let Some(file_source) = maybe_file_source {
       {
         let mut used_esm_sources = self.used_esm_sources.borrow_mut();
-        let used = used_esm_sources.get_mut(&file_source.specifier).unwrap();
+        let used = used_esm_sources.get_mut(file_source.specifier).unwrap();
         *used = true;
       }
 
@@ -1030,7 +1031,7 @@ impl ModuleMap {
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> (v8::Global<v8::Array>, Vec<v8::Global<v8::Module>>) {
+  ) -> SnapshottedData {
     let array = v8::Array::new(scope, 3);
 
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
@@ -1046,13 +1047,23 @@ impl ModuleMap {
       let main = v8::Boolean::new(scope, info.main);
       module_info_arr.set_index(scope, 1, main.into());
 
-      let name = v8::String::new(scope, &info.name).unwrap();
+      let name = v8::String::new_from_one_byte(
+        scope,
+        info.name.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap();
       module_info_arr.set_index(scope, 2, name.into());
 
       let array_len = 2 * info.requests.len() as i32;
       let requests_arr = v8::Array::new(scope, array_len);
       for (i, request) in info.requests.iter().enumerate() {
-        let specifier = v8::String::new(scope, &request.specifier).unwrap();
+        let specifier = v8::String::new_from_one_byte(
+          scope,
+          request.specifier.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
         requests_arr.set_index(scope, 2 * i as u32, specifier.into());
 
         let asserted_module_type =
@@ -1078,7 +1089,12 @@ impl ModuleMap {
         let arr = v8::Array::new(scope, 3);
 
         let (specifier, asserted_module_type) = elem.0;
-        let specifier = v8::String::new(scope, specifier).unwrap();
+        let specifier = v8::String::new_from_one_byte(
+          scope,
+          specifier.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
         arr.set_index(scope, 0, specifier.into());
 
         let asserted_module_type =
@@ -1087,7 +1103,12 @@ impl ModuleMap {
 
         let symbolic_module: v8::Local<v8::Value> = match &elem.1 {
           SymbolicModule::Alias(alias) => {
-            let alias = v8::String::new(scope, alias).unwrap();
+            let alias = v8::String::new_from_one_byte(
+              scope,
+              alias.as_bytes(),
+              v8::NewStringType::Normal,
+            )
+            .unwrap();
             alias.into()
           }
           SymbolicModule::Mod(id) => {
@@ -1105,16 +1126,19 @@ impl ModuleMap {
     let array_global = v8::Global::new(scope, array);
 
     let handles = self.handles.clone();
-    (array_global, handles)
+    SnapshottedData {
+      module_map_data: array_global,
+      module_handles: handles,
+    }
   }
 
-  pub fn update_with_snapshot_data(
+  pub fn update_with_snapshotted_data(
     &mut self,
     scope: &mut v8::HandleScope,
-    data: v8::Global<v8::Array>,
-    module_handles: Vec<v8::Global<v8::Module>>,
+    snapshotted_data: SnapshottedData,
   ) {
-    let local_data: v8::Local<v8::Array> = v8::Local::new(scope, data);
+    let local_data: v8::Local<v8::Array> =
+      v8::Local::new(scope, snapshotted_data.module_map_data);
 
     {
       let next_load_id = local_data.get_index(scope, 0).unwrap();
@@ -1258,7 +1282,7 @@ impl ModuleMap {
       self.by_name = by_name;
     }
 
-    self.handles = module_handles;
+    self.handles = snapshotted_data.module_handles;
   }
 
   pub(crate) fn new(
@@ -1645,7 +1669,6 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::Extension;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use crate::Snapshot;
@@ -1986,12 +2009,10 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder("test_ext")
-      .ops(vec![op_test::decl()])
-      .build();
+    deno_core::extension!(test_ext, ops = [op_test]);
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![ext],
+      extensions: vec![test_ext::init_ops()],
       module_loader: Some(loader),
       ..Default::default()
     });

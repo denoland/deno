@@ -22,6 +22,7 @@ impl op_sync_serialize_object_with_numbers_as_keys {
             is_async: false,
             is_unstable: false,
             is_v8: false,
+            force_registration: false,
         }
     }
     #[inline]
