@@ -5,10 +5,7 @@
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { ObjectDefineProperty } = primordials;
-import {
-  nodeGlobals,
-  nodeGlobalThis,
-} from "ext:deno_node_loading/00_globals.js";
+import { nodeGlobals, nodeGlobalThis } from "ext:deno_node/00_globals.js";
 const requireImpl = internals.requireImpl;
 
 function assert(cond) {

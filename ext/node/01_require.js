@@ -40,7 +40,7 @@ const {
   Error,
   TypeError,
 } = primordials;
-import { nodeGlobalThis } from "ext:deno_node_loading/00_globals.js";
+import { nodeGlobalThis } from "ext:deno_node/00_globals.js";
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
