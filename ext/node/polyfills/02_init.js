@@ -3,18 +3,12 @@
 // deno-lint-ignore-file
 
 const internals = globalThis.__bootstrap.internals;
+const requireImpl = internals.requireImpl;
 const primordials = globalThis.__bootstrap.primordials;
 const { ObjectDefineProperty } = primordials;
 import { nodeGlobals, nodeGlobalThis } from "ext:deno_node/00_globals.js";
 import "ext:deno_node/01_require.js";
 import nodeModules from "ext:deno_node/module_all.ts";
-const requireImpl = internals.requireImpl;
-
-function assert(cond) {
-  if (!cond) {
-    throw Error("assert");
-  }
-}
 
 let initialized = false;
 
@@ -23,7 +17,9 @@ function initialize(
   usesLocalNodeModulesDir,
   argv0,
 ) {
-  assert(!initialized);
+  if (initialized) {
+    throw Error("Node runtime already initialized");
+  }
   initialized = true;
   requireImpl.setupBuiltinModules(nodeModules);
   if (usesLocalNodeModulesDir) {
