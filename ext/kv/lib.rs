@@ -296,7 +296,7 @@ impl TryFrom<V8Enqueue> for Enqueue {
       keys_if_undelivered: value
         .2
         .into_iter()
-        .map(|k| encode_v8_key(k))
+        .map(encode_v8_key)
         .collect::<std::io::Result<_>>()?,
       backoff_schedule: value.3,
     })
