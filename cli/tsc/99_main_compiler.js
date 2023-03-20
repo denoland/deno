@@ -362,9 +362,6 @@ delete Object.prototype.__proto__;
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.
     2688,
-    // TS2691: An import path cannot end with a '.ts' extension. Consider
-    // importing 'bad-module' instead.
-    2691,
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
     2792,
@@ -866,7 +863,10 @@ delete Object.prototype.__proto__;
       case "configure": {
         const { options, errors } = ts
           .convertCompilerOptionsFromJson(request.compilerOptions, "");
-        Object.assign(options, { allowNonTsExtensions: true, allowImportingTsExtensions: true });
+        Object.assign(options, {
+          allowNonTsExtensions: true,
+          allowImportingTsExtensions: true,
+        });
         if (errors.length) {
           debug(ts.formatDiagnostics(errors, host));
         }
