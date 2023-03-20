@@ -1212,8 +1212,11 @@ delete Object.prototype.__proto__;
   const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
 
   ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+
   // list of globals that should be kept in Node's globalThis
   ts.deno.setNodeOnlyGlobalNames([
+    // when bumping the @types/node version we should check if
+    // anything needs to be updated here
     "NodeRequire",
     "RequireResolve",
     "RequireResolve",
