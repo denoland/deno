@@ -95,6 +95,7 @@ impl Serialize for IgnoredCompilerOptions {
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
 pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
+  "allowImportingTsExtensions",
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
   "assumeChangesOnlyAffectDirectDependencies",

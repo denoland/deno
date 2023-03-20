@@ -3674,23 +3674,6 @@ export class DuckConfig {
         }]
       }
     }, {
-      "title": "Add all missing imports",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 50 },
-          "end": { "line": 0, "character": 67 }
-        },
-        "severity": 1,
-        "code": 2304,
-        "source": "deno-ts",
-        "message": "Cannot find name 'DuckConfigOptions'."
-      }],
-      "data": {
-        "specifier": "file:///a/file00.ts",
-        "fixId": "fixMissingImport"
-      }
-    }, {
       "title": "Add import from \"./file01.ts\"",
       "kind": "quickfix",
       "diagnostics": [{
@@ -3717,6 +3700,23 @@ export class DuckConfig {
             "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
           }]
         }]
+      }
+    }, {
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
       }
     }])
   );
@@ -4394,6 +4394,7 @@ fn lsp_completions_auto_import() {
     panic!("completions items missing 'foo' symbol");
   }
 
+  // the request here is one of the items in `list`
   let res = client.write_request(
     "completionItem/resolve",
     json!({
@@ -4411,10 +4412,11 @@ fn lsp_completions_auto_import() {
           "specifier": "file:///a/file.ts",
           "position": 12,
           "name": "foo",
-          "source": "./b",
+          "source": "./b.ts",
           "data": {
             "exportName": "foo",
-            "moduleSpecifier": "./b",
+            "exportMapKey": "foo|6843|file:///a/b",
+            "moduleSpecifier": "./b.ts",
             "fileName": "file:///a/b.ts"
           },
           "useCodeSnippet": false

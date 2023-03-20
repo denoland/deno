@@ -866,7 +866,7 @@ delete Object.prototype.__proto__;
       case "configure": {
         const { options, errors } = ts
           .convertCompilerOptionsFromJson(request.compilerOptions, "");
-        Object.assign(options, { allowNonTsExtensions: true });
+        Object.assign(options, { allowNonTsExtensions: true, allowImportingTsExtensions: true });
         if (errors.length) {
           debug(ts.formatDiagnostics(errors, host));
         }
