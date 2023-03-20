@@ -945,3 +945,19 @@ internals.requireImpl = {
   setupBuiltinModules,
   nativeModuleExports,
 };
+
+export { builtinModules, createRequire, Module };
+export const _cache = Module._cache;
+export const _extensions = Module._extensions;
+export const _findPath = Module._findPath;
+export const _initPaths = Module._initPaths;
+export const _load = Module._load;
+export const _nodeModulePaths = Module._nodeModulePaths;
+export const _pathCache = Module._pathCache;
+export const _preloadModules = Module._preloadModules;
+export const _resolveFilename = Module._resolveFilename;
+export const _resolveLookupPaths = Module._resolveLookupPaths;
+export const globalPaths = Module.globalPaths;
+export const wrap = Module.wrap;
+
+export default Module;

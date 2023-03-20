@@ -380,10 +380,7 @@ deno_core::extension!(deno_node,
   },
 );
 
-deno_core::extension!(
-  deno_node_loading,
-  esm = ["02_init.js", "module_es_shim.js"],
-);
+deno_core::extension!(deno_node_loading, esm = ["02_init.js"],);
 
 pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
