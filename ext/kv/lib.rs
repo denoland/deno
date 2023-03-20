@@ -14,6 +14,7 @@ use codec::encode_key;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_core::ByteString;
 use deno_core::OpState;
@@ -95,43 +96,35 @@ where
   Ok(rid)
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(untagged)]
-enum V8KeyPart {
-  Bool(bool),
-  Number(f64),
-  BigInt(BigInt),
-  String(String),
-  U8(ZeroCopyBuf),
-}
+type KvKey = Vec<AnyValue>;
 
-impl From<V8KeyPart> for KeyPart {
-  fn from(value: V8KeyPart) -> Self {
+impl From<AnyValue> for KeyPart {
+  fn from(value: AnyValue) -> Self {
     match value {
-      V8KeyPart::Bool(false) => KeyPart::True,
-      V8KeyPart::Bool(true) => KeyPart::False,
-      V8KeyPart::Number(n) => KeyPart::Float(n),
-      V8KeyPart::BigInt(n) => KeyPart::Int(n.into()),
-      V8KeyPart::String(s) => KeyPart::String(s),
-      V8KeyPart::U8(buf) => KeyPart::Bytes(buf.to_vec()),
+      AnyValue::Bool(false) => KeyPart::True,
+      AnyValue::Bool(true) => KeyPart::False,
+      AnyValue::Number(n) => KeyPart::Float(n),
+      AnyValue::BigInt(n) => KeyPart::Int(n),
+      AnyValue::String(s) => KeyPart::String(s),
+      AnyValue::Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
     }
   }
 }
 
-impl From<KeyPart> for V8KeyPart {
+impl From<KeyPart> for AnyValue {
   fn from(value: KeyPart) -> Self {
     match value {
-      KeyPart::True => V8KeyPart::Bool(false),
-      KeyPart::False => V8KeyPart::Bool(true),
-      KeyPart::Float(n) => V8KeyPart::Number(n),
-      KeyPart::Int(n) => V8KeyPart::BigInt(n.into()),
-      KeyPart::String(s) => V8KeyPart::String(s),
-      KeyPart::Bytes(buf) => V8KeyPart::U8(buf.into()),
+      KeyPart::True => AnyValue::Bool(false),
+      KeyPart::False => AnyValue::Bool(true),
+      KeyPart::Float(n) => AnyValue::Number(n),
+      KeyPart::Int(n) => AnyValue::BigInt(n),
+      KeyPart::String(s) => AnyValue::String(s),
+      KeyPart::Bytes(buf) => AnyValue::Buffer(buf.into()),
     }
   }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 enum V8Value {
   V8(ZeroCopyBuf),
@@ -162,7 +155,7 @@ impl From<Value> for V8Value {
 
 #[derive(Deserialize, Serialize)]
 struct V8KvEntry {
-  key: Vec<V8KeyPart>,
+  key: KvKey,
   value: V8Value,
   versionstamp: ByteString,
 }
@@ -252,7 +245,7 @@ where
   Ok(ranges)
 }
 
-type V8KvCheck = (Vec<V8KeyPart>, Option<ByteString>);
+type V8KvCheck = (KvKey, Option<ByteString>);
 
 impl TryFrom<V8KvCheck> for KvCheck {
   type Error = AnyError;
@@ -269,7 +262,7 @@ impl TryFrom<V8KvCheck> for KvCheck {
   }
 }
 
-type V8KvMutation = (Vec<V8KeyPart>, String, Option<V8Value>);
+type V8KvMutation = (KvKey, String, Option<V8Value>);
 
 impl TryFrom<V8KvMutation> for KvMutation {
   type Error = AnyError;
@@ -288,7 +281,7 @@ impl TryFrom<V8KvMutation> for KvMutation {
   }
 }
 
-type V8Enqueue = (ZeroCopyBuf, u64, Vec<Vec<V8KeyPart>>, Option<Vec<u32>>);
+type V8Enqueue = (ZeroCopyBuf, u64, Vec<KvKey>, Option<Vec<u32>>);
 
 impl TryFrom<V8Enqueue> for Enqueue {
   type Error = AnyError;
@@ -352,7 +345,7 @@ where
 }
 
 #[op]
-fn op_kv_encode_key(key: Vec<V8KeyPart>) -> Result<ZeroCopyBuf, AnyError> {
+fn op_kv_encode_key(key: KvKey) -> Result<ZeroCopyBuf, AnyError> {
   let key = encode_key(&Key(key.into_iter().map(From::from).collect()))?;
   Ok(ZeroCopyBuf::from(key))
 }

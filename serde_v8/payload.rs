@@ -9,6 +9,7 @@ pub enum ValueType {
   Null,
   Bool,
   Number,
+  BigInt,
   String,
   Array,
   ArrayBuffer,
@@ -26,6 +27,8 @@ impl ValueType {
       return Self::String;
     } else if v.is_array() {
       return Self::Array;
+    } else if v.is_big_int() {
+      return Self::BigInt;
     } else if v.is_array_buffer() {
       return Self::ArrayBuffer;
     } else if v.is_array_buffer_view() {

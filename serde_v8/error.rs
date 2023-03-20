@@ -28,6 +28,7 @@ pub enum Error {
   ExpectedUtf8,
   ExpectedLatin1,
 
+  UnsupportedType,
   LengthMismatch,
 }
 

@@ -85,6 +85,57 @@ dbTest("set and get recursive object", async (db) => {
   assert(resultValue.a === resultValue);
 });
 
+const keys = [
+  ["a"],
+  ["a", "b"],
+  ["a", "b", "c"],
+  [1],
+  ["a", 1],
+  ["a", 1, "b"],
+  [1n],
+  ["a", 1n],
+  ["a", 1n, "b"],
+  [true],
+  ["a", true],
+  ["a", true, "b"],
+  [new Uint8Array([1, 2, 3])],
+  ["a", new Uint8Array([1, 2, 3])],
+  ["a", new Uint8Array([1, 2, 3]), "b"],
+  [1, 1n, true, new Uint8Array([1, 2, 3]), "a"],
+];
+
+for (const key of keys) {
+  dbTest(`set and get ${Deno.inspect(key)} key`, async (db) => {
+    await db.set(key, "b");
+    const result = await db.get(key);
+    assertEquals(result.key, key);
+    assertEquals(result.value, "b");
+  });
+}
+
+const INVALID_KEYS = [
+  [null],
+  [undefined],
+  [],
+  [{}],
+  [new Date()],
+  [new ArrayBuffer(3)],
+  [new Uint8Array([1, 2, 3]).buffer],
+  [["a", "b"]],
+];
+
+for (const key of INVALID_KEYS) {
+  dbTest(`set and get invalid key ${Deno.inspect(key)}`, async (db) => {
+    await assertRejects(
+      async () => {
+        // @ts-ignore - we are testing invalid keys
+        await db.set(key, "b");
+      },
+      Error,
+    );
+  });
+}
+
 dbTest("compare and mutate", async (db) => {
   await db.set(["t"], "1");
 
