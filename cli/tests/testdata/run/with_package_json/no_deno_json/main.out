@@ -5,7 +5,7 @@ ok
   constructor: [Function (anonymous)],
   Instance: [Class: ChalkClass],
   supportsColor: false,
-  stderr: [Chalk] {
+  stderr: [Chalk (anonymous)] {
     constructor: [Function (anonymous)],
     Instance: [Class: ChalkClass],
     supportsColor: false
