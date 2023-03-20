@@ -8,7 +8,6 @@ const primordials = globalThis.__bootstrap.primordials;
 const { ObjectDefineProperty } = primordials;
 import { nodeGlobals, nodeGlobalThis } from "ext:deno_node/00_globals.js";
 import "ext:deno_node/01_require.js";
-import nodeModules from "ext:deno_node/module_all.ts";
 
 let initialized = false;
 
@@ -21,7 +20,6 @@ function initialize(
     throw Error("Node runtime already initialized");
   }
   initialized = true;
-  requireImpl.setupBuiltinModules(nodeModules);
   if (usesLocalNodeModulesDir) {
     requireImpl.setUsesLocalNodeModulesDir();
   }
