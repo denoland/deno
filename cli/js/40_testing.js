@@ -428,7 +428,7 @@ function assertTestStepScopes(fn) {
             continue;
           }
           const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
-          if (!siblingState.finalized) {
+          if (!siblingState.completed) {
             ArrayPrototypePush(results, siblingDesc);
           }
         }
@@ -457,13 +457,9 @@ function assertTestStepScopes(fn) {
         failed: { hasSanitizersAndOverlaps: runningStepDescs.map(getFullName) },
       };
     }
-    // only report waiting after pre-validation
-    if ("parent" in desc) {
-      ops.op_dispatch_test_event({ stepWait: desc.id });
-    }
     await fn(MapPrototypeGet(testStates, desc.id).context);
     for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-      if (!MapPrototypeGet(testStates, childDesc.id).finalized) {
+      if (!MapPrototypeGet(testStates, childDesc.id).completed) {
         return { failed: "incompleteSteps" };
       }
     }
@@ -527,15 +523,14 @@ function withPermissions(fn, permissions) {
  * @typedef {{
  *   context: TestContext,
  *   children: TestStepDescription[],
- *   finalized: boolean,
+ *   completed: boolean,
  * }} TestState
  *
  * @typedef {{
  *   context: TestContext,
  *   children: TestStepDescription[],
- *   finalized: boolean,
- *   result: "ok" | { failed: object } | ignored" | null,
- *   elapsed: number | null,
+ *   completed: boolean,
+ *   failed: boolean,
  * }} TestStepState
  *
  * @typedef {{
@@ -652,13 +647,6 @@ function test(
 
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
-  testDesc.fn = wrapTestFnWithSanitizers(testDesc.fn, testDesc);
-  if (testDesc.permissions) {
-    testDesc.fn = withPermissions(
-      testDesc.fn,
-      testDesc.permissions,
-    );
-  }
   testDesc.origin = getTestOrigin();
   const jsError = core.destructureError(new Error());
   testDesc.location = {
@@ -675,7 +663,7 @@ function test(
   MapPrototypeSet(testStates, testDesc.id, {
     context: createTestContext(testDesc),
     children: [],
-    finalized: false,
+    completed: false,
   });
 }
 
@@ -783,21 +771,20 @@ async function runTest(desc) {
   if (desc.ignore) {
     return "ignored";
   }
-
+  let testFn = wrapTestFnWithSanitizers(desc.fn, desc);
+  if (!("parent" in desc) && desc.permissions) {
+    testFn = withPermissions(
+      testFn,
+      desc.permissions,
+    );
+  }
   try {
-    const result = await desc.fn(desc);
+    const result = await testFn(desc);
     if (result) return result;
     const failedSteps = failedChildStepsCount(desc);
     return failedSteps === 0 ? "ok" : { failed: { failedSteps } };
   } catch (error) {
     return { failed: { jsError: core.destructureError(error) } };
-  } finally {
-    const state = MapPrototypeGet(testStates, desc.id);
-    state.finalized = true;
-    // ensure the children report their result
-    for (const childDesc of state.children) {
-      stepReportResult(childDesc);
-    }
   }
 }
 
@@ -1038,6 +1025,11 @@ async function runTests({
     const earlier = DateNow();
     const result = await runTest(desc);
     const elapsed = DateNow() - earlier;
+    const state = MapPrototypeGet(testStates, desc.id);
+    state.completed = true;
+    for (const childDesc of state.children) {
+      stepReportResult(childDesc, { failed: "incomplete" }, 0);
+    }
     ops.op_dispatch_test_event({
       result: [desc.id, result, elapsed],
     });
@@ -1106,21 +1098,20 @@ function usesSanitizer(desc) {
   return desc.sanitizeResources || desc.sanitizeOps || desc.sanitizeExit;
 }
 
-function stepReportResult(desc) {
+function stepReportResult(desc, result, elapsed) {
   const state = MapPrototypeGet(testStates, desc.id);
   for (const childDesc of state.children) {
-    stepReportResult(childDesc);
+    stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
-  const result = state.result ?? { failed: "incomplete" };
   ops.op_dispatch_test_event({
-    stepResult: [desc.id, result, state.elapsed],
+    stepResult: [desc.id, result, elapsed],
   });
 }
 
 function failedChildStepsCount(desc) {
   return ArrayPrototypeFilter(
     MapPrototypeGet(testStates, desc.id).children,
-    (d) => MapPrototypeGet(testStates, d.id).result?.failed,
+    (d) => MapPrototypeGet(testStates, d.id).failed,
   ).length;
 }
 
@@ -1160,7 +1151,7 @@ function createTestContext(desc) {
      * @param maybeFn {((t: TestContext) => void | Promise<void>) | undefined}
      */
     async step(nameOrFnOrOptions, maybeFn) {
-      if (MapPrototypeGet(testStates, desc.id).finalized) {
+      if (MapPrototypeGet(testStates, desc.id).completed) {
         throw new Error(
           "Cannot run test step after parent scope has finished execution. " +
             "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
@@ -1216,9 +1207,8 @@ function createTestContext(desc) {
       const state = {
         context: createTestContext(stepDesc),
         children: [],
-        finalized: false,
-        result: null,
-        elapsed: null,
+        failed: false,
+        completed: false,
       };
       MapPrototypeSet(testStates, stepDesc.id, state);
       ArrayPrototypePush(
@@ -1226,41 +1216,14 @@ function createTestContext(desc) {
         stepDesc,
       );
 
-      if (stepDesc.ignore) {
-        state.result = "ignored";
-        state.finalized = true;
-        stepReportResult(stepDesc);
-        return false;
-      }
-
-      const testFn = wrapTestFnWithSanitizers(stepDesc.fn, stepDesc);
-      const start = DateNow();
-
-      try {
-        const result = await testFn(stepDesc);
-        const failedSteps = failedChildStepsCount(stepDesc);
-        if (result) {
-          state.result = result;
-        } else if (failedSteps > 0) {
-          state.result = { failed: { failedSteps } };
-        } else {
-          state.result = "ok";
-        }
-      } catch (error) {
-        state.result = { failed: { jsError: core.destructureError(error) } };
-      }
-
-      state.elapsed = DateNow() - start;
-      state.finalized = true;
-
-      // Report children that are erroneously still pending.
-      for (const childDesc of state.children) {
-        stepReportResult(childDesc);
-      }
-
-      stepReportResult(stepDesc);
-
-      return state.result === "ok";
+      ops.op_dispatch_test_event({ stepWait: stepDesc.id });
+      const earlier = DateNow();
+      const result = await runTest(stepDesc);
+      const elapsed = DateNow() - earlier;
+      state.failed = !!result.failed;
+      state.completed = true;
+      stepReportResult(stepDesc, result, elapsed);
+      return result == "ok";
     },
   };
 }

@@ -1342,8 +1342,6 @@ async fn test_specifiers(
           TestEvent::StepResult(id, result, duration) => {
             if tests_with_result.insert(id) {
               let description = test_steps.get(&id).unwrap();
-              // Steps which fail pre-validation don't get a wait event.
-              tests_started.insert(id);
               match &result {
                 TestStepResult::Ok => {
                   summary.passed_steps += 1;
