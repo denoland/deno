@@ -16,7 +16,7 @@ impl op_now {
         use deno_core::v8::MapFnTo;
         Self::v8_func::<TP>.map_fn_to()
     }
-    pub fn decl<'scope, TP>() -> deno_core::OpDecl
+    pub const fn decl<'scope, TP>() -> deno_core::OpDecl
     where
         TP: TimersPermission + 'static,
     {
@@ -24,11 +24,17 @@ impl op_now {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr::<TP>(),
             enabled: true,
-            fast_fn: Some(
-                Box::new(op_now_fast::<TP> {
-                    _phantom: ::std::marker::PhantomData,
-                }),
-            ),
+            fast_fn: {
+                use deno_core::v8::fast_api::Type::*;
+                use deno_core::v8::fast_api::CType;
+                Some(
+                    deno_core::v8::fast_api::FastFunction::new(
+                        &[V8Value, TypedArray(CType::Uint8), CallbackOptions],
+                        CType::Void,
+                        op_now_fast_fn::<TP> as *const ::std::ffi::c_void,
+                    ),
+                )
+            },
             is_async: false,
             is_unstable: false,
             is_v8: false,
@@ -102,28 +108,6 @@ impl op_now {
         >(&mut std::cell::RefCell::borrow_mut(&ctx.state), arg_0);
         let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
         op_state.tracker.track_sync(ctx.id);
-    }
-}
-struct op_now_fast<TP> {
-    _phantom: ::std::marker::PhantomData<TP>,
-}
-impl<'scope, TP> deno_core::v8::fast_api::FastFunction for op_now_fast<TP>
-where
-    TP: TimersPermission + 'static,
-{
-    #[inline(always)]
-    fn function(&self) -> *const ::std::ffi::c_void {
-        op_now_fast_fn::<TP> as *const ::std::ffi::c_void
-    }
-    #[inline(always)]
-    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
-        use deno_core::v8::fast_api::Type::*;
-        use deno_core::v8::fast_api::CType;
-        &[V8Value, TypedArray(CType::Uint8), CallbackOptions]
-    }
-    #[inline(always)]
-    fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Void
     }
 }
 fn op_now_fast_fn<'scope, TP>(

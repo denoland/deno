@@ -13,16 +13,22 @@ impl op_cow_str {
         use deno_core::v8::MapFnTo;
         Self::v8_func.map_fn_to()
     }
-    pub fn decl<'scope>() -> deno_core::OpDecl {
+    pub const fn decl<'scope>() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr(),
             enabled: true,
-            fast_fn: Some(
-                Box::new(op_cow_str_fast {
-                    _phantom: ::std::marker::PhantomData,
-                }),
-            ),
+            fast_fn: {
+                use deno_core::v8::fast_api::Type::*;
+                use deno_core::v8::fast_api::CType;
+                Some(
+                    deno_core::v8::fast_api::FastFunction::new(
+                        &[V8Value, SeqOneByteString],
+                        CType::Void,
+                        op_cow_str_fast_fn as *const ::std::ffi::c_void,
+                    ),
+                )
+            },
             is_async: false,
             is_unstable: false,
             is_v8: false,
@@ -56,25 +62,6 @@ impl op_cow_str {
         let result = Self::call(arg_0);
         let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
         op_state.tracker.track_sync(ctx.id);
-    }
-}
-struct op_cow_str_fast {
-    _phantom: ::std::marker::PhantomData<()>,
-}
-impl<'scope> deno_core::v8::fast_api::FastFunction for op_cow_str_fast {
-    #[inline(always)]
-    fn function(&self) -> *const ::std::ffi::c_void {
-        op_cow_str_fast_fn as *const ::std::ffi::c_void
-    }
-    #[inline(always)]
-    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
-        use deno_core::v8::fast_api::Type::*;
-        use deno_core::v8::fast_api::CType;
-        &[V8Value, SeqOneByteString]
-    }
-    #[inline(always)]
-    fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Void
     }
 }
 fn op_cow_str_fast_fn<'scope>(

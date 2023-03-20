@@ -13,7 +13,7 @@ impl op_try_close {
         use deno_core::v8::MapFnTo;
         Self::v8_func.map_fn_to()
     }
-    pub fn decl<'scope>() -> deno_core::OpDecl {
+    pub const fn decl<'scope>() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr(),
