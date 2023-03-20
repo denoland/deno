@@ -554,7 +554,6 @@
       "test-readline-interface-escapecodetimeout.js",
       "TODO:test-readline-interface.js",
       "test-readline-keys.js",
-      "test-readline-position.js",
       "TODO:test-readline-promises-csi.mjs",
       "TODO:test-readline-promises-interface.js",
       "test-readline-reopen.js",
