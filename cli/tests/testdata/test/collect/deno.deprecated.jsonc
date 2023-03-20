@@ -1,0 +1,7 @@
+{
+  "test": {
+    "files": {
+      "exclude": ["./ignore"]
+    }
+  }
+}
