@@ -1334,6 +1334,13 @@ function inspectObject(value, inspectOptions, proxyDetails) {
   ) {
     return String(value[customInspect](inspect, inspectOptions));
   }
+  if (
+    ReflectHas(value, nodeCustomInspect) &&
+    typeof value[nodeCustomInspect] === "function"
+  ) {
+    // TODO(kt3k): The last inspect needs to be util.inspect of Node.js.
+    return String(value[nodeCustomInspect](depth, inspectOptions, inspect))
+  }
   // This non-unique symbol is used to support op_crates, ie.
   // in extensions/web we don't want to depend on public
   // Symbol.for("Deno.customInspect") symbol defined in the public API.
@@ -2310,6 +2317,7 @@ class Console {
 }
 
 const customInspect = SymbolFor("Deno.customInspect");
+const nodeCustomInspect = SymbolFor("nodejs.util.inspect.custom");
 
 function inspect(
   value,

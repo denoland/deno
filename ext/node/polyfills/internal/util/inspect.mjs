@@ -43,7 +43,14 @@ const inspectDefaultOptions = {
  * in the best way possible given the different types.
  */
 /* Legacy: value, showHidden, depth, colors */
-export function inspect(value, opts) {
+export function inspect(value, opts = {}) {
+  if (typeof opts === "boolean") {
+    opts = {
+      showHidden: opts,
+      depth: arguments[2],
+      colors: arguments[3],
+    }
+  }
   return denoInspect(value, Object.assign({}, opts, { quotes: ["'", '"', "`"], depth: 3 }));
 }
 const customInspectSymbol = Symbol.for("nodejs.util.inspect.custom");
