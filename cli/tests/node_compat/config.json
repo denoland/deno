@@ -44,6 +44,7 @@
       "test-child-process-stdout-flush.js",
       "test-console-group.js",
       "test-console-instance.js",
+      "test-console-table.js",
       "test-crypto-hmac.js",
       "test-dgram-custom-lookup.js",
       "test-dgram-ipv6only.js",
