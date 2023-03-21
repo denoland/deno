@@ -42,6 +42,7 @@ struct ZlibInner {
   write_in_progress: bool,
   pending_close: bool,
   gzib_id_bytes_read: u32,
+  strm: z_stream,
 }
 
 struct Zlib {
@@ -68,6 +69,22 @@ pub fn op_zlib_new(state: &mut OpState, mode: u32) -> Result<u32, AnyError> {
   if mode < DEFLATE || mode > UNZIP {
     return Err(type_error("Bad argument"));
   }
+  let mut strm: libz_sys::z_stream = libz_sys::z_stream {
+    next_in: std::ptr::null_mut(),
+    avail_in: 0,
+    total_in: 0,
+    next_out: std::ptr::null_mut(),
+    avail_out: 0,
+    total_out: 0,
+    msg: std::ptr::null_mut(),
+    state: std::ptr::null_mut(),
+    zalloc: flate2_libz_helpers::zalloc,
+    zfree: flate2_libz_helpers::zfree,
+    opaque: 0 as libz_sys::voidpf,
+    data_type: 0,
+    adler: 0,
+    reserved: 0,
+  };
   let inner = ZlibInner {
     err: 0,
     flush: 0,
@@ -80,6 +97,7 @@ pub fn op_zlib_new(state: &mut OpState, mode: u32) -> Result<u32, AnyError> {
     write_in_progress: false,
     pending_close: false,
     gzib_id_bytes_read: 0,
+    strm,
   };
 
   Ok(state.resource_table.add(Zlib { inner }))
@@ -123,11 +141,10 @@ pub fn op_zlib_write(
   handle: u32,
   flush: i32,
   input: &[u8],
-  in_off: usize,
-  in_len: usize,
+  in_off: u32,
   out: &mut [u8],
-  out_off: usize,
-  out_len: usize,
+  out_off: u32,
+  result: &mut [u32],
 ) -> Result<(), AnyError> {
   let resource = state
     .resource_table
@@ -142,11 +159,119 @@ pub fn op_zlib_write(
 
   zlib.write_in_progress = true;
 
-  if flush != Z_NO_FLUSH && flush != Z_PARTIAL_FLUSH && flush != Z_SYNC_FLUSH
-    && flush != Z_FULL_FLUSH && flush != Z_FINISH && flush != Z_BLOCK
-  {
+  //   if flush != Z_NO_FLUSH && flush != Z_PARTIAL_FLUSH && flush != Z_SYNC_FLUSH
+  //     && flush != Z_FULL_FLUSH && flush != Z_FINISH && flush != Z_BLOCK
+  //   {
+  //     return Err(type_error("Bad argument"));
+  //   }
+
+  // Make sure buffer is large enough to hold the output.
+  if out_len < zlib.strm.avail_out {
     return Err(type_error("Bad argument"));
   }
 
-  
+  zlib.strm.avail_in = input.len() as u32;
+  zlib.strm.next_in = input.as_ptr() as *mut u8;
+  zlib.strm.avail_out = out.len() as u32;
+  zlib.strm.next_out = out.as_mut_ptr();
+
+  zlib.flush = flush;
+
+  match self.mode {
+    DEFLATE | GZIP | DEFLATERAW => {
+      // zlib_deflate.deflate(&mut self.strm, flush);
+    }
+    _ => unimplemented!(),
+  }
+
+  zlib.write_in_progress = false;
+
+  result[0] = zlib.strm.total_out;
+  result[1] = zlib.strm.total_in;
+
+  Ok(())
+}
+
+#[op]
+pub fn op_zlib_init(
+  state: &mut OpState,
+  handle: u32,
+  level: i32,
+  window_bits: u32,
+  mem_level: u32,
+  strategy: u32,
+  dictionary: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  let resource = state
+    .resource_table
+    .get::<Zlib>(handle)
+    .ok_or_else(|| type_error("Bad resource id"))?;
+
+  check(window_bits >= 8 && window_bits <= 15, "invalid windowBits")?;
+  check(level >= -1 && level <= 9, "invalid level")?;
+
+  // check(
+  //   strategy == Z_DEFAULT_STRATEGY
+  //     || strategy == Z_FILTERED
+  //     || strategy == Z_HUFFMAN_ONLY
+  //     || strategy == Z_RLE
+  //     || strategy == Z_FIXED,
+  //   "invalid strategy",
+  // )?;
+
+  let mut zlib = zlib.inner.borrow_mut();
+  zlib.level = level;
+  zlib.window_bits = window_bits;
+  zlib.mem_level = mem_level;
+  zlib.strategy = strategy;
+
+  // zlib.flush = Z_NO_FLUSH;
+  // zlib.err = Z_OK;
+
+  match zlib.mode {
+    GZIP | GUNZIP => zlib.window_bits += 16,
+    UNZIP => zlib.window_bits += 32,
+    DEFLATERAW | INFLATERAW => zlib.window_bits = -zlib.window_bits,
+    _ => {}
+  }
+
+  match zlib.mode {
+    DEFLATE | GZIP | DEFLATERAW => {
+      // zlib_deflate.deflateInit2(
+      //   &mut self.strm,
+      //   level,
+      //   Z_DEFLATED,
+      //   window_bits,
+      //   mem_level,
+      //   strategy,
+      // );
+    }
+    _ => unimplemented!(),
+  }
+
+  // zlib.dictionary = dictionary.map(|buf| buf.to_vec());
+  zlib.write_in_progress = false;
+  zlib.init_done = true;
+
+  Ok(())
+}
+
+#[op]
+pub fn op_zlib_reset(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
+  let resource = state
+    .resource_table
+    .get::<Zlib>(handle)
+    .ok_or_else(|| type_error("Bad resource id"))?;
+
+  let mut zlib = zlib.inner.borrow_mut();
+
+  // zlib.err = Z_OK;
+  match zlib.mode {
+    DEFLATE | GZIP | DEFLATERAW => {
+      // zlib_deflate.deflateReset(&mut self.strm);
+    }
+    _ => unimplemented!(),
+  }
+
+  Ok(())
 }
