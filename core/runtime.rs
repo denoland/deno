@@ -914,12 +914,12 @@ impl JsRuntime {
   /// The same `name` value can be used for multiple executions.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  #[inline(always)]
   pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
     name: &'static str,
     source_code: S,
   ) -> Result<v8::Global<v8::Value>, Error> {
+    // Manual monomorphization (TODO: replace w/momo)
     self.execute_module_code(name, source_code.into())
   }
 
@@ -2521,13 +2521,13 @@ impl JsRealm {
   /// The same `name` value can be used for multiple executions.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  #[inline(always)]
   pub fn execute_script<S: Into<ModuleCode>>(
     &self,
     isolate: &mut v8::Isolate,
     name: &'static str,
     source_code: S,
   ) -> Result<v8::Global<v8::Value>, Error> {
+    // Manual monomorphization (TODO: replace w/momo)
     self.execute_module_code(isolate, name, source_code.into())
   }
 

@@ -1530,6 +1530,7 @@ impl ModuleMap {
     name: N,
     source: &ModuleCode,
   ) -> Result<ModuleId, ModuleError> {
+    // Manual monomorphization (TODO: replace w/momo)
     self.new_json_module_inner(scope, name.into(), source)
   }
 
@@ -1582,7 +1583,8 @@ impl ModuleMap {
     Ok(id)
   }
 
-  // Create and compile an ES module.
+  /// Create and compile an ES module. Generic interface that can receive either a `&'static str` or a string with a lifetime. Prefer
+  /// to pass `&'static str` as this allows us to use v8 external strings.
   pub(crate) fn new_es_module<'a, N: Into<ModuleName<'a>>>(
     &mut self,
     scope: &mut v8::HandleScope,
@@ -1591,6 +1593,7 @@ impl ModuleMap {
     source: &ModuleCode,
     is_dynamic_import: bool,
   ) -> Result<ModuleId, ModuleError> {
+    // Manual monomorphization (TODO: replace w/momo)
     self.new_es_module_inner(
       scope,
       main,
@@ -1600,7 +1603,6 @@ impl ModuleMap {
     )
   }
 
-  // Create and compile an ES module.
   fn new_es_module_inner(
     &mut self,
     scope: &mut v8::HandleScope,
