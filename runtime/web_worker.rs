@@ -576,7 +576,7 @@ impl WebWorker {
     "#;
     let poll_for_messages_fn = self
       .js_runtime
-      .execute_script(&located_script_name!(), script)
+      .execute_script(located_script_name!(), script)
       .expect("Failed to execute worker bootstrap script");
     self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
@@ -774,7 +774,7 @@ pub fn run_web_worker(
 
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code.take() {
-      let r = worker.execute_script(&located_script_name!(), source_code);
+      let r = worker.execute_script(located_script_name!(), source_code);
       worker.start_polling_for_messages();
       r
     } else {

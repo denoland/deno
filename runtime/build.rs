@@ -37,7 +37,7 @@ mod startup_snapshot {
     let code = file_source.code.load()?;
 
     if !should_transpile {
-      return Ok(code.into());
+      return Ok(code);
     }
 
     let parsed = deno_ast::parse_module(ParseParams {

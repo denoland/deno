@@ -136,7 +136,7 @@ impl CliModuleLoader {
         self.ps.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeSource {
-          code: code.into(),
+          code,
           found_url: specifier.clone(),
           media_type: *media_type,
         })
