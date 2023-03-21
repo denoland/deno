@@ -57,7 +57,7 @@ pub fn op_zlib_new(state: &mut OpState, mode: i32) -> Result<u32, AnyError> {
   if mode < DEFLATE || mode > UNZIP {
     return Err(type_error("Bad argument"));
   }
-  let mut strm: libz_sys::z_stream = libz_sys::z_stream {
+  let strm: libz_sys::z_stream = libz_sys::z_stream {
     next_in: std::ptr::null_mut(),
     avail_in: 0,
     total_in: 0,

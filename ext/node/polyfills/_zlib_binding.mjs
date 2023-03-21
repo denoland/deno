@@ -48,6 +48,10 @@ export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
 
+const { ops } = globalThis.__bootstrap.core;
+
+const writeResult = new Uint32Array(2);
+
 class Zlib {
   #handle;
 
@@ -68,14 +72,17 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    return ops.op_zlib_write(
+    ops.op_zlib_write(
       this.#handle,
       flush,
       input,
       in_off,
       out,
       out_off,
+      writeResult,
     );
+
+    return [writeResult[0], writeResult[1]];
   }
 
 
@@ -98,8 +105,8 @@ class Zlib {
   ) {
     ops.op_zlib_init(
       this.#handle,
-      windowBits,
       level,
+      windowBits,
       memLevel,
       strategy,
       dictionary,
