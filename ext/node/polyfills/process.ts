@@ -686,7 +686,7 @@ internals.__bootstrapNodeProcess = function (
   // Overwrites the 2st item with getter.
   Object.defineProperty(argv, "1", {
     get: () => {
-      if (Deno.mainModule.startsWith("file:")) {
+      if (Deno.mainModule?.startsWith("file:")) {
         return fromFileUrl(Deno.mainModule);
       } else {
         return join(Deno.cwd(), "$deno$node.js");
