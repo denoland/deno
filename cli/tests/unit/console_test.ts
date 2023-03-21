@@ -2174,3 +2174,21 @@ Deno.test(function inspectQuotesOverride() {
     `"'foo'"`,
   );
 });
+
+Deno.test(function inspectAnonymousFunctions() {
+  assertEquals(Deno.inspect(() => {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(function () {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(async () => {}), "[AsyncFunction (anonymous)]");
+  assertEquals(
+    Deno.inspect(async function () {}),
+    "[AsyncFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(function* () {}),
+    "[GeneratorFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(async function* () {}),
+    "[AsyncGeneratorFunction (anonymous)]",
+  );
+});

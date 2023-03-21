@@ -93,7 +93,7 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   },
   NodeModulePolyfill {
     name: "module",
-    specifier: "ext:deno_node_loading/module_es_shim.js",
+    specifier: "ext:deno_node/01_require.js",
   },
   NodeModulePolyfill {
     name: "net",

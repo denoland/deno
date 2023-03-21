@@ -2017,7 +2017,6 @@ declare namespace Deno {
      * for await (const chunk of file.readable) {
      *   console.log(decoder.decode(chunk));
      * }
-     * file.close();
      * ```
      */
     readonly readable: ReadableStream<Uint8Array>;
