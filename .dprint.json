@@ -43,6 +43,8 @@
     "test_util/std",
     "test_util/wpt",
     "third_party",
+    "tools/node_compat/TODO.md",
+    "tools/node_compat/versions",
     "tools/wpt/expectation.json",
     "tools/wpt/manifest.json"
   ],

@@ -106,7 +106,7 @@ uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
