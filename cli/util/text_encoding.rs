@@ -159,7 +159,10 @@ mod tests {
     );
 
     fn run_test(input: &'static str, output: &'static str) {
-      assert_eq!(code_without_source_map(input.into()).take_as_string(), output);
+      assert_eq!(
+        code_without_source_map(input.into()).take_as_string(),
+        output
+      );
     }
   }
 }
