@@ -22,7 +22,7 @@ mod startup_snapshot {
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
   ) -> Result<String, AnyError> {
-    let media_type = MediaType::from(Path::new(&file_source.specifier));
+    let media_type = MediaType::from_path(Path::new(&file_source.specifier));
 
     let should_transpile = match media_type {
       MediaType::JavaScript => false,
