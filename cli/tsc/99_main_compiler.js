@@ -328,7 +328,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {ts.Diagnostic[]} diagnostics */
+  /** @param {readonly ts.Diagnostic[]} diagnostics */
   function fromTypeScriptDiagnostic(diagnostics) {
     return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
       /** @type {any} */
@@ -812,7 +812,7 @@ delete Object.prototype.__proto__;
           return sourceFile;
         })
       : undefined;
-    const diagnostics = [
+    const diagnostics = ts.sortAndDeduplicateDiagnostics([
       ...program.getConfigFileParsingDiagnostics(),
       ...(checkFiles == null
         ? program.getSyntacticDiagnostics()
@@ -822,7 +822,7 @@ delete Object.prototype.__proto__;
       ...(checkFiles == null
         ? program.getSemanticDiagnostics()
         : checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat()),
-    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
+    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code)));
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -883,7 +883,7 @@ delete Object.prototype.__proto__;
           allowNonTsExtensions: true,
           allowImportingTsExtensions: true,
         });
-        if (errors.length) {
+        if (errors.length > 0 && logDebug) {
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
