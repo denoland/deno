@@ -47,10 +47,9 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
   ) {
     return;
   }
-  const isTodo = path.includes("TODO");
   const ignore =
     (Deno.build.os === "windows" && windowsIgnorePaths.has(path)) ||
-    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path)) || isTodo;
+    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path));
   await t.step({
     name: `Node.js compatibility "${path}"`,
     ignore,
@@ -124,8 +123,7 @@ Deno.test("Node.js compatibility", async (t) => {
 });
 
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
-  for (let testFileList of testFileLists) {
-    testFileList = testFileList.filter((name) => !name.startsWith("TODO:"));
+  for (const testFileList of testFileLists) {
     const sortedTestList = JSON.parse(JSON.stringify(testFileList));
     sortedTestList.sort();
     if (JSON.stringify(testFileList) !== JSON.stringify(sortedTestList)) {
