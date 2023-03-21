@@ -1,5 +1,5 @@
-use deno_core::error::type_error;
 use deno_core::error::bad_resource_id;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
@@ -89,7 +89,9 @@ pub fn op_zlib_new(state: &mut OpState, mode: i32) -> Result<u32, AnyError> {
     gzib_id_bytes_read: 0,
   };
 
-  Ok(state.resource_table.add(Zlib { inner: RefCell::new(inner) }))
+  Ok(state.resource_table.add(Zlib {
+    inner: RefCell::new(inner),
+  }))
 }
 
 #[op]
@@ -148,11 +150,15 @@ pub fn op_zlib_write(
 
   zlib.write_in_progress = true;
 
-    if flush != Z_NO_FLUSH && flush != Z_PARTIAL_FLUSH && flush != Z_SYNC_FLUSH
-      && flush != Z_FULL_FLUSH && flush != Z_FINISH && flush != Z_BLOCK
-    {
-      return Err(type_error("Bad argument"));
-    }
+  if flush != Z_NO_FLUSH
+    && flush != Z_PARTIAL_FLUSH
+    && flush != Z_SYNC_FLUSH
+    && flush != Z_FULL_FLUSH
+    && flush != Z_FINISH
+    && flush != Z_BLOCK
+  {
+    return Err(type_error("Bad argument"));
+  }
 
   zlib.strm.avail_in = input.len() as u32;
   zlib.strm.next_in = input.as_ptr() as *mut u8;
@@ -165,7 +171,9 @@ pub fn op_zlib_write(
     DEFLATE | GZIP | DEFLATERAW => {
       unsafe { libz_sys::deflate(&mut zlib.strm, flush) };
     }
-    _ => unimplemented!(),
+    _ => {
+      unsafe { libz_sys::inflate(&mut zlib.strm, flush) };
+    }
   }
 
   zlib.write_in_progress = false;
@@ -232,7 +240,14 @@ pub fn op_zlib_init(
         std::mem::size_of::<z_stream>() as i32,
       );
     },
-    _ => unimplemented!(),
+    _ => unsafe {
+      inflateInit2_(
+        &mut zlib.strm,
+        window_bits,
+        zlibVersion(),
+        std::mem::size_of::<z_stream>() as i32,
+      );
+    },
   }
 
   zlib.dictionary = dictionary.map(|buf| buf.to_vec());
@@ -256,7 +271,9 @@ pub fn op_zlib_reset(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
     DEFLATE | GZIP | DEFLATERAW => {
       unsafe { libz_sys::deflateReset(&mut zlib.strm) };
     }
-    _ => unimplemented!(),
+    _ => {
+      unsafe { libz_sys::inflateReset(&mut zlib.strm) };
+    }
   }
 
   Ok(())
