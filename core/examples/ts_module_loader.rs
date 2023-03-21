@@ -82,7 +82,7 @@ impl ModuleLoader for TypescriptModuleLoader {
         code
       };
       let module = ModuleSource {
-        code: code.into_bytes().into_boxed_slice(),
+        code: code.into(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),

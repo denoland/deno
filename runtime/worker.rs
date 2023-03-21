@@ -21,6 +21,7 @@ use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -371,10 +372,10 @@ impl MainWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script(
+  pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
-    script_name: &str,
-    source_code: &str,
+    script_name: &'static str,
+    source_code: S,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
@@ -509,7 +510,7 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
   pub fn dispatch_load_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
@@ -526,7 +527,7 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
   pub fn dispatch_unload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
@@ -543,7 +544,7 @@ impl MainWorker {
   /// running.
   pub fn dispatch_beforeunload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<bool, AnyError> {
     let value = self.js_runtime.execute_script(
       script_name,

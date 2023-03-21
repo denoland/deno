@@ -10,6 +10,7 @@ use crate::snapshot_util::SnapshottedData;
 use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
+use core::panic;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -18,6 +19,7 @@ use futures::stream::TryStreamExt;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -25,6 +27,7 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -192,12 +195,153 @@ impl std::fmt::Display for ModuleType {
 // that happened; not only first and final target. It would simplify a lot
 // of things throughout the codebase otherwise we may end up requesting
 // intermediate redirects from file loader.
-#[derive(Debug, Clone, Eq, PartialEq)]
+// NOTE: This should _not_ be made #[derive(Clone)] unless we take some precautions to avoid excessive string copying.
+#[derive(Debug)]
 pub struct ModuleSource {
-  pub code: Box<[u8]>,
+  pub code: ModuleCode,
   pub module_type: ModuleType,
   pub module_url_specified: String,
   pub module_url_found: String,
+}
+
+/// Module code can be sourced from strings or bytes that are either owned or borrowed. This enumeration allows us
+/// to perform a minimal amount of cloning and format-shifting of the underlying data.
+///
+/// Note that any [`ModuleCode`] created from a `'static` byte array or string must contain ASCII characters.
+///
+/// Examples of ways to construct a [`ModuleCode`] object:
+///
+/// ```rust
+/// # use deno_core::ModuleCode;
+///
+/// let code: ModuleCode = "a string".into();
+/// let code: ModuleCode = b"a string".into();
+/// ```
+#[derive(Debug)]
+pub enum ModuleCode {
+  /// Created from static data -- must be 100% 7-bit ASCII!
+  Static(&'static [u8]),
+
+  /// An owned chunk of data.
+  Owned(Vec<u8>),
+
+  /// Scripts loaded from the `deno_graph` infrastructure.
+  Arc(Arc<str>),
+}
+
+impl ModuleCode {
+  #[inline(always)]
+  pub fn as_bytes(&self) -> &[u8] {
+    match self {
+      Self::Static(b) => b,
+      Self::Owned(b) => b,
+      Self::Arc(s) => s.as_bytes(),
+    }
+  }
+
+  pub fn try_static_ascii(&self) -> Option<&'static [u8]> {
+    match self {
+      Self::Static(b) => Some(b),
+      _ => None,
+    }
+  }
+
+  /// Takes a [`ModuleCode`] value as an owned [`String`]. May be slow.
+  pub fn take_as_string(self) -> String {
+    match self {
+      Self::Static(b) => String::from_utf8(b.to_vec()).unwrap(),
+      Self::Owned(b) => String::from_utf8(b).unwrap(),
+      Self::Arc(s) => (*s).to_owned(),
+    }
+  }
+
+  /// Truncates a `ModuleCode`] value, possibly re-allocating or memcpy'ing. May be slow.
+  pub fn truncate(&mut self, index: usize) {
+    match self {
+      Self::Static(b) => *self = Self::Static(&b[..index]),
+      Self::Owned(b) => b.truncate(index),
+      // We can't do much if we have an Arc<str>, so we'll just take ownership of the truncated version
+      Self::Arc(s) => *self = s[..index].to_owned().into(),
+    }
+  }
+}
+
+impl Default for ModuleCode {
+  fn default() -> Self {
+    ModuleCode::Static(&[])
+  }
+}
+
+impl From<Arc<str>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Arc<str>) -> Self {
+    Self::Arc(value)
+  }
+}
+
+impl From<&Arc<str>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &Arc<str>) -> Self {
+    Self::Arc(value.clone())
+  }
+}
+
+impl From<Cow<'static, str>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Cow<'static, str>) -> Self {
+    match value {
+      Cow::Borrowed(b) => b.into(),
+      Cow::Owned(b) => b.into(),
+    }
+  }
+}
+
+impl From<Cow<'static, [u8]>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Cow<'static, [u8]>) -> Self {
+    match value {
+      Cow::Borrowed(b) => b.into(),
+      Cow::Owned(b) => b.into(),
+    }
+  }
+}
+
+impl From<&'static str> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &'static str) -> Self {
+    assert!(value.is_ascii());
+    ModuleCode::Static(value.as_bytes())
+  }
+}
+
+impl From<String> for ModuleCode {
+  #[inline(always)]
+  fn from(value: String) -> Self {
+    value.into_bytes().into()
+  }
+}
+
+impl From<Vec<u8>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Vec<u8>) -> Self {
+    ModuleCode::Owned(value)
+  }
+}
+
+impl From<&'static [u8]> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &'static [u8]) -> Self {
+    assert!(value.is_ascii());
+    ModuleCode::Static(value)
+  }
+}
+
+impl<const N: usize> From<&'static [u8; N]> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &'static [u8; N]) -> Self {
+    assert!(value.is_ascii());
+    ModuleCode::Static(value)
+  }
 }
 
 pub(crate) type PrepareLoadFuture =
@@ -323,7 +467,7 @@ pub(crate) fn resolve_helper(
 /// Function that can be passed to the `ExtModuleLoader` that allows to
 /// transpile sources before passing to V8.
 pub type ExtModuleLoaderCb =
-  Box<dyn Fn(&ExtensionFileSource) -> Result<String, Error>>;
+  Box<dyn Fn(&ExtensionFileSource) -> Result<ModuleCode, Error>>;
 
 pub struct ExtModuleLoader {
   module_loader: Rc<dyn ModuleLoader>,
@@ -448,7 +592,7 @@ impl ModuleLoader for ExtModuleLoader {
       return async move {
         let code = result?;
         let source = ModuleSource {
-          code: code.into_bytes().into_boxed_slice(),
+          code,
           module_type: ModuleType::JavaScript,
           module_url_specified: specifier.clone(),
           module_url_found: specifier.clone(),
@@ -529,7 +673,7 @@ impl ModuleLoader for FsModuleLoader {
 
       let code = std::fs::read(path)?;
       let module = ModuleSource {
-        code: code.into_boxed_slice(),
+        code: code.into(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
@@ -1002,6 +1146,32 @@ pub(crate) enum ModuleError {
   Other(Error),
 }
 
+pub enum ModuleName<'a> {
+  Static(&'static str),
+  NotStatic(&'a str),
+}
+
+impl<'a> ModuleName<'a> {
+  pub fn as_ref(&self) -> &'a str {
+    match self {
+      ModuleName::Static(s) => s,
+      ModuleName::NotStatic(s) => s,
+    }
+  }
+}
+
+impl<'a, S: AsRef<str>> From<&'a S> for ModuleName<'a> {
+  fn from(s: &'a S) -> Self {
+    Self::NotStatic(s.as_ref())
+  }
+}
+
+impl From<&'static str> for ModuleName<'static> {
+  fn from(value: &'static str) -> Self {
+    Self::Static(value)
+  }
+}
+
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
@@ -1326,16 +1496,54 @@ impl ModuleMap {
     }
   }
 
-  fn new_json_module(
+  fn string_from_code<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    code: &ModuleCode,
+  ) -> Option<v8::Local<'a, v8::String>> {
+    if let Some(code) = code.try_static_ascii() {
+      v8::String::new_external_onebyte_static(scope, code)
+    } else {
+      v8::String::new_from_utf8(
+        scope,
+        code.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+    }
+  }
+
+  fn string_from_module_name<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    name: &ModuleName,
+  ) -> Option<v8::Local<'a, v8::String>> {
+    match name {
+      ModuleName::Static(s) => {
+        assert!(s.is_ascii());
+        v8::String::new_external_onebyte_static(scope, s.as_bytes())
+      }
+      ModuleName::NotStatic(s) => v8::String::new(scope, s),
+    }
+  }
+
+  fn new_json_module<'a, N: Into<ModuleName<'a>>>(
     &mut self,
     scope: &mut v8::HandleScope,
-    name: &str,
-    source: &[u8],
+    name: N,
+    source: &ModuleCode,
   ) -> Result<ModuleId, ModuleError> {
-    let name_str = v8::String::new(scope, name).unwrap();
+    // Manual monomorphization (TODO: replace w/momo)
+    self.new_json_module_inner(scope, name.into(), source)
+  }
+
+  fn new_json_module_inner(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    name: ModuleName,
+    source: &ModuleCode,
+  ) -> Result<ModuleId, ModuleError> {
+    let name_str = Self::string_from_module_name(scope, &name).unwrap();
     let source_str = v8::String::new_from_utf8(
       scope,
-      strip_bom(source),
+      strip_bom(source.as_bytes()),
       v8::NewStringType::Normal,
     )
     .unwrap();
@@ -1364,25 +1572,47 @@ impl ModuleMap {
     let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
     self.json_value_store.insert(handle.clone(), value_handle);
 
-    let id =
-      self.create_module_info(name, ModuleType::Json, handle, false, vec![]);
+    let id = self.create_module_info(
+      name.as_ref(),
+      ModuleType::Json,
+      handle,
+      false,
+      vec![],
+    );
 
     Ok(id)
   }
 
-  // Create and compile an ES module.
-  pub(crate) fn new_es_module(
+  /// Create and compile an ES module. Generic interface that can receive either a `&'static str` or a string with a lifetime. Prefer
+  /// to pass `&'static str` as this allows us to use v8 external strings.
+  pub(crate) fn new_es_module<'a, N: Into<ModuleName<'a>>>(
     &mut self,
     scope: &mut v8::HandleScope,
     main: bool,
-    name: &str,
-    source: &[u8],
+    name: N,
+    source: &ModuleCode,
     is_dynamic_import: bool,
   ) -> Result<ModuleId, ModuleError> {
-    let name_str = v8::String::new(scope, name).unwrap();
-    let source_str =
-      v8::String::new_from_utf8(scope, source, v8::NewStringType::Normal)
-        .unwrap();
+    // Manual monomorphization (TODO: replace w/momo)
+    self.new_es_module_inner(
+      scope,
+      main,
+      name.into(),
+      source,
+      is_dynamic_import,
+    )
+  }
+
+  fn new_es_module_inner(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    main: bool,
+    name: ModuleName,
+    source: &ModuleCode,
+    is_dynamic_import: bool,
+  ) -> Result<ModuleId, ModuleError> {
+    let name_str = Self::string_from_module_name(scope, &name).unwrap();
+    let source_str = Self::string_from_code(scope, source).unwrap();
 
     let origin = bindings::module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, Some(&origin));
@@ -1432,7 +1662,7 @@ impl ModuleMap {
         self.snapshot_loaded_and_not_snapshotting,
         self.loader.clone(),
         &import_specifier,
-        name,
+        name.as_ref(),
         if is_dynamic_import {
           ResolutionKind::DynamicImport
         } else {
@@ -1456,7 +1686,7 @@ impl ModuleMap {
       if let Some(main_module) = maybe_main_module {
         return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
-          name,
+          name.as_ref(),
           main_module.name,
         ))));
       }
@@ -1464,7 +1694,7 @@ impl ModuleMap {
 
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let id = self.create_module_info(
-      name,
+      name.as_ref(),
       ModuleType::JavaScript,
       handle,
       main,
@@ -1846,7 +2076,7 @@ import "/a.js";
       }
       match mock_source_code(&inner.url) {
         Some(src) => Poll::Ready(Ok(ModuleSource {
-          code: src.0.as_bytes().to_vec().into_boxed_slice(),
+          code: src.0.into(),
           module_type: ModuleType::JavaScript,
           module_url_specified: inner.url.clone(),
           module_url_found: src.1.to_owned(),
@@ -2043,12 +2273,13 @@ import "/a.js";
           scope,
           true,
           &specifier_a,
-          br#"
+          &br#"
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
           Deno.core.ops.op_test(control);
-        "#,
+        "#
+          .into(),
           false,
         )
         .unwrap();
@@ -2068,7 +2299,7 @@ import "/a.js";
           scope,
           false,
           "file:///b.js",
-          b"export function b() { return 'b' }",
+          &b"export function b() { return 'b' }".into(),
           false,
         )
         .unwrap();
@@ -2153,11 +2384,12 @@ import "/a.js";
           scope,
           true,
           &specifier_a,
-          br#"
+          &br#"
             import jsonData from './b.json' assert {type: "json"};
             assert(jsonData.a == "b");
             assert(jsonData.c.d == 10);
-          "#,
+          "#
+          .into(),
           false,
         )
         .unwrap();
@@ -2175,7 +2407,7 @@ import "/a.js";
         .new_json_module(
           scope,
           "file:///b.json",
-          b"{\"a\": \"b\", \"c\": {\"d\": 10}}",
+          &b"{\"a\": \"b\", \"c\": {\"d\": 10}}".into(),
         )
         .unwrap();
       let imports = module_map.get_requested_modules(mod_b).unwrap();
@@ -2285,9 +2517,7 @@ import "/a.js";
       let info = ModuleSource {
         module_url_specified: specifier.to_string(),
         module_url_found: specifier.to_string(),
-        code: b"export function b() { return 'b' }"
-          .to_vec()
-          .into_boxed_slice(),
+        code: b"export function b() { return 'b' }".into(),
         module_type: ModuleType::JavaScript,
       };
       async move { Ok(info) }.boxed()
@@ -2427,7 +2657,7 @@ import "/a.js";
         let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
-          code: code.as_bytes().to_vec().into_boxed_slice(),
+          code: code.into(),
           module_type: ModuleType::JavaScript,
         };
         async move { Ok(info) }.boxed()
@@ -2703,7 +2933,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     // The behavior should be very similar to /a.js.
     let spec = resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = runtime
-      .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+      .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.into()))
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
@@ -2795,17 +3025,13 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
           "file:///main_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///main_module.js".to_string(),
             module_url_found: "file:///main_module.js".to_string(),
-            code: b"if (!import.meta.main) throw Error();"
-              .to_vec()
-              .into_boxed_slice(),
+            code: b"if (!import.meta.main) throw Error();".into(),
             module_type: ModuleType::JavaScript,
           }),
           "file:///side_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///side_module.js".to_string(),
             module_url_found: "file:///side_module.js".to_string(),
-            code: b"if (import.meta.main) throw Error();"
-              .to_vec()
-              .into_boxed_slice(),
+            code: b"if (import.meta.main) throw Error();".into(),
             module_type: ModuleType::JavaScript,
           }),
           _ => unreachable!(),
@@ -2866,7 +3092,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       // The behavior should be very similar to /a.js.
       let spec = resolve_url("file:///main_with_code.js").unwrap();
       let main_id_fut = runtime
-        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.into()))
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
@@ -2906,7 +3132,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       // The behavior should be very similar to /a.js.
       let spec = resolve_url("file:///main_with_code.js").unwrap();
       let main_id_fut = runtime
-        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.into()))
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
@@ -2975,5 +3201,24 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       .map(|e| e.to_string()),
       Some("Cannot load extension module from external code".to_string())
     );
+  }
+
+  #[test]
+  fn code_truncate() {
+    let mut s = "123456".to_owned();
+    s.truncate(3);
+
+    let mut code: ModuleCode = "123456".into();
+    code.truncate(3);
+    assert_eq!(s, code.take_as_string());
+
+    let mut code: ModuleCode = "123456".to_owned().into();
+    code.truncate(3);
+    assert_eq!(s, code.take_as_string());
+
+    let arc_str: Arc<str> = "123456".into();
+    let mut code: ModuleCode = arc_str.into();
+    code.truncate(3);
+    assert_eq!(s, code.take_as_string());
   }
 }

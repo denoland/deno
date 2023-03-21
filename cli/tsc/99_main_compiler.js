@@ -328,7 +328,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {ts.Diagnostic[]} diagnostics */
+  /** @param {readonly ts.Diagnostic[]} diagnostics */
   function fromTypeScriptDiagnostic(diagnostics) {
     return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
       /** @type {any} */
@@ -750,6 +750,7 @@ delete Object.prototype.__proto__;
    * @property {Record<string, any>} config
    * @property {boolean} debug
    * @property {string[]} rootNames
+   * @property {boolean} localOnly
    */
 
   /**
@@ -776,7 +777,7 @@ delete Object.prototype.__proto__;
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
-  function exec({ config, debug: debugFlag, rootNames }) {
+  function exec({ config, debug: debugFlag, rootNames, localOnly }) {
     setLogDebug(debugFlag, "TS");
     performanceStart();
     if (logDebug) {
@@ -800,12 +801,31 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
+    const checkFiles = localOnly
+      ? rootNames
+        .filter((n) => !n.startsWith("http"))
+        .map((checkName) => {
+          const sourceFile = program.getSourceFile(checkName);
+          if (sourceFile == null) {
+            throw new Error("Could not find source file for: " + checkName);
+          }
+          return sourceFile;
+        })
+      : undefined;
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
-      ...program.getSyntacticDiagnostics(),
+      ...(checkFiles == null
+        ? program.getSyntacticDiagnostics()
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSyntacticDiagnostics(s)).flat(),
+        )),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
-      ...program.getSemanticDiagnostics(),
+      ...(checkFiles == null
+        ? program.getSemanticDiagnostics()
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
+        )),
     ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
 
     // emit the tsbuildinfo file
@@ -867,7 +887,7 @@ delete Object.prototype.__proto__;
           allowNonTsExtensions: true,
           allowImportingTsExtensions: true,
         });
-        if (errors.length) {
+        if (errors.length > 0 && logDebug) {
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
