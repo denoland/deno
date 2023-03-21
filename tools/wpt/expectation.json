@@ -3575,14 +3575,8 @@
         "error-after-response.any.worker.html": false,
         "keepalive.any.html": false,
         "mediasource.window.html": false,
-        "mode-no-cors.sub.any.html": [
-          "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with no-cors mode",
-          "Fetch http://web-platform.test:52914/fetch/api/resources/top.txt with no-cors mode"
-        ],
-        "mode-no-cors.sub.any.worker.html": [
-          "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with no-cors mode",
-          "Fetch http://web-platform.test:53026/fetch/api/resources/top.txt with no-cors mode"
-        ],
+        "mode-no-cors.sub.any.html": false,
+        "mode-no-cors.sub.any.worker.html": false,
         "mode-same-origin.any.html": [
           "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with same-origin mode",
           "Fetch http://www1.web-platform.test:8000/fetch/api/resources/top.txt with same-origin mode",
@@ -5428,7 +5422,7 @@
         "queue-microtask-exceptions.any.html": true,
         "queue-microtask.any.html": true,
         "queue-microtask.any.worker.html": true,
-        "queue-microtask-exceptions.any.worker.html": false,
+        "queue-microtask-exceptions.any.worker.html": true,
         "queue-microtask.window.html": false
       },
       "scripting": {
@@ -5806,7 +5800,7 @@
     "storage_key.window.html": true,
     "storage_key_empty_string.window.html": true,
     "storage_length.window.html": true,
-    "storage_local_setitem_quotaexceedederr.window.html": false,
+    "storage_local_setitem_quotaexceedederr.window.html": true,
     "storage_removeitem.window.html": true,
     "storage_session_setitem_quotaexceedederr.window.html": true,
     "storage_set_value_enumerate.window.html": true,
