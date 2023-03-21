@@ -128,7 +128,6 @@ tokio-util = "0.7.4"
 tower-lsp = { version = "=0.17.0", features = ["proposed"] }
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
-zstd = "=0.11.2"
 
 # crypto
 rsa = { version = "0.7.0", default-features = false, features = ["std", "pem"] }
@@ -229,10 +228,6 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.tokio]
 opt-level = 3
-[profile.bench.package.zstd]
-opt-level = 3
-[profile.bench.package.zstd-sys]
-opt-level = 3
 [profile.bench.package.base64-simd]
 opt-level = 3
 
@@ -300,10 +295,6 @@ opt-level = 3
 [profile.release.package.hyper]
 opt-level = 3
 [profile.release.package.tokio]
-opt-level = 3
-[profile.release.package.zstd]
-opt-level = 3
-[profile.release.package.zstd-sys]
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
