@@ -27,7 +27,7 @@ Deno.test({
   name: "[util] inspect",
   fn() {
     assertEquals(stripColor(util.inspect({ foo: 123 })), "{ foo: 123 }");
-    assertEquals(stripColor(util.inspect("foo")), '"foo"');
+    assertEquals(stripColor(util.inspect("foo")), "'foo'");
     assertEquals(
       stripColor(util.inspect("Deno's logo is so cute.")),
       `"Deno's logo is so cute."`,
