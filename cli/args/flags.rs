@@ -737,7 +737,6 @@ fn clap_root() -> Command {
         .long("log-level")
         .help("Set log level")
         .hide(true)
-        .num_args(1)
         .value_parser(["debug", "info"])
         .global(true),
     )
@@ -830,13 +829,11 @@ fn bundle_subcommand() -> Command {
     .hide(true)
     .arg(
       Arg::new("source_file")
-        .num_args(1)
         .required(true)
         .value_hint(ValueHint::FilePath),
     )
     .arg(
       Arg::new("out_file")
-        .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::FilePath),
     )
@@ -932,14 +929,12 @@ fn compile_subcommand() -> Command {
         .short('o')
         .value_parser(value_parser!(PathBuf))
         .help("Output file (defaults to $PWD/<inferred-name>)")
-        .num_args(1)
         .value_hint(ValueHint::FilePath),
     )
     .arg(
       Arg::new("target")
         .long("target")
         .help("Target OS architecture")
-        .num_args(1)
         .value_parser([
           "x86_64-unknown-linux-gnu",
           "x86_64-pc-windows-msvc",
@@ -977,7 +972,6 @@ fn completions_subcommand() -> Command {
     .disable_help_subcommand(true)
     .arg(
       Arg::new("shell")
-        .num_args(1)
         .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
         .required(true),
     )
@@ -1073,7 +1067,6 @@ Generate html reports from lcov:
     Filename should be passed along with '=' For example '--output=foo.lcov' \
     If no --output arg is specified then the report is written to stdout.",
         )
-        .num_args(1)
         .require_equals(true)
         .value_hint(ValueHint::FilePath),
     )
@@ -1137,15 +1130,10 @@ Show documentation for runtime built-ins:
     // just a possible value of `source_file` so leading hyphens must be
     // enabled.
     .allow_hyphen_values(true)
-    .arg(
-      Arg::new("source_file")
-        .num_args(1)
-        .value_hint(ValueHint::FilePath),
-    )
+    .arg(Arg::new("source_file").value_hint(ValueHint::FilePath))
     .arg(
       Arg::new("filter")
         .help("Dot separated path to symbol")
-        .num_args(1)
         .required(false)
         .conflicts_with("json"),
     )
@@ -1178,7 +1166,6 @@ This command has implicit access to all permissions (--allow-all).",
       Arg::new("ext")
         .long("ext")
         .help("Set standard input (stdin) content type")
-        .num_args(1)
         .default_value("js")
         .value_parser(["ts", "tsx", "js", "jsx"]),
     )
@@ -1233,7 +1220,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::new("ext")
         .long("ext")
         .help("Set standard input (stdin) content type")
-        .num_args(1)
         .default_value("ts")
         .value_parser(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
@@ -1272,7 +1258,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .long("line-width")
         .alias("options-line-width")
         .help("Define maximum line width. Defaults to 80.")
-        .num_args(1)
         .value_parser(value_parser!(NonZeroU32)),
     )
     .arg(
@@ -1280,7 +1265,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .long("indent-width")
         .alias("options-indent-width")
         .help("Define indentation width. Defaults to 2.")
-        .num_args(1)
         .value_parser(value_parser!(NonZeroU8)),
     )
     .arg(
@@ -1297,7 +1281,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::new("prose-wrap")
         .long("prose-wrap")
         .alias("options-prose-wrap")
-        .num_args(1)
         .value_parser(["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
@@ -1316,7 +1299,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 fn init_subcommand() -> Command {
   Command::new("init").about("Initialize a new project").arg(
     Arg::new("dir")
-      .num_args(1)
       .required(false)
       .value_hint(ValueHint::DirPath),
   )
@@ -1345,7 +1327,7 @@ DENO_DIR: Directory containing Deno-managed files.
 Remote modules cache: Subdirectory containing downloaded remote modules.
 TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
-    .arg(Arg::new("file").num_args(1).required(false).value_hint(ValueHint::FilePath))
+    .arg(Arg::new("file").required(false).value_hint(ValueHint::FilePath))
     .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
     .arg(
@@ -1378,13 +1360,11 @@ fn install_subcommand() -> Command {
         .long("name")
         .short('n')
         .help("Executable file name")
-        .num_args(1)
         .required(false))
     .arg(
       Arg::new("root")
         .long("root")
         .help("Installation root")
-        .num_args(1)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::DirPath))
     .arg(
@@ -1432,7 +1412,6 @@ fn uninstall_subcommand() -> Command {
         .long("root")
         .help("Installation root")
         .value_parser(value_parser!(PathBuf))
-        .num_args(1)
         .value_hint(ValueHint::DirPath))
     .about("Uninstall a script previously installed with deno install")
     .long_about(
@@ -1591,7 +1570,6 @@ fn repl_subcommand() -> Command {
       Arg::new("eval")
         .long("eval")
         .help("Evaluates the provided code when the REPL starts.")
-        .num_args(1)
         .value_name("code"),
     )
 }
@@ -1640,13 +1618,13 @@ Specifying the filename '-' to read the file from stdin.
 fn task_subcommand() -> Command {
   Command::new("task")
     .allow_external_subcommands(true)
+    .subcommand_value_name("TASK")
     .arg(config_arg())
     .arg(
       Arg::new("cwd")
         .long("cwd")
         .value_name("DIR")
         .help("Specify the directory to run the task in")
-        .num_args(1)
         .value_hint(ValueHint::DirPath),
     )
     .about("Run a task defined in the configuration file")
@@ -1707,7 +1685,6 @@ fn test_subcommand() -> Command {
       Arg::new("filter")
         .allow_hyphen_values(true)
         .long("filter")
-        .num_args(1)
         .help("Run tests with this string or pattern in the test name"),
     )
     .arg(
@@ -1723,7 +1700,6 @@ fn test_subcommand() -> Command {
       Arg::new("coverage")
         .long("coverage")
         .require_equals(true)
-        .num_args(1)
         .value_name("DIR")
         .conflicts_with("inspect")
         .conflicts_with("inspect-wait")
@@ -1808,15 +1784,13 @@ update to a different location, use the --output flag
     .arg(
       Arg::new("version")
         .long("version")
-        .help("The version to upgrade to")
-        .num_args(1),
+        .help("The version to upgrade to"),
     )
     .arg(
       Arg::new("output")
         .long("output")
         .help("The path to output the updated version to")
         .value_parser(value_parser!(PathBuf))
-        .num_args(1)
         .value_hint(ValueHint::FilePath),
     )
     .arg(
@@ -1869,7 +1843,6 @@ Remote modules and multiple modules may also be specified:
         .long("output")
         .help("The directory to output the vendored modules to")
         .value_parser(value_parser!(PathBuf))
-        .num_args(1)
         .value_hint(ValueHint::DirPath),
     )
     .arg(
@@ -2092,7 +2065,6 @@ fn import_map_arg() -> Arg {
     .value_name("FILE")
     .help("Load import map file")
     .long_help(IMPORT_MAP_HELP.as_str())
-    .num_args(1)
     .value_hint(ValueHint::FilePath)
 }
 
@@ -2127,7 +2099,6 @@ fn ca_file_arg() -> Arg {
     .long("cert")
     .value_name("FILE")
     .help("Load certificate authority from PEM encoded file")
-    .num_args(1)
     .value_hint(ValueHint::FilePath)
 }
 
@@ -2141,7 +2112,6 @@ fn cached_only_arg() -> Arg {
 fn location_arg() -> Arg {
   Arg::new("location")
     .long("location")
-    .num_args(1)
     .value_name("HREF")
     .value_parser(|href: &str| -> Result<Url, String> {
       let url = Url::parse(href);
@@ -2184,7 +2154,6 @@ fn seed_arg() -> Arg {
     .long("seed")
     .value_name("NUMBER")
     .help("Set the random number generator seed")
-    .num_args(1)
     .value_parser(value_parser!(u64))
 }
 
@@ -2314,7 +2283,6 @@ fn config_arg() -> Arg {
     .value_name("FILE")
     .help("Specify the configuration file")
     .long_help(CONFIG_HELP.as_str())
-    .num_args(1)
     .value_hint(ValueHint::FilePath)
 }
 
