@@ -13,15 +13,18 @@
     "associations": "**/*.rs",
     "rustfmt": "rustfmt --config imports_granularity=item"
   },
-  "includes": [
-    "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
-  ],
+  "includes": ["**/*.{ts,tsx,js,jsx,json,md,toml,rs}"],
   "excludes": [
     ".cargo_home",
     ".git",
     "cli/bench/testdata/express-router.js",
     "cli/bench/testdata/npm/*",
-    "cli/tsc/dts/*.d.ts",
+    "cli/tsc/dts/lib.d.ts",
+    "cli/tsc/dts/lib.scripthost.d.ts",
+    "cli/tsc/dts/lib.webworker*.d.ts",
+    "cli/tsc/dts/lib.dom*.d.ts",
+    "cli/tsc/dts/lib.es*.d.ts",
+    "cli/tsc/dts/typescript.d.ts",
     "cli/tests/node_compat/test",
     "cli/tests/testdata/fmt/badly_formatted.json",
     "cli/tests/testdata/fmt/badly_formatted.md",
