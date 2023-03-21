@@ -145,7 +145,7 @@ pub mod _ops {
 #[macro_export]
 macro_rules! located_script_name {
   () => {
-    format!("[ext:{}:{}:{}]", std::file!(), std::line!(), std::column!());
+    concat!("[ext:{}:{}:{}]", std::file!(), std::line!(), std::column!());
   };
 }
 

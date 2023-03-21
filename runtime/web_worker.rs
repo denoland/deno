@@ -584,7 +584,7 @@ impl WebWorker {
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
-    name: &str,
+    name: &'static str,
     source_code: S,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;

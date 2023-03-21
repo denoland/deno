@@ -1146,6 +1146,32 @@ pub(crate) enum ModuleError {
   Other(Error),
 }
 
+pub enum ModuleName<'a> {
+  Static(&'static str),
+  NotStatic(&'a str),
+}
+
+impl<'a> ModuleName<'a> {
+  pub fn as_ref(&self) -> &'a str {
+    match self {
+      ModuleName::Static(s) => s,
+      ModuleName::NotStatic(s) => s,
+    }
+  }
+}
+
+impl<'a, S: AsRef<str>> From<&'a S> for ModuleName<'a> {
+  fn from(s: &'a S) -> Self {
+    Self::NotStatic(s.as_ref())
+  }
+}
+
+impl From<&'static str> for ModuleName<'static> {
+  fn from(value: &'static str) -> Self {
+    Self::Static(value)
+  }
+}
+
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
@@ -1485,13 +1511,35 @@ impl ModuleMap {
     }
   }
 
-  fn new_json_module(
+  fn string_from_module_name<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    name: &ModuleName,
+  ) -> Option<v8::Local<'a, v8::String>> {
+    match name {
+      ModuleName::Static(s) => {
+        assert!(s.is_ascii());
+        v8::String::new_external_onebyte_static(scope, s.as_bytes())
+      }
+      ModuleName::NotStatic(s) => v8::String::new(scope, s),
+    }
+  }
+
+  fn new_json_module<'a, N: Into<ModuleName<'a>>>(
     &mut self,
     scope: &mut v8::HandleScope,
-    name: &str,
+    name: N,
     source: &ModuleCode,
   ) -> Result<ModuleId, ModuleError> {
-    let name_str = v8::String::new(scope, name).unwrap();
+    self.new_json_module_inner(scope, name.into(), source)
+  }
+
+  fn new_json_module_inner(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    name: ModuleName,
+    source: &ModuleCode,
+  ) -> Result<ModuleId, ModuleError> {
+    let name_str = Self::string_from_module_name(scope, &name).unwrap();
     let source_str = v8::String::new_from_utf8(
       scope,
       strip_bom(source.as_bytes()),
@@ -1523,22 +1571,45 @@ impl ModuleMap {
     let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
     self.json_value_store.insert(handle.clone(), value_handle);
 
-    let id =
-      self.create_module_info(name, ModuleType::Json, handle, false, vec![]);
+    let id = self.create_module_info(
+      name.as_ref(),
+      ModuleType::Json,
+      handle,
+      false,
+      vec![],
+    );
 
     Ok(id)
   }
 
   // Create and compile an ES module.
-  pub(crate) fn new_es_module(
+  pub(crate) fn new_es_module<'a, N: Into<ModuleName<'a>>>(
     &mut self,
     scope: &mut v8::HandleScope,
     main: bool,
-    name: &str,
+    name: N,
     source: &ModuleCode,
     is_dynamic_import: bool,
   ) -> Result<ModuleId, ModuleError> {
-    let name_str = v8::String::new(scope, name).unwrap();
+    self.new_es_module_inner(
+      scope,
+      main,
+      name.into(),
+      source,
+      is_dynamic_import,
+    )
+  }
+
+  // Create and compile an ES module.
+  fn new_es_module_inner(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    main: bool,
+    name: ModuleName,
+    source: &ModuleCode,
+    is_dynamic_import: bool,
+  ) -> Result<ModuleId, ModuleError> {
+    let name_str = Self::string_from_module_name(scope, &name).unwrap();
     let source_str = Self::string_from_code(scope, source).unwrap();
 
     let origin = bindings::module_origin(scope, name_str);
@@ -1589,7 +1660,7 @@ impl ModuleMap {
         self.snapshot_loaded_and_not_snapshotting,
         self.loader.clone(),
         &import_specifier,
-        name,
+        name.as_ref(),
         if is_dynamic_import {
           ResolutionKind::DynamicImport
         } else {
@@ -1613,7 +1684,7 @@ impl ModuleMap {
       if let Some(main_module) = maybe_main_module {
         return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
-          name,
+          name.as_ref(),
           main_module.name,
         ))));
       }
@@ -1621,7 +1692,7 @@ impl ModuleMap {
 
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let id = self.create_module_info(
-      name,
+      name.as_ref(),
       ModuleType::JavaScript,
       handle,
       main,

@@ -917,7 +917,7 @@ impl JsRuntime {
   #[inline(always)]
   pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
-    name: &str,
+    name: &'static str,
     source_code: S,
   ) -> Result<v8::Global<v8::Value>, Error> {
     self.execute_module_code(name, source_code.into())
@@ -939,7 +939,7 @@ impl JsRuntime {
   /// `Error` can usually be downcast to `JsError`.
   pub fn execute_module_code(
     &mut self,
-    name: &str,
+    name: &'static str,
     source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, Error> {
     self
@@ -2090,12 +2090,8 @@ impl JsRuntime {
       module_map_rc
         .borrow_mut()
         .new_es_module(
-          scope,
-          // main module
-          true,
-          specifier.as_str(),
-          &code,
-          false,
+          scope, // main module
+          true, specifier, &code, false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -2150,12 +2146,8 @@ impl JsRuntime {
       module_map_rc
         .borrow_mut()
         .new_es_module(
-          scope,
-          // not main module
-          false,
-          specifier.as_str(),
-          &code,
-          false,
+          scope, // not main module
+          false, specifier, &code, false,
         )
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
@@ -2533,7 +2525,7 @@ impl JsRealm {
   pub fn execute_script<S: Into<ModuleCode>>(
     &self,
     isolate: &mut v8::Isolate,
-    name: &str,
+    name: &'static str,
     source_code: S,
   ) -> Result<v8::Global<v8::Value>, Error> {
     self.execute_module_code(isolate, name, source_code.into())
@@ -2542,13 +2534,15 @@ impl JsRealm {
   fn execute_module_code(
     &self,
     isolate: &mut v8::Isolate,
-    name: &str,
+    name: &'static str,
     source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, Error> {
     let scope = &mut self.handle_scope(isolate);
 
     let source = Self::string_from_code(scope, &source_code).unwrap();
-    let name = v8::String::new(scope, name).unwrap();
+    assert!(name.is_ascii());
+    let name =
+      v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
     let origin = bindings::script_origin(scope, name);
 
     let tc_scope = &mut v8::TryCatch::new(scope);
