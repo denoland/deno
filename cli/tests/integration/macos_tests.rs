@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(bartlomieju): https://github.com/denoland/deno/issues/18341
+#[ignore]
 #[cfg(target_os = "macos")]
 #[test]
 // https://github.com/denoland/deno/issues/18243
