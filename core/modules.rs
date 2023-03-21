@@ -247,7 +247,7 @@ impl ModuleCode {
   }
 
   /// Takes a [`ModuleCode`] value as an owned [`String`]. May be slow.
-  pub fn to_string(self) -> String {
+  pub fn take_as_string(self) -> String {
     match self {
       Self::Static(b) => String::from_utf8(b.to_vec()).unwrap(),
       Self::Owned(b) => String::from_utf8(b).unwrap(),
@@ -584,7 +584,7 @@ impl ModuleLoader for ExtModuleLoader {
         load_callback(file_source)
       } else {
         match file_source.code.load() {
-          Ok(code) => Ok(code.into()),
+          Ok(code) => Ok(code),
           Err(err) => return futures::future::err(err).boxed_local(),
         }
       };
@@ -592,7 +592,7 @@ impl ModuleLoader for ExtModuleLoader {
       return async move {
         let code = result?;
         let source = ModuleSource {
-          code: code.into(),
+          code,
           module_type: ModuleType::JavaScript,
           module_url_specified: specifier.clone(),
           module_url_found: specifier.clone(),
@@ -3210,15 +3210,15 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
 
     let mut code: ModuleCode = "123456".into();
     code.truncate(3);
-    assert_eq!(s, code.to_string());
+    assert_eq!(s, code.take_as_string());
 
     let mut code: ModuleCode = "123456".to_owned().into();
     code.truncate(3);
-    assert_eq!(s, code.to_string());
+    assert_eq!(s, code.take_as_string());
 
     let arc_str: Arc<str> = "123456".into();
     let mut code: ModuleCode = arc_str.into();
     code.truncate(3);
-    assert_eq!(s, code.to_string());
+    assert_eq!(s, code.take_as_string());
   }
 }

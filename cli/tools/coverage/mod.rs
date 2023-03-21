@@ -714,7 +714,7 @@ pub async fn cover_files(
     let source_map = source_map_from_code(&transpiled_code);
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      transpiled_code.to_string(),
+      transpiled_code.take_as_string(),
       &source_map,
       &out_mode,
     );
