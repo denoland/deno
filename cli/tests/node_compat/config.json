@@ -426,7 +426,6 @@
       "test-readline-emit-keypress-events.js",
       "test-readline-interface-escapecodetimeout.js",
       "test-readline-keys.js",
-      "test-readline-position.js",
       "test-readline-reopen.js",
       "test-readline-set-raw-mode.js",
       "test-readline-undefined-columns.js",

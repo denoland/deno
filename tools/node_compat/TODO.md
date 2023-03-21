@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2926
+Total: 2927
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -1889,6 +1889,7 @@ Total: 2926
 - [parallel/test-readline-csi.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-csi.js)
 - [parallel/test-readline-input-onerror.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-input-onerror.js)
 - [parallel/test-readline-interface.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-interface.js)
+- [parallel/test-readline-position.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-position.js)
 - [parallel/test-readline-promises-interface.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-promises-interface.js)
 - [parallel/test-readline-promises-tab-complete.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-promises-tab-complete.js)
 - [parallel/test-readline-tab-complete.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-tab-complete.js)
