@@ -253,7 +253,7 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, true);
+  let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, asyncness);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {

@@ -43,7 +43,8 @@ export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
 
-const { ops } = globalThis.__bootstrap.core;
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 const writeResult = new Uint32Array(2);
 
@@ -80,7 +81,6 @@ class Zlib {
     return [writeResult[0], writeResult[1]];
   }
 
-
   write(
     flush,
     input,
@@ -89,7 +89,23 @@ class Zlib {
     out,
     out_off,
     out_len,
-  ) {}
+  ) {
+    core.opAsync(
+      "op_zlib_write_async",
+      this.#handle,
+      flush,
+      input,
+      in_off,
+      in_len,
+      out,
+      out_off,
+      out_len,
+    ).then(([availOut, availIn]) => {
+      this.callback(availIn, availOut);
+    });
+
+    return this;
+  }
 
   init(
     windowBits,

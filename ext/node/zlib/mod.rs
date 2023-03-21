@@ -9,6 +9,8 @@ use deno_core::ZeroCopyBuf;
 use libz_sys::*;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::future::Future;
+use std::rc::Rc;
 
 mod alloc;
 
@@ -128,6 +130,77 @@ pub fn op_zlib_close(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
   zlib.mode = NONE;
 
   Ok(())
+}
+
+#[op]
+pub fn op_zlib_write_async(
+  state: Rc<RefCell<OpState>>,
+  handle: u32,
+  flush: i32,
+  input: &[u8],
+  in_off: u32,
+  in_len: u32,
+  out: &mut [u8],
+  out_off: u32,
+  out_len: u32,
+) -> Result<
+  impl Future<Output = Result<(u32, u32), AnyError>> + 'static,
+  AnyError,
+> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Zlib>(handle)
+    .map_err(|_| bad_resource_id())?;
+
+  let mut zlib = resource.inner.borrow_mut();
+  check(zlib.init_done, "write before init")?;
+  check(zlib.mode != NONE, "already finialized")?;
+  check(!zlib.write_in_progress, "write already in progress")?;
+  check(!zlib.pending_close, "close already in progress")?;
+
+  zlib.write_in_progress = true;
+
+  if flush != Z_NO_FLUSH
+    && flush != Z_PARTIAL_FLUSH
+    && flush != Z_SYNC_FLUSH
+    && flush != Z_FULL_FLUSH
+    && flush != Z_FINISH
+    && flush != Z_BLOCK
+  {
+    return Err(type_error("Bad argument"));
+  }
+
+  zlib.strm.avail_in = in_len;
+  // TODO(@littledivy): Crap! Guard against overflow!!
+  zlib.strm.next_in = unsafe { input.as_ptr().offset(in_off as isize) } as _;
+  zlib.strm.avail_out = out_len;
+  zlib.strm.next_out =
+    unsafe { out.as_mut_ptr().offset(out_off as isize) } as _;
+
+  zlib.flush = flush;
+
+  let state = state.clone();
+  Ok(async move {
+    let resource = state
+      .borrow()
+      .resource_table
+      .get::<Zlib>(handle)
+      .map_err(|_| bad_resource_id())?;
+    let mut zlib = resource.inner.borrow_mut();
+    match zlib.mode {
+      DEFLATE | GZIP | DEFLATERAW => {
+        unsafe { libz_sys::deflate(&mut zlib.strm, flush) };
+      }
+      _ => {
+        unsafe { libz_sys::inflate(&mut zlib.strm, flush) };
+      }
+    }
+
+    zlib.write_in_progress = false;
+
+    Ok((zlib.strm.avail_out, zlib.strm.avail_in))
+  })
 }
 
 #[op]
