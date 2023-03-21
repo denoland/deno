@@ -638,7 +638,7 @@ impl Inner {
   fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
     if specifier.scheme() == "asset" {
       matches!(
-        MediaType::from(specifier),
+        MediaType::from_specifier(specifier),
         MediaType::JavaScript
           | MediaType::Jsx
           | MediaType::Mjs

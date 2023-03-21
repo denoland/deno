@@ -6,6 +6,7 @@ use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
 use crate::util::checksum;
+use crate::util::path::mapped_specifier_for_tsc;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -285,62 +286,6 @@ fn maybe_remap_specifier(
   }
 }
 
-/// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
-/// and so we have to detect the apparent media type based on extensions it
-/// supports.
-fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
-  let path = if specifier.scheme() == "file" {
-    if let Ok(path) = specifier.to_file_path() {
-      path
-    } else {
-      PathBuf::from(specifier.path())
-    }
-  } else {
-    PathBuf::from(specifier.path())
-  };
-  match path.extension() {
-    None => MediaType::Unknown,
-    Some(os_str) => match os_str.to_str() {
-      Some("ts") => {
-        if let Some(os_str) = path.file_stem() {
-          if let Some(file_name) = os_str.to_str() {
-            if file_name.ends_with(".d") {
-              return MediaType::Dts;
-            }
-          }
-        }
-        MediaType::TypeScript
-      }
-      Some("mts") => {
-        if let Some(os_str) = path.file_stem() {
-          if let Some(file_name) = os_str.to_str() {
-            if file_name.ends_with(".d") {
-              return MediaType::Dmts;
-            }
-          }
-        }
-        MediaType::Mts
-      }
-      Some("cts") => {
-        if let Some(os_str) = path.file_stem() {
-          if let Some(file_name) = os_str.to_str() {
-            if file_name.ends_with(".d") {
-              return MediaType::Dcts;
-            }
-          }
-        }
-        MediaType::Cts
-      }
-      Some("tsx") => MediaType::Tsx,
-      Some("js") => MediaType::JavaScript,
-      Some("mjs") => MediaType::Mjs,
-      Some("cjs") => MediaType::Cjs,
-      Some("jsx") => MediaType::Jsx,
-      _ => MediaType::Unknown,
-    },
-  }
-}
-
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct EmittedFile {
   pub data: String,
@@ -509,7 +454,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, &state.hash_data);
-    media_type = MediaType::from(&v.specifier);
+    media_type = MediaType::from_str(&v.specifier);
     maybe_source.map(Cow::Borrowed)
   } else {
     let specifier = if let Some(remapped_specifier) =
@@ -536,7 +481,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
           // means it's Deno code importing an npm module
           let specifier =
             node::resolve_specifier_into_node_modules(&module.specifier);
-          media_type = MediaType::from(&specifier);
+          media_type = MediaType::from_specifier(&specifier);
           let file_path = specifier.to_file_path().unwrap();
           let code =
             std::fs::read_to_string(&file_path).with_context(|| {
@@ -551,7 +496,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
       .map(|resolver| resolver.in_npm_package(specifier))
       .unwrap_or(false)
     {
-      media_type = MediaType::from(specifier);
+      media_type = MediaType::from_specifier(specifier);
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
@@ -612,8 +557,9 @@ fn op_resolve(
     }
 
     if specifier.starts_with("asset:///") {
-      let media_type =
-        MediaType::from(&specifier).as_ts_extension().to_string();
+      let media_type = MediaType::from_str(&specifier)
+        .as_ts_extension()
+        .to_string();
       resolved.push((specifier, media_type));
       continue;
     }
@@ -820,13 +766,11 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
         specifier_str
       }
       _ => {
-        let ext_media_type = get_tsc_media_type(s);
-        if *mt != ext_media_type {
-          let new_specifier = format!("{}{}", s, mt.as_ts_extension());
+        if let Some(new_specifier) = mapped_specifier_for_tsc(s, *mt) {
           root_map.insert(new_specifier.clone(), s.clone());
           new_specifier
         } else {
-          s.as_str().to_owned()
+          s.to_string()
         }
       }
     })
@@ -1062,31 +1006,6 @@ mod tests {
     )
     .unwrap();
     assert_eq!(hash_url(&specifier, MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
-  }
-
-  #[test]
-  fn test_get_tsc_media_type() {
-    let fixtures = vec![
-      ("file:///a.ts", MediaType::TypeScript),
-      ("file:///a.cts", MediaType::Cts),
-      ("file:///a.mts", MediaType::Mts),
-      ("file:///a.tsx", MediaType::Tsx),
-      ("file:///a.d.ts", MediaType::Dts),
-      ("file:///a.d.cts", MediaType::Dcts),
-      ("file:///a.d.mts", MediaType::Dmts),
-      ("file:///a.js", MediaType::JavaScript),
-      ("file:///a.jsx", MediaType::Jsx),
-      ("file:///a.cjs", MediaType::Cjs),
-      ("file:///a.mjs", MediaType::Mjs),
-      ("file:///a.json", MediaType::Unknown),
-      ("file:///a.wasm", MediaType::Unknown),
-      ("file:///a.js.map", MediaType::Unknown),
-      ("file:///.tsbuildinfo", MediaType::Unknown),
-    ];
-    for (specifier, media_type) in fixtures {
-      let specifier = ModuleSpecifier::parse(specifier).unwrap();
-      assert_eq!(get_tsc_media_type(&specifier), media_type);
-    }
   }
 
   #[tokio::test]

@@ -149,6 +149,8 @@ fn tag_to_version_info<'a>(
   // explicit version.
   if tag == "latest" && info.name == "@types/node" {
     return get_resolved_package_version_and_info(
+      // WARNING: When bumping this version, check if anything needs to be
+      // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
       &VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
       info,
       parent,

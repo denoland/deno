@@ -106,11 +106,16 @@ impl NodeAnalysisCache {
         ) {
           Ok(cache) => Some(cache),
           Err(err) => {
+            let file = self
+              .db_file_path
+              .as_ref()
+              .map(|s| s.to_string_lossy().to_string())
+              .unwrap_or_default();
+            log::error!("Error creating node analysis cache, file '{file}' may be corrupt: {:#}", err);
             // should never error here, but if it ever does don't fail
             if cfg!(debug_assertions) {
-              panic!("Error creating node analysis cache: {err:#}");
+              panic!("Error creating node analysis cache, file '{file}' may be corrupt: {err:#}");
             } else {
-              log::debug!("Error creating node analysis cache: {:#}", err);
               None
             }
           }

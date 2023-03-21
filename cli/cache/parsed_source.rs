@@ -121,7 +121,12 @@ impl ParsedSourceCache {
     ) {
       Ok(analyzer) => Box::new(analyzer),
       Err(err) => {
-        log::debug!("Could not create cached module analyzer. {:#}", err);
+        let file = self
+          .db_cache_path
+          .as_ref()
+          .map(|s| s.to_string_lossy().to_string())
+          .unwrap_or_default();
+        log::error!("Could not create cached module analyzer, cache file '{file}' may be corrupt: {:#}", err);
         // fallback to not caching if it can't be created
         Box::new(deno_graph::CapturingModuleAnalyzer::new(
           None,
