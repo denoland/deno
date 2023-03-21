@@ -812,17 +812,21 @@ delete Object.prototype.__proto__;
           return sourceFile;
         })
       : undefined;
-    const diagnostics = ts.sortAndDeduplicateDiagnostics([
+    const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
       ...(checkFiles == null
         ? program.getSyntacticDiagnostics()
-        : checkFiles.map((s) => program.getSyntacticDiagnostics(s)).flat()),
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSyntacticDiagnostics(s)).flat(),
+        )),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...(checkFiles == null
         ? program.getSemanticDiagnostics()
-        : checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat()),
-    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code)));
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
+        )),
+    ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
