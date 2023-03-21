@@ -67,7 +67,7 @@ impl CliMainWorker {
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
-      self.initialize_main_module_for_node().await?;
+      self.initialize_main_module_for_node()?;
       deno_node::load_cjs_module(
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
@@ -295,17 +295,14 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
     {
-      self.initialize_main_module_for_node().await?;
+      self.initialize_main_module_for_node()?;
     }
     self.worker.evaluate_module(id).await
   }
 
-  async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
-    deno_node::initialize_runtime(
-      &mut self.worker.js_runtime,
-      self.ps.options.has_node_modules_dir(),
-    )
-    .await?;
+  fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
+    let mut maybe_binary_command_name = None;
+
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
@@ -314,13 +311,16 @@ impl CliMainWorker {
           .sub_path
           .as_deref()
           .unwrap_or(pkg_ref.req.name.as_str());
-        deno_node::initialize_binary_command(
-          &mut self.worker.js_runtime,
-          binary_name,
-        )
-        .await?;
+        maybe_binary_command_name = Some(binary_name.to_string());
       }
     }
+
+    deno_node::initialize_runtime(
+      &mut self.worker.js_runtime,
+      self.ps.options.has_node_modules_dir(),
+      maybe_binary_command_name,
+    )?;
+
     Ok(())
   }
 
@@ -629,8 +629,8 @@ fn create_web_worker_pre_execute_module_callback(
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
           ps.options.has_node_modules_dir(),
-        )
-        .await?;
+          None,
+        )?;
       }
 
       Ok(worker)

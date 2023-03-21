@@ -20,7 +20,7 @@ cut.**
 
 ## Patch release preparation
 
-**If you are cutting a patch release**: First you need to sync commit to the
+**If you are cutting a patch release**: First you need to sync commits to the
 relevant minor branch in the `deno` repo, so if you are cutting a `v1.17.3`
 release you need to sync `v1.17` branch.
 
@@ -85,8 +85,8 @@ verify on GitHub that everything looks correct.
       repo's actions:
       https://github.com/denoland/deno/actions/workflows/version_bump.yml
   1. Click on the "Run workflow" button.
-  1. In the drop down, select the minor branch if doing a patch release or the
-     main branch if doing a minor release.
+  1. In the drop down, select the minor branch (ex. `vx.xx`) if doing a patch
+     release or the main branch if doing a minor release.
   1. For the kind of release, select either "patch", "minor", or "major".
   1. Run the workflow.
 
@@ -194,9 +194,9 @@ script generates the symbols based on the latest tags.
 
 ## Updating `deno_docker`
 
-- [ ] Open a PR on the `deno_docker` repo that bumps the Deno version in all
-      Dockerfiles, the README and the example Dockerfile. Get it reviewed and
-      merge it.
+- [ ] Run the version bump workflow:
+      https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
+- [ ] This will open a PR. Review and merge it.
 - [ ] Create a tag with the version number (_without_ `v` prefix).
 
 ## All done!
