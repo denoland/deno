@@ -395,7 +395,6 @@ impl JsRuntime {
     let (mut isolate, snapshot_options) = if snapshot_options.will_snapshot() {
       let snapshot_creator =
         snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
-      eprintln!("create snapshot {:#?}", snapshot_options);
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
