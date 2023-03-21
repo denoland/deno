@@ -2501,10 +2501,10 @@ impl JsRealm {
     source_code: S,
   ) -> Result<v8::Global<v8::Value>, Error> {
     // Manual monomorphization (TODO: replace w/momo)
-    self.execute_module_code(isolate, name, source_code.into())
+    self.execute_script_inner(isolate, name, source_code.into())
   }
 
-  fn execute_module_code(
+  fn execute_script_inner(
     &self,
     isolate: &mut v8::Isolate,
     name: &'static str,
