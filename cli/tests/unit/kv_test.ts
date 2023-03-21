@@ -7,11 +7,11 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
-function dbTest(name: string, fn: (db: Deno.Database) => Promise<void>) {
+function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   Deno.test({
     name,
     async fn() {
-      const db: Deno.Database = await Deno.openDatabase(
+      const db: Deno.Kv = await Deno.openKv(
         ":memory:",
       );
       try {
@@ -500,7 +500,7 @@ async function collect(iter: Deno.KvListIterator): Promise<Deno.KvEntry[]> {
   return entries;
 }
 
-async function setupData(db: Deno.Database) {
+async function setupData(db: Deno.Kv) {
   await db.atomic()
     .set(["a"], -1)
     .set(["a", "a"], 0)

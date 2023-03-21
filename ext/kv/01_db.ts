@@ -14,9 +14,9 @@ const encodeCursor: (
 ) => string = (selector, boundaryKey) =>
   ops.op_kv_encode_cursor(selector, boundaryKey);
 
-async function openDatabase(path: string) {
+async function openKv(path: string) {
   const rid = await core.opAsync("op_kv_database_open", path);
-  return new Database(rid);
+  return new Kv(rid);
 }
 
 interface RawKvEntry {
@@ -36,7 +36,7 @@ type RawValue = {
   value: bigint;
 };
 
-class Database {
+class Kv {
   #rid: number;
 
   constructor(rid: number) {
@@ -466,4 +466,4 @@ class KvListIterator extends AsyncIterator
   }
 }
 
-export { Database, KvListIterator, KvU64, openDatabase };
+export { Kv, KvListIterator, KvU64, openKv };

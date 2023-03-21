@@ -1476,7 +1476,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Open a new {@linkcode Deno.Database} connection to persist data.
+   * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that
    * path. Read and write access to the file is required.
@@ -1490,11 +1490,11 @@ declare namespace Deno {
    * @tags allow-read, allow-write
    * @category KV
    */
-  export function openDatabase(path?: string): Promise<Deno.Database>;
+  export function openKv(path?: string): Promise<Deno.Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A key to be persisted in a {@linkcode Deno.Database}. A key is a sequence
+   * A key to be persisted in a {@linkcode Deno.Kv}. A key is a sequence
    * of {@linkcode Deno.KvKeyPart}s.
    *
    * Keys are ordered lexicographically by their parts. The first part is the
@@ -1557,7 +1557,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * A selector that selects the range of data returned by a list operation on a
-   * {@linkcode Deno.Database}.
+   * {@linkcode Deno.Kv}.
    *
    * The selector can either be a prefix selector or a range selector. A prefix
    * selector selects all keys that start with the given prefix (optionally
@@ -1574,7 +1574,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A mutation to a key in a {@linkcode Deno.Database}. A mutation is a
+   * A mutation to a key in a {@linkcode Deno.Kv}. A mutation is a
    * combination of a key, a value, and a type. The type determines how the
    * mutation is applied to the key.
    *
@@ -1609,7 +1609,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An iterator over a range of data entries in a {@linkcode Deno.Database}.
+   * An iterator over a range of data entries in a {@linkcode Deno.Kv}.
    *
    * The cursor getter returns the cursor that can be used to resume the
    * iteration from the current position in the future.
@@ -1630,7 +1630,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A versioned pair of key and value in a {@linkcode Deno.Database}.
+   * A versioned pair of key and value in a {@linkcode Deno.Kv}.
    *
    * The `versionstamp` is a string that represents the current version of the
    * key-value pair. It can be used to perform atomic operations on the KV store
@@ -1648,7 +1648,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Options for listing key-value pairs in a {@linkcode Deno.Database}.
+   * Options for listing key-value pairs in a {@linkcode Deno.Kv}.
    *
    * @category KV
    */
@@ -1719,7 +1719,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An operation on a {@linkcode Deno.Database} that can be performed
+   * An operation on a {@linkcode Deno.Kv} that can be performed
    * atomically. Atomic operations do not auto-commit, and must be committed
    * explicitly by calling the `commit` method.
    *
@@ -1824,14 +1824,14 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export class Database {
+  export class Kv {
     /**
      * Retrieve the value and versionstamp for the given key from the database
      * in the form of a {@linkcode Deno.KvEntry}. If no value exists for the key,
      * the returned entry will have a `null` value and versionstamp.
      *
      * ```ts
-     * const db = await Deno.openDatabase();
+     * const db = await Deno.openKv();
      * const result = await db.get(["foo"]);
      * result.key; // ["foo"]
      * result.value; // "bar"
@@ -1857,7 +1857,7 @@ declare namespace Deno {
      * entry will have a `null` value and versionstamp.
      *
      * ```ts
-     * const db = await Deno.openDatabase();
+     * const db = await Deno.openKv();
      * const result = await db.getMany([["foo"], ["baz"]]);
      * result[0].key; // ["foo"]
      * result[0].value; // "bar"
@@ -1883,7 +1883,7 @@ declare namespace Deno {
      * exists for the key, it will be overwritten.
      *
      * ```ts
-     * const db = await Deno.openDatabase();
+     * const db = await Deno.openKv();
      * await db.set(["foo"], "bar");
      * ```
      */
@@ -1894,7 +1894,7 @@ declare namespace Deno {
      * for the key, this operation is a no-op.
      *
      * ```ts
-     * const db = await Deno.openDatabase();
+     * const db = await Deno.openKv();
      * await db.delete(["foo"]);
      * ```
      */
@@ -1926,7 +1926,7 @@ declare namespace Deno {
      *   not `["users", "noa"]` or `["users", "zoe"]`.
      *
      * ```ts
-     * const db = await Deno.openDatabase();
+     * const db = await Deno.openKv();
      * const entries = db.list({ prefix: ["users"] });
      * for await (const entry of entries) {
      *   entry.key; // ["users", "alice"]
@@ -1961,7 +1961,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Wrapper type for 64-bit unsigned integers for use as values in a
-   * {@linkcode Deno.Database}.
+   * {@linkcode Deno.Kv}.
    *
    * @category KV
    */

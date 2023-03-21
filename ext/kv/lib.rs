@@ -86,7 +86,7 @@ where
     let state = state.borrow();
     state
       .borrow::<UnstableChecker>()
-      .check_unstable("Deno.openDatabase");
+      .check_unstable("Deno.openKv");
     state.borrow::<Rc<DBH>>().clone()
   };
   let db = handler.open(state.clone(), path).await?;

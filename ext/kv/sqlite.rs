@@ -119,8 +119,8 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         {
           let mut state = state.borrow_mut();
           let permissions = state.borrow_mut::<P>();
-          permissions.check_read(path, "Deno.openDatabase")?;
-          permissions.check_write(path, "Deno.openDatabase")?;
+          permissions.check_read(path, "Deno.openKv")?;
+          permissions.check_write(path, "Deno.openKv")?;
         }
         rusqlite::Connection::open(path)?
       }
