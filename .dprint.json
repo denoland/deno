@@ -21,6 +21,7 @@
     "cli/bench/testdata/npm/*",
     "cli/tsc/dts/lib.d.ts",
     "cli/tsc/dts/lib.scripthost.d.ts",
+    "cli/tsc/dts/lib.decorators*.d.ts",
     "cli/tsc/dts/lib.webworker*.d.ts",
     "cli/tsc/dts/lib.dom*.d.ts",
     "cli/tsc/dts/lib.es*.d.ts",
