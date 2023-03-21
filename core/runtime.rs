@@ -905,7 +905,7 @@ impl JsRuntime {
   /// The execution takes place on the current global context, so it is possible
   /// to maintain local JS state and invoke this method multiple times.
   ///
-  /// `name` can be a filepath or any other string, eg.
+  /// `name` can be a filepath or any other string, but it is required to be 7-bit ASCII, eg.
   ///
   ///   - "/some/file/path.js"
   ///   - "<anon>"
@@ -918,29 +918,6 @@ impl JsRuntime {
     &mut self,
     name: &'static str,
     source_code: S,
-  ) -> Result<v8::Global<v8::Value>, Error> {
-    // Manual monomorphization (TODO: replace w/momo)
-    self.execute_module_code(name, source_code.into())
-  }
-
-  /// Executes traditional JavaScript code (traditional = not ES modules).
-  ///
-  /// The execution takes place on the current global context, so it is possible
-  /// to maintain local JS state and invoke this method multiple times.
-  ///
-  /// `name` can be a filepath or any other string, eg.
-  ///
-  ///   - "/some/file/path.js"
-  ///   - "<anon>"
-  ///   - "[native code]"
-  ///
-  /// The same `name` value can be used for multiple executions.
-  ///
-  /// `Error` can usually be downcast to `JsError`.
-  pub fn execute_module_code(
-    &mut self,
-    name: &'static str,
-    source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, Error> {
     self
       .global_realm()
@@ -2087,12 +2064,10 @@ impl JsRuntime {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
       let scope = &mut self.handle_scope();
+      // true for main module
       module_map_rc
         .borrow_mut()
-        .new_es_module(
-          scope, // main module
-          true, specifier, &code, false,
-        )
+        .new_es_module(scope, true, specifier, &code, false)
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
             let exception = v8::Local::new(scope, exception);
@@ -2143,12 +2118,10 @@ impl JsRuntime {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
       let scope = &mut self.handle_scope();
+      // false for side module (not main module)
       module_map_rc
         .borrow_mut()
-        .new_es_module(
-          scope, // not main module
-          false, specifier, &code, false,
-        )
+        .new_es_module(scope, false, specifier, &code, false)
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
             let exception = v8::Local::new(scope, exception);
