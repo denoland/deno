@@ -301,10 +301,8 @@ impl CliMainWorker {
   }
 
   fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
-    deno_node::initialize_runtime(
-      &mut self.worker.js_runtime,
-      self.ps.options.has_node_modules_dir(),
-    )?;
+    let mut maybe_binary_command_name = None;
+
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
@@ -313,12 +311,16 @@ impl CliMainWorker {
           .sub_path
           .as_deref()
           .unwrap_or(pkg_ref.req.name.as_str());
-        deno_node::initialize_binary_command(
-          &mut self.worker.js_runtime,
-          binary_name,
-        )?;
+        maybe_binary_command_name = Some(binary_name.to_string());
       }
     }
+
+    deno_node::initialize_runtime(
+      &mut self.worker.js_runtime,
+      self.ps.options.has_node_modules_dir(),
+      maybe_binary_command_name,
+    )?;
+
     Ok(())
   }
 
@@ -627,6 +629,7 @@ fn create_web_worker_pre_execute_module_callback(
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
           ps.options.has_node_modules_dir(),
+          None,
         )?;
       }
 

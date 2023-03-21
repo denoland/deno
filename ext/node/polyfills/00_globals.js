@@ -2,14 +2,9 @@
 
 // deno-lint-ignore-file
 
-const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  ArrayPrototypePush,
   ArrayPrototypeFilter,
-  ObjectEntries,
-  ObjectCreate,
-  ObjectDefineProperty,
   Proxy,
   ReflectDefineProperty,
   ReflectDeleteProperty,
@@ -22,13 +17,6 @@ const {
   SetPrototypeHas,
 } = primordials;
 
-function assert(cond) {
-  if (!cond) {
-    throw Error("assert");
-  }
-}
-
-let initialized = false;
 const nodeGlobals = {};
 const nodeGlobalThis = new Proxy(globalThis, {
   get(target, prop) {
@@ -81,41 +69,4 @@ const nodeGlobalThis = new Proxy(globalThis, {
   },
 });
 
-const nativeModuleExports = ObjectCreate(null);
-const builtinModules = [];
-
-function initialize(nodeModules, nodeGlobalThisName) {
-  assert(!initialized);
-  initialized = true;
-  for (const [name, exports] of ObjectEntries(nodeModules)) {
-    nativeModuleExports[name] = exports;
-    ArrayPrototypePush(builtinModules, name);
-  }
-  nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
-  nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
-  nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
-  nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
-  nodeGlobals.console = nativeModuleExports["console"];
-  nodeGlobals.global = nodeGlobalThis;
-  nodeGlobals.process = nativeModuleExports["process"];
-  nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
-  nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
-  nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
-
-  // add a hidden global for the esm code to use in order to reliably
-  // get node's globalThis
-  ObjectDefineProperty(globalThis, nodeGlobalThisName, {
-    enumerable: false,
-    writable: false,
-    value: nodeGlobalThis,
-  });
-  // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
-  internals.__bootstrapNodeProcess(Deno.args, Deno.version);
-}
-
-internals.node = {
-  globalThis: nodeGlobalThis,
-  initialize,
-  nativeModuleExports,
-  builtinModules,
-};
+export { nodeGlobals, nodeGlobalThis };
