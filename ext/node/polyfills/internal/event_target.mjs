@@ -19,6 +19,8 @@ import {
 } from "ext:deno_node/internal/util.mjs";
 import { inspect } from "ext:deno_node/util.ts";
 
+const { ObjectAssign } = globalThis.__bootstrap.primordials;
+
 const kIsEventTarget = Symbol.for("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
@@ -95,7 +97,7 @@ class Event extends WebEvent {
       return name;
     }
 
-    const opts = Object.assign({}, options, {
+    const opts = ObjectAssign({}, options, {
       depth: NumberIsInteger(options.depth) ? options.depth - 1 : options.depth,
     });
 
@@ -752,7 +754,7 @@ class EventTarget extends WebEventTarget {
       return name;
     }
 
-    const opts = Object.assign({}, options, {
+    const opts = ObjectAssign({}, options, {
       depth: Number.isInteger(options.depth)
         ? options.depth - 1
         : options.depth,
