@@ -5,6 +5,7 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 
 use deno_core::error::AnyError;
+use deno_core::ModuleCode;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use std::sync::Arc;
@@ -27,11 +28,11 @@ pub fn emit_parsed_source(
   source: &Arc<str>,
   emit_options: &deno_ast::EmitOptions,
   emit_config_hash: u64,
-) -> Result<String, AnyError> {
+) -> Result<ModuleCode, AnyError> {
   let source_hash = get_source_hash(source, emit_config_hash);
 
   if let Some(emit_code) = emit_cache.get_emit_code(specifier, source_hash) {
-    Ok(emit_code)
+    Ok(emit_code.into())
   } else {
     // this will use a cached version if it exists
     let parsed_source = parsed_source_cache.get_or_parse_module(
@@ -42,6 +43,6 @@ pub fn emit_parsed_source(
     let transpiled_source = parsed_source.transpile(emit_options)?;
     debug_assert!(transpiled_source.source_map.is_none());
     emit_cache.set_emit_code(specifier, source_hash, &transpiled_source.text);
-    Ok(transpiled_source.text)
+    Ok(transpiled_source.text.into())
   }
 }

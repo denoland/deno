@@ -78,7 +78,7 @@ impl CliMainWorker {
       self.execute_main_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
 
     loop {
       self
@@ -87,13 +87,13 @@ impl CliMainWorker {
         .await?;
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
     }
 
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
@@ -129,7 +129,7 @@ impl CliMainWorker {
         self
           .inner
           .worker
-          .dispatch_load_event(&located_script_name!())?;
+          .dispatch_load_event(located_script_name!())?;
         self.pending_unload = true;
 
         let result = loop {
@@ -140,7 +140,7 @@ impl CliMainWorker {
           match self
             .inner
             .worker
-            .dispatch_beforeunload_event(&located_script_name!())
+            .dispatch_beforeunload_event(located_script_name!())
           {
             Ok(default_prevented) if default_prevented => {} // continue loop
             Ok(_) => break Ok(()),
@@ -154,7 +154,7 @@ impl CliMainWorker {
         self
           .inner
           .worker
-          .dispatch_unload_event(&located_script_name!())?;
+          .dispatch_unload_event(located_script_name!())?;
 
         Ok(())
       }
@@ -166,7 +166,7 @@ impl CliMainWorker {
           let _ = self
             .inner
             .worker
-            .dispatch_unload_event(&located_script_name!());
+            .dispatch_unload_event(located_script_name!());
         }
       }
     }
@@ -185,7 +185,7 @@ impl CliMainWorker {
     // failures.
     if self.ps.options.trace_ops() {
       self.worker.js_runtime.execute_script(
-        &located_script_name!(),
+        located_script_name!(),
         "Deno[Deno.internal].core.enableOpCallTracing();",
       )?;
     }
@@ -200,19 +200,19 @@ impl CliMainWorker {
       self.execute_side_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
     self.run_tests(&self.ps.options.shuffle_tests()).await?;
     loop {
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
       self.worker.run_event_loop(false).await?;
     }
 
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
@@ -230,7 +230,7 @@ impl CliMainWorker {
     self.enable_test();
 
     self.worker.execute_script(
-      &located_script_name!(),
+      located_script_name!(),
       "Deno[Deno.internal].core.enableOpCallTracing();",
     )?;
 
@@ -239,18 +239,18 @@ impl CliMainWorker {
       self.execute_side_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
     self.run_tests(&None).await?;
     loop {
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
       self.worker.run_event_loop(false).await?;
     }
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
     Ok(())
   }
 
@@ -260,18 +260,18 @@ impl CliMainWorker {
     // We execute the module module as a side module so that import.meta.main is not set.
     self.execute_side_module_possibly_with_npm().await?;
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
     self.run_benchmarks().await?;
     loop {
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
       self.worker.run_event_loop(false).await?;
     }
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
     Ok(())
   }
 

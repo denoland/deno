@@ -178,7 +178,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     async move {
       if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
-          code: source.into_bytes().into_boxed_slice(),
+          code: source.into(),
           module_type: deno_core::ModuleType::JavaScript,
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
@@ -192,7 +192,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .to_owned();
 
       Ok(deno_core::ModuleSource {
-        code: code.into_bytes().into_boxed_slice(),
+        code: code.into(),
         module_type: match module.kind {
           eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
           eszip::ModuleKind::Json => deno_core::ModuleType::Json,
@@ -384,16 +384,16 @@ pub async fn run(
     options,
   );
   worker.execute_main_module(main_module).await?;
-  worker.dispatch_load_event(&located_script_name!())?;
+  worker.dispatch_load_event(located_script_name!())?;
 
   loop {
     worker.run_event_loop(false).await?;
-    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+    if !worker.dispatch_beforeunload_event(located_script_name!())? {
       break;
     }
   }
 
-  worker.dispatch_unload_event(&located_script_name!())?;
+  worker.dispatch_unload_event(located_script_name!())?;
   std::process::exit(0);
 }
 
