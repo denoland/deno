@@ -11,6 +11,7 @@ use crate::args::FilesConfig;
 use crate::args::LintOptions;
 use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
+use crate::cache::Caches;
 use crate::colors;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
@@ -98,9 +99,10 @@ pub async fn lint(
 
   let has_error = Arc::new(AtomicBool::new(false));
   let deno_dir = cli_options.resolve_deno_dir()?;
+  let caches = Caches::default();
   let operation = |paths: Vec<PathBuf>| async {
     let incremental_cache = Arc::new(IncrementalCache::new(
-      &deno_dir.lint_incremental_cache_db_file_path(),
+      caches.lint_incremental_cache_db(&deno_dir),
       // use a hash of the rule names in order to bust the cache
       &{
         // ensure this is stable by sorting it
