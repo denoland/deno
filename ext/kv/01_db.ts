@@ -14,7 +14,7 @@ const encodeCursor: (
 ) => string = (selector, boundaryKey) =>
   ops.op_kv_encode_cursor(selector, boundaryKey);
 
-async function kv(path: string) {
+async function openKv(path: string) {
   const rid = await core.opAsync("op_kv_database_open", path);
   return new Kv(rid);
 }
@@ -466,4 +466,4 @@ class KvListIterator extends AsyncIterator
   }
 }
 
-export { Kv, kv, KvListIterator, KvU64 };
+export { Kv, KvListIterator, KvU64, openKv };
