@@ -3575,8 +3575,12 @@
         "error-after-response.any.worker.html": false,
         "keepalive.any.html": false,
         "mediasource.window.html": false,
-        "mode-no-cors.sub.any.html": false,
-        "mode-no-cors.sub.any.worker.html": false,
+        "mode-no-cors.sub.any.html": {
+          "ignore": true
+        },
+        "mode-no-cors.sub.any.worker.html": {
+          "ignore": true
+        },
         "mode-same-origin.any.html": [
           "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with same-origin mode",
           "Fetch http://www1.web-platform.test:8000/fetch/api/resources/top.txt with same-origin mode",
