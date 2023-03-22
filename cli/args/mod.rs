@@ -1001,6 +1001,10 @@ impl CliOptions {
     self.flags.enable_testing_features
   }
 
+  pub fn ext_flag(&self) -> &Option<String> {
+    &self.flags.ext
+  }
+
   /// If the --inspect or --inspect-brk flags are used.
   pub fn is_inspecting(&self) -> bool {
     self.flags.inspect.is_some()

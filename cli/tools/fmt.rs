@@ -9,7 +9,6 @@
 
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
-use crate::args::Flags;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
@@ -46,13 +45,18 @@ use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  flags: Flags,
   cli_options: CliOptions,
   fmt_options: FmtOptions,
 ) -> Result<(), AnyError> {
   if fmt_options.is_stdin {
-    // ext.unwrap() is safe because `fmt --ext` is defaulted by clap
-    return format_stdin(fmt_options, flags.ext.unwrap());
+    return format_stdin(
+      fmt_options,
+      cli_options
+        .ext_flag()
+        .as_ref()
+        .map(|s| s.as_str())
+        .unwrap_or("ts"),
+    );
   }
 
   let files = fmt_options.files;
@@ -461,7 +465,7 @@ fn format_ensure_stable(
 /// Format stdin and write result to stdout.
 /// Treats input as set by `--ext` flag.
 /// Compatible with `--check` flag.
-fn format_stdin(fmt_options: FmtOptions, ext: String) -> Result<(), AnyError> {
+fn format_stdin(fmt_options: FmtOptions, ext: &str) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");

@@ -1229,6 +1229,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .long("ext")
         .help("Set content type of the supplied file")
         .takes_value(true)
+        // prefer using ts for formatting instead of js because ts works in more scenarios
         .default_value("ts")
         .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )

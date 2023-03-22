@@ -90,7 +90,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Fmt(fmt_flags) => {
       let cli_options = CliOptions::from_flags(flags.clone())?;
       let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-      tools::fmt::format(flags, cli_options, fmt_options).await?;
+      tools::fmt::format(cli_options, fmt_options).await?;
       Ok(0)
     }
     DenoSubcommand::Init(init_flags) => {
