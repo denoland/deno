@@ -57,23 +57,22 @@ function findClosedPortInRange(
 function flakyTest(
   fn: (t: Deno.TestContext) => Promise<void>,
 ) {
-  return async function (t: Deno.TestContext) {
-    const NO_OF_TRIES = 3;
-    let tries = 0;
+  async function wrapperFn(t: Deno.TestContext) {
     let lastError;
 
-    while (tries < NO_OF_TRIES) {
+    for (let i = 0; i < 3; i++) {
       try {
         await fn(t);
         return;
       } catch (e) {
-        tries++;
         lastError = e;
       }
     }
 
     throw lastError;
-  };
+  }
+  Object.defineProperty(wrapperFn, "name", { value: fn.name });
+  return wrapperFn;
 }
 
 Deno.test(
