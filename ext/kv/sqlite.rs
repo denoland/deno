@@ -12,6 +12,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use rusqlite::params;
+use rusqlite::OpenFlags;
 use rusqlite::OptionalExtension;
 use rusqlite::Transaction;
 
@@ -111,10 +112,18 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     path: Option<String>,
   ) -> Result<Self::DB, AnyError> {
     let conn = match (path.as_deref(), &self.default_storage_dir) {
-      (Some(":memory:") | None, None) => {
+      (Some(":memory:"), _) | (None, None) => {
         rusqlite::Connection::open_in_memory()?
       }
       (Some(path), _) => {
+        if path.is_empty() {
+          return Err(type_error("Filename cannot be empty"));
+        }
+        if path.starts_with(':') {
+          return Err(type_error(
+            "Filename cannot start with ':' unless prefixed with './'",
+          ));
+        }
         let path = Path::new(path);
         {
           let mut state = state.borrow_mut();
@@ -122,7 +131,8 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
           permissions.check_read(path, "Deno.openKv")?;
           permissions.check_write(path, "Deno.openKv")?;
         }
-        rusqlite::Connection::open(path)?
+        let flags = OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
+        rusqlite::Connection::open_with_flags(path, flags)?
       }
       (None, Some(path)) => {
         std::fs::create_dir_all(path)?;

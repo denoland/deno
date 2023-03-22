@@ -7,6 +7,32 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
+Deno.test({
+  name: "openKv :memory: no permissions",
+  permissions: {},
+  async fn() {
+    const db = await Deno.openKv(":memory:");
+    await db.close();
+  },
+});
+
+Deno.test({
+  name: "openKv invalid filenames",
+  permissions: {},
+  async fn() {
+    await assertRejects(
+      async () => await Deno.openKv(""),
+      TypeError,
+      "Filename cannot be empty",
+    );
+    await assertRejects(
+      async () => await Deno.openKv(":foo"),
+      TypeError,
+      "Filename cannot start with ':' unless prefixed with './'",
+    );
+  },
+});
+
 function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   Deno.test({
     name,
