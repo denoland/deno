@@ -10,19 +10,11 @@ https://github.com/denoland/deno_install
 
 - BREAKING(ext/fs): FileInfo.dev is defined on Windows (#18237)
 - BREAKING(unstable): remove WebGPU (#18094)
-- Reland "perf(core): preserve ops between snapshots (#18080)" (#18272)
-- Revert "chore: update wpt (#18335)" (#18355)
-- Revert "fix(cli) Better error messages on corrupt databases that aren…
-  (#18337)
-- Revert "perf(core): preserve ops between snapshots (#18080)" (#18267)
-- Revert "perf(core): use static specifier in ExtensionFileSource (#182…
-  (#18270)
-- Revert "perf: disable TSC snapshot compression (#18333)" (#18336)
 - Revert "refactor: rename Deno.openKv() to Deno.kv() (#18349)" (#18362)
 - feat(cli): --ext parameter for run, compile, and bundle (#17172)
 - feat(compile): Add support for web workers in standalone mode (#17657)
 - feat(compile): Enable multiple roots for a standalone module graph (#17663)
-- feat(core) deno_core::extension! macro to simplify extension registration
+- feat(core): deno_core::extension! macro to simplify extension registration
   (#18210)
 - feat(ext/kv): key-value store (#18232)
 - feat(ext/net): Add multicasting APIs to DatagramConn (#10706) (#17811)
@@ -31,8 +23,6 @@ https://github.com/denoland/deno_install
 - feat(repl): add `DENO_REPL_HISTORY` to change history file path (#18047)
 - feat(serde_v8): support BigInt serialization (#18225)
 - feat: TypeScript 5.0.2 (except decorators) (#18294)
-- fix(cli) Better error messages on corrupt databases that aren't automatically
-  re-created (#18330)
 - fix(cli): preserve blob store when resetting file watcher (#18253)
 - fix(cli/integration): clippy lints (#18248)
 - fix(ext/kv): don't request permissions for ":memory:" (#18346)
@@ -50,9 +40,7 @@ https://github.com/denoland/deno_install
 - perf(core) Reduce copying and cloning in extension initialization (#18252)
 - perf(core) Reduce script name and script code copies (#18298)
 - perf(core): preserve ops between snapshots (#18080)
-- perf(core): use static specifier in ExtensionFileSource (#18264)
 - perf(core): use static specifier in ExtensionFileSource (#18271)
-- perf: disable TSC snapshot compression (#18333)
 - perf: disable WAL for transpiled source cache (#18084)
 - perf: disable runtime snapshot compression (#18239)
 
