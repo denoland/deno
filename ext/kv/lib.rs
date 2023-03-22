@@ -315,7 +315,16 @@ impl TryFrom<V8Enqueue> for Enqueue {
 }
 
 fn encode_v8_key(key: KvKey) -> Result<Vec<u8>, std::io::Error> {
-  encode_key(&Key(key.into_iter().map(From::from).collect()))
+  // This appears to be a Rust/macos/allocator bug of unknown origin. It disappears when we disable optimization, so let's do
+  // that here. We should re-test this on Intel MacOS (Monterey) on new Rust versions until it is fixed.
+  // https://github.com/denoland/deno/issues/18363
+  if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+    std::hint::black_box(encode_key(&Key(
+      key.into_iter().map(From::from).collect(),
+    )))
+  } else {
+    encode_key(&Key(key.into_iter().map(From::from).collect()))
+  }
 }
 
 enum RawSelector {
