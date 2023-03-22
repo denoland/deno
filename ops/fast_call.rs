@@ -14,12 +14,6 @@ use syn::GenericParam;
 use syn::Generics;
 use syn::Ident;
 use syn::ItemFn;
-use syn::ItemImpl;
-use syn::Path;
-use syn::PathArguments;
-use syn::PathSegment;
-use syn::Type;
-use syn::TypePath;
 
 use crate::optimizer::FastValue;
 use crate::optimizer::Optimizer;

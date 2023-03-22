@@ -316,26 +316,16 @@ async fn op_flash_write_resource(
   Ok(())
 }
 
-pub struct RespondFast;
-
-impl fast_api::FastFunction for RespondFast {
-  fn function(&self) -> *const c_void {
-    op_flash_respond_fast as *const c_void
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    &[
-      fast_api::Type::V8Value,
-      fast_api::Type::Uint32,
-      fast_api::Type::TypedArray(fast_api::CType::Uint8),
-      fast_api::Type::Bool,
-    ]
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Uint32
-  }
-}
+pub const RESPOND_FAST: fast_api::FastFunction = fast_api::FastFunction::new(
+  &[
+    fast_api::Type::V8Value,
+    fast_api::Type::Uint32,
+    fast_api::Type::TypedArray(fast_api::CType::Uint8),
+    fast_api::Type::Bool,
+  ],
+  fast_api::CType::Uint32,
+  op_flash_respond_fast as *const c_void,
+);
 
 fn flash_respond(
   ctx: &mut ServerContext,
@@ -468,21 +458,11 @@ fn next_request_sync(ctx: &mut ServerContext) -> u32 {
   ctx.next_token - offset
 }
 
-pub struct NextRequestFast;
-
-impl fast_api::FastFunction for NextRequestFast {
-  fn function(&self) -> *const c_void {
-    op_flash_next_fast as *const c_void
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    &[fast_api::Type::V8Value]
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Uint32
-  }
-}
+const NEXT_REQUEST_FAST: fast_api::FastFunction = fast_api::FastFunction::new(
+  &[fast_api::Type::V8Value],
+  fast_api::CType::Uint32,
+  op_flash_next_fast as *const c_void,
+);
 
 unsafe fn op_flash_next_fast(recv: v8::Local<v8::Object>) -> u32 {
   let ptr =
@@ -491,21 +471,11 @@ unsafe fn op_flash_next_fast(recv: v8::Local<v8::Object>) -> u32 {
   next_request_sync(ctx)
 }
 
-pub struct GetMethodFast;
-
-impl fast_api::FastFunction for GetMethodFast {
-  fn function(&self) -> *const c_void {
-    op_flash_get_method_fast as *const c_void
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    &[fast_api::Type::V8Value, fast_api::Type::Uint32]
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Uint32
-  }
-}
+const GET_METHOD_FAST: fast_api::FastFunction = fast_api::FastFunction::new(
+  &[fast_api::Type::V8Value, fast_api::Type::Uint32],
+  fast_api::CType::Uint32,
+  op_flash_get_method_fast as *const c_void,
+);
 
 unsafe fn op_flash_get_method_fast(
   recv: v8::Local<v8::Object>,
@@ -549,7 +519,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &NextRequestFast, None, None, None);
+    let func = builder.build_fast(scope, &NEXT_REQUEST_FAST, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "nextRequest").unwrap();
@@ -572,7 +542,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &GetMethodFast, None, None, None);
+    let func = builder.build_fast(scope, &GET_METHOD_FAST, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "getMethod").unwrap();
@@ -610,7 +580,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &RespondFast, None, None, None);
+    let func = builder.build_fast(scope, &RESPOND_FAST, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "respond").unwrap();
