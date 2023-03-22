@@ -1535,7 +1535,7 @@ declare namespace Deno {
    * @tags allow-read, allow-write
    * @category KV
    */
-  export function kv(path?: string): Promise<Deno.Kv>;
+  export function openKv(path?: string): Promise<Deno.Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1876,7 +1876,7 @@ declare namespace Deno {
      * the returned entry will have a `null` value and versionstamp.
      *
      * ```ts
-     * const db = await Deno.kv();
+     * const db = await Deno.openKv();
      * const result = await db.get(["foo"]);
      * result.key; // ["foo"]
      * result.value; // "bar"
@@ -1902,7 +1902,7 @@ declare namespace Deno {
      * entry will have a `null` value and versionstamp.
      *
      * ```ts
-     * const db = await Deno.kv();
+     * const db = await Deno.openKv();
      * const result = await db.getMany([["foo"], ["baz"]]);
      * result[0].key; // ["foo"]
      * result[0].value; // "bar"
@@ -1928,7 +1928,7 @@ declare namespace Deno {
      * exists for the key, it will be overwritten.
      *
      * ```ts
-     * const db = await Deno.kv();
+     * const db = await Deno.openKv();
      * await db.set(["foo"], "bar");
      * ```
      */
@@ -1939,7 +1939,7 @@ declare namespace Deno {
      * for the key, this operation is a no-op.
      *
      * ```ts
-     * const db = await Deno.kv();
+     * const db = await Deno.openKv();
      * await db.delete(["foo"]);
      * ```
      */
@@ -1971,7 +1971,7 @@ declare namespace Deno {
      *   not `["users", "noa"]` or `["users", "zoe"]`.
      *
      * ```ts
-     * const db = await Deno.kv();
+     * const db = await Deno.openKv();
      * const entries = db.list({ prefix: ["users"] });
      * for await (const entry of entries) {
      *   entry.key; // ["users", "alice"]
