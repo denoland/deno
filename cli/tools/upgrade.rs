@@ -379,7 +379,7 @@ pub async fn upgrade(
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
-  let temp_dir = secure_tempfile::TempDir::new()?;
+  let temp_dir = tempfile::TempDir::new()?;
   let new_exe_path = unpack_into_dir(archive_data, cfg!(windows), &temp_dir)?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
@@ -476,7 +476,7 @@ async fn download_package(
 pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
-  temp_dir: &secure_tempfile::TempDir,
+  temp_dir: &tempfile::TempDir,
 ) -> Result<PathBuf, std::io::Error> {
   const EXE_NAME: &str = "deno";
   let temp_dir_path = temp_dir.path();
