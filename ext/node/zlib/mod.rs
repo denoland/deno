@@ -39,6 +39,126 @@ struct ZlibInner {
   strm: z_stream,
 }
 
+const GZIP_HEADER_ID1: u8 = 0x1f;
+const GZIP_HEADER_ID2: u8 = 0x8b;
+
+impl ZlibInner {
+  fn start_write(
+    &mut self,
+    input: &[u8],
+    in_off: u32,
+    in_len: u32,
+    out: &mut [u8],
+    out_off: u32,
+    out_len: u32,
+    flush: i32,
+  ) -> Result<(), AnyError> {
+    check(self.init_done, "write before init")?;
+    check(self.mode != NONE, "already finialized")?;
+    check(!self.write_in_progress, "write already in progress")?;
+    check(!self.pending_close, "close already in progress")?;
+
+    self.write_in_progress = true;
+
+    if flush != Z_NO_FLUSH
+      && flush != Z_PARTIAL_FLUSH
+      && flush != Z_SYNC_FLUSH
+      && flush != Z_FULL_FLUSH
+      && flush != Z_FINISH
+      && flush != Z_BLOCK
+    {
+      return Err(type_error("Bad argument"));
+    }
+
+    self.strm.avail_in = in_len;
+    // TODO(@littledivy): Crap! Guard against overflow!!
+    self.strm.next_in = unsafe { input.as_ptr().offset(in_off as isize) } as _;
+    self.strm.avail_out = out_len;
+    self.strm.next_out =
+      unsafe { out.as_mut_ptr().offset(out_off as isize) } as _;
+
+    self.flush = flush;
+    Ok(())
+  }
+
+  fn do_write(&mut self, flush: i32) -> Result<(), AnyError> {
+    match self.mode {
+      DEFLATE | GZIP | DEFLATERAW => {
+        unsafe { libz_sys::deflate(&mut self.strm, flush) };
+      }
+      UNZIP if self.strm.avail_in > 0 => {
+        let mut next_expected_header_byte = 0;
+
+        if self.gzib_id_bytes_read == 0 {
+          let byte =
+            unsafe { *self.strm.next_in.offset(next_expected_header_byte) };
+          if byte == GZIP_HEADER_ID1 {
+            self.gzib_id_bytes_read = 1;
+            next_expected_header_byte += 1;
+          } else {
+            self.mode = INFLATE;
+          }
+        }
+
+        if self.gzib_id_bytes_read == 1 && self.strm.avail_in > 1 {
+          let byte =
+            unsafe { *self.strm.next_in.offset(next_expected_header_byte) };
+          if byte == GZIP_HEADER_ID2 {
+            self.gzib_id_bytes_read = 2;
+            self.mode = GUNZIP;
+          } else {
+            self.mode = INFLATE;
+          }
+        } else {
+          return Err(type_error(
+            "invalid number of gzip magic number bytes read",
+          ));
+        }
+      }
+      _ => {}
+    }
+
+    match self.mode {
+      INFLATE | GUNZIP | INFLATERAW => {
+        self.err = unsafe { libz_sys::inflate(&mut self.strm, flush) };
+
+        // TODO(@littledivy): Use if let chain when it is stable.
+        // https://github.com/rust-lang/rust/issues/53667
+        if self.err == Z_NEED_DICT && self.dictionary.is_some() {
+          // Data was encoded with dictionary
+          let dictionary = self.dictionary.as_ref().unwrap();
+          self.err = unsafe {
+            libz_sys::inflateSetDictionary(
+              &mut self.strm,
+              dictionary.as_ptr() as _,
+              dictionary.len() as _,
+            )
+          };
+
+          if self.err == Z_OK {
+            self.err = unsafe { libz_sys::inflate(&mut self.strm, flush) };
+          } else if self.err == Z_DATA_ERROR {
+            self.err = Z_NEED_DICT;
+          }
+        }
+
+        while self.strm.avail_in > 0
+          && self.mode == GUNZIP
+          && self.err == Z_STREAM_END
+          && unsafe { *self.strm.next_in as u8 } != 0x00
+        {
+          self.err = unsafe { libz_sys::inflateReset(&mut self.strm) };
+          self.err = unsafe { libz_sys::inflate(&mut self.strm, flush) };
+        }
+      }
+      _ => {}
+    }
+
+    self.write_in_progress = false;
+    Ok(())
+  }
+}
+
 struct Zlib {
   inner: RefCell<ZlibInner>,
 }
@@ -154,31 +274,7 @@ pub fn op_zlib_write_async(
     .map_err(|_| bad_resource_id())?;
 
   let mut zlib = resource.inner.borrow_mut();
-  check(zlib.init_done, "write before init")?;
-  check(zlib.mode != NONE, "already finialized")?;
-  check(!zlib.write_in_progress, "write already in progress")?;
-  check(!zlib.pending_close, "close already in progress")?;
-
-  zlib.write_in_progress = true;
-
-  if flush != Z_NO_FLUSH
-    && flush != Z_PARTIAL_FLUSH
-    && flush != Z_SYNC_FLUSH
-    && flush != Z_FULL_FLUSH
-    && flush != Z_FINISH
-    && flush != Z_BLOCK
-  {
-    return Err(type_error("Bad argument"));
-  }
-
-  zlib.strm.avail_in = in_len;
-  // TODO(@littledivy): Crap! Guard against overflow!!
-  zlib.strm.next_in = unsafe { input.as_ptr().offset(in_off as isize) } as _;
-  zlib.strm.avail_out = out_len;
-  zlib.strm.next_out =
-    unsafe { out.as_mut_ptr().offset(out_off as isize) } as _;
-
-  zlib.flush = flush;
+  zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
 
   let state = state.clone();
   Ok(async move {
@@ -188,16 +284,7 @@ pub fn op_zlib_write_async(
       .get::<Zlib>(handle)
       .map_err(|_| bad_resource_id())?;
     let mut zlib = resource.inner.borrow_mut();
-    match zlib.mode {
-      DEFLATE | GZIP | DEFLATERAW => {
-        unsafe { libz_sys::deflate(&mut zlib.strm, flush) };
-      }
-      _ => {
-        unsafe { libz_sys::inflate(&mut zlib.strm, flush) };
-      }
-    }
-
-    zlib.write_in_progress = false;
+    zlib.do_write(flush)?;
 
     Ok((zlib.strm.avail_out, zlib.strm.avail_in))
   })
@@ -210,8 +297,10 @@ pub fn op_zlib_write(
   flush: i32,
   input: &[u8],
   in_off: u32,
+  in_len: u32,
   out: &mut [u8],
   out_off: u32,
+  out_len: u32,
   result: &mut [u32],
 ) -> Result<(), AnyError> {
   let resource = state
@@ -220,43 +309,11 @@ pub fn op_zlib_write(
     .map_err(|_| bad_resource_id())?;
 
   let mut zlib = resource.inner.borrow_mut();
-  check(zlib.init_done, "write before init")?;
-  check(zlib.mode != NONE, "already finialized")?;
-  check(!zlib.write_in_progress, "write already in progress")?;
-  check(!zlib.pending_close, "close already in progress")?;
+  zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
+  zlib.do_write(flush)?;
 
-  zlib.write_in_progress = true;
-
-  if flush != Z_NO_FLUSH
-    && flush != Z_PARTIAL_FLUSH
-    && flush != Z_SYNC_FLUSH
-    && flush != Z_FULL_FLUSH
-    && flush != Z_FINISH
-    && flush != Z_BLOCK
-  {
-    return Err(type_error("Bad argument"));
-  }
-
-  zlib.strm.avail_in = input.len() as u32;
-  zlib.strm.next_in = input.as_ptr() as *mut u8;
-  zlib.strm.avail_out = out.len() as u32;
-  zlib.strm.next_out = out.as_mut_ptr();
-
-  zlib.flush = flush;
-
-  match zlib.mode {
-    DEFLATE | GZIP | DEFLATERAW => {
-      unsafe { libz_sys::deflate(&mut zlib.strm, flush) };
-    }
-    _ => {
-      unsafe { libz_sys::inflate(&mut zlib.strm, flush) };
-    }
-  }
-
-  zlib.write_in_progress = false;
-
-  result[0] = zlib.strm.total_out as u32;
-  result[1] = zlib.strm.total_in as u32;
+  result[0] = zlib.strm.avail_out as u32;
+  result[1] = zlib.strm.avail_in as u32;
 
   Ok(())
 }
@@ -278,6 +335,8 @@ pub fn op_zlib_init(
 
   check(window_bits >= 8 && window_bits <= 15, "invalid windowBits")?;
   check(level >= -1 && level <= 9, "invalid level")?;
+
+  check(mem_level >= 1 && mem_level <= 9, "invalid memLevel")?;
 
   check(
     strategy == Z_DEFAULT_STRATEGY
@@ -317,7 +376,7 @@ pub fn op_zlib_init(
         std::mem::size_of::<z_stream>() as i32,
       );
     },
-    _ => unsafe {
+    INFLATE | GUNZIP | INFLATERAW | UNZIP => unsafe {
       inflateInit2_(
         &mut zlib.strm,
         window_bits,
@@ -325,6 +384,7 @@ pub fn op_zlib_init(
         std::mem::size_of::<z_stream>() as i32,
       );
     },
+    _ => return Err(type_error("Unknown mode")),
   }
 
   zlib.dictionary = dictionary.map(|buf| buf.to_vec());
@@ -348,9 +408,10 @@ pub fn op_zlib_reset(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
     DEFLATE | GZIP | DEFLATERAW => {
       unsafe { libz_sys::deflateReset(&mut zlib.strm) };
     }
-    _ => {
+    INFLATE | GUNZIP | INFLATERAW | UNZIP => {
       unsafe { libz_sys::inflateReset(&mut zlib.strm) };
     }
+    _ => return Err(type_error("Unknown mode")),
   }
 
   Ok(())

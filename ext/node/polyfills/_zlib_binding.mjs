@@ -73,12 +73,14 @@ class Zlib {
       flush,
       input,
       in_off,
+      in_len,
       out,
       out_off,
+      out_len,
       writeResult,
     );
 
-    return [writeResult[0], writeResult[1]];
+    return [writeResult[1], writeResult[0]];
   }
 
   write(
