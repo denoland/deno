@@ -7,6 +7,13 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
+let isCI: boolean;
+try {
+  isCI = Deno.env.get("CI") !== undefined;
+} catch {
+  isCI = true;
+}
+
 Deno.test({
   name: "openKv :memory: no permissions",
   permissions: {},
@@ -36,6 +43,8 @@ Deno.test({
 function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   Deno.test({
     name,
+    // https://github.com/denoland/deno/issues/18363
+    ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
       const db: Deno.Kv = await Deno.openKv(
         ":memory:",
