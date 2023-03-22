@@ -162,6 +162,7 @@ pub async fn create_graph_and_maybe_check(
   let mut cache = cache::FetchCacher::new(
     ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
+    ps.options.resolve_file_header_overrides(),
     PermissionsContainer::allow_all(),
     PermissionsContainer::allow_all(),
     ps.options.node_modules_dir_specifier(),
