@@ -12,8 +12,8 @@ use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Serialize;
 use tokio::task::JoinHandle;
 
-use super::common::run_sqlite_pragma;
 use super::common::FastInsecureHasher;
+use super::common::INITIAL_PRAGMAS;
 
 /// Cache used to skip formatting/linting a file again when we
 /// know it is already formatted or has no lint diagnostics.
@@ -174,8 +174,7 @@ impl SqlIncrementalCache {
     state_hash: u64,
     cli_version: String,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self { conn, state_hash })
   }
@@ -238,26 +237,21 @@ impl SqlIncrementalCache {
   }
 }
 
-fn create_tables(
-  conn: &Connection,
-  cli_version: String,
-) -> Result<(), AnyError> {
-  // INT doesn't store up to u64, so use TEXT
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS incrementalcache (
-        file_path TEXT PRIMARY KEY,
-        state_hash TEXT NOT NULL,
-        source_hash TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )",
-    [],
-  )?;
+fn initialize(conn: &Connection, cli_version: String) -> Result<(), AnyError> {
+  // INT doesn't store up to u64, so use TEXT for source_hash
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  CREATE TABLE IF NOT EXISTS incrementalcache (
+    file_path TEXT PRIMARY KEY,
+    state_hash TEXT NOT NULL,
+    source_hash TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );"
+  );
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn
