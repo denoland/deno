@@ -19,7 +19,7 @@ use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 
-use super::common::run_sqlite_pragma;
+use super::common::INITIAL_PRAGMAS;
 use super::FastInsecureHasher;
 
 #[derive(Clone, Default)]
@@ -162,8 +162,7 @@ impl ParsedSourceCacheModuleAnalyzer {
     cli_version: String,
     sources: ParsedSourceCacheSources,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self { conn, sources })
   }
@@ -288,27 +287,24 @@ impl deno_graph::ModuleAnalyzer for ParsedSourceCacheModuleAnalyzer {
   }
 }
 
-fn create_tables(
-  conn: &Connection,
-  cli_version: String,
-) -> Result<(), AnyError> {
-  // INT doesn't store up to u64, so use TEXT for source_hash
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS moduleinfocache (
-        specifier TEXT PRIMARY KEY,
-        media_type TEXT NOT NULL,
-        source_hash TEXT NOT NULL,
-        module_info TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )",
-    [],
-  )?;
+fn initialize(conn: &Connection, cli_version: String) -> Result<(), AnyError> {
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  -- INT doesn't store up to u64, so use TEXT for source_hash
+  CREATE TABLE IF NOT EXISTS moduleinfocache (
+    specifier TEXT PRIMARY KEY,
+    media_type TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    module_info TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  "
+  );
+
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn
