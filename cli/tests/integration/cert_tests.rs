@@ -110,7 +110,7 @@ fn cafile_fetch() {
 #[test]
 fn cafile_compile() {
   let context = TestContext::with_http_server();
-  let temp_dir = context.deno_dir().path();
+  let temp_dir = context.temp_dir().path();
   let output_exe = if cfg!(windows) {
     temp_dir.join("cert.exe")
   } else {

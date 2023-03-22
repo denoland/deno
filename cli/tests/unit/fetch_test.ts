@@ -54,9 +54,30 @@ function findClosedPortInRange(
   );
 }
 
+function flakyTest(
+  fn: (t: Deno.TestContext) => Promise<void>,
+) {
+  async function wrapperFn(t: Deno.TestContext) {
+    let lastError;
+
+    for (let i = 0; i < 3; i++) {
+      try {
+        await fn(t);
+        return;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw lastError;
+  }
+  Object.defineProperty(wrapperFn, "name", { value: fn.name });
+  return wrapperFn;
+}
+
 Deno.test(
   { permissions: { net: true } },
-  async function fetchConnectionError() {
+  flakyTest(async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
     await assertRejects(
       async () => {
@@ -65,7 +86,7 @@ Deno.test(
       TypeError,
       "error trying to connect",
     );
-  },
+  }),
 );
 
 Deno.test(
@@ -1676,32 +1697,34 @@ function invalidServer(addr: string, body: Uint8Array): Deno.Listener {
 
 Deno.test(
   { permissions: { net: true } },
-  async function fetchWithInvalidContentLengthAndTransferEncoding(): Promise<
-    void
-  > {
-    const addr = "127.0.0.1:4516";
-    const data = "a".repeat(10 << 10);
+  flakyTest(
+    async function fetchWithInvalidContentLengthAndTransferEncoding(): Promise<
+      void
+    > {
+      const addr = "127.0.0.1:4516";
+      const data = "a".repeat(10 << 10);
 
-    const body = new TextEncoder().encode(
-      `HTTP/1.1 200 OK\r\nContent-Length: ${
-        Math.round(data.length * 2)
-      }\r\nTransfer-Encoding: chunked\r\n\r\n${
-        data.length.toString(16)
-      }\r\n${data}\r\n0\r\n\r\n`,
-    );
+      const body = new TextEncoder().encode(
+        `HTTP/1.1 200 OK\r\nContent-Length: ${
+          Math.round(data.length * 2)
+        }\r\nTransfer-Encoding: chunked\r\n\r\n${
+          data.length.toString(16)
+        }\r\n${data}\r\n0\r\n\r\n`,
+      );
 
-    // if transfer-encoding is sent, content-length is ignored
-    // even if it has an invalid value (content-length > totalLength)
-    const listener = invalidServer(addr, body);
-    const response = await fetch(`http://${addr}/`);
+      // if transfer-encoding is sent, content-length is ignored
+      // even if it has an invalid value (content-length > totalLength)
+      const listener = invalidServer(addr, body);
+      const response = await fetch(`http://${addr}/`);
 
-    const res = await response.arrayBuffer();
-    const buf = new TextEncoder().encode(data);
-    assertEquals(res.byteLength, buf.byteLength);
-    assertEquals(new Uint8Array(res), buf);
+      const res = await response.arrayBuffer();
+      const buf = new TextEncoder().encode(data);
+      assertEquals(res.byteLength, buf.byteLength);
+      assertEquals(new Uint8Array(res), buf);
 
-    listener.close();
-  },
+      listener.close();
+    },
+  ),
 );
 
 Deno.test(

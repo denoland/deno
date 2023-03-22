@@ -667,9 +667,9 @@ impl CliOptions {
       file_fetcher,
     )
     .await
-    .context(format!(
-      "Unable to load '{import_map_specifier}' import map"
-    ))
+    .with_context(|| {
+      format!("Unable to load '{import_map_specifier}' import map")
+    })
     .map(Some)
   }
 
@@ -1156,7 +1156,9 @@ fn resolve_import_map_specifier(
     }
     let specifier =
       deno_core::resolve_url_or_path(import_map_path, current_dir)
-        .context(format!("Bad URL (\"{import_map_path}\") for import map."))?;
+        .with_context(|| {
+          format!("Bad URL (\"{import_map_path}\") for import map.")
+        })?;
     return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {
     // if the config file is an import map we prefer to use it, over `importMap`
@@ -1196,7 +1198,7 @@ fn resolve_import_map_specifier(
           // use "import resolution" with the config file as the base.
           } else {
             deno_core::resolve_import(&import_map_path, config_file.specifier.as_str())
-              .context(format!(
+              .with_context(|| format!(
                 "Bad URL (\"{import_map_path}\") for import map."
               ))?
           };

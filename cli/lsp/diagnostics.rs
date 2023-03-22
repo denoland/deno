@@ -88,6 +88,7 @@ impl DiagnosticsPublisher {
 
       self
         .client
+        .when_outside_lsp_lock()
         .publish_diagnostics(specifier, version_diagnostics.clone(), version)
         .await;
     }
@@ -1162,7 +1163,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,
@@ -1177,14 +1178,11 @@ let c: number = "a";
       let mut disabled_config = mock_config();
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
-        (
-          specifier.clone(),
-          SpecifierSettings {
-            enable: false,
-            enable_paths: Vec::new(),
-            code_lens: Default::default(),
-          },
-        ),
+        SpecifierSettings {
+          enable: false,
+          enable_paths: Vec::new(),
+          code_lens: Default::default(),
+        },
       );
 
       let diagnostics = generate_lint_diagnostics(

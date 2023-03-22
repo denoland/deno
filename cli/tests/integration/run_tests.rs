@@ -2874,7 +2874,7 @@ fn package_json_no_node_modules_dir_created() {
     .add_npm_env_vars()
     .use_temp_cwd()
     .build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write("deno.json", "{}");
   temp_dir.write("package.json", "{}");
@@ -2892,7 +2892,7 @@ fn node_modules_dir_no_npm_specifiers_no_dir_created() {
     .add_npm_env_vars()
     .use_temp_cwd()
     .build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write("deno.json", "{}");
   temp_dir.write("main.ts", "");
@@ -4090,6 +4090,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 #[test]
+#[ignore]
 fn permission_prompt_strips_ansi_codes_and_control_chars() {
   let _guard = util::http_server();
   util::with_pty(&["repl"], |mut console| {

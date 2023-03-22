@@ -134,36 +134,32 @@ impl Loader for FetchCacher {
       file_fetcher
         .fetch(&specifier, permissions)
         .await
-        .map_or_else(
-          |err| {
-            if let Some(err) = err.downcast_ref::<std::io::Error>() {
-              if err.kind() == std::io::ErrorKind::NotFound {
-                return Ok(None);
+        .map(|file| {
+          let maybe_headers =
+            match (file.maybe_headers, file_header_overrides.get(&specifier)) {
+              (Some(headers), Some(overrides)) => {
+                Some(headers.into_iter().chain(overrides.clone()).collect())
               }
-            } else if get_error_class_name(&err) == "NotFound" {
+              (Some(headers), None) => Some(headers),
+              (None, Some(overrides)) => Some(overrides.clone()),
+              (None, None) => None,
+            };
+          Ok(Some(LoadResponse::Module {
+            specifier: file.specifier,
+            maybe_headers,
+            content: file.source,
+          }))
+        })
+        .unwrap_or_else(|err| {
+          if let Some(err) = err.downcast_ref::<std::io::Error>() {
+            if err.kind() == std::io::ErrorKind::NotFound {
               return Ok(None);
             }
-            Err(err)
-          },
-          |file| {
-            let maybe_headers =
-              match (file.maybe_headers, file_header_overrides.get(&specifier))
-              {
-                (Some(headers), Some(overrides)) => {
-                  Some(headers.into_iter().chain(overrides.clone()).collect())
-                }
-                (Some(headers), None) => Some(headers),
-                (None, Some(overrides)) => Some(overrides.clone()),
-                (None, None) => None,
-              };
-
-            Ok(Some(LoadResponse::Module {
-              specifier: file.specifier,
-              maybe_headers,
-              content: file.source,
-            }))
-          },
-        )
+          } else if get_error_class_name(&err) == "NotFound" {
+            return Ok(None);
+          }
+          Err(err)
+        })
     }
     .boxed()
   }

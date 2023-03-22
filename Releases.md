@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.31.3 / 2023.03.16
+
+- fix(check): regression where config "types" entries caused type checking
+  errors (#18124)
+- fix(core): Upgrades bytes crate from =1.2.1 to ^1.4.0 (#18123)
+- fix(core): `SafePromiseAll` to be unaffected by `Array#@@iterator` (#17542)
+- fix(core/internal): fix typo in primordial type definitions (#18125)
+- fix(ext/fs): retry if file already exists in makeTempFile (#17787)
+- fix(ext/http): abort request signal when response errors (#17822)
+- fix(ext/node): add crypto.createCipheriv (#18091)
+- fix(ext/node): implement "ascii" encoding for node:fs writeFile() (#18097)
+- fix(ext/web): Stop using `globalThis.ReadableStream` in `Blob` (#18187)
+- fix(info/doc): add missing `--no-lock` and `--lock` flags (#18166)
+- fix(lsp): avoid calling client while holding lock (#18197)
+- fix(npm): "not implemented scheme" message should properly show the scheme
+  (#18209)
+- fix(npm): show a progress bar when initializing the node_modules folder
+  (#18136)
+- fix(repl): do not panic deleting `Deno` or deleting all its properties
+  (#18211)
+- fix: ensure no node_modules directory is created when a package.json exists
+  and no npm dependencies are used (#18134)
+- perf: do not depend on iana-time-zone (#18088)
+
 ### 1.31.2 / 2023.03.10
 
 - Revert "perf: disable snapshot compression (#18061)" (#18074)

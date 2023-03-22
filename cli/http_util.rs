@@ -202,7 +202,8 @@ impl CacheSemantics {
         && self
           .cache_control
           .max_stale
-          .map_or(true, |val| val > self.age() - self.max_age());
+          .map(|val| val > self.age() - self.max_age())
+          .unwrap_or(true);
       if !allows_stale {
         return false;
       }

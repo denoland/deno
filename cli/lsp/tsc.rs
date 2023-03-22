@@ -37,7 +37,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -1024,15 +1023,19 @@ impl NavigationTree {
   ) -> bool {
     let mut should_include = self.should_include_entry();
     if !should_include
-      && self.child_items.as_ref().map_or(true, |v| v.is_empty())
+      && self
+        .child_items
+        .as_ref()
+        .map(|v| v.is_empty())
+        .unwrap_or(true)
     {
       return false;
     }
 
     let children = self
       .child_items
-      .as_ref()
-      .map_or(&[] as &[NavigationTree], |v| v.as_slice());
+      .as_deref()
+      .unwrap_or(&[] as &[NavigationTree]);
     for span in self.spans.iter() {
       let range = TextRange::at(span.start.into(), span.length.into());
       let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
@@ -1514,7 +1517,8 @@ impl RefactorActionInfo {
         .iter()
         .find(|action| action.matches(&self.name));
       maybe_match
-        .map_or(lsp::CodeActionKind::REFACTOR, |action| action.kind.clone())
+        .map(|action| action.kind.clone())
+        .unwrap_or(lsp::CodeActionKind::REFACTOR)
     }
   }
 
@@ -2814,31 +2818,35 @@ fn op_script_version(
 /// server.
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![init_extension(performance)],
+    extensions: vec![deno_tsc::init_ops(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
 }
 
-fn init_extension(performance: Arc<Performance>) -> Extension {
-  Extension::builder("deno_tsc")
-    .ops(vec![
-      op_is_cancelled::decl(),
-      op_is_node_file::decl(),
-      op_load::decl(),
-      op_resolve::decl(),
-      op_respond::decl(),
-      op_script_names::decl(),
-      op_script_version::decl(),
-    ])
-    .state(move |state| {
-      state.put(State::new(
-        Arc::new(StateSnapshot::default()),
-        performance.clone(),
-      ));
-    })
-    .build()
-}
+deno_core::extension!(deno_tsc,
+  ops = [
+    op_is_cancelled,
+    op_is_node_file,
+    op_load,
+    op_resolve,
+    op_respond,
+    op_script_names,
+    op_script_version,
+  ],
+  options = {
+    performance: Arc<Performance>
+  },
+  state = |state, options| {
+    state.put(State::new(
+      Arc::new(StateSnapshot::default()),
+      options.performance,
+    ));
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
@@ -2846,7 +2854,7 @@ fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
-  runtime.execute_script(&located_script_name!(), &init_src)?;
+  runtime.execute_script(located_script_name!(), init_src)?;
   Ok(())
 }
 
@@ -3434,7 +3442,7 @@ pub fn request(
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({request_params});");
-  runtime.execute_script(&located_script_name!(), &request_src)?;
+  runtime.execute_script(located_script_name!(), request_src)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
