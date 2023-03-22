@@ -412,6 +412,82 @@ fn standalone_runtime_flags() {
 }
 
 #[test]
+fn standalone_ext_flag_ts() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("ext_flag_ts.exe")
+  } else {
+    dir.path().join("ext_flag_ts")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--ext")
+    .arg("ts")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./file_extensions/ts_without_extension")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(
+    util::strip_ansi_codes(&stdout_str),
+    "executing typescript with no extension\n"
+  );
+}
+
+#[test]
+fn standalone_ext_flag_js() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("ext_flag_js.exe")
+  } else {
+    dir.path().join("ext_flag_js")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--ext")
+    .arg("js")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./file_extensions/js_without_extension")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(
+    util::strip_ansi_codes(&stdout_str),
+    "executing javascript with no extension\n"
+  );
+}
+
+#[test]
 fn standalone_import_map() {
   let dir = TempDir::new();
   let exe = if cfg!(windows) {

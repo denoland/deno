@@ -346,6 +346,7 @@ impl ProcState {
     let mut cache = cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       root_permissions,
       dynamic_permissions,
       self.options.node_modules_dir_specifier(),
@@ -639,6 +640,7 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
       self.options.node_modules_dir_specifier(),

@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
 use deno_graph::Module;
 use deno_runtime::colors;
 
@@ -35,8 +34,7 @@ pub async fn bundle(
     "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
   );
 
-  let module_specifier =
-    resolve_url_or_path(&bundle_flags.source_file, cli_options.initial_cwd())?;
+  let module_specifier = cli_options.resolve_main_module()?;
 
   let resolver = |_| {
     let cli_options = cli_options.clone();
