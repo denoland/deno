@@ -10,7 +10,6 @@ https://github.com/denoland/deno_install
 
 - BREAKING(ext/fs): FileInfo.dev is defined on Windows (#18237)
 - BREAKING(unstable): remove WebGPU (#18094)
-- Revert "refactor: rename Deno.openKv() to Deno.kv() (#18349)" (#18362)
 - feat(cli): --ext parameter for run, compile, and bundle (#17172)
 - feat(compile): Add support for web workers in standalone mode (#17657)
 - feat(compile): Enable multiple roots for a standalone module graph (#17663)
