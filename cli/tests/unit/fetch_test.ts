@@ -1848,7 +1848,9 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  // TODO(bartlomieju): reenable this test
+  // https://github.com/denoland/deno/issues/18350
+  { ignore: Deno.build.os === "windows", permissions: { net: true } },
   async function fetchRequestBodyErrorCatchable() {
     const listener = Deno.listen({ hostname: "127.0.0.1", port: 4514 });
     const server = (async () => {
