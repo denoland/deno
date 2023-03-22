@@ -794,7 +794,7 @@ impl JsRuntime {
         false => OpDecl {
           v8_fn_ptr: match op.is_async {
             true => op_void_async::v8_fn_ptr as _,
-            false => op_void_sync::v8_fn_ptr as _
+            false => op_void_sync::v8_fn_ptr as _,
           },
           ..op
         },
