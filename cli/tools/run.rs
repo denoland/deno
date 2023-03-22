@@ -44,7 +44,7 @@ To grant permissions, set them before the script argument. For example:
     ps.dir.upgrade_check_file_path(),
   );
 
-  let main_module = ps.options.resolve_main_module().unwrap()?;
+  let main_module = ps.options.resolve_main_module()?;
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
@@ -57,7 +57,7 @@ To grant permissions, set them before the script argument. For example:
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
-  let main_module = ps.options.resolve_main_module().unwrap().unwrap();
+  let main_module = ps.options.resolve_main_module()?;
 
   let mut worker = create_main_worker(
     &ps,
@@ -94,7 +94,7 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
   let mut ps =
     ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
-  let main_module = ps.options.resolve_main_module().unwrap()?;
+  let main_module = ps.options.resolve_main_module()?;
 
   let operation = |main_module: ModuleSpecifier| {
     ps.reset_for_file_watcher();
@@ -129,7 +129,7 @@ pub async fn eval_command(
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
-  let main_module = ps.options.resolve_main_module().unwrap()?;
+  let main_module = ps.options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);

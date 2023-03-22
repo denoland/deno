@@ -1229,7 +1229,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .long("ext")
         .help("Set content type of the supplied file")
         .takes_value(true)
-        // TODO(Cre3per): Remove default value in 2.0
         .default_value("ts")
         .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )

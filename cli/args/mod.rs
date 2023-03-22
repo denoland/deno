@@ -673,51 +673,51 @@ impl CliOptions {
     .map(Some)
   }
 
-  /// Returns None for subcommands without a main module
-  pub fn resolve_main_module(
-    &self,
-  ) -> Option<Result<ModuleSpecifier, AnyError>> {
+  pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
     match &self.flags.subcommand {
-      DenoSubcommand::Bundle(bundle_flags) => Some(
+      DenoSubcommand::Bundle(bundle_flags) => {
         resolve_url_or_path(&bundle_flags.source_file, self.initial_cwd())
-          .map_err(AnyError::from),
-      ),
-      DenoSubcommand::Compile(compile_flags) => Some(
+          .map_err(AnyError::from)
+      }
+      DenoSubcommand::Compile(compile_flags) => {
         resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())
-          .map_err(AnyError::from),
-      ),
-      DenoSubcommand::Eval(_) => Some(
+          .map_err(AnyError::from)
+      }
+      DenoSubcommand::Eval(_) => {
         resolve_url_or_path("./$deno$eval", self.initial_cwd())
-          .map_err(AnyError::from),
-      ),
-      DenoSubcommand::Repl(_) => Some(
+          .map_err(AnyError::from)
+      }
+      DenoSubcommand::Repl(_) => {
         resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())
-          .map_err(AnyError::from),
-      ),
-      DenoSubcommand::Run(run_flags) => Some(if run_flags.is_stdin() {
-        std::env::current_dir()
-          .context("Unable to get CWD")
-          .and_then(|cwd| {
-            resolve_url_or_path("./$deno$stdin", &cwd).map_err(AnyError::from)
-          })
-      } else if self.flags.watch.is_some() {
-        resolve_url_or_path(&run_flags.script, self.initial_cwd())
           .map_err(AnyError::from)
-      } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-        ModuleSpecifier::parse(&run_flags.script).map_err(AnyError::from)
-      } else {
-        resolve_url_or_path(&run_flags.script, self.initial_cwd())
-          .map_err(AnyError::from)
-      }),
-      _ => None,
+      }
+      DenoSubcommand::Run(run_flags) => {
+        if run_flags.is_stdin() {
+          std::env::current_dir()
+            .context("Unable to get CWD")
+            .and_then(|cwd| {
+              resolve_url_or_path("./$deno$stdin", &cwd).map_err(AnyError::from)
+            })
+        } else if self.flags.watch.is_some() {
+          resolve_url_or_path(&run_flags.script, self.initial_cwd())
+            .map_err(AnyError::from)
+        } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
+          ModuleSpecifier::parse(&run_flags.script).map_err(AnyError::from)
+        } else {
+          resolve_url_or_path(&run_flags.script, self.initial_cwd())
+            .map_err(AnyError::from)
+        }
+      }
+      _ => {
+        bail!("No main module.")
+      }
     }
   }
 
   pub fn resolve_file_header_overrides(
     &self,
   ) -> HashMap<ModuleSpecifier, HashMap<String, String>> {
-    let maybe_main_specifier =
-      self.resolve_main_module().and_then(|el| el.ok());
+    let maybe_main_specifier = self.resolve_main_module().ok();
     // TODO(Cre3per): This mapping moved to deno_ast with https://github.com/denoland/deno_ast/issues/133 and should be available in deno_ast >= 0.25.0 via `MediaType::from_path(...).as_media_type()`
     let maybe_content_type =
       self.flags.ext.as_ref().and_then(|el| match el.as_str() {

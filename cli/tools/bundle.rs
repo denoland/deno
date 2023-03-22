@@ -34,7 +34,7 @@ pub async fn bundle(
     "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
   );
 
-  let module_specifier = cli_options.resolve_main_module().unwrap()?;
+  let module_specifier = cli_options.resolve_main_module()?;
 
   let resolver = |_| {
     let cli_options = cli_options.clone();

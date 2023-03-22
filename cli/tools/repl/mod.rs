@@ -81,7 +81,7 @@ async fn read_eval_file(
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
-  let main_module = ps.options.resolve_main_module().unwrap().unwrap();
+  let main_module = ps.options.resolve_main_module()?;
   let mut worker = create_main_worker(
     &ps,
     main_module,
