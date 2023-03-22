@@ -77,6 +77,7 @@ pub use crate::module_specifier::ModuleSpecifier;
 pub use crate::modules::ExtModuleLoader;
 pub use crate::modules::ExtModuleLoaderCb;
 pub use crate::modules::FsModuleLoader;
+pub use crate::modules::ModuleCode;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
@@ -144,7 +145,7 @@ pub mod _ops {
 #[macro_export]
 macro_rules! located_script_name {
   () => {
-    format!("[ext:{}:{}:{}]", std::file!(), std::line!(), std::column!());
+    concat!("[ext:{}:{}:{}]", std::file!(), std::line!(), std::column!());
   };
 }
 

@@ -102,6 +102,7 @@ pub fn check(
     maybe_npm_resolver: Some(npm_resolver.clone()),
     maybe_tsbuildinfo,
     root_names,
+    check_mode: options.type_check_mode,
   })?;
 
   let diagnostics = if options.type_check_mode == TypeCheckMode::Local {

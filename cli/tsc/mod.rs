@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsConfig;
+use crate::args::TypeCheckMode;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -308,6 +309,7 @@ pub struct Request {
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
   pub root_names: Vec<(ModuleSpecifier, MediaType)>,
+  pub check_mode: TypeCheckMode,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -806,6 +808,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     "config": request.config,
     "debug": request.debug,
     "rootNames": root_names,
+    "localOnly": request.check_mode == TypeCheckMode::Local,
   });
   let request_str = request_value.to_string();
   let exec_source = format!("globalThis.exec({request_str})");
@@ -821,9 +824,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   });
 
   runtime
-    .execute_script(&located_script_name!(), startup_source)
+    .execute_script(located_script_name!(), startup_source)
     .context("Could not properly start the compiler runtime.")?;
-  runtime.execute_script(&located_script_name!(), &exec_source)?;
+  runtime.execute_script(located_script_name!(), exec_source)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -962,6 +965,7 @@ mod tests {
       maybe_npm_resolver: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
+      check_mode: TypeCheckMode::All,
     };
     exec(request)
   }
