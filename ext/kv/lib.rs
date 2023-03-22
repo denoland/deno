@@ -499,6 +499,16 @@ where
     resource.db.clone()
   };
 
+  for key in checks
+    .iter()
+    .map(|c| &c.0)
+    .chain(mutations.iter().map(|m| &m.0))
+  {
+    if key.is_empty() {
+      return Err(type_error("key cannot be empty"));
+    }
+  }
+
   let checks = checks
     .into_iter()
     .map(TryInto::try_into)
