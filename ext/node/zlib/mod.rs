@@ -87,29 +87,36 @@ impl ZlibInner {
         unsafe { libz_sys::deflate(&mut self.strm, flush) };
       }
       UNZIP if self.strm.avail_in > 0 => {
-        let mut next_expected_header_byte = 0;
+        let mut next_expected_header_byte = Some(0);
 
         if self.gzib_id_bytes_read == 0 {
           let byte =
-            unsafe { *self.strm.next_in.offset(next_expected_header_byte) };
+            unsafe { *self.strm.next_in.offset(0) };
           if byte == GZIP_HEADER_ID1 {
             self.gzib_id_bytes_read = 1;
-            next_expected_header_byte += 1;
+            next_expected_header_byte = Some(1);
+
+            // Not enough.
+            if self.strm.avail_in == 1 {
+              self.write_in_progress = false;
+              return Ok(());
+            }
           } else {
             self.mode = INFLATE;
+            next_expected_header_byte = None;
           }
         }
 
-        if self.gzib_id_bytes_read == 1 && self.strm.avail_in > 1 {
+        if self.gzib_id_bytes_read == 1 && next_expected_header_byte.is_some() {
           let byte =
-            unsafe { *self.strm.next_in.offset(next_expected_header_byte) };
+            unsafe { *self.strm.next_in.offset(next_expected_header_byte.unwrap()) };
           if byte == GZIP_HEADER_ID2 {
             self.gzib_id_bytes_read = 2;
             self.mode = GUNZIP;
           } else {
             self.mode = INFLATE;
           }
-        } else {
+        } else if next_expected_header_byte != None {
           return Err(type_error(
             "invalid number of gzip magic number bytes read",
           ));
@@ -121,7 +128,7 @@ impl ZlibInner {
     match self.mode {
       INFLATE | GUNZIP | INFLATERAW => {
         self.err = unsafe { libz_sys::inflate(&mut self.strm, flush) };
-
+        
         // TODO(@littledivy): Use if let chain when it is stable.
         // https://github.com/rust-lang/rust/issues/53667
         if self.err == Z_NEED_DICT && self.dictionary.is_some() {
@@ -148,7 +155,7 @@ impl ZlibInner {
           && unsafe { *self.strm.next_in as u8 } != 0x00
         {
           self.err = unsafe { libz_sys::inflateReset(&mut self.strm) };
-          self.err = unsafe { libz_sys::inflate(&mut self.strm, flush) };
+          self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
         }
       }
       _ => {}
@@ -369,9 +376,9 @@ pub fn op_zlib_init(
         &mut zlib.strm,
         level,
         Z_DEFLATED,
-        window_bits,
-        mem_level,
-        strategy,
+        zlib.window_bits,
+        zlib.mem_level,
+        zlib.strategy,
         zlibVersion(),
         std::mem::size_of::<z_stream>() as i32,
       );
@@ -379,7 +386,7 @@ pub fn op_zlib_init(
     INFLATE | GUNZIP | INFLATERAW | UNZIP => unsafe {
       inflateInit2_(
         &mut zlib.strm,
-        window_bits,
+        zlib.window_bits,
         zlibVersion(),
         std::mem::size_of::<z_stream>() as i32,
       );
