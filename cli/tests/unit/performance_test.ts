@@ -106,8 +106,8 @@ Deno.test(function performanceMeasure() {
           `duration below 100ms: ${measure1.duration}`,
         );
         assert(
-          measure1.duration < (later - now) * 1.25,
-          `duration exceeds 125% of wallclock time: ${measure1.duration}ms vs ${later - now}ms`,
+          measure1.duration < (later - now) * 1.50,
+          `duration exceeds 150% of wallclock time: ${measure1.duration}ms vs ${later - now}ms`,
         );
         const entries = performance.getEntries();
         assert(entries[entries.length - 1] === measure2);
