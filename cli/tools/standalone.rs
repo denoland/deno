@@ -120,7 +120,7 @@ async fn get_base_binary(
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
-  let temp_dir = secure_tempfile::TempDir::new()?;
+  let temp_dir = tempfile::TempDir::new()?;
   let base_binary_path = crate::tools::upgrade::unpack_into_dir(
     archive_data,
     target.contains("windows"),
