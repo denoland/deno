@@ -7,26 +7,33 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
+let isCI: boolean;
+try {
+  isCI = Deno.env.get("CI") !== undefined;
+} catch {
+  isCI = true;
+}
+
 Deno.test({
-  name: "kv :memory: no permissions",
+  name: "openKv :memory: no permissions",
   permissions: {},
   async fn() {
-    const db = await Deno.kv(":memory:");
+    const db = await Deno.openKv(":memory:");
     await db.close();
   },
 });
 
 Deno.test({
-  name: "kv invalid filenames",
+  name: "openKv invalid filenames",
   permissions: {},
   async fn() {
     await assertRejects(
-      async () => await Deno.kv(""),
+      async () => await Deno.openKv(""),
       TypeError,
       "Filename cannot be empty",
     );
     await assertRejects(
-      async () => await Deno.kv(":foo"),
+      async () => await Deno.openKv(":foo"),
       TypeError,
       "Filename cannot start with ':' unless prefixed with './'",
     );
@@ -36,8 +43,12 @@ Deno.test({
 function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   Deno.test({
     name,
+    // https://github.com/denoland/deno/issues/18363
+    ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
-      const db: Deno.Kv = await Deno.kv(":memory:");
+      const db: Deno.Kv = await Deno.openKv(
+        ":memory:",
+      );
       try {
         await fn(db);
       } finally {
