@@ -18,7 +18,6 @@ https://github.com/denoland/deno_install
 - feat(ext/kv): key-value store (#18232)
 - feat(ext/net): Add multicasting APIs to DatagramConn (#10706) (#17811)
 - feat(ext/url): URLSearchParams.size (#17884)
-- feat(fs): support FileInfo.dev on Windows (#18073)
 - feat(repl): add `DENO_REPL_HISTORY` to change history file path (#18047)
 - feat(serde_v8): support BigInt serialization (#18225)
 - feat: TypeScript 5.0.2 (except decorators) (#18294)
@@ -32,7 +31,6 @@ https://github.com/denoland/deno_install
 - fix(ext/node): use Deno.Command from `ext:runtime` (#18289)
 - fix(repl): Hide indexable properties in tab completion (#18141)
 - fix(runtime): Extract error code for all OS error variants (#17958)
-- fix(test_util): parse strace usecs/call in total line if present (#18241)
 - fix: include error in message about not being able to create the TypeScript
   cache (#18356)
 - perf(check): type check local files only when not using `--all` (#18329)
