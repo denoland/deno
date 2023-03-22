@@ -3,11 +3,16 @@
 pub const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 pub const TYPESCRIPT: &str = env!("TS_VERSION");
 
-pub fn deno() -> String {
-  let version = env!("CARGO_PKG_VERSION");
-  option_env!("DENO_CANARY")
-    .map(|_| format!("{}+{}", version, &GIT_COMMIT_HASH[..7]))
-    .unwrap_or_else(|| version.to_string())
+pub fn deno() -> &'static str {
+  if is_canary() {
+    concat!(
+      env!("CARGO_PKG_VERSION"),
+      "+",
+      env!("GIT_COMMIT_HASH_SHORT")
+    )
+  } else {
+    env!("CARGO_PKG_VERSION")
+  }
 }
 
 pub fn is_canary() -> bool {

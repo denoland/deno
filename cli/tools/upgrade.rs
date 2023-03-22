@@ -226,7 +226,7 @@ pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
-        print_release_notes(&version::deno(), &upgrade_version);
+        print_release_notes(version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
@@ -330,7 +330,7 @@ pub async fn upgrade(
         let latest_hash = latest_version.clone();
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = Version::parse_standard(&crate::version::deno()).unwrap();
+        let current = Version::parse_standard(crate::version::deno()).unwrap();
         let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
       } else {
@@ -344,7 +344,7 @@ pub async fn upgrade(
         log::info!(
           "Local deno version {} is the most recent release",
           if upgrade_flags.canary {
-            crate::version::GIT_COMMIT_HASH.to_string()
+            crate::version::GIT_COMMIT_HASH
           } else {
             crate::version::deno()
           }
@@ -388,7 +388,7 @@ pub async fn upgrade(
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
     if !upgrade_flags.canary {
-      print_release_notes(&version::deno(), &install_version);
+      print_release_notes(version::deno(), &install_version);
     }
   } else {
     let output_exe_path =
@@ -422,7 +422,7 @@ pub async fn upgrade(
     }
     log::info!("Upgraded successfully");
     if !upgrade_flags.canary {
-      print_release_notes(&version::deno(), &install_version);
+      print_release_notes(version::deno(), &install_version);
     }
   }
 
