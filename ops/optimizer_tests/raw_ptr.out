@@ -6,15 +6,22 @@
 pub struct op_ffi_ptr_of;
 #[doc(hidden)]
 impl op_ffi_ptr_of {
-    pub fn name() -> &'static str {
+    pub const fn name() -> &'static str {
         stringify!(op_ffi_ptr_of)
     }
-    pub fn v8_fn_ptr<'scope, FP>() -> deno_core::v8::FunctionCallback
+    pub extern "C" fn v8_fn_ptr<'scope, FP>(
+        info: *const deno_core::v8::FunctionCallbackInfo,
+    )
     where
         FP: FfiPermissions + 'static,
     {
-        use deno_core::v8::MapFnTo;
-        Self::v8_func::<FP>.map_fn_to()
+        let info = unsafe { &*info };
+        let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
+        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            info,
+        );
+        let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+        Self::v8_func::<FP>(scope, args, rv);
     }
     pub const fn decl<'scope, FP>() -> deno_core::OpDecl
     where
@@ -22,7 +29,7 @@ impl op_ffi_ptr_of {
     {
         deno_core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<FP>(),
+            v8_fn_ptr: Self::v8_fn_ptr::<FP> as _,
             enabled: true,
             fast_fn: {
                 use deno_core::v8::fast_api::Type::*;
