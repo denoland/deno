@@ -15,6 +15,20 @@ pub fn deno() -> &'static str {
   }
 }
 
+// Keep this in sync with `deno()` above
+pub fn get_user_agent() -> &'static str {
+  if is_canary() {
+    concat!(
+      "Deno/",
+      env!("CARGO_PKG_VERSION"),
+      "+",
+      env!("GIT_COMMIT_HASH_SHORT")
+    )
+  } else {
+    concat!("Deno/", env!("CARGO_PKG_VERSION"))
+  }
+}
+
 pub fn is_canary() -> bool {
   option_env!("DENO_CANARY").is_some()
 }
@@ -25,8 +39,4 @@ pub fn release_version_or_canary_commit_hash() -> &'static str {
   } else {
     env!("CARGO_PKG_VERSION")
   }
-}
-
-pub fn get_user_agent() -> String {
-  format!("Deno/{}", deno())
 }
