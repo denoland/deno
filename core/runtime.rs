@@ -751,7 +751,7 @@ impl JsRuntime {
             realm.execute_script(
               self.v8_isolate(),
               file_source.specifier,
-              file_source.code.load()?,
+              file_source.load()?,
             )?;
           }
         }
@@ -2536,7 +2536,7 @@ impl JsRealm {
     let scope = &mut self.handle_scope(isolate);
 
     let source = Self::string_from_code(scope, &source_code).unwrap();
-    assert!(name.is_ascii());
+    debug_assert!(name.is_ascii());
     let name =
       v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
     let origin = bindings::script_origin(scope, name);

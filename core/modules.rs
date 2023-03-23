@@ -309,7 +309,7 @@ impl From<Cow<'static, [u8]>> for ModuleCode {
 impl From<&'static str> for ModuleCode {
   #[inline(always)]
   fn from(value: &'static str) -> Self {
-    assert!(value.is_ascii());
+    debug_assert!(value.is_ascii());
     ModuleCode::Static(value.as_bytes())
   }
 }
@@ -331,7 +331,7 @@ impl From<Vec<u8>> for ModuleCode {
 impl From<&'static [u8]> for ModuleCode {
   #[inline(always)]
   fn from(value: &'static [u8]) -> Self {
-    assert!(value.is_ascii());
+    debug_assert!(value.is_ascii());
     ModuleCode::Static(value)
   }
 }
@@ -339,7 +339,7 @@ impl From<&'static [u8]> for ModuleCode {
 impl<const N: usize> From<&'static [u8; N]> for ModuleCode {
   #[inline(always)]
   fn from(value: &'static [u8; N]) -> Self {
-    assert!(value.is_ascii());
+    debug_assert!(value.is_ascii());
     ModuleCode::Static(value)
   }
 }
@@ -583,7 +583,7 @@ impl ModuleLoader for ExtModuleLoader {
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
-        match file_source.code.load() {
+        match file_source.load() {
           Ok(code) => Ok(code),
           Err(err) => return futures::future::err(err).boxed_local(),
         }
@@ -1517,7 +1517,7 @@ impl ModuleMap {
   ) -> Option<v8::Local<'a, v8::String>> {
     match name {
       ModuleName::Static(s) => {
-        assert!(s.is_ascii());
+        debug_assert!(s.is_ascii());
         v8::String::new_external_onebyte_static(scope, s.as_bytes())
       }
       ModuleName::NotStatic(s) => v8::String::new(scope, s),
