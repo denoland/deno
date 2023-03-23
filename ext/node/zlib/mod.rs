@@ -13,6 +13,9 @@ use std::future::Future;
 use std::rc::Rc;
 
 mod alloc;
+mod mode;
+
+use mode::Mode;
 
 #[inline]
 fn check(condition: bool, msg: &str) -> Result<(), AnyError> {
@@ -30,7 +33,7 @@ struct ZlibInner {
   init_done: bool,
   level: i32,
   mem_level: i32,
-  mode: i32,
+  mode: Mode,
   strategy: i32,
   window_bits: i32,
   write_in_progress: bool,
@@ -54,21 +57,20 @@ impl ZlibInner {
     flush: i32,
   ) -> Result<(), AnyError> {
     check(self.init_done, "write before init")?;
-    check(self.mode != NONE, "already finialized")?;
     check(!self.write_in_progress, "write already in progress")?;
     check(!self.pending_close, "close already in progress")?;
 
     self.write_in_progress = true;
 
-    if flush != Z_NO_FLUSH
-      && flush != Z_PARTIAL_FLUSH
-      && flush != Z_SYNC_FLUSH
-      && flush != Z_FULL_FLUSH
-      && flush != Z_FINISH
-      && flush != Z_BLOCK
-    {
-      return Err(type_error("Bad argument"));
-    }
+    check(
+      flush == Z_NO_FLUSH
+        || flush == Z_PARTIAL_FLUSH
+        || flush == Z_SYNC_FLUSH
+        || flush == Z_FULL_FLUSH
+        || flush == Z_FINISH
+        || flush == Z_BLOCK,
+      "Bad argument",
+    )?;
 
     self.strm.avail_in = in_len;
     // TODO(@littledivy): Crap! Guard against overflow!!
@@ -84,10 +86,10 @@ impl ZlibInner {
   fn do_write(&mut self, flush: i32) -> Result<(), AnyError> {
     self.flush = flush;
     match self.mode {
-      DEFLATE | GZIP | DEFLATERAW => {
+      Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
         self.err = unsafe { libz_sys::deflate(&mut self.strm, self.flush) };
       }
-      UNZIP if self.strm.avail_in > 0 => {
+      Mode::Unzip if self.strm.avail_in > 0 => {
         let mut next_expected_header_byte = Some(0);
 
         if self.gzib_id_bytes_read == 0 {
@@ -102,7 +104,7 @@ impl ZlibInner {
               return Ok(());
             }
           } else {
-            self.mode = INFLATE;
+            self.mode = Mode::Inflate;
             next_expected_header_byte = None;
           }
         }
@@ -113,9 +115,9 @@ impl ZlibInner {
           };
           if byte == GZIP_HEADER_ID2 {
             self.gzib_id_bytes_read = 2;
-            self.mode = GUNZIP;
+            self.mode = Mode::Gunzip;
           } else {
-            self.mode = INFLATE;
+            self.mode = Mode::Inflate;
           }
         } else if next_expected_header_byte != None {
           return Err(type_error(
@@ -127,7 +129,7 @@ impl ZlibInner {
     }
 
     match self.mode {
-      INFLATE | GUNZIP | INFLATERAW => {
+      Mode::Inflate | Mode::Gunzip | Mode::InflateRaw => {
         self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
 
         // TODO(@littledivy): Use if let chain when it is stable.
@@ -151,7 +153,7 @@ impl ZlibInner {
         }
 
         while self.strm.avail_in > 0
-          && self.mode == GUNZIP
+          && self.mode == Mode::Gunzip
           && self.err == Z_STREAM_END
           && unsafe { *self.strm.next_in as u8 } != 0x00
         {
@@ -184,20 +186,9 @@ impl deno_core::Resource for Zlib {
   }
 }
 
-const NONE: i32 = 0;
-const DEFLATE: i32 = 1;
-const INFLATE: i32 = 2;
-const GZIP: i32 = 3;
-const GUNZIP: i32 = 4;
-const DEFLATERAW: i32 = 5;
-const INFLATERAW: i32 = 6;
-const UNZIP: i32 = 7;
-
 #[op]
 pub fn op_zlib_new(state: &mut OpState, mode: i32) -> Result<u32, AnyError> {
-  if mode < DEFLATE || mode > UNZIP {
-    return Err(type_error("Bad argument"));
-  }
+  let mode = Mode::try_from(mode)?;
   let strm: libz_sys::z_stream = libz_sys::z_stream {
     next_in: std::ptr::null_mut(),
     avail_in: 0,
@@ -250,19 +241,18 @@ pub fn op_zlib_close(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
 
   zlib.pending_close = false;
   check(zlib.init_done, "close before init")?;
-  check(zlib.mode <= UNZIP, "invalid mode")?;
 
-  if zlib.mode == DEFLATE || zlib.mode == GZIP || zlib.mode == DEFLATERAW {
-    unsafe { libz_sys::deflateEnd(&mut zlib.strm) };
-  } else if zlib.mode == INFLATE
-    || zlib.mode == GUNZIP
-    || zlib.mode == INFLATERAW
-    || zlib.mode == UNZIP
-  {
-    unsafe { libz_sys::inflateEnd(&mut zlib.strm) };
+  match zlib.mode {
+    Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
+      unsafe { libz_sys::deflateEnd(&mut zlib.strm) };
+    }
+    Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => {
+      unsafe { libz_sys::inflateEnd(&mut zlib.strm) };
+    }
+    Mode::None => {}
   }
 
-  zlib.mode = NONE;
+  zlib.mode = Mode::None;
 
   Ok(())
 }
@@ -371,14 +361,14 @@ pub fn op_zlib_init(
   zlib.err = Z_OK;
 
   match zlib.mode {
-    GZIP | GUNZIP => zlib.window_bits += 16,
-    UNZIP => zlib.window_bits += 32,
-    DEFLATERAW | INFLATERAW => zlib.window_bits *= -1,
+    Mode::Gzip | Mode::Gunzip => zlib.window_bits += 16,
+    Mode::Unzip => zlib.window_bits += 32,
+    Mode::DeflateRaw | Mode::InflateRaw => zlib.window_bits *= -1,
     _ => {}
   }
 
   zlib.err = match zlib.mode {
-    DEFLATE | GZIP | DEFLATERAW => unsafe {
+    Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => unsafe {
       deflateInit2_(
         &mut zlib.strm,
         level,
@@ -390,7 +380,7 @@ pub fn op_zlib_init(
         std::mem::size_of::<z_stream>() as i32,
       )
     },
-    INFLATE | GUNZIP | INFLATERAW | UNZIP => unsafe {
+    Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => unsafe {
       inflateInit2_(
         &mut zlib.strm,
         zlib.window_bits,
@@ -398,7 +388,7 @@ pub fn op_zlib_init(
         std::mem::size_of::<z_stream>() as i32,
       )
     },
-    _ => return Err(type_error("Unknown mode")),
+    Mode::None => return Err(type_error("Unknown mode")),
   };
 
   zlib.dictionary = dictionary.map(|buf| buf.to_vec());
@@ -422,13 +412,13 @@ pub fn op_zlib_reset(
 
   zlib.err = Z_OK;
   zlib.err = match zlib.mode {
-    DEFLATE | GZIP | DEFLATERAW => unsafe {
+    Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => unsafe {
       libz_sys::deflateReset(&mut zlib.strm)
     },
-    INFLATE | GUNZIP | INFLATERAW | UNZIP => unsafe {
+    Mode::Inflate | Mode::Gunzip | Mode::InflateRaw | Mode::Unzip => unsafe {
       libz_sys::inflateReset(&mut zlib.strm)
     },
-    _ => return Err(type_error("Unknown mode")),
+    Mode::None => return Err(type_error("Unknown mode")),
   };
 
   Ok(zlib.err)
