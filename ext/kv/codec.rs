@@ -34,14 +34,6 @@ pub fn canonicalize_f64(n: f64) -> f64 {
 }
 
 pub fn encode_key(key: &Key) -> std::io::Result<Vec<u8>> {
-  // Disallow empty key
-  if key.0.is_empty() {
-    return Err(std::io::Error::new(
-      std::io::ErrorKind::InvalidInput,
-      "key should not be empty",
-    ));
-  }
-
   let mut output: Vec<u8> = vec![];
   for part in &key.0 {
     match part {
@@ -73,14 +65,6 @@ pub fn encode_key(key: &Key) -> std::io::Result<Vec<u8>> {
 }
 
 pub fn decode_key(mut bytes: &[u8]) -> std::io::Result<Key> {
-  // Disallow empty key
-  if bytes.is_empty() {
-    return Err(std::io::Error::new(
-      std::io::ErrorKind::InvalidInput,
-      "key should not be empty",
-    ));
-  }
-
   let mut key = Key(vec![]);
   while !bytes.is_empty() {
     let tag = bytes[0];

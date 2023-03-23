@@ -600,6 +600,14 @@ dbTest("list prefix with end empty", async (db) => {
   assertEquals(entries.length, 0);
 });
 
+dbTest("list prefix with empty prefix", async (db) => {
+  await db.set(["a"], 1);
+  const entries = await collect(db.list({ prefix: [] }));
+  assertEquals(entries, [
+    { key: ["a"], value: 1, versionstamp: "00000000000000010000" },
+  ]);
+});
+
 dbTest("list prefix reverse", async (db) => {
   await setupData(db);
 
@@ -965,4 +973,24 @@ dbTest("invalid mutation type rejects", async (db) => {
       .mutate({ key: ["a"], type: "foobar", value: "123" })
       .commit();
   }, TypeError);
+});
+
+dbTest("key ordering", async (db) => {
+  await db.atomic()
+    .set([new Uint8Array(0x1)], 0)
+    .set(["a"], 0)
+    .set([1n], 0)
+    .set([3.14], 0)
+    .set([false], 0)
+    .set([true], 0)
+    .commit();
+
+  assertEquals((await collect(db.list({ prefix: [] }))).map((x) => x.key), [
+    [new Uint8Array(0x1)],
+    ["a"],
+    [1n],
+    [3.14],
+    [false],
+    [true],
+  ]);
 });

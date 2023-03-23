@@ -150,19 +150,19 @@ function isTypedArray(x) {
 }
 
 const tableChars = {
-  middleMiddle: "─",
-  rowMiddle: "┼",
-  topRight: "┐",
-  topLeft: "┌",
-  leftMiddle: "├",
-  topMiddle: "┬",
-  bottomRight: "┘",
-  bottomLeft: "└",
-  bottomMiddle: "┴",
-  rightMiddle: "┤",
-  left: "│ ",
-  right: " │",
-  middle: " │ ",
+  middleMiddle: "\u2500",
+  rowMiddle: "\u253c",
+  topRight: "\u2510",
+  topLeft: "\u250c",
+  leftMiddle: "\u251c",
+  topMiddle: "\u252c",
+  bottomRight: "\u2518",
+  bottomLeft: "\u2514",
+  bottomMiddle: "\u2534",
+  rightMiddle: "\u2524",
+  left: "\u2502 ",
+  right: " \u2502",
+  middle: " \u2502 ",
 };
 
 function isFullWidthCodePoint(code) {
