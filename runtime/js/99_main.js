@@ -69,6 +69,7 @@ import {
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
+import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 
 let windowIsClosing = false;
 let globalThis_;
@@ -398,6 +399,8 @@ const finalDenoNs = {
   close: core.close,
   ...denoNs,
 };
+event.setEventTargetData(globalThis);
+event.saveGlobalThisReference(globalThis);
 
 function bootstrapMainRuntime(runtimeOptions) {
   if (runtimeOptions === null) {
@@ -444,9 +447,6 @@ function bootstrapMainRuntime(runtimeOptions) {
     wrapConsole(consoleFromDeno, consoleFromV8);
   }
 
-  event.setEventTargetData(globalThis);
-  event.saveGlobalThisReference(globalThis);
-
   event.defineEventHandler(globalThis, "error");
   event.defineEventHandler(globalThis, "load");
   event.defineEventHandler(globalThis, "beforeunload");
@@ -487,13 +487,6 @@ function bootstrapMainRuntime(runtimeOptions) {
         ops.op_node_unstable_net_listen_unixpacket,
       ),
     },
-  });
-
-  // FIXME(bartlomieju): temporarily add whole `Deno.core` to
-  // `Deno[Deno.internal]` namespace. It should be removed and only necessary
-  // methods should be left there.
-  ObjectAssign(internals, {
-    core,
   });
 
   ObjectDefineProperties(finalDenoNs, {
@@ -607,13 +600,6 @@ function bootstrapWorkerRuntime(
     },
   });
 
-  // FIXME(bartlomieju): temporarily add whole `Deno.core` to
-  // `Deno[Deno.internal]` namespace. It should be removed and only necessary
-  // methods should be left there.
-  ObjectAssign(internals, {
-    core,
-  });
-
   if (runtimeOptions.unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
     // These have to initialized here and not in `90_deno_ns.js` because
@@ -640,4 +626,20 @@ function bootstrapWorkerRuntime(
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
   workerRuntime: bootstrapWorkerRuntime,
+  warmupSnapshot: function () {
+    ObjectSetPrototypeOf(globalThis, globalInterfaces.Window.prototype);
+    event.saveGlobalThisReference(globalThis);
+    const dispatchEvent = event.EventTarget.prototype.dispatchEvent.bind(
+      globalThis,
+    );
+
+    const load = new event.Event("load");
+    dispatchEvent(load);
+    // dispatchEvent(
+    //   new event.Event("beforeunload"),
+    // );
+    // dispatchEvent(
+    //   new event.Event("unload"),
+    // );
+  },
 };

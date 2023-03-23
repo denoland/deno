@@ -378,8 +378,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
 
   // Now warmup the snapshot
   let warmup_source = r#"
-  new Event('load');
-  globalThis.bootstrap.mainRuntime(null)"#;
+  globalThis.bootstrap.warmupSnapshot()"#;
 
   {
     let extensions: Vec<Extension> = vec![
