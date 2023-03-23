@@ -90,18 +90,18 @@ class Zlib {
     // Acceptable error states depend on the type of zlib stream.
     switch (err) {
       case Z_BUF_ERROR:
-        this.#error("unexpected end of file");
+        this.#error("unexpected end of file", err);
         return false;      
       case Z_OK:
       case Z_STREAM_END:
         // normal statuses, not fatal
         break;
       case Z_NEED_DICT:
-        this.#error("Bad dictionary");
+        this.#error("Bad dictionary", err);
         return false;
       default:
         // something else.
-        this.#error("Zlib error");
+        this.#error("Zlib error", err);
         return false;
     }
 
@@ -164,12 +164,12 @@ class Zlib {
   reset() {
     const err = ops.op_zlib_reset(this.#handle);
     if (err != Z_OK) {
-      this.#error("Failed to reset stream");
+      this.#error("Failed to reset stream", err);
     }
   }
 
-  #error(message) {
-    this.onerror(message, this.err);
+  #error(message, err) {
+    this.onerror(message, err);
     ops.op_zlib_close_if_pending(this.#handle);
   }
 }

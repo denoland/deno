@@ -82,9 +82,10 @@ impl ZlibInner {
   }
 
   fn do_write(&mut self, flush: i32) -> Result<(), AnyError> {
+    self.flush = flush;
     match self.mode {
       DEFLATE | GZIP | DEFLATERAW => {
-        self.err = unsafe { libz_sys::deflate(&mut self.strm, flush) };
+        self.err = unsafe { libz_sys::deflate(&mut self.strm, self.flush) };
       }
       UNZIP if self.strm.avail_in > 0 => {
         let mut next_expected_header_byte = Some(0);
@@ -160,11 +161,14 @@ impl ZlibInner {
       }
       _ => {}
     }
+
     if self.err == Z_BUF_ERROR
       && !(self.strm.avail_out != 0 && self.flush == Z_FINISH)
     {
+      // Set to Z_OK to avoid reporting the error in JS.
       self.err = Z_OK;
-    };
+    }
+
     self.write_in_progress = false;
     Ok(())
   }
@@ -369,7 +373,7 @@ pub fn op_zlib_init(
   match zlib.mode {
     GZIP | GUNZIP => zlib.window_bits += 16,
     UNZIP => zlib.window_bits += 32,
-    DEFLATERAW | INFLATERAW => zlib.window_bits = -zlib.window_bits,
+    DEFLATERAW | INFLATERAW => zlib.window_bits *= -1,
     _ => {}
   }
 
@@ -453,22 +457,21 @@ pub fn op_zlib_close_if_pending(
 }
 
 #[op]
-pub fn op_zlib_get_message(
-  state: &mut OpState,
-  handle: u32,
-) -> Result<Option<String>, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())?;
+pub fn op_zlib_get_message(state: &mut OpState, handle: u32) -> Option<String> {
+  let resource = state.resource_table.get::<Zlib>(handle);
 
-  let zlib = resource.inner.borrow();
-  if zlib.err == Z_OK {
-    return Ok(None);
+  match resource {
+    Ok(resource) => {
+      let zlib = resource.inner.borrow();
+      if zlib.err == Z_OK {
+        return None;
+      }
+
+      let msg = unsafe { std::ffi::CStr::from_ptr(zlib.strm.msg) }
+        .to_string_lossy()
+        .to_string();
+      Some(msg)
+    }
+    Err(_) => None,
   }
-
-  let msg = unsafe { std::ffi::CStr::from_ptr(zlib.strm.msg) }
-    .to_string_lossy()
-    .to_string();
-  Ok(Some(msg))
 }
