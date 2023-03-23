@@ -1163,7 +1163,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,

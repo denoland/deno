@@ -5,26 +5,18 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_path;
-use deno_core::resolve_url_or_path;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
-use crate::args::RunFlags;
 use crate::file_fetcher::File;
 use crate::proc_state::ProcState;
 use crate::util;
 use crate::worker::create_main_worker;
 
-pub async fn run_script(
-  flags: Flags,
-  run_flags: RunFlags,
-) -> Result<i32, AnyError> {
+pub async fn run_script(flags: Flags) -> Result<i32, AnyError> {
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
       "{}",
@@ -37,7 +29,7 @@ To grant permissions, set them before the script argument. For example:
   }
 
   if flags.watch.is_some() {
-    return run_with_watch(flags, run_flags.script).await;
+    return run_with_watch(flags).await;
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
@@ -52,12 +44,8 @@ To grant permissions, set them before the script argument. For example:
     ps.dir.upgrade_check_file_path(),
   );
 
-  let main_module =
-    if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-      ModuleSpecifier::parse(&run_flags.script)?
-    } else {
-      resolve_url_or_path(&run_flags.script, ps.options.initial_cwd())?
-    };
+  let main_module = ps.options.resolve_main_module()?;
+
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);
@@ -69,8 +57,8 @@ To grant permissions, set them before the script argument. For example:
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
-  let cwd = std::env::current_dir().context("Unable to get CWD")?;
-  let main_module = resolve_path("./$deno$stdin.ts", &cwd).unwrap();
+  let main_module = ps.options.resolve_main_module()?;
+
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),
@@ -101,12 +89,12 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
-async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
+async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
   let mut ps =
     ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
-  let main_module = resolve_url_or_path(&script, ps.options.initial_cwd())?;
+  let main_module = ps.options.resolve_main_module()?;
 
   let operation = |main_module: ModuleSpecifier| {
     ps.reset_for_file_watcher();
@@ -140,13 +128,8 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  // deno_graph works off of extensions for local files to determine the media
-  // type, and so our "fake" specifier needs to have the proper extension.
   let ps = ProcState::build(flags).await?;
-  let main_module = resolve_path(
-    &format!("./$deno$eval.{}", eval_flags.ext),
-    ps.options.initial_cwd(),
-  )?;
+  let main_module = ps.options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);

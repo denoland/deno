@@ -135,7 +135,7 @@ delete Object.prototype.__proto__;
   // We need to use a custom document registry in order to provide source files
   // with an impliedNodeFormat to the ts language service
 
-  /** @type {Map<string, ts.SourceFile} */
+  /** @type {Map<string, ts.SourceFile>} */
   const documentRegistrySourceFileCache = new Map();
   const { getKeyForCompilationSettings } = ts.createDocumentRegistry(); // reuse this code
   /** @type {ts.DocumentRegistry} */
@@ -328,7 +328,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {ts.Diagnostic[]} diagnostics */
+  /** @param {readonly ts.Diagnostic[]} diagnostics */
   function fromTypeScriptDiagnostic(diagnostics) {
     return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
       /** @type {any} */
@@ -362,9 +362,6 @@ delete Object.prototype.__proto__;
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.
     2688,
-    // TS2691: An import path cannot end with a '.ts' extension. Consider
-    // importing 'bad-module' instead.
-    2691,
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
     2792,
@@ -753,6 +750,7 @@ delete Object.prototype.__proto__;
    * @property {Record<string, any>} config
    * @property {boolean} debug
    * @property {string[]} rootNames
+   * @property {boolean} localOnly
    */
 
   /**
@@ -779,7 +777,7 @@ delete Object.prototype.__proto__;
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
-  function exec({ config, debug: debugFlag, rootNames }) {
+  function exec({ config, debug: debugFlag, rootNames, localOnly }) {
     setLogDebug(debugFlag, "TS");
     performanceStart();
     if (logDebug) {
@@ -803,12 +801,31 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
+    const checkFiles = localOnly
+      ? rootNames
+        .filter((n) => !n.startsWith("http"))
+        .map((checkName) => {
+          const sourceFile = program.getSourceFile(checkName);
+          if (sourceFile == null) {
+            throw new Error("Could not find source file for: " + checkName);
+          }
+          return sourceFile;
+        })
+      : undefined;
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
-      ...program.getSyntacticDiagnostics(),
+      ...(checkFiles == null
+        ? program.getSyntacticDiagnostics()
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSyntacticDiagnostics(s)).flat(),
+        )),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
-      ...program.getSemanticDiagnostics(),
+      ...(checkFiles == null
+        ? program.getSemanticDiagnostics()
+        : ts.sortAndDeduplicateDiagnostics(
+          checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),
+        )),
     ].filter((diagnostic) => !IGNORED_DIAGNOSTICS.includes(diagnostic.code));
 
     // emit the tsbuildinfo file
@@ -866,8 +883,11 @@ delete Object.prototype.__proto__;
       case "configure": {
         const { options, errors } = ts
           .convertCompilerOptionsFromJson(request.compilerOptions, "");
-        Object.assign(options, { allowNonTsExtensions: true });
-        if (errors.length) {
+        Object.assign(options, {
+          allowNonTsExtensions: true,
+          allowImportingTsExtensions: true,
+        });
+        if (errors.length > 0 && logDebug) {
           debug(ts.formatDiagnostics(errors, host));
         }
         compilationSettings = options;
@@ -1212,6 +1232,46 @@ delete Object.prototype.__proto__;
   const { buildSpecifier, libs, nodeBuiltInModuleNames } = ops.op_build_info();
 
   ts.deno.setNodeBuiltInModuleNames(nodeBuiltInModuleNames);
+
+  // list of globals that should be kept in Node's globalThis
+  ts.deno.setNodeOnlyGlobalNames([
+    // when bumping the @types/node version we should check if
+    // anything needs to be updated here
+    "NodeRequire",
+    "RequireResolve",
+    "RequireResolve",
+    "process",
+    "console",
+    "__filename",
+    "__dirname",
+    "require",
+    "module",
+    "exports",
+    "gc",
+    "BufferEncoding",
+    "BufferConstructor",
+    "WithImplicitCoercion",
+    "Buffer",
+    "Console",
+    "ImportMeta",
+    "setTimeout",
+    "setInterval",
+    "setImmediate",
+    "Global",
+    "AbortController",
+    "AbortSignal",
+    "Blob",
+    "BroadcastChannel",
+    "MessageChannel",
+    "MessagePort",
+    "Event",
+    "EventTarget",
+    "performance",
+    "TextDecoder",
+    "TextEncoder",
+    "URL",
+    "URLSearchParams",
+  ]);
 
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;

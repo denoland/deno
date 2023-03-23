@@ -15,6 +15,7 @@ use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
@@ -477,7 +478,8 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleGraphError::Missing(_, _) = *err {
+        if let ModuleGraphError::ModuleError(ModuleError::Missing(_, _)) = *err
+        {
           writeln!(
             writer,
             "{} module could not be found",
@@ -621,27 +623,28 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::InvalidTypeAssertion { .. } => {
-        self.build_error_msg(specifier, "(invalid import assertion)")
-      }
-      ModuleGraphError::LoadingErr(_, _, _) => {
-        self.build_error_msg(specifier, "(loading error)")
-      }
-      ModuleGraphError::ParseErr(_, _) => {
-        self.build_error_msg(specifier, "(parsing error)")
-      }
+      ModuleGraphError::ModuleError(err) => match err {
+        ModuleError::InvalidTypeAssertion { .. } => {
+          self.build_error_msg(specifier, "(invalid import assertion)")
+        }
+        ModuleError::LoadingErr(_, _, _) => {
+          self.build_error_msg(specifier, "(loading error)")
+        }
+        ModuleError::ParseErr(_, _) => {
+          self.build_error_msg(specifier, "(parsing error)")
+        }
+        ModuleError::UnsupportedImportAssertionType { .. } => {
+          self.build_error_msg(specifier, "(unsupported import assertion)")
+        }
+        ModuleError::UnsupportedMediaType { .. } => {
+          self.build_error_msg(specifier, "(unsupported)")
+        }
+        ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+          self.build_error_msg(specifier, "(missing)")
+        }
+      },
       ModuleGraphError::ResolutionError(_) => {
         self.build_error_msg(specifier, "(resolution error)")
-      }
-      ModuleGraphError::UnsupportedImportAssertionType { .. } => {
-        self.build_error_msg(specifier, "(unsupported import assertion)")
-      }
-      ModuleGraphError::UnsupportedMediaType { .. } => {
-        self.build_error_msg(specifier, "(unsupported)")
-      }
-      ModuleGraphError::Missing(_, _)
-      | ModuleGraphError::MissingDynamic(_, _) => {
-        self.build_error_msg(specifier, "(missing)")
       }
     }
   }

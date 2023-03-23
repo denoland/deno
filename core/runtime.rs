@@ -9,6 +9,7 @@ use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ExtModuleLoaderCb;
+use crate::modules::ModuleCode;
 use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -50,6 +51,8 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::HandleScope;
+use v8::Local;
 use v8::OwnedIsolate;
 
 type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
@@ -395,7 +398,6 @@ impl JsRuntime {
     let (mut isolate, snapshot_options) = if snapshot_options.will_snapshot() {
       let snapshot_creator =
         snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
-      eprintln!("create snapshot {:#?}", snapshot_options);
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
@@ -749,7 +751,7 @@ impl JsRuntime {
             realm.execute_script(
               self.v8_isolate(),
               file_source.specifier,
-              &file_source.code.load()?,
+              file_source.code.load()?,
             )?;
           }
         }
@@ -903,7 +905,7 @@ impl JsRuntime {
   /// The execution takes place on the current global context, so it is possible
   /// to maintain local JS state and invoke this method multiple times.
   ///
-  /// `name` can be a filepath or any other string, eg.
+  /// `name` can be a filepath or any other string, but it is required to be 7-bit ASCII, eg.
   ///
   ///   - "/some/file/path.js"
   ///   - "<anon>"
@@ -912,10 +914,10 @@ impl JsRuntime {
   /// The same `name` value can be used for multiple executions.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  pub fn execute_script(
+  pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
-    name: &str,
-    source_code: &str,
+    name: &'static str,
+    source_code: S,
   ) -> Result<v8::Global<v8::Value>, Error> {
     self
       .global_realm()
@@ -2057,21 +2059,15 @@ impl JsRuntime {
   pub async fn load_main_module(
     &mut self,
     specifier: &ModuleSpecifier,
-    code: Option<String>,
+    code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
       let scope = &mut self.handle_scope();
+      // true for main module
       module_map_rc
         .borrow_mut()
-        .new_es_module(
-          scope,
-          // main module
-          true,
-          specifier.as_str(),
-          code.as_bytes(),
-          false,
-        )
+        .new_es_module(scope, true, specifier, &code, false)
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
             let exception = v8::Local::new(scope, exception);
@@ -2117,21 +2113,15 @@ impl JsRuntime {
   pub async fn load_side_module(
     &mut self,
     specifier: &ModuleSpecifier,
-    code: Option<String>,
+    code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
       let scope = &mut self.handle_scope();
+      // false for side module (not main module)
       module_map_rc
         .borrow_mut()
-        .new_es_module(
-          scope,
-          // not main module
-          false,
-          specifier.as_str(),
-          code.as_bytes(),
-          false,
-        )
+        .new_es_module(scope, false, specifier, &code, false)
         .map_err(|e| match e {
           ModuleError::Exception(exception) => {
             let exception = v8::Local::new(scope, exception);
@@ -2427,6 +2417,25 @@ impl JsRuntime {
 /// Every method of [`JsRealm`] will panic if you call it with a reference to a
 /// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
+/// In other words, the [`v8::Isolate`] parameter for all the related [`JsRealm`] methods
+/// must be extracted from the pre-existing [`JsRuntime`].
+///
+/// Example usage with the [`JsRealm::execute_script`] method:
+/// ```
+/// use deno_core::JsRuntime;
+/// use deno_core::RuntimeOptions;
+///
+/// let mut runtime = JsRuntime::new(RuntimeOptions::default());
+/// let new_realm = runtime
+///         .create_realm()
+///         .expect("Handle the error properly");
+/// let source_code = "var a = 0; a + 1";
+/// let result = new_realm
+///         .execute_script(runtime.v8_isolate(), "<anon>", source_code)
+///         .expect("Handle the error properly");
+/// # drop(result);
+/// ```
+///
 /// # Lifetime of the realm
 ///
 /// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
@@ -2462,6 +2471,7 @@ impl JsRealm {
       .clone()
   }
 
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   pub fn handle_scope<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2469,6 +2479,7 @@ impl JsRealm {
     v8::HandleScope::with_context(isolate, &self.0)
   }
 
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   pub fn global_object<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2477,10 +2488,27 @@ impl JsRealm {
     self.0.open(scope).global(scope)
   }
 
+  fn string_from_code<'a>(
+    scope: &mut HandleScope<'a>,
+    code: &ModuleCode,
+  ) -> Option<Local<'a, v8::String>> {
+    if let Some(code) = code.try_static_ascii() {
+      v8::String::new_external_onebyte_static(scope, code)
+    } else {
+      v8::String::new_from_utf8(
+        scope,
+        code.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+    }
+  }
+
   /// Executes traditional JavaScript code (traditional = not ES modules) in the
   /// realm's context.
   ///
-  /// `name` can be a filepath or any other string, eg.
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
+  ///
+  /// The `name` parameter can be a filepath or any other string. E.g.:
   ///
   ///   - "/some/file/path.js"
   ///   - "<anon>"
@@ -2489,16 +2517,28 @@ impl JsRealm {
   /// The same `name` value can be used for multiple executions.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  pub fn execute_script(
+  pub fn execute_script<S: Into<ModuleCode>>(
     &self,
     isolate: &mut v8::Isolate,
-    name: &str,
-    source_code: &str,
+    name: &'static str,
+    source_code: S,
+  ) -> Result<v8::Global<v8::Value>, Error> {
+    // Manual monomorphization (TODO: replace w/momo)
+    self.execute_script_inner(isolate, name, source_code.into())
+  }
+
+  fn execute_script_inner(
+    &self,
+    isolate: &mut v8::Isolate,
+    name: &'static str,
+    source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, Error> {
     let scope = &mut self.handle_scope(isolate);
 
-    let source = v8::String::new(scope, source_code).unwrap();
-    let name = v8::String::new(scope, name).unwrap();
+    let source = Self::string_from_code(scope, &source_code).unwrap();
+    assert!(name.is_ascii());
+    let name =
+      v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
     let origin = bindings::script_origin(scope, name);
 
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -3105,7 +3145,8 @@ pub mod tests {
       runtime
         .execute_script(
           "encode_decode_test.js",
-          include_str!("encode_decode_test.js"),
+          // Note: We make this to_owned because it contains non-ASCII chars
+          include_str!("encode_decode_test.js").to_owned(),
         )
         .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
@@ -3321,7 +3362,7 @@ pub mod tests {
       export const a = "b";
       export default 1 + 2;
       "#
-    .to_string();
+    .into();
 
     let module_id = futures::executor::block_on(
       runtime.load_main_module(&specifier, Some(source_code)),
@@ -3491,7 +3532,8 @@ pub mod tests {
         import {{ f{prev} }} from "file:///{prev}.js";
         export function f{i}() {{ return f{prev}() }}
         "#
-      );
+      )
+      .into();
 
       let id = if main {
         futures::executor::block_on(
@@ -3560,8 +3602,7 @@ pub mod tests {
     });
 
     let specifier = crate::resolve_url("file:///0.js").unwrap();
-    let source_code =
-      r#"export function f0() { return "hello world" }"#.to_string();
+    let source_code = r#"export function f0() { return "hello world" }"#.into();
     let id = futures::executor::block_on(
       runtime.load_side_module(&specifier, Some(source_code)),
     )
@@ -3621,7 +3662,7 @@ pub mod tests {
       return mod.f400() + " " + Deno.core.ops.op_test();
     })();"#
       .to_string();
-    let val = runtime3.execute_script(".", &source_code).unwrap();
+    let val = runtime3.execute_script(".", source_code).unwrap();
     let val = futures::executor::block_on(runtime3.resolve_value(val)).unwrap();
     {
       let scope = &mut runtime3.handle_scope();
@@ -4164,7 +4205,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ) -> Pin<Box<ModuleSourceFuture>> {
         async move {
           Ok(ModuleSource {
-            code: b"console.log('hello world');".to_vec().into_boxed_slice(),
+            code: b"console.log('hello world');".into(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
             module_type: ModuleType::JavaScript,
@@ -4181,7 +4222,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     });
 
     let specifier = crate::resolve_url("file:///main.js").unwrap();
-    let source_code = "Deno.core.print('hello\\n')".to_string();
+    let source_code = "Deno.core.print('hello\\n')".into();
 
     let module_id = futures::executor::block_on(
       runtime.load_main_module(&specifier, Some(source_code)),
@@ -4274,7 +4315,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         .execute_script(
           runtime.v8_isolate(),
           "",
-          &format!(
+          format!(
             r#"
               
               globalThis.rejectValue = undefined;
@@ -4283,7 +4324,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
               }});
               Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
             "#
-          ),
+          )
         )
         .unwrap();
     }
@@ -4345,7 +4386,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
 
         async move {
           Ok(ModuleSource {
-            code: source.as_bytes().to_vec().into_boxed_slice(),
+            code: source.into(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
             module_type: ModuleType::JavaScript,
@@ -4859,7 +4900,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
 
         async move {
           Ok(ModuleSource {
-            code: source.as_bytes().to_vec().into_boxed_slice(),
+            code: source.into(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
             module_type: ModuleType::JavaScript,

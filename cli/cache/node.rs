@@ -13,7 +13,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::common::run_sqlite_pragma;
+use super::common::INITIAL_PRAGMAS;
 use super::FastInsecureHasher;
 
 // todo(dsherret): use deno_ast::CjsAnalysisData directly when upgrading deno_ast
@@ -155,8 +155,7 @@ impl NodeAnalysisCacheInner {
     conn: Connection,
     version: String,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, &version)?;
+    initialize(&conn, &version)?;
 
     Ok(Self { conn })
   }
@@ -260,41 +259,32 @@ impl NodeAnalysisCacheInner {
   }
 }
 
-fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
+fn initialize(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
   // INT doesn't store up to u64, so use TEXT for source_hash
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS cjsanalysiscache (
-        specifier TEXT PRIMARY KEY,
-        source_hash TEXT NOT NULL,
-        data TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE UNIQUE INDEX IF NOT EXISTS cjsanalysiscacheidx
-    ON cjsanalysiscache(specifier)",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS esmglobalscache (
-        specifier TEXT PRIMARY KEY,
-        source_hash TEXT NOT NULL,
-        data TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE UNIQUE INDEX IF NOT EXISTS esmglobalscacheidx
-      ON esmglobalscache(specifier)",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )",
-    [],
-  )?;
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  CREATE TABLE IF NOT EXISTS cjsanalysiscache (
+    specifier TEXT PRIMARY KEY,
+    source_hash TEXT NOT NULL,
+    data TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS cjsanalysiscacheidx
+  ON cjsanalysiscache(specifier);
+  CREATE TABLE IF NOT EXISTS esmglobalscache (
+    specifier TEXT PRIMARY KEY,
+    source_hash TEXT NOT NULL,
+    data TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS esmglobalscacheidx
+      ON esmglobalscache(specifier);
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  "
+  );
+
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn

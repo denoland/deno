@@ -377,7 +377,7 @@ impl LanguageServer {
       let mut ls = self.0.write().await;
       if let Ok(configs) = configs_result {
         for (value, internal_uri) in
-          configs.into_iter().zip(specifiers.into_iter().map(|s| s.1))
+          configs.into_iter().zip(specifiers.into_iter().map(|s| s.0))
         {
           match value {
             Ok(specifier_settings) => {
@@ -638,7 +638,7 @@ impl Inner {
   fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
     if specifier.scheme() == "asset" {
       matches!(
-        MediaType::from(specifier),
+        MediaType::from_specifier(specifier),
         MediaType::JavaScript
           | MediaType::Jsx
           | MediaType::Mjs

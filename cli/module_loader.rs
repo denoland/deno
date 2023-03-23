@@ -14,6 +14,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::resolve_url;
+use deno_core::ModuleCode;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
@@ -30,7 +31,7 @@ use std::rc::Rc;
 use std::str;
 
 struct ModuleCodeSource {
-  pub code: String,
+  pub code: ModuleCode,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -91,7 +92,7 @@ impl CliModuleLoader {
         specifier,
         ..
       })) => Ok(ModuleCodeSource {
-        code: source.to_string(),
+        code: source.into(),
         found_url: specifier.clone(),
         media_type: *media_type,
       }),
@@ -101,13 +102,15 @@ impl CliModuleLoader {
         specifier,
         ..
       })) => {
-        let code = match media_type {
+        let code: ModuleCode = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => source.to_string(),
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
+          | MediaType::Json => source.into(),
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
+            Default::default()
+          }
           MediaType::TypeScript
           | MediaType::Mts
           | MediaType::Cts
@@ -191,9 +194,9 @@ impl CliModuleLoader {
         )?
       };
       ModuleCodeSource {
-        code,
+        code: code.into(),
         found_url: specifier.clone(),
-        media_type: MediaType::from(specifier),
+        media_type: MediaType::from_specifier(specifier),
       }
     } else {
       self.load_prepared_module(specifier, maybe_referrer)?
@@ -208,7 +211,7 @@ impl CliModuleLoader {
       code_without_source_map(code_source.code)
     };
     Ok(ModuleSource {
-      code: code.into_bytes().into_boxed_slice(),
+      code,
       module_url_specified: specifier.to_string(),
       module_url_found: code_source.found_url.to_string(),
       module_type: match code_source.media_type {
