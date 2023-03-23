@@ -59,6 +59,7 @@ use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
+use super::urls::LspClientUrl;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
@@ -338,7 +339,10 @@ impl LanguageServer {
             match &ls.config.workspace_folders {
               Some(entry) => {
                 for (specifier, folder) in entry {
-                  specifiers.insert(specifier.clone(), folder.uri.clone());
+                  specifiers.insert(
+                    specifier.clone(),
+                    LspClientUrl::new(folder.uri.clone()),
+                  );
                 }
               }
               None => {
@@ -2868,9 +2872,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let (client, client_uri, specifier, had_specifier_settings) = {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
-      let client_uri = params.text_document.uri.clone();
-      let specifier =
-        inner.url_map.normalize_url(&client_uri, LspUrlKind::File);
+      let client_uri = LspClientUrl::new(params.text_document.uri.clone());
+      let specifier = inner
+        .url_map
+        .normalize_url(client_uri.as_url(), LspUrlKind::File);
       let document = inner.did_open(&specifier, params).await;
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
