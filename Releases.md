@@ -8,7 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 1.32.1 / 2023.03.23
 
-- core: disable resizable ArrayBuffer and growable SharedArrayBuffer (#18395)
+- fix(core): disable resizable ArrayBuffer and growable SharedArrayBuffer
+  (#18395)
 - fix(cli): restore `deno run -` to handle stdin as typescript (#18391)
 - fix(inspect): ensure non-compact output when object literal has newline in
   entry text (#18366)
