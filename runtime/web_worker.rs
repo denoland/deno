@@ -346,6 +346,7 @@ pub struct WebWorkerOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
+  pub standalone: bool,
 }
 
 impl WebWorker {
@@ -446,7 +447,10 @@ impl WebWorker {
       ),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::deno_web_worker::init_ops(),
-      ops::runtime::deno_runtime::init_ops(main_module.clone()),
+      ops::runtime::deno_runtime::init_ops(
+        main_module.clone(),
+        options.standalone,
+      ),
       ops::worker_host::deno_worker_host::init_ops(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),

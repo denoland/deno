@@ -213,6 +213,10 @@ function opMainModule() {
   return ops.op_main_module();
 }
 
+function opStandalone() {
+  return ops.op_standalone();
+}
+
 function formatException(error) {
   if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
     return null;
@@ -459,6 +463,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     noColor: util.readOnly(runtimeOptions.noColor),
     args: util.readOnly(ObjectFreeze(runtimeOptions.args)),
     mainModule: util.getterOnly(opMainModule),
+    standalone: util.getterOnly(opStandalone),
   });
 
   if (runtimeOptions.unstableFlag) {

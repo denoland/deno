@@ -288,6 +288,7 @@ fn create_web_worker_callback(
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       cache_storage_dir: None,
       stdio: Default::default(),
+      standalone: true,
     };
 
     WebWorker::bootstrap_from_options(
@@ -367,6 +368,7 @@ pub async fn run(
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     should_wait_for_inspector_session: false,
+    standalone: true,
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),

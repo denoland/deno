@@ -8,10 +8,11 @@ use deno_core::OpState;
 
 deno_core::extension!(
   deno_runtime,
-  ops = [op_main_module],
-  options = { main_module: ModuleSpecifier },
+  ops = [op_main_module, op_standalone],
+  options = { main_module: ModuleSpecifier, standalone: bool },
   state = |state, options| {
     state.put::<ModuleSpecifier>(options.main_module);
+    state.put::<bool>(options.standalone);
   },
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.force_op_registration();
@@ -29,6 +30,11 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
       .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
   }
   Ok(main_path)
+}
+
+#[op]
+fn op_standalone(state: &mut OpState) -> Result<bool, AnyError> {
+  Ok(*state.borrow::<bool>())
 }
 
 pub fn ppid() -> i64 {

@@ -110,6 +110,9 @@ pub struct WorkerOptions {
   // user code.
   pub should_wait_for_inspector_session: bool,
 
+  // If true, the worker is running in a self-contained executable
+  pub standalone: bool,
+
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
   pub get_error_class_fn: Option<GetErrorClassFn>,
@@ -152,6 +155,7 @@ impl Default for WorkerOptions {
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
+      standalone: Default::default(),
       compiled_wasm_module_store: Default::default(),
       shared_array_buffer_store: Default::default(),
       maybe_inspector_server: Default::default(),
@@ -269,7 +273,10 @@ impl MainWorker {
         options.npm_resolver,
       ),
       // Ops from this crate
-      ops::runtime::deno_runtime::init_ops(main_module.clone()),
+      ops::runtime::deno_runtime::init_ops(
+        main_module.clone(),
+        options.standalone,
+      ),
       ops::worker_host::deno_worker_host::init_ops(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),

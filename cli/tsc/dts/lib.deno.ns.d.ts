@@ -4758,6 +4758,13 @@ declare namespace Deno {
    */
   export const mainModule: string;
 
+  /** A flag that indicates if the current module is running in a self-contained executable.
+   *
+   * @tags allow-read
+   * @category Runtime Environment
+   */
+  export const standalone: boolean;
+
   /** Options that can be used with {@linkcode symlink} and
    * {@linkcode symlinkSync}.
    *
