@@ -150,19 +150,19 @@ function isTypedArray(x) {
 }
 
 const tableChars = {
-  middleMiddle: "─",
-  rowMiddle: "┼",
-  topRight: "┐",
-  topLeft: "┌",
-  leftMiddle: "├",
-  topMiddle: "┬",
-  bottomRight: "┘",
-  bottomLeft: "└",
-  bottomMiddle: "┴",
-  rightMiddle: "┤",
-  left: "│ ",
-  right: " │",
-  middle: " │ ",
+  middleMiddle: "\u2500",
+  rowMiddle: "\u253c",
+  topRight: "\u2510",
+  topLeft: "\u250c",
+  leftMiddle: "\u251c",
+  topMiddle: "\u252c",
+  bottomRight: "\u2518",
+  bottomLeft: "\u2514",
+  bottomMiddle: "\u2534",
+  rightMiddle: "\u2524",
+  left: "\u2502 ",
+  right: " \u2502",
+  middle: " \u2502 ",
 };
 
 function isFullWidthCodePoint(code) {
@@ -204,7 +204,7 @@ function isFullWidthCodePoint(code) {
   );
 }
 
-function getStringWidth(str) {
+export function getStringWidth(str) {
   str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
   let width = 0;
 
@@ -1339,6 +1339,16 @@ function inspectObject(value, inspectOptions, proxyDetails) {
   ) {
     return String(value[customInspect](inspect, inspectOptions));
   }
+  if (
+    ReflectHas(value, nodeCustomInspect) &&
+    typeof value[nodeCustomInspect] === "function"
+  ) {
+    // TODO(kt3k): The last inspect needs to be util.inspect of Node.js.
+    // We need to move the implementation of util.inspect to this file.
+    return String(
+      value[nodeCustomInspect](inspectOptions.depth, inspectOptions, inspect),
+    );
+  }
   // This non-unique symbol is used to support op_crates, ie.
   // in extensions/web we don't want to depend on public
   // Symbol.for("Deno.customInspect") symbol defined in the public API.
@@ -2315,6 +2325,7 @@ class Console {
 }
 
 const customInspect = SymbolFor("Deno.customInspect");
+const nodeCustomInspect = SymbolFor("nodejs.util.inspect.custom");
 
 function inspect(
   value,

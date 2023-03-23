@@ -6,6 +6,41 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.32.0 / 2023.03.22
+
+- BREAKING(unstable): remove WebGPU (#18094)
+- feat(ext/fs): FileInfo.dev is supported on Windows (#18237)
+- feat(cli): --ext parameter for run, compile, and bundle (#17172)
+- feat(compile): Add support for web workers in standalone mode (#17657)
+- feat(compile): Enable multiple roots for a standalone module graph (#17663)
+- feat(core): deno_core::extension! macro to simplify extension registration
+  (#18210)
+- feat(ext/kv): key-value store (#18232)
+- feat(ext/net): Add multicasting APIs to DatagramConn (#10706) (#17811)
+- feat(ext/url): URLSearchParams.size (#17884)
+- feat(repl): add `DENO_REPL_HISTORY` to change history file path (#18047)
+- feat(serde_v8): support BigInt serialization (#18225)
+- feat: TypeScript 5.0.2 (except decorators) (#18294)
+- fix(cli): preserve blob store when resetting file watcher (#18253)
+- fix(cli/integration): clippy lints (#18248)
+- fix(ext/kv): don't request permissions for ":memory:" (#18346)
+- fix(ext/kv): reverse mapping between `AnyValue::Bool` and `KeyPart::Bool`
+  (#18365)
+- fix(ext/node): add createDecipheriv (#18245)
+- fix(ext/node): resource leak in createHmac (#18229)
+- fix(ext/node): use Deno.Command from `ext:runtime` (#18289)
+- fix(repl): Hide indexable properties in tab completion (#18141)
+- fix(runtime): Extract error code for all OS error variants (#17958)
+- fix: include error in message about not being able to create the TypeScript
+  cache (#18356)
+- perf(check): type check local files only when not using `--all` (#18329)
+- perf(core) Reduce copying and cloning in extension initialization (#18252)
+- perf(core) Reduce script name and script code copies (#18298)
+- perf(core): preserve ops between snapshots (#18080)
+- perf(core): use static specifier in ExtensionFileSource (#18271)
+- perf: disable WAL for transpiled source cache (#18084)
+- perf: disable runtime snapshot compression (#18239)
+
 ### 1.31.3 / 2023.03.16
 
 - fix(check): regression where config "types" entries caused type checking

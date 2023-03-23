@@ -187,7 +187,9 @@ export function globToRegExp(
             else if (value == "lower") segment += "a-z";
             else if (value == "print") segment += "\x20-\x7E";
             else if (value == "punct") {
-              segment += "!\"#$%&'()*+,\\-./:;<=>?@[\\\\\\]^_‘{|}~";
+              segment += "!\"#$%&'()*+,\\-./:;<=>?@[\\\\\\]^_";
+              segment += "\u2018";
+              segment += "{|}~";
             } else if (value == "space") segment += "\\s\v";
             else if (value == "upper") segment += "A-Z";
             else if (value == "word") segment += "\\w";
