@@ -400,6 +400,12 @@ const finalDenoNs = {
 };
 
 function bootstrapMainRuntime(runtimeOptions) {
+  if (runtimeOptions === null) {
+    // We're warming up the snapshot
+    return true;
+  }
+
+  ////
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }

@@ -1207,6 +1207,7 @@ impl ModuleMap {
     let next_load_id = v8::Integer::new(scope, self.next_load_id);
     array.set_index(scope, 0, next_load_id.into());
 
+    eprintln!("serialize for snapshotting info len {}", self.info.len());
     let info_arr = v8::Array::new(scope, self.info.len() as i32);
     for (i, info) in self.info.iter().enumerate() {
       let module_info_arr = v8::Array::new(scope, 5);

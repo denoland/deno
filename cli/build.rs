@@ -369,12 +369,74 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-    snapshot_path,
+    snapshot_path: snapshot_path.clone(),
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
     compression_cb: None,
     snapshot_module_load_cb: None,
-  })
+  });
+
+  // Now warmup the snapshot
+  let warmup_source = r#"
+  globalThis.bootstrap.mainRuntime(null)"#;
+
+  {
+    let extensions: Vec<Extension> = vec![
+      deno_webidl::deno_webidl::init_ops(),
+      deno_console::deno_console::init_ops(),
+      deno_url::deno_url::init_ops(),
+      deno_web::deno_web::init_ops::<PermissionsContainer>(
+        deno_web::BlobStore::default(),
+        Default::default(),
+      ),
+      deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
+        Default::default(),
+      ),
+      deno_cache::deno_cache::init_ops::<SqliteBackedCache>(None),
+      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+        "".to_owned(),
+        None,
+        None,
+      ),
+      deno_webstorage::deno_webstorage::init_ops(None),
+      deno_crypto::deno_crypto::init_ops(None),
+      deno_broadcast_channel::deno_broadcast_channel::init_ops(
+        deno_broadcast_channel::InMemoryBroadcastChannel::default(),
+        false, // No --unstable.
+      ),
+      deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(false),
+      deno_net::deno_net::init_ops::<PermissionsContainer>(
+        None, false, // No --unstable.
+        None,
+      ),
+      deno_tls::deno_tls::init_ops(),
+      deno_kv::deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(None),
+        false, // No --unstable.
+      ),
+      deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
+      deno_http::deno_http::init_ops(),
+      deno_io::deno_io::init_ops(Default::default()),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(false),
+      deno_flash::deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
+      deno_node::deno_node::init_ops::<PermissionsContainer>(None),
+    ];
+
+    let startup_snapshot =
+      std::fs::read(&snapshot_path).unwrap().into_boxed_slice();
+
+    let js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+      will_snapshot: true,
+      startup_snapshot: Some(deno_core::Snapshot::Boxed(startup_snapshot)),
+      extensions,
+      snapshot_module_load_cb: None,
+      ..Default::default()
+    });
+
+    let snapshot = js_runtime.warmup_snapshot(warmup_source);
+    let snapshot_slice: &[u8] = &snapshot;
+    std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+  }
 }
 
 fn git_commit_hash() -> String {

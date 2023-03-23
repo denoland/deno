@@ -992,6 +992,109 @@ impl JsRuntime {
       .unwrap()
   }
 
+  pub fn warmup_snapshot(
+    mut self,
+    warmup_source: &'static str,
+  ) -> v8::StartupData {
+    let r = self
+      .execute_script::<&'static str>("<snapshot_warmup>", warmup_source.into())
+      .unwrap();
+    {
+      let mut scope = self.handle_scope();
+      let val = v8::Local::new(&mut scope, r);
+      println!(
+        "warming up {} {} {}",
+        val.is_undefined(),
+        val.is_true(),
+        val.is_function()
+      );
+    }
+
+    self.state.borrow_mut().inspector.take();
+
+    // Create a new context and set it as default
+    let snapshot_options = self.snapshot_options;
+    let context_global = {
+      let op_ctxs: Box<[OpCtx]> = {
+        let realm = self.global_realm();
+        let state_rc = realm.state(self.v8_isolate());
+        let state = state_rc.borrow();
+
+        state
+          .op_ctxs
+          .iter()
+          .map(|op_ctx| {
+            OpCtx::new(
+              op_ctx.id,
+              op_ctx.realm_idx,
+              op_ctx.decl.clone(),
+              op_ctx.state.clone(),
+              op_ctx.runtime_state.clone(),
+            )
+          })
+          .collect()
+      };
+      let mut scope = self.handle_scope();
+
+      let context =
+        bindings::initialize_context(&mut scope, &op_ctxs, snapshot_options);
+      scope.set_default_context(context);
+      v8::Global::new(&mut scope, context)
+    };
+
+    // Serialize the module map and store its data in the snapshot.
+    {
+      let snapshotted_data = {
+        let module_map_rc = self.module_map.take().unwrap();
+        let module_map = module_map_rc.borrow();
+        module_map.serialize_for_snapshotting(&mut self.handle_scope())
+      };
+
+      let mut scope = self.handle_scope();
+      snapshot_util::set_snapshotted_data(
+        &mut scope,
+        context_global,
+        snapshotted_data,
+      );
+    }
+
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
+    }
+
+    self.state.borrow_mut().global_realm.take();
+
+    // Drop other v8::Global handles before snapshotting
+    {
+      for weak_context in &self.state.clone().borrow().known_realms {
+        let v8_isolate = self.v8_isolate();
+        if let Some(context) = weak_context.to_global(v8_isolate) {
+          let realm = JsRealm::new(context.clone());
+          let realm_state_rc = realm.state(v8_isolate);
+          let mut realm_state = realm_state_rc.borrow_mut();
+          std::mem::take(&mut realm_state.js_recv_cb);
+          std::mem::take(&mut realm_state.js_build_custom_error_cb);
+          std::mem::take(&mut realm_state.js_promise_reject_cb);
+          std::mem::take(&mut realm_state.js_format_exception_cb);
+          std::mem::take(&mut realm_state.js_wasm_streaming_cb);
+          context.open(v8_isolate).clear_all_slots(v8_isolate);
+        }
+      }
+
+      let mut state = self.state.borrow_mut();
+      state.js_macrotask_cbs.clear();
+      state.js_nexttick_cbs.clear();
+      state.known_realms.clear();
+    }
+
+    let snapshot_creator = self.v8_isolate.take().unwrap();
+    snapshot_creator
+      .create_blob(v8::FunctionCodeHandling::Keep)
+      .unwrap()
+  }
+
   /// Returns the namespace object of a module.
   ///
   /// This is only available after module evaluation has completed.
