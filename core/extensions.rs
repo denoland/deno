@@ -31,10 +31,7 @@ pub struct ExtensionFileSource {
 
 impl ExtensionFileSource {
   fn find_non_ascii(s: &str) -> String {
-    s
-      .chars()
-      .filter(|c| !c.is_ascii())
-      .collect::<String>()
+    s.chars().filter(|c| !c.is_ascii()).collect::<String>()
   }
 
   pub fn load(&self) -> Result<ModuleCode, Error> {
