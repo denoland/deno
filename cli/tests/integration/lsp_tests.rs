@@ -928,143 +928,155 @@ fn lsp_inlay_hints_not_enabled() {
 
 #[test]
 fn lsp_workspace_enable_paths() {
-  let context = TestContextBuilder::new().build();
-  // we aren't actually writing anything to the tempdir in this test, but we
-  // just need a legitimate file path on the host system so that logic that
-  // tries to convert to and from the fs paths works on all env
-  let temp_dir = context.temp_dir();
+  fn run_test(use_trailing_slash: bool) {
+    let context = TestContextBuilder::new().build();
+    // we aren't actually writing anything to the tempdir in this test, but we
+    // just need a legitimate file path on the host system so that logic that
+    // tries to convert to and from the fs paths works on all env
+    let temp_dir = context.temp_dir();
 
-  let root_specifier = temp_dir.uri();
+    let root_specifier = temp_dir.uri();
 
-  let mut client = context.new_lsp_command().build();
-  client.initialize_with_config(
-    |builder| {
-      builder
-        .set_enable_paths(vec!["./worker".to_string()])
-        .set_root_uri(root_specifier.clone())
-        .set_workspace_folders(vec![lsp::WorkspaceFolder {
-          uri: root_specifier.clone(),
-          name: "project".to_string(),
-        }])
-        .set_deno_enable(false);
-    },
-    json!([{
-      "enable": false,
-      "enablePaths": ["./worker"],
-    }]),
-  );
+    let mut client = context.new_lsp_command().build();
+    client.initialize_with_config(
+      |builder| {
+        builder
+          .set_enable_paths(vec!["./worker".to_string()])
+          .set_root_uri(root_specifier.clone())
+          .set_workspace_folders(vec![lsp::WorkspaceFolder {
+            uri: if use_trailing_slash {
+              root_specifier.clone()
+            } else {
+              ModuleSpecifier::parse(
+                root_specifier.as_str().strip_suffix('/').unwrap(),
+              )
+              .unwrap()
+            },
+            name: "project".to_string(),
+          }])
+          .set_deno_enable(false);
+      },
+      json!([{
+        "enable": false,
+        "enablePaths": ["./worker"],
+      }]),
+    );
 
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./other/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./worker/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(res, json!(null));
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }));
 
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./other/file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(res, json!(null));
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }));
 
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./worker/file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(method) DateConstructor.now(): number",
-        },
-        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-      ],
-      "range": {
-        "start": { "line": 0, "character": 17, },
-        "end": { "line": 0, "character": 20, }
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
       }
-    })
-  );
+    }));
 
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(method) DateConstructor.now(): number",
-        },
-        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-      ],
-      "range": {
-        "start": { "line": 0, "character": 17, },
-        "end": { "line": 0, "character": 20, }
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
       }
-    })
-  );
+    }));
 
-  client.shutdown();
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(res, json!(null));
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./other/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(res, json!(null));
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(
+      res,
+      json!({
+        "contents": [
+          {
+            "language": "typescript",
+            "value": "(method) DateConstructor.now(): number",
+          },
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+        ],
+        "range": {
+          "start": { "line": 0, "character": 17, },
+          "end": { "line": 0, "character": 20, }
+        }
+      })
+    );
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(
+      res,
+      json!({
+        "contents": [
+          {
+            "language": "typescript",
+            "value": "(method) DateConstructor.now(): number",
+          },
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+        ],
+        "range": {
+          "start": { "line": 0, "character": 17, },
+          "end": { "line": 0, "character": 20, }
+        }
+      })
+    );
+
+    client.shutdown();
+  }
+
+  run_test(true);
+  run_test(false);
 }
 
 #[test]

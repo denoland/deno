@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.31.0"
+version = "0.31.1"
 dependencies = [
  "aes",
  "cbc",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.94.0"
+version = "0.94.1"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1281,7 +1281,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.125.0"
+version = "0.125.1"
 dependencies = [
  "async-trait",
  "base64-simd",
