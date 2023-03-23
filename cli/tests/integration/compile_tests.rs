@@ -787,3 +787,43 @@ fn dynamic_import_unanalyzable() {
   .unwrap();
   assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
 }
+
+#[test]
+fn standalone_api() {
+  let _guard = util::http_server();
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(util::testdata_path().join("./compile/standalone_api.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  assert_eq!(output.stdout, "false\n".as_bytes());
+}
+
+#[test]
+fn standalone_api_compiled() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("standalone_api.exe")
+  } else {
+    dir.path().join("standalone_api")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--no-check")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/standalone_api.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, "true\n".as_bytes());
+}
