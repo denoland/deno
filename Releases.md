@@ -6,6 +6,16 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.32.1 / 2023.03.23
+
+- fix(core): disable resizable ArrayBuffer and growable SharedArrayBuffer
+  (#18395)
+- fix(cli): restore `deno run -` to handle stdin as typescript (#18391)
+- fix(inspect): ensure non-compact output when object literal has newline in
+  entry text (#18366)
+- fix(lsp): ensure `enablePaths` works when clients do not provide a trailing
+  slash for workspace dir (#18373)
+
 ### 1.32.0 / 2023.03.22
 
 - BREAKING(unstable): remove WebGPU (#18094)
