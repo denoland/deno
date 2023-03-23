@@ -215,6 +215,7 @@ fn v8_init(
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-change-array-by-copy",
+    " --no-harmony-rab-gsab",
   );
 
   if predictable {
@@ -411,7 +412,6 @@ impl JsRuntime {
         }
 
         global_context = v8::Global::new(scope, context);
-        scope.set_default_context(context);
       }
       (isolate, snapshot_options)
     } else {
@@ -930,6 +930,14 @@ impl JsRuntime {
   /// `Error` can usually be downcast to `JsError`.
   pub fn snapshot(mut self) -> v8::StartupData {
     self.state.borrow_mut().inspector.take();
+
+    // Set the context to be snapshot's default context
+    {
+      let context = self.global_context();
+      let mut scope = self.handle_scope();
+      let local_context = v8::Local::new(&mut scope, context);
+      scope.set_default_context(local_context);
+    }
 
     // Serialize the module map and store its data in the snapshot.
     {
@@ -4865,6 +4873,25 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
+  }
+
+  #[test]
+  fn test_resizable_array_buffer() {
+    // Verify that "resizable ArrayBuffer" is disabled
+    let mut runtime = JsRuntime::new(Default::default());
+    runtime
+      .execute_script(
+        "test_rab.js",
+        r#"const a = new ArrayBuffer(100, {maxByteLength: 200});
+        if (a.byteLength !== 100) {
+          throw new Error('wrong byte length');
+        }
+        if (a.maxByteLength !== undefined) {
+          throw new Error("ArrayBuffer shouldn't have maxByteLength");
+        }
+        "#,
+      )
+      .unwrap();
   }
 
   #[tokio::test]
