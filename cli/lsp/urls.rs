@@ -59,19 +59,50 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
   crate::util::checksum::gen(&[file_name_str.as_bytes()])
 }
 
+/// This exists to make it a little bit harder to accidentally use a `Url`
+/// in the wrong place where a client url should be used.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
+pub struct LspClientUrl(Url);
+
+impl LspClientUrl {
+  pub fn new(url: Url) -> Self {
+    Self(url)
+  }
+
+  pub fn as_url(&self) -> &Url {
+    &self.0
+  }
+
+  pub fn into_url(self) -> Url {
+    self.0
+  }
+
+  pub fn as_str(&self) -> &str {
+    self.0.as_str()
+  }
+}
+
+impl std::fmt::Display for LspClientUrl {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    self.0.fmt(f)
+  }
+}
+
 #[derive(Debug, Default)]
 struct LspUrlMapInner {
-  specifier_to_url: HashMap<ModuleSpecifier, Url>,
+  specifier_to_url: HashMap<ModuleSpecifier, LspClientUrl>,
   url_to_specifier: HashMap<Url, ModuleSpecifier>,
 }
 
 impl LspUrlMapInner {
-  fn put(&mut self, specifier: ModuleSpecifier, url: Url) {
-    self.specifier_to_url.insert(specifier.clone(), url.clone());
-    self.url_to_specifier.insert(url, specifier);
+  fn put(&mut self, specifier: ModuleSpecifier, url: LspClientUrl) {
+    self
+      .url_to_specifier
+      .insert(url.as_url().clone(), specifier.clone());
+    self.specifier_to_url.insert(specifier, url);
   }
 
-  fn get_url(&self, specifier: &ModuleSpecifier) -> Option<&Url> {
+  fn get_url(&self, specifier: &ModuleSpecifier) -> Option<&LspClientUrl> {
     self.specifier_to_url.get(specifier)
   }
 
@@ -98,13 +129,13 @@ impl LspUrlMap {
   pub fn normalize_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Url, AnyError> {
+  ) -> Result<LspClientUrl, AnyError> {
     let mut inner = self.0.lock();
     if let Some(url) = inner.get_url(specifier).cloned() {
       Ok(url)
     } else {
       let url = if specifier.scheme() == "file" {
-        specifier.clone()
+        LspClientUrl(specifier.clone())
       } else {
         let specifier_str = if specifier.scheme() == "asset" {
           format!("deno:/asset{}", specifier.path())
@@ -136,7 +167,7 @@ impl LspUrlMap {
           path.push_str(&parts.join("/"));
           format!("deno:/{path}")
         };
-        let url = Url::parse(&specifier_str)?;
+        let url = LspClientUrl(Url::parse(&specifier_str)?);
         inner.put(specifier.clone(), url.clone());
         url
       };
@@ -165,7 +196,7 @@ impl LspUrlMap {
       } else {
         url.clone()
       };
-      inner.put(specifier.clone(), url.clone());
+      inner.put(specifier.clone(), LspClientUrl(url.clone()));
       specifier
     }
   }
@@ -195,9 +226,10 @@ mod tests {
       .expect("could not handle specifier");
     let expected_url =
       Url::parse("deno:/https/deno.land/x/pkg%401.0.0/mod.ts").unwrap();
-    assert_eq!(actual_url, expected_url);
+    assert_eq!(actual_url.as_url(), &expected_url);
 
-    let actual_specifier = map.normalize_url(&actual_url, LspUrlKind::File);
+    let actual_specifier =
+      map.normalize_url(actual_url.as_url(), LspUrlKind::File);
     assert_eq!(actual_specifier, fixture);
   }
 
@@ -210,9 +242,10 @@ mod tests {
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
     let expected_url = Url::parse("deno:/https/cdn.skypack.dev/-/postcss%40v8.2.9-E4SktPp9c0AtxrJHp8iV/dist%3Des2020%2Cmode%3Dtypes/lib/postcss.d.ts").unwrap();
-    assert_eq!(actual_url, expected_url);
+    assert_eq!(actual_url.as_url(), &expected_url);
 
-    let actual_specifier = map.normalize_url(&actual_url, LspUrlKind::File);
+    let actual_specifier =
+      map.normalize_url(actual_url.as_url(), LspUrlKind::File);
     assert_eq!(actual_specifier, fixture);
   }
 
@@ -224,9 +257,10 @@ mod tests {
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
     let expected_url = Url::parse("deno:/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37/data_url.ts").unwrap();
-    assert_eq!(actual_url, expected_url);
+    assert_eq!(actual_url.as_url(), &expected_url);
 
-    let actual_specifier = map.normalize_url(&actual_url, LspUrlKind::File);
+    let actual_specifier =
+      map.normalize_url(actual_url.as_url(), LspUrlKind::File);
     assert_eq!(actual_specifier, fixture);
   }
 
