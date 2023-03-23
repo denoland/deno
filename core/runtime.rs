@@ -981,7 +981,7 @@ impl JsRuntime {
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
     snapshot_creator
-      .create_blob(v8::FunctionCodeHandling::Keep)
+      .create_blob(v8::FunctionCodeHandling::Clear)
       .unwrap()
   }
 
