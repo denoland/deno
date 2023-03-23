@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.31.3"
+version = "1.32.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -91,11 +91,11 @@ regex.workspace = true
 ring.workspace = true
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
-secure_tempfile = { version = "=3.4.0", package = "tempfile" } # different name to discourage use in tests
 serde.workspace = true
 serde_repr.workspace = true
 shell-escape = "=0.1.5"
 tar.workspace = true
+tempfile.workspace = true
 text-size = "=1.1.0"
 text_lines = "=0.6.0"
 thiserror.workspace = true

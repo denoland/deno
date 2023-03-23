@@ -39,8 +39,7 @@ pub async fn compile(
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let module_specifier =
-    resolve_url_or_path(&compile_flags.source_file, ps.options.initial_cwd())?;
+  let module_specifier = ps.options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
     vec.push(module_specifier.clone());
@@ -121,7 +120,7 @@ async fn get_base_binary(
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
-  let temp_dir = secure_tempfile::TempDir::new()?;
+  let temp_dir = tempfile::TempDir::new()?;
   let base_binary_path = crate::tools::upgrade::unpack_into_dir(
     archive_data,
     target.contains("windows"),

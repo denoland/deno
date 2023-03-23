@@ -102,8 +102,8 @@ type KvKey = Vec<AnyValue>;
 impl From<AnyValue> for KeyPart {
   fn from(value: AnyValue) -> Self {
     match value {
-      AnyValue::Bool(false) => KeyPart::True,
-      AnyValue::Bool(true) => KeyPart::False,
+      AnyValue::Bool(false) => KeyPart::False,
+      AnyValue::Bool(true) => KeyPart::True,
       AnyValue::Number(n) => KeyPart::Float(n),
       AnyValue::BigInt(n) => KeyPart::Int(n),
       AnyValue::String(s) => KeyPart::String(s),
@@ -115,8 +115,8 @@ impl From<AnyValue> for KeyPart {
 impl From<KeyPart> for AnyValue {
   fn from(value: KeyPart) -> Self {
     match value {
-      KeyPart::True => AnyValue::Bool(false),
-      KeyPart::False => AnyValue::Bool(true),
+      KeyPart::False => AnyValue::Bool(false),
+      KeyPart::True => AnyValue::Bool(true),
       KeyPart::Float(n) => AnyValue::Number(n),
       KeyPart::Int(n) => AnyValue::BigInt(n),
       KeyPart::String(s) => AnyValue::String(s),
@@ -498,6 +498,16 @@ where
       state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
     resource.db.clone()
   };
+
+  for key in checks
+    .iter()
+    .map(|c| &c.0)
+    .chain(mutations.iter().map(|m| &m.0))
+  {
+    if key.is_empty() {
+      return Err(type_error("key cannot be empty"));
+    }
+  }
 
   let checks = checks
     .into_iter()
