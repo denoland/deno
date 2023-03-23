@@ -427,7 +427,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   } else {
     location.setLocationHref(runtimeOptions.location);
   }
-
+  //
   if (runtimeOptions.unstableFlag) {
     ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
   }
@@ -455,7 +455,21 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   core.setPromiseRejectCallback(promiseRejectCallback);
 
-  runtimeStart(runtimeOptions);
+  core.setMacrotaskCallback(timers.handleTimerMacrotask);
+  core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
+  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+  core.setReportExceptionCallback(event.reportException);
+  ops.op_set_format_exception_callback(formatException);
+  version.setVersions(
+    runtimeOptions.denoVersion,
+    runtimeOptions.v8Version,
+    runtimeOptions.tsVersion,
+  );
+  core.setBuildInfo(runtimeOptions.target);
+  util.setLogDebug(runtimeOptions.debugFlag, null);
+  colors.setNoColor(runtimeOptions.noColor || !runtimeOptions.isTty);
+  // deno-lint-ignore prefer-primordials
+  Error.prepareStackTrace = core.prepareStackTrace;
 
   setNumCpus(runtimeOptions.cpuCount);
   setUserAgent(runtimeOptions.userAgent);
