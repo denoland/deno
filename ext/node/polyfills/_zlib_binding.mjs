@@ -68,7 +68,7 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    ops.op_zlib_write(
+    const err = ops.op_zlib_write(
       this.#handle,
       flush,
       input,
@@ -80,7 +80,32 @@ class Zlib {
       writeResult,
     );
 
-    return [writeResult[1], writeResult[0]];
+    if (this.#checkError(err)) {
+      return [writeResult[1], writeResult[0]];
+    }
+    return;
+  }
+
+  #checkError(err) {
+    // Acceptable error states depend on the type of zlib stream.
+    switch (err) {
+      case Z_BUF_ERROR:
+        this.#error("unexpected end of file");
+        return false;      
+      case Z_OK:
+      case Z_STREAM_END:
+        // normal statuses, not fatal
+        break;
+      case Z_NEED_DICT:
+        this.#error("Bad dictionary");
+        return false;
+      default:
+        // something else.
+        this.#error("Zlib error");
+        return false;
+    }
+
+    return true;
   }
 
   write(
@@ -102,8 +127,10 @@ class Zlib {
       out,
       out_off,
       out_len,
-    ).then(([availOut, availIn]) => {
-      this.callback(availIn, availOut);
+    ).then(([err, availOut, availIn]) => {
+      if (this.#checkError(err)) {
+        this.callback(availIn, availOut);
+      }
     });
 
     return this;
@@ -115,8 +142,8 @@ class Zlib {
     memLevel,
     strategy,
     dictionary, 
-  ) {
-    ops.op_zlib_init(
+  ) { 
+    const err = ops.op_zlib_init(
       this.#handle,
       level,
       windowBits,
@@ -124,6 +151,10 @@ class Zlib {
       strategy,
       dictionary,
     );
+
+    if (err != Z_OK) {
+      this.#error("Failed to initialize zlib", err);
+    }
   }
 
   params() {
@@ -131,7 +162,15 @@ class Zlib {
   }
 
   reset() {
-    ops.op_zlib_reset(this.#handle);
+    const err = ops.op_zlib_reset(this.#handle);
+    if (err != Z_OK) {
+      this.#error("Failed to reset stream");
+    }
+  }
+
+  #error(message) {
+    this.onerror(message, this.err);
+    ops.op_zlib_close_if_pending(this.#handle);
   }
 }
 

@@ -84,14 +84,13 @@ impl ZlibInner {
   fn do_write(&mut self, flush: i32) -> Result<(), AnyError> {
     match self.mode {
       DEFLATE | GZIP | DEFLATERAW => {
-        unsafe { libz_sys::deflate(&mut self.strm, flush) };
+        self.err = unsafe { libz_sys::deflate(&mut self.strm, flush) };
       }
       UNZIP if self.strm.avail_in > 0 => {
         let mut next_expected_header_byte = Some(0);
 
         if self.gzib_id_bytes_read == 0 {
-          let byte =
-            unsafe { *self.strm.next_in.offset(0) };
+          let byte = unsafe { *self.strm.next_in.offset(0) };
           if byte == GZIP_HEADER_ID1 {
             self.gzib_id_bytes_read = 1;
             next_expected_header_byte = Some(1);
@@ -108,8 +107,9 @@ impl ZlibInner {
         }
 
         if self.gzib_id_bytes_read == 1 && next_expected_header_byte.is_some() {
-          let byte =
-            unsafe { *self.strm.next_in.offset(next_expected_header_byte.unwrap()) };
+          let byte = unsafe {
+            *self.strm.next_in.offset(next_expected_header_byte.unwrap())
+          };
           if byte == GZIP_HEADER_ID2 {
             self.gzib_id_bytes_read = 2;
             self.mode = GUNZIP;
@@ -127,8 +127,8 @@ impl ZlibInner {
 
     match self.mode {
       INFLATE | GUNZIP | INFLATERAW => {
-        self.err = unsafe { libz_sys::inflate(&mut self.strm, flush) };
-        
+        self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
+
         // TODO(@littledivy): Use if let chain when it is stable.
         // https://github.com/rust-lang/rust/issues/53667
         if self.err == Z_NEED_DICT && self.dictionary.is_some() {
@@ -143,7 +143,7 @@ impl ZlibInner {
           };
 
           if self.err == Z_OK {
-            self.err = unsafe { libz_sys::inflate(&mut self.strm, flush) };
+            self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
           } else if self.err == Z_DATA_ERROR {
             self.err = Z_NEED_DICT;
           }
@@ -160,7 +160,11 @@ impl ZlibInner {
       }
       _ => {}
     }
-
+    if self.err == Z_BUF_ERROR
+      && !(self.strm.avail_out != 0 && self.flush == Z_FINISH)
+    {
+      self.err = Z_OK;
+    };
     self.write_in_progress = false;
     Ok(())
   }
@@ -271,7 +275,7 @@ pub fn op_zlib_write_async(
   out_off: u32,
   out_len: u32,
 ) -> Result<
-  impl Future<Output = Result<(u32, u32), AnyError>> + 'static,
+  impl Future<Output = Result<(i32, u32, u32), AnyError>> + 'static,
   AnyError,
 > {
   let resource = state
@@ -292,8 +296,7 @@ pub fn op_zlib_write_async(
       .map_err(|_| bad_resource_id())?;
     let mut zlib = resource.inner.borrow_mut();
     zlib.do_write(flush)?;
-
-    Ok((zlib.strm.avail_out, zlib.strm.avail_in))
+    Ok((zlib.err, zlib.strm.avail_out, zlib.strm.avail_in))
   })
 }
 
@@ -309,7 +312,7 @@ pub fn op_zlib_write(
   out_off: u32,
   out_len: u32,
   result: &mut [u32],
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let resource = state
     .resource_table
     .get::<Zlib>(handle)
@@ -322,7 +325,7 @@ pub fn op_zlib_write(
   result[0] = zlib.strm.avail_out as u32;
   result[1] = zlib.strm.avail_in as u32;
 
-  Ok(())
+  Ok(zlib.err)
 }
 
 #[op]
@@ -334,7 +337,7 @@ pub fn op_zlib_init(
   mem_level: i32,
   strategy: i32,
   dictionary: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let resource = state
     .resource_table
     .get::<Zlib>(handle)
@@ -370,7 +373,7 @@ pub fn op_zlib_init(
     _ => {}
   }
 
-  match zlib.mode {
+  zlib.err = match zlib.mode {
     DEFLATE | GZIP | DEFLATERAW => unsafe {
       deflateInit2_(
         &mut zlib.strm,
@@ -381,7 +384,7 @@ pub fn op_zlib_init(
         zlib.strategy,
         zlibVersion(),
         std::mem::size_of::<z_stream>() as i32,
-      );
+      )
     },
     INFLATE | GUNZIP | INFLATERAW | UNZIP => unsafe {
       inflateInit2_(
@@ -389,20 +392,23 @@ pub fn op_zlib_init(
         zlib.window_bits,
         zlibVersion(),
         std::mem::size_of::<z_stream>() as i32,
-      );
+      )
     },
     _ => return Err(type_error("Unknown mode")),
-  }
+  };
 
   zlib.dictionary = dictionary.map(|buf| buf.to_vec());
   zlib.write_in_progress = false;
   zlib.init_done = true;
 
-  Ok(())
+  Ok(zlib.err)
 }
 
 #[op]
-pub fn op_zlib_reset(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
+pub fn op_zlib_reset(
+  state: &mut OpState,
+  handle: u32,
+) -> Result<i32, AnyError> {
   let resource = state
     .resource_table
     .get::<Zlib>(handle)
@@ -411,15 +417,58 @@ pub fn op_zlib_reset(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
   let mut zlib = resource.inner.borrow_mut();
 
   zlib.err = Z_OK;
-  match zlib.mode {
-    DEFLATE | GZIP | DEFLATERAW => {
-      unsafe { libz_sys::deflateReset(&mut zlib.strm) };
-    }
-    INFLATE | GUNZIP | INFLATERAW | UNZIP => {
-      unsafe { libz_sys::inflateReset(&mut zlib.strm) };
-    }
+  zlib.err = match zlib.mode {
+    DEFLATE | GZIP | DEFLATERAW => unsafe {
+      libz_sys::deflateReset(&mut zlib.strm)
+    },
+    INFLATE | GUNZIP | INFLATERAW | UNZIP => unsafe {
+      libz_sys::inflateReset(&mut zlib.strm)
+    },
     _ => return Err(type_error("Unknown mode")),
+  };
+
+  Ok(zlib.err)
+}
+
+#[op]
+pub fn op_zlib_close_if_pending(
+  state: &mut OpState,
+  handle: u32,
+) -> Result<(), AnyError> {
+  let resource = state
+    .resource_table
+    .get::<Zlib>(handle)
+    .map_err(|_| bad_resource_id())?;
+  let pending_close = {
+    let mut zlib = resource.inner.borrow_mut();
+    zlib.write_in_progress = false;
+    zlib.pending_close
+  };
+  if pending_close {
+    drop(resource);
+    state.resource_table.close(handle)?;
   }
 
   Ok(())
+}
+
+#[op]
+pub fn op_zlib_get_message(
+  state: &mut OpState,
+  handle: u32,
+) -> Result<Option<String>, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<Zlib>(handle)
+    .map_err(|_| bad_resource_id())?;
+
+  let zlib = resource.inner.borrow();
+  if zlib.err == Z_OK {
+    return Ok(None);
+  }
+
+  let msg = unsafe { std::ffi::CStr::from_ptr(zlib.strm.msg) }
+    .to_string_lossy()
+    .to_string();
+  Ok(Some(msg))
 }
