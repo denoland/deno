@@ -2117,7 +2117,7 @@ fn executable_ext_arg() -> Arg {
     .long("ext")
     .help("Set content type of the supplied file")
     .default_value("js")
-    .value_parser(["ts", "tsx", "js", "jsx"]),
+    .value_parser(["ts", "tsx", "js", "jsx"])
 }
 
 fn location_arg() -> Arg {
