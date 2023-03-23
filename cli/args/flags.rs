@@ -3050,7 +3050,7 @@ fn cached_only_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn ext_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
+fn ext_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.ext = matches.remove_one::<String>("ext");
 }
 
