@@ -58,6 +58,7 @@ const GZIP_HEADER_ID1: u8 = 0x1f;
 const GZIP_HEADER_ID2: u8 = 0x8b;
 
 impl ZlibInner {
+  #[allow(clippy::too_many_arguments)]
   fn start_write(
     &mut self,
     input: &[u8],
@@ -126,15 +127,18 @@ impl ZlibInner {
           }
         }
 
-        if self.gzib_id_bytes_read == 1 && next_expected_header_byte.is_some() {
-          let byte = strm[next_expected_header_byte.unwrap()];
+        if self.gzib_id_bytes_read == 1 {
+          let byte = match next_expected_header_byte {
+            Some(i) => strm[i],
+            None => break 'blck,
+          };
           if byte == GZIP_HEADER_ID2 {
             self.gzib_id_bytes_read = 2;
             self.mode = Mode::Gunzip;
           } else {
             self.mode = Mode::Inflate;
           }
-        } else if next_expected_header_byte != None {
+        } else if next_expected_header_byte.is_some() {
           return Err(type_error(
             "invalid number of gzip magic number bytes read",
           ));
@@ -326,8 +330,8 @@ pub fn op_zlib_write(
   zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
   zlib.do_write(flush)?;
 
-  result[0] = zlib.strm.avail_out as u32;
-  result[1] = zlib.strm.avail_in as u32;
+  result[0] = zlib.strm.avail_out;
+  result[1] = zlib.strm.avail_in;
 
   Ok(zlib.err)
 }
@@ -345,10 +349,10 @@ pub fn op_zlib_init(
   let resource = zlib(state, handle)?;
   let mut zlib = resource.inner.borrow_mut();
 
-  check(window_bits >= 8 && window_bits <= 15, "invalid windowBits")?;
-  check(level >= -1 && level <= 9, "invalid level")?;
+  check((8..=15).contains(&window_bits), "invalid windowBits")?;
+  check((-1..=9).contains(&level), "invalid level")?;
 
-  check(mem_level >= 1 && mem_level <= 9, "invalid memLevel")?;
+  check((1..=9).contains(&mem_level), "invalid memLevel")?;
 
   check(
     strategy == Z_DEFAULT_STRATEGY
@@ -364,7 +368,7 @@ pub fn op_zlib_init(
   zlib.mem_level = mem_level;
   zlib.strategy = strategy;
 
-  zlib.flush = Flush::NoFlush;
+  zlib.flush = Flush::None;
   zlib.err = Z_OK;
 
   zlib.init_stream()?;
@@ -436,7 +440,7 @@ mod tests {
       assert_eq!(stream.err, Z_OK);
       assert_eq!(
         stream
-          .start_write(input, *offset, *len, &mut [], 0, 0, Flush::NoFlush)
+          .start_write(input, *offset, *len, &mut [], 0, 0, Flush::None)
           .is_ok(),
         *expected
       );

@@ -37,6 +37,8 @@ pub extern "C" fn zalloc(
     Err(_) => return ptr::null_mut(),
   };
 
+  // SAFETY: `layout` has non-zero size, guaranteed to be a sentinel address
+  // or a null pointer.
   unsafe {
     // Allocate the data, and if successful store the size we allocated
     // at the beginning and then return an offset pointer.
@@ -50,10 +52,10 @@ pub extern "C" fn zalloc(
 }
 
 pub extern "C" fn zfree(_ptr: *mut c_void, address: *mut c_void) {
+  // SAFETY: Move our address being free'd back one pointer, read the size we
+  // stored in `zalloc`, and then free it using the standard Rust
+  // allocator.
   unsafe {
-    // Move our address being free'd back one pointer, read the size we
-    // stored in `zalloc`, and then free it using the standard Rust
-    // allocator.
     let ptr = (address as *mut usize).offset(-1);
     let size = *ptr;
     let layout = Layout::from_size_align_unchecked(size, ALIGN);

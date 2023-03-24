@@ -60,10 +60,10 @@ repr_i32! {
   #[derive(Clone, Copy, Debug, PartialEq, Default)]
   pub enum Flush {
     #[default]
-    NoFlush = sys::Z_NO_FLUSH,
-    PartialFlush = sys::Z_PARTIAL_FLUSH,
-    SyncFlush = sys::Z_SYNC_FLUSH,
-    FullFlush = sys::Z_FULL_FLUSH,
+    None = sys::Z_NO_FLUSH,
+    Partial = sys::Z_PARTIAL_FLUSH,
+    Sync = sys::Z_SYNC_FLUSH,
+    Full = sys::Z_FULL_FLUSH,
     Finish = sys::Z_FINISH,
     Block = sys::Z_BLOCK,
     Trees = sys::Z_TREES,
