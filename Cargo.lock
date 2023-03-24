@@ -4614,6 +4614,7 @@ dependencies = [
  "atty",
  "backtrace",
  "base64 0.13.1",
+ "console_static_text",
  "flate2",
  "futures",
  "hyper",

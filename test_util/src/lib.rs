@@ -92,13 +92,8 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
 lazy_static! {
-  // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
-  // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
-  static ref STRIP_ANSI_RE: Regex = Regex::new(
-          r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
-  ).unwrap();
-
-  static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
+  static ref GUARD: Mutex<HttpServerCount> =
+    Mutex::new(HttpServerCount::default());
 }
 
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
@@ -1758,7 +1753,7 @@ pub fn http_server() -> HttpServerGuard {
 
 /// Helper function to strip ansi codes.
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
-  STRIP_ANSI_RE.replace_all(s, "")
+  console_static_text::strip_ansi_codes(s)
 }
 
 pub fn run(
@@ -2096,10 +2091,11 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           assert!(s.ends_with('\n'));
           let mut echo = String::new();
           buf_reader.read_line(&mut echo).unwrap();
+          let echo = normalize_text(&echo);
           println!("ECHO: {}", echo.escape_debug());
 
           // Windows may also echo the previous line, so only check the end
-          assert_ends_with!(normalize_text(&echo), normalize_text(s));
+          assert_ends_with!(&echo, normalize_text(s));
         }
         PtyData::Output(s) => {
           let mut line = String::new();

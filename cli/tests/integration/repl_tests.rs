@@ -6,7 +6,6 @@ use test_util::assert_ends_with;
 use test_util::assert_not_contains;
 use util::TempDir;
 
-#[ignore]
 #[test]
 fn pty_multiline() {
   util::with_pty(&["repl"], |mut console| {
@@ -1066,7 +1065,7 @@ fn pty_tab_indexable_props() {
     console.write_line("close();");
 
     let output = console.read_all_output();
-    println!("output");
+    let output = test_util::strip_ansi_codes(&output);
     assert_contains!(output, "constructor");
     assert_contains!(output, "sort");
     assert_contains!(output, "at");
