@@ -129,7 +129,17 @@ export class Cipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
-    super(options);
+    super({
+      transform(chunk, encoding, cb) {
+        this.push(this.update(chunk, encoding));
+        cb();
+      },
+      final(cb) {
+        this.push(this.final());
+        cb();
+      },
+      ...options,
+    });
     this.#cache = new BlockModeCache(false);
     this.#context = ops.op_node_create_cipheriv(cipher, key, iv);
   }
@@ -235,7 +245,17 @@ export class Decipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
-    super(options);
+    super({
+      transform(chunk, encoding, cb) {
+        this.push(this.update(chunk, encoding));
+        cb();
+      },
+      final(cb) {
+        this.push(this.final());
+        cb();
+      },
+      ...options,
+    });
     this.#cache = new BlockModeCache(true);
     this.#context = ops.op_node_create_decipheriv(cipher, key, iv);
   }
