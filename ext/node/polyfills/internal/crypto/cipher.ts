@@ -17,10 +17,8 @@ import type {
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 
-const { ops } = globalThis.__bootstrap.core;
-const encoder = new TextEncoder();
+const { ops, encode } = globalThis.__bootstrap.core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -119,7 +117,7 @@ export interface DecipherOCB extends Decipher {
 }
 
 function toU8(input: string | Uint8Array): Uint8Array {
-  return typeof input === "string" ? encoder.encode(input) : input;
+  return typeof input === "string" ? encode(input) : input;
 }
 
 export class Cipheriv extends Transform implements Cipher {
