@@ -89,7 +89,7 @@ impl ZlibInner {
       Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
         self.err = unsafe { libz_sys::deflate(&mut self.strm, self.flush) };
       }
-      Mode::Unzip if self.strm.avail_in > 0 => {
+      Mode::Unzip if self.strm.avail_in > 0 => 'blck: {
         let mut next_expected_header_byte = Some(0);
 
         if self.gzib_id_bytes_read == 0 {
@@ -100,8 +100,7 @@ impl ZlibInner {
 
             // Not enough.
             if self.strm.avail_in == 1 {
-              self.write_in_progress = false;
-              return Ok(());
+              break 'blck;
             }
           } else {
             self.mode = Mode::Inflate;
@@ -129,9 +128,12 @@ impl ZlibInner {
     }
 
     match self.mode {
-      Mode::Inflate | Mode::Gunzip | Mode::InflateRaw => {
+      Mode::Inflate
+        | Mode::Gunzip
+        | Mode::InflateRaw
+        // We're still reading the header.
+        | Mode::Unzip => {
         self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
-
         // TODO(@littledivy): Use if let chain when it is stable.
         // https://github.com/rust-lang/rust/issues/53667
         if self.err == Z_NEED_DICT && self.dictionary.is_some() {

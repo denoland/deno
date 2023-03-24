@@ -21,7 +21,7 @@ digest = { version = "0.10.5", features = ["core-api", "std"] }
 hex = "0.4.3"
 idna = "0.3.0"
 indexmap.workspace = true
-libz-sys = { version = "1.1.0", default-features = false, features = ["libc"] }
+libz-sys = { version = "1.1.8" }
 md-5 = "0.10.5"
 md4 = "0.10.2"
 once_cell.workspace = true
