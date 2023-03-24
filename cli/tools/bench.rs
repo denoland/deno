@@ -3,6 +3,7 @@
 use crate::args::BenchOptions;
 use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
+use crate::mitata;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::graph_util::graph_valid_with_cli_options;

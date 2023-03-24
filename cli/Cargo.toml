@@ -79,7 +79,6 @@ jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-mitata = "=0.0.7"
 monch = "=0.4.1"
 notify.workspace = true
 once_cell.workspace = true

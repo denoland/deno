@@ -2,6 +2,7 @@
 
 mod args;
 mod auth_tokens;
+mod mitata;
 mod cache;
 mod deno_std;
 mod emit;
