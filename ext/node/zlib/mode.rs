@@ -39,8 +39,9 @@ macro_rules! repr_i32 {
 
 repr_i32! {
   #[repr(i32)]
-  #[derive(Debug, PartialEq)]
+  #[derive(Clone, Copy, Debug, PartialEq, Default)]
   pub enum Mode {
+    #[default]
     None,
     Deflate,
     Inflate,
@@ -54,8 +55,9 @@ repr_i32! {
 
 repr_i32! {
   #[repr(i32)]
-  #[derive(Clone, Copy, Debug, PartialEq)]
+  #[derive(Clone, Copy, Debug, PartialEq, Default)]
   pub enum Flush {
+    #[default]
     NoFlush = sys::Z_NO_FLUSH,
     PartialFlush = sys::Z_PARTIAL_FLUSH,
     SyncFlush = sys::Z_SYNC_FLUSH,
