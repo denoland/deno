@@ -19,7 +19,6 @@ import {
   KeyObject,
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 

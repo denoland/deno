@@ -36,7 +36,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "hmac w/ secret key",
+  name: "createHmac with secret key",
   fn() {
     const key = createSecretKey(Buffer.from("secret"));
     assertEquals(
