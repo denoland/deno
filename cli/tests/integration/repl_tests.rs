@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::io::Read;
+
 use test_util as util;
 use test_util::assert_contains;
 use test_util::assert_ends_with;
@@ -223,17 +225,23 @@ fn pty_assign_global_this() {
 
 #[test]
 fn pty_assign_deno_keys_and_deno() {
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line(
+  util::with_pty2(&["repl"], |mut console| {
+    console.send_line(
       "Object.keys(Deno).forEach((key)=>{try{Deno[key] = undefined} catch {}})",
-    );
-    console.write_line("delete globalThis.Deno");
-    console.write_line("console.log('testing ' + 'this out')");
-    console.write_line("close();");
+    ).unwrap();
+    console.expect("undefined").unwrap();
+    console.send_line("delete globalThis.Deno").unwrap();
+    console.expect("true").unwrap();
+    console
+      .send_line("console.log('testing ' + 'this out');")
+      .unwrap();
+    console.expect("testing this out").unwrap();
+    console.expect("undefined").unwrap();
+    console.send_line("close();").unwrap();
 
-    let output = console.read_all_output();
+    let mut output = String::new();
+    console.read_to_string(&mut output).unwrap();
     assert_not_contains!(output, "panicked");
-    assert_contains!(output, "testing this out");
   });
 }
 
