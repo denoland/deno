@@ -28,6 +28,12 @@ import {
   isKeyObject as isKeyObject_,
   kKeyType,
 } from "ext:deno_node/internal/crypto/_keys.ts";
+import {
+  validateObject,
+  validateOneOf,
+} from "ext:deno_node/internal/validators.mjs";
+
+const { ops } = globalThis.__bootstrap.core;
 
 const getArrayBufferOrView = hideStackFrames(
   (
@@ -144,13 +150,7 @@ export class KeyObject {
     }
 
     this[kKeyType] = type;
-
-    Object.defineProperty(this, kHandle, {
-      value: handle,
-      enumerable: false,
-      configurable: false,
-      writable: false,
-    });
+    this[kHandle] = handle;
   }
 
   get type(): KeyObjectType {
@@ -239,7 +239,7 @@ function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
 }
 
 export function prepareSecretKey(
-  key: string | ArrayBuffer | KeyObject,
+  key: string | ArrayBufferView | ArrayBuffer | KeyObject,
   encoding: string | undefined,
   bufferOnly = false,
 ) {
@@ -271,16 +271,44 @@ export function prepareSecretKey(
   return getArrayBufferOrView(key, "key", encoding);
 }
 
+class SecretKeyObject extends KeyObject {
+  constructor(handle: unknown) {
+    super("secret", handle);
+  }
+
+  get symmetricKeySize() {
+    return ops.op_node_crypto_symmetric_key_size(this[kHandle]);
+  }
+
+  export(): Buffer;
+  export(options?: JwkKeyExportOptions): JsonWebKey {
+    if (options !== undefined) {
+      validateObject(options, "options");
+      validateOneOf(
+        options.format,
+        "options.format",
+        [undefined, "buffer", "jwk"],
+      );
+      if (options.format === "jwk") {
+        return ops.op_node_crypto_export_jwk(this[kHandle], false);
+      }
+    }
+    return ops.op_node_crypto_export(this[kHandle]);
+  }
+}
+
 export function createSecretKey(key: ArrayBufferView): KeyObject;
 export function createSecretKey(
   key: string,
   encoding: string,
 ): KeyObject;
 export function createSecretKey(
-  _key: string | ArrayBufferView,
-  _encoding?: string,
+  key: string | ArrayBufferView,
+  encoding?: string,
 ): KeyObject {
-  notImplemented("crypto.createSecretKey");
+  key = prepareSecretKey(key, encoding, true);
+  const handle = ops.node_crypto_key("secret", key);
+  return new SecretKeyObject(handle);
 }
 
 export default {
