@@ -12,17 +12,25 @@ Node.js compat testing in Deno repository.
 - `//tools/node_comapt/versions/`
   - Node.js source tarballs and extracted test cases are stored here.
 - `//cli/tests/node_compat/config.json`
-  - This json file stores the settings about which Node.js compat test to run with Deno.
+  - This json file stores the settings about which Node.js compat test to run
+    with Deno.
 - `//cli/tests/node_compat/test`
   - The actual test cases are stored here.
 
 ## Steps to add new test cases from Node.js test cases
 
 1. Update `tests` property of `//cli/tests/node_compat/config.json`.
-  - For example, if you want to add `test/paralles/test-foo.js` from Node.js test cases, then add `test-foo.js` entry in `tests.parallel` array property in `config.json`
+
+- For example, if you want to add `test/paralles/test-foo.js` from Node.js test
+  cases, then add `test-foo.js` entry in `tests.parallel` array property in
+  `config.json`
+
 1. Run `./tools/node_compat/setup.ts`
 1. Run `cargo test node_compat` to check if Deno passes the added test cases.
 
-Ideally Deno should pass the Node.js compat tests without modification, but if you need to modify it, then add that item in `ignore` perperty of `config.json`. Then `setup.ts` doesn't overwrite the modified Node.js test cases anymore.
+Ideally Deno should pass the Node.js compat tests without modification, but if
+you need to modify it, then add that item in `ignore` perperty of `config.json`.
+Then `setup.ts` doesn't overwrite the modified Node.js test cases anymore.
 
-If the test needs to be ignored in particular platform, then add them in `${platform}Ignore` property of `config.json`
+If the test needs to be ignored in particular platform, then add them in
+`${platform}Ignore` property of `config.json`
