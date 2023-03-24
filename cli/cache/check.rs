@@ -58,7 +58,7 @@ impl TypeCheckCache {
 
   fn from_connection(
     conn: Connection,
-    cli_version: String,
+    cli_version: &'static str,
   ) -> Result<Self, AnyError> {
     initialize(&conn, cli_version)?;
 
@@ -157,7 +157,10 @@ impl TypeCheckCache {
   }
 }
 
-fn initialize(conn: &Connection, cli_version: String) -> Result<(), AnyError> {
+fn initialize(
+  conn: &Connection,
+  cli_version: &'static str,
+) -> Result<(), AnyError> {
   // INT doesn't store up to u64, so use TEXT for check_hash
   let query = format!(
     "{INITIAL_PRAGMAS}
@@ -184,12 +187,12 @@ fn initialize(conn: &Connection, cli_version: String) -> Result<(), AnyError> {
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version.as_deref() != Some(&cli_version) {
+  if data_cli_version.as_deref() != Some(cli_version) {
     conn.execute("DELETE FROM checkcache", params![])?;
     conn.execute("DELETE FROM tsbuildinfo", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
-    stmt.execute(params!["CLI_VERSION", &cli_version])?;
+    stmt.execute(params!["CLI_VERSION", cli_version])?;
   }
 
   Ok(())
@@ -202,8 +205,7 @@ mod test {
   #[test]
   pub fn check_cache_general_use() {
     let conn = Connection::open_in_memory().unwrap();
-    let cache =
-      TypeCheckCache::from_connection(conn, "1.0.0".to_string()).unwrap();
+    let cache = TypeCheckCache::from_connection(conn, "1.0.0").unwrap();
 
     assert!(!cache.has_check_hash(1));
     cache.add_check_hash(1);
@@ -217,8 +219,7 @@ mod test {
 
     // try changing the cli version (should clear)
     let conn = cache.0.unwrap();
-    let cache =
-      TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
+    let cache = TypeCheckCache::from_connection(conn, "2.0.0").unwrap();
     assert!(!cache.has_check_hash(1));
     cache.add_check_hash(1);
     assert!(cache.has_check_hash(1));
@@ -228,8 +229,7 @@ mod test {
 
     // recreating the cache should not remove the data because the CLI version is the same
     let conn = cache.0.unwrap();
-    let cache =
-      TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
+    let cache = TypeCheckCache::from_connection(conn, "2.0.0").unwrap();
     assert!(cache.has_check_hash(1));
     assert!(!cache.has_check_hash(2));
     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));

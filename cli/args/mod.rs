@@ -696,7 +696,8 @@ impl CliOptions {
           std::env::current_dir()
             .context("Unable to get CWD")
             .and_then(|cwd| {
-              resolve_url_or_path("./$deno$stdin", &cwd).map_err(AnyError::from)
+              resolve_url_or_path("./$deno$stdin.ts", &cwd)
+                .map_err(AnyError::from)
             })
         } else if self.flags.watch.is_some() {
           resolve_url_or_path(&run_flags.script, self.initial_cwd())

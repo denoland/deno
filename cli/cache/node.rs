@@ -102,7 +102,7 @@ impl NodeAnalysisCache {
       None => {
         let maybe_inner = match NodeAnalysisCacheInner::new(
           self.db_file_path.as_deref(),
-          crate::version::deno(),
+          crate::version::deno().to_string(),
         ) {
           Ok(cache) => Some(cache),
           Err(err) => {

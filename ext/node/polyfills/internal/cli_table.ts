@@ -3,11 +3,6 @@
 
 import { getStringWidth } from "ext:deno_node/internal/util/inspect.mjs";
 
-// The use of Unicode characters below is the only non-comment use of non-ASCII
-// Unicode characters in Node.js built-in modules. If they are ever removed or
-// rewritten with \u escapes, then a test will need to be (re-)added to Node.js
-// core to verify that Unicode characters work in built-ins.
-// Refs: https://github.com/nodejs/node/issues/10673
 const tableChars = {
   middleMiddle: "\u2500",
   rowMiddle: "\u253c",
