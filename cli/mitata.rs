@@ -27,10 +27,11 @@ pub mod fmt {
   }
 
   pub fn bold(buf: &str) -> String {
-    return format!("\x1b[1m{}\x1b[0m", buf);
+    format!("\x1b[1m{}\x1b[0m", buf)
   }
 
   pub fn duration(time: f64) -> String {
+    // SAFETY: this is safe since its just reformatting numbers
     unsafe {
       if time < 1e0 {
         return format!(
@@ -70,15 +71,15 @@ pub mod fmt {
         );
       }
 
-      return format!(
+      format!(
         "{} h",
         f64::from_str(&format!("{:.2}", time / 36e11)).unwrap_unchecked()
-      );
+      )
     }
   }
 
   pub fn color(buf: &str, color: Color) -> String {
-    return match color {
+    match color {
       Color::Red => format!("\x1b[31m{}\x1b[0m", buf),
       Color::Blue => format!("\x1b[34m{}\x1b[0m", buf),
       Color::Cyan => format!("\x1b[36m{}\x1b[0m", buf),
@@ -88,7 +89,7 @@ pub mod fmt {
       Color::Green => format!("\x1b[32m{}\x1b[0m", buf),
       Color::Yellow => format!("\x1b[33m{}\x1b[0m", buf),
       Color::Magenta => format!("\x1b[35m{}\x1b[0m", buf),
-    };
+    }
   }
 }
 
@@ -105,7 +106,7 @@ pub mod cpu {
 
     #[allow(unreachable_code)]
     {
-      return "unknown".to_string();
+      "unknown".to_string()
     }
   }
 
@@ -158,7 +159,7 @@ pub mod cpu {
       }
     }
 
-    return String::from("unknown");
+    String::from("unknown")
   }
 }
 
@@ -200,13 +201,13 @@ pub mod reporter {
 
   impl Options {
     pub fn new(names: &[&str]) -> Options {
-      return Options {
+      Options {
         avg: true,
         colors: true,
         min_max: true,
         size: size(names),
         percentiles: true,
-      };
+      }
     }
   }
 
@@ -219,7 +220,7 @@ pub mod reporter {
       }
     }
 
-    return 2 + max;
+    2 + max
   }
 
   pub fn br(options: &Options) -> String {
@@ -230,11 +231,11 @@ pub mod reporter {
     ));
 
     if options.percentiles {
-      s.push_str(" ");
+      s.push(' ');
       s.push_str(&"-".repeat(9 + 10 + 10));
     }
 
-    return s;
+    s
   }
 
   pub fn benchmark_error(n: &str, e: &Error, options: &Options) -> String {
@@ -253,7 +254,7 @@ pub mod reporter {
     ));
 
     if let Some(ref stack) = e.stack {
-      s.push_str("\n");
+      s.push('\n');
 
       match options.colors {
         false => s.push_str(stack),
@@ -261,7 +262,7 @@ pub mod reporter {
       }
     }
 
-    return s;
+    s
   }
 
   pub fn header(options: &Options) -> String {
@@ -279,7 +280,7 @@ pub mod reporter {
       s.push_str(&format!(" {:>9} {:>9} {:>9}", "p75", "p99", "p995"));
     }
 
-    return s;
+    s
   }
 
   pub fn benchmark(
@@ -332,37 +333,22 @@ pub mod reporter {
           "{:>42}",
           format!(
             "({} … {})",
-            fmt::color(
-              &format!("{}", fmt::duration(stats.min)),
-              fmt::Color::Cyan
-            ),
-            fmt::color(
-              &format!("{}", fmt::duration(stats.max)),
-              fmt::Color::Magenta
-            )
+            fmt::color(&fmt::duration(stats.min), fmt::Color::Cyan),
+            fmt::color(&fmt::duration(stats.max), fmt::Color::Magenta)
           )
         ));
       }
       if options.percentiles {
         s.push_str(&format!(
           " {:>18} {:>18} {:>18}",
-          fmt::color(
-            &format!("{}", fmt::duration(stats.p75)),
-            fmt::Color::Gray
-          ),
-          fmt::color(
-            &format!("{}", fmt::duration(stats.p99)),
-            fmt::Color::Gray
-          ),
-          fmt::color(
-            &format!("{}", fmt::duration(stats.p995)),
-            fmt::Color::Gray
-          )
+          fmt::color(&fmt::duration(stats.p75), fmt::Color::Gray),
+          fmt::color(&fmt::duration(stats.p99), fmt::Color::Gray),
+          fmt::color(&fmt::duration(stats.p995), fmt::Color::Gray)
         ));
       }
     }
 
-    return s;
+    s
   }
 
   pub fn summary(benchmarks: &[GroupBenchmark], options: &Options) -> String {
@@ -430,7 +416,7 @@ pub mod reporter {
       }
     }
 
-    return s;
+    s
   }
 }
 
@@ -456,7 +442,7 @@ pub mod bench {
     jit: &[f64; 10],
     all: &[f64],
   ) -> Stats {
-    return Stats {
+    Stats {
       n,
       min,
       max,
@@ -470,7 +456,7 @@ pub mod bench {
       } else {
         (avg / n as f64).ceil()
       },
-    };
+    }
   }
 
   pub fn sync<T, F>(t: std::time::Duration, f: F, collect: bool) -> Stats
@@ -486,11 +472,11 @@ pub mod bench {
     let mut max = f64::NEG_INFINITY;
 
     {
-      for offset in 0..10 {
+      for offset in &mut jit {
         let t1 = std::time::Instant::now();
 
         let _ = f();
-        jit[offset] = t1.elapsed().as_nanos() as f64;
+        *offset = t1.elapsed().as_nanos() as f64;
       }
 
       let mut c = 0;
@@ -523,7 +509,7 @@ pub mod bench {
 
     {
       if wavg > 10_000.0 {
-        let mut budget = t.clone();
+        let mut budget = t;
         let mut iterations: isize = 10;
 
         loop {
@@ -554,7 +540,7 @@ pub mod bench {
           budget = budget.saturating_sub(t2);
         }
       } else {
-        let mut budget = t.clone();
+        let mut budget = t;
         let mut iterations: isize = 10;
 
         if !collect {
@@ -597,6 +583,7 @@ pub mod bench {
 
             let t1 = std::time::Instant::now();
             for o in 0..(1e4 as usize) {
+              // SAFETY:
               unsafe {
                 *garbage.get_unchecked_mut(o) = f();
               }
@@ -626,6 +613,6 @@ pub mod bench {
     }
 
     all.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    return stats(n, wavg > 10_000.0, avg, min, max, &jit, &all);
+    stats(n, wavg > 10_000.0, avg, min, max, &jit, &all)
   }
 }

@@ -2,7 +2,6 @@
 
 mod args;
 mod auth_tokens;
-mod mitata;
 mod cache;
 mod deno_std;
 mod emit;
@@ -12,6 +11,7 @@ mod graph_util;
 mod http_util;
 mod js;
 mod lsp;
+mod mitata;
 mod module_loader;
 mod napi;
 mod node;
