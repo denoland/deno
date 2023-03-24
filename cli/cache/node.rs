@@ -67,6 +67,8 @@ impl NodeAnalysisCache {
     match res {
       Ok(x) => x,
       Err(err) => {
+        // TODO(mmastrac): This behavior was inherited from before the refactoring but it probably makes sense to move it into the cache
+        // at some point.
         // should never error here, but if it ever does don't fail
         if cfg!(debug_assertions) {
           panic!("Error using esm analysis: {err:#}");

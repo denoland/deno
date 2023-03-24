@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
@@ -8,17 +10,17 @@ use deno_runtime::deno_webstorage::rusqlite::Params;
 use once_cell::sync::OnceCell;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Barrier;
 
 /// What should the cache should do on failure?
-#[allow(unused)]
+#[derive(Default)]
 pub enum CacheFailure {
+  /// Return errors if failure mode otherwise unspecified.
+  #[default]
+  Error,
   /// Create an in-memory cache that is not persistent.
   InMemory,
   /// Create a blackhole cache that ignores writes and returns empty reads.
   Blackhole,
-  /// Return errors.
-  Error,
 }
 
 /// Configuration SQL and other parameters for a [`CacheDB`].
@@ -75,12 +77,25 @@ pub struct CacheDB {
 
 impl Drop for CacheDB {
   fn drop(&mut self) {
+    // No need to clean up an in-memory cache in an way -- just drop and go.
+    let path = match self.path.take() {
+      Some(path) => path,
+      _ => return,
+    };
+
+    // For on-disk caches, see if we're the last holder of the Arc.
     let arc = std::mem::take(&mut self.conn);
     if let Ok(inner) = Arc::try_unwrap(arc) {
       // Hand off SQLite connection to another thread to do the surprisingly expensive cleanup
       let inner = inner.into_inner().into_inner();
       if let Some(conn) = inner {
-        std::thread::spawn(|| drop(conn));
+        tokio::task::spawn_blocking(move || {
+          drop(conn);
+          log::debug!(
+            "Cleaned up SQLite connection at {}",
+            path.to_string_lossy()
+          );
+        });
       }
     }
   }
@@ -132,8 +147,7 @@ impl CacheDB {
       },
     };
 
-    Self::initialize_connection(self.config, &conn, version)
-      .expect("Failed to initialize connection for test");
+    Self::initialize_connection(self.config, &conn, version).unwrap();
 
     let cell = OnceCell::new();
     _ = cell.set(ConnectionState::Connected(conn));
@@ -147,15 +161,10 @@ impl CacheDB {
 
   fn spawn_eager_init_thread(&self) {
     let clone = self.clone();
-    let barrier = Arc::new(Barrier::new(2));
-    let barrier_clone = barrier.clone();
-    std::thread::spawn(move || {
+    tokio::task::spawn_blocking(move || {
       let lock = clone.conn.lock();
-      barrier_clone.wait();
       clone.initialize(&lock);
     });
-    // As we exit the function, we know that the thread has the mutex and will hold it until everything is initialized.
-    barrier.wait();
   }
 
   /// Open the connection in memory or on disk.
@@ -217,38 +226,38 @@ impl CacheDB {
   /// This function represents the policy for dealing with corrupted cache files. We try fairly aggressively
   /// to repair the situation, and if we can't, we prefer to log noisily and continue with in-memory caches.
   fn open_connection(&self) -> Result<ConnectionState, AnyError> {
-    // Success on first try?
-    let mut res = self.open_connection_and_init(&self.path);
-    if let Ok(conn) = res {
-      return Ok(ConnectionState::Connected(conn));
+    // Success on first try? We hope that this is the case.
+    let err = match self.open_connection_and_init(&self.path) {
+      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+      Err(err) => err,
     };
 
     if self.path.is_none() {
       // If an in-memory DB fails, that's game over
       log::error!("Failed to initialize in-memory cache database.");
-      return Err(res.err().unwrap());
+      return Err(err);
     }
 
     let path = self.path.as_ref().unwrap();
 
     log::warn!(
-      "Could not initialize cache database '{}', retrying...",
-      path.to_string_lossy()
+      "Could not initialize cache database '{}', retrying... ({err:?})",
+      path.to_string_lossy(),
     );
     // Try a second time
-    res = self.open_connection_and_init(&self.path);
-    if let Ok(conn) = res {
-      return Ok(ConnectionState::Connected(conn));
+    let err = match self.open_connection_and_init(&self.path) {
+      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+      Err(err) => err,
     };
 
     // Failed, try deleting it
     log::warn!(
-      "Could not initialize cache database '{}', deleting and retrying...",
+      "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
       path.to_string_lossy()
     );
     if std::fs::remove_file(path).is_ok() {
       // Try a third time if we successfully deleted it
-      res = self.open_connection_and_init(&self.path);
+      let res = self.open_connection_and_init(&self.path);
       if let Ok(conn) = res {
         return Ok(ConnectionState::Connected(conn));
       };
@@ -276,7 +285,7 @@ impl CacheDB {
           "Failed to open cache file '{}', expect further errors.",
           path.to_string_lossy()
         );
-        Err(res.err().unwrap())
+        Err(err)
       }
     }
   }
@@ -399,8 +408,8 @@ mod tests {
 
   static FAILURE_PATH: &str = "/tmp/this/doesnt/exist/so/will/always/fail";
 
-  #[test]
-  fn simple_database() {
+  #[tokio::test]
+  async fn simple_database() {
     let db = CacheDB::in_memory(&TEST_DB, "1.0");
     db.ensure_connected()
       .expect("Failed to initialize in-memory database");
@@ -414,15 +423,15 @@ mod tests {
     assert_eq!(Some("1".into()), res);
   }
 
-  #[test]
-  fn bad_sql() {
+  #[tokio::test]
+  async fn bad_sql() {
     let db = CacheDB::in_memory(&BAD_SQL_TEST_DB, "1.0");
     db.ensure_connected()
       .expect_err("Expected to fail, but succeeded");
   }
 
-  #[test]
-  fn failure_mode_in_memory() {
+  #[tokio::test]
+  async fn failure_mode_in_memory() {
     let db = CacheDB::from_path(&TEST_DB, FAILURE_PATH.into(), "1.0");
     db.ensure_connected()
       .expect("Should have created a database");
@@ -436,8 +445,8 @@ mod tests {
     assert_eq!(Some("1".into()), res);
   }
 
-  #[test]
-  fn failure_mode_blackhole() {
+  #[tokio::test]
+  async fn failure_mode_blackhole() {
     let db = CacheDB::from_path(&TEST_DB_BLACKHOLE, FAILURE_PATH.into(), "1.0");
     db.ensure_connected()
       .expect("Should have created a database");
@@ -451,8 +460,8 @@ mod tests {
     assert_eq!(None, res);
   }
 
-  #[test]
-  fn failure_mode_error() {
+  #[tokio::test]
+  async fn failure_mode_error() {
     let db = CacheDB::from_path(&TEST_DB_ERROR, FAILURE_PATH.into(), "1.0");
     db.ensure_connected().expect_err("Should have failed");
 

@@ -1244,8 +1244,8 @@ fn run_watch_dynamic_imports() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-  assert_contains!(stderr_lines.next().unwrap(), "No package.json file found");
-  assert_contains!(stderr_lines.next().unwrap(), "Process started");
+  wait_contains("No package.json file found", &mut stderr_lines);
+  wait_contains("Process started", &mut stderr_lines);
 
   wait_contains(
     "Hopefully dynamic import will be watched...",

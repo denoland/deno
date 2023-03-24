@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -38,6 +40,7 @@ impl Caches {
       dir.fmt_incremental_cache_db_file_path(),
     )
   }
+
   pub fn lint_incremental_cache_db(&self, dir: &DenoDir) -> CacheDB {
     Self::make_db(
       &self.lint_incremental_cache_db,
@@ -45,6 +48,7 @@ impl Caches {
       dir.lint_incremental_cache_db_file_path(),
     )
   }
+
   pub fn dep_analysis_db(&self, dir: &DenoDir) -> CacheDB {
     Self::make_db(
       &self.dep_analysis_db,
@@ -52,6 +56,7 @@ impl Caches {
       dir.dep_analysis_db_file_path(),
     )
   }
+
   pub fn node_analysis_db(&self, dir: &DenoDir) -> CacheDB {
     Self::make_db(
       &self.node_analysis_db,
@@ -59,6 +64,7 @@ impl Caches {
       dir.node_analysis_db_file_path(),
     )
   }
+
   pub fn type_checking_cache_db(&self, dir: &DenoDir) -> CacheDB {
     Self::make_db(
       &self.type_checking_cache_db,
