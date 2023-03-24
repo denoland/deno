@@ -165,7 +165,13 @@ mod tests {
   fn located_script_name() {
     // Note that this test will fail if this file is moved. We don't
     // test line locations because that's just too brittle.
-    assert!(located_script_name!().starts_with("[ext:core/lib.rs:"));
+    let name = located_script_name!();
+    let expected = if cfg!(windows) {
+      "[ext:core\\lib.rs:"
+    } else {
+      "[ext:core/lib.rs:"
+    };
+    assert_eq!(&name[..expected.len()], expected);
   }
 
   #[test]

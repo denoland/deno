@@ -72,6 +72,36 @@ class Kv {
     return deserializeValue(entries[0]);
   }
 
+  async getMany(
+    keys: Deno.KvKey[],
+    opts?: { consistency?: Deno.KvConsistencyLevel },
+  ): Promise<Deno.KvEntry[]> {
+    keys = keys.map(convertKey);
+    const ranges: RawKvEntry[][] = await core.opAsync(
+      "op_kv_snapshot_read",
+      this.#rid,
+      keys.map((key) => [
+        null,
+        key,
+        null,
+        1,
+        false,
+        null,
+      ]),
+      opts?.consistency ?? "strong",
+    );
+    return ranges.map((entries, i) => {
+      if (!entries.length) {
+        return {
+          key: keys[i],
+          value: null,
+          versionstamp: null,
+        };
+      }
+      return deserializeValue(entries[0]);
+    });
+  }
+
   async set(key: Deno.KvKey, value: unknown) {
     key = convertKey(key);
     value = serializeValue(value);
