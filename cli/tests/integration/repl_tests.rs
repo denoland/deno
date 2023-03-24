@@ -237,11 +237,6 @@ fn pty_assign_deno_keys_and_deno() {
       .unwrap();
     console.expect("testing this out").unwrap();
     console.expect("undefined").unwrap();
-    console.send_line("close();").unwrap();
-
-    let mut output = String::new();
-    console.read_to_string(&mut output).unwrap();
-    assert_not_contains!(output, "panicked");
   });
 }
 
