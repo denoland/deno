@@ -208,17 +208,17 @@ const ci = {
       "${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'ci-test-flaky') && github.head_ref || github.run_id }}",
     "cancel-in-progress": true,
   },
-  defaults: {
-    run: {
-      // GH actions doesn't use `set -e` by default unless you specify bash
-      shell: "bash",
-    },
-  },
   jobs: {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
+      defaults: {
+        run: {
+          // GH actions doesn't use `set -e` by default unless you specify bash
+          shell: "bash",
+        },
+      },
       strategy: {
         matrix: {
           include: [
