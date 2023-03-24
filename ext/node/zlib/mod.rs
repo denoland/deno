@@ -102,7 +102,7 @@ impl ZlibInner {
       Mode::Unzip if self.strm.avail_in > 0 => 'blck: {
         let mut next_expected_header_byte = Some(0);
         // SAFETY: `self.strm.next_in` is valid pointer to the input buffer.
-        // `self.strm.avail_in` is the length of the input buffer that is only set by us in
+        // `self.strm.avail_in` is the length of the input buffer that is only set by
         // `start_write`.
         let strm = unsafe {
           std::slice::from_raw_parts(
@@ -112,8 +112,7 @@ impl ZlibInner {
         };
 
         if self.gzib_id_bytes_read == 0 {
-          let byte = unsafe { *self.strm.next_in.offset(0) };
-          if byte == GZIP_HEADER_ID1 {
+          if strm[0] == GZIP_HEADER_ID1 {
             self.gzib_id_bytes_read = 1;
             next_expected_header_byte = Some(1);
 
@@ -128,10 +127,7 @@ impl ZlibInner {
         }
 
         if self.gzib_id_bytes_read == 1 && next_expected_header_byte.is_some() {
-          // let byte = strm[next_expected_header_byte.unwrap()];
-          let byte = unsafe {
-            *self.strm.next_in.offset(next_expected_header_byte.unwrap())
-          };
+          let byte = strm[next_expected_header_byte.unwrap()];
           if byte == GZIP_HEADER_ID2 {
             self.gzib_id_bytes_read = 2;
             self.mode = Mode::Gunzip;
@@ -153,7 +149,7 @@ impl ZlibInner {
         | Mode::InflateRaw
         // We're still reading the header.
         | Mode::Unzip => {
-        self.err = self.strm.inflate(flush);
+        self.err = self.strm.inflate(self.flush);
         // TODO(@littledivy): Use if let chain when it is stable.
         // https://github.com/rust-lang/rust/issues/53667
         // 
@@ -174,7 +170,7 @@ impl ZlibInner {
           && self.err == Z_STREAM_END
           // SAFETY: `strm` is a valid pointer to zlib strm.
           // `strm.next_in` is initialized to the input buffer.
-          && unsafe { *self.strm.next_in } == 0x00
+          && unsafe { *self.strm.next_in } != 0x00
         {
           self.err = self.strm.reset(self.mode);
           self.err = self.strm.inflate(flush);
