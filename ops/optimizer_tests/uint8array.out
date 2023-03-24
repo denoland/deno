@@ -167,6 +167,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_import_spki_x25519_fas
         deno_core::v8::fast_api::CType::Bool
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_import_spki_x25519_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     key_data: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
