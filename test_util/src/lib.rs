@@ -63,7 +63,6 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use expectrl;
 pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
@@ -2169,10 +2168,19 @@ pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
   action(pty);
 }
 
-pub fn with_pty2(
-  deno_args: &[&str],
-  mut action: impl FnMut(expectrl::Session),
-) {
+pub struct PtyNew(expectrl::Session);
+
+impl PtyNew {
+  pub fn send_line(&mut self, line: impl AsRef<str>) {
+    self.0.send_line(line.as_ref()).unwrap();
+  }
+
+  pub fn expect(&mut self, line: impl AsRef<str>) {
+    self.0.expect(line.as_ref()).unwrap();
+  }
+}
+
+pub fn with_pty2(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
   let deno_dir = new_deno_dir();
   let mut env_vars = std::collections::HashMap::new();
   env_vars.insert("NO_COLOR".to_string(), "1".to_string());
@@ -2187,7 +2195,7 @@ pub fn with_pty2(
     .args(deno_args)
     .envs(env_vars);
   let p = expectrl::Session::spawn(cmd).unwrap();
-  action(p)
+  action(PtyNew(p))
 }
 
 pub struct WrkOutput {
