@@ -610,12 +610,9 @@ const ci = {
               "matrix.job == 'test' && matrix.profile == 'debug' && ",
               "!startsWith(matrix.os, 'ubuntu')",
             ].join("\n"),
-            run: [
-              // Run unit then integration tests. Skip doc tests here
-              // since they are sometimes very slow on Mac.
-              "cargo test --locked --lib",
-              "cargo test --locked --test '*'",
-            ].join("\n"),
+            // Run unit then integration tests. Skip doc tests here
+            // since they are sometimes very slow on Mac.
+            run: "cargo test --locked --lib && cargo test --locked --test '*'",
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {

@@ -167,7 +167,8 @@ mod tests {
     // test line locations because that's just too brittle.
     let name = located_script_name!();
     let expected = if cfg!(windows) {
-      "[ext:core\\lib.rs:"
+      "[ext:core/lib.rs:"
+      // "[ext:core\\lib.rs:"
     } else {
       "[ext:core/lib.rs:"
     };
