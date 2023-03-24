@@ -114,7 +114,7 @@ deno_core::extension!(deno_fetch,
     state.put::<Options>(options.options.clone());
     state.put::<reqwest::Client>({
       create_http_client(
-        options.options.user_agent,
+        &options.options.user_agent,
         options.options.root_cert_store,
         vec![],
         options.options.proxy,
@@ -631,7 +631,7 @@ where
     .collect::<Vec<_>>();
 
   let client = create_http_client(
-    options.user_agent.clone(),
+    &options.user_agent,
     options.root_cert_store.clone(),
     ca_certs,
     args.proxy,
@@ -646,7 +646,7 @@ where
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
-  user_agent: String,
+  user_agent: &str,
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   proxy: Option<Proxy>,

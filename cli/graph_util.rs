@@ -22,6 +22,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
 use deno_core::TaskQueuePermit;
 use deno_graph::Module;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
@@ -83,7 +84,9 @@ pub fn graph_valid(
     .flat_map(|error| {
       let is_root = match &error {
         ModuleGraphError::ResolutionError(_) => false,
-        _ => roots.contains(error.specifier()),
+        ModuleGraphError::ModuleError(error) => {
+          roots.contains(error.specifier())
+        }
       };
       let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
         enhanced_resolution_error_message(err)
@@ -99,7 +102,10 @@ pub fn graph_valid(
 
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
-        if matches!(error, ModuleGraphError::MissingDynamic(_, _)) {
+        if matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
+        ) {
           log::warn!("Ignoring: {:#}", message);
           return None;
         }
@@ -156,6 +162,7 @@ pub async fn create_graph_and_maybe_check(
   let mut cache = cache::FetchCacher::new(
     ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
+    ps.options.resolve_file_header_overrides(),
     PermissionsContainer::allow_all(),
     PermissionsContainer::allow_all(),
     ps.options.node_modules_dir_specifier(),
@@ -436,7 +443,6 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
-          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
@@ -453,7 +459,6 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
-          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
