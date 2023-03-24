@@ -566,6 +566,7 @@ const ci = {
               "github.repository == 'denoland/deno' &&",
               "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
             ].join("\n"),
+            shell: "pwsh",
             run:
               "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip",
           },
