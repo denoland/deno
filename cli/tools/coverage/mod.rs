@@ -20,6 +20,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleCode;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -170,16 +171,16 @@ struct CoverageReport {
 
 fn generate_coverage_report(
   script_coverage: &ScriptCoverage,
-  script_source: &str,
+  script_source: String,
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
-  let text_lines = TextLines::new(script_source);
+  let text_lines = TextLines::new(&script_source);
 
-  let comment_ranges = deno_ast::lex(script_source, MediaType::JavaScript)
+  let comment_ranges = deno_ast::lex(&script_source, MediaType::JavaScript)
     .into_iter()
     .filter(|item| {
       matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
@@ -680,14 +681,14 @@ pub async fn cover_files(
     })?;
 
     // Check if file was transpiled
-    let original_source = &file.source;
-    let transpiled_code = match file.media_type {
+    let original_source = file.source.clone();
+    let transpiled_code: ModuleCode = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.as_ref().to_string(),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
+      | MediaType::Json => file.source.into(),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
@@ -695,7 +696,7 @@ pub async fn cover_files(
       | MediaType::Tsx => {
         let source_hash = get_source_hash(&file.source, ps.emit_options_hash);
         match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
-          Some(code) => code,
+          Some(code) => code.into(),
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -710,15 +711,16 @@ pub async fn cover_files(
       }
     };
 
+    let source_map = source_map_from_code(&transpiled_code);
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      &transpiled_code,
-      &source_map_from_code(&transpiled_code),
+      transpiled_code.take_as_string(),
+      &source_map,
       &out_mode,
     );
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, original_source)?;
+      reporter.report(&coverage_report, &original_source)?;
     }
   }
 

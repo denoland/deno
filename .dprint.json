@@ -13,16 +13,21 @@
     "associations": "**/*.rs",
     "rustfmt": "rustfmt --config imports_granularity=item"
   },
-  "includes": [
-    "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
-  ],
+  "includes": ["**/*.{ts,tsx,js,jsx,json,md,toml,rs}"],
   "excludes": [
     ".cargo_home",
     ".git",
     "cli/bench/testdata/express-router.js",
     "cli/bench/testdata/npm/*",
-    "cli/tsc/dts/*.d.ts",
+    "cli/tsc/dts/lib.d.ts",
+    "cli/tsc/dts/lib.scripthost.d.ts",
+    "cli/tsc/dts/lib.decorators*.d.ts",
+    "cli/tsc/dts/lib.webworker*.d.ts",
+    "cli/tsc/dts/lib.dom*.d.ts",
+    "cli/tsc/dts/lib.es*.d.ts",
+    "cli/tsc/dts/typescript.d.ts",
     "cli/tests/node_compat/test",
+    "cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     "cli/tests/testdata/fmt/badly_formatted.json",
     "cli/tests/testdata/fmt/badly_formatted.md",
     "cli/tests/testdata/byte_order_mark.ts",
@@ -40,11 +45,13 @@
     "test_util/std",
     "test_util/wpt",
     "third_party",
+    "tools/node_compat/TODO.md",
+    "tools/node_compat/versions",
     "tools/wpt/expectation.json",
     "tools/wpt/manifest.json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.81.1.wasm",
+    "https://plugins.dprint.dev/typescript-0.84.0.wasm",
     "https://plugins.dprint.dev/json-0.17.0.wasm",
     "https://plugins.dprint.dev/markdown-0.15.2.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
