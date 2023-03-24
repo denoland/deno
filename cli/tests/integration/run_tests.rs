@@ -1824,6 +1824,56 @@ fn exec_path() {
   assert_eq!(expected, actual);
 }
 
+#[test]
+fn run_from_stdin_defaults_to_ts() {
+  let source_code = r#"
+interface Lollipop {
+  _: number;
+}
+console.log("executing typescript");
+"#;
+
+  let mut p = util::deno_cmd()
+    .arg("run")
+    .arg("--check")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
+  let result = p.wait_with_output().unwrap();
+  assert!(result.status.success());
+  let stdout_str = std::str::from_utf8(&result.stdout).unwrap().trim();
+  assert_eq!(stdout_str, "executing typescript");
+}
+
+#[test]
+fn run_from_stdin_ext() {
+  let source_code = r#"
+let i = 123;
+i = "hello"
+console.log("executing javascript");
+"#;
+
+  let mut p = util::deno_cmd()
+    .arg("run")
+    .args(["--ext", "js"])
+    .arg("--check")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
+  let result = p.wait_with_output().unwrap();
+  assert!(result.status.success());
+  let stdout_str = std::str::from_utf8(&result.stdout).unwrap().trim();
+  assert_eq!(stdout_str, "executing javascript");
+}
+
 #[cfg(windows)]
 // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
 #[allow(clippy::enum_variant_names)]
@@ -3261,8 +3311,8 @@ itest!(unhandled_rejection_dynamic_import2 {
 });
 
 itest!(nested_error {
-  args: "run run/nested_error.ts",
-  output: "run/nested_error.ts.out",
+  args: "run run/nested_error/main.ts",
+  output: "run/nested_error/main.ts.out",
   exit_code: 1,
 });
 
@@ -3836,14 +3886,14 @@ itest!(js_without_extension {
 });
 
 itest!(ts_without_extension {
-  args: "run --ext ts file_extensions/ts_without_extension",
+  args: "run --ext ts --check file_extensions/ts_without_extension",
   output: "file_extensions/ts_without_extension.out",
   exit_code: 0,
 });
 
 itest!(ext_flag_takes_precedence_over_extension {
-  args: "run --ext ts file_extensions/ts_with_js_extension.js",
-  output: "file_extensions/ts_with_extension.out",
+  args: "run --ext ts --check file_extensions/ts_with_js_extension.js",
+  output: "file_extensions/ts_with_js_extension.out",
   exit_code: 0,
 });
 

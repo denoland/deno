@@ -215,6 +215,7 @@ fn v8_init(
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-change-array-by-copy",
+    " --no-harmony-rab-gsab",
   );
 
   if predictable {
@@ -750,7 +751,7 @@ impl JsRuntime {
             realm.execute_script(
               self.v8_isolate(),
               file_source.specifier,
-              file_source.code.load()?,
+              file_source.load()?,
             )?;
           }
         }
@@ -2543,7 +2544,7 @@ impl JsRealm {
     let scope = &mut self.handle_scope(isolate);
 
     let source = Self::string_from_code(scope, &source_code).unwrap();
-    assert!(name.is_ascii());
+    debug_assert!(name.is_ascii());
     let name =
       v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
     let origin = bindings::script_origin(scope, name);
@@ -4872,6 +4873,25 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
+  }
+
+  #[test]
+  fn test_resizable_array_buffer() {
+    // Verify that "resizable ArrayBuffer" is disabled
+    let mut runtime = JsRuntime::new(Default::default());
+    runtime
+      .execute_script(
+        "test_rab.js",
+        r#"const a = new ArrayBuffer(100, {maxByteLength: 200});
+        if (a.byteLength !== 100) {
+          throw new Error('wrong byte length');
+        }
+        if (a.maxByteLength !== undefined) {
+          throw new Error("ArrayBuffer shouldn't have maxByteLength");
+        }
+        "#,
+      )
+      .unwrap();
   }
 
   #[tokio::test]
