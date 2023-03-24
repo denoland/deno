@@ -11,7 +11,6 @@ mod graph_util;
 mod http_util;
 mod js;
 mod lsp;
-mod mitata;
 mod module_loader;
 mod napi;
 mod node;
