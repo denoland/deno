@@ -548,6 +548,16 @@ async function setupData(db: Deno.Kv) {
     .commit();
 }
 
+dbTest("get many", async (db) => {
+  await setupData(db);
+  const entries = await db.getMany([["b", "a"], ["a"], ["c"]]);
+  assertEquals(entries, [
+    { key: ["b", "a"], value: 100, versionstamp: "00000000000000010000" },
+    { key: ["a"], value: -1, versionstamp: "00000000000000010000" },
+    { key: ["c"], value: null, versionstamp: null },
+  ]);
+});
+
 dbTest("list prefix", async (db) => {
   await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"] }));
