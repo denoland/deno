@@ -2,7 +2,6 @@
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::serde_json;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
@@ -18,7 +17,6 @@ use rsa::RsaPublicKey;
 
 mod cipher;
 mod digest;
-mod keys;
 
 #[op(fast)]
 pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
@@ -241,43 +239,4 @@ pub fn op_node_decipheriv_final(
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
   context.r#final(input, output)
-}
-
-#[op]
-pub fn op_node_crypto_key(
-  state: &mut OpState,
-  algorithm: &str,
-  key: StringOrBuffer,
-) -> u32 {
-  state
-    .resource_table
-    .add(keys::create_key_object(algorithm, key.as_ref()))
-}
-
-#[op]
-pub fn op_node_crypto_symmetric_key_size(
-  state: &mut OpState,
-  rid: u32,
-) -> Result<usize, AnyError> {
-  let key = state.resource_table.get::<keys::KeyResource>(rid)?;
-  Ok(key.symmetric_key_size())
-}
-
-#[op]
-pub fn op_node_crypto_export(
-  state: &mut OpState,
-  rid: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
-  let key = state.resource_table.get::<keys::KeyResource>(rid)?;
-  Ok(key.export().to_vec().into())
-}
-
-#[op]
-pub fn op_node_crypto_export_jwk(
-  state: &mut OpState,
-  rid: u32,
-  handle_rsa_pss: bool,
-) -> Result<serde_json::Value, AnyError> {
-  let key = state.resource_table.get::<keys::KeyResource>(rid)?;
-  Ok(key.export_jwk(handle_rsa_pss))
 }
