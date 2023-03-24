@@ -15,6 +15,7 @@ use std::rc::Rc;
 mod alloc;
 mod mode;
 
+use mode::Flush;
 use mode::Mode;
 
 #[inline]
@@ -26,10 +27,18 @@ fn check(condition: bool, msg: &str) -> Result<(), AnyError> {
   }
 }
 
+#[inline]
+fn zlib(state: &mut OpState, handle: u32) -> Result<Rc<Zlib>, AnyError> {
+  state
+    .resource_table
+    .get::<Zlib>(handle)
+    .map_err(|_| bad_resource_id())
+}
+
 struct ZlibInner {
   dictionary: Option<Vec<u8>>,
   err: i32,
-  flush: i32,
+  flush: Flush,
   init_done: bool,
   level: i32,
   mem_level: i32,
@@ -54,23 +63,13 @@ impl ZlibInner {
     out: &mut [u8],
     out_off: u32,
     out_len: u32,
-    flush: i32,
+    flush: Flush,
   ) -> Result<(), AnyError> {
     check(self.init_done, "write before init")?;
     check(!self.write_in_progress, "write already in progress")?;
     check(!self.pending_close, "close already in progress")?;
 
     self.write_in_progress = true;
-
-    check(
-      flush == Z_NO_FLUSH
-        || flush == Z_PARTIAL_FLUSH
-        || flush == Z_SYNC_FLUSH
-        || flush == Z_FULL_FLUSH
-        || flush == Z_FINISH
-        || flush == Z_BLOCK,
-      "Bad argument",
-    )?;
 
     self.strm.avail_in = in_len;
     // TODO(@littledivy): Crap! Guard against overflow!!
@@ -83,11 +82,11 @@ impl ZlibInner {
     Ok(())
   }
 
-  fn do_write(&mut self, flush: i32) -> Result<(), AnyError> {
+  fn do_write(&mut self, flush: Flush) -> Result<(), AnyError> {
     self.flush = flush;
     match self.mode {
       Mode::Deflate | Mode::Gzip | Mode::DeflateRaw => {
-        self.err = unsafe { libz_sys::deflate(&mut self.strm, self.flush) };
+        self.err = unsafe { libz_sys::deflate(&mut self.strm, self.flush as _) }
       }
       Mode::Unzip if self.strm.avail_in > 0 => 'blck: {
         let mut next_expected_header_byte = Some(0);
@@ -133,7 +132,7 @@ impl ZlibInner {
         | Mode::InflateRaw
         // We're still reading the header.
         | Mode::Unzip => {
-        self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
+        self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush as _) };
         // TODO(@littledivy): Use if let chain when it is stable.
         // https://github.com/rust-lang/rust/issues/53667
         if self.err == Z_NEED_DICT && self.dictionary.is_some() {
@@ -148,7 +147,7 @@ impl ZlibInner {
           };
 
           if self.err == Z_OK {
-            self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
+            self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush as _) };
           } else if self.err == Z_DATA_ERROR {
             self.err = Z_NEED_DICT;
           }
@@ -160,14 +159,14 @@ impl ZlibInner {
           && unsafe { *self.strm.next_in as u8 } != 0x00
         {
           self.err = unsafe { libz_sys::inflateReset(&mut self.strm) };
-          self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush) };
+          self.err = unsafe { libz_sys::inflate(&mut self.strm, self.flush as _) };
         }
       }
       _ => {}
     }
 
     if self.err == Z_BUF_ERROR
-      && !(self.strm.avail_out != 0 && self.flush == Z_FINISH)
+      && !(self.strm.avail_out != 0 && self.flush == Flush::Finish)
     {
       // Set to Z_OK to avoid reporting the error in JS.
       self.err = Z_OK;
@@ -212,7 +211,7 @@ pub fn op_zlib_new(state: &mut OpState, mode: i32) -> Result<u32, AnyError> {
     mode,
     dictionary: None,
     err: 0,
-    flush: 0,
+    flush: Flush::NoFlush,
     init_done: false,
     level: 0,
     mem_level: 0,
@@ -230,12 +229,9 @@ pub fn op_zlib_new(state: &mut OpState, mode: i32) -> Result<u32, AnyError> {
 
 #[op]
 pub fn op_zlib_close(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
-  let resource = state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())?;
-
+  let resource = zlib(state, handle)?;
   let mut zlib = resource.inner.borrow_mut();
+
   if zlib.write_in_progress {
     zlib.pending_close = true;
     return Ok(());
@@ -274,22 +270,17 @@ pub fn op_zlib_write_async(
   impl Future<Output = Result<(i32, u32, u32), AnyError>> + 'static,
   AnyError,
 > {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())?;
+  let mut state_mut = state.borrow_mut();
+  let resource = zlib(&mut state_mut, handle)?;
 
-  let mut zlib = resource.inner.borrow_mut();
-  zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
+  let mut strm = resource.inner.borrow_mut();
+  let flush = Flush::try_from(flush)?;
+  strm.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
 
   let state = state.clone();
   Ok(async move {
-    let resource = state
-      .borrow()
-      .resource_table
-      .get::<Zlib>(handle)
-      .map_err(|_| bad_resource_id())?;
+    let mut state_mut = state.borrow_mut();
+    let resource = zlib(&mut state_mut, handle)?;
     let mut zlib = resource.inner.borrow_mut();
     zlib.do_write(flush)?;
     Ok((zlib.err, zlib.strm.avail_out, zlib.strm.avail_in))
@@ -309,12 +300,10 @@ pub fn op_zlib_write(
   out_len: u32,
   result: &mut [u32],
 ) -> Result<i32, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())?;
+  let resource = zlib(state, handle)?;
 
   let mut zlib = resource.inner.borrow_mut();
+  let flush = Flush::try_from(flush)?;
   zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
   zlib.do_write(flush)?;
 
@@ -334,10 +323,7 @@ pub fn op_zlib_init(
   strategy: i32,
   dictionary: Option<ZeroCopyBuf>,
 ) -> Result<i32, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())?;
+  let resource = zlib(state, handle)?;
 
   check(window_bits >= 8 && window_bits <= 15, "invalid windowBits")?;
   check(level >= -1 && level <= 9, "invalid level")?;
@@ -359,7 +345,7 @@ pub fn op_zlib_init(
   zlib.mem_level = mem_level;
   zlib.strategy = strategy;
 
-  zlib.flush = Z_NO_FLUSH;
+  zlib.flush = Flush::NoFlush;
   zlib.err = Z_OK;
 
   match zlib.mode {
@@ -405,10 +391,7 @@ pub fn op_zlib_reset(
   state: &mut OpState,
   handle: u32,
 ) -> Result<i32, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())?;
+  let resource = zlib(state, handle)?;
 
   let mut zlib = resource.inner.borrow_mut();
 
@@ -431,10 +414,7 @@ pub fn op_zlib_close_if_pending(
   state: &mut OpState,
   handle: u32,
 ) -> Result<(), AnyError> {
-  let resource = state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())?;
+  let resource = zlib(state, handle)?;
   let pending_close = {
     let mut zlib = resource.inner.borrow_mut();
     zlib.write_in_progress = false;
@@ -446,24 +426,4 @@ pub fn op_zlib_close_if_pending(
   }
 
   Ok(())
-}
-
-#[op]
-pub fn op_zlib_get_message(state: &mut OpState, handle: u32) -> Option<String> {
-  let resource = state.resource_table.get::<Zlib>(handle);
-
-  match resource {
-    Ok(resource) => {
-      let zlib = resource.inner.borrow();
-      if zlib.err == Z_OK {
-        return None;
-      }
-
-      let msg = unsafe { std::ffi::CStr::from_ptr(zlib.strm.msg) }
-        .to_string_lossy()
-        .to_string();
-      Some(msg)
-    }
-    Err(_) => None,
-  }
 }
