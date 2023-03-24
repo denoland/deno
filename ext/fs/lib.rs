@@ -1457,7 +1457,10 @@ where
   // corresponds to the realpath on Unix and
   // CreateFile and GetFinalPathNameByHandle on Windows
   let realpath = canonicalize_path(&path).map_err(|error| {
-    default_err_mapper(error, format!("op_realpath_sync '{}', Deno.realPathSync", path.display()))
+    default_err_mapper(
+      error,
+      format!("op_realpath_sync '{}', Deno.realPathSync", path.display()),
+    )
   })?;
   let realpath_str = into_string(realpath.into_os_string())?;
   Ok(realpath_str)
@@ -1491,7 +1494,10 @@ where
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = canonicalize_path(&path).map_err(|error| {
-      default_err_mapper(error, format!("op_realpath_async '{}', Deno.realPath", path.display()))
+      default_err_mapper(
+        error,
+        format!("op_realpath_async '{}', Deno.realPath", path.display()),
+      )
     })?;
     let realpath_str = into_string(realpath.into_os_string())?;
     Ok(realpath_str)
