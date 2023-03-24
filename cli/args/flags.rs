@@ -2115,7 +2115,6 @@ fn executable_ext_arg() -> Arg {
   Arg::new("ext")
     .long("ext")
     .help("Set content type of the supplied file")
-    .default_value("js")
     .value_parser(["ts", "tsx", "js", "jsx"])
 }
 
