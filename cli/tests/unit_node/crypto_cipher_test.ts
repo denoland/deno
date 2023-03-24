@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
+import { Readable } from "node:stream";
 import {
   assertEquals,
   assertThrows,
@@ -90,6 +91,27 @@ Deno.test({
 });
 
 Deno.test({
+  name: "createCipheriv - transform stream",
+  async fn() {
+    const stream = Readable.from("foo".repeat(15)).pipe(crypto.createCipheriv(
+      "aes-128-cbc",
+      new Uint8Array(16),
+      new Uint8Array(16),
+    ));
+    const result = await new Response(Readable.toWeb(stream) as any)
+      .arrayBuffer();
+    // deno-fmt-ignore
+    assertEquals(new Uint8Array(result), new Uint8Array([
+      129,  19, 202, 142, 137,  51,  23,  53, 198,  33,
+      214, 125,  17,   5, 128,  57, 162, 217, 220,  53,
+      172,  51,  85, 113,  71, 250,  44, 156,  80,   4,
+      158,  92, 185, 173,  67,  47, 255,  71,  78, 187,
+       80, 206,  42,   5,  34, 104,   1,  54
+    ]));
+  },
+});
+
+Deno.test({
   name: "createDecipheriv - basic",
   fn() {
     const decipher = crypto.createDecipheriv(
@@ -108,5 +130,27 @@ Deno.test({
       decipher.final(),
       Buffer.alloc(10), // Checks the padding
     );
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - transform stream",
+  async fn() {
+    const stream = Readable.from([
+      // deno-fmt-ignore
+      new Uint8Array([
+        129,  19, 202, 142, 137,  51,  23,  53, 198,  33,
+        214, 125,  17,   5, 128,  57, 162, 217, 220,  53,
+        172,  51,  85, 113,  71, 250,  44, 156,  80,   4,
+        158,  92, 185, 173,  67,  47, 255,  71,  78, 187,
+         80, 206,  42,   5,  34, 104,   1,  54
+      ]),
+    ]).pipe(crypto.createDecipheriv(
+      "aes-128-cbc",
+      new Uint8Array(16),
+      new Uint8Array(16),
+    ));
+    const text = await new Response(Readable.toWeb(stream) as any).text();
+    assertEquals(text, "foo".repeat(15));
   },
 });
