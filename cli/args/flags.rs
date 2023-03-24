@@ -1584,8 +1584,7 @@ fn run_subcommand() -> Command {
     .arg(
       script_arg()
         .required_unless_present("v8-flags")
-        .trailing_var_arg(true)
-        .required(true),
+        .trailing_var_arg(true),
     )
     .about("Run a JavaScript or TypeScript program")
     .long_about(
