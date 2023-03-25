@@ -756,7 +756,8 @@ pub async fn cover_files(
     );
 
     if !coverage_report.found_lines.is_empty() {
-      let report_output = reporter.report(&coverage_report, &original_source)?;
+      let report_output =
+        reporter.report(&coverage_report, &original_source)?;
       report_outputs.push(report_output);
     }
   }
