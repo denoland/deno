@@ -178,7 +178,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     async move {
       if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource {
-          code: source.into_bytes().into_boxed_slice(),
+          code: source.into(),
           module_type: deno_core::ModuleType::JavaScript,
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
@@ -192,7 +192,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .to_owned();
 
       Ok(deno_core::ModuleSource {
-        code: code.into_bytes().into_boxed_slice(),
+        code: code.into(),
         module_type: match module.kind {
           eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
           eszip::ModuleKind::Json => deno_core::ModuleType::Json,
@@ -258,10 +258,10 @@ fn create_web_worker_callback(
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),
-        runtime_version: version::deno(),
+        runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.options.unstable(),
-        user_agent: version::get_user_agent(),
+        user_agent: version::get_user_agent().to_string(),
         inspect: ps.options.is_inspecting(),
       },
       extensions: ops::cli_exts(ps.clone()),
@@ -347,10 +347,10 @@ pub async fn run(
       location: metadata.location,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
-      runtime_version: version::deno(),
+      runtime_version: version::deno().to_string(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
-      user_agent: version::get_user_agent(),
+      user_agent: version::get_user_agent().to_string(),
       inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps.clone()),
@@ -384,16 +384,16 @@ pub async fn run(
     options,
   );
   worker.execute_main_module(main_module).await?;
-  worker.dispatch_load_event(&located_script_name!())?;
+  worker.dispatch_load_event(located_script_name!())?;
 
   loop {
     worker.run_event_loop(false).await?;
-    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+    if !worker.dispatch_beforeunload_event(located_script_name!())? {
       break;
     }
   }
 
-  worker.dispatch_unload_event(&located_script_name!())?;
+  worker.dispatch_unload_event(located_script_name!())?;
   std::process::exit(0);
 }
 

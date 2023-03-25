@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { partition } from "std/collections/mod.ts";
-import { join } from "std/path/mod.ts";
+import { partition } from "../../../test_util/std/collections/partition.ts";
+import { join } from "../../../test_util/std/path/mod.ts";
 
 /**
  * The test suite matches the folders inside the `test` folder inside the
@@ -35,7 +35,7 @@ export const ignoreList = Object.entries(config.ignore).reduce(
     paths.forEach((path) => total.push(new RegExp(join(suite, path))));
     return total;
   },
-  [],
+  [/package\.json/],
 );
 
 export function getPathsFromTestSuites(suites: TestSuites): string[] {

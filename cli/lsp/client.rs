@@ -17,6 +17,7 @@ use super::config::SpecifierSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
+use super::urls::LspClientUrl;
 
 #[derive(Debug)]
 pub enum TestingNotification {
@@ -98,18 +99,23 @@ impl OutsideLockClient {
 
   pub async fn specifier_configurations(
     &self,
-    specifiers: Vec<lsp::Url>,
+    specifiers: Vec<LspClientUrl>,
   ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
-    self.0.specifier_configurations(specifiers).await
+    self
+      .0
+      .specifier_configurations(
+        specifiers.into_iter().map(|s| s.into_url()).collect(),
+      )
+      .await
   }
 
   pub async fn specifier_configuration(
     &self,
-    specifier: &lsp::Url,
+    specifier: &LspClientUrl,
   ) -> Result<SpecifierSettings, AnyError> {
     let values = self
       .0
-      .specifier_configurations(vec![specifier.clone()])
+      .specifier_configurations(vec![specifier.as_url().clone()])
       .await?;
     if let Some(value) = values.into_iter().next() {
       value.map_err(|err| {

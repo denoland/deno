@@ -14,12 +14,13 @@ fn macos_shared_libraries() {
   // 	/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 60420.60.24)
   // 	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
-  const EXPECTED: [&str; 5] =
+  const EXPECTED: [&str; 6] =
     ["/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
      "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
      "/System/Library/Frameworks/Security.framework/Versions/A/Security",
      "/usr/lib/libiconv.2.dylib",
-     "/usr/lib/libSystem.B.dylib"];
+     "/usr/lib/libSystem.B.dylib",
+     "/usr/lib/libobjc.A.dylib"];
 
   let otool = std::process::Command::new("otool")
     .arg("-L")

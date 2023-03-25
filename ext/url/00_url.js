@@ -330,7 +330,7 @@ function trim(s) {
 /** @type Map<string, Uint32Array> */
 const hrefComponentsMap = new Map();
 
-// Represents a "no port" value. A port in URL cannot be greater than 2^16 − 1
+// Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
 const NO_PORT = 65536;
 
 let componentsBuf = new Uint32Array(8);
