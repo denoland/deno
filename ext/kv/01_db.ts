@@ -155,7 +155,7 @@ class Kv {
 
     let batchSize = options.batchSize ?? (options.limit ?? 100);
     if (batchSize <= 0) throw new Error("batchSize must be positive");
-    if (batchSize > 500) batchSize = 500;
+    if (options.batchSize === undefined && batchSize > 500) batchSize = 500;
 
     return new KvListIterator({
       limit: options.limit,
