@@ -794,7 +794,6 @@ pub async fn cover_files(
     .sum::<f32>();
 
   let function_coverage = total_functions_hit / total_functions_found * 100.0;
-  println!("{line_coverage}, {branch_coverage}, {function_coverage}");
 
   let threshold = coverage_flags.threshold as f32;
 
