@@ -43,7 +43,7 @@ macro_rules! assert_not_contains {
 #[macro_export]
 macro_rules! failed_position {
   () => {
-    crate::assertions::failed_position(std::file!())
+    $crate::assertions::failed_position(std::file!())
   };
 }
 

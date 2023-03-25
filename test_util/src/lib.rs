@@ -2248,7 +2248,7 @@ impl PtyNew {
   /// Writes a line without checking if it's in the output.
   pub fn write_line_raw(&mut self, line: impl AsRef<str>) {
     let line = if cfg!(windows) {
-      line.as_ref().replace("\n", "\r\n")
+      line.as_ref().replace('\n', "\r\n")
     } else {
       line.as_ref().to_string()
     };
