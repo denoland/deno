@@ -10,13 +10,13 @@ use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
 
-use backtrace::Backtrace;
 use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 
 use crate::copy_dir_recursive;
 use crate::deno_exe_path;
 use crate::env_vars_for_npm_tests_no_sync_download;
+use crate::failed_position;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
@@ -428,7 +428,7 @@ impl Drop for TestCommandOutput {
           "The non-empty text of the command was not asserted at {}. ",
           "Call `output.skip_output_check()` to skip if necessary.",
         ),
-        failed_position()
+        failed_position!()
       );
     }
 
@@ -440,7 +440,7 @@ impl Drop for TestCommandOutput {
       panic!(
         "The non-zero exit code of the command was not asserted: {:?} at {}.",
         self.exit_code,
-        failed_position(),
+        failed_position!(),
       )
     }
 
@@ -521,7 +521,7 @@ impl TestCommandOutput {
           "bad exit code, expected: {:?}, actual: {:?} at {}",
           expected_exit_code,
           exit_code,
-          failed_position(),
+          failed_position!(),
         );
       }
     } else {
@@ -531,13 +531,13 @@ impl TestCommandOutput {
           "process terminated by signal, expected exit code: {:?}, actual signal: {:?} at {}",
           actual_exit_code,
           signal,
-          failed_position(),
+          failed_position!(),
         );
       } else {
         panic!(
           "process terminated without status code on non unix platform, expected exit code: {:?} at {}",
           actual_exit_code,
-          failed_position(),
+          failed_position!(),
         );
       }
     }
@@ -597,11 +597,11 @@ impl TestCommandOutput {
   ) -> &Self {
     let expected = expected.as_ref();
     if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected, "at {}", failed_position());
+      assert_eq!(actual, expected, "at {}", failed_position!());
     } else if !wildcard_match(expected, actual) {
       println!("OUTPUT START\n{actual}\nOUTPUT END");
       println!("EXPECTED START\n{expected}\nEXPECTED END");
-      panic!("pattern match failed at {}", failed_position());
+      panic!("pattern match failed at {}", failed_position!());
     }
     self
   }
@@ -619,22 +619,4 @@ impl TestCommandOutput {
       });
     self.inner_assert_matches_text(actual, expected_text)
   }
-}
-
-fn failed_position() -> String {
-  let backtrace = Backtrace::new();
-
-  for frame in backtrace.frames() {
-    for symbol in frame.symbols() {
-      if let Some(filename) = symbol.filename() {
-        if !filename.to_string_lossy().ends_with("builders.rs") {
-          let line_num = symbol.lineno().unwrap_or(0);
-          let line_col = symbol.colno().unwrap_or(0);
-          return format!("{}:{}:{}", filename.display(), line_num, line_col);
-        }
-      }
-    }
-  }
-
-  "<unknown>".to_string()
 }

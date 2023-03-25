@@ -2168,15 +2168,91 @@ pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
   action(pty);
 }
 
-pub struct PtyNew(expectrl::Session);
+// todo(THIS PR): move to pty module
+
+// todo(dsherret): the below is way too verbose.
+// Logged https://github.com/zhiburt/expectrl/issues/62
+#[cfg(unix)]
+type PtyProcess = expectrl::process::unix::UnixProcess;
+#[cfg(windows)]
+type PtyProcess = expectrl::process::windows::WinProcess;
+#[cfg(unix)]
+type PtyProcessStream = expectrl::process::unix::PtyStream;
+#[cfg(windows)]
+type PtyProcessStream = expectrl::process::windows::ProcessStream;
+type PtyLoggedStream =
+  expectrl::stream::log::LoggedStream<PtyProcessStream, io::Stderr>;
+type PtyLoggingSession = expectrl::Session<PtyProcess, PtyLoggedStream>;
+
+trait ExpectrlSession: Read {
+  fn send_line(&mut self, s: &str) -> std::io::Result<()>;
+  fn expect(&mut self, s: &str) -> Result<expectrl::Captures, expectrl::Error>;
+}
+
+macro_rules! implement_expectrl_session {
+  ($struct_name:ident) => {
+    impl ExpectrlSession for $struct_name {
+      fn send_line(&mut self, s: &str) -> std::io::Result<()> {
+        self.0.send_line(s)
+      }
+
+      fn expect(
+        &mut self,
+        s: &str,
+      ) -> Result<expectrl::Captures, expectrl::Error> {
+        self.0.expect(s)
+      }
+    }
+
+    impl Read for $struct_name {
+      fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+      }
+    }
+  };
+}
+
+struct LoggingExpectrlSession(PtyLoggingSession);
+implement_expectrl_session!(LoggingExpectrlSession);
+
+struct DefaultExpectrlSession(expectrl::session::Session);
+implement_expectrl_session!(DefaultExpectrlSession);
+
+pub struct PtyNew(Box<dyn ExpectrlSession>);
 
 impl PtyNew {
-  pub fn send_line(&mut self, line: impl AsRef<str>) {
-    self.0.send_line(line.as_ref()).unwrap();
+  pub fn write_line(&mut self, line: impl AsRef<str>) {
+    self.write_line_raw(&line);
+
+    // expect what was written to show up in the output
+    // due to "pty echo"
+    for line in line.as_ref().lines() {
+      self.expect(line);
+    }
+  }
+
+  /// Writes a line without checking if it's in the output.
+  pub fn write_line_raw(&mut self, line: impl AsRef<str>) {
+    let line = if cfg!(windows) {
+      line.as_ref().replace("\n", "\r\n")
+    } else {
+      line.as_ref().to_string()
+    };
+    if let Err(err) = self.0.send_line(&line) {
+      panic!("{:#} at {}", err, failed_position!())
+    }
+  }
+
+  pub fn read_all_output(&mut self) -> String {
+    let mut text = String::new();
+    self.0.read_to_string(&mut text).unwrap();
+    text
   }
 
   pub fn expect(&mut self, line: impl AsRef<str>) {
-    self.0.expect(line.as_ref()).unwrap();
+    if let Err(err) = self.0.expect(line.as_ref()) {
+      panic!("{:#} at {}", err, failed_position!())
+    }
   }
 }
 
@@ -2195,6 +2271,14 @@ pub fn with_pty2(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
     .args(deno_args)
     .envs(env_vars);
   let p = expectrl::Session::spawn(cmd).unwrap();
+  let enable_logging = true;
+  let p: Box<dyn ExpectrlSession> = if enable_logging {
+    Box::new(LoggingExpectrlSession(
+      p.with_log(std::io::stderr()).unwrap(),
+    ))
+  } else {
+    Box::new(DefaultExpectrlSession(p))
+  };
   action(PtyNew(p))
 }
 

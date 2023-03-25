@@ -8,111 +8,91 @@ use util::TempDir;
 
 #[test]
 fn pty_multiline() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line("(\n1 + 2\n)");
+    console.expect("3");
     console.write_line("{\nfoo: \"foo\"\n}");
+    console.expect("{ foo: \"foo\" }");
     console.write_line("`\nfoo\n`");
+    console.expect("\"\\nfoo\\n\"");
     console.write_line("`\n\\`\n`");
+    console.expect(r#""\n`\n""#);
     console.write_line("'{'");
+    console.expect(r#""{""#);
     console.write_line("'('");
+    console.expect(r#""(""#);
     console.write_line("'['");
+    console.expect(r#""[""#);
     console.write_line("/{/");
+    console.expect("/{/");
     console.write_line("/\\(/");
+    console.expect("/\\(/");
     console.write_line("/\\[/");
+    console.expect("/\\[/");
     console.write_line("console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, '3');
-    assert_contains!(output, "{ foo: \"foo\" }");
-    assert_contains!(output, "\"\\nfoo\\n\"");
-    assert_contains!(output, "\"\\n`\\n\"");
-    assert_contains!(output, "\"{\"");
-    assert_contains!(output, "\"(\"");
-    assert_contains!(output, "\"[\"");
-    assert_contains!(output, "/{/");
-    assert_contains!(output, "/\\(/");
-    assert_contains!(output, "/\\[/");
-    assert_contains!(output, "[ \"{test1}\", \"test1\" ]");
+    console.expect("[ \"{test1}\", \"test1\" ]");
   });
 }
 
 #[test]
 fn pty_null() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line("null");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "null");
+    console.expect("null");
   });
 }
 
 #[test]
 fn pty_unpaired_braces() {
   for right_brace in &[")", "]", "}"] {
-    util::with_pty(&["repl"], |mut console| {
+    util::with_pty2(&["repl"], |mut console| {
       console.write_line(right_brace);
-      console.write_line("close();");
-
-      let output = console.read_all_output();
-      assert_contains!(output, "Expression expected");
+      console.expect("parse error: Expression expected");
     });
   }
 }
 
 #[test]
 fn pty_bad_input() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line("'\\u{1f3b5}'[0]");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "Unterminated string literal");
+    console.expect("Unterminated string literal");
   });
 }
 
 #[test]
 fn pty_syntax_error_input() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line("('\\u')");
-    console.write_line("'");
-    console.write_line("[{'a'}];");
-    console.write_line("close();");
+    console.expect("Bad character escape sequence, expected 4 hex characters");
 
-    let output = console.read_all_output();
-    assert_contains!(
-      output,
-      "Bad character escape sequence, expected 4 hex characters"
-    );
-    assert_contains!(output, "Unterminated string constant");
-    assert_contains!(output, "Expected a semicolon");
+    console.write_line("'");
+    console.expect("Unterminated string constant");
+
+    console.write_line("[{'a'}];");
+    console.expect("Expected a semicolon");
   });
 }
 
 #[test]
 fn pty_complete_symbol() {
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line("Symbol.it\t");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "Symbol(Symbol.iterator)");
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line_raw("Symbol.it\t");
+    console.expect("Symbol(Symbol.iterator)");
   });
 }
 
 #[test]
 fn pty_complete_declarations() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line("class MyClass {}");
-    console.write_line("My\t");
-    console.write_line("let myVar;");
-    console.write_line("myV\t");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "> MyClass");
-    assert_contains!(output, "> myVar");
+    console.expect("undefined");
+    console.write_line_raw("My\t");
+    console.expect("[Class: MyClass]");
+    console.write_line("let myVar = 2 + 3;");
+    console.expect("undefined");
+    console.write_line_raw("myV\t");
+    console.expect("5");
   });
 }
 
@@ -224,13 +204,13 @@ fn pty_assign_global_this() {
 #[test]
 fn pty_assign_deno_keys_and_deno() {
   util::with_pty2(&["repl"], |mut console| {
-    console.send_line(
+    console.write_line(
       "Object.keys(Deno).forEach((key)=>{try{Deno[key] = undefined} catch {}})",
     );
     console.expect("undefined");
-    console.send_line("delete globalThis.Deno");
+    console.write_line("delete globalThis.Deno");
     console.expect("true");
-    console.send_line("console.log('testing ' + 'this out');");
+    console.write_line("console.log('testing ' + 'this out');");
     console.expect("testing this out");
     console.expect("undefined");
   });
