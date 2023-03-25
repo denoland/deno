@@ -20,7 +20,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
-use http::header::HeaderName;
+use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use http::Request;

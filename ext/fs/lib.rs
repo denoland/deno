@@ -188,8 +188,8 @@ deno_core::extension!(deno_fs,
   },
 );
 
-fn default_err_mapper(err: Error, desc: String) -> Error {
-  Error::new(err.kind(), format!("{err}, {desc}"))
+fn default_err_mapper(err: Error, desc: String) -> AnyError {
+  AnyError::new(Error::new(err.kind(), desc)).context(err)
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -1017,7 +1017,7 @@ where
       let mut st = std::mem::zeroed();
       let ret = stat(from.as_ptr(), &mut st);
       if ret != 0 {
-        return Err(err_mapper(Error::last_os_error()).into());
+        return Err(err_mapper(Error::last_os_error()));
       }
 
       if st.st_size > 128 * 1024 {
@@ -1339,6 +1339,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
   } else {
     (path.canonicalize()?, FILE_FLAG_BACKUP_SEMANTICS)
   };
+  // SAFETY: winapi calls
   unsafe {
     let mut path: Vec<_> = p.as_os_str().encode_wide().collect();
     path.push(0);
@@ -2347,9 +2348,9 @@ where
 
   let read_future = tokio::task::spawn_blocking(move || {
     let path = Path::new(&path);
-    Ok(std::fs::read(path).map(ZeroCopyBuf::from).map_err(|err| {
+    std::fs::read(path).map(ZeroCopyBuf::from).map_err(|err| {
       default_err_mapper(err, format!("readfile '{}'", path.display()))
-    })?)
+    })
   });
 
   let cancel_handle = cancel_rid.and_then(|rid| {

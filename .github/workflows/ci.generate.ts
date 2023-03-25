@@ -149,7 +149,6 @@ function cancelEarlyIfDraftPr(
       name: "Cancel if draft PR",
       id: "exit_early",
       if: "github.event.pull_request.draft == true",
-      shell: "bash",
       run: [
         "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
         "echo Commit message: $GIT_MESSAGE",
@@ -214,6 +213,12 @@ const ci = {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
+      defaults: {
+        run: {
+          // GH actions doesn't use `set -e` by default unless you specify bash
+          shell: "bash",
+        },
+      },
       strategy: {
         matrix: {
           include: [
@@ -391,7 +396,6 @@ const ci = {
               "github.repository == 'denoland/deno' &&",
               "github.ref == 'refs/heads/main'",
             ].join("\n"),
-            shell: "bash",
             run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
           },
           {
@@ -400,7 +404,6 @@ const ci = {
           },
           {
             name: "Log versions",
-            shell: "bash",
             run: [
               "python --version",
               "rustc --version",
@@ -464,7 +467,6 @@ const ci = {
             // identifier '1ecc6299db9ec823' will ever change, but if it does then this
             // command must be updated.
             name: "Shallow clone crates.io index",
-            shell: "bash",
             run: [
               "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
               "then",
@@ -564,6 +566,7 @@ const ci = {
               "github.repository == 'denoland/deno' &&",
               "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
             ].join("\n"),
+            shell: "pwsh",
             run:
               "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip",
           },
@@ -591,7 +594,6 @@ const ci = {
             env: {
               CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
             },
-            shell: "bash",
             run:
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
           },
@@ -634,7 +636,6 @@ const ci = {
             name: "Check deno binary",
             if:
               "matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')",
-            shell: "bash",
             run: 'target/release/deno eval "console.log(1+2)" | grep 3',
             env: {
               NO_COLOR: 1,
@@ -798,13 +799,11 @@ const ci = {
             env: {
               CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
             },
-            shell: "bash",
             run:
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           },
           {
             name: "Create release notes",
-            shell: "bash",
             if: [
               "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",

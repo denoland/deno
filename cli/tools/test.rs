@@ -16,6 +16,7 @@ use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
+use crate::util::path::mapped_specifier_for_tsc;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -740,7 +741,6 @@ async fn test_specifier(
 }
 
 fn extract_files_from_regex_blocks(
-  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
@@ -800,17 +800,17 @@ fn extract_files_from_regex_blocks(
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
-      let file_specifier = deno_core::resolve_url_or_path(
-        &format!(
-          "{}${}-{}{}",
-          specifier,
-          file_line_index + line_offset + 1,
-          file_line_index + line_offset + line_count + 1,
-          file_media_type.as_ts_extension(),
-        ),
-        current_dir,
-      )
+      let file_specifier = ModuleSpecifier::parse(&format!(
+        "{}${}-{}",
+        specifier,
+        file_line_index + line_offset + 1,
+        file_line_index + line_offset + line_count + 1,
+      ))
       .unwrap();
+      let file_specifier =
+        mapped_specifier_for_tsc(&file_specifier, file_media_type)
+          .map(|s| ModuleSpecifier::parse(&s).unwrap())
+          .unwrap_or(file_specifier);
 
       Some(File {
         local: file_specifier.to_file_path().unwrap(),
@@ -827,7 +827,6 @@ fn extract_files_from_regex_blocks(
 }
 
 fn extract_files_from_source_comments(
-  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: Arc<str>,
   media_type: MediaType,
@@ -855,7 +854,6 @@ fn extract_files_from_source_comments(
     })
     .flat_map(|comment| {
       extract_files_from_regex_blocks(
-        current_dir,
         specifier,
         &comment.text,
         media_type,
@@ -871,7 +869,6 @@ fn extract_files_from_source_comments(
 }
 
 fn extract_files_from_fenced_blocks(
-  current_dir: &Path,
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
@@ -885,7 +882,6 @@ fn extract_files_from_fenced_blocks(
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
-    current_dir,
     specifier,
     source,
     media_type,
@@ -906,14 +902,12 @@ async fn fetch_inline_files(
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
-        ps.options.initial_cwd(),
         &file.specifier,
         &file.source,
         file.media_type,
       )
     } else {
       extract_files_from_source_comments(
-        ps.options.initial_cwd(),
         &file.specifier,
         file.source,
         file.media_type,

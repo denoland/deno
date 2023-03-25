@@ -18,7 +18,7 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { ops, encode } = globalThis.__bootstrap.core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"
@@ -116,6 +116,10 @@ export interface DecipherOCB extends Decipher {
   ): this;
 }
 
+function toU8(input: string | Uint8Array): Uint8Array {
+  return typeof input === "string" ? encode(input) : input;
+}
+
 export class Cipheriv extends Transform implements Cipher {
   /** CipherContext resource id */
   #context: number;
@@ -129,9 +133,19 @@ export class Cipheriv extends Transform implements Cipher {
     iv: BinaryLike | null,
     options?: TransformOptions,
   ) {
-    super(options);
-    this.#cache = new BlockModeCache();
-    this.#context = ops.op_node_create_cipheriv(cipher, key, iv);
+    super({
+      transform(chunk, encoding, cb) {
+        this.push(this.update(chunk, encoding));
+        cb();
+      },
+      final(cb) {
+        this.push(this.final());
+        cb();
+      },
+      ...options,
+    });
+    this.#cache = new BlockModeCache(false);
+    this.#context = ops.op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
@@ -161,14 +175,23 @@ export class Cipheriv extends Transform implements Cipher {
 
   update(
     data: string | Buffer | ArrayBufferView,
-    // TODO(kt3k): Handle inputEncoding
-    _inputEncoding?: Encoding,
+    inputEncoding?: Encoding,
     outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
-    this.#cache.add(data);
+    // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+    if (typeof data === "string" && typeof inputEncoding === "string") {
+      this.#cache.add(Buffer.from(data, inputEncoding));
+    } else {
+      this.#cache.add(data);
+    }
     const input = this.#cache.get();
-    const output = new Buffer(input.length);
-    ops.op_node_cipheriv_encrypt(this.#context, input, output);
+    let output;
+    if (input === null) {
+      output = Buffer.alloc(0);
+    } else {
+      output = Buffer.allocUnsafe(input.length);
+      ops.op_node_cipheriv_encrypt(this.#context, input, output);
+    }
     return outputEncoding === "buffer"
       ? output
       : output.toString(outputEncoding);
@@ -178,8 +201,13 @@ export class Cipheriv extends Transform implements Cipher {
 /** Caches data and output the chunk of multiple of 16.
  * Used by CBC, ECB modes of block ciphers */
 class BlockModeCache {
-  constructor() {
+  cache: Uint8Array;
+  // The last chunk can be padded when decrypting.
+  #lastChunkIsNonZero: boolean;
+
+  constructor(lastChunkIsNotZero = false) {
     this.cache = new Uint8Array(0);
+    this.#lastChunkIsNonZero = lastChunkIsNotZero;
   }
 
   add(data: Uint8Array) {
@@ -189,11 +217,19 @@ class BlockModeCache {
     this.cache.set(data, cache.length);
   }
 
-  get(): Uint8Array {
-    if (this.cache.length < 16) {
+  /** Gets the chunk of the length of largest multiple of 16.
+   * Used for preparing data for encryption/decryption */
+  get(): Uint8Array | null {
+    let len = this.cache.length;
+    if (this.#lastChunkIsNonZero) {
+      // Reduces the available chunk length by 1 to keep the last chunk
+      len -= 1;
+    }
+    if (len < 16) {
       return null;
     }
-    const len = Math.floor(this.cache.length / 16) * 16;
+
+    len = Math.floor(len / 16) * 16;
     const out = this.cache.subarray(0, len);
     this.cache = this.cache.subarray(len);
     return out;
@@ -201,19 +237,38 @@ class BlockModeCache {
 }
 
 export class Decipheriv extends Transform implements Cipher {
-  constructor(
-    _cipher: string,
-    _key: CipherKey,
-    _iv: BinaryLike | null,
-    _options?: TransformOptions,
-  ) {
-    super();
+  /** DecipherContext resource id */
+  #context: number;
 
-    notImplemented("crypto.Decipheriv");
+  /** ciphertext data cache */
+  #cache: BlockModeCache;
+
+  constructor(
+    cipher: string,
+    key: CipherKey,
+    iv: BinaryLike | null,
+    options?: TransformOptions,
+  ) {
+    super({
+      transform(chunk, encoding, cb) {
+        this.push(this.update(chunk, encoding));
+        cb();
+      },
+      final(cb) {
+        this.push(this.final());
+        cb();
+      },
+      ...options,
+    });
+    this.#cache = new BlockModeCache(true);
+    this.#context = ops.op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
   }
 
-  final(_outputEncoding?: string): Buffer | string {
-    notImplemented("crypto.Decipheriv.prototype.final");
+  final(encoding: string = getDefaultEncoding()): Buffer | string {
+    let buf = new Buffer(16);
+    ops.op_node_decipheriv_final(this.#context, this.#cache.cache, buf);
+    buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
+    return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
   setAAD(
@@ -234,11 +289,27 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   update(
-    _data: string | BinaryLike | ArrayBufferView,
-    _inputEncoding?: Encoding,
-    _outputEncoding?: Encoding,
+    data: string | Buffer | ArrayBufferView,
+    inputEncoding?: Encoding,
+    outputEncoding: Encoding = getDefaultEncoding(),
   ): Buffer | string {
-    notImplemented("crypto.Decipheriv.prototype.update");
+    // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+    if (typeof data === "string" && typeof inputEncoding === "string") {
+      this.#cache.add(Buffer.from(data, inputEncoding));
+    } else {
+      this.#cache.add(data);
+    }
+    const input = this.#cache.get();
+    let output;
+    if (input === null) {
+      output = Buffer.alloc(0);
+    } else {
+      output = new Buffer(input.length);
+      ops.op_node_decipheriv_decrypt(this.#context, input, output);
+    }
+    return outputEncoding === "buffer"
+      ? output
+      : output.toString(outputEncoding);
   }
 }
 

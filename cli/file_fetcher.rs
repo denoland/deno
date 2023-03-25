@@ -93,7 +93,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let bytes = fs::read(&local)?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
   let source = get_source_from_bytes(bytes, Some(charset))?;
-  let media_type = MediaType::from(specifier);
+  let media_type = MediaType::from_specifier(specifier);
 
   Ok(File {
     local,
@@ -166,7 +166,7 @@ pub fn map_content_type(
 
     (media_type, charset)
   } else {
-    (MediaType::from(specifier), None)
+    (MediaType::from_specifier(specifier), None)
   }
 }
 
@@ -1746,15 +1746,8 @@ mod tests {
 
   fn create_test_client() -> HttpClient {
     HttpClient::from_client(
-      create_http_client(
-        "test_client".to_string(),
-        None,
-        vec![],
-        None,
-        None,
-        None,
-      )
-      .unwrap(),
+      create_http_client("test_client", None, vec![], None, None, None)
+        .unwrap(),
     )
   }
 
