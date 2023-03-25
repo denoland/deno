@@ -267,7 +267,7 @@ fn coverage_threshold() {
 
   assert_eq!(
     err_content,
-    format!("error: Coverage did not surpass {test_threshold}% threshold\n",)
+    format!("error: One or more coverages did not surpass the {test_threshold}% threshold.\nlines: 72.72727\nbranches: 50\nfunctions: 100\n\n",)
   );
 
   let actual =
