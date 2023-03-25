@@ -915,43 +915,88 @@ impl ConfigFile {
   }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
-    if let Some(config) = self.json.fmt.clone() {
-      let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
-        .context("Failed to parse \"fmt\" configuration")?;
-      Ok(Some(fmt_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
+    let files_config = self.to_files_config()?;
+    let fmt_config = match self.json.fmt.clone() {
+      Some(config) => {
+        let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
+          .context("Failed to parse \"fmt\" configuration")?;
+        Some(fmt_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && fmt_config.is_none() {
+      return Ok(None);
     }
+
+    let fmt_config = fmt_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(fmt_config.extend_files(&files_config)))
   }
 
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
-    if let Some(config) = self.json.lint.clone() {
-      let lint_config: SerializedLintConfig = serde_json::from_value(config)
-        .context("Failed to parse \"lint\" configuration")?;
-      Ok(Some(lint_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
+    let files_config = self.to_files_config()?;
+    let lint_config = match self.json.lint.clone() {
+      Some(config) => {
+        let lint_config: SerializedLintConfig = serde_json::from_value(config)
+          .context("Failed to parse \"lint\" configuration")?;
+        Some(lint_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && lint_config.is_none() {
+      return Ok(None);
     }
+
+    let lint_config = lint_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(lint_config.extend_files(&files_config)))
   }
 
   pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
-    if let Some(config) = self.json.test.clone() {
-      let test_config: SerializedTestConfig = serde_json::from_value(config)
-        .context("Failed to parse \"test\" configuration")?;
-      Ok(Some(test_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
+    let files_config = self.to_files_config()?;
+    let test_config = match self.json.test.clone() {
+      Some(config) => {
+        let test_config: SerializedTestConfig = serde_json::from_value(config)
+          .context("Failed to parse \"test\" configuration")?;
+        Some(test_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && test_config.is_none() {
+      return Ok(None);
     }
+
+    let test_config = test_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(test_config.extend_files(&files_config)))
   }
 
   pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
-    if let Some(config) = self.json.bench.clone() {
-      let bench_config: SerializedBenchConfig = serde_json::from_value(config)
-        .context("Failed to parse \"bench\" configuration")?;
-      Ok(Some(bench_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
+    let files_config = self.to_files_config()?;
+    let bench_config = match self.json.bench.clone() {
+      Some(config) => {
+        let bench_config: SerializedBenchConfig =
+          serde_json::from_value(config)
+            .context("Failed to parse \"bench\" configuration")?;
+        Some(bench_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && bench_config.is_none() {
+      return Ok(None);
     }
+
+    let bench_config = bench_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(bench_config.extend_files(&files_config)))
   }
 
   /// Return any tasks that are defined in the configuration file as a sequence
