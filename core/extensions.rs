@@ -23,23 +23,43 @@ pub enum ExtensionFileSourceCode {
   LoadedFromFsDuringSnapshot(PathBuf),
 }
 
-impl ExtensionFileSourceCode {
-  pub fn load(&self) -> Result<ModuleCode, Error> {
-    match self {
-      ExtensionFileSourceCode::IncludedInBinary(code) => Ok((*code).into()),
-      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
-        let msg = || format!("Failed to read \"{}\"", path.display());
-        Ok(std::fs::read_to_string(path).with_context(msg)?.into())
-      }
-    }
-  }
-}
-
 #[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: &'static str,
   pub code: ExtensionFileSourceCode,
 }
+
+impl ExtensionFileSource {
+  fn find_non_ascii(s: &str) -> String {
+    s.chars().filter(|c| !c.is_ascii()).collect::<String>()
+  }
+
+  pub fn load(&self) -> Result<ModuleCode, Error> {
+    match &self.code {
+      ExtensionFileSourceCode::IncludedInBinary(code) => {
+        debug_assert!(
+          code.is_ascii(),
+          "Extension code must be 7-bit ASCII: {} (found {})",
+          self.specifier,
+          Self::find_non_ascii(code)
+        );
+        Ok((*code).into())
+      }
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
+        let msg = || format!("Failed to read \"{}\"", path.display());
+        let s = std::fs::read_to_string(path).with_context(msg)?;
+        debug_assert!(
+          s.is_ascii(),
+          "Extension code must be 7-bit ASCII: {} (found {})",
+          self.specifier,
+          Self::find_non_ascii(&s)
+        );
+        Ok(s.into())
+      }
+    }
+  }
+}
+
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn FnOnce(&mut OpState);
