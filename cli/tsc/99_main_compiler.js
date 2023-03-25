@@ -12,7 +12,7 @@
 // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
 delete Object.prototype.__proto__;
 
-((window) => {
+((/** @type {any} */ window) => {
   /** @type {DenoCore} */
   const core = window.Deno.core;
   const ops = core.ops;
@@ -48,6 +48,10 @@ delete Object.prototype.__proto__;
       : { languageVersion: versionOrOptions ?? ts.ScriptTarget.ESNext };
   }
 
+  /**
+   * @param debug {boolean}
+   * @param source {string}
+   */
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -55,10 +59,12 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @param msg {string} */
   function printStderr(msg) {
     core.print(msg, true);
   }
 
+  /** @param args {any[]} */
   function debug(...args) {
     if (logDebug) {
       const stringifiedArgs = args.map((arg) =>
@@ -68,6 +74,7 @@ delete Object.prototype.__proto__;
     }
   }
 
+  /** @param args {any[]} */
   function error(...args) {
     const stringifiedArgs = args.map((arg) =>
       typeof arg === "string" || arg instanceof Error
@@ -78,12 +85,14 @@ delete Object.prototype.__proto__;
   }
 
   class AssertionError extends Error {
+    /** @param msg {string} */
     constructor(msg) {
       super(msg);
       this.name = "AssertionError";
     }
   }
 
+  /** @param cond {boolean} */
   function assert(cond, msg = "Assertion failed.") {
     if (!cond) {
       throw new AssertionError(msg);
@@ -101,6 +110,7 @@ delete Object.prototype.__proto__;
       }
     }
 
+    /** @param specifier {string} */
     has(specifier) {
       return this.#cache.has(specifier);
     }
@@ -245,7 +255,9 @@ delete Object.prototype.__proto__;
           sourceFile,
           scriptSnapshot,
           version,
-          scriptSnapshot.getChangeRange(sourceFile.scriptSnapShot),
+          scriptSnapshot.getChangeRange(
+            /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
+          ),
         );
       }
       return sourceFile;
@@ -1284,7 +1296,7 @@ delete Object.prototype.__proto__;
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
     assert(
-      host.getSourceFile(
+      !!host.getSourceFile(
         `${ASSETS_URL_PREFIX}${specifier}`,
         ts.ScriptTarget.ESNext,
       ),
@@ -1303,14 +1315,16 @@ delete Object.prototype.__proto__;
   // remove this now that we don't need it anymore for warming up tsc
   sourceFileCache.delete(buildSpecifier);
 
-  // exposes the two functions that are called by `tsc::exec()` when type
+  // exposes the functions that are called by `tsc::exec()` when type
   // checking TypeScript.
-  globalThis.startup = startup;
-  globalThis.exec = exec;
-  globalThis.getAssets = getAssets;
+  /** @type {any} */
+  const global = globalThis;
+  global.startup = startup;
+  global.exec = exec;
+  global.getAssets = getAssets;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
-  globalThis.serverInit = serverInit;
-  globalThis.serverRequest = serverRequest;
+  global.serverInit = serverInit;
+  global.serverRequest = serverRequest;
 })(this);

@@ -204,7 +204,7 @@ function isFullWidthCodePoint(code) {
   );
 }
 
-function getStringWidth(str) {
+export function getStringWidth(str) {
   str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
   let width = 0;
 
@@ -1291,12 +1291,17 @@ function inspectRawObject(
   inspectOptions.indentLevel--;
 
   // Making sure color codes are ignored when calculating the total length
+  const entriesText = colors.stripColor(ArrayPrototypeJoin(entries, ""));
   const totalLength = entries.length + inspectOptions.indentLevel +
-    colors.stripColor(ArrayPrototypeJoin(entries, "")).length;
+    entriesText.length;
 
   if (entries.length === 0) {
     baseString = "{}";
-  } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
+  } else if (
+    totalLength > LINE_BREAKING_LENGTH ||
+    !inspectOptions.compact ||
+    StringPrototypeIncludes(entriesText, "\n")
+  ) {
     const entryIndent = StringPrototypeRepeat(
       DEFAULT_INDENT,
       inspectOptions.indentLevel + 1,
@@ -1333,6 +1338,16 @@ function inspectObject(value, inspectOptions, proxyDetails) {
     typeof value[customInspect] === "function"
   ) {
     return String(value[customInspect](inspect, inspectOptions));
+  }
+  if (
+    ReflectHas(value, nodeCustomInspect) &&
+    typeof value[nodeCustomInspect] === "function"
+  ) {
+    // TODO(kt3k): The last inspect needs to be util.inspect of Node.js.
+    // We need to move the implementation of util.inspect to this file.
+    return String(
+      value[nodeCustomInspect](inspectOptions.depth, inspectOptions, inspect),
+    );
   }
   // This non-unique symbol is used to support op_crates, ie.
   // in extensions/web we don't want to depend on public
@@ -2310,6 +2325,7 @@ class Console {
 }
 
 const customInspect = SymbolFor("Deno.customInspect");
+const nodeCustomInspect = SymbolFor("nodejs.util.inspect.custom");
 
 function inspect(
   value,
