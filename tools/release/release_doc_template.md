@@ -6,7 +6,6 @@
   [`denoland/deno`](https://github.com/denoland/deno/),
   [`denoland/deno_std`](https://github.com/denoland/deno_std/),
   [`denoland/dotland`](https://github.com/denoland/dotland/),
-  [`denoland/docland`](https://github.com/denoland/docland/),
   [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
   [`denoland/manual`](https://github.com/denoland/manual/)
 
@@ -14,12 +13,14 @@
 release from) should be frozen and no commits should land until the release is
 cut.**
 
+- [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
+      regressions.
 - [ ] Write a message in company's #cli channel:
       `:lock: deno and deno_std are now locked (<LINK TO THIS FORKED GIST GOES HERE>)`
 
 ## Patch release preparation
 
-**If you are cutting a patch release**: First you need to sync commit to the
+**If you are cutting a patch release**: First you need to sync commits to the
 relevant minor branch in the `deno` repo, so if you are cutting a `v1.17.3`
 release you need to sync `v1.17` branch.
 
@@ -84,8 +85,8 @@ verify on GitHub that everything looks correct.
       repo's actions:
       https://github.com/denoland/deno/actions/workflows/version_bump.yml
   1. Click on the "Run workflow" button.
-  1. In the drop down, select the minor branch if doing a patch release or the
-     main branch if doing a minor release.
+  1. In the drop down, select the minor branch (ex. `vx.xx`) if doing a patch
+     release or the main branch if doing a minor release.
   1. For the kind of release, select either "patch", "minor", or "major".
   1. Run the workflow.
 
@@ -100,7 +101,7 @@ verify on GitHub that everything looks correct.
   1. Checkout the branch the release is being made on.
   2. Manually run `./tools/release/01_bump_crate_versions.ts`
      1. Ensure the crate versions were bumped correctly
-     2. Ensure deno_std version was updated correctly in `cli/compat/mod.rs`
+     2. Ensure deno_std version was updated correctly in `cli/deno_std.rs`
      3. Ensure `Releases.md` was updated correctly
   3. Open a PR with the changes and continue with the steps below.
   </details>
@@ -176,29 +177,26 @@ verify on GitHub that everything looks correct.
       automatically opened that forwards the release commit back to main. If so,
       merge it. If not and it failed, please manually create one.
 
-## Updating `doc.deno.land`
+## Updating `deno.land/api` & `deno.land/std` symbols
 
-This should occur after the Deno CLI is fully published, as the build script
-queries the GitHub API to determine what it needs to change and update.
+This should occur after the Deno CLI & std are fully published, as the build
+script generates the symbols based on the latest tags.
 
-- [ ] Run the update_deno workflow in the docland repo on the main branch:
-      https://github.com/denoland/docland/actions/workflows/update_deno.yml
-  - This will open a PR. Review it and merge, which will trigger a deployment.
+- [ ] Run the release workflow in the apiland_scripts repo on the main branch:
+      https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
 
   <details>
      <summary>Failure Steps</summary>
 
-  1. Checkout a new branch for docland (e.g. `git checkout -b deno_1.17.0`).
-  2. Execute `deno task build`
-  3. Commit changes and raise a PR on `denoland/docland`.
-  4. Merging the approved PR will trigger deployment to Deploy of the updates.
+  1. Clone `deno/apliland_scripts`.
+  2. Execute `deno task release`.
   </details>
 
 ## Updating `deno_docker`
 
-- [ ] Open a PR on the `deno_docker` repo that bumps the Deno version in all
-      Dockerfiles, the README and the example Dockerfile. Get it reviewed and
-      merge it.
+- [ ] Run the version bump workflow:
+      https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
+- [ ] This will open a PR. Review and merge it.
 - [ ] Create a tag with the version number (_without_ `v` prefix).
 
 ## All done!

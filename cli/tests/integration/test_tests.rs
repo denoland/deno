@@ -1,8 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
 use deno_core::url::Url;
 use test_util as util;
+use util::assert_contains;
+use util::env_vars_for_npm_tests;
+use util::TestContext;
 
 #[test]
 fn no_color() {
@@ -224,6 +226,12 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
   output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
 });
 
+itest!(trace_ops_catch_error {
+  args: "test -A --trace-ops test/trace_ops_caught_error/main.ts",
+  exit_code: 0,
+  output: "test/trace_ops_caught_error/main.out",
+});
+
 // TODO(@littledivy): re-enable this test, recent optimizations made output non deterministic.
 // https://github.com/denoland/deno/issues/14268
 //
@@ -234,7 +242,7 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
 // });
 
 itest!(ops_sanitizer_nexttick {
-  args: "test test/ops_sanitizer_nexttick.ts",
+  args: "test --no-check test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",
 });
 
@@ -348,24 +356,17 @@ itest!(test_with_custom_jsx {
 
 #[test]
 fn captured_output() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--allow-run")
-    .arg("--allow-read")
-    .arg("--unstable")
-    .arg("test/captured_output.ts")
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test --allow-run --allow-read --unstable test/captured_output.ts")
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
+    .run();
 
   let output_start = "------- output -------";
   let output_end = "----- output end -----";
-  assert!(output.status.success());
-  let output_text = String::from_utf8(output.stdout).unwrap();
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
   // replace zero width space that may appear in test output due
@@ -385,20 +386,16 @@ fn captured_output() {
 
 #[test]
 fn recursive_permissions_pledge() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("test/recursive_permissions_pledge.js")
-    .stderr(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(String::from_utf8(output.stderr).unwrap().contains(
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test test/recursive_permissions_pledge.js")
+    .run();
+  output.assert_exit_code(1);
+  assert_contains!(
+    output.combined_output(),
     "pledge test permissions called before restoring previous pledge"
-  ));
+  );
 }
 
 #[test]
@@ -408,13 +405,12 @@ fn file_protocol() {
       .unwrap()
       .to_string();
 
-  (util::CheckOutputIntegrationTest {
-    args_vec: vec!["test", &file_url],
-    exit_code: 0,
-    output: "test/file_protocol.out",
-    ..Default::default()
-  })
-  .run();
+  let context = TestContext::default();
+  context
+    .new_command()
+    .args_vec(vec!["test".to_string(), file_url])
+    .run()
+    .assert_matches_file("test/file_protocol.out");
 }
 
 itest!(uncaught_errors {
@@ -446,4 +442,29 @@ itest!(parallel_output {
   args: "test --parallel --reload test/parallel_output.ts",
   output: "test/parallel_output.out",
   exit_code: 1,
+});
+
+itest!(package_json_basic {
+  args: "test",
+  output: "package_json/basic/lib.test.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
+});
+
+itest!(test_lock {
+  args: "test",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(test_no_lock {
+  args: "test --no-lock",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/test.nolock.out",
 });

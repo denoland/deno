@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 
@@ -9,13 +9,17 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRanged;
 use deno_core::error::AnyError;
+use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use std::fmt::Write;
+
+use crate::cache::NodeAnalysisCache;
 
 static NODE_GLOBALS: &[&str] = &[
   "Buffer",
   "clearImmediate",
   "clearInterval",
   "clearTimeout",
+  "console",
   "global",
   "process",
   "setImmediate",
@@ -31,18 +35,34 @@ static NODE_GLOBALS: &[&str] = &[
 // `var` decls are taken into consideration.
 
 pub fn esm_code_with_node_globals(
+  analysis_cache: &NodeAnalysisCache,
   specifier: &ModuleSpecifier,
   code: String,
 ) -> Result<String, AnyError> {
-  let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
-    text_info: deno_ast::SourceTextInfo::from_string(code),
-    media_type: deno_ast::MediaType::from(specifier),
-    capture_tokens: true,
-    scope_analysis: true,
-    maybe_syntax: None,
-  })?;
-  let top_level_decls = analyze_top_level_decls(&parsed_source)?;
+  let source_hash = NodeAnalysisCache::compute_source_hash(&code);
+  let text_info = deno_ast::SourceTextInfo::from_string(code);
+  let top_level_decls = if let Some(decls) =
+    analysis_cache.get_esm_analysis(specifier.as_str(), &source_hash)
+  {
+    HashSet::from_iter(decls)
+  } else {
+    let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      text_info: text_info.clone(),
+      media_type: deno_ast::MediaType::from_specifier(specifier),
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })?;
+    let top_level_decls = analyze_top_level_decls(&parsed_source)?;
+    analysis_cache.set_esm_analysis(
+      specifier.as_str(),
+      &source_hash,
+      &top_level_decls.clone().into_iter().collect(),
+    );
+    top_level_decls
+  };
+
   let mut globals = Vec::with_capacity(NODE_GLOBALS.len());
   let has_global_this = top_level_decls.contains("globalThis");
   for global in NODE_GLOBALS.iter() {
@@ -52,29 +72,18 @@ pub fn esm_code_with_node_globals(
   }
 
   let mut result = String::new();
-  let has_deno_decl = top_level_decls.contains("Deno");
-  let global_this_expr = if has_deno_decl {
-    if top_level_decls.contains("window") {
-      // Will probably never happen, but if it does then we should consider
-      // creating an obscure global name to get this from.
-      panic!("The node esm module had a local `Deno` declaration and `window` declaration.");
-    }
-    // fallback to using `window.Deno`
-    "window.Deno[Deno.internal].node.globalThis"
-  } else {
-    "Deno[Deno.internal].node.globalThis"
-  };
+  let global_this_expr = NODE_GLOBAL_THIS_NAME.as_str();
   let global_this_expr = if has_global_this {
     global_this_expr
   } else {
-    write!(result, "var globalThis = {};", global_this_expr).unwrap();
+    write!(result, "var globalThis = {global_this_expr};").unwrap();
     "globalThis"
   };
   for global in globals {
-    write!(result, "var {0} = {1}.{0};", global, global_this_expr).unwrap();
+    write!(result, "var {global} = {global_this_expr}.{global};").unwrap();
   }
 
-  let file_text = parsed_source.text_info().text_str();
+  let file_text = text_info.text_str();
   // strip the shebang
   let file_text = if file_text.starts_with("#!/") {
     let start_index = file_text.find('\n').unwrap_or(file_text.len());
@@ -158,11 +167,15 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals() {
     let r = esm_code_with_node_globals(
+      &NodeAnalysisCache::new(None),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "export const x = 1;".to_string(),
     )
     .unwrap();
-    assert!(r.contains("var globalThis = Deno[Deno.internal].node.globalThis;"));
+    assert!(r.contains(&format!(
+      "var globalThis = {};",
+      NODE_GLOBAL_THIS_NAME.as_str()
+    )));
     assert!(r.contains("var process = globalThis.process;"));
     assert!(r.contains("export const x = 1;"));
   }
@@ -170,20 +183,26 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals_with_shebang() {
     let r = esm_code_with_node_globals(
+      &NodeAnalysisCache::new(None),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "#!/usr/bin/env node\nexport const x = 1;".to_string(),
     )
     .unwrap();
     assert_eq!(
       r,
-      concat!(
-        "var globalThis = Deno[Deno.internal].node.globalThis;var Buffer = globalThis.Buffer;",
-        "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
-        "var clearTimeout = globalThis.clearTimeout;var global = globalThis.global;",
-        "var process = globalThis.process;var setImmediate = globalThis.setImmediate;",
-        "var setInterval = globalThis.setInterval;var setTimeout = globalThis.setTimeout;\n",
-        "export const x = 1;"
-      ),
+      format!(
+        concat!(
+          "var globalThis = {}",
+          ";var Buffer = globalThis.Buffer;",
+          "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
+          "var clearTimeout = globalThis.clearTimeout;var console = globalThis.console;",
+          "var global = globalThis.global;var process = globalThis.process;",
+          "var setImmediate = globalThis.setImmediate;var setInterval = globalThis.setInterval;",
+          "var setTimeout = globalThis.setTimeout;\n",
+          "export const x = 1;"
+        ),
+        NODE_GLOBAL_THIS_NAME.as_str(),
+      )
     );
   }
 }

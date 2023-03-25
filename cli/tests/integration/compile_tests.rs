@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fs::File;
 use std::process::Command;
@@ -13,27 +13,30 @@ fn compile() {
   } else {
     dir.path().join("welcome")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./test_util/std/examples/welcome.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  // try this twice to ensure it works with the cache
+  for _ in 0..2 {
+    let output = util::deno_cmd_with_deno_dir(&dir)
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("./test_util/std/examples/welcome.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let output = Command::new(&exe)
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  }
 }
 
 #[test]
@@ -50,7 +53,7 @@ fn standalone_args() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .arg("a")
     .arg("b")
     .stdout(std::process::Stdio::piped())
@@ -87,7 +90,7 @@ fn standalone_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_error.ts")
+    .arg("./compile/standalone_error.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -132,7 +135,7 @@ fn standalone_error_module_with_imports() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_error_module_with_imports_1.ts")
+    .arg("./compile/standalone_error_module_with_imports_1.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -148,7 +151,6 @@ fn standalone_error_module_with_imports() {
     .wait_with_output()
     .unwrap();
   assert!(!output.status.success());
-  println!("{:#?}", &output);
   assert_eq!(output.stdout, b"hello\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
   let stderr = util::strip_ansi_codes(&stderr).to_string();
@@ -174,7 +176,7 @@ fn standalone_load_datauri() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_import_datauri.ts")
+    .arg("./compile/standalone_import_datauri.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -207,7 +209,7 @@ fn standalone_follow_redirects() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_follow_redirects.ts")
+    .arg("./compile/standalone_follow_redirects.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -241,7 +243,7 @@ fn compile_with_file_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&output_path)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -275,7 +277,7 @@ fn compile_with_directory_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -309,7 +311,7 @@ fn compile_with_conflict_file_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -346,7 +348,7 @@ fn compile_and_overwrite_file() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -361,7 +363,7 @@ fn compile_and_overwrite_file() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -387,7 +389,7 @@ fn standalone_runtime_flags() {
     .arg("1")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_runtime_flags.ts")
+    .arg("./compile/standalone_runtime_flags.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -410,6 +412,82 @@ fn standalone_runtime_flags() {
 }
 
 #[test]
+fn standalone_ext_flag_ts() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("ext_flag_ts.exe")
+  } else {
+    dir.path().join("ext_flag_ts")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--ext")
+    .arg("ts")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./file_extensions/ts_without_extension")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(
+    util::strip_ansi_codes(&stdout_str),
+    "executing typescript with no extension\n"
+  );
+}
+
+#[test]
+fn standalone_ext_flag_js() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("ext_flag_js.exe")
+  } else {
+    dir.path().join("ext_flag_js")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--ext")
+    .arg("js")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./file_extensions/js_without_extension")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(
+    util::strip_ansi_codes(&stdout_str),
+    "executing javascript with no extension\n"
+  );
+}
+
+#[test]
 fn standalone_import_map() {
   let dir = TempDir::new();
   let exe = if cfg!(windows) {
@@ -423,10 +501,44 @@ fn standalone_import_map() {
     .arg("--unstable")
     .arg("--allow-read")
     .arg("--import-map")
-    .arg("standalone_import_map.json")
+    .arg("compile/standalone_import_map.json")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_import_map.ts")
+    .arg("./compile/standalone_import_map.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[test]
+fn standalone_import_map_config_file() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("import_map.exe")
+  } else {
+    dir.path().join("import_map")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--config")
+    .arg("compile/standalone_import_map_config.json")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./compile/standalone_import_map.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -458,7 +570,7 @@ fn skip_rebundle() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./001_hello.js")
+    .arg("./run/001_hello.js")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -467,7 +579,7 @@ fn skip_rebundle() {
     .unwrap();
   assert!(output.status.success());
 
-  //no "Bundle testdata_path/001_hello.js" in output
+  //no "Bundle testdata_path/run/001_hello.js" in output
   assert!(!String::from_utf8(output.stderr).unwrap().contains("Bundle"));
 
   let output = Command::new(exe)
@@ -527,4 +639,151 @@ fn check_local_by_default2() {
   assert!(stderr.contains(
     r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
   ));
+}
+
+#[test]
+fn workers_basic() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("basic.exe")
+  } else {
+    dir.path().join("basic")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--no-check")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/workers/basic.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  let expected = std::fs::read_to_string(
+    util::testdata_path().join("./compile/workers/basic.out"),
+  )
+  .unwrap();
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+}
+
+#[test]
+fn workers_not_in_module_map() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("not_in_module_map.exe")
+  } else {
+    dir.path().join("not_in_module_map")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/workers/not_in_module_map.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(!output.status.success());
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.starts_with(concat!(
+    "error: Uncaught (in worker \"\") Module not found\n",
+    "error: Uncaught (in promise) Error: Unhandled error in child worker.\n"
+  )));
+}
+
+#[test]
+fn workers_with_include_flag() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("workers_with_include_flag.exe")
+  } else {
+    dir.path().join("workers_with_include_flag")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--include")
+    .arg(util::testdata_path().join("./compile/workers/worker.ts"))
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/workers/not_in_module_map.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(output.status.success());
+  let expected_stdout =
+    concat!("Hello from worker!\n", "Received 42\n", "Closing\n");
+  assert_eq!(&String::from_utf8(output.stdout).unwrap(), expected_stdout);
+}
+
+#[test]
+fn dynamic_import() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("dynamic_import.exe")
+  } else {
+    dir.path().join("dynamic_import")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/dynamic_imports/main.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(output.status.success());
+  let expected = std::fs::read_to_string(
+    util::testdata_path().join("./compile/dynamic_imports/main.out"),
+  )
+  .unwrap();
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+}
+
+#[test]
+fn dynamic_import_unanalyzable() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("dynamic_import_unanalyzable.exe")
+  } else {
+    dir.path().join("dynamic_import_unanalyzable")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--allow-read")
+    .arg("--include")
+    .arg(util::testdata_path().join("./compile/dynamic_imports/import1.ts"))
+    .arg("--output")
+    .arg(&exe)
+    .arg(
+      util::testdata_path()
+        .join("./compile/dynamic_imports/main_unanalyzable.ts"),
+    )
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(output.status.success());
+  let expected = std::fs::read_to_string(
+    util::testdata_path().join("./compile/dynamic_imports/main.out"),
+  )
+  .unwrap();
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
 }

@@ -1,28 +1,44 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::DenoDirNpmResolver;
+use crate::NodeModuleKind;
+use crate::NodePermissions;
+
+use super::RequireNpmResolver;
+
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
+use deno_core::ModuleSpecifier;
+use indexmap::IndexMap;
 use serde::Serialize;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 
-// TODO(bartlomieju): deduplicate with cli/compat/esm_resolver.rs
+thread_local! {
+  static CACHE: RefCell<HashMap<PathBuf, PackageJson>> = RefCell::new(HashMap::new());
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct PackageJson {
   pub exists: bool,
   pub exports: Option<Map<String, Value>>,
   pub imports: Option<Map<String, Value>>,
   pub bin: Option<Value>,
-  pub main: Option<String>,
+  main: Option<String>,   // use .main(...)
+  module: Option<String>, // use .main(...)
   pub name: Option<String>,
+  pub version: Option<String>,
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
+  pub dependencies: Option<HashMap<String, String>>,
+  pub dev_dependencies: Option<HashMap<String, String>>,
+  pub scripts: Option<IndexMap<String, String>>,
 }
 
 impl PackageJson {
@@ -33,18 +49,36 @@ impl PackageJson {
       imports: None,
       bin: None,
       main: None,
+      module: None,
       name: None,
+      version: None,
       path,
       typ: "none".to_string(),
       types: None,
+      dependencies: None,
+      dev_dependencies: None,
+      scripts: None,
     }
   }
 
   pub fn load(
-    resolver: &dyn DenoDirNpmResolver,
+    resolver: &dyn RequireNpmResolver,
+    permissions: &mut dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
-    resolver.ensure_read_permission(&path)?;
+    resolver.ensure_read_permission(permissions, &path)?;
+    Self::load_skip_read_permission(path)
+  }
+
+  pub fn load_skip_read_permission(
+    path: PathBuf,
+  ) -> Result<PackageJson, AnyError> {
+    assert!(path.is_absolute());
+
+    if CACHE.with(|cache| cache.borrow().contains_key(&path)) {
+      return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
+    }
+
     let source = match std::fs::read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -61,12 +95,21 @@ impl PackageJson {
       return Ok(PackageJson::empty(path));
     }
 
+    Self::load_from_string(path, source)
+  }
+
+  pub fn load_from_string(
+    path: PathBuf,
+    source: String,
+  ) -> Result<PackageJson, AnyError> {
     let package_json: Value = serde_json::from_str(&source)
       .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
 
     let imports_val = package_json.get("imports");
     let main_val = package_json.get("main");
+    let module_val = package_json.get("module");
     let name_val = package_json.get("name");
+    let version_val = package_json.get("version");
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
     let exports = package_json.get("exports").map(|exports| {
@@ -79,21 +122,36 @@ impl PackageJson {
       }
     });
 
-    let imports = if let Some(imp) = imports_val {
-      imp.as_object().map(|imp| imp.to_owned())
-    } else {
-      None
-    };
-    let main = if let Some(m) = main_val {
-      m.as_str().map(|m| m.to_string())
-    } else {
-      None
-    };
-    let name = if let Some(n) = name_val {
-      n.as_str().map(|n| n.to_string())
-    } else {
-      None
-    };
+    let imports = imports_val
+      .and_then(|imp| imp.as_object())
+      .map(|imp| imp.to_owned());
+    let main = main_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+    let name = name_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+    let version = version_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+    let module = module_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+
+    let dependencies = package_json.get("dependencies").and_then(|d| {
+      if d.is_object() {
+        let deps: HashMap<String, String> =
+          serde_json::from_value(d.to_owned()).unwrap();
+        Some(deps)
+      } else {
+        None
+      }
+    });
+    let dev_dependencies = package_json.get("devDependencies").and_then(|d| {
+      if d.is_object() {
+        let deps: HashMap<String, String> =
+          serde_json::from_value(d.to_owned()).unwrap();
+        Some(deps)
+      } else {
+        None
+      }
+    });
+
+    let scripts: Option<IndexMap<String, String>> = package_json
+      .get("scripts")
+      .and_then(|d| serde_json::from_value(d.to_owned()).ok());
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -121,13 +179,36 @@ impl PackageJson {
       path,
       main,
       name,
+      version,
+      module,
       typ,
       types,
       exports,
       imports,
       bin,
+      dependencies,
+      dev_dependencies,
+      scripts,
     };
+
+    CACHE.with(|cache| {
+      cache
+        .borrow_mut()
+        .insert(package_json.path.clone(), package_json.clone());
+    });
     Ok(package_json)
+  }
+
+  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&String> {
+    if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
+      self.module.as_ref().or(self.main.as_ref())
+    } else {
+      self.main.as_ref()
+    }
+  }
+
+  pub fn specifier(&self) -> ModuleSpecifier {
+    ModuleSpecifier::from_file_path(&self.path).unwrap()
   }
 }
 

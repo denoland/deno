@@ -1,7 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use serde::Serialize;
 use serde_json::json;
-use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::utils::js_exec;
+use serde_v8::utils::v8_do;
+use serde_v8::BigInt;
 
 #[derive(Debug, Serialize, PartialEq)]
 struct MathOp {
@@ -64,7 +66,7 @@ fn sercheck<T: Serialize>(val: T, code: &str, pollute: bool) -> bool {
     // Pollution check
     if let Some(message) = scope.message() {
       let msg = message.get(scope).to_rust_string_lossy(scope);
-      panic!("JS Exception: {}", msg);
+      panic!("JS Exception: {msg}");
     }
 
     // Execute equality check in JS (e.g: x == ...)
@@ -109,7 +111,13 @@ sertest!(ser_option_some, Some(true), "x === true");
 sertest!(ser_option_null, None as Option<bool>, "x === null");
 sertest!(ser_unit_null, (), "x === null");
 sertest!(ser_bool, true, "x === true");
-sertest!(ser_u64, 32, "x === 32");
+sertest!(ser_u64, 9007199254740991_u64, "x === 9007199254740991");
+sertest!(ser_big_int, 9007199254740992_i64, "x === 9007199254740992n");
+sertest!(
+  ser_neg_big_int,
+  -9007199254740992_i64,
+  "x === -9007199254740992n"
+);
 sertest!(ser_f64, 12345.0, "x === 12345.0");
 sertest!(ser_string, "Hello", "x === 'Hello'");
 sertest!(ser_bytes, b"\x01\x02\x03", "arrEqual(x, [1, 2, 3])");
@@ -131,6 +139,61 @@ sertest!(
 );
 
 sertest!(
+  ser_bigint_u8,
+  BigInt::from(num_bigint::BigInt::from(255_u8)),
+  "x === 255n"
+);
+sertest!(
+  ser_bigint_i8,
+  BigInt::from(num_bigint::BigInt::from(-128_i8)),
+  "x === -128n"
+);
+sertest!(
+  ser_bigint_u16,
+  BigInt::from(num_bigint::BigInt::from(65535_u16)),
+  "x === 65535n"
+);
+sertest!(
+  ser_bigint_i16,
+  BigInt::from(num_bigint::BigInt::from(-32768_i16)),
+  "x === -32768n"
+);
+sertest!(
+  ser_bigint_u32,
+  BigInt::from(num_bigint::BigInt::from(4294967295_u32)),
+  "x === 4294967295n"
+);
+sertest!(
+  ser_bigint_i32,
+  BigInt::from(num_bigint::BigInt::from(-2147483648_i32)),
+  "x === -2147483648n"
+);
+sertest!(
+  ser_bigint_u64,
+  BigInt::from(num_bigint::BigInt::from(9007199254740991_u64)),
+  "x === 9007199254740991n"
+);
+sertest!(
+  ser_bigint_i64,
+  BigInt::from(num_bigint::BigInt::from(-9007199254740991_i64)),
+  "x === -9007199254740991n"
+);
+sertest!(
+  ser_bigint_u128,
+  BigInt::from(num_bigint::BigInt::from(
+    340282366920938463463374607431768211455_u128
+  )),
+  "x === 340282366920938463463374607431768211455n"
+);
+sertest!(
+  ser_bigint_i128,
+  BigInt::from(num_bigint::BigInt::from(
+    -170141183460469231731687303715884105728_i128
+  )),
+  "x === -170141183460469231731687303715884105728n"
+);
+
+sertest!(
   ser_map,
   {
     let map: std::collections::BTreeMap<&str, u32> =
@@ -145,7 +208,21 @@ sertest!(
 ////
 sertest!(ser_json_bool, json!(true), "x === true");
 sertest!(ser_json_null, json!(null), "x === null");
-sertest!(ser_json_int, json!(123), "x === 123");
+sertest!(
+  ser_json_int,
+  json!(9007199254740991_u64),
+  "x === 9007199254740991"
+);
+sertest!(
+  ser_json_big_int,
+  json!(9007199254740992_i64),
+  "x === 9007199254740992n"
+);
+sertest!(
+  ser_json_neg_big_int,
+  json!(-9007199254740992_i64),
+  "x === -9007199254740992n"
+);
 sertest!(ser_json_f64, json!(123.45), "x === 123.45");
 sertest!(ser_json_string, json!("Hello World"), "x === 'Hello World'");
 sertest!(ser_json_obj_empty, json!({}), "objEqual(x, {})");

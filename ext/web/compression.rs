@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -41,11 +41,11 @@ impl Resource for CompressionResource {
 #[op]
 pub fn op_compression_new(
   state: &mut OpState,
-  format: String,
+  format: &str,
   is_decoder: bool,
 ) -> ResourceId {
   let w = Vec::new();
-  let inner = match (format.as_str(), is_decoder) {
+  let inner = match (format, is_decoder) {
     ("deflate", true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
     ("deflate", false) => {
       Inner::DeflateEncoder(ZlibEncoder::new(w, Compression::default()))
@@ -68,38 +68,38 @@ pub fn op_compression_new(
 pub fn op_compression_write(
   state: &mut OpState,
   rid: ResourceId,
-  input: ZeroCopyBuf,
+  input: &[u8],
 ) -> Result<ZeroCopyBuf, AnyError> {
   let resource = state.resource_table.get::<CompressionResource>(rid)?;
   let mut inner = resource.0.borrow_mut();
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawEncoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }

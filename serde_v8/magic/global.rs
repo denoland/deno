@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::magic::transl8::impl_magic;
 use crate::magic::transl8::FromV8;
@@ -23,7 +23,7 @@ impl From<Global> for v8::Global<v8::Value> {
 
 impl ToV8 for Global {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     Ok(v8::Local::new(scope, self.v8_value.clone()))

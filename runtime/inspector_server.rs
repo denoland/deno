@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
@@ -8,7 +8,6 @@ use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future;
 use deno_core::futures::future::Future;
-use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
@@ -25,6 +24,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::pin::pin;
 use std::process;
 use std::rc::Rc;
 use std::thread;
@@ -40,7 +40,7 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new(host: SocketAddr, name: String) -> Self {
+  pub fn new(host: SocketAddr, name: &'static str) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
@@ -67,9 +67,10 @@ impl InspectorServer {
     &self,
     module_url: String,
     js_runtime: &mut JsRuntime,
-    should_break_on_first_statement: bool,
+    wait_for_session: bool,
   ) {
-    let inspector = js_runtime.inspector();
+    let inspector_rc = js_runtime.inspector();
+    let mut inspector = inspector_rc.borrow_mut();
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
     let info = InspectorInfo::new(
@@ -77,7 +78,7 @@ impl InspectorServer {
       session_sender,
       deregister_rx,
       module_url,
-      should_break_on_first_statement,
+      wait_for_session,
     );
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
@@ -219,36 +220,36 @@ async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   shutdown_server_rx: oneshot::Receiver<()>,
-  name: String,
+  name: &str,
 ) {
   let inspector_map_ =
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let register_inspector_handler = register_inspector_rx
+  let mut register_inspector_handler = pin!(register_inspector_rx
     .map(|info| {
       eprintln!(
         "Debugger listening on {}",
         info.get_websocket_debugger_url()
       );
       eprintln!("Visit chrome://inspect to connect to the debugger.");
-      if info.should_break_on_first_statement {
+      if info.wait_for_session {
         eprintln!("Deno is waiting for debugger to connect.");
       }
       if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
         panic!("Inspector UUID already in map");
       }
     })
-    .collect::<()>();
+    .collect::<()>());
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let deregister_inspector_handler = future::poll_fn(|cx| {
+  let mut deregister_inspector_handler = pin!(future::poll_fn(|cx| {
     inspector_map
       .borrow_mut()
       .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
     Poll::<Never>::Pending
   })
-  .fuse();
+  .fuse());
 
   let json_version_response = json!({
     "Browser": name,
@@ -265,16 +266,16 @@ async fn server(
         future::ready({
           match (req.method(), req.uri().path()) {
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
-              handle_ws_request(req, inspector_map.clone())
+              handle_ws_request(req, Rc::clone(&inspector_map))
             }
             (&http::Method::GET, "/json/version") => {
               handle_json_version_request(json_version_response.clone())
             }
             (&http::Method::GET, "/json") => {
-              handle_json_request(inspector_map.clone())
+              handle_json_request(Rc::clone(&inspector_map))
             }
             (&http::Method::GET, "/json/list") => {
-              handle_json_request(inspector_map.clone())
+              handle_json_request(Rc::clone(&inspector_map))
             }
             _ => http::Response::builder()
               .status(http::StatusCode::NOT_FOUND)
@@ -286,9 +287,9 @@ async fn server(
   });
 
   // Create the server manually so it can use the Local Executor
-  let server_handler = hyper::server::Builder::new(
+  let mut server_handler = pin!(hyper::server::Builder::new(
     hyper::server::conn::AddrIncoming::bind(&host).unwrap_or_else(|e| {
-      eprintln!("Cannot start inspector server: {}.", e);
+      eprintln!("Cannot start inspector server: {e}.");
       process::exit(1);
     }),
     hyper::server::conn::Http::new().with_executor(LocalExecutor),
@@ -298,14 +299,10 @@ async fn server(
     shutdown_server_rx.await.ok();
   })
   .unwrap_or_else(|err| {
-    eprintln!("Cannot start inspector server: {}.", err);
+    eprintln!("Cannot start inspector server: {err}.");
     process::exit(1);
   })
-  .fuse();
-
-  pin_mut!(register_inspector_handler);
-  pin_mut!(deregister_inspector_handler);
-  pin_mut!(server_handler);
+  .fuse());
 
   select! {
     _ = register_inspector_handler => {},
@@ -369,7 +366,7 @@ pub struct InspectorInfo {
   pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
-  pub should_break_on_first_statement: bool,
+  pub wait_for_session: bool,
 }
 
 impl InspectorInfo {
@@ -378,7 +375,7 @@ impl InspectorInfo {
     new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     url: String,
-    should_break_on_first_statement: bool,
+    wait_for_session: bool,
   ) -> Self {
     Self {
       host,
@@ -387,7 +384,7 @@ impl InspectorInfo {
       new_session_tx,
       deregister_rx,
       url,
-      should_break_on_first_statement,
+      wait_for_session,
     }
   }
 
@@ -421,7 +418,7 @@ impl InspectorInfo {
       self
         .thread_name
         .as_ref()
-        .map(|n| format!(" - {}", n))
+        .map(|n| format!(" - {n}"))
         .unwrap_or_default(),
       process::id(),
     )

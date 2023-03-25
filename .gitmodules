@@ -9,6 +9,4 @@
 [submodule "test_util/wpt"]
 	path = test_util/wpt
 	url = https://github.com/web-platform-tests/wpt.git
-[submodule "ext/ffi/tinycc"]
-	path = ext/ffi/tinycc
-	url = https://github.com/TinyCC/tinycc
+

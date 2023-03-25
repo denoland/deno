@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test(function resourcesCloseBadArgs() {
@@ -37,7 +37,7 @@ Deno.test({ permissions: { net: true } }, async function resourcesNet() {
 
 Deno.test({ permissions: { read: true } }, async function resourcesFile() {
   const resourcesBefore = Deno.resources();
-  const f = await Deno.open("cli/tests/testdata/hello.txt");
+  const f = await Deno.open("cli/tests/testdata/assets/hello.txt");
   const resourcesAfter = Deno.resources();
   f.close();
 

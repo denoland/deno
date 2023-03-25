@@ -1,110 +1,165 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::process::Stdio;
 use test_util as util;
-use test_util::TempDir;
 use util::assert_contains;
+use util::TestContextBuilder;
 
 #[test]
 fn init_subcommand_without_dir() {
-  let temp_dir = TempDir::new();
-  let cwd = temp_dir.path();
-  let deno_dir = util::new_deno_dir();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = context.deno_dir();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(cwd)
-    .arg("init")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_contains!(stdout, "Project initialized");
-  assert!(!stdout.contains("cd"));
-  assert_contains!(stdout, "deno run main.ts");
-  assert_contains!(stdout, "deno test");
+  let cwd = deno_dir.path();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(cwd)
+  let output = context.new_command().args("init").split_output().run();
+
+  output.assert_exit_code(0);
+
+  let stderr = output.stderr();
+  assert_contains!(stderr, "Project initialized");
+  assert!(!stderr.contains("cd"));
+  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno task dev");
+  assert_contains!(stderr, "deno test");
+  assert_contains!(stderr, "deno bench");
+
+  assert!(cwd.join("deno.jsonc").exists());
+
+  let output = context
+    .new_command()
     .env("NO_COLOR", "1")
-    .arg("run")
-    .arg("main.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Add 2 + 3 = 5\n");
+    .args("run main.ts")
+    .split_output()
+    .run();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(cwd)
+  output.assert_exit_code(0);
+  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
+
+  let output = context
+    .new_command()
     .env("NO_COLOR", "1")
-    .arg("test")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_contains!(stdout, "1 passed");
+    .args("test")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "1 passed");
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("bench")
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
 }
 
 #[test]
 fn init_subcommand_with_dir_arg() {
-  let temp_dir = TempDir::new();
-  let cwd = temp_dir.path();
-  let deno_dir = util::new_deno_dir();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = context.deno_dir();
+  let cwd = deno_dir.path();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(cwd)
-    .arg("init")
-    .arg("my_dir")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_contains!(stdout, "Project initialized");
-  assert_contains!(stdout, "cd my_dir");
-  assert_contains!(stdout, "deno run main.ts");
-  assert_contains!(stdout, "deno test");
+  let output = context
+    .new_command()
+    .args("init my_dir")
+    .split_output()
+    .run();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(cwd)
+  output.assert_exit_code(0);
+
+  let stderr = output.stderr();
+  assert_contains!(stderr, "Project initialized");
+  assert_contains!(stderr, "cd my_dir");
+  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno task dev");
+  assert_contains!(stderr, "deno test");
+  assert_contains!(stderr, "deno bench");
+
+  assert!(cwd.join("my_dir/deno.jsonc").exists());
+
+  let output = context
+    .new_command()
     .env("NO_COLOR", "1")
-    .arg("run")
-    .arg("my_dir/main.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Add 2 + 3 = 5\n");
+    .args("run my_dir/main.ts")
+    .split_output()
+    .run();
 
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let output = deno_cmd
-    .current_dir(cwd)
+  output.assert_exit_code(0);
+
+  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
     .env("NO_COLOR", "1")
-    .arg("test")
-    .arg("my_dir/main_test.ts")
-    .stdout(Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_contains!(stdout, "1 passed");
+    .args("test my_dir/main_test.ts")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "1 passed");
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("bench my_dir/main_bench.ts")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+}
+
+#[test]
+fn init_subcommand_with_quiet_arg() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = context.deno_dir();
+  let cwd = deno_dir.path();
+
+  let output = context
+    .new_command()
+    .args("init --quiet")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+
+  assert_eq!(output.stdout(), "");
+  assert!(cwd.join("deno.jsonc").exists());
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("run main.ts")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("test")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "1 passed");
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("bench")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
 }

@@ -1,42 +1,120 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::located_script_name;
-use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
-use deno_graph::source::ResolveResponse;
+use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::errors;
+use deno_runtime::deno_node::find_builtin_node_module;
+use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
-use deno_runtime::deno_node::DenoDirNpmResolver;
+use deno_runtime::deno_node::path_to_declaration_path;
+use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::PathClean;
+use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
-use path_clean::PathClean;
 use regex::Regex;
 
-use crate::compat;
+use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::FileFetcher;
-use crate::npm::GlobalNpmPackageResolver;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod analyze;
 
 pub use analyze::esm_code_with_node_globals;
+
+#[derive(Debug)]
+pub enum NodeResolution {
+  Esm(ModuleSpecifier),
+  CommonJs(ModuleSpecifier),
+  BuiltIn(String),
+}
+
+impl NodeResolution {
+  pub fn into_url(self) -> ModuleSpecifier {
+    match self {
+      Self::Esm(u) => u,
+      Self::CommonJs(u) => u,
+      Self::BuiltIn(specifier) => {
+        if specifier.starts_with("node:") {
+          ModuleSpecifier::parse(&specifier).unwrap()
+        } else {
+          ModuleSpecifier::parse(&format!("node:{specifier}")).unwrap()
+        }
+      }
+    }
+  }
+
+  pub fn into_specifier_and_media_type(
+    resolution: Option<Self>,
+  ) -> (ModuleSpecifier, MediaType) {
+    match resolution {
+      Some(NodeResolution::CommonJs(specifier)) => {
+        let media_type = MediaType::from_specifier(&specifier);
+        (
+          specifier,
+          match media_type {
+            MediaType::JavaScript | MediaType::Jsx => MediaType::Cjs,
+            MediaType::TypeScript | MediaType::Tsx => MediaType::Cts,
+            MediaType::Dts => MediaType::Dcts,
+            _ => media_type,
+          },
+        )
+      }
+      Some(NodeResolution::Esm(specifier)) => {
+        let media_type = MediaType::from_specifier(&specifier);
+        (
+          specifier,
+          match media_type {
+            MediaType::JavaScript | MediaType::Jsx => MediaType::Mjs,
+            MediaType::TypeScript | MediaType::Tsx => MediaType::Mts,
+            MediaType::Dts => MediaType::Dmts,
+            _ => media_type,
+          },
+        )
+      }
+      Some(resolution) => (resolution.into_url(), MediaType::Dts),
+      None => (
+        ModuleSpecifier::parse("internal:///missing_dependency.d.ts").unwrap(),
+        MediaType::Dts,
+      ),
+    }
+  }
+}
+
+// TODO(bartlomieju): seems super wasteful to parse specified each time
+pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
+  if let Some(module) = find_builtin_node_module(module_name) {
+    return Ok(ModuleSpecifier::parse(module.specifier).unwrap());
+  }
+
+  Err(generic_error(format!(
+    "Unknown built-in \"node:\" module: {module_name}"
+  )))
+}
 
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   HashSet::from([
@@ -88,67 +166,25 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   ])
 });
 
-pub async fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
-      const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default);
-    }})('{}');"#,
-    compat::MODULE_ALL_URL.as_str(),
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
-
-pub async fn initialize_binary_command(
-  js_runtime: &mut JsRuntime,
-  binary_name: &str,
-) -> Result<(), AnyError> {
-  // overwrite what's done in deno_std in order to set the binary arg name
-  let source_code = &format!(
-    r#"(async function initializeBinaryCommand(binaryName) {{
-      const process = Deno[Deno.internal].node.globalThis.process;
-      Object.defineProperty(process.argv, "0", {{
-        get: () => binaryName,
-      }});
-    }})('{}');"#,
-    binary_name,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
-
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
 pub fn node_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<Option<ResolveResponse>, AnyError> {
+  mode: NodeResolutionMode,
+  npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
+) -> Result<Option<NodeResolution>, AnyError> {
+  // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
-  // `module` from `ext/node/`.
-  if specifier == "module" {
-    return Ok(Some(ResolveResponse::Esm(
-      Url::parse("node:module").unwrap(),
-    )));
-  }
-  if let Some(resolved) = compat::try_resolve_builtin_module(specifier) {
-    return Ok(Some(ResolveResponse::Esm(resolved)));
+  if deno_node::is_builtin_node_module(specifier) {
+    return Ok(Some(NodeResolution::BuiltIn(specifier.to_string())));
   }
 
   if let Ok(url) = Url::parse(specifier) {
     if url.scheme() == "data" {
-      return Ok(Some(ResolveResponse::Specifier(url)));
+      return Ok(Some(NodeResolution::Esm(url)));
     }
 
     let protocol = url.scheme();
@@ -157,95 +193,178 @@ pub fn node_resolve(
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
 
-      // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
-      // `module` from `ext/node/`.
-      if specifier == "module" {
-        return Ok(Some(ResolveResponse::Esm(
-          Url::parse("node:module").unwrap(),
-        )));
-      }
-
-      if let Some(resolved) = compat::try_resolve_builtin_module(&specifier) {
-        return Ok(Some(ResolveResponse::Esm(resolved)));
-      } else {
-        return Err(generic_error(format!("Unknown module {}", specifier)));
+      if deno_node::is_builtin_node_module(&specifier) {
+        return Ok(Some(NodeResolution::BuiltIn(specifier)));
       }
     }
 
     if protocol != "file" && protocol != "data" {
-      return Err(compat::errors::err_unsupported_esm_url_scheme(&url));
+      return Err(errors::err_unsupported_esm_url_scheme(&url));
     }
 
-    // todo(THIS PR): I think this is handled upstream so can be removed?
+    // todo(dsherret): this seems wrong
     if referrer.scheme() == "data" {
       let url = referrer.join(specifier).map_err(AnyError::from)?;
-      return Ok(Some(ResolveResponse::Specifier(url)));
+      return Ok(Some(NodeResolution::Esm(url)));
     }
   }
 
-  let conditions = DEFAULT_CONDITIONS;
-  let url = module_resolve(specifier, referrer, conditions, npm_resolver)?;
+  let url = module_resolve(
+    specifier,
+    referrer,
+    DEFAULT_CONDITIONS,
+    mode,
+    npm_resolver,
+    permissions,
+  )?;
   let url = match url {
     Some(url) => url,
     None => return Ok(None),
   };
+  let url = match mode {
+    NodeResolutionMode::Execution => url,
+    NodeResolutionMode::Types => {
+      let path = url.to_file_path().unwrap();
+      // todo(16370): the module kind is not correct here. I think we need
+      // typescript to tell us if the referrer is esm or cjs
+      let path = match path_to_declaration_path(path, NodeModuleKind::Esm) {
+        Some(path) => path,
+        None => return Ok(None),
+      };
+      ModuleSpecifier::from_file_path(path).unwrap()
+    }
+  };
 
-  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
+  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
 }
 
 pub fn node_resolve_npm_reference(
-  reference: &NpmPackageReference,
-  npm_resolver: &GlobalNpmPackageResolver,
-) -> Result<Option<ResolveResponse>, AnyError> {
-  let package_folder = npm_resolver
-    .resolve_package_from_deno_module(&reference.req)?
-    .folder_path;
-  let maybe_url = package_config_resolve(
+  reference: &NpmPackageNvReference,
+  mode: NodeResolutionMode,
+  npm_resolver: &NpmPackageResolver,
+  permissions: &mut dyn NodePermissions,
+) -> Result<Option<NodeResolution>, AnyError> {
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(&reference.nv)?;
+  let node_module_kind = NodeModuleKind::Esm;
+  let maybe_resolved_path = package_config_resolve(
     &reference
       .sub_path
       .as_ref()
-      .map(|s| format!("./{}", s))
+      .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
+    node_module_kind,
+    DEFAULT_CONDITIONS,
+    mode,
     npm_resolver,
+    permissions,
   )
-  .map(Some)
   .with_context(|| {
-    format!("Error resolving package config for '{}'.", reference)
+    format!("Error resolving package config for '{reference}'")
   })?;
-  let url = match maybe_url {
-    Some(url) => url,
+  let resolved_path = match maybe_resolved_path {
+    Some(resolved_path) => resolved_path,
     None => return Ok(None),
   };
-
-  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
+  let resolved_path = match mode {
+    NodeResolutionMode::Execution => resolved_path,
+    NodeResolutionMode::Types => {
+      match path_to_declaration_path(resolved_path, node_module_kind) {
+        Some(path) => path,
+        None => return Ok(None),
+      }
+    }
+  };
+  let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
+  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
 }
 
-pub fn node_resolve_binary_export(
-  pkg_req: &NpmPackageReq,
-  bin_name: Option<&str>,
-  npm_resolver: &GlobalNpmPackageResolver,
-) -> Result<ResolveResponse, AnyError> {
-  let pkg = npm_resolver.resolve_package_from_deno_module(pkg_req)?;
-  let package_folder = pkg.folder_path;
+/// Resolves a specifier that is pointing into a node_modules folder.
+///
+/// Note: This should be called whenever getting the specifier from
+/// a Module::External(module) reference because that module might
+/// not be fully resolved at the time deno_graph is analyzing it
+/// because the node_modules folder might not exist at that time.
+pub fn resolve_specifier_into_node_modules(
+  specifier: &ModuleSpecifier,
+) -> ModuleSpecifier {
+  specifier
+    .to_file_path()
+    .ok()
+    // this path might not exist at the time the graph is being created
+    // because the node_modules folder might not yet exist
+    .and_then(|path| canonicalize_path_maybe_not_exists(&path).ok())
+    .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
+    .unwrap_or_else(|| specifier.clone())
+}
+
+pub fn node_resolve_binary_commands(
+  pkg_nv: &NpmPackageNv,
+  npm_resolver: &NpmPackageResolver,
+) -> Result<Vec<String>, AnyError> {
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
+
+  Ok(match package_json.bin {
+    Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
+    Some(Value::Object(o)) => {
+      o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
+    }
+    _ => Vec::new(),
+  })
+}
+
+pub fn node_resolve_binary_export(
+  pkg_nv: &NpmPackageNv,
+  bin_name: Option<&str>,
+  npm_resolver: &NpmPackageResolver,
+) -> Result<NodeResolution, AnyError> {
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
+  let package_json_path = package_folder.join("package.json");
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
-      "package {} did not have a 'bin' property in its package.json",
-      pkg.id
+      "package '{}' did not have a bin property in its package.json",
+      &pkg_nv.name,
     ),
   };
+  let bin_entry = resolve_bin_entry_value(pkg_nv, bin_name, bin)?;
+  let url =
+    ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
+
+  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
+  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+  // "preserveSymlinksMain"/"preserveSymlinks" options.
+  Ok(resolve_response)
+}
+
+fn resolve_bin_entry_value<'a>(
+  pkg_nv: &NpmPackageNv,
+  bin_name: Option<&str>,
+  bin: &'a Value,
+) -> Result<&'a str, AnyError> {
   let bin_entry = match bin {
     Value::String(_) => {
-      if bin_name.is_some() && bin_name.unwrap() != pkg_req.name {
+      if bin_name.is_some() && bin_name.unwrap() != pkg_nv.name {
         None
       } else {
         Some(bin)
@@ -254,163 +373,132 @@ pub fn node_resolve_binary_export(
     Value::Object(o) => {
       if let Some(bin_name) = bin_name {
         o.get(bin_name)
-      } else if o.len() == 1 {
+      } else if o.len() == 1 || o.len() > 1 && o.values().all(|v| v == o.values().next().unwrap()) {
         o.values().next()
       } else {
-        o.get(&pkg_req.name)
+        o.get(&pkg_nv.name)
       }
     },
-    _ => bail!("package {} did not have a 'bin' property with a string or object value in its package.json", pkg.id),
+    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_nv),
   };
   let bin_entry = match bin_entry {
     Some(e) => e,
-    None => bail!(
-      "package {} did not have a 'bin' entry for {} in its package.json",
-      pkg.id,
-      bin_name.unwrap_or(&pkg_req.name),
-    ),
+    None => {
+      let keys = bin
+        .as_object()
+        .map(|o| {
+          o.keys()
+            .map(|k| format!(" * npm:{pkg_nv}/{k}"))
+            .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+      bail!(
+        "package '{}' did not have a bin entry for '{}' in its package.json{}",
+        pkg_nv,
+        bin_name.unwrap_or(&pkg_nv.name),
+        if keys.is_empty() {
+          "".to_string()
+        } else {
+          format!("\n\nPossibilities:\n{}", keys.join("\n"))
+        }
+      )
+    }
   };
-  let bin_entry = match bin_entry {
-    Value::String(s) => s,
+  match bin_entry {
+    Value::String(s) => Ok(s),
     _ => bail!(
-      "package {} had a non-string sub property of 'bin' in its package.json",
-      pkg.id
+      "package '{}' had a non-string sub property of bin in its package.json",
+      pkg_nv,
     ),
-  };
-
-  let url =
-    ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
-
-  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
-  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-  // "preserveSymlinksMain"/"preserveSymlinks" options.
-  Ok(resolve_response)
-}
-
-pub fn load_cjs_module_from_ext_node(
-  js_runtime: &mut JsRuntime,
-  module: &str,
-  main: bool,
-) -> Result<(), AnyError> {
-  fn escape_for_single_quote_string(text: &str) -> String {
-    text.replace('\\', r"\\").replace('\'', r"\'")
   }
-
-  let source_code = &format!(
-    r#"(function loadCjsModule(module) {{
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}');"#,
-    main = main,
-    module = escape_for_single_quote_string(module),
-  );
-
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
 }
 
 fn package_config_resolve(
   package_subpath: &str,
   package_dir: &Path,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ModuleSpecifier, AnyError> {
+  referrer_kind: NodeModuleKind,
+  conditions: &[&str],
+  mode: NodeResolutionMode,
+  npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
+) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
-  // todo(dsherret): remove base from this code
-  let base =
-    ModuleSpecifier::from_directory_path(package_json_path.parent().unwrap())
-      .unwrap();
+  let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
   let package_config =
-    PackageJson::load(npm_resolver, package_json_path.clone())?;
-  let package_json_url =
-    ModuleSpecifier::from_file_path(&package_json_path).unwrap();
+    PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
-    return package_exports_resolve(
-      package_json_url,
+    let result = package_exports_resolve(
+      &package_json_path,
       package_subpath.to_string(),
       exports,
-      &base,
-      DEFAULT_CONDITIONS,
+      &referrer,
+      referrer_kind,
+      conditions,
+      mode,
       npm_resolver,
+      permissions,
     );
+    match result {
+      Ok(found) => return Ok(Some(found)),
+      Err(exports_err) => {
+        if mode.is_types() && package_subpath == "." {
+          if let Ok(Some(path)) =
+            legacy_main_resolve(&package_config, referrer_kind, mode)
+          {
+            return Ok(Some(path));
+          } else {
+            return Ok(None);
+          }
+        }
+        return Err(exports_err);
+      }
+    }
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json_url, &package_config, &base);
+    return legacy_main_resolve(&package_config, referrer_kind, mode);
   }
 
-  package_json_url
-    .join(package_subpath)
-    .map_err(AnyError::from)
+  Ok(Some(package_dir.join(package_subpath)))
 }
 
-fn url_to_resolve_response(
+pub fn url_to_node_resolution(
   url: ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ResolveResponse, AnyError> {
-  Ok(if url.as_str().starts_with("http") {
-    ResolveResponse::Esm(url)
-  } else if url.as_str().ends_with(".js") {
-    let package_config = get_closest_package_json(&url, npm_resolver)?;
+  npm_resolver: &dyn RequireNpmResolver,
+) -> Result<NodeResolution, AnyError> {
+  let url_str = url.as_str().to_lowercase();
+  if url_str.starts_with("http") {
+    Ok(NodeResolution::Esm(url))
+  } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
+    let package_config = get_closest_package_json(
+      &url,
+      npm_resolver,
+      &mut PermissionsContainer::allow_all(),
+    )?;
     if package_config.typ == "module" {
-      ResolveResponse::Esm(url)
+      Ok(NodeResolution::Esm(url))
     } else {
-      ResolveResponse::CommonJs(url)
+      Ok(NodeResolution::CommonJs(url))
     }
-  } else if url.as_str().ends_with(".cjs") {
-    ResolveResponse::CommonJs(url)
+  } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
+    Ok(NodeResolution::Esm(url))
+  } else if url_str.ends_with(".ts") {
+    Err(generic_error(format!(
+      "TypeScript files are not supported in npm packages: {url}"
+    )))
   } else {
-    ResolveResponse::Esm(url)
-  })
-}
-
-fn get_closest_package_json(
-  url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<PackageJson, AnyError> {
-  let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
-  PackageJson::load(npm_resolver, package_json_path)
-}
-
-fn get_closest_package_json_path(
-  url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<PathBuf, AnyError> {
-  let file_path = url.to_file_path().unwrap();
-  let mut current_dir = file_path.parent().unwrap();
-  let package_json_path = current_dir.join("package.json");
-  if package_json_path.exists() {
-    return Ok(package_json_path);
+    Ok(NodeResolution::CommonJs(url))
   }
-  let root_folder = npm_resolver
-    .resolve_package_folder_from_path(&url.to_file_path().unwrap())?;
-  while current_dir.starts_with(&root_folder) {
-    current_dir = current_dir.parent().unwrap();
-    let package_json_path = current_dir.join("./package.json");
-    if package_json_path.exists() {
-      return Ok(package_json_path);
-    }
-  }
-
-  bail!("did not find package.json in {}", root_folder.display())
 }
 
 fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // TODO(bartlomieju): this is not part of Node resolution algorithm
-  // (as it doesn't support http/https); but I had to short circuit here
-  // for remote modules because they are mainly used to polyfill `node` built
-  // in modules. Another option would be to leave the resolved URLs
-  // as `node:<module_name>` and do the actual remapping to std's polyfill
-  // in module loader. I'm not sure which approach is better.
-  if resolved.scheme().starts_with("http") {
-    return Ok(resolved);
-  }
-
   // todo(dsherret): cache
   let encoded_sep_re = Regex::new(r"%2F|%2C").unwrap();
 
   if encoded_sep_re.is_match(resolved.path()) {
-    return Err(compat::errors::err_invalid_module_specifier(
+    return Err(errors::err_invalid_module_specifier(
       resolved.path(),
       "must not include encoded \"/\" or \"\\\\\" characters",
       Some(to_file_path_string(base)),
@@ -431,18 +519,18 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
+  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(p) {
     (stats.is_dir(), stats.is_file())
   } else {
     (false, false)
   };
   if is_dir {
-    return Err(compat::errors::err_unsupported_dir_import(
+    return Err(errors::err_unsupported_dir_import(
       resolved.as_str(),
       base.as_str(),
     ));
   } else if !is_file {
-    return Err(compat::errors::err_module_not_found(
+    return Err(errors::err_module_not_found(
       resolved.as_str(),
       base.as_str(),
       "module",
@@ -456,27 +544,51 @@ fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  mode: NodeResolutionMode,
+  npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
+  // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
-    Some(resolved_specifier)
+    if mode.is_types() {
+      let file_path = to_file_path(&resolved_specifier);
+      // todo(dsherret): the node module kind is not correct and we
+      // should use the value provided by typescript instead
+      let declaration_path =
+        path_to_declaration_path(file_path, NodeModuleKind::Esm);
+      declaration_path.map(|declaration_path| {
+        ModuleSpecifier::from_file_path(declaration_path).unwrap()
+      })
+    } else {
+      Some(resolved_specifier)
+    }
   } else if specifier.starts_with('#') {
-    Some(package_imports_resolve(
-      specifier,
-      referrer,
-      conditions,
-      npm_resolver,
-    )?)
+    Some(
+      package_imports_resolve(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        mode,
+        npm_resolver,
+        permissions,
+      )
+      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
+    )
   } else if let Ok(resolved) = Url::parse(specifier) {
     Some(resolved)
   } else {
-    Some(package_resolve(
+    package_resolve(
       specifier,
       referrer,
+      NodeModuleKind::Esm,
       conditions,
+      mode,
       npm_resolver,
-    )?)
+      permissions,
+    )?
+    .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
   };
   Ok(match url {
     Some(url) => Some(finalize_resolution(url, referrer)?),
@@ -505,15 +617,13 @@ fn add_export(
     // so assign it to a temporary variable that won't have a conflict, then re-export
     // it as a string
     source.push(format!(
-      "const __deno_export_{}__ = {};",
-      temp_var_count, initializer
+      "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{}__ as \"{}\" }};",
-      temp_var_count, name
+      "export {{ __deno_export_{temp_var_count}__ as \"{name}\" }};"
     ));
   } else {
-    source.push(format!("export const {} = {};", name, initializer));
+    source.push(format!("export const {name} = {initializer};"));
   }
 }
 
@@ -528,65 +638,122 @@ pub fn translate_cjs_to_esm(
   specifier: &ModuleSpecifier,
   code: String,
   media_type: MediaType,
-  npm_resolver: &GlobalNpmPackageResolver,
+  npm_resolver: &NpmPackageResolver,
+  node_analysis_cache: &NodeAnalysisCache,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<String, AnyError> {
-  let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
-    text_info: deno_ast::SourceTextInfo::new(code.into()),
-    media_type,
-    capture_tokens: true,
-    scope_analysis: false,
-    maybe_syntax: None,
-  })?;
-  let analysis = parsed_source.analyze_cjs();
+  fn perform_cjs_analysis(
+    analysis_cache: &NodeAnalysisCache,
+    specifier: &str,
+    media_type: MediaType,
+    code: String,
+  ) -> Result<CjsAnalysis, AnyError> {
+    let source_hash = NodeAnalysisCache::compute_source_hash(&code);
+    if let Some(analysis) =
+      analysis_cache.get_cjs_analysis(specifier, &source_hash)
+    {
+      return Ok(analysis);
+    }
+
+    if media_type == MediaType::Json {
+      return Ok(CjsAnalysis {
+        exports: vec![],
+        reexports: vec![],
+      });
+    }
+
+    let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      text_info: deno_ast::SourceTextInfo::new(code.into()),
+      media_type,
+      capture_tokens: true,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })?;
+    let analysis = parsed_source.analyze_cjs();
+    analysis_cache.set_cjs_analysis(specifier, &source_hash, &analysis);
+
+    Ok(analysis)
+  }
+
   let mut temp_var_count = 0;
+  let mut handled_reexports: HashSet<String> = HashSet::default();
 
   let mut source = vec![
-    r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
+    r#"import {createRequire as __internalCreateRequire} from "node:module";
+    const require = __internalCreateRequire(import.meta.url);"#
+      .to_string(),
   ];
 
-  // if there are reexports, handle them first
-  for (idx, reexport) in analysis.reexports.iter().enumerate() {
-    // Firstly, resolve relate reexport specifier
-    // todo(dsherret): call module_resolve instead?
+  let analysis = perform_cjs_analysis(
+    node_analysis_cache,
+    specifier.as_str(),
+    media_type,
+    code,
+  )?;
+
+  let mut all_exports = analysis
+    .exports
+    .iter()
+    .map(|s| s.to_string())
+    .collect::<HashSet<_>>();
+
+  // (request, referrer)
+  let mut reexports_to_handle = VecDeque::new();
+  for reexport in analysis.reexports {
+    reexports_to_handle.push_back((reexport, specifier.clone()));
+  }
+
+  while let Some((reexport, referrer)) = reexports_to_handle.pop_front() {
+    if handled_reexports.contains(&reexport) {
+      continue;
+    }
+
+    handled_reexports.insert(reexport.to_string());
+
+    // First, resolve relate reexport specifier
     let resolved_reexport = resolve(
-      reexport,
-      specifier,
+      &reexport,
+      &referrer,
       // FIXME(bartlomieju): check if these conditions are okay, probably
       // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
       &["deno", "require", "default"],
+      NodeResolutionMode::Execution,
       npm_resolver,
+      permissions,
     )?;
     let reexport_specifier =
-      ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
-    // Secondly, read the source code from disk
-    let reexport_file = file_fetcher.get_source(&reexport_specifier).unwrap();
-    // Now perform analysis again
-    {
-      let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-        specifier: reexport_specifier.to_string(),
-        text_info: deno_ast::SourceTextInfo::new(reexport_file.source),
-        media_type: reexport_file.media_type,
-        capture_tokens: true,
-        scope_analysis: false,
-        maybe_syntax: None,
+      ModuleSpecifier::from_file_path(resolved_reexport).unwrap();
+    // Second, read the source code from disk
+    let reexport_file = file_fetcher
+      .get_source(&reexport_specifier)
+      .ok_or_else(|| {
+        anyhow!(
+          "Could not find '{}' ({}) referenced from {}",
+          reexport,
+          reexport_specifier,
+          referrer
+        )
       })?;
-      let analysis = parsed_source.analyze_cjs();
 
-      source.push(format!(
-        "const reexport{} = require(\"{}\");",
-        idx, reexport
-      ));
+    {
+      let analysis = perform_cjs_analysis(
+        node_analysis_cache,
+        reexport_specifier.as_str(),
+        reexport_file.media_type,
+        reexport_file.source.to_string(),
+      )?;
 
-      for export in analysis.exports.iter().filter(|e| e.as_str() != "default")
-      {
-        add_export(
-          &mut source,
-          export,
-          &format!("Deno[Deno.internal].require.bindExport(reexport{0}[\"{1}\"], reexport{0})", idx, export),
-          &mut temp_var_count,
-        );
+      for reexport in analysis.reexports {
+        reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
       }
+
+      all_exports.extend(
+        analysis
+          .exports
+          .into_iter()
+          .filter(|e| e.as_str() != "default"),
+      );
     }
   }
 
@@ -602,52 +769,30 @@ pub fn translate_cjs_to_esm(
       .replace('\"', "\\\"")
   ));
 
-  let mut had_default = false;
-  for export in analysis.exports.iter() {
-    if export.as_str() == "default" {
-      // todo(dsherret): we should only do this if there was a `_esModule: true` instead
-      source.push(format!(
-        "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
-        export,
-      ));
-      had_default = true;
-    } else {
+  for export in &all_exports {
+    if export.as_str() != "default" {
       add_export(
         &mut source,
         export,
-        &format!(
-          "Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod)",
-          export
-        ),
+        &format!("mod[\"{export}\"]"),
         &mut temp_var_count,
       );
     }
   }
 
-  if !had_default {
-    source.push("export default mod;".to_string());
-  }
+  source.push("export default mod;".to_string());
 
   let translated_source = source.join("\n");
   Ok(translated_source)
-}
-
-fn resolve_package_target_string(
-  target: &str,
-  subpath: Option<String>,
-) -> String {
-  if let Some(subpath) = subpath {
-    target.replace('*', &subpath)
-  } else {
-    target.to_string()
-  }
 }
 
 fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  mode: NodeResolutionMode,
+  npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if specifier.starts_with('/') {
     todo!();
@@ -664,26 +809,33 @@ fn resolve(
 
   // We've got a bare specifier or maybe bare_specifier/blah.js"
 
-  let (_, package_subpath) = parse_specifier(specifier).unwrap();
+  let (package_specifier, package_subpath) =
+    parse_specifier(specifier).unwrap();
 
   // todo(dsherret): use not_found error on not found here
-  let module_dir =
-    npm_resolver.resolve_package_folder_from_path(&referrer_path)?;
+  let module_dir = npm_resolver.resolve_package_folder_from_package(
+    package_specifier.as_str(),
+    &referrer_path,
+    mode,
+  )?;
 
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
-    let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+    let package_json =
+      PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
 
-    if let Some(map) = package_json.exports {
-      if let Some((key, subpath)) = exports_resolve(&map, &package_subpath) {
-        let value = map.get(&key).unwrap();
-        let s = conditions_resolve(value, conditions);
-
-        let t = resolve_package_target_string(&s, subpath);
-        return Ok(module_dir.join(t).clean());
-      } else {
-        todo!()
-      }
+    if let Some(exports) = &package_json.exports {
+      return package_exports_resolve(
+        &package_json_path,
+        package_subpath,
+        exports,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        mode,
+        npm_resolver,
+        permissions,
+      );
     }
 
     // old school
@@ -691,37 +843,27 @@ fn resolve(
       let d = module_dir.join(package_subpath);
       if let Ok(m) = d.metadata() {
         if m.is_dir() {
+          // subdir might have a package.json that specifies the entrypoint
+          let package_json_path = d.join("package.json");
+          if package_json_path.exists() {
+            let package_json =
+              PackageJson::load(npm_resolver, permissions, package_json_path)?;
+            if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+              return Ok(d.join(main).clean());
+            }
+          }
+
           return Ok(d.join("index.js").clean());
         }
       }
       return file_extension_probe(d, &referrer_path);
-    } else if let Some(main) = package_json.main {
+    } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
       return Ok(module_dir.join(main).clean());
     } else {
       return Ok(module_dir.join("index.js").clean());
     }
   }
-
   Err(not_found(specifier, &referrer_path))
-}
-
-fn conditions_resolve(value: &Value, conditions: &[&str]) -> String {
-  match value {
-    Value::String(s) => s.to_string(),
-    Value::Object(map) => {
-      for condition in conditions {
-        if let Some(x) = map.get(&condition.to_string()) {
-          if let Value::String(s) = x {
-            return s.to_string();
-          } else {
-            todo!()
-          }
-        }
-      }
-      todo!()
-    }
-    _ => todo!(),
-  }
 }
 
 fn parse_specifier(specifier: &str) -> Option<(String, String)> {
@@ -733,7 +875,7 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   } else if specifier.starts_with('@') {
     // is_scoped = true;
     if let Some(index) = separator_index {
-      separator_index = specifier[index + 1..].find('/');
+      separator_index = specifier[index + 1..].find('/').map(|i| i + index + 1);
     } else {
       valid_package_name = false;
     }
@@ -766,50 +908,10 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   Some((package_name, package_subpath))
 }
 
-fn exports_resolve(
-  map: &Map<String, Value>,
-  subpath: &str,
-) -> Option<(String, Option<String>)> {
-  if map.contains_key(subpath) {
-    return Some((subpath.to_string(), None));
-  }
-
-  // best match
-  let mut best_match = None;
-  for key in map.keys() {
-    if let Some(pattern_index) = key.find('*') {
-      let key_sub = &key[0..pattern_index];
-      if subpath.starts_with(key_sub) {
-        if subpath.ends_with('/') {
-          todo!()
-        }
-        let pattern_trailer = &key[pattern_index + 1..];
-
-        if subpath.len() > key.len()
-          && subpath.ends_with(pattern_trailer)
-          // && pattern_key_compare(best_match, key) == 1
-          && key.rfind('*') == Some(pattern_index)
-        {
-          let rest = subpath
-            [pattern_index..(subpath.len() - pattern_trailer.len())]
-            .to_string();
-          best_match = Some((key, rest));
-        }
-      }
-    }
-  }
-
-  if let Some((key, subpath_)) = best_match {
-    return Some((key.to_string(), Some(subpath_)));
-  }
-
-  None
-}
-
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url
     .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
+    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {url}"))
 }
 
 fn to_file_path_string(url: &ModuleSpecifier) -> String {
@@ -847,19 +949,27 @@ fn is_relative_specifier(specifier: &str) -> bool {
 }
 
 fn file_extension_probe(
-  mut p: PathBuf,
+  p: PathBuf,
   referrer: &Path,
 ) -> Result<PathBuf, AnyError> {
-  if p.exists() && !p.is_dir() {
-    Ok(p.clean())
-  } else {
-    p.set_extension("js");
-    if p.exists() && !p.is_dir() {
-      Ok(p)
+  let p = p.clean();
+  if p.exists() {
+    let file_name = p.file_name().unwrap();
+    let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
+    } else if p.is_dir() {
+      return Ok(p.join("index.js"));
     } else {
-      Err(not_found(&p.clean().to_string_lossy(), referrer))
+      return Ok(p);
+    }
+  } else if let Some(file_name) = p.file_name() {
+    let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
     }
   }
+  Err(not_found(&p.to_string_lossy(), referrer))
 }
 
 fn not_found(path: &str, referrer: &Path) -> AnyError {
@@ -873,6 +983,8 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::serde_json::json;
+
   use super::*;
 
   #[test]
@@ -898,11 +1010,109 @@ mod tests {
   }
 
   #[test]
-  fn test_resolve_package_target_string() {
-    assert_eq!(resolve_package_target_string("foo", None), "foo");
+  fn test_parse_specifier() {
     assert_eq!(
-      resolve_package_target_string("*foo", Some("bar".to_string())),
-      "barfoo"
+      parse_specifier("@some-package/core/actions"),
+      Some(("@some-package/core".to_string(), "./actions".to_string()))
+    );
+  }
+
+  #[test]
+  fn test_resolve_bin_entry_value() {
+    // should resolve the specified value
+    let value = json!({
+      "bin1": "./value1",
+      "bin2": "./value2",
+      "test": "./value3",
+    });
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
+        Some("bin1"),
+        &value
+      )
+      .unwrap(),
+      "./value1"
+    );
+
+    // should resolve the value with the same name when not specified
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
+        None,
+        &value
+      )
+      .unwrap(),
+      "./value3"
+    );
+
+    // should not resolve when specified value does not exist
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
+        Some("other"),
+        &value
+      )
+      .err()
+      .unwrap()
+      .to_string(),
+      concat!(
+        "package 'test@1.1.1' did not have a bin entry for 'other' in its package.json\n",
+        "\n",
+        "Possibilities:\n",
+        " * npm:test@1.1.1/bin1\n",
+        " * npm:test@1.1.1/bin2\n",
+        " * npm:test@1.1.1/test"
+      )
+    );
+
+    // should not resolve when default value can't be determined
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageNv::from_str("asdf@1.2.3").unwrap(),
+        None,
+        &value
+      )
+      .err()
+      .unwrap()
+      .to_string(),
+      concat!(
+        "package 'asdf@1.2.3' did not have a bin entry for 'asdf' in its package.json\n",
+        "\n",
+        "Possibilities:\n",
+        " * npm:asdf@1.2.3/bin1\n",
+        " * npm:asdf@1.2.3/bin2\n",
+        " * npm:asdf@1.2.3/test"
+      )
+    );
+
+    // should resolve since all the values are the same
+    let value = json!({
+      "bin1": "./value",
+      "bin2": "./value",
+    });
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
+        None,
+        &value
+      )
+      .unwrap(),
+      "./value"
+    );
+
+    // should not resolve when specified and is a string
+    let value = json!("./value");
+    assert_eq!(
+      resolve_bin_entry_value(
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
+        Some("path"),
+        &value
+      )
+      .err()
+      .unwrap()
+      .to_string(),
+      "package 'test@1.2.3' did not have a bin entry for 'path' in its package.json"
     );
   }
 }

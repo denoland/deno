@@ -87,6 +87,12 @@
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
+        "noErrorTruncation": {
+          "description": "Do not truncate error messages.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Do not truncate error messages.\n\nSee more: https://www.typescriptlang.org/tsconfig#noErrorTruncation"
+        },
         "noFallthroughCasesInSwitch": {
           "description": "Enable error reporting for fallthrough cases in switch statements.",
           "type": "boolean",
@@ -192,8 +198,30 @@
       }
     },
     "importMap": {
-      "description": "The location of an import map to be used when resolving modules. If an import map is explicitly specified, it will override this value.",
+      "description": "The location of an import map to be used when resolving modules. If an import map is specified as an `--importmap` flag or using \"imports\" and \"scopes\" properties, they will override this value.",
       "type": "string"
+    },
+    "imports": {
+      "description": "A map of specifiers to their remapped specifiers.",
+      "type": "object",
+      "additionalProperties": {
+        "description": "The key is the specifier or partial specifier to match, with a value that represents the target specifier.",
+        "type": "string"
+      }
+    },
+    "scopes": {
+      "default": {},
+      "description": "Define a scope which remaps a specifier in only a specified scope",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": {
+        "description": "A definition of a scoped remapping.",
+        "type": "object",
+        "additionalProperties": {
+          "description": "The key is the specifier or partial specifier to match within the referring scope, with a value that represents the target specifier.",
+          "type": "string"
+        }
+      }
     },
     "lint": {
       "description": "Configuration for linter",
@@ -232,7 +260,7 @@
             },
             "exclude": {
               "type": "array",
-              "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it be run.",
+              "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it will be run.",
               "items": {
                 "type": "string"
               },
@@ -249,6 +277,15 @@
               "uniqueItems": true
             }
           }
+        },
+        "report": {
+          "default": "pretty",
+          "enum": [
+            "pretty",
+            "json",
+            "compact"
+          ],
+          "description": "The default report format to use when linting"
         }
       }
     },
@@ -306,6 +343,11 @@
                 "never",
                 "preserve"
               ]
+            },
+            "semiColons": {
+              "description": "Whether to prefer using semicolons.",
+              "type": "boolean",
+              "default": true
             }
           }
         }
@@ -346,6 +388,36 @@
           }
         }
       }
+    },
+    "bench": {
+      "description": "Configuration for deno bench",
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "List of files or directories that will be searched for benchmarks.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of files or directories that will not be searched for benchmarks.",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "lock": {
+      "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
+      "type": ["string", "boolean"],
+      "default": true
     }
   }
 }

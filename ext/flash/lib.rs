@@ -1,8 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // False positive lint for explicit drops.
 // https://github.com/rust-lang/rust-clippy/issues/6446
 #![allow(clippy::await_holding_lock)]
+// https://github.com/rust-lang/rust-clippy/issues/6353
+#![allow(clippy::await_holding_refcell_ref)]
 
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
@@ -14,28 +16,27 @@ use deno_core::v8::fast_api;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_core::V8_WRAPPER_OBJECT_INDEX;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
-use http::header::HeaderName;
 use http::header::CONNECTION;
 use http::header::CONTENT_LENGTH;
 use http::header::EXPECT;
 use http::header::TRANSFER_ENCODING;
+use http::HeaderName;
 use http::HeaderValue;
 use log::trace;
 use mio::net::TcpListener;
-use mio::net::TcpStream;
 use mio::Events;
 use mio::Interest;
 use mio::Poll;
 use mio::Token;
 use serde::Deserialize;
 use serde::Serialize;
+use socket2::Socket;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -45,7 +46,6 @@ use std::intrinsics::transmute;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
-use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
@@ -62,9 +62,12 @@ mod chunked;
 mod request;
 #[cfg(unix)]
 mod sendfile;
+mod socket;
 
 use request::InnerRequest;
 use request::Request;
+use socket::InnerStream;
+use socket::Stream;
 
 pub struct FlashContext {
   next_server_id: u32,
@@ -83,65 +86,10 @@ pub struct ServerContext {
   cancel_handle: Rc<CancelHandle>,
 }
 
-#[derive(Debug, PartialEq)]
-enum ParseStatus {
+#[derive(Debug, Eq, PartialEq)]
+pub enum ParseStatus {
   None,
   Ongoing(usize),
-}
-
-type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
-
-enum InnerStream {
-  Tcp(TcpStream),
-  Tls(Box<TlsTcpStream>),
-}
-
-pub struct Stream {
-  inner: InnerStream,
-  detached: bool,
-  read_rx: Option<mpsc::Receiver<()>>,
-  read_tx: Option<mpsc::Sender<()>>,
-  parse_done: ParseStatus,
-  buffer: UnsafeCell<Vec<u8>>,
-  read_lock: Arc<Mutex<()>>,
-  _pin: PhantomPinned,
-}
-
-impl Stream {
-  pub fn detach_ownership(&mut self) {
-    self.detached = true;
-  }
-
-  fn reattach_ownership(&mut self) {
-    self.detached = false;
-  }
-}
-
-impl Write for Stream {
-  #[inline]
-  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.write(buf),
-      InnerStream::Tls(ref mut stream) => stream.write(buf),
-    }
-  }
-  #[inline]
-  fn flush(&mut self) -> std::io::Result<()> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.flush(),
-      InnerStream::Tls(ref mut stream) => stream.flush(),
-    }
-  }
-}
-
-impl Read for Stream {
-  #[inline]
-  fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.read(buf),
-      InnerStream::Tls(ref mut stream) => stream.read(buf),
-    }
-  }
 }
 
 #[op]
@@ -150,17 +98,105 @@ fn op_flash_respond(
   server_id: u32,
   token: u32,
   response: StringOrBuffer,
-  maybe_body: Option<ZeroCopyBuf>,
   shutdown: bool,
-) {
+) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  flash_respond(ctx, token, shutdown, &response)
+}
+
+#[op(fast)]
+fn op_try_flash_respond_chunked(
+  op_state: &mut OpState,
+  server_id: u32,
+  token: u32,
+  response: &[u8],
+  shutdown: bool,
+) -> u32 {
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  let tx = ctx.requests.get(&token).unwrap();
+  let sock = tx.socket();
+
+  // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
+  // https://github.com/denoland/deno/pull/15629
+  let h = format!("{:x}\r\n", response.len());
+
+  let concat = [h.as_bytes(), response, b"\r\n"].concat();
+  let expected = sock.try_write(&concat);
+  if expected != concat.len() {
+    if expected > 2 {
+      return expected as u32;
+    }
+    return expected as u32;
+  }
+
+  if shutdown {
+    // Best case: We've written everything and the stream is done too.
+    let _ = ctx.requests.remove(&token).unwrap();
+  }
+  0
+}
+
+#[op]
+async fn op_flash_respond_async(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+  response: StringOrBuffer,
+  shutdown: bool,
+) -> Result<(), AnyError> {
+  trace!("op_flash_respond_async");
 
   let mut close = false;
+  let sock = {
+    let mut op_state = state.borrow_mut();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+
+    match shutdown {
+      true => {
+        let tx = ctx.requests.remove(&token).unwrap();
+        close = !tx.keep_alive;
+        tx.socket()
+      }
+      // In case of a websocket upgrade or streaming response.
+      false => {
+        let tx = ctx.requests.get(&token).unwrap();
+        tx.socket()
+      }
+    }
+  };
+
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        Ok(tokio::io::AsyncWriteExt::write(stream, &response).await?)
+      })
+    })
+    .await?;
+  // server is done writing and request doesn't want to kept alive.
+  if shutdown && close {
+    sock.shutdown();
+  }
+  Ok(())
+}
+
+#[op]
+async fn op_flash_respond_chunked(
+  op_state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+  response: Option<ZeroCopyBuf>,
+  shutdown: bool,
+  nwritten: u32,
+) -> Result<(), AnyError> {
+  let mut op_state = op_state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let sock = match shutdown {
     true => {
       let tx = ctx.requests.remove(&token).unwrap();
-      close = !tx.keep_alive;
       tx.socket()
     }
     // In case of a websocket upgrade or streaming response.
@@ -170,49 +206,39 @@ fn op_flash_respond(
     }
   };
 
-  sock.read_tx.take();
-  sock.read_rx.take();
+  drop(op_state);
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        use tokio::io::AsyncWriteExt;
+        // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
+        // https://github.com/denoland/deno/pull/15629
+        macro_rules! write_whats_not_written {
+          ($e:expr) => {
+            let e = $e;
+            let n = nwritten as usize;
+            if n < e.len() {
+              stream.write_all(&e[n..]).await?;
+            }
+          };
+        }
+        if let Some(response) = response {
+          let h = format!("{:x}\r\n", response.len());
+          write_whats_not_written!(h.as_bytes());
+          write_whats_not_written!(&response);
+          write_whats_not_written!(b"\r\n");
+        }
 
-  let _ = sock.write(&response);
-  if let Some(response) = maybe_body {
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(&response);
-    let _ = sock.write(b"\r\n");
-  }
+        // The last chunk
+        if shutdown {
+          write_whats_not_written!(b"0\r\n\r\n");
+        }
 
-  // server is done writing and request doesn't want to kept alive.
-  if shutdown && close {
-    match &mut sock.inner {
-      InnerStream::Tcp(stream) => {
-        // Typically shutdown shouldn't fail.
-        let _ = stream.shutdown(std::net::Shutdown::Both);
-      }
-      InnerStream::Tls(stream) => {
-        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
-      }
-    }
-  }
-}
-
-#[op]
-fn op_flash_respond_chuncked(
-  op_state: &mut OpState,
-  server_id: u32,
-  token: u32,
-  response: Option<ZeroCopyBuf>,
-  shutdown: bool,
-) {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  match response {
-    Some(response) => {
-      respond_chunked(ctx, token, shutdown, Some(&response));
-    }
-    None => {
-      respond_chunked(ctx, token, shutdown, None);
-    }
-  }
+        Ok(())
+      })
+    })
+    .await?;
+  Ok(())
 }
 
 #[op]
@@ -222,16 +248,20 @@ async fn op_flash_write_resource(
   server_id: u32,
   token: u32,
   resource_id: deno_core::ResourceId,
+  auto_close: bool,
 ) -> Result<(), AnyError> {
-  let resource = op_state.borrow_mut().resource_table.take_any(resource_id)?;
-  let sock = {
+  let (resource, sock) = {
     let op_state = &mut op_state.borrow_mut();
+    let resource = if auto_close {
+      op_state.resource_table.take_any(resource_id)?
+    } else {
+      op_state.resource_table.get_any(resource_id)?
+    };
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    ctx.requests.remove(&token).unwrap().socket()
+    (resource, ctx.requests.remove(&token).unwrap().socket())
   };
 
-  drop(op_state);
   let _ = sock.write(&response);
 
   #[cfg(unix)]
@@ -258,24 +288,31 @@ async fn op_flash_write_resource(
     }
   }
 
-  let _ = sock.write(b"Transfer-Encoding: chunked\r\n\r\n");
-  loop {
-    let vec = vec![0u8; 64 * 1024]; // 64KB
-    let buf = ZeroCopyBuf::new_temp(vec);
-    let (nread, buf) = resource.clone().read_return(buf).await?;
-    if nread == 0 {
-      let _ = sock.write(b"0\r\n\r\n");
-      break;
-    }
-    let response = &buf[..nread];
-
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(response);
-    let _ = sock.write(b"\r\n");
-  }
-
-  resource.close();
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        use tokio::io::AsyncWriteExt;
+        stream
+          .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
+          .await?;
+        loop {
+          let view = resource.clone().read(64 * 1024).await?; // 64KB
+          if view.is_empty() {
+            stream.write_all(b"0\r\n\r\n").await?;
+            break;
+          }
+          // TODO(@littledivy): use vectored writes.
+          stream
+            .write_all(format!("{:x}\r\n", view.len()).as_bytes())
+            .await?;
+          stream.write_all(&view).await?;
+          stream.write_all(b"\r\n").await?;
+        }
+        resource.close();
+        Ok(())
+      })
+    })
+    .await?;
   Ok(())
 }
 
@@ -296,7 +333,7 @@ impl fast_api::FastFunction for RespondFast {
   }
 
   fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Void
+    fast_api::CType::Uint32
   }
 }
 
@@ -305,37 +342,23 @@ fn flash_respond(
   token: u32,
   shutdown: bool,
   response: &[u8],
-) {
-  let mut close = false;
-  let sock = match shutdown {
-    true => {
-      let tx = ctx.requests.remove(&token).unwrap();
-      close = !tx.keep_alive;
-      tx.socket()
-    }
-    // In case of a websocket upgrade or streaming response.
-    false => {
-      let tx = ctx.requests.get(&token).unwrap();
-      tx.socket()
-    }
-  };
+) -> u32 {
+  let tx = ctx.requests.get(&token).unwrap();
+  let sock = tx.socket();
 
   sock.read_tx.take();
   sock.read_rx.take();
 
-  let _ = sock.write(response);
-  // server is done writing and request doesn't want to kept alive.
-  if shutdown && close {
-    match &mut sock.inner {
-      InnerStream::Tcp(stream) => {
-        // Typically shutdown shouldn't fail.
-        let _ = stream.shutdown(std::net::Shutdown::Both);
-      }
-      InnerStream::Tls(stream) => {
-        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
-      }
+  let nwritten = sock.try_write(response);
+
+  if shutdown && nwritten == response.len() {
+    if !tx.keep_alive {
+      sock.shutdown();
     }
+    ctx.requests.remove(&token).unwrap();
   }
+
+  nwritten as u32
 }
 
 unsafe fn op_flash_respond_fast(
@@ -343,88 +366,15 @@ unsafe fn op_flash_respond_fast(
   token: u32,
   response: *const fast_api::FastApiTypedArray<u8>,
   shutdown: bool,
-) {
+) -> u32 {
   let ptr =
     recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
   let ctx = &mut *(ptr as *mut ServerContext);
 
   let response = &*response;
-  if let Some(response) = response.get_storage_if_aligned() {
-    flash_respond(ctx, token, shutdown, response);
-  } else {
-    todo!();
-  }
-}
-
-pub struct RespondChunkedFast;
-
-impl fast_api::FastFunction for RespondChunkedFast {
-  fn function(&self) -> *const c_void {
-    op_flash_respond_chunked_fast as *const c_void
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    &[
-      fast_api::Type::V8Value,
-      fast_api::Type::Uint32,
-      fast_api::Type::TypedArray(fast_api::CType::Uint8),
-      fast_api::Type::Bool,
-    ]
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Void
-  }
-}
-
-unsafe fn op_flash_respond_chunked_fast(
-  recv: v8::Local<v8::Object>,
-  token: u32,
-  response: *const fast_api::FastApiTypedArray<u8>,
-  shutdown: bool,
-) {
-  let ptr =
-    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
-  let ctx = &mut *(ptr as *mut ServerContext);
-
-  let response = &*response;
-  if let Some(response) = response.get_storage_if_aligned() {
-    respond_chunked(ctx, token, shutdown, Some(response));
-  } else {
-    todo!();
-  }
-}
-
-fn respond_chunked(
-  ctx: &mut ServerContext,
-  token: u32,
-  shutdown: bool,
-  response: Option<&[u8]>,
-) {
-  let sock = match shutdown {
-    true => {
-      let tx = ctx.requests.remove(&token).unwrap();
-      tx.socket()
-    }
-    // In case of a websocket upgrade or streaming response.
-    false => {
-      let tx = ctx.requests.get(&token).unwrap();
-      tx.socket()
-    }
-  };
-
-  if let Some(response) = response {
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(response);
-    let _ = sock.write(b"\r\n");
-  }
-
-  // The last chunk
-  if shutdown {
-    let _ = sock.write(b"0\r\n\r\n");
-  }
-  sock.reattach_ownership();
+  // Uint8Array is always byte-aligned.
+  let response = response.get_storage_if_aligned().unwrap_unchecked();
+  flash_respond(ctx, token, shutdown, response)
 }
 
 macro_rules! get_request {
@@ -591,8 +541,7 @@ fn op_flash_make_request<'scope>(
       |_: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         rv.set_uint32(next_request_sync(ctx));
@@ -600,7 +549,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &NextRequestFast, None);
+    let func = builder.build_fast(scope, &NextRequestFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "nextRequest").unwrap();
@@ -613,8 +562,7 @@ fn op_flash_make_request<'scope>(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         let token = args.get(0).uint32_value(scope).unwrap();
@@ -624,49 +572,10 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &GetMethodFast, None);
+    let func = builder.build_fast(scope, &GetMethodFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "getMethod").unwrap();
-    obj.set(scope, key.into(), func).unwrap();
-  }
-
-  // respondChunked
-  {
-    let builder = v8::FunctionTemplate::builder(
-      |scope: &mut v8::HandleScope,
-       args: v8::FunctionCallbackArguments,
-       _: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
-        // SAFETY: This external is guaranteed to be a pointer to a ServerContext
-        let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
-
-        let token = args.get(0).uint32_value(scope).unwrap();
-
-        let response: v8::Local<v8::ArrayBufferView> =
-          args.get(1).try_into().unwrap();
-        let ab = response.buffer(scope).unwrap();
-        let store = ab.get_backing_store();
-        let (offset, len) = (response.byte_offset(), response.byte_length());
-        // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-        // it points to a fixed continuous slice of bytes on the heap.
-        // We assume it's initialized and thus safe to read (though may not contain meaningful data)
-        let response = unsafe {
-          &*(&store[offset..offset + len] as *const _ as *const [u8])
-        };
-
-        let shutdown = args.get(2).boolean_value(scope);
-
-        respond_chunked(ctx, token, shutdown, Some(response));
-      },
-    )
-    .data(v8::External::new(scope, ctx as *mut _).into());
-
-    let func = builder.build_fast(scope, &RespondChunkedFast, None);
-    let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
-
-    let key = v8::String::new(scope, "respondChunked").unwrap();
     obj.set(scope, key.into(), func).unwrap();
   }
 
@@ -675,9 +584,8 @@ fn op_flash_make_request<'scope>(
     let builder = v8::FunctionTemplate::builder(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
-       _: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+       mut rv: v8::ReturnValue| {
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
 
@@ -697,12 +605,12 @@ fn op_flash_make_request<'scope>(
 
         let shutdown = args.get(2).boolean_value(scope);
 
-        flash_respond(ctx, token, shutdown, response);
+        rv.set_uint32(flash_respond(ctx, token, shutdown, response));
       },
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &RespondFast, None);
+    let func = builder.build_fast(scope, &RespondFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "respond").unwrap();
@@ -754,6 +662,26 @@ fn op_flash_headers(
       .map(|h| (h.name.as_bytes().into(), h.value.into()))
       .collect(),
   )
+}
+
+#[op]
+fn op_flash_addr(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+) -> Result<(String, u16), AnyError> {
+  let mut op_state = state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx
+    .servers
+    .get_mut(&server_id)
+    .ok_or_else(|| type_error("server closed"))?;
+  let req = &ctx
+    .requests
+    .get(&token)
+    .ok_or_else(|| type_error("request closed"))?;
+  let socket = req.socket();
+  Ok((socket.addr.ip().to_string(), socket.addr.port()))
 }
 
 // Remember the first packet we read? It probably also has some body data. This op quickly copies it into
@@ -812,7 +740,7 @@ fn op_flash_first_packet(
           return Ok(Some(buf.into()));
         }
         Err(e) => {
-          return Err(type_error(format!("{}", e)));
+          return Err(type_error(format!("{e}")));
         }
       }
     }
@@ -843,7 +771,11 @@ async fn op_flash_read_body(
     .as_mut()
     .unwrap()
   };
-  let tx = ctx.requests.get_mut(&token).unwrap();
+  let tx = match ctx.requests.get_mut(&token) {
+    Some(tx) => tx,
+    // request was already consumed by caller
+    None => return 0,
+  };
 
   if tx.te_chunked {
     let mut decoder =
@@ -858,7 +790,7 @@ async fn op_flash_read_body(
           return n;
         }
         Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
-          panic!("chunked read error: {}", e);
+          panic!("chunked read error: {e}");
         }
         Err(_) => {
           drop(_lock);
@@ -937,6 +869,7 @@ pub struct ListenOpts {
   key: Option<String>,
   hostname: String,
   port: u16,
+  reuseport: bool,
 }
 
 fn run_server(
@@ -946,8 +879,29 @@ fn run_server(
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
+  reuseport: bool,
 ) -> Result<(), AnyError> {
-  let mut listener = TcpListener::bind(addr)?;
+  let domain = if addr.is_ipv4() {
+    socket2::Domain::IPV4
+  } else {
+    socket2::Domain::IPV6
+  };
+  let socket = Socket::new(domain, socket2::Type::STREAM, None)?;
+
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  if reuseport {
+    #[cfg(target_os = "linux")]
+    socket.set_reuse_port(true)?;
+  }
+
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
+  let mut listener = TcpListener::from_std(std_listener);
+
   let mut poll = Poll::new()?;
   let token = Token(0);
   poll
@@ -999,13 +953,14 @@ fn run_server(
       match token {
         Token(0) => loop {
           match listener.accept() {
-            Ok((mut socket, _)) => {
+            Ok((mut socket, addr)) => {
               counter += 1;
               let token = Token(counter);
               poll
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
+
               let socket = match tls_context {
                 Some(ref tls_conf) => {
                   let connection =
@@ -1024,7 +979,7 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
-                _pin: PhantomPinned,
+                addr,
               });
 
               trace!("New connection: {}", token.0);
@@ -1095,22 +1050,48 @@ fn run_server(
                 // sockets.remove(&token);
                 continue 'events;
               }
-              Ok(read) => match req.parse(&buffer[..offset + read]) {
-                Ok(httparse::Status::Complete(n)) => {
-                  body_offset = n;
-                  body_len = offset + read;
-                  socket.parse_done = ParseStatus::None;
-                  break;
+              Ok(read) => {
+                match req.parse(&buffer[..offset + read]) {
+                  Ok(httparse::Status::Complete(n)) => {
+                    body_offset = n;
+                    body_len = offset + read;
+                    socket.parse_done = ParseStatus::None;
+                    // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
+                    //
+                    // Mio tries to emulate edge triggered events on Windows.
+                    // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
+                    // https://github.com/denoland/deno/issues/15549
+                    #[cfg(target_os = "windows")]
+                    match &mut socket.inner {
+                      InnerStream::Tcp(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(socket, token, Interest::READABLE)
+                          .unwrap();
+                      }
+                      InnerStream::Tls(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(
+                            &mut socket.sock,
+                            token,
+                            Interest::READABLE,
+                          )
+                          .unwrap();
+                      }
+                    };
+                    break;
+                  }
+                  Ok(httparse::Status::Partial) => {
+                    socket.parse_done = ParseStatus::Ongoing(offset + read);
+                    continue;
+                  }
+                  Err(_) => {
+                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    continue 'events;
+                  }
                 }
-                Ok(httparse::Status::Partial) => {
-                  socket.parse_done = ParseStatus::Ongoing(offset + read);
-                  continue;
-                }
-                Err(_) => {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                  continue 'events;
-                }
-              },
+              }
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break 'events
               }
@@ -1256,18 +1237,16 @@ pub fn resolve_addr_sync(
   Ok(result)
 }
 
-#[op]
-fn op_flash_serve<P>(
+fn flash_serve<P>(
   state: &mut OpState,
   opts: ListenOpts,
 ) -> Result<u32, AnyError>
 where
   P: FlashPermissions + 'static,
 {
-  check_unstable(state, "Deno.serve");
   state
     .borrow_mut::<P>()
-    .check_net(&(&opts.hostname, Some(opts.port)))?;
+    .check_net(&(&opts.hostname, Some(opts.port)), "Deno.serve()")?;
 
   let addr = resolve_addr_sync(&opts.hostname, opts.port)?
     .next()
@@ -1288,8 +1267,17 @@ where
   let tx = ctx.tx.clone();
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
+  let reuseport = opts.reuseport;
   let join_handle = tokio::task::spawn_blocking(move || {
-    run_server(tx, listening_tx, close_rx, addr, maybe_cert, maybe_key)
+    run_server(
+      tx,
+      listening_tx,
+      close_rx,
+      addr,
+      maybe_cert,
+      maybe_key,
+      reuseport,
+    )
   });
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
@@ -1300,11 +1288,35 @@ where
 }
 
 #[op]
-fn op_flash_wait_for_listening(
+fn op_flash_serve<P>(
   state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  check_unstable(state, "Deno.serve");
+  flash_serve::<P>(state, opts)
+}
+
+#[op]
+fn op_node_unstable_flash_serve<P>(
+  state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  flash_serve::<P>(state, opts)
+}
+
+#[op]
+fn op_flash_wait_for_listening(
+  state: Rc<RefCell<OpState>>,
   server_id: u32,
 ) -> Result<impl Future<Output = Result<u16, AnyError>> + 'static, AnyError> {
   let mut listening_rx = {
+    let mut state = state.borrow_mut();
     let flash_ctx = state.borrow_mut::<FlashContext>();
     let server_ctx = flash_ctx
       .servers
@@ -1313,17 +1325,21 @@ fn op_flash_wait_for_listening(
     server_ctx.listening_rx.take().unwrap()
   };
   Ok(async move {
-    let port = listening_rx.recv().await.unwrap();
-    Ok(port)
+    if let Some(port) = listening_rx.recv().await {
+      Ok(port)
+    } else {
+      Err(generic_error("This error will be discarded"))
+    }
   })
 }
 
 #[op]
 fn op_flash_drive_server(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   server_id: u32,
 ) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
   let join_handle = {
+    let mut state = state.borrow_mut();
     let flash_ctx = state.borrow_mut::<FlashContext>();
     flash_ctx
       .join_handles
@@ -1366,7 +1382,7 @@ async fn op_flash_next_async(
   0
 }
 
-// Syncrhonous version of op_flash_next_async. Under heavy load,
+// Synchronous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 //
 // perf: please do not add any arguments to this op. With optimizations enabled,
@@ -1495,8 +1511,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
   if !unstable.0 {
     eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
+      "Unstable API '{api_name}'. The --unstable flag must be provided."
     );
     std::process::exit(70);
   }
@@ -1506,43 +1521,53 @@ pub trait FlashPermissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
     _host: &(T, Option<u16>),
+    _api_name: &str,
   ) -> Result<(), AnyError>;
 }
 
-pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
-    .js(deno_core::include_js_files!(
-      prefix "deno:ext/flash",
-      "01_http.js",
-    ))
-    .ops(vec![
-      op_flash_serve::decl::<P>(),
-      op_flash_respond::decl(),
-      op_flash_respond_chuncked::decl(),
-      op_flash_method::decl(),
-      op_flash_path::decl(),
-      op_flash_headers::decl(),
-      op_flash_next::decl(),
-      op_flash_next_server::decl(),
-      op_flash_next_async::decl(),
-      op_flash_read_body::decl(),
-      op_flash_upgrade_websocket::decl(),
-      op_flash_drive_server::decl(),
-      op_flash_wait_for_listening::decl(),
-      op_flash_first_packet::decl(),
-      op_flash_has_body_stream::decl(),
-      op_flash_close_server::decl(),
-      op_flash_make_request::decl(),
-      op_flash_write_resource::decl(),
-    ])
-    .state(move |op_state| {
-      op_state.put(Unstable(unstable));
-      op_state.put(FlashContext {
-        next_server_id: 0,
-        join_handles: HashMap::default(),
-        servers: HashMap::default(),
-      });
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_flash,
+  deps = [
+    deno_web,
+    deno_net,
+    deno_fetch,
+    deno_websocket,
+    deno_http
+  ],
+  parameters = [P: FlashPermissions],
+  ops = [
+    op_flash_serve<P>,
+    op_node_unstable_flash_serve<P>,
+    op_flash_respond,
+    op_flash_respond_async,
+    op_flash_respond_chunked,
+    op_flash_method,
+    op_flash_path,
+    op_flash_headers,
+    op_flash_addr,
+    op_flash_next,
+    op_flash_next_server,
+    op_flash_next_async,
+    op_flash_read_body,
+    op_flash_upgrade_websocket,
+    op_flash_drive_server,
+    op_flash_wait_for_listening,
+    op_flash_first_packet,
+    op_flash_has_body_stream,
+    op_flash_close_server,
+    op_flash_make_request,
+    op_flash_write_resource,
+    op_try_flash_respond_chunked,
+  ],
+  esm = [ "01_http.js" ],
+  options = {
+    unstable: bool,
+  },
+  state = |state, options| {
+    state.put(Unstable(options.unstable));
+    state.put(FlashContext {
+      next_server_id: 0,
+      join_handles: HashMap::default(),
+      servers: HashMap::default(),
+    });
+  },
+);

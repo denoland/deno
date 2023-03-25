@@ -1,7 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::any::TypeId;
 use std::mem::transmute_copy;
 
+use crate::BigInt;
 use crate::ByteString;
 use crate::U16String;
 use crate::ZeroCopyBuf;
@@ -12,7 +13,7 @@ use crate::ZeroCopyBuf;
 /// (and thus doesn't have to have generic outputs, etc...)
 pub trait Serializable {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error>;
 }
@@ -20,7 +21,7 @@ pub trait Serializable {
 /// Allows all implementors of `serde::Serialize` to implement Serializable
 impl<T: serde::Serialize> Serializable for T {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     crate::to_v8(scope, self)
@@ -36,7 +37,7 @@ pub enum SerializablePkg {
 
 impl SerializablePkg {
   pub fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     match self {
@@ -65,6 +66,7 @@ pub enum Primitive {
   ZeroCopyBuf(ZeroCopyBuf),
   ByteString(ByteString),
   U16String(U16String),
+  BigInt(BigInt),
 }
 
 impl serde::Serialize for Primitive {
@@ -89,6 +91,7 @@ impl serde::Serialize for Primitive {
       Self::ZeroCopyBuf(x) => x.serialize(s),
       Self::ByteString(x) => x.serialize(s),
       Self::U16String(x) => x.serialize(s),
+      Self::BigInt(x) => x.serialize(s),
     }
   }
 }
@@ -137,6 +140,8 @@ impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
       Self::Primitive(Primitive::ByteString(tc(x)))
     } else if tid == TypeId::of::<U16String>() {
       Self::Primitive(Primitive::U16String(tc(x)))
+    } else if tid == TypeId::of::<BigInt>() {
+      Self::Primitive(Primitive::BigInt(tc(x)))
     } else {
       Self::Serializable(Box::new(x))
     }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -127,10 +127,11 @@
     let callSiteEvals = ArrayPrototypeMap(callSites, evaluateCallSite);
     callSiteEvals = ArrayPrototypeMap(callSiteEvals, sourceMapCallSiteEval);
     ObjectDefineProperties(error, {
-      __callSiteEvals: { value: [], configurable: true },
+      __callSiteEvals: { __proto__: null, value: [], configurable: true },
     });
     const formattedCallSites = [];
-    for (const cse of callSiteEvals) {
+    for (let i = 0; i < callSiteEvals.length; ++i) {
+      const cse = callSiteEvals[i];
       ArrayPrototypePush(error.__callSiteEvals, cse);
       ArrayPrototypePush(formattedCallSites, formatCallSiteEval(cse));
     }

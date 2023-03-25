@@ -1,6 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use super::buffer::ZeroCopyBuf;
-use super::transl8::{FromV8, ToV8};
+use super::transl8::FromV8;
+use super::transl8::ToV8;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
 use std::ops::Deref;
@@ -23,13 +24,40 @@ impl Deref for StringOrBuffer {
   }
 }
 
+impl<'a> TryFrom<&'a StringOrBuffer> for &'a str {
+  type Error = std::str::Utf8Error;
+  fn try_from(value: &'a StringOrBuffer) -> Result<Self, Self::Error> {
+    match value {
+      StringOrBuffer::String(s) => Ok(s.as_str()),
+      StringOrBuffer::Buffer(b) => std::str::from_utf8(b.as_ref()),
+    }
+  }
+}
+
 impl ToV8 for StringOrBuffer {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     match self {
-      Self::Buffer(buf) => crate::to_v8(scope, buf),
+      Self::Buffer(buf) => {
+        let buf: Box<[u8]> = match buf {
+          ZeroCopyBuf::FromV8(buf) => {
+            let value: &[u8] = buf;
+            value.into()
+          }
+          ZeroCopyBuf::Temp(_) => unreachable!(),
+          ZeroCopyBuf::ToV8(ref mut x) => {
+            x.take().expect("ZeroCopyBuf was empty")
+          }
+        };
+        let backing_store =
+          v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+        Ok(
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store.into())
+            .into(),
+        )
+      }
       Self::String(s) => crate::to_v8(scope, s),
     }
   }

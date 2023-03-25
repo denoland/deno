@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Based on https://github.com/nodejs/node/blob/889ad35d3d41e376870f785b0c1b669cb732013d/lib/internal/per_context/primordials.js
 // Copyright Joyent, Inc. and other Node contributors.
@@ -28,6 +28,8 @@
 // Use of primordials have sometimes a dramatic impact on performance, please
 // benchmark all changes made in performance-sensitive areas of the codebase.
 // See: https://github.com/nodejs/node/pull/38248
+
+// deno-lint-ignore-file prefer-primordials
 
 "use strict";
 
@@ -260,10 +262,27 @@
       },
     },
     {
+      name: "SetIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Set()[Symbol.iterator]()),
+      },
+    },
+    {
+      name: "MapIterator",
+      original: {
+        prototype: Reflect.getPrototypeOf(new Map()[Symbol.iterator]()),
+      },
+    },
+    {
       name: "StringIterator",
       original: {
         prototype: Reflect.getPrototypeOf(String.prototype[Symbol.iterator]()),
       },
+    },
+    { name: "Generator", original: Reflect.getPrototypeOf(function* () {}) },
+    {
+      name: "AsyncGenerator",
+      original: Reflect.getPrototypeOf(async function* () {}),
     },
   ].forEach(({ name, original }) => {
     primordials[name] = original;
@@ -275,17 +294,18 @@
 
   const {
     ArrayPrototypeForEach,
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
     FunctionPrototypeCall,
-    Map,
     ObjectDefineProperty,
     ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
+    PromisePrototype,
     PromisePrototypeThen,
-    Set,
     SymbolIterator,
-    WeakMap,
-    WeakSet,
+    TypedArrayPrototypeJoin,
   } = primordials;
 
   // Because these functions are used by `makeSafe`, which is exposed
@@ -309,9 +329,18 @@
     return SafeIterator;
   };
 
-  primordials.SafeArrayIterator = createSafeIterator(
+  const SafeArrayIterator = createSafeIterator(
     primordials.ArrayPrototypeSymbolIterator,
     primordials.ArrayIteratorPrototypeNext,
+  );
+  primordials.SafeArrayIterator = SafeArrayIterator;
+  primordials.SafeSetIterator = createSafeIterator(
+    primordials.SetPrototypeSymbolIterator,
+    primordials.SetIteratorPrototypeNext,
+  );
+  primordials.SafeMapIterator = createSafeIterator(
+    primordials.MapPrototypeSymbolIterator,
+    primordials.MapIteratorPrototypeNext,
   );
   primordials.SafeStringIterator = createSafeIterator(
     primordials.StringPrototypeSymbolIterator,
@@ -406,6 +435,15 @@
     },
   );
 
+  primordials.SafeRegExp = makeSafe(
+    RegExp,
+    class SafeRegExp extends RegExp {
+      constructor(pattern, flags) {
+        super(pattern, flags);
+      }
+    },
+  );
+
   primordials.SafeFinalizationRegistry = makeSafe(
     FinalizationRegistry,
     class SafeFinalizationRegistry extends FinalizationRegistry {
@@ -433,8 +471,88 @@
     },
   );
 
+  primordials.ArrayPrototypeToString = (thisArray) =>
+    ArrayPrototypeJoin(thisArray);
+
+  primordials.TypedArrayPrototypeToString = (thisArray) =>
+    TypedArrayPrototypeJoin(thisArray);
+
   primordials.PromisePrototypeCatch = (thisPromise, onRejected) =>
     PromisePrototypeThen(thisPromise, undefined, onRejected);
+
+  const arrayToSafePromiseIterable = (array) =>
+    new SafeArrayIterator(
+      ArrayPrototypeMap(
+        array,
+        (p) => {
+          if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
+            return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
+          }
+          return p;
+        },
+      ),
+    );
+
+  /**
+   * Creates a Promise that is resolved with an array of results when all of the
+   * provided Promises resolve, or rejected when any Promise is rejected.
+   * @template T
+   * @param {Array<T | PromiseLike<T>>} values
+   * @returns {Promise<Awaited<T>[]>}
+   */
+  primordials.SafePromiseAll = (values) =>
+    // Wrapping on a new Promise is necessary to not expose the SafePromise
+    // prototype to user-land.
+    new Promise((a, b) =>
+      SafePromise.all(arrayToSafePromiseIterable(values)).then(a, b)
+    );
+
+  // NOTE: Uncomment the following functions when you need to use them
+
+  // /**
+  //  * Creates a Promise that is resolved with an array of results when all
+  //  * of the provided Promises resolve or reject.
+  //  * @template T
+  //  * @param {Array<T | PromiseLike<T>>} values
+  //  * @returns {Promise<PromiseSettledResult<T>[]>}
+  //  */
+  // primordials.SafePromiseAllSettled = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.allSettled(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
+
+  // /**
+  //  * The any function returns a promise that is fulfilled by the first given
+  //  * promise to be fulfilled, or rejected with an AggregateError containing
+  //  * an array of rejection reasons if all of the given promises are rejected.
+  //  * It resolves all elements of the passed iterable to promises as it runs
+  //  * this algorithm.
+  //  * @template T
+  //  * @param {T} values
+  //  * @returns {Promise<Awaited<T[number]>>}
+  //  */
+  // primordials.SafePromiseAny = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.any(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
+
+  // /**
+  //  * Creates a Promise that is resolved or rejected when any of the provided
+  //  * Promises are resolved or rejected.
+  //  * @template T
+  //  * @param {T} values
+  //  * @returns {Promise<Awaited<T[number]>>}
+  //  */
+  // primordials.SafePromiseRace = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.race(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
 
   /**
    * Attaches a callback that is invoked when the Promise is settled (fulfilled or
@@ -467,6 +585,11 @@
     }
     queueMicrotask = value;
   };
+
+  // Renaming from `eval` is necessary because otherwise it would perform direct
+  // evaluation, allowing user-land access to local variables.
+  // This is because the identifier `eval` is somewhat treated as a keyword
+  primordials.indirectEval = eval;
 
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);

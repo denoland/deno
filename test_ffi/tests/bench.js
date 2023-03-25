@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -15,6 +15,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
   "ffi_string": { parameters: [], result: "pointer" },
   "hash": { parameters: ["buffer", "u32"], result: "u32" },
+  "nop_bool": { parameters: ["bool"], result: "void" },
   "nop_u8": { parameters: ["u8"], result: "void" },
   "nop_i8": { parameters: ["i8"], result: "void" },
   "nop_u16": { parameters: ["u16"], result: "void" },
@@ -28,6 +29,7 @@ const dylib = Deno.dlopen(libPath, {
   "nop_f32": { parameters: ["f32"], result: "void" },
   "nop_f64": { parameters: ["f64"], result: "void" },
   "nop_buffer": { parameters: ["buffer"], result: "void" },
+  "return_bool": { parameters: [], result: "bool" },
   "return_u8": { parameters: [], result: "u8" },
   "return_i8": { parameters: [], result: "i8" },
   "return_u16": { parameters: [], result: "u16" },
@@ -43,6 +45,11 @@ const dylib = Deno.dlopen(libPath, {
   "return_buffer": { parameters: [], result: "buffer" },
   // Nonblocking calls
   "nop_nonblocking": { name: "nop", parameters: [], result: "void" },
+  "nop_bool_nonblocking": {
+    name: "nop_bool",
+    parameters: ["bool"],
+    result: "void",
+  },
   "nop_u8_nonblocking": { name: "nop_u8", parameters: ["u8"], result: "void" },
   "nop_i8_nonblocking": { name: "nop_i8", parameters: ["i8"], result: "void" },
   "nop_u16_nonblocking": {
@@ -99,6 +106,11 @@ const dylib = Deno.dlopen(libPath, {
     name: "nop_buffer",
     parameters: ["buffer"],
     result: "void",
+  },
+  "return_bool_nonblocking": {
+    name: "return_bool",
+    parameters: [],
+    result: "bool",
   },
   "return_u8_nonblocking": { name: "return_u8", parameters: [], result: "u8" },
   "return_i8_nonblocking": { name: "return_i8", parameters: [], result: "i8" },
@@ -239,7 +251,7 @@ Deno.bench("hash()", () => {
 const { ffi_string } = dylib.symbols;
 Deno.bench(
   "c string",
-  () => new Deno.UnsafePointerView(ffi_string()).getCString(),
+  () => Deno.UnsafePointerView.getCString(ffi_string()),
 );
 
 const { add_u32 } = dylib.symbols;
@@ -265,6 +277,11 @@ Deno.bench("return_u64()", () => {
 const { return_i64 } = dylib.symbols;
 Deno.bench("return_i64()", () => {
   return_i64();
+});
+
+const { nop_bool } = dylib.symbols;
+Deno.bench("nop_bool()", () => {
+  nop_bool(true);
 });
 
 const { nop_u8 } = dylib.symbols;
@@ -337,10 +354,13 @@ Deno.bench("nop_f64()", () => {
 
 const { nop_buffer } = dylib.symbols;
 const buffer = new Uint8Array(8).fill(5);
-// Make sure the buffer does not get collected
-globalThis.buffer = buffer;
 Deno.bench("nop_buffer()", () => {
   nop_buffer(buffer);
+});
+
+const { return_bool } = dylib.symbols;
+Deno.bench("return_bool()", () => {
+  return_bool();
 });
 
 const { return_u8 } = dylib.symbols;
@@ -398,6 +418,11 @@ Deno.bench("return_f64()", () => {
 const { nop_nonblocking } = dylib.symbols;
 Deno.bench("nop_nonblocking()", async () => {
   await nop_nonblocking();
+});
+
+const { nop_bool_nonblocking } = dylib.symbols;
+Deno.bench("nop_bool_nonblocking()", async () => {
+  await nop_bool_nonblocking(true);
 });
 
 const { nop_u8_nonblocking } = dylib.symbols;
@@ -465,6 +490,12 @@ const { nop_buffer_nonblocking } = dylib.symbols;
 Deno.bench("nop_buffer_nonblocking()", async () => {
   await nop_buffer_nonblocking(buffer);
 });
+
+const { return_bool_nonblocking } = dylib.symbols;
+Deno.bench("return_bool_nonblocking()", async () => {
+  await return_bool_nonblocking();
+});
+
 const { return_u8_nonblocking } = dylib.symbols;
 Deno.bench("return_u8_nonblocking()", async () => {
   await return_u8_nonblocking();
@@ -532,8 +563,6 @@ Deno.bench("return_buffer_nonblocking()", async () => {
 
 const { nop_many_parameters } = dylib.symbols;
 const buffer2 = new Uint8Array(8).fill(25);
-// Make sure the buffer does not get collected
-globalThis.buffer2 = buffer2;
 Deno.bench("nop_many_parameters()", () => {
   nop_many_parameters(
     135,
@@ -602,11 +631,57 @@ Deno.bench("Deno.UnsafePointer.of", () => {
 });
 
 const cstringBuffer = new TextEncoder().encode("Best believe it!\0");
-// Make sure the buffer does not get collected
-globalThis.cstringBuffer = cstringBuffer;
 const cstringPointerView = new Deno.UnsafePointerView(
   Deno.UnsafePointer.of(cstringBuffer),
 );
 Deno.bench("Deno.UnsafePointerView#getCString", () => {
   cstringPointerView.getCString();
+});
+
+const bufferPointerView = new Deno.UnsafePointerView(
+  Deno.UnsafePointer.of(buffer),
+);
+
+Deno.bench("Deno.UnsafePointerView#getBool", () => {
+  bufferPointerView.getBool();
+});
+
+Deno.bench("Deno.UnsafePointerView#getUint8", () => {
+  bufferPointerView.getUint8();
+});
+
+Deno.bench("Deno.UnsafePointerView#getInt8", () => {
+  bufferPointerView.getInt8();
+});
+
+Deno.bench("Deno.UnsafePointerView#getUint16", () => {
+  bufferPointerView.getUint16();
+});
+
+Deno.bench("Deno.UnsafePointerView#getInt16", () => {
+  bufferPointerView.getInt16();
+});
+
+Deno.bench("Deno.UnsafePointerView#getUint32", () => {
+  bufferPointerView.getUint32();
+});
+
+Deno.bench("Deno.UnsafePointerView#getInt32", () => {
+  bufferPointerView.getInt32();
+});
+
+Deno.bench("Deno.UnsafePointerView#getBigUint64", () => {
+  bufferPointerView.getBigUint64();
+});
+
+Deno.bench("Deno.UnsafePointerView#getBigInt64", () => {
+  bufferPointerView.getBigInt64();
+});
+
+Deno.bench("Deno.UnsafePointerView#getFloat32", () => {
+  bufferPointerView.getFloat32();
+});
+
+Deno.bench("Deno.UnsafePointerView#getFloat64", () => {
+  bufferPointerView.getFloat64();
 });

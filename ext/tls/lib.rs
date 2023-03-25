@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub use rustls;
 pub use rustls_native_certs;
@@ -10,7 +10,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::Extension;
 
 use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
@@ -35,10 +34,8 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-/// This extension has no runtime apis, it only exports some shared native functions.
-pub fn init() -> Extension {
-  Extension::builder().build()
-}
+// This extension has no runtime apis, it only exports some shared native functions.
+deno_core::extension!(deno_tls);
 
 struct DefaultSignatureVerification;
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, createOctoKit, getGitHubRepository } from "./deps.ts";
 
@@ -36,7 +36,7 @@ function getPrBody() {
     `Please ensure:\n` +
     `- [ ] Target branch is correct\n` +
     `- [ ] Crate versions are bumped correctly\n` +
-    `- [ ] deno_std version is incremented in the code (see \`cli/compat/mod.rs\`)\n` +
+    `- [ ] deno_std version is incremented in the code (see \`cli/deno_std.rs\`)\n` +
     `- [ ] Releases.md is updated correctly\n\n` +
     `To make edits to this PR:\n` +
     "```shell\n" +

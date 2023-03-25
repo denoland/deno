@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -236,8 +236,8 @@ Deno.test(function consoleTestStringifyCircular() {
   nu: null,
   arrowFunc: [Function: arrowFunc],
   extendedClass: Extended { a: 1, b: 2 },
-  nFunc: [Function],
-  extendedCstr: [Function: Extended],
+  nFunc: [Function (anonymous)],
+  extendedCstr: [Class: Extended],
   o: {
     num: 2,
     bool: false,
@@ -336,6 +336,9 @@ Deno.test(function consoleTestStringifyCircular() {
   groupEnd: [Function: groupEnd],
   clear: [Function: clear],
   trace: [Function: trace],
+  profile: [Function: profile],
+  profileEnd: [Function: profileEnd],
+  timeStamp: [Function: timeStamp],
   indentLevel: 0,
   [Symbol(isConsoleInstance)]: true
 }`,
@@ -392,7 +395,13 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
+  f: [Function: f] {
+    x: [Function (anonymous)],
+    y: 3,
+    z: [Function (anonymous)],
+    b: [Function: bar],
+    a: Map {}
+  }
 }`,
   );
 
@@ -404,9 +413,9 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
     stringify({ f }),
     `{
   f: <ref *1> [Function: f] {
-    x: [Function],
+    x: [Function (anonymous)],
     y: 3,
-    z: [Function],
+    z: [Function (anonymous)],
     b: [Function: bar],
     a: Map {},
     s: [Circular *1],
@@ -759,7 +768,64 @@ Deno.test(function consoleTestStringifyIterable() {
     `[ <4 empty items>, 0, 0, <4 empty items> ]`,
   );
 
-  /* TODO(ry) Fix this test
+  const emptyArray = Array(5000);
+  assertEquals(
+    stringify(emptyArray),
+    `[ <5000 empty items> ]`,
+  );
+
+  assertEquals(
+    stringify(Array(1)),
+    `[ <1 empty item> ]`,
+  );
+
+  assertEquals(
+    stringify([, , 1]),
+    `[ <2 empty items>, 1 ]`,
+  );
+
+  assertEquals(
+    stringify([1, , , 1]),
+    `[ 1, <2 empty items>, 1 ]`,
+  );
+
+  const withEmptyElAndMoreItems = Array(500);
+  withEmptyElAndMoreItems.fill(0, 50, 80);
+  withEmptyElAndMoreItems.fill(2, 100, 120);
+  withEmptyElAndMoreItems.fill(3, 140, 160);
+  withEmptyElAndMoreItems.fill(4, 180);
+  assertEquals(
+    stringify(withEmptyElAndMoreItems),
+    `[
+  <50 empty items>, 0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, <20 empty items>,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  <20 empty items>, 3,                3, 3,
+  3,                3,                3, 3,
+  3,                3,                3, 3,
+  3,                3,                3, 3,
+  3,                3,                3, 3,
+  3,                <20 empty items>, 4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  ... 294 more items
+]`,
+  );
+
   const lWithEmptyEl = Array(200);
   lWithEmptyEl.fill(0, 50, 80);
   assertEquals(
@@ -776,9 +842,8 @@ Deno.test(function consoleTestStringifyIterable() {
   0,                0,                 0,
   0,                0,                 0,
   0,                <120 empty items>
-]`
+]`,
   );
-  */
 });
 
 Deno.test(function consoleTestStringifyIterableWhenGrouped() {
@@ -1336,7 +1401,8 @@ Deno.test(function consoleTable() {
     console.table({ a: "test", b: 1 });
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬────────┐
+      `\
+┌───────┬────────┐
 │ (idx) │ Values │
 ├───────┼────────┤
 │ a     │ "test" │
@@ -1349,7 +1415,8 @@ Deno.test(function consoleTable() {
     console.table({ a: { b: 10 }, b: { b: 20, c: 30 } }, ["c"]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬────┐
+      `\
+┌───────┬────┐
 │ (idx) │ c  │
 ├───────┼────┤
 │ a     │    │
@@ -1359,10 +1426,26 @@ Deno.test(function consoleTable() {
     );
   });
   mockConsole((console, out) => {
+    console.table([[1, 1], [234, 2.34], [56789, 56.789]]);
+    assertEquals(
+      stripColor(out.toString()),
+      `\
+┌───────┬───────┬────────┐
+│ (idx) │ 0     │ 1      │
+├───────┼───────┼────────┤
+│     0 │     1 │ 1      │
+│     1 │   234 │ 2.34   │
+│     2 │ 56789 │ 56.789 │
+└───────┴───────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
     console.table([1, 2, [3, [4]], [5, 6], [[7], [8]]]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬───────┬───────┬────────┐
+      `\
+┌───────┬───────┬───────┬────────┐
 │ (idx) │ 0     │ 1     │ Values │
 ├───────┼───────┼───────┼────────┤
 │     0 │       │       │      1 │
@@ -1378,7 +1461,8 @@ Deno.test(function consoleTable() {
     console.table(new Set([1, 2, 3, "test"]));
     assertEquals(
       stripColor(out.toString()),
-      `┌────────────┬────────┐
+      `\
+┌────────────┬────────┐
 │ (iter idx) │ Values │
 ├────────────┼────────┤
 │          0 │ 1      │
@@ -1398,7 +1482,8 @@ Deno.test(function consoleTable() {
     );
     assertEquals(
       stripColor(out.toString()),
-      `┌────────────┬─────┬────────┐
+      `\
+┌────────────┬─────┬────────┐
 │ (iter idx) │ Key │ Values │
 ├────────────┼─────┼────────┤
 │          0 │   1 │ "one"  │
@@ -1417,7 +1502,8 @@ Deno.test(function consoleTable() {
     });
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬───────────┬───────────────────┬────────┐
+      `\
+┌───────┬───────────┬───────────────────┬────────┐
 │ (idx) │ c         │ e                 │ Values │
 ├───────┼───────────┼───────────────────┼────────┤
 │ a     │           │                   │ true   │
@@ -1439,7 +1525,8 @@ Deno.test(function consoleTable() {
     ]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬────────┬──────────────────────┬────┬────────┐
+      `\
+┌───────┬────────┬──────────────────────┬────┬────────┐
 │ (idx) │ 0      │ 1                    │ a  │ Values │
 ├───────┼────────┼──────────────────────┼────┼────────┤
 │     0 │        │                      │    │ 1      │
@@ -1455,7 +1542,8 @@ Deno.test(function consoleTable() {
     console.table([]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┐
+      `\
+┌───────┐
 │ (idx) │
 ├───────┤
 └───────┘
@@ -1466,7 +1554,8 @@ Deno.test(function consoleTable() {
     console.table({});
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┐
+      `\
+┌───────┐
 │ (idx) │
 ├───────┤
 └───────┘
@@ -1477,7 +1566,8 @@ Deno.test(function consoleTable() {
     console.table(new Set());
     assertEquals(
       stripColor(out.toString()),
-      `┌────────────┐
+      `\
+┌────────────┐
 │ (iter idx) │
 ├────────────┤
 └────────────┘
@@ -1488,7 +1578,8 @@ Deno.test(function consoleTable() {
     console.table(new Map());
     assertEquals(
       stripColor(out.toString()),
-      `┌────────────┐
+      `\
+┌────────────┐
 │ (iter idx) │
 ├────────────┤
 └────────────┘
@@ -1503,7 +1594,8 @@ Deno.test(function consoleTable() {
     console.table(["Hello", "你好", "Amapá"]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬─────────┐
+      `\
+┌───────┬─────────┐
 │ (idx) │ Values  │
 ├───────┼─────────┤
 │     0 │ "Hello" │
@@ -1520,7 +1612,8 @@ Deno.test(function consoleTable() {
     ]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬───┬───┐
+      `\
+┌───────┬───┬───┐
 │ (idx) │ 0 │ 1 │
 ├───────┼───┼───┤
 │     0 │ 1 │ 2 │
@@ -1533,7 +1626,8 @@ Deno.test(function consoleTable() {
     console.table({ 1: { a: 4, b: 5 }, 2: null, 3: { b: 6, c: 7 } }, ["b"]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬───┐
+      `\
+┌───────┬───┐
 │ (idx) │ b │
 ├───────┼───┤
 │     1 │ 5 │
@@ -1547,7 +1641,8 @@ Deno.test(function consoleTable() {
     console.table([{ a: 0 }, { a: 1, b: 1 }, { a: 2 }, { a: 3, b: 3 }]);
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬───┬───┐
+      `\
+┌───────┬───┬───┐
 │ (idx) │ a │ b │
 ├───────┼───┼───┤
 │     0 │ 0 │   │
@@ -1565,7 +1660,8 @@ Deno.test(function consoleTable() {
     );
     assertEquals(
       stripColor(out.toString()),
-      `┌───────┬───┬───┬───┐
+      `\
+┌───────┬───┬───┬───┐
 │ (idx) │ a │ b │ c │
 ├───────┼───┼───┼───┤
 │     0 │ 0 │   │   │
@@ -1629,6 +1725,15 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
     const proxiedMap = new Proxy(new Map(), {});
     console.log(proxiedMap);
     assertEquals(stripColor(out.toString()), "Map {}\n");
+  });
+});
+
+// console.log(new Proxy(new Date(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedDate() {
+  mockConsole((console, out) => {
+    const proxiedDate = new Proxy(new Date("2022-09-24T15:59:39.529Z"), {});
+    console.log(proxiedDate);
+    assertEquals(stripColor(out.toString()), "2022-09-24T15:59:39.529Z\n");
   });
 });
 
@@ -1918,7 +2023,7 @@ Deno.test(function inspectErrorCircular() {
     cause: new Error("This is a cause error"),
   });
   error1.cause = error1;
-  assert(error2.cause);
+  assert(error2.cause instanceof Error);
   error2.cause.cause = error2;
 
   assertStringIncludes(
@@ -2025,5 +2130,65 @@ Deno.test(function inspectStringAbbreviation() {
   assertEquals(
     Deno.inspect(arr, { strAbbreviateSize: 10 }),
     '[ "This is a ..." ]',
+  );
+});
+
+Deno.test(async function inspectAggregateError() {
+  try {
+    await Promise.any([]);
+  } catch (err) {
+    assertEquals(
+      Deno.inspect(err).trimEnd(),
+      "AggregateError: All promises were rejected",
+    );
+  }
+});
+
+Deno.test(function inspectWithPrototypePollution() {
+  const originalExec = RegExp.prototype.exec;
+  try {
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
+    Deno.inspect("foo");
+  } finally {
+    RegExp.prototype.exec = originalExec;
+  }
+});
+
+Deno.test(function inspectorMethods() {
+  console.timeStamp("test");
+  console.profile("test");
+  console.profileEnd("test");
+});
+
+Deno.test(function inspectQuotesOverride() {
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("foo", { quotes: ["'", '"', "`"] }),
+    "'foo'",
+  );
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("'foo'", { quotes: ["'", '"', "`"] }),
+    `"'foo'"`,
+  );
+});
+
+Deno.test(function inspectAnonymousFunctions() {
+  assertEquals(Deno.inspect(() => {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(function () {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(async () => {}), "[AsyncFunction (anonymous)]");
+  assertEquals(
+    Deno.inspect(async function () {}),
+    "[AsyncFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(function* () {}),
+    "[GeneratorFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(async function* () {}),
+    "[AsyncGeneratorFunction (anonymous)]",
   );
 });

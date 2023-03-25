@@ -1,16 +1,27 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use serde::ser;
 use serde::ser::Serialize;
 
 use std::cell::RefCell;
+use std::ops::DerefMut;
 
-use crate::error::{Error, Result};
+use crate::error::Error;
+use crate::error::Result;
 use crate::keys::v8_struct_key;
+use crate::magic;
+use crate::magic::transl8::opaque_deref_mut;
+use crate::magic::transl8::opaque_recv;
+use crate::magic::transl8::MagicType;
+use crate::magic::transl8::ToV8;
 use crate::magic::transl8::MAGIC_FIELD;
-use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
-use crate::{
-  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
-};
+use crate::AnyValue;
+use crate::BigInt;
+use crate::ByteString;
+use crate::DetachedBuffer;
+use crate::ExternalPointer;
+use crate::StringOrBuffer;
+use crate::U16String;
+use crate::ZeroCopyBuf;
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
@@ -253,7 +264,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 
   fn end(self) -> JsResult<'a> {
     // SAFETY: transerialization assumptions imply `T` is still alive.
-    let x: &T = unsafe { opaque_deref(self.opaque) };
+    let x: &mut T = unsafe { opaque_deref_mut(self.opaque) };
     let scope = &mut *self.scope.borrow_mut();
     x.to_v8(scope)
   }
@@ -261,12 +272,15 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 
 // Dispatches between magic and regular struct serializers
 pub enum StructSerializers<'a, 'b, 'c> {
+  ExternalPointer(MagicalSerializer<'a, 'b, 'c, magic::ExternalPointer>),
   Magic(MagicalSerializer<'a, 'b, 'c, magic::Value<'a>>),
   ZeroCopyBuf(MagicalSerializer<'a, 'b, 'c, ZeroCopyBuf>),
+  MagicAnyValue(MagicalSerializer<'a, 'b, 'c, AnyValue>),
   MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
   MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
   MagicStringOrBuffer(MagicalSerializer<'a, 'b, 'c, StringOrBuffer>),
+  MagicBigInt(MagicalSerializer<'a, 'b, 'c, BigInt>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -280,26 +294,32 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
     value: &T,
   ) -> Result<()> {
     match self {
+      StructSerializers::ExternalPointer(s) => s.serialize_field(key, value),
       StructSerializers::Magic(s) => s.serialize_field(key, value),
       StructSerializers::ZeroCopyBuf(s) => s.serialize_field(key, value),
+      StructSerializers::MagicAnyValue(s) => s.serialize_field(key, value),
       StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
       StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::MagicU16String(s) => s.serialize_field(key, value),
       StructSerializers::MagicStringOrBuffer(s) => {
         s.serialize_field(key, value)
       }
+      StructSerializers::MagicBigInt(s) => s.serialize_field(key, value),
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
   }
 
   fn end(self) -> JsResult<'a> {
     match self {
+      StructSerializers::ExternalPointer(s) => s.end(),
       StructSerializers::Magic(s) => s.end(),
       StructSerializers::ZeroCopyBuf(s) => s.end(),
+      StructSerializers::MagicAnyValue(s) => s.end(),
       StructSerializers::MagicDetached(s) => s.end(),
       StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::MagicU16String(s) => s.end(),
       StructSerializers::MagicStringOrBuffer(s) => s.end(),
+      StructSerializers::MagicBigInt(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
   }
@@ -377,6 +397,9 @@ macro_rules! forward_to {
     };
 }
 
+pub(crate) const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+pub(crate) const MIN_SAFE_INTEGER: i64 = -MAX_SAFE_INTEGER;
+
 impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   type Ok = v8::Local<'a, v8::Value>;
   type Error = Error;
@@ -399,8 +422,6 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       serialize_u16(u16, serialize_u32, 'a);
 
       serialize_f32(f32, serialize_f64, 'a);
-      serialize_u64(u64, serialize_f64, 'a);
-      serialize_i64(i64, serialize_f64, 'a);
   }
 
   fn serialize_i32(self, v: i32) -> JsResult<'a> {
@@ -411,12 +432,35 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     Ok(v8::Integer::new_from_unsigned(&mut self.scope.borrow_mut(), v).into())
   }
 
+  fn serialize_i64(self, v: i64) -> JsResult<'a> {
+    let s = &mut self.scope.borrow_mut();
+    // If i64 can fit in max safe integer bounds then serialize as v8::Number
+    // otherwise serialize as v8::BigInt
+    if (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v) {
+      Ok(v8::Number::new(s, v as _).into())
+    } else {
+      Ok(v8::BigInt::new_from_i64(s, v).into())
+    }
+  }
+
+  fn serialize_u64(self, v: u64) -> JsResult<'a> {
+    let s = &mut self.scope.borrow_mut();
+    // If u64 can fit in max safe integer bounds then serialize as v8::Number
+    // otherwise serialize as v8::BigInt
+    if v <= (MAX_SAFE_INTEGER as u64) {
+      Ok(v8::Number::new(s, v as _).into())
+    } else {
+      Ok(v8::BigInt::new_from_u64(s, v).into())
+    }
+  }
+
   fn serialize_f64(self, v: f64) -> JsResult<'a> {
-    Ok(v8::Number::new(&mut self.scope.borrow_mut(), v).into())
+    let scope = &mut self.scope.borrow_mut();
+    Ok(v8::Number::new(scope.deref_mut(), v).into())
   }
 
   fn serialize_bool(self, v: bool) -> JsResult<'a> {
-    Ok(v8::Boolean::new(&mut self.scope.borrow_mut(), v).into())
+    Ok(v8::Boolean::new(&mut *self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_char(self, v: char) -> JsResult<'a> {
@@ -424,11 +468,16 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_str(self, v: &str) -> JsResult<'a> {
-    Ok(
-      v8::String::new(&mut self.scope.borrow_mut(), v)
-        .unwrap()
-        .into(),
-    )
+    let maybe_str = v8::String::new(&mut self.scope.borrow_mut(), v);
+
+    // v8 string can return 'None' if buffer length > kMaxLength.
+    if let Some(str) = maybe_str {
+      Ok(str.into())
+    } else {
+      Err(Error::Message(String::from(
+        "Cannot allocate String: buffer exceeds maximum length.",
+      )))
+    }
   }
 
   fn serialize_bytes(self, v: &[u8]) -> JsResult<'a> {
@@ -436,7 +485,7 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_none(self) -> JsResult<'a> {
-    Ok(v8::null(&mut self.scope.borrow_mut()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> JsResult<'a> {
@@ -444,11 +493,11 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_unit(self) -> JsResult<'a> {
-    Ok(v8::null(&mut self.scope.borrow_mut()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   fn serialize_unit_struct(self, _name: &'static str) -> JsResult<'a> {
-    Ok(v8::null(&mut self.scope.borrow_mut()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   /// For compatibility with serde-json, serialises unit variants as "Variant" strings.
@@ -527,6 +576,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     len: usize,
   ) -> Result<Self::SerializeStruct> {
     match name {
+      magic::ExternalPointer::MAGIC_NAME => {
+        let m = MagicalSerializer::<ExternalPointer>::new(self.scope);
+        Ok(StructSerializers::ExternalPointer(m))
+      }
       ByteString::MAGIC_NAME => {
         let m = MagicalSerializer::<ByteString>::new(self.scope);
         Ok(StructSerializers::MagicByteString(m))
@@ -539,6 +592,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
         let m = MagicalSerializer::<ZeroCopyBuf>::new(self.scope);
         Ok(StructSerializers::ZeroCopyBuf(m))
       }
+      AnyValue::MAGIC_NAME => {
+        let m = MagicalSerializer::<AnyValue>::new(self.scope);
+        Ok(StructSerializers::MagicAnyValue(m))
+      }
       DetachedBuffer::MAGIC_NAME => {
         let m = MagicalSerializer::<DetachedBuffer>::new(self.scope);
         Ok(StructSerializers::MagicDetached(m))
@@ -546,6 +603,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       StringOrBuffer::MAGIC_NAME => {
         let m = MagicalSerializer::<StringOrBuffer>::new(self.scope);
         Ok(StructSerializers::MagicStringOrBuffer(m))
+      }
+      BigInt::MAGIC_NAME => {
+        let m = MagicalSerializer::<BigInt>::new(self.scope);
+        Ok(StructSerializers::MagicBigInt(m))
       }
       magic::Value::MAGIC_NAME => {
         let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);

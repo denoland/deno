@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@denotest/check-error": "1.0.0",
+    "chalk": "4"
+  },
+  "devDependencies": {
+    "@denotest/cjs-default-export": "1.0.0"
+  }
+}

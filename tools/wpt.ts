@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
 
@@ -25,14 +25,16 @@ import {
   ManifestFolder,
   ManifestTestOptions,
   ManifestTestVariation,
+  noIgnore,
   quiet,
   rest,
   runPy,
   updateManifest,
   wptreport,
 } from "./wpt/utils.ts";
+import { pooledMap } from "../test_util/std/async/pool.ts";
 import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/streams/conversion.ts";
+import { writeAll, writeAllSync } from "../test_util/std/streams/write_all.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -155,18 +157,37 @@ async function run() {
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
-    const results = [];
+    const results: { test: TestToRun; result: TestResult }[] = [];
+    const cores = navigator.hardwareConcurrency;
+    const inParallel = !(cores === 1 || tests.length === 1);
+    // ideally we would parallelize all tests, but we ran into some flakiness
+    // on the CI, so here we're partitioning based on the start of the test path
+    const partitionedTests = partitionTests(tests);
 
-    for (const test of tests) {
-      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
-      const result = await runSingleTest(
-        test.url,
-        test.options,
-        createReportTestCase(test.expectation),
-        inspectBrk,
-      );
-      results.push({ test, result });
-      reportVariation(result, test.expectation);
+    const iter = pooledMap(cores, partitionedTests, async (tests) => {
+      for (const test of tests) {
+        if (!inParallel) {
+          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+        }
+        const result = await runSingleTest(
+          test.url,
+          test.options,
+          inParallel ? () => {} : createReportTestCase(test.expectation),
+          inspectBrk,
+          Deno.env.get("CI")
+            ? { long: 4 * 60_000, default: 4 * 60_000 }
+            : { long: 60_000, default: 10_000 },
+        );
+        results.push({ test, result });
+        if (inParallel) {
+          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+        }
+        reportVariation(result, test.expectation);
+      }
+    });
+
+    for await (const _ of iter) {
+      // ignore
     }
 
     return results;
@@ -228,8 +249,10 @@ async function generateWptReport(
         if (!case_.passed) {
           if (typeof test.expectation === "boolean") {
             expected = test.expectation ? "PASS" : "FAIL";
-          } else {
+          } else if (Array.isArray(test.expectation)) {
             expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          } else {
+            expected = "PASS";
           }
         }
 
@@ -268,7 +291,7 @@ function assertAllExpectationsHaveTests(
   const missingTests: string[] = [];
 
   function walk(parentExpectation: Expectation, parent: string) {
-    for (const key in parentExpectation) {
+    for (const [key, expectation] of Object.entries(parentExpectation)) {
       const path = `${parent}/${key}`;
       if (
         filter &&
@@ -276,7 +299,6 @@ function assertAllExpectationsHaveTests(
       ) {
         continue;
       }
-      const expectation = parentExpectation[key];
       if (typeof expectation == "boolean" || Array.isArray(expectation)) {
         if (!tests.has(path)) {
           missingTests.push(path);
@@ -316,6 +338,7 @@ async function update() {
         test.options,
         json ? () => {} : createReportTestCase(test.expectation),
         inspectBrk,
+        { long: 60_000, default: 10_000 },
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -351,8 +374,8 @@ async function update() {
 
   const currentExpectation = getExpectation();
 
-  for (const path in resultTests) {
-    const { passed, failed, testSucceeded } = resultTests[path];
+  for (const [path, result] of Object.entries(resultTests)) {
+    const { passed, failed, testSucceeded } = result;
     let finalExpectation: boolean | string[];
     if (failed.length == 0 && testSucceeded) {
       finalExpectation = true;
@@ -638,9 +661,7 @@ function discoverTestsToRun(
     parentExpectation: Expectation | string[] | boolean,
     prefix: string,
   ) {
-    for (const key in parentFolder) {
-      const entry = parentFolder[key];
-
+    for (const [key, entry] of Object.entries(parentFolder)) {
       if (Array.isArray(entry)) {
         for (
           const [path, options] of entry.slice(
@@ -679,10 +700,22 @@ function discoverTestsToRun(
 
           if (expectation === undefined) continue;
 
-          assert(
-            Array.isArray(expectation) || typeof expectation == "boolean",
-            "test entry must not have a folder expectation",
-          );
+          if (typeof expectation === "object") {
+            if (typeof expectation.ignore !== "undefined") {
+              assert(
+                typeof expectation.ignore === "boolean",
+                "test entry's `ignore` key must be a boolean",
+              );
+              if (expectation.ignore === true && !noIgnore) continue;
+            }
+          }
+
+          if (!noIgnore) {
+            assert(
+              Array.isArray(expectation) || typeof expectation == "boolean",
+              "test entry must not have a folder expectation",
+            );
+          }
 
           if (
             filter &&
@@ -712,4 +745,17 @@ function discoverTestsToRun(
   walk(manifestFolder, expectation, "");
 
   return testsToRun;
+}
+
+function partitionTests(tests: TestToRun[]): TestToRun[][] {
+  const testsByKey: { [key: string]: TestToRun[] } = {};
+  for (const test of tests) {
+    // Paths looks like: /fetch/corb/img-html-correctly-labeled.sub-ref.html
+    const key = test.path.split("/")[1];
+    if (!(key in testsByKey)) {
+      testsByKey[key] = [];
+    }
+    testsByKey[key].push(test);
+  }
+  return Object.values(testsByKey);
 }

@@ -5,12 +5,16 @@
 
 /.cargo_home/
 /.idea/
+/.vs/
 /.vscode/
 gclient_config.py_entries
 /gh-pages/
 /target/
 /std/hash/_wasm/target
 /tools/wpt/manifest.json
+/test_napi/node_modules
+/test_napi/build
+/test_napi/third_party_tests/node_modules
 
 # Files that help ensure VSCode can work but we don't want checked into the
 # repo

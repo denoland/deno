@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 ///!
 ///! Provides information about what capabilities that are supported by the
@@ -19,7 +19,7 @@ fn code_action_capabilities(
     .as_ref()
     .and_then(|it| it.code_action.as_ref())
     .and_then(|it| it.code_action_literal_support.as_ref())
-    .map_or(CodeActionProviderCapability::Simple(true), |_| {
+    .map(|_| {
       let mut code_action_kinds =
         vec![CodeActionKind::QUICKFIX, CodeActionKind::REFACTOR];
       code_action_kinds.extend(
@@ -34,6 +34,7 @@ fn code_action_capabilities(
         work_done_progress_options: Default::default(),
       })
     })
+    .unwrap_or(CodeActionProviderCapability::Simple(true))
 }
 
 pub fn server_capabilities(
@@ -58,6 +59,7 @@ pub fn server_capabilities(
         ";".to_string(),
         "(".to_string(),
       ]),
+      completion_item: None,
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
@@ -140,5 +142,7 @@ pub fn server_capabilities(
       "denoConfigTasks": true,
       "testingApi":true,
     })),
+    inlay_hint_provider: Some(OneOf::Left(true)),
+    position_encoding: None,
   }
 }

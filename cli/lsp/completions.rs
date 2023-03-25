@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
 use super::config::ConfigSnapshot;
@@ -7,8 +7,9 @@ use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
-use crate::fs_util::is_supported_ext;
-use crate::fs_util::specifier_to_file_path;
+use crate::util::path::is_supported_ext;
+use crate::util::path::relative_specifier;
+use crate::util::path::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -47,7 +48,7 @@ pub struct CompletionItemData {
 async fn check_auto_config_registry(
   url_str: &str,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
@@ -77,14 +78,12 @@ async fn check_auto_config_registry(
           // incompatible.
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
-            client
-              .send_registry_state_notification(
-                lsp_custom::RegistryStateNotificationParams {
-                  origin,
-                  suggestions,
-                },
-              )
-              .await;
+            client.send_registry_state_notification(
+              lsp_custom::RegistryStateNotificationParams {
+                origin,
+                suggestions,
+              },
+            );
           }
         }
       }
@@ -138,7 +137,7 @@ pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,
@@ -323,7 +322,7 @@ fn get_import_map_completions(
             new_text: label.clone(),
           }));
           items.push(lsp::CompletionItem {
-            label: label.clone(),
+            label,
             kind,
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
@@ -367,6 +366,7 @@ fn get_local_completions(
   } else {
     false
   };
+  let cwd = std::env::current_dir().ok()?;
   if current_path.is_dir() {
     let items = std::fs::read_dir(current_path).ok()?;
     Some(
@@ -374,11 +374,11 @@ fn get_local_completions(
         .filter_map(|de| {
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier = resolve_path(de.path().to_str()?).ok()?;
+          let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
           if &entry_specifier == base {
             return None;
           }
-          let full_text = relative_specifier(&entry_specifier, base);
+          let full_text = relative_specifier(base, &entry_specifier)?;
           // this weeds out situations where we are browsing in the parent, but
           // we want to filter out non-matches when the completion is manually
           // invoked by the user, but still allows for things like `../src/../`
@@ -393,7 +393,7 @@ fn get_local_completions(
           let filter_text = if full_text.starts_with(current) {
             Some(full_text)
           } else {
-            Some(format!("{}{}", current, label))
+            Some(format!("{current}{label}"))
           };
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
@@ -443,7 +443,7 @@ fn get_relative_specifiers(
     .iter()
     .filter_map(|s| {
       if s != base {
-        Some(relative_specifier(s, base))
+        Some(relative_specifier(base, s).unwrap_or_else(|| s.to_string()))
       } else {
         None
       }
@@ -469,7 +469,7 @@ fn get_workspace_completions(
   specifier_strings
     .into_iter()
     .filter_map(|label| {
-      if label.starts_with(&current) {
+      if label.starts_with(current) {
         let detail = Some(
           if label.starts_with("http:") || label.starts_with("https:") {
             "(remote)".to_string()
@@ -501,107 +501,10 @@ fn get_workspace_completions(
     .collect()
 }
 
-/// Converts a specifier into a relative specifier to the provided base
-/// specifier as a string.  If a relative path cannot be found, then the
-/// specifier is simply returned as a string.
-///
-/// ```
-/// use deno_core::resolve_url;
-///
-/// let specifier = resolve_url("file:///a/b.ts").unwrap();
-/// let base = resolve_url("file:///a/c/d.ts").unwrap();
-/// assert_eq!(relative_specifier(&specifier, &base), "../b.ts");
-/// ```
-///
-pub fn relative_specifier(
-  specifier: &ModuleSpecifier,
-  base: &ModuleSpecifier,
-) -> String {
-  if specifier.cannot_be_a_base()
-    || base.cannot_be_a_base()
-    || specifier.scheme() != base.scheme()
-    || specifier.host() != base.host()
-    || specifier.port_or_known_default() != base.port_or_known_default()
-  {
-    if specifier.scheme() == "file" {
-      specifier_to_file_path(specifier)
-        .unwrap()
-        .to_string_lossy()
-        .into()
-    } else {
-      specifier.as_str().into()
-    }
-  } else if let (Some(iter_a), Some(iter_b)) =
-    (specifier.path_segments(), base.path_segments())
-  {
-    let mut vec_a: Vec<&str> = iter_a.collect();
-    let mut vec_b: Vec<&str> = iter_b.collect();
-    let last_a = if !specifier.path().ends_with('/') && !vec_a.is_empty() {
-      vec_a.pop().unwrap()
-    } else {
-      ""
-    };
-    let is_dir_b = base.path().ends_with('/');
-    if !is_dir_b && !vec_b.is_empty() {
-      vec_b.pop();
-    }
-    if !vec_a.is_empty() && !vec_b.is_empty() && base.path() != "/" {
-      let mut parts: Vec<&str> = Vec::new();
-      let mut segments_a = vec_a.into_iter();
-      let mut segments_b = vec_b.into_iter();
-      loop {
-        match (segments_a.next(), segments_b.next()) {
-          (None, None) => break,
-          (Some(a), None) => {
-            if parts.is_empty() {
-              parts.push(CURRENT_PATH);
-            }
-            parts.push(a);
-            parts.extend(segments_a.by_ref());
-            break;
-          }
-          (None, _) if is_dir_b => parts.push(CURRENT_PATH),
-          (None, _) => parts.push(PARENT_PATH),
-          (Some(a), Some(b)) if parts.is_empty() && a == b => (),
-          (Some(a), Some(b)) if b == CURRENT_PATH => parts.push(a),
-          (Some(_), Some(b)) if b == PARENT_PATH => {
-            return specifier[Position::BeforePath..].to_string()
-          }
-          (Some(a), Some(_)) => {
-            if parts.is_empty() && is_dir_b {
-              parts.push(CURRENT_PATH);
-            } else {
-              parts.push(PARENT_PATH);
-            }
-            // actually the clippy suggestions here are less readable for once
-            #[allow(clippy::same_item_push)]
-            for _ in segments_b {
-              parts.push(PARENT_PATH);
-            }
-            parts.push(a);
-            parts.extend(segments_a.by_ref());
-            break;
-          }
-        }
-      }
-      if parts.is_empty() {
-        format!("./{}{}", last_a, &specifier[Position::AfterPath..])
-      } else {
-        parts.push(last_a);
-        format!("{}{}", parts.join("/"), &specifier[Position::AfterPath..])
-      }
-    } else {
-      specifier[Position::BeforePath..].into()
-    }
-  } else {
-    specifier[Position::BeforePath..].into()
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::http_cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use deno_core::resolve_url;
@@ -619,12 +522,7 @@ mod tests {
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        language_id.clone(),
-        (*source).into(),
-      );
+      documents.open(specifier, *version, *language_id, (*source).into());
     }
     let http_cache = HttpCache::new(location);
     for (specifier, source) in source_fixtures {
@@ -672,80 +570,6 @@ mod tests {
   }
 
   #[test]
-  fn test_relative_specifier() {
-    let fixtures: Vec<(&str, &str, &str)> = vec![
-      (
-        "https://deno.land/x/a/b/c.ts",
-        "https://deno.land/x/a/b/d.ts",
-        "./c.ts",
-      ),
-      (
-        "https://deno.land/x/a/c.ts",
-        "https://deno.land/x/a/b/d.ts",
-        "../c.ts",
-      ),
-      (
-        "https://deno.land/x/a/b/c/d.ts",
-        "https://deno.land/x/a/b/d.ts",
-        "./c/d.ts",
-      ),
-      (
-        "https://deno.land/x/a/b/c/d.ts",
-        "https://deno.land/x/a/b/c/",
-        "./d.ts",
-      ),
-      (
-        "https://deno.land/x/a/b/c/d/e.ts",
-        "https://deno.land/x/a/b/c/",
-        "./d/e.ts",
-      ),
-      (
-        "https://deno.land/x/a/b/c/d/e.ts",
-        "https://deno.land/x/a/b/c/f.ts",
-        "./d/e.ts",
-      ),
-      (
-        "https://deno.land/x/a/c.ts?foo=bar",
-        "https://deno.land/x/a/b/d.ts",
-        "../c.ts?foo=bar",
-      ),
-      (
-        "https://deno.land/x/a/b/c.ts",
-        "https://deno.land/x/a/b/d.ts?foo=bar",
-        "./c.ts",
-      ),
-      #[cfg(not(windows))]
-      ("file:///a/b/c.ts", "file:///a/b/d.ts", "./c.ts"),
-      #[cfg(not(windows))]
-      (
-        "file:///a/b/c.ts",
-        "https://deno.land/x/a/b/c.ts",
-        "/a/b/c.ts",
-      ),
-      (
-        "https://deno.land/x/a/b/c.ts",
-        "https://deno.land/",
-        "/x/a/b/c.ts",
-      ),
-      (
-        "https://deno.land/x/a/b/c.ts",
-        "https://deno.land/x/d/e/f.ts",
-        "../../a/b/c.ts",
-      ),
-    ];
-    for (specifier_str, base_str, expected) in fixtures {
-      let specifier = resolve_url(specifier_str).unwrap();
-      let base = resolve_url(base_str).unwrap();
-      let actual = relative_specifier(&specifier, &base);
-      assert_eq!(
-        actual, expected,
-        "specifier: \"{}\" base: \"{}\"",
-        specifier_str, base_str
-      );
-    }
-  }
-
-  #[test]
   fn test_get_local_completions() {
     let temp_dir = TempDir::new();
     let fixtures = temp_dir.path().join("fixtures");
@@ -757,11 +581,11 @@ mod tests {
     let file_c = dir_a.join("c.ts");
     std::fs::write(&file_c, b"").expect("could not create");
     let file_d = dir_b.join("d.ts");
-    std::fs::write(&file_d, b"").expect("could not create");
+    std::fs::write(file_d, b"").expect("could not create");
     let file_e = dir_a.join("e.txt");
-    std::fs::write(&file_e, b"").expect("could not create");
+    std::fs::write(file_e, b"").expect("could not create");
     let file_f = dir_a.join("f.mjs");
-    std::fs::write(&file_f, b"").expect("could not create");
+    std::fs::write(file_f, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(

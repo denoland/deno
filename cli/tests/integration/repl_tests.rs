@@ -1,10 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
 use test_util::assert_contains;
 use test_util::assert_ends_with;
 use test_util::assert_not_contains;
+use util::TempDir;
 
+#[ignore]
 #[test]
 fn pty_multiline() {
   util::with_pty(&["repl"], |mut console| {
@@ -49,17 +51,15 @@ fn pty_null() {
 
 #[test]
 fn pty_unpaired_braces() {
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line(")");
-    console.write_line("]");
-    console.write_line("}");
-    console.write_line("close();");
+  for right_brace in &[")", "]", "}"] {
+    util::with_pty(&["repl"], |mut console| {
+      console.write_line(right_brace);
+      console.write_line("close();");
 
-    let output = console.read_all_output();
-    assert_contains!(output, "Unexpected token `)`");
-    assert_contains!(output, "Unexpected token `]`");
-    assert_contains!(output, "Unexpected token `}`");
-  });
+      let output = console.read_all_output();
+      assert_contains!(output, "Expression expected");
+    });
+  }
 }
 
 #[test]
@@ -148,7 +148,6 @@ fn pty_complete_expression() {
     console.write_line("close();");
     let output = console.read_all_output();
     assert_contains!(output, "Display all");
-    assert_contains!(output, "core");
     assert_contains!(output, "args");
     assert_contains!(output, "exit");
     assert_contains!(output, "symlink");
@@ -158,11 +157,11 @@ fn pty_complete_expression() {
 
 #[test]
 fn pty_complete_imports() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     // single quotes
-    console.write_line("import './001_hel\t'");
+    console.write_line("import './run/001_hel\t'");
     // double quotes
-    console.write_line("import { output } from \"./045_out\t\"");
+    console.write_line("import { output } from \"./run/045_out\t\"");
     console.write_line("output('testing output');");
     console.write_line("close();");
 
@@ -170,16 +169,17 @@ fn pty_complete_imports() {
     assert_contains!(output, "Hello World");
     assert_contains!(
       output,
-      // on windows, could contain either (it's flaky)
+      // on windows, could any (it's flaky)
       "\ntesting output",
       "testing output\u{1b}",
+      "\r\n\u{1b}[?25htesting output",
     );
   });
 
   // ensure when the directory changes that the suggestions come from the cwd
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     console.write_line("Deno.chdir('./subdir');");
-    console.write_line("import '../001_hel\t'");
+    console.write_line("import '../run/001_hel\t'");
     console.write_line("close();");
 
     let output = console.read_all_output();
@@ -219,6 +219,36 @@ fn pty_assign_global_this() {
 
     let output = console.read_all_output();
     assert_not_contains!(output, "panicked");
+  });
+}
+
+#[test]
+fn pty_assign_deno_keys_and_deno() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "Object.keys(Deno).forEach((key)=>{try{Deno[key] = undefined} catch {}})",
+    );
+    console.write_line("delete globalThis.Deno");
+    console.write_line("console.log('testing ' + 'this out')");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert_not_contains!(output, "panicked");
+    assert_contains!(output, "testing this out");
+  });
+}
+
+#[test]
+fn pty_internal_repl() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("globalThis");
+    console.write_line("__\t\t");
+    console.write_line("close();");
+    let output = console.read_all_output();
+    assert_contains!(output, "__defineGetter__");
+    // should not contain the internal repl variable
+    // in the `globalThis` or completions output
+    assert_not_contains!(output, "__DENO_");
   });
 }
 
@@ -376,7 +406,7 @@ fn typescript_decorators() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert_ends_with!(out, "undefined\n[Function: Test]\n2\n");
+  assert_ends_with!(out, "undefined\n[Class: Test]\n2\n");
   assert!(err.is_empty());
 }
 
@@ -456,9 +486,9 @@ fn multiline() {
 
 #[test]
 fn import() {
-  let (out, _) = util::run_and_collect_output(
+  let (out, _) = util::run_and_collect_output_with_args(
     true,
-    "repl",
+    vec![],
     Some(vec!["import('./subdir/auto_print_hello.ts')"]),
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
@@ -468,9 +498,9 @@ fn import() {
 
 #[test]
 fn import_declarations() {
-  let (out, _) = util::run_and_collect_output(
+  let (out, _) = util::run_and_collect_output_with_args(
     true,
-    "repl",
+    vec!["repl", "--allow-read"],
     Some(vec!["import './subdir/auto_print_hello.ts';"]),
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
@@ -514,7 +544,7 @@ fn unpaired_braces() {
       None,
       false,
     );
-    assert_contains!(out, "Unexpected token");
+    assert_contains!(out, "Expression expected");
     assert!(err.is_empty());
   }
 }
@@ -558,7 +588,7 @@ fn syntax_error_jsx() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert_contains!(out, "Unexpected token `>`");
+  assert_contains!(out, "Expression expected");
   assert!(err.is_empty());
 }
 
@@ -603,21 +633,69 @@ fn lexical_scoped_variable() {
 
 #[test]
 fn missing_deno_dir() {
-  use std::fs::{read_dir, remove_dir_all};
-  const DENO_DIR: &str = "nonexistent";
-  let test_deno_dir = test_util::testdata_path().join(DENO_DIR);
+  use std::fs::read_dir;
+  let temp_dir = TempDir::new();
+  let deno_dir_path = temp_dir.path().join("deno");
   let (out, err) = util::run_and_collect_output(
     true,
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      ("DENO_DIR".to_owned(), DENO_DIR.to_owned()),
+      (
+        "DENO_DIR".to_owned(),
+        deno_dir_path.to_str().unwrap().to_owned(),
+      ),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
   );
-  assert!(read_dir(&test_deno_dir).is_ok());
-  remove_dir_all(&test_deno_dir).unwrap();
+  assert!(read_dir(deno_dir_path).is_ok());
+  assert_ends_with!(out, "1\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn custom_history_path() {
+  use std::fs::read;
+  let temp_dir = TempDir::new();
+  let history_path = temp_dir.path().join("history.txt");
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["1"]),
+    Some(vec![
+      (
+        "DENO_REPL_HISTORY".to_owned(),
+        history_path.to_str().unwrap().to_owned(),
+      ),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert!(read(&history_path).is_ok());
+  assert_ends_with!(out, "1\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn disable_history_file() {
+  let deno_dir = util::new_deno_dir();
+  let default_history_path = deno_dir.path().join("deno_history.txt");
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["1"]),
+    Some(vec![
+      (
+        "DENO_DIR".to_owned(),
+        deno_dir.path().to_str().unwrap().to_owned(),
+      ),
+      ("DENO_REPL_HISTORY".to_owned(), "".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert!(!default_history_path.try_exists().unwrap());
   assert_ends_with!(out, "1\n");
   assert!(err.is_empty());
 }
@@ -673,7 +751,7 @@ fn assign_underscore_error() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  println!("{}", out);
+  println!("{out}");
   assert_ends_with!(
     out,
     "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"
@@ -726,7 +804,7 @@ fn eval_flag_parse_error() {
   );
   assert_contains!(
     test_util::strip_ansi_codes(&out),
-    "error in --eval flag. parse error: Unexpected token `%`."
+    "Error in --eval flag: parse error: Unexpected token `%`."
   );
   assert_contains!(out, "2500"); // should not prevent input
   assert!(err.is_empty());
@@ -741,7 +819,7 @@ fn eval_flag_runtime_error() {
     None,
     false,
   );
-  assert_contains!(out, "error in --eval flag. Uncaught Error: Testing");
+  assert_contains!(out, "Error in --eval flag: Uncaught Error: Testing");
   assert_contains!(out, "2500"); // should not prevent input
   assert!(err.is_empty());
 }
@@ -750,7 +828,7 @@ fn eval_flag_runtime_error() {
 fn eval_file_flag_valid_input() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=./001_hello.js"],
+    vec!["repl", "--eval-file=./run/001_hello.js"],
     None,
     None,
     false,
@@ -789,7 +867,7 @@ fn eval_file_flag_http_input() {
 fn eval_file_flag_multiple_files() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=http://127.0.0.1:4545/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
+    vec!["repl", "--allow-read", "--eval-file=http://127.0.0.1:4545/repl/import_type.ts,./tsc/d.ts,http://127.0.0.1:4545/type_definitions/foo.js"],
     Some(vec!["b.method1=v4", "b.method1()+foo.toUpperCase()"]),
     None,
     true,
@@ -842,5 +920,156 @@ fn pty_tab_handler() {
     assert_not_contains!(output, "addEventListener");
     assert_not_contains!(output, "alert");
     assert_not_contains!(output, "atob");
+  });
+}
+
+#[test]
+fn repl_report_error() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![
+      r#"console.log(1); reportError(new Error("foo")); console.log(2);"#,
+    ]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  // TODO(nayeemrmn): The REPL should report event errors and rejections.
+  assert_contains!(out, "1\n2\nundefined\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn pty_aggregate_error() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await Promise.any([])"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  assert_contains!(out, "AggregateError");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_with_quiet_flag() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--quiet"],
+    Some(vec!["await Promise.resolve('done')"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(!out.contains("Deno"));
+  assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
+  assert_ends_with!(out, "\"done\"\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn npm_packages() {
+  let mut env_vars = util::env_vars_for_npm_tests();
+  env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
+  let temp_dir = TempDir::new();
+  env_vars.push((
+    "DENO_DIR".to_string(),
+    temp_dir.path().to_string_lossy().to_string(),
+  ));
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![
+        r#"import chalk from "npm:chalk";"#,
+        "chalk.red('hel' + 'lo')",
+      ]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "hello");
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![
+        r#"const chalk = await import("npm:chalk");"#,
+        "chalk.default.red('hel' + 'lo')",
+      ]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "hello");
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![r#"export {} from "npm:chalk";"#]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "Module {");
+    assert_contains!(out, "Chalk: [Class: Chalk],");
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![r#"import foo from "npm:asdfawe52345asdf""#]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(
+      out,
+      "error: npm package 'asdfawe52345asdf' does not exist"
+    );
+    assert!(err.is_empty());
+  }
+
+  {
+    let (out, err) = util::run_and_collect_output_with_args(
+      true,
+      vec!["repl", "--quiet", "--allow-read", "--allow-env"],
+      Some(vec![
+        "import path from 'node:path';",
+        "path.isGlob('asdf') ? 'yes' : 'no'",
+      ]),
+      Some(env_vars.clone()),
+      true,
+    );
+
+    assert_contains!(out, "no");
+    assert!(err.is_empty());
+  }
+}
+
+#[test]
+fn pty_tab_indexable_props() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const arr = [1, 2, 3]");
+    console.write_line("arr.\t\t");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    println!("output");
+    assert_contains!(output, "constructor");
+    assert_contains!(output, "sort");
+    assert_contains!(output, "at");
+    assert_not_contains!(output, "0", "1", "2");
   });
 }

@@ -1,10 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
@@ -32,6 +33,7 @@ async fn main() -> Result<(), AnyError> {
       cpu_count: 1,
       debug_flag: false,
       enable_testing_features: false,
+      locale: deno_core::v8::icu::get_language_tag(),
       location: None,
       no_color: false,
       is_tty: false,
@@ -39,8 +41,10 @@ async fn main() -> Result<(), AnyError> {
       ts_version: "x".to_string(),
       unstable: false,
       user_agent: "hello_runtime".to_string(),
+      inspect: false,
     },
     extensions: vec![],
+    startup_snapshot: None,
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
     seed: None,
@@ -51,9 +55,11 @@ async fn main() -> Result<(), AnyError> {
     create_web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
+    should_wait_for_inspector_session: false,
     module_loader,
     npm_resolver: None,
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),
@@ -64,8 +70,11 @@ async fn main() -> Result<(), AnyError> {
 
   let js_path =
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/hello_runtime.js");
-  let main_module = deno_core::resolve_path(&js_path.to_string_lossy())?;
-  let permissions = Permissions::allow_all();
+  let main_module = deno_core::resolve_path(
+    &js_path.to_string_lossy(),
+    &std::env::current_dir().context("Unable to get CWD")?,
+  )?;
+  let permissions = PermissionsContainer::allow_all();
 
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),

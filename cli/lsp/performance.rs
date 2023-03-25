@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
@@ -121,10 +121,11 @@ impl Performance {
     averages
       .into_iter()
       .map(|(k, d)| {
-        let a = d.clone().into_iter().sum::<Duration>() / d.len() as u32;
+        let count = d.len() as u32;
+        let a = d.into_iter().sum::<Duration>() / count;
         PerformanceAverage {
           name: k,
-          count: d.len() as u32,
+          count,
           average_duration: a.as_millis() as u32,
         }
       })

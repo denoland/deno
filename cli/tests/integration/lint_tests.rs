@@ -1,27 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
-use test_util as util;
-
-#[test]
-fn ignore_unexplicit_files() {
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .env("NO_COLOR", "1")
-    .arg("lint")
-    .arg("--unstable")
-    .arg("--ignore=./")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr),
-    "error: No target files found.\n"
-  );
-}
+itest!(ignore_unexplicit_files {
+  args: "lint --unstable --ignore=./",
+  output_str: Some("error: No target files found.\n"),
+  exit_code: 1,
+});
 
 itest!(all {
   args: "lint lint/without_config/file1.js lint/without_config/file2.ts lint/without_config/ignored_file.ts",
@@ -39,6 +22,13 @@ itest!(json {
   args:
     "lint --json lint/without_config/file1.js lint/without_config/file2.ts lint/without_config/ignored_file.ts lint/without_config/malformed.js",
     output: "lint/expected_json.out",
+    exit_code: 1,
+});
+
+itest!(compact {
+  args:
+    "lint --compact lint/without_config/file1.js lint/without_config/ignored_file.tss",
+    output: "lint/expected_compact.out",
     exit_code: 1,
 });
 
@@ -88,7 +78,19 @@ itest!(lint_with_config {
   exit_code: 1,
 });
 
+itest!(lint_with_report_config {
+  args: "lint --config lint/Deno.compact.format.jsonc lint/with_config/",
+  output: "lint/with_report_config_compact.out",
+  exit_code: 1,
+});
+
 // Check if CLI flags take precedence
+itest!(lint_with_report_config_override {
+  args: "lint --config lint/Deno.compact.format.jsonc lint/with_config/ --json",
+  output: "lint/with_report_config_override.out",
+  exit_code: 1,
+});
+
 itest!(lint_with_config_and_flags {
   args: "lint --config lint/Deno.jsonc --ignore=lint/with_config/a.ts",
   output: "lint/with_config_and_flags.out",

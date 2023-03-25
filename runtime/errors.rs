@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -58,7 +58,7 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
     WriteZero => "WriteZero",
     UnexpectedEof => "UnexpectedEof",
     Other => "Error",
-    WouldBlock => unreachable!(),
+    WouldBlock => "WouldBlock",
     // Non-exhaustive enum - might add new variants
     // in the future
     _ => "Error",
@@ -154,7 +154,6 @@ pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
-    .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
@@ -165,7 +164,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
     .or_else(|| {
       e.downcast_ref::<Arc<hyper::Error>>()
-        .map(|e| get_hyper_error_class(&**e))
+        .map(|e| get_hyper_error_class(e))
     })
     .or_else(|| {
       e.downcast_ref::<deno_core::Canceled>().map(|e| {

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -8,18 +8,19 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::args::CliOptions;
-use crate::args::FmtFlags;
+use crate::args::FilesConfig;
+use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
 use crate::colors;
-use crate::diff::diff;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
-use crate::fs_util::collect_files;
-use crate::fs_util::get_extension;
-use crate::fs_util::specifier_to_file_path;
-use crate::text_encoding;
+use crate::util::diff::diff;
+use crate::util::file_watcher;
+use crate::util::file_watcher::ResolutionResult;
+use crate::util::fs::FileCollector;
+use crate::util::path::get_extension;
+use crate::util::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -28,6 +29,7 @@ use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use log::debug;
 use log::info;
+use log::warn;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -43,86 +45,48 @@ use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  config: &CliOptions,
-  fmt_flags: FmtFlags,
+  cli_options: CliOptions,
+  fmt_options: FmtOptions,
 ) -> Result<(), AnyError> {
-  let maybe_fmt_config = config.to_fmt_config()?;
-  let deno_dir = config.resolve_deno_dir()?;
-  let FmtFlags {
-    files,
-    ignore,
-    check,
-    ..
-  } = fmt_flags.clone();
-
-  // First, prepare final configuration.
-  // Collect included and ignored files. CLI flags take precendence
-  // over config file, ie. if there's `files.ignore` in config file
-  // and `--ignore` CLI flag, only the flag value is taken into account.
-  let mut include_files = files.clone();
-  let mut exclude_files = ignore;
-
-  if let Some(fmt_config) = maybe_fmt_config.as_ref() {
-    if include_files.is_empty() {
-      include_files = fmt_config
-        .files
-        .include
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
-
-    if exclude_files.is_empty() {
-      exclude_files = fmt_config
-        .files
-        .exclude
-        .iter()
-        .filter_map(|s| specifier_to_file_path(s).ok())
-        .collect::<Vec<_>>();
-    }
+  if fmt_options.is_stdin {
+    return format_stdin(
+      fmt_options,
+      cli_options
+        .ext_flag()
+        .as_ref()
+        .map(|s| s.as_str())
+        .unwrap_or("ts"),
+    );
   }
 
-  if include_files.is_empty() {
-    include_files = [std::env::current_dir()?].to_vec();
-  }
-
-  // Now do the same for options
-  let fmt_options = resolve_fmt_options(
-    &fmt_flags,
-    maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-  );
-
-  let fmt_predicate = |path: &Path| {
-    is_supported_ext_fmt(path)
-      && !contains_git(path)
-      && !contains_node_modules(path)
-  };
+  let files = fmt_options.files;
+  let check = fmt_options.check;
+  let fmt_config_options = fmt_options.options;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
-    let result = collect_files(&include_files, &exclude_files, fmt_predicate)
-      .map(|files| {
-        let refmt_files = if let Some(paths) = changed {
-          if check {
-            files
-              .iter()
-              .any(|path| paths.contains(path))
-              .then(|| files)
-              .unwrap_or_else(|| [].to_vec())
-          } else {
-            files
-              .into_iter()
-              .filter(|path| paths.contains(path))
-              .collect::<Vec<_>>()
-          }
+    let result = collect_fmt_files(&files).map(|files| {
+      let refmt_files = if let Some(paths) = changed {
+        if check {
+          files
+            .iter()
+            .any(|path| paths.contains(path))
+            .then_some(files)
+            .unwrap_or_else(|| [].to_vec())
         } else {
           files
-        };
-        (refmt_files, fmt_options.clone())
-      });
+            .into_iter()
+            .filter(|path| paths.contains(path))
+            .collect::<Vec<_>>()
+        }
+      } else {
+        files
+      };
+      (refmt_files, fmt_config_options.clone())
+    });
 
-    let paths_to_watch = include_files.clone();
+    let paths_to_watch = files.include.clone();
     async move {
       if files_changed
         && matches!(result, Ok((ref files, _)) if files.is_empty())
@@ -136,7 +100,7 @@ pub async fn format(
       }
     }
   };
-  let deno_dir = &deno_dir;
+  let deno_dir = &cli_options.resolve_deno_dir()?;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.fmt_incremental_cache_db_file_path(),
@@ -153,29 +117,36 @@ pub async fn format(
     Ok(())
   };
 
-  if config.watch_paths().is_some() {
+  if cli_options.watch_paths().is_some() {
     file_watcher::watch_func(
       resolver,
       operation,
       file_watcher::PrintConfig {
         job_name: "Fmt".to_string(),
-        clear_screen: !config.no_clear_screen(),
+        clear_screen: !cli_options.no_clear_screen(),
       },
     )
     .await?;
   } else {
-    let files = collect_files(&include_files, &exclude_files, fmt_predicate)
-      .and_then(|files| {
-        if files.is_empty() {
-          Err(generic_error("No target files found."))
-        } else {
-          Ok(files)
-        }
-      })?;
-    operation((files, fmt_options.clone())).await?;
+    let files = collect_fmt_files(&files).and_then(|files| {
+      if files.is_empty() {
+        Err(generic_error("No target files found."))
+      } else {
+        Ok(files)
+      }
+    })?;
+    operation((files, fmt_config_options)).await?;
   }
 
   Ok(())
+}
+
+fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(is_supported_ext_fmt)
+    .ignore_git_folder()
+    .ignore_node_modules()
+    .add_ignore_paths(&files.exclude)
+    .collect_files(&files.include)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -219,7 +190,7 @@ fn format_markdown(
           dprint_plugin_json::format_text(text, &json_config)
         } else {
           let fake_filename =
-            PathBuf::from(format!("deno_fmt_stdin.{}", extension));
+            PathBuf::from(format!("deno_fmt_stdin.{extension}"));
           let mut codeblock_config =
             get_resolved_typescript_config(fmt_options);
           codeblock_config.line_width = line_width;
@@ -269,11 +240,11 @@ pub fn format_file(
 
 pub fn format_parsed_source(
   parsed_source: &ParsedSource,
-  fmt_options: FmtOptionsConfig,
+  fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
-    &get_resolved_typescript_config(&fmt_options),
+    &get_resolved_typescript_config(fmt_options),
   )
 }
 
@@ -320,8 +291,21 @@ async fn check_source_files(
         Err(e) => {
           not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock();
-          eprintln!("Error checking: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          warn!("Error checking: {}", file_path.to_string_lossy());
+          warn!(
+            "{}",
+            format!("{e}")
+              .split('\n')
+              .map(|l| {
+                if l.trim().is_empty() {
+                  String::new()
+                } else {
+                  format!("  {l}")
+                }
+              })
+              .collect::<Vec<_>>()
+              .join("\n")
+          );
         }
       }
       Ok(())
@@ -340,8 +324,7 @@ async fn check_source_files(
   } else {
     let not_formatted_files_str = files_str(not_formatted_files_count);
     Err(generic_error(format!(
-      "Found {} not formatted {} in {}",
-      not_formatted_files_count, not_formatted_files_str, checked_files_str,
+      "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
     )))
   }
 }
@@ -392,7 +375,7 @@ async fn format_source_files(
         Err(e) => {
           let _g = output_lock.lock();
           eprintln!("Error formatting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          eprintln!("   {e}");
         }
       }
       Ok(())
@@ -454,8 +437,9 @@ fn format_ensure_stable(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntatically correct. As a temporary ",
-                "workfaround you can ignore this file.\n\n{:#}"
+                "workfaround you can ignore this file ({}).\n\n{:#}"
               ),
+              file_path.display(),
               err,
             )
           }
@@ -465,10 +449,11 @@ fn format_ensure_stable(
           panic!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file differently each time. As a ",
+              "in the formatter where it formats the file ({}) differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
-            count
+            count,
+            file_path.display(),
           )
         }
       }
@@ -478,21 +463,16 @@ fn format_ensure_stable(
 }
 
 /// Format stdin and write result to stdout.
-/// Treats input as TypeScript or as set by `--ext` flag.
+/// Treats input as set by `--ext` flag.
 /// Compatible with `--check` flag.
-pub fn format_stdin(
-  fmt_flags: FmtFlags,
-  fmt_options: FmtOptionsConfig,
-) -> Result<(), AnyError> {
+fn format_stdin(fmt_options: FmtOptions, ext: &str) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");
   }
-  let file_path = PathBuf::from(format!("_stdin.{}", fmt_flags.ext));
-  let fmt_options = resolve_fmt_options(&fmt_flags, fmt_options);
-
-  let formatted_text = format_file(&file_path, &source, &fmt_options)?;
-  if fmt_flags.check {
+  let file_path = PathBuf::from(format!("_stdin.{ext}"));
+  let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
+  if fmt_options.check {
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }
@@ -508,41 +488,6 @@ fn files_str(len: usize) -> &'static str {
   } else {
     "files"
   }
-}
-
-fn resolve_fmt_options(
-  fmt_flags: &FmtFlags,
-  options: FmtOptionsConfig,
-) -> FmtOptionsConfig {
-  let mut options = options;
-
-  if let Some(use_tabs) = fmt_flags.use_tabs {
-    options.use_tabs = Some(use_tabs);
-  }
-
-  if let Some(line_width) = fmt_flags.line_width {
-    options.line_width = Some(line_width.get());
-  }
-
-  if let Some(indent_width) = fmt_flags.indent_width {
-    options.indent_width = Some(indent_width.get());
-  }
-
-  if let Some(single_quote) = fmt_flags.single_quote {
-    options.single_quote = Some(single_quote);
-  }
-
-  if let Some(prose_wrap) = &fmt_flags.prose_wrap {
-    options.prose_wrap = Some(match prose_wrap.as_str() {
-      "always" => ProseWrap::Always,
-      "never" => ProseWrap::Never,
-      "preserve" => ProseWrap::Preserve,
-      // validators in `flags.rs` makes other values unreachable
-      _ => unreachable!(),
-    });
-  }
-
-  options
 }
 
 fn get_resolved_typescript_config(
@@ -570,6 +515,13 @@ fn get_resolved_typescript_config(
         dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
       );
     }
+  }
+
+  if let Some(semi_colons) = options.semi_colons {
+    builder.semi_colons(match semi_colons {
+      true => dprint_plugin_typescript::configuration::SemiColons::Prefer,
+      false => dprint_plugin_typescript::configuration::SemiColons::Asi,
+    });
   }
 
   builder.build()
@@ -633,10 +585,13 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
-  let file_bytes = fs::read(&file_path)
+  let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
+    .map_err(|_| {
+      anyhow!("{} is not a valid UTF-8 file", file_path.display())
+    })?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
   let text = if had_bom {
     text_encoding::strip_bom(&file_text).to_string()
@@ -732,14 +687,6 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
-fn contains_git(path: &Path) -> bool {
-  path.components().any(|c| c.as_os_str() == ".git")
-}
-
-fn contains_node_modules(path: &Path) -> bool {
-  path.components().any(|c| c.as_os_str() == "node_modules")
-}
-
 #[cfg(test)]
 mod test {
   use super::*;
@@ -755,8 +702,8 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
     assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/002_hello.ts")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.TS")));
@@ -772,33 +719,13 @@ mod test {
   }
 
   #[test]
-  fn test_is_located_in_git() {
-    assert!(contains_git(Path::new("test/.git")));
-    assert!(contains_git(Path::new(".git/bad.json")));
-    assert!(contains_git(Path::new("test/.git/bad.json")));
-    assert!(!contains_git(Path::new("test/bad.git/bad.json")));
-  }
-
-  #[test]
-  fn test_is_located_in_node_modules() {
-    assert!(contains_node_modules(Path::new("test/node_modules")));
-    assert!(contains_node_modules(Path::new("node_modules/bad.json")));
-    assert!(contains_node_modules(Path::new(
-      "test/node_modules/bad.json"
-    )));
-    assert!(!contains_node_modules(Path::new(
-      "test/bad.node_modules/bad.json"
-    )));
-  }
-
-  #[test]
   #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
     format_ensure_stable(
       &PathBuf::from("mod.ts"),
       "1",
       &Default::default(),
-      |_, file_text, _| Ok(Some(format!("1{}", file_text))),
+      |_, file_text, _| Ok(Some(format!("1{file_text}"))),
     )
     .unwrap();
   }

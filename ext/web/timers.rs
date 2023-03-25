@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! This module helps deno implement timers and performance APIs.
 
@@ -27,25 +27,31 @@ pub type StartTime = Instant;
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-#[op]
-pub fn op_now<TP>(state: &mut OpState) -> f64
+#[op(fast)]
+pub fn op_now<TP>(state: &mut OpState, buf: &mut [u8])
 where
   TP: TimersPermission + 'static,
 {
   let start_time = state.borrow::<StartTime>();
   let elapsed = start_time.elapsed();
   let seconds = elapsed.as_secs();
-  let mut subsec_nanos = elapsed.subsec_nanos() as f64;
-  let reduced_time_precision = 2_000_000.0; // 2ms in nanoseconds
+  let mut subsec_nanos = elapsed.subsec_nanos();
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
   if !state.borrow_mut::<TP>().allow_hrtime() {
+    let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
-
-  (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0)
+  if buf.len() < 8 {
+    return;
+  }
+  let buf: &mut [u32] =
+    // SAFETY: buffer is at least 8 bytes long.
+    unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as _, 2) };
+  buf[0] = seconds as u32;
+  buf[1] = subsec_nanos;
 }
 
 pub struct TimerHandle(Rc<CancelHandle>);
@@ -71,15 +77,17 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
-#[op]
+///
+/// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
+#[op(deferred)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,
   rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<bool, AnyError> {
   let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
-  tokio::time::sleep(Duration::from_millis(millis))
+  let res = tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
-    .await?;
-  Ok(())
+    .await;
+  Ok(res.is_ok())
 }

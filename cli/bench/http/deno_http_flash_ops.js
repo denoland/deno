@@ -1,17 +1,15 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
 const {
-  core: {
-    opAsync,
-    ops: { op_flash_make_request, op_flash_serve },
-    encode,
-  },
-} = Deno;
+  opAsync,
+  ops: { op_flash_make_request, op_flash_serve },
+  encode,
+} = Deno[Deno.internal].core;
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
-const serverId = op_flash_serve({ hostname, port });
+const serverId = op_flash_serve({ hostname, port, reuseport: true });
 const serverPromise = opAsync("op_flash_drive_server", serverId);
 
 const fastOps = op_flash_make_request();

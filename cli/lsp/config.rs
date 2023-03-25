@@ -1,14 +1,14 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::client::Client;
 use super::logging::lsp_log;
-use crate::fs_util;
+use crate::util::path::specifier_to_file_path;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use lsp::Url;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,6 +20,7 @@ pub const SETTINGS_SECTION: &str = "deno";
 pub struct ClientCapabilities {
   pub code_action_disabled_support: bool,
   pub line_folding_only: bool,
+  pub snippet_support: bool,
   pub status_notification: bool,
   /// The client provides the `experimental.testingApi` capability, which is
   /// built around VSCode's testing API. It indicates that the server should
@@ -105,6 +106,101 @@ impl Default for CompletionSettings {
   }
 }
 
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsSettings {
+  #[serde(default)]
+  pub parameter_names: InlayHintsParamNamesOptions,
+  #[serde(default)]
+  pub parameter_types: InlayHintsParamTypesOptions,
+  #[serde(default)]
+  pub variable_types: InlayHintsVarTypesOptions,
+  #[serde(default)]
+  pub property_declaration_types: InlayHintsPropDeclTypesOptions,
+  #[serde(default)]
+  pub function_like_return_types: InlayHintsFuncLikeReturnTypesOptions,
+  #[serde(default)]
+  pub enum_member_values: InlayHintsEnumMemberValuesOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsParamNamesOptions {
+  #[serde(default)]
+  pub enabled: InlayHintsParamNamesEnabled,
+  #[serde(default = "is_true")]
+  pub suppress_when_argument_matches_name: bool,
+}
+
+impl Default for InlayHintsParamNamesOptions {
+  fn default() -> Self {
+    Self {
+      enabled: InlayHintsParamNamesEnabled::None,
+      suppress_when_argument_matches_name: true,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum InlayHintsParamNamesEnabled {
+  None,
+  Literals,
+  All,
+}
+
+impl Default for InlayHintsParamNamesEnabled {
+  fn default() -> Self {
+    Self::None
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsParamTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsVarTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+  #[serde(default = "is_true")]
+  pub suppress_when_type_matches_name: bool,
+}
+
+impl Default for InlayHintsVarTypesOptions {
+  fn default() -> Self {
+    Self {
+      enabled: false,
+      suppress_when_type_matches_name: true,
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsPropDeclTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsFuncLikeReturnTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsEnumMemberValuesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
@@ -129,7 +225,7 @@ impl Default for ImportCompletionSettings {
 
 /// Deno language server specific settings that can be applied uniquely to a
 /// specifier.
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
@@ -169,8 +265,15 @@ fn default_to_true() -> bool {
   true
 }
 
+fn empty_string_none<'de, D: serde::Deserializer<'de>>(
+  d: D,
+) -> Result<Option<String>, D::Error> {
+  let o: Option<String> = Option::deserialize(d)?;
+  Ok(o.filter(|s| !s.is_empty()))
+}
+
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
@@ -183,6 +286,7 @@ pub struct WorkspaceSettings {
 
   /// An option that points to a path string of the path to utilise as the
   /// cache/DENO_DIR for the language server.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub cache: Option<String>,
 
   /// Override the default stores used to validate certificates. This overrides
@@ -191,15 +295,20 @@ pub struct WorkspaceSettings {
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub config: Option<String>,
 
   /// An option that points to a path string of the import map to apply to the
   /// code within the workspace.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub import_map: Option<String>,
 
   /// Code lens specific settings for the workspace.
   #[serde(default)]
   pub code_lens: CodeLensSettings,
+
+  #[serde(default)]
+  pub inlay_hints: InlayHintsSettings,
 
   /// A flag that indicates if internal debug logging should be made available.
   #[serde(default)]
@@ -220,6 +329,7 @@ pub struct WorkspaceSettings {
 
   /// An option which sets the cert file to use when attempting to fetch remote
   /// resources. This overrides `DENO_CERT` if present.
+  #[serde(default, deserialize_with = "empty_string_none")]
   pub tls_certificate: Option<String>,
 
   /// An option, if set, will unsafely ignore certificate errors when fetching
@@ -231,18 +341,53 @@ pub struct WorkspaceSettings {
   pub unstable: bool,
 }
 
+impl Default for WorkspaceSettings {
+  fn default() -> Self {
+    WorkspaceSettings {
+      enable: false,
+      enable_paths: vec![],
+      cache: None,
+      certificate_stores: None,
+      config: None,
+      import_map: None,
+      code_lens: Default::default(),
+      inlay_hints: Default::default(),
+      internal_debug: false,
+      lint: true,
+      suggest: Default::default(),
+      testing: Default::default(),
+      tls_certificate: None,
+      unsafely_ignore_certificate_errors: None,
+      unstable: false,
+    }
+  }
+}
+
 impl WorkspaceSettings {
   /// Determine if any code lenses are enabled at all.  This allows short
   /// circuiting when there are no code lenses enabled.
   pub fn enabled_code_lens(&self) -> bool {
     self.code_lens.implementations || self.code_lens.references
   }
+
+  /// Determine if any inlay hints are enabled. This allows short circuiting
+  /// when there are no inlay hints enabled.
+  pub fn enabled_inlay_hints(&self) -> bool {
+    !matches!(
+      self.inlay_hints.parameter_names.enabled,
+      InlayHintsParamNamesEnabled::None
+    ) || self.inlay_hints.parameter_types.enabled
+      || self.inlay_hints.variable_types.enabled
+      || self.inlay_hints.property_declaration_types.enabled
+      || self.inlay_hints.function_like_return_types.enabled
+      || self.inlay_hints.enum_member_values.enabled
+  }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
-  pub enabled_paths: HashMap<String, Vec<String>>,
+  pub enabled_paths: HashMap<Url, Vec<Url>>,
   pub settings: Settings,
 }
 
@@ -250,42 +395,33 @@ impl ConfigSnapshot {
   /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     if !self.enabled_paths.is_empty() {
-      let specifier_str = specifier.to_string();
+      let specifier_str = specifier.as_str();
       for (workspace, enabled_paths) in self.enabled_paths.iter() {
-        if specifier_str.starts_with(workspace) {
+        if specifier_str.starts_with(workspace.as_str()) {
           return enabled_paths
             .iter()
-            .any(|path| specifier_str.starts_with(path));
+            .any(|path| specifier_str.starts_with(path.as_str()));
         }
       }
     }
-    if let Some((_, SpecifierSettings { enable, .. })) =
-      self.settings.specifiers.get(specifier)
-    {
-      *enable
+    if let Some(settings) = self.settings.specifiers.get(specifier) {
+      settings.enable
     } else {
       self.settings.workspace.enable
     }
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct SpecifierWithClientUri {
-  pub specifier: ModuleSpecifier,
-  pub client_uri: ModuleSpecifier,
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
-  pub specifiers:
-    BTreeMap<ModuleSpecifier, (ModuleSpecifier, SpecifierSettings)>,
+  pub specifiers: BTreeMap<ModuleSpecifier, SpecifierSettings>,
   pub workspace: WorkspaceSettings,
 }
 
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
-  enabled_paths: HashMap<String, Vec<String>>,
+  enabled_paths: HashMap<Url, Vec<Url>>,
   pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
   pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
@@ -332,12 +468,12 @@ impl Config {
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     if !self.enabled_paths.is_empty() {
-      let specifier_str = specifier.to_string();
+      let specifier_str = specifier.as_str();
       for (workspace, enabled_paths) in self.enabled_paths.iter() {
-        if specifier_str.starts_with(workspace) {
+        if specifier_str.starts_with(workspace.as_str()) {
           return enabled_paths
             .iter()
-            .any(|path| specifier_str.starts_with(path));
+            .any(|path| specifier_str.starts_with(path.as_str()));
         }
       }
     }
@@ -345,7 +481,7 @@ impl Config {
       .settings
       .specifiers
       .get(specifier)
-      .map(|(_, s)| s.enable)
+      .map(|settings| settings.enable)
       .unwrap_or_else(|| self.settings.workspace.enable)
   }
 
@@ -354,7 +490,7 @@ impl Config {
       .settings
       .specifiers
       .get(specifier)
-      .map(|(_, s)| s.code_lens.test)
+      .map(|settings| settings.code_lens.test)
       .unwrap_or_else(|| self.settings.workspace.code_lens.test);
     value
   }
@@ -393,19 +529,30 @@ impl Config {
         .as_ref()
         .and_then(|it| it.disabled_support)
         .unwrap_or(false);
+      self.client_capabilities.snippet_support =
+        if let Some(completion) = &text_document.completion {
+          completion
+            .completion_item
+            .as_ref()
+            .and_then(|it| it.snippet_support)
+            .unwrap_or(false)
+        } else {
+          false
+        };
     }
   }
 
   /// Given the configured workspaces or root URI and the their settings,
   /// update and resolve any paths that should be enabled
-  pub async fn update_enabled_paths(&mut self, client: Client) -> bool {
+  pub fn update_enabled_paths(&mut self) -> bool {
     if let Some(workspace_folders) = self.workspace_folders.clone() {
       let mut touched = false;
-      for (workspace, folder) in workspace_folders {
-        if let Ok(settings) = client.specifier_configuration(&folder.uri).await
-        {
-          if self.update_enabled_paths_entry(&workspace, settings.enable_paths)
-          {
+      for (workspace, _) in workspace_folders {
+        if let Some(settings) = self.settings.specifiers.get(&workspace) {
+          if self.update_enabled_paths_entry(
+            workspace,
+            settings.enable_paths.clone(),
+          ) {
             touched = true;
           }
         }
@@ -413,7 +560,7 @@ impl Config {
       touched
     } else if let Some(root_uri) = self.root_uri.clone() {
       self.update_enabled_paths_entry(
-        &root_uri,
+        root_uri,
         self.settings.workspace.enable_paths.clone(),
       )
     } else {
@@ -424,20 +571,18 @@ impl Config {
   /// Update a specific entry in the enabled paths for a given workspace.
   fn update_enabled_paths_entry(
     &mut self,
-    workspace: &ModuleSpecifier,
+    workspace: ModuleSpecifier,
     enabled_paths: Vec<String>,
   ) -> bool {
-    let workspace = fs_util::ensure_directory_specifier(workspace.clone());
-    let key = workspace.to_string();
     let mut touched = false;
     if !enabled_paths.is_empty() {
-      if let Ok(workspace_path) = fs_util::specifier_to_file_path(&workspace) {
+      if let Ok(workspace_path) = specifier_to_file_path(&workspace) {
         let mut paths = Vec::new();
         for path in &enabled_paths {
           let fs_path = workspace_path.join(path);
           match ModuleSpecifier::from_file_path(fs_path) {
             Ok(path_uri) => {
-              paths.push(path_uri.to_string());
+              paths.push(path_uri);
             }
             Err(_) => {
               lsp_log!("Unable to resolve a file path for `deno.enablePath` from \"{}\" for workspace \"{}\".", path, workspace);
@@ -446,38 +591,33 @@ impl Config {
         }
         if !paths.is_empty() {
           touched = true;
-          self.enabled_paths.insert(key, paths);
+          self.enabled_paths.insert(workspace.clone(), paths);
         }
       }
     } else {
       touched = true;
-      self.enabled_paths.remove(&key);
+      self.enabled_paths.remove(&workspace);
     }
     touched
   }
 
-  pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {
-    self
-      .settings
-      .specifiers
-      .iter()
-      .map(|(s, (u, _))| SpecifierWithClientUri {
-        specifier: s.clone(),
-        client_uri: u.clone(),
-      })
-      .collect()
+  pub fn get_specifiers(&self) -> Vec<ModuleSpecifier> {
+    self.settings.specifiers.keys().cloned().collect()
   }
 
   pub fn set_specifier_settings(
     &mut self,
     specifier: ModuleSpecifier,
-    client_uri: ModuleSpecifier,
     settings: SpecifierSettings,
-  ) {
-    self
-      .settings
-      .specifiers
-      .insert(specifier, (client_uri, settings));
+  ) -> bool {
+    if let Some(existing) = self.settings.specifiers.get(&specifier) {
+      if *existing == settings {
+        return false;
+      }
+    }
+
+    self.settings.specifiers.insert(specifier, settings);
+    true
   }
 }
 
@@ -523,8 +663,8 @@ mod tests {
     assert!(!config.specifier_enabled(&specifier_b));
     let mut enabled_paths = HashMap::new();
     enabled_paths.insert(
-      "file:///project/".to_string(),
-      vec!["file:///project/worker/".to_string()],
+      Url::parse("file:///project/").unwrap(),
+      vec![Url::parse("file:///project/worker/").unwrap()],
     );
     config.enabled_paths = enabled_paths;
     assert!(config.specifier_enabled(&specifier_a));
@@ -555,6 +695,26 @@ mod tests {
           references_all_functions: false,
           test: true,
         },
+        inlay_hints: InlayHintsSettings {
+          parameter_names: InlayHintsParamNamesOptions {
+            enabled: InlayHintsParamNamesEnabled::None,
+            suppress_when_argument_matches_name: true
+          },
+          parameter_types: InlayHintsParamTypesOptions { enabled: false },
+          variable_types: InlayHintsVarTypesOptions {
+            enabled: false,
+            suppress_when_type_matches_name: true
+          },
+          property_declaration_types: InlayHintsPropDeclTypesOptions {
+            enabled: false
+          },
+          function_like_return_types: InlayHintsFuncLikeReturnTypesOptions {
+            enabled: false
+          },
+          enum_member_values: InlayHintsEnumMemberValuesOptions {
+            enabled: false
+          },
+        },
         internal_debug: false,
         lint: true,
         suggest: CompletionSettings {
@@ -575,6 +735,54 @@ mod tests {
         unsafely_ignore_certificate_errors: None,
         unstable: false,
       }
+    );
+  }
+
+  #[test]
+  fn test_empty_cache() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "cache": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_import_map() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "import_map": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_tls_certificate() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "tls_certificate": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn test_empty_config() {
+    let mut config = Config::new();
+    config
+      .set_workspace_settings(json!({ "config": "" }))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings::default()
     );
   }
 }

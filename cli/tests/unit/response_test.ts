@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -89,4 +89,14 @@ Deno.test(function customInspectFunction() {
 }`,
   );
   assertStringIncludes(Deno.inspect(Response.prototype), "Response");
+});
+
+Deno.test(async function responseBodyUsed() {
+  const response = new Response("body");
+  assert(!response.bodyUsed);
+  await response.text();
+  assert(response.bodyUsed);
+  // .body getter is needed so we can test the faulty code path
+  response.body;
+  assert(response.bodyUsed);
 });
