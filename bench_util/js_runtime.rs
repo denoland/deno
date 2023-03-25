@@ -103,7 +103,8 @@ pub fn bench_js_async_with(
     opts.benching_inner
   };
   let looped = loop_code(inner_iters, src);
-  let src = looped.as_ref();
+  // Get a &'static str by leaking -- this is fine because it's benchmarking code
+  let src = Box::leak(looped.into_boxed_str());
   if is_profiling() {
     for _ in 0..opts.profiling_outer {
       tokio_runtime.block_on(inner_async(src, &mut runtime));
@@ -115,7 +116,7 @@ pub fn bench_js_async_with(
   }
 }
 
-async fn inner_async(src: &str, runtime: &mut JsRuntime) {
+async fn inner_async(src: &'static str, runtime: &mut JsRuntime) {
   runtime.execute_script("inner_loop", src).unwrap();
   runtime.run_event_loop(false).await.unwrap();
 }

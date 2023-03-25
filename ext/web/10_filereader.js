@@ -58,18 +58,18 @@ class FileReader extends EventTarget {
    * @param {{kind: "ArrayBuffer" | "Text" | "DataUrl" | "BinaryString", encoding?: string}} readtype
    */
   #readOperation(blob, readtype) {
-    // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
+    // 1. If fr's state is "loading", throw an InvalidStateError DOMException.
     if (this[state] === "loading") {
       throw new DOMException(
         "Invalid FileReader state.",
         "InvalidStateError",
       );
     }
-    // 2. Set fr’s state to "loading".
+    // 2. Set fr's state to "loading".
     this[state] = "loading";
-    // 3. Set fr’s result to null.
+    // 3. Set fr's result to null.
     this[result] = null;
-    // 4. Set fr’s error to null.
+    // 4. Set fr's error to null.
     this[error] = null;
 
     // We set this[aborted] to a new object, and keep track of it in a
@@ -146,9 +146,9 @@ class FileReader extends EventTarget {
             // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
             queueMicrotask(() => {
               if (abortedState.aborted) return;
-              // 1. Set fr’s state to "done".
+              // 1. Set fr's state to "done".
               this[state] = "done";
-              // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
+              // 2. Let result be the result of package data given bytes, type, blob's type, and encodingName.
               const size = ArrayPrototypeReduce(
                 chunks,
                 (p, i) => p + i.byteLength,
@@ -218,7 +218,7 @@ class FileReader extends EventTarget {
                 this.dispatchEvent(ev);
               }
 
-              // 5. If fr’s state is not "loading", fire a progress event called loadend at the fr.
+              // 5. If fr's state is not "loading", fire a progress event called loadend at the fr.
               //Note: Event handler for the load or error events could have started another load, if that happens the loadend event for this load is not fired.
               if (this[state] !== "loading") {
                 const ev = new ProgressEvent("loadend", {
@@ -245,7 +245,7 @@ class FileReader extends EventTarget {
               this.dispatchEvent(ev);
             }
 
-            //If fr’s state is not "loading", fire a progress event called loadend at fr.
+            //If fr's state is not "loading", fire a progress event called loadend at fr.
             //Note: Event handler for the error event could have started another load, if that happens the loadend event for this load is not fired.
             if (this[state] !== "loading") {
               const ev = new ProgressEvent("loadend", {});

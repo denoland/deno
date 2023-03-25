@@ -680,7 +680,6 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
-        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,
@@ -705,7 +704,6 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
-        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,

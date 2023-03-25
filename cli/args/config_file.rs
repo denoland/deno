@@ -95,6 +95,7 @@ impl Serialize for IgnoredCompilerOptions {
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
 pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
+  "allowImportingTsExtensions",
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
   "assumeChangesOnlyAffectDirectDependencies",
@@ -900,6 +901,7 @@ pub fn get_ts_config_for_emit(
 ) -> Result<TsConfigForEmit, AnyError> {
   let mut ts_config = match config_type {
     TsConfigType::Bundle => TsConfig::new(json!({
+      "allowImportingTsExtensions": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
@@ -912,6 +914,7 @@ pub fn get_ts_config_for_emit(
     })),
     TsConfigType::Check { lib } => TsConfig::new(json!({
       "allowJs": true,
+      "allowImportingTsExtensions": true,
       "allowSyntheticDefaultImports": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
@@ -936,6 +939,7 @@ pub fn get_ts_config_for_emit(
       "useUnknownInCatchVariables": false,
     })),
     TsConfigType::Emit => TsConfig::new(json!({
+      "allowImportingTsExtensions": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",

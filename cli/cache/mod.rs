@@ -11,6 +11,7 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 mod check;
@@ -43,6 +44,7 @@ pub struct FetchCacher {
   emit_cache: EmitCache,
   dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
+  file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   root_permissions: PermissionsContainer,
   cache_info_enabled: bool,
   maybe_local_node_modules_url: Option<ModuleSpecifier>,
@@ -52,6 +54,7 @@ impl FetchCacher {
   pub fn new(
     emit_cache: EmitCache,
     file_fetcher: Arc<FileFetcher>,
+    file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
     maybe_local_node_modules_url: Option<ModuleSpecifier>,
@@ -60,6 +63,7 @@ impl FetchCacher {
       emit_cache,
       dynamic_permissions,
       file_fetcher,
+      file_header_overrides,
       root_permissions,
       cache_info_enabled: false,
       maybe_local_node_modules_url,
@@ -123,6 +127,7 @@ impl Loader for FetchCacher {
       self.root_permissions.clone()
     };
     let file_fetcher = self.file_fetcher.clone();
+    let file_header_overrides = self.file_header_overrides.clone();
     let specifier = specifier.clone();
 
     async move {
@@ -130,9 +135,18 @@ impl Loader for FetchCacher {
         .fetch(&specifier, permissions)
         .await
         .map(|file| {
+          let maybe_headers =
+            match (file.maybe_headers, file_header_overrides.get(&specifier)) {
+              (Some(headers), Some(overrides)) => {
+                Some(headers.into_iter().chain(overrides.clone()).collect())
+              }
+              (Some(headers), None) => Some(headers),
+              (None, Some(overrides)) => Some(overrides.clone()),
+              (None, None) => None,
+            };
           Ok(Some(LoadResponse::Module {
             specifier: file.specifier,
-            maybe_headers: file.maybe_headers,
+            maybe_headers,
             content: file.source,
           }))
         })

@@ -26,7 +26,7 @@ fn main() {
 
 fn eval(
   context: &mut JsRuntime,
-  code: &str,
+  code: &'static str,
 ) -> Result<serde_json::Value, String> {
   let res = context.execute_script("<anon>", code);
   match res {

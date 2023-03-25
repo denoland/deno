@@ -35,6 +35,7 @@ use serde::Serialize;
 use std::fs;
 use std::io::stdin;
 use std::io::Read;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -245,12 +246,12 @@ pub fn create_linter(
 }
 
 fn lint_file(
-  file_path: &PathBuf,
+  file_path: &Path,
   source_code: String,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from(file_path);
+  let media_type = MediaType::from_path(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 

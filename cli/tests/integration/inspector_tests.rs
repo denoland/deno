@@ -927,7 +927,7 @@ async fn inspector_with_ts_files() {
         r#"{"method":"Debugger.resumed","params":{}}"#,
         r#"{"method":"Runtime.consoleAPICalled","#,
         r#"{"method":"Runtime.consoleAPICalled","#,
-        r#"{"method":"Runtime.executionContextDestroyed","params":{"executionContextId":1}}"#,
+        r#"{"method":"Runtime.executionContextDestroyed","params":{"executionContextId":1"#,
       ],
     )
     .await;

@@ -40,7 +40,7 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new(host: SocketAddr, name: String) -> Self {
+  pub fn new(host: SocketAddr, name: &'static str) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
@@ -220,7 +220,7 @@ async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   shutdown_server_rx: oneshot::Receiver<()>,
-  name: String,
+  name: &str,
 ) {
   let inspector_map_ =
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
