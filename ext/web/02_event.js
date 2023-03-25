@@ -996,7 +996,7 @@ class EventTarget {
         // If signal is not null and its aborted flag is set, then return.
         return;
       } else {
-        // If listener’s signal is not null, then add the following abort
+        // If listener's signal is not null, then add the following abort
         // abort steps to it: Remove an event listener.
         signal.addEventListener("abort", () => {
           self.removeEventListener(type, callback, options);

@@ -490,7 +490,8 @@ impl Document {
   pub fn script_version(&self) -> String {
     self
       .maybe_lsp_version()
-      .map_or_else(|| self.fs_version().to_string(), |v| v.to_string())
+      .map(|v| v.to_string())
+      .unwrap_or_else(|| self.fs_version().to_string())
   }
 
   pub fn is_diagnosable(&self) -> bool {
@@ -527,7 +528,7 @@ impl Document {
     if let Some(Ok(module)) = &self.0.maybe_module {
       return module.media_type;
     }
-    let specifier_media_type = MediaType::from(&self.0.specifier);
+    let specifier_media_type = MediaType::from_specifier(&self.0.specifier);
     if specifier_media_type != MediaType::Unknown {
       return specifier_media_type;
     }
@@ -901,15 +902,13 @@ impl Documents {
         let mut file_system_docs = self.file_system_docs.lock();
         file_system_docs.docs.remove(specifier)
       })
-      .map_or_else(
-        || {
-          Err(custom_error(
-            "NotFound",
-            format!("The specifier \"{specifier}\" was not found."),
-          ))
-        },
-        Ok,
-      )?;
+      .map(Ok)
+      .unwrap_or_else(|| {
+        Err(custom_error(
+          "NotFound",
+          format!("The specifier \"{specifier}\" was not found."),
+        ))
+      })?;
     self.dirty = true;
     let doc = doc.with_change(version, changes, self.get_resolver())?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());
@@ -1103,7 +1102,7 @@ impl Documents {
       }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
-          let media_type = MediaType::from(&specifier);
+          let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
@@ -1184,12 +1183,8 @@ impl Documents {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      if let Some(jsx_config) = maybe_jsx_config {
-        hasher.write_hashable(&jsx_config);
-      }
-      if let Some(deps) = maybe_package_json_deps {
-        hasher.write_hashable(&deps);
-      }
+      hasher.write_hashable(&maybe_jsx_config);
+      hasher.write_hashable(&maybe_package_json_deps);
       hasher.finish()
     }
 
@@ -1492,9 +1487,8 @@ fn analyze_module(
       parsed_source,
       Some(resolver),
     )),
-    Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
-      specifier.clone(),
-      err.clone(),
+    Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
+      deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
     )),
   }
 }
