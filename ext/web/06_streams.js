@@ -903,7 +903,7 @@ function writableStreamForRid(rid, autoClose = true) {
   const underlyingSink = {
     async write(chunk, controller) {
       try {
-        await core.writeAll(rid, chunk);
+        await core.writeAll(rid, transferArrayBuffer(chunk));
       } catch (e) {
         controller.error(e);
         tryClose();
