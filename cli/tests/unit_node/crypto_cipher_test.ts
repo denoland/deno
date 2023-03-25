@@ -17,6 +17,10 @@ const rsaPublicKey = Deno.readTextFileSync(
 
 const input = new TextEncoder().encode("hello world");
 
+function zeros(length: number): Uint8Array {
+  return new Uint8Array(length);
+}
+
 Deno.test({
   name: "rsa public encrypt and private decrypt",
   fn() {
@@ -52,7 +56,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "createCipheriv - basic",
+  name: "createCipheriv - multiple chunk inputs",
   fn() {
     const cipher = crypto.createCipheriv(
       "aes-128-cbc",
@@ -72,6 +76,31 @@ Deno.test({
       "a10cf66d0fddf3405370b4bf8df5bfb347c78395e0d8ae2194da0a90abc9888a94ee48f6c78fcd518a941c3896102cb1",
     );
     assertEquals(cipher.final("hex"), "e11901dde4a2f99fe4efc707e48c6aed");
+  },
+});
+
+Deno.test({
+  name: "createCipheriv - algorithms",
+  fn() {
+    const table = [
+      [
+        ["aes-128-cbc", 16, 16],
+        "66e94bd4ef8a2c3b884cfa59ca342b2ef795bd4a52e29ed713d313fa20e98dbca10cf66d0fddf3405370b4bf8df5bfb3",
+        "d5f65ecda64511e9d3d12206411ffd72",
+      ],
+      [
+        ["aes-128-ecb", 16, 0],
+        "66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e",
+        "baf823258ca2e6994f638daa3515e986",
+      ],
+    ] as const;
+    for (
+      const [[alg, keyLen, ivLen], expectedUpdate, expectedFinal] of table
+    ) {
+      const cipher = crypto.createCipheriv(alg, zeros(keyLen), zeros(ivLen));
+      assertEquals(cipher.update(zeros(50), undefined, "hex"), expectedUpdate);
+      assertEquals(cipher.final("hex"), expectedFinal);
+    }
   },
 });
 
@@ -113,24 +142,25 @@ Deno.test({
 });
 
 Deno.test({
-  name: "createDecipheriv - basic",
+  name: "createDecipheriv - algorithms",
   fn() {
-    const decipher = crypto.createDecipheriv(
-      "aes-128-cbc",
-      new Uint8Array(16),
-      new Uint8Array(16),
-    );
-    assertEquals(
-      decipher.update(
+    const table = [
+      [
+        ["aes-128-cbc", 16, 16],
         "66e94bd4ef8a2c3b884cfa59ca342b2ef795bd4a52e29ed713d313fa20e98dbca10cf66d0fddf3405370b4bf8df5bfb347c78395e0d8ae2194da0a90abc9888a94ee48f6c78fcd518a941c3896102cb1e11901dde4a2f99fe4efc707e48c6aed",
-        "hex",
-      ),
-      Buffer.alloc(80),
-    );
-    assertEquals(
-      decipher.final(),
-      Buffer.alloc(10), // Checks the padding
-    );
+      ],
+      [
+        ["aes-128-ecb", 16, 0],
+        "66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2e66e94bd4ef8a2c3b884cfa59ca342b2ec29a917cbaf72fa9bc32129bb0d17663",
+      ],
+    ] as const;
+    for (
+      const [[alg, keyLen, ivLen], input] of table
+    ) {
+      const cipher = crypto.createDecipheriv(alg, zeros(keyLen), zeros(ivLen));
+      assertEquals(cipher.update(input, "hex"), Buffer.alloc(80));
+      assertEquals(cipher.final(), Buffer.alloc(10));
+    }
   },
 });
 
