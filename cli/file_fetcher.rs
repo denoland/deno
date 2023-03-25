@@ -290,21 +290,6 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
-    match self.fetch_cached(specifier, 0) {
-      Ok(Some(file)) => return Ok(file),
-      Ok(None) => {}
-      Err(err) => return Err(err),
-    }
-
-    if self.cache_setting == CacheSetting::Only {
-      return Err(custom_error(
-        "NotCached",
-        format!(
-          "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
-        ),
-      ));
-    }
-
     let (source, content_type) = get_source_from_data_url(specifier)?;
     let (media_type, _) = map_content_type(specifier, Some(&content_type));
 
@@ -547,11 +532,7 @@ impl FileFetcher {
       // disk changing effecting things like workers and dynamic imports.
       fetch_local(specifier)
     } else if scheme == "data" {
-      let result = self.fetch_data_url(specifier);
-      if let Ok(file) = &result {
-        self.cache.insert(specifier.clone(), file.clone());
-      }
-      result
+      self.fetch_data_url(specifier)
     } else if scheme == "blob" {
       self.fetch_blob_url(specifier).await
     } else if !self.allow_remote {
