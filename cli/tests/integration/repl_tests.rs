@@ -98,106 +98,84 @@ fn pty_complete_declarations() {
 
 #[test]
 fn pty_complete_primitives() {
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line("let func = function test(){}");
-    console.write_line("func.appl\t");
+    console.expect("undefined");
+    console.write_line_raw("func.appl\t");
+    console.expect("func.apply");
     console.write_line("let str = ''");
-    console.write_line("str.leng\t");
-    console.write_line("false.valueO\t");
-    console.write_line("5n.valueO\t");
+    console.expect("undefined");
+    console.write_line_raw("str.leng\t");
+    console.expect("str.length");
+    console.write_line_raw("false.valueO\t");
+    console.expect("false.valueOf");
+    console.write_line_raw("5n.valueO\t");
+    console.expect("5n.valueOf");
     console.write_line("let num = 5");
-    console.write_line("num.toStrin\t");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "> func.apply");
-    assert_contains!(output, "> str.length");
-    assert_contains!(output, "> 5n.valueOf");
-    assert_contains!(output, "> false.valueOf");
-    assert_contains!(output, "> num.toString");
+    console.expect("undefined");
+    console.write_line_raw("num.toStrin\t");
+    console.expect("num.toString");
   });
 }
 
 #[test]
 fn pty_complete_expression() {
-  util::with_pty(&["repl"], |mut console| {
-    console.write_text("Deno.\t\t");
-    console.write_text("y");
-    console.write_line("");
-    console.write_line("close();");
-    let output = console.read_all_output();
-    assert_contains!(output, "Display all");
-    assert_contains!(output, "args");
-    assert_contains!(output, "exit");
-    assert_contains!(output, "symlink");
-    assert_contains!(output, "permissions");
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_text_raw("Deno.\t\t");
+    console.expect("Display all");
+    console.write_text_raw("y");
+    // if this test ever fails it's probably because the ordering
+    // needs to be changed below
+    console.expect("symlink");
+    console.expect("args");
+    console.expect("permissions");
+    console.expect("exit");
   });
 }
 
 #[test]
 fn pty_complete_imports() {
-  util::with_pty(&["repl", "-A"], |mut console| {
+  util::with_pty2(&["repl", "-A"], |mut console| {
     // single quotes
-    console.write_line("import './run/001_hel\t'");
+    console.write_line_raw("import './run/001_hel\t'");
+    console.expect("Hello World");
     // double quotes
-    console.write_line("import { output } from \"./run/045_out\t\"");
-    console.write_line("output('testing output');");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "Hello World");
-    assert_contains!(
-      output,
-      // on windows, could any (it's flaky)
-      "\ntesting output",
-      "testing output\u{1b}",
-      "\r\n\u{1b}[?25htesting output",
-    );
+    console.write_line_raw("import { output } from \"./run/045_out\t\"");
+    console.write_line_raw("output('testing output');");
+    console.expect("testing output");
   });
 
   // ensure when the directory changes that the suggestions come from the cwd
-  util::with_pty(&["repl", "-A"], |mut console| {
+  util::with_pty2(&["repl", "-A"], |mut console| {
     console.write_line("Deno.chdir('./subdir');");
-    console.write_line("import '../run/001_hel\t'");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "Hello World");
+    console.expect("undefined");
+    console.write_line_raw("import '../run/001_hel\t'");
+    console.expect("Hello World");
   });
 }
 
 #[test]
 fn pty_complete_imports_no_panic_empty_specifier() {
   // does not panic when tabbing when empty
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line("import '\t';");
-    console.write_line("close();");
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line_raw("import '\t';");
+    console.expect("not prefixed with");
   });
 }
 
 #[test]
 fn pty_ignore_symbols() {
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line("Array.Symbol\t");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_contains!(output, "undefined");
-    assert_not_contains!(
-      output,
-      "Uncaught TypeError: Array.Symbol is not a function"
-    );
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line_raw("Array.Symbol\t");
+    console.expect("undefined");
   });
 }
 
 #[test]
 fn pty_assign_global_this() {
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line("globalThis = 42;");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert_not_contains!(output, "panicked");
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("globalThis = 40 + 2;");
+    console.expect("42");
   });
 }
 
@@ -233,105 +211,78 @@ fn pty_internal_repl() {
 #[test]
 fn pty_emoji() {
   // windows was having issues displaying this
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line(r#"console.log('\u{1F995}');"#);
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    // only one for the output (since input is escaped)
-    let emoji_count = output.chars().filter(|c| *c == '🦕').count();
-    assert_eq!(emoji_count, 1);
+    console.expect("🦕");
   });
 }
 
 #[test]
 fn console_log() {
-  let (out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["console.log('hello')", "'world'"]),
-    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-    false,
-  );
-  assert_ends_with!(out, "hello\nundefined\n\"world\"\n");
-  assert!(err.is_empty());
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("console.log('hello');");
+    console.expect("hello");
+    console.write_line("'world'");
+    console.expect("\"world\"");
+  });
 }
 
 #[test]
 fn object_literal() {
-  let (out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["{}", "{ foo: 'bar' }"]),
-    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-    false,
-  );
-  assert_ends_with!(out, "{}\n{ foo: \"bar\" }\n");
-  assert!(err.is_empty());
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("{}");
+    console.expect("{}");
+    console.write_line("{   foo: 'bar'   }");
+    console.expect("{ foo: \"bar\" }");
+  });
 }
 
 #[test]
 fn block_expression() {
-  let (out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["{};", "{\"\"}"]),
-    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-    false,
-  );
-  assert_ends_with!(out, "undefined\n\"\"\n");
-  assert!(err.is_empty());
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("{};");
+    console.expect("undefined");
+    console.write_line("{\"\"}");
+    console.expect("\"\"");
+  });
 }
 
 #[test]
 fn await_resolve() {
-  let (out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["await Promise.resolve('done')"]),
-    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-    false,
-  );
-  assert_ends_with!(out, "\"done\"\n");
-  assert!(err.is_empty());
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("await Promise.resolve('done')");
+    console.expect("\"done\"");
+  });
 }
 
 #[test]
 fn await_timeout() {
-  let (out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["await new Promise((r) => setTimeout(r, 0, 'done'))"]),
-    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-    false,
-  );
-  assert_ends_with!(out, "\"done\"\n");
-  assert!(err.is_empty());
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("await new Promise((r) => setTimeout(r, 0, 'done'))");
+    console.expect("\"done\"");
+  });
 }
 
 #[test]
 fn let_redeclaration() {
-  let (out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["let foo = 0;", "foo", "let foo = 1;", "foo"]),
-    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-    false,
-  );
-  assert_ends_with!(out, "undefined\n0\nundefined\n1\n");
-  assert!(err.is_empty());
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("let foo = 0;");
+    console.expect("undefined");
+    console.write_line("foo");
+    console.expect("0");
+    console.write_line("let foo = 1;");
+    console.expect("undefined");
+    console.write_line("foo");
+    console.expect("1");
+  });
 }
 
 #[test]
 fn repl_cwd() {
-  let (_out, err) = util::run_and_collect_output(
-    true,
-    "repl",
-    Some(vec!["Deno.cwd()"]),
-    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-    false,
-  );
-  assert!(err.is_empty());
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line("Deno.cwd()");
+    console.expect("testdata");
+  });
 }
 
 #[test]

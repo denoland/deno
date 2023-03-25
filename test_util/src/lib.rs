@@ -2184,7 +2184,7 @@ type PtyLoggedStream =
   expectrl::stream::log::LoggedStream<PtyProcessStream, io::Stderr>;
 type PtyLoggingSession = expectrl::Session<PtyProcess, PtyLoggedStream>;
 
-trait ExpectrlSession: Read {
+trait ExpectrlSession: Read + Write {
   fn send_line(&mut self, s: &str) -> std::io::Result<()>;
   fn expect(&mut self, s: &str) -> Result<expectrl::Captures, expectrl::Error>;
 }
@@ -2209,6 +2209,16 @@ macro_rules! implement_expectrl_session {
         self.0.read(buf)
       }
     }
+
+    impl Write for $struct_name {
+      fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+      }
+
+      fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+      }
+    }
   };
 }
 
@@ -2221,6 +2231,10 @@ implement_expectrl_session!(DefaultExpectrlSession);
 pub struct PtyNew(Box<dyn ExpectrlSession>);
 
 impl PtyNew {
+  pub fn write_text_raw(&mut self, line: impl AsRef<str>) {
+    self.0.write_all(line.as_ref().as_bytes()).unwrap()
+  }
+
   pub fn write_line(&mut self, line: impl AsRef<str>) {
     self.write_line_raw(&line);
 
@@ -2257,6 +2271,12 @@ impl PtyNew {
 }
 
 pub fn with_pty2(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
+  if cfg!(windows) && std::env::var("CI").is_ok() {
+    // todo(dsherret): re-enable https://github.com/zhiburt/expectrl/issues/52
+    eprintln!("Ignoring windows CI.");
+    return;
+  }
+
   let deno_dir = new_deno_dir();
   let mut env_vars = std::collections::HashMap::new();
   env_vars.insert("NO_COLOR".to_string(), "1".to_string());
