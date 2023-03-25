@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 use test_util::deno_cmd;
 
 #[cfg(debug_assertions)]
@@ -233,4 +233,35 @@ fn event_loop_integration() {
     Timeout\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
+}
+
+#[test]
+fn issue18131() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/issue18131.js")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+
+  assert!(!output.status.success());
+
+  let stderr_starts_with = r#"
+error: Uncaught Error: Error!
+throw new Error("Error!");
+      ^
+    at file://"#
+    .trim_start();
+  let stderr_ends_with = "/test_ffi/tests/issue18131.js:25:7\n";
+
+  assert_eq!(std::str::from_utf8(&output.stdout).unwrap(), "");
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  assert!(stderr.starts_with(stderr_starts_with));
+  assert!(stderr.ends_with(stderr_ends_with));
 }
