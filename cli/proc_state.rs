@@ -149,7 +149,7 @@ impl ProcState {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_inspector_server: self.maybe_inspector_server.clone(),
       root_cert_store: self.root_cert_store.clone(),
-      blob_store: Default::default(),
+      blob_store: self.blob_store.clone(),
       broadcast_channel: Default::default(),
       shared_array_buffer_store: Default::default(),
       compiled_wasm_module_store: Default::default(),
@@ -346,6 +346,7 @@ impl ProcState {
     let mut cache = cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       root_permissions,
       dynamic_permissions,
       self.options.node_modules_dir_specifier(),
@@ -639,6 +640,7 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
       self.options.node_modules_dir_specifier(),

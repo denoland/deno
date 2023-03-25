@@ -12,8 +12,8 @@ use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Serialize;
 use tokio::task::JoinHandle;
 
-use super::common::run_sqlite_pragma;
 use super::common::FastInsecureHasher;
+use super::common::INITIAL_PRAGMAS;
 
 /// Cache used to skip formatting/linting a file again when we
 /// know it is already formatted or has no lint diagnostics.
@@ -172,10 +172,9 @@ impl SqlIncrementalCache {
   fn from_connection(
     conn: Connection,
     state_hash: u64,
-    cli_version: String,
+    cli_version: &'static str,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self { conn, state_hash })
   }
@@ -238,26 +237,24 @@ impl SqlIncrementalCache {
   }
 }
 
-fn create_tables(
+fn initialize(
   conn: &Connection,
-  cli_version: String,
+  cli_version: &'static str,
 ) -> Result<(), AnyError> {
-  // INT doesn't store up to u64, so use TEXT
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS incrementalcache (
-        file_path TEXT PRIMARY KEY,
-        state_hash TEXT NOT NULL,
-        source_hash TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )",
-    [],
-  )?;
+  // INT doesn't store up to u64, so use TEXT for source_hash
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  CREATE TABLE IF NOT EXISTS incrementalcache (
+    file_path TEXT PRIMARY KEY,
+    state_hash TEXT NOT NULL,
+    source_hash TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );"
+  );
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn
@@ -267,11 +264,11 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version.as_deref() != Some(&cli_version) {
+  if data_cli_version.as_deref() != Some(cli_version) {
     conn.execute("DELETE FROM incrementalcache", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
-    stmt.execute(params!["CLI_VERSION", &cli_version])?;
+    stmt.execute(params!["CLI_VERSION", cli_version])?;
   }
 
   Ok(())
@@ -286,9 +283,7 @@ mod test {
   #[test]
   pub fn sql_cache_general_use() {
     let conn = Connection::open_in_memory().unwrap();
-    let cache =
-      SqlIncrementalCache::from_connection(conn, 1, "1.0.0".to_string())
-        .unwrap();
+    let cache = SqlIncrementalCache::from_connection(conn, 1, "1.0.0").unwrap();
     let path = PathBuf::from("/mod.ts");
 
     assert_eq!(cache.get_source_hash(&path), None);
@@ -298,8 +293,7 @@ mod test {
     // try changing the cli version (should clear)
     let conn = cache.conn;
     let mut cache =
-      SqlIncrementalCache::from_connection(conn, 1, "2.0.0".to_string())
-        .unwrap();
+      SqlIncrementalCache::from_connection(conn, 1, "2.0.0").unwrap();
     assert_eq!(cache.get_source_hash(&path), None);
 
     // add back the file to the cache
@@ -316,9 +310,7 @@ mod test {
 
     // recreating the cache should not remove the data because the CLI version and state hash is the same
     let conn = cache.conn;
-    let cache =
-      SqlIncrementalCache::from_connection(conn, 1, "2.0.0".to_string())
-        .unwrap();
+    let cache = SqlIncrementalCache::from_connection(conn, 1, "2.0.0").unwrap();
     assert_eq!(cache.get_source_hash(&path), Some(2));
 
     // now try replacing and using another path
@@ -334,8 +326,7 @@ mod test {
   pub async fn incremental_cache_general_use() {
     let conn = Connection::open_in_memory().unwrap();
     let sql_cache =
-      SqlIncrementalCache::from_connection(conn, 1, "1.0.0".to_string())
-        .unwrap();
+      SqlIncrementalCache::from_connection(conn, 1, "1.0.0").unwrap();
     let file_path = PathBuf::from("/mod.ts");
     let file_text = "test";
     let file_hash = FastInsecureHasher::new().write_str(file_text).finish();

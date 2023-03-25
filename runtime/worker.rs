@@ -21,6 +21,7 @@ use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -29,6 +30,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_io::Stdio;
+use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
@@ -187,16 +189,22 @@ impl MainWorker {
     permissions: PermissionsContainer,
     mut options: WorkerOptions,
   ) -> Self {
+    deno_core::extension!(deno_permissions_worker,
+      options = {
+        permissions: PermissionsContainer,
+        unstable: bool,
+        enable_testing_features: bool,
+      },
+      state = |state, options| {
+        state.put::<PermissionsContainer>(options.permissions);
+        state.put(ops::UnstableChecker { unstable: options.unstable });
+        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
+      },
+    );
+
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder("deno_permissions_worker")
-      .state(move |state| {
-        state.put::<PermissionsContainer>(permissions.clone());
-        state.put(ops::UnstableChecker { unstable });
-        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-      })
-      .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
@@ -207,66 +215,80 @@ impl MainWorker {
     // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let mut extensions = vec![
       // Web APIs
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init_ops(),
-      deno_web::init_ops::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init_ops(),
+      deno_console::deno_console::init_ops(),
+      deno_url::deno_url::init_ops(),
+      deno_web::deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init_ops::<PermissionsContainer>(deno_fetch::Options {
-        user_agent: options.bootstrap.user_agent.clone(),
-        root_cert_store: options.root_cert_store.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-        ..Default::default()
-      }),
-      deno_cache::init_ops::<SqliteBackedCache>(create_cache),
-      deno_websocket::init_ops::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
+        deno_fetch::Options {
+          user_agent: options.bootstrap.user_agent.clone(),
+          root_cert_store: options.root_cert_store.clone(),
+          unsafely_ignore_certificate_errors: options
+            .unsafely_ignore_certificate_errors
+            .clone(),
+          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          ..Default::default()
+        },
+      ),
+      deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init_ops(options.origin_storage_dir.clone()),
-      deno_crypto::init_ops(options.seed),
-      deno_broadcast_channel::init_ops(
+      deno_webstorage::deno_webstorage::init_ops(
+        options.origin_storage_dir.clone(),
+      ),
+      deno_crypto::deno_crypto::init_ops(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init_ops(
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_ffi::init_ops::<PermissionsContainer>(unstable),
-      deno_net::init_ops::<PermissionsContainer>(
+      deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
+      deno_net::deno_net::init_ops::<PermissionsContainer>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_tls::init_ops(),
-      deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::init_ops(),
-      deno_io::init_ops(options.stdio),
-      deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_flash::init_ops::<PermissionsContainer>(unstable),
-      deno_node::init_ops::<PermissionsContainer>(options.npm_resolver),
-      deno_node::init_polyfill_ops(),
+      deno_tls::deno_tls::init_ops(),
+      deno_kv::deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(
+          options.origin_storage_dir.clone(),
+        ),
+        unstable,
+      ),
+      deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
+      deno_http::deno_http::init_ops(),
+      deno_io::deno_io::init_ops(Some(options.stdio)),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
+        options.npm_resolver,
+      ),
       // Ops from this crate
-      ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(
+      ops::runtime::deno_runtime::init_ops(main_module.clone()),
+      ops::worker_host::deno_worker_host::init_ops(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
         options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::fs_events::init(),
-      ops::os::init(exit_code.clone()),
-      ops::permissions::init(),
-      ops::process::init_ops(),
-      ops::signal::init(),
-      ops::tty::init(),
-      ops::http::init(),
+      ops::fs_events::deno_fs_events::init_ops(),
+      ops::os::deno_os::init_ops(exit_code.clone()),
+      ops::permissions::deno_permissions::init_ops(),
+      ops::process::deno_process::init_ops(),
+      ops::signal::deno_signal::init_ops(),
+      ops::tty::deno_tty::init_ops(),
+      ops::http::deno_http_runtime::init_ops(),
+      deno_permissions_worker::init_ops(
+        permissions,
+        unstable,
+        enable_testing_features,
+      ),
     ];
-
-    extensions.push(perm_ext);
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
@@ -350,10 +372,10 @@ impl MainWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script(
+  pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
-    script_name: &str,
-    source_code: &str,
+    script_name: &'static str,
+    source_code: S,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
@@ -488,7 +510,7 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
   pub fn dispatch_load_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
@@ -505,7 +527,7 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
   pub fn dispatch_unload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
@@ -522,7 +544,7 @@ impl MainWorker {
   /// running.
   pub fn dispatch_beforeunload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<bool, AnyError> {
     let value = self.js_runtime.execute_script(
       script_name,
