@@ -1541,6 +1541,42 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_config_with_global_files() {
+    let config_text = r#"{
+      "include": ["src/"],
+      "test": {
+        "include": ["npm/"],
+      },
+      "bench": {}
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+
+    let (options_value, _) =
+      config_file.to_compiler_options().expect("error parsing");
+    assert!(options_value.is_object());
+
+    let test_config = config_file
+      .to_test_config()
+      .expect("error parsing fmt object")
+      .expect("fmt object should be defined");
+    assert_eq!(
+      test_config.files.include,
+      vec![PathBuf::from("/deno/npm/"), PathBuf::from("/deno/src/")]
+    );
+
+    let bench_config = config_file
+      .to_bench_config()
+      .expect("error parsing fmt object")
+      .expect("fmt object should be defined");
+    assert_eq!(
+      bench_config.files.include,
+      vec![PathBuf::from("/deno/src/")]
+    );
+  }
+
+  #[test]
   fn test_parse_config_with_global_files_only() {
     let config_text = r#"{
       "include": ["src/"],
