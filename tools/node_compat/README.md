@@ -27,7 +27,8 @@ Node.js compat testing in Deno repository.
 
 1. Run `./tools/node_compat/setup.ts`
 
-The above command copies the updated items from Node.js tarball to the Deno source tree.
+The above command copies the updated items from Node.js tarball to the Deno
+source tree.
 
 Ideally Deno should pass the Node.js compat tests without modification, but if
 you need to modify it, then add that item in `ignore` perperty of `config.json`.
@@ -38,4 +39,6 @@ If the test needs to be ignored in particular platform, then add them in
 
 ## Run Node.js test cases
 
-Node.js compat tests are run as part of `cargo test` command. If you want to run only the Node.js compat test cases you can use the command `cargo test node_compat`.
+Node.js compat tests are run as part of `cargo test` command. If you want to run
+only the Node.js compat test cases you can use the command
+`cargo test node_compat`.
