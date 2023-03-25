@@ -145,13 +145,34 @@ pub mod _ops {
 #[macro_export]
 macro_rules! located_script_name {
   () => {
-    concat!("[ext:{}:{}:{}]", std::file!(), std::line!(), std::column!());
+    concat!(
+      "[ext:",
+      std::file!(),
+      ":",
+      std::line!(),
+      ":",
+      std::column!(),
+      "]"
+    )
   };
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn located_script_name() {
+    // Note that this test will fail if this file is moved. We don't
+    // test line locations because that's just too brittle.
+    let name = located_script_name!();
+    let expected = if cfg!(windows) {
+      "[ext:core\\lib.rs:"
+    } else {
+      "[ext:core/lib.rs:"
+    };
+    assert_eq!(&name[..expected.len()], expected);
+  }
 
   #[test]
   fn test_v8_version() {

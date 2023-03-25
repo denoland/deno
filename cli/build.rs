@@ -459,6 +459,10 @@ fn main() {
 
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
   println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
+  println!(
+    "cargo:rustc-env=GIT_COMMIT_HASH_SHORT={}",
+    &git_commit_hash()[..7]
+  );
 
   let ts_version = ts::version();
   debug_assert_eq!(ts_version, "5.0.2"); // bump this assertion when it changes

@@ -1291,12 +1291,17 @@ function inspectRawObject(
   inspectOptions.indentLevel--;
 
   // Making sure color codes are ignored when calculating the total length
+  const entriesText = colors.stripColor(ArrayPrototypeJoin(entries, ""));
   const totalLength = entries.length + inspectOptions.indentLevel +
-    colors.stripColor(ArrayPrototypeJoin(entries, "")).length;
+    entriesText.length;
 
   if (entries.length === 0) {
     baseString = "{}";
-  } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
+  } else if (
+    totalLength > LINE_BREAKING_LENGTH ||
+    !inspectOptions.compact ||
+    StringPrototypeIncludes(entriesText, "\n")
+  ) {
     const entryIndent = StringPrototypeRepeat(
       DEFAULT_INDENT,
       inspectOptions.indentLevel + 1,

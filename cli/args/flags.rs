@@ -641,7 +641,7 @@ To evaluate code in the shell:
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
-  let mut app = clap_root(&version);
+  let mut app = clap_root(version);
   let matches = app.try_get_matches_from_mut(&args)?;
 
   let mut flags = Flags::default();
@@ -712,7 +712,7 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
 
-fn clap_root(version: &str) -> Command {
+fn clap_root(version: &'static str) -> Command {
   clap::Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)

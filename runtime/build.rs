@@ -34,7 +34,7 @@ mod startup_snapshot {
         file_source.specifier
       ),
     };
-    let code = file_source.code.load()?;
+    let code = file_source.load()?;
 
     if !should_transpile {
       return Ok(code);
