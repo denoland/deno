@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::time::Duration;
+
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
   tokio::runtime::Builder::new_current_thread()
     .enable_io()
@@ -20,5 +22,12 @@ where
 {
   let rt = create_basic_runtime();
   let local = tokio::task::LocalSet::new();
-  local.block_on(&rt, future)
+  let ret = local.block_on(&rt, future);
+
+  // Any call to `spawn_blocking` on the tokio runtime, which includes file I/O
+  // and non-blocking FFI, would usually keep the runtime from shutting down
+  // until they finish. With FFI this can keep the process from ever shutting
+  // down, so instead we set a maximum waiting time of half a second.
+  rt.shutdown_timeout(Duration::from_secs_f64(0.5));
+  ret
 }
