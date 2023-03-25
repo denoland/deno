@@ -27,7 +27,7 @@
  */
 
 /**
- * ```
+ * ```ts
  * import { check } from "./doc.ts";
  *
  * console.assert(check() == 42);

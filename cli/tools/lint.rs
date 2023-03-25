@@ -35,6 +35,7 @@ use serde::Serialize;
 use std::fs;
 use std::io::stdin;
 use std::io::Read;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -234,7 +235,7 @@ pub fn print_rules_list(json: bool) {
 
 pub fn create_linter(
   media_type: MediaType,
-  rules: Vec<Arc<dyn LintRule>>,
+  rules: Vec<&'static dyn LintRule>,
 ) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
@@ -245,12 +246,12 @@ pub fn create_linter(
 }
 
 fn lint_file(
-  file_path: &PathBuf,
+  file_path: &Path,
   source_code: String,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from(file_path);
+  let media_type = MediaType::from_path(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 
@@ -263,7 +264,7 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
@@ -530,7 +531,9 @@ fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   });
 }
 
-pub fn get_configured_rules(rules: LintRulesConfig) -> Vec<Arc<dyn LintRule>> {
+pub fn get_configured_rules(
+  rules: LintRulesConfig,
+) -> Vec<&'static dyn LintRule> {
   if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
   {
     rules::get_recommended_rules()

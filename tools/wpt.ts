@@ -25,6 +25,7 @@ import {
   ManifestFolder,
   ManifestTestOptions,
   ManifestTestVariation,
+  noIgnore,
   quiet,
   rest,
   runPy,
@@ -173,6 +174,9 @@ async function run() {
           test.options,
           inParallel ? () => {} : createReportTestCase(test.expectation),
           inspectBrk,
+          Deno.env.get("CI")
+            ? { long: 4 * 60_000, default: 4 * 60_000 }
+            : { long: 60_000, default: 10_000 },
         );
         results.push({ test, result });
         if (inParallel) {
@@ -245,8 +249,10 @@ async function generateWptReport(
         if (!case_.passed) {
           if (typeof test.expectation === "boolean") {
             expected = test.expectation ? "PASS" : "FAIL";
-          } else {
+          } else if (Array.isArray(test.expectation)) {
             expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          } else {
+            expected = "PASS";
           }
         }
 
@@ -332,6 +338,7 @@ async function update() {
         test.options,
         json ? () => {} : createReportTestCase(test.expectation),
         inspectBrk,
+        { long: 60_000, default: 10_000 },
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -367,7 +374,7 @@ async function update() {
 
   const currentExpectation = getExpectation();
 
-  for (const result of Object.values(resultTests)) {
+  for (const [path, result] of Object.entries(resultTests)) {
     const { passed, failed, testSucceeded } = result;
     let finalExpectation: boolean | string[];
     if (failed.length == 0 && testSucceeded) {
@@ -699,14 +706,16 @@ function discoverTestsToRun(
                 typeof expectation.ignore === "boolean",
                 "test entry's `ignore` key must be a boolean",
               );
-              if (expectation.ignore === true) continue;
+              if (expectation.ignore === true && !noIgnore) continue;
             }
           }
 
-          assert(
-            Array.isArray(expectation) || typeof expectation == "boolean",
-            "test entry must not have a folder expectation",
-          );
+          if (!noIgnore) {
+            assert(
+              Array.isArray(expectation) || typeof expectation == "boolean",
+              "test entry must not have a folder expectation",
+            );
+          }
 
           if (
             filter &&

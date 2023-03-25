@@ -1,0 +1,2 @@
+Task other deno eval 'console.log(2)'
+2

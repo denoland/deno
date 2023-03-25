@@ -27,8 +27,8 @@ use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
-use deno_runtime::ops::io::Stdio;
-use deno_runtime::ops::io::StdioPipe;
+use deno_runtime::deno_io::Stdio;
+use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -165,7 +165,11 @@ async fn test_specifier(
       &ps,
       specifier.clone(),
       PermissionsContainer::new(permissions),
-      vec![ops::testing::init(sender, fail_fast_tracker, filter)],
+      vec![ops::testing::deno_test::init_ops(
+        sender,
+        fail_fast_tracker,
+        filter,
+      )],
       Stdio {
         stdin: StdioPipe::Inherit,
         stdout,

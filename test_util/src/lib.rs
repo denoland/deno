@@ -15,7 +15,6 @@ use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
-use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use rustls::Certificate;
@@ -31,6 +30,7 @@ use std::mem::replace;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -43,6 +43,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -52,11 +53,16 @@ use tokio_tungstenite::accept_async;
 use url::Url;
 
 pub mod assertions;
+mod builders;
 pub mod lsp;
 mod npm;
 pub mod pty;
 mod temp_dir;
 
+pub use builders::TestCommandBuilder;
+pub use builders::TestCommandOutput;
+pub use builders::TestContext;
+pub use builders::TestContextBuilder;
 pub use temp_dir::TempDir;
 
 const PORT: u16 = 4545;
@@ -79,6 +85,7 @@ const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_PING_PORT: u16 = 4245;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -96,7 +103,6 @@ lazy_static! {
 
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
-    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
@@ -325,6 +331,36 @@ async fn run_ws_server(addr: &SocketAddr) {
   }
 }
 
+async fn run_ws_ping_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: ws"); // Eye catcher for HttpServerCount
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream = accept_async(stream).await;
+      use futures::SinkExt;
+      use tokio_tungstenite::tungstenite::Message;
+      if let Ok(mut ws_stream) = ws_stream {
+        for i in 0..9 {
+          ws_stream.send(Message::Ping(vec![])).await.unwrap();
+
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Pong(vec![]));
+
+          ws_stream
+            .send(Message::Text(format!("hello {}", i)))
+            .await
+            .unwrap();
+
+          let msg = ws_stream.next().await.unwrap().unwrap();
+          assert_eq!(msg, Message::Text(format!("hello {}", i)));
+        }
+
+        ws_stream.close(None).await.unwrap();
+      }
+    });
+  }
+}
+
 async fn run_ws_close_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
@@ -339,15 +375,12 @@ async fn run_ws_close_server(addr: &SocketAddr) {
   }
 }
 
+#[derive(Default)]
 enum SupportedHttpVersions {
+  #[default]
   All,
   Http1Only,
   Http2Only,
-}
-impl Default for SupportedHttpVersions {
-  fn default() -> SupportedHttpVersions {
-    SupportedHttpVersions::All
-  }
 }
 
 async fn get_tls_config(
@@ -1058,6 +1091,20 @@ async fn main_server(
             return Ok(file_resp);
           }
         }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+        let mut file_path = std_path();
+        file_path.push(suffix);
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
+        let duration = suffix.parse::<u64>().unwrap();
+        tokio::time::sleep(Duration::from_millis(duration)).await;
+        return Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "application/typescript")
+          .body(Body::empty());
       }
 
       Response::builder()
@@ -1427,7 +1474,7 @@ async fn wrap_client_auth_https_server() {
             }
 
             Err(e) => {
-              eprintln!("https-client-auth accept error: {:?}", e);
+              eprintln!("https-client-auth accept error: {e:?}");
               yield Err(e);
             }
           }
@@ -1470,6 +1517,8 @@ pub async fn run_all_servers() {
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
   let ws_server_fut = run_ws_server(&ws_addr);
+  let ws_ping_addr = SocketAddr::from(([127, 0, 0, 1], WS_PING_PORT));
+  let ws_ping_server_fut = run_ws_ping_server(&ws_ping_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
@@ -1487,6 +1536,7 @@ pub async fn run_all_servers() {
     futures::join!(
       redirect_server_fut,
       ws_server_fut,
+      ws_ping_server_fut,
       wss_server_fut,
       tls_server_fut,
       tls_client_auth_server_fut,
@@ -1924,124 +1974,52 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
   pub temp_cwd: bool,
+  /// Copies the files at the specified directory in the "testdata" directory
+  /// to the temp folder and runs the test from there. This is useful when
+  /// the test creates files in the testdata directory (ex. a node_modules folder)
+  pub copy_temp_dir: Option<&'a str>,
+  /// Relative to "testdata" directory
+  pub cwd: Option<&'a str>,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
-  pub fn run(&self) {
-    let args = if self.args_vec.is_empty() {
-      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
-    } else {
-      assert!(
-        self.args.is_empty(),
-        "Do not provide args when providing args_vec."
-      );
-      std::borrow::Cow::Borrowed(&self.args_vec)
-    };
-    let testdata_dir = testdata_path();
-    let args = args
-      .iter()
-      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
-      .collect::<Vec<_>>();
-    let deno_exe = deno_exe_path();
-    println!("deno_exe path {}", deno_exe.display());
+  pub fn output(&self) -> TestCommandOutput {
+    let mut context_builder = TestContextBuilder::default();
+    if self.temp_cwd {
+      context_builder.use_temp_cwd();
+    }
+    if let Some(dir) = &self.copy_temp_dir {
+      context_builder.use_copy_temp_dir(dir);
+    }
+    if self.http_server {
+      context_builder.use_http_server();
+    }
 
-    let _http_server_guard = if self.http_server {
-      Some(http_server())
-    } else {
-      None
-    };
+    let context = context_builder.build();
 
-    let (mut reader, writer) = pipe().unwrap();
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    let cwd = if self.temp_cwd {
-      deno_dir.path()
-    } else {
-      testdata_dir.as_path()
-    };
-    println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &cwd);
-    command.args(args.iter());
+    let mut command_builder = context.new_command();
+
+    if !self.args.is_empty() {
+      command_builder.args(self.args);
+    }
+    if !self.args_vec.is_empty() {
+      command_builder
+        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+    }
+    if let Some(input) = &self.input {
+      command_builder.stdin(input);
+    }
+    for (key, value) in &self.envs {
+      command_builder.env(key, value);
+    }
     if self.env_clear {
-      command.env_clear();
+      command_builder.env_clear();
     }
-    command.envs(self.envs.clone());
-    command.current_dir(cwd);
-    command.stdin(Stdio::piped());
-    let writer_clone = writer.try_clone().unwrap();
-    command.stderr(writer_clone);
-    command.stdout(writer);
-
-    let mut process = command.spawn().expect("failed to execute process");
-
-    if let Some(input) = self.input {
-      let mut p_stdin = process.stdin.take().unwrap();
-      write!(p_stdin, "{input}").unwrap();
+    if let Some(cwd) = &self.cwd {
+      command_builder.cwd(cwd);
     }
 
-    // Very important when using pipes: This parent process is still
-    // holding its copies of the write ends, and we have to close them
-    // before we read, otherwise the read end will never report EOF. The
-    // Command object owns the writers now, and dropping it closes them.
-    drop(command);
-
-    let mut actual = String::new();
-    reader.read_to_string(&mut actual).unwrap();
-
-    let status = process.wait().expect("failed to finish process");
-
-    if let Some(exit_code) = status.code() {
-      if self.exit_code != exit_code {
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!(
-          "bad exit code, expected: {:?}, actual: {:?}",
-          self.exit_code, exit_code
-        );
-      }
-    } else {
-      #[cfg(unix)]
-      {
-        use std::os::unix::process::ExitStatusExt;
-        let signal = status.signal().unwrap();
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          self.exit_code, signal,
-        );
-      }
-      #[cfg(not(unix))]
-      {
-        println!("OUTPUT\n{actual}\nOUTPUT");
-        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
-      }
-    }
-
-    actual = strip_ansi_codes(&actual).to_string();
-
-    // deno test's output capturing flushes with a zero-width space in order to
-    // synchronize the output pipes. Occassionally this zero width space
-    // might end up in the output so strip it from the output comparison here.
-    if args.first().map(|s| s.as_str()) == Some("test") {
-      actual = actual.replace('\u{200B}', "");
-    }
-
-    let expected = if let Some(s) = self.output_str {
-      s.to_owned()
-    } else if self.output.is_empty() {
-      String::new()
-    } else {
-      let output_path = testdata_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      std::fs::read_to_string(output_path).expect("cannot read output")
-    };
-
-    if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected)
-    } else if !wildcard_match(&expected, &actual) {
-      println!("OUTPUT\n{actual}\nOUTPUT");
-      println!("EXPECTED\n{expected}\nEXPECTED");
-      panic!("pattern match failed");
-    }
+    command_builder.run()
   }
 }
 
@@ -2295,14 +2273,21 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   }
 
   let total_fields = total_line.split_whitespace().collect::<Vec<_>>();
+
+  let mut usecs_call_offset = 0;
   summary.insert(
     "total".to_string(),
     StraceOutput {
       percent_time: str::parse::<f64>(total_fields[0]).unwrap(),
       seconds: str::parse::<f64>(total_fields[1]).unwrap(),
-      usecs_per_call: None,
-      calls: str::parse::<u64>(total_fields[2]).unwrap(),
-      errors: str::parse::<u64>(total_fields[3]).unwrap(),
+      usecs_per_call: if total_fields.len() > 5 {
+        usecs_call_offset = 1;
+        Some(str::parse::<u64>(total_fields[2]).unwrap())
+      } else {
+        None
+      },
+      calls: str::parse::<u64>(total_fields[2 + usecs_call_offset]).unwrap(),
+      errors: str::parse::<u64>(total_fields[3 + usecs_call_offset]).unwrap(),
     },
   );
 
@@ -2323,6 +2308,37 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   }
 
   None
+}
+
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), anyhow::Error> {
+  use anyhow::Context;
+
+  std::fs::create_dir_all(to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      copy_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      std::fs::copy(&new_from, &new_to).with_context(|| {
+        format!("Copying {} to {}", new_from.display(), new_to.display())
+      })?;
+    }
+  }
+
+  Ok(())
 }
 
 #[cfg(test)]
@@ -2375,6 +2391,7 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 704);
     assert_eq!(strace.get("total").unwrap().errors, 5);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
   }
 
   #[test]
@@ -2390,6 +2407,23 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 821);
     assert_eq!(strace.get("total").unwrap().errors, 107);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
+  }
+
+  #[test]
+  fn strace_parse_3() {
+    const TEXT: &str = include_str!("./testdata/strace_summary3.out");
+    let strace = parse_strace_output(TEXT);
+
+    // first syscall line
+    let futex = strace.get("mprotect").unwrap();
+    assert_eq!(futex.calls, 90);
+    assert_eq!(futex.errors, 0);
+
+    // summary line
+    assert_eq!(strace.get("total").unwrap().calls, 543);
+    assert_eq!(strace.get("total").unwrap().errors, 36);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, Some(6));
   }
 
   #[test]

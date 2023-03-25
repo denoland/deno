@@ -1,0 +1,3 @@
+fn op_cow_str(c: Cow<'_, str>) {
+  // ...
+}

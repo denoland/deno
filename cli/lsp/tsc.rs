@@ -14,6 +14,7 @@ use super::refactor::EXTRACT_TYPE;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
+use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
@@ -36,8 +37,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
-use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -109,8 +108,7 @@ impl TsServer {
         while let Some((req, state_snapshot, tx, token)) = rx.recv().await {
           if !started {
             // TODO(@kitsonk) need to reflect the debug state of the lsp here
-            start(&mut ts_runtime, false, &state_snapshot)
-              .expect("could not start tsc");
+            start(&mut ts_runtime, false).unwrap();
             started = true;
           }
           let value = request(&mut ts_runtime, state_snapshot, req, token);
@@ -844,7 +842,7 @@ impl DocumentSpan {
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri,
+      target_uri: target_uri.into_url(),
       target_range,
       target_selection_range,
     };
@@ -866,7 +864,8 @@ impl DocumentSpan {
     let mut target = language_server
       .url_map
       .normalize_specifier(&specifier)
-      .ok()?;
+      .ok()?
+      .into_url();
     target.set_fragment(Some(&format!(
       "L{},{}",
       range.start.line + 1,
@@ -917,7 +916,10 @@ impl NavigateToItem {
       .normalize_specifier(&specifier)
       .ok()?;
     let range = self.text_span.to_range(line_index);
-    let location = lsp::Location { uri, range };
+    let location = lsp::Location {
+      uri: uri.into_url(),
+      range,
+    };
 
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
     let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
@@ -1025,15 +1027,19 @@ impl NavigationTree {
   ) -> bool {
     let mut should_include = self.should_include_entry();
     if !should_include
-      && self.child_items.as_ref().map_or(true, |v| v.is_empty())
+      && self
+        .child_items
+        .as_ref()
+        .map(|v| v.is_empty())
+        .unwrap_or(true)
     {
       return false;
     }
 
     let children = self
       .child_items
-      .as_ref()
-      .map_or(&[] as &[NavigationTree], |v| v.as_slice());
+      .as_deref()
+      .unwrap_or(&[] as &[NavigationTree]);
     for span in self.spans.iter() {
       let range = TextRange::at(span.start.into(), span.length.into());
       let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
@@ -1158,9 +1164,11 @@ impl ImplementationLocation {
     let uri = language_server
       .url_map
       .normalize_specifier(&specifier)
-      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
+      .unwrap_or_else(|_| {
+        LspClientUrl::new(ModuleSpecifier::parse("deno://invalid").unwrap())
+      });
     lsp::Location {
-      uri,
+      uri: uri.into_url(),
       range: self.document_span.text_span.to_range(line_index),
     }
   }
@@ -1194,8 +1202,10 @@ impl RenameLocations {
     new_name: &str,
     language_server: &language_server::Inner,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
-    let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
-      HashMap::new();
+    let mut text_document_edit_map: HashMap<
+      LspClientUrl,
+      lsp::TextDocumentEdit,
+    > = HashMap::new();
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
@@ -1207,7 +1217,7 @@ impl RenameLocations {
           uri.clone(),
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-              uri: uri.clone(),
+              uri: uri.as_url().clone(),
               version: asset_or_doc.document_lsp_version(),
             },
             edits:
@@ -1515,7 +1525,8 @@ impl RefactorActionInfo {
         .iter()
         .find(|action| action.matches(&self.name));
       maybe_match
-        .map_or(lsp::CodeActionKind::REFACTOR, |action| action.kind.clone())
+        .map(|action| action.kind.clone())
+        .unwrap_or(lsp::CodeActionKind::REFACTOR)
     }
   }
 
@@ -1695,9 +1706,9 @@ impl ReferenceEntry {
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = url_map
       .normalize_specifier(&specifier)
-      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
     lsp::Location {
-      uri,
+      uri: uri.into_url(),
       range: self.document_span.text_span.to_range(line_index),
     }
   }
@@ -1745,11 +1756,11 @@ impl CallHierarchyItem {
     let uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
-      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path = if uri.scheme() == "file" {
-      specifier_to_file_path(&uri).ok()
+    let maybe_file_path = if uri.as_url().scheme() == "file" {
+      specifier_to_file_path(uri.as_url()).ok()
     } else {
       None
     };
@@ -1757,7 +1768,7 @@ impl CallHierarchyItem {
       if let Some(file_path) = maybe_file_path.as_ref() {
         file_path.file_name().unwrap().to_string_lossy().to_string()
       } else {
-        uri.to_string()
+        uri.as_str().to_string()
       }
     } else {
       self.name.clone()
@@ -1793,7 +1804,7 @@ impl CallHierarchyItem {
     lsp::CallHierarchyItem {
       name,
       tags,
-      uri,
+      uri: uri.into_url(),
       detail: Some(detail),
       kind: self.kind.clone().into(),
       range: self.span.to_range(line_index.clone()),
@@ -2660,24 +2671,6 @@ struct SpecifierArgs {
 }
 
 #[op]
-fn op_exists(state: &mut OpState, args: SpecifierArgs) -> bool {
-  let state = state.borrow_mut::<State>();
-  // we don't measure the performance of op_exists anymore because as of TS 4.5
-  // it is noisy with all the checking for custom libs, that we can't see the
-  // forrest for the trees as well as it compounds any lsp performance
-  // challenges, opening a single document in the editor causes some 3k worth
-  // of op_exists requests... :omg:
-  let specifier = match state.normalize_specifier(&args.specifier) {
-    Ok(url) => url,
-    // sometimes tsc tries to query invalid specifiers, especially when
-    // something else isn't quite right, so instead of bubbling up the error
-    // back to tsc, we simply swallow it and say the file doesn't exist
-    Err(_) => return false,
-  };
-  state.state_snapshot.documents.exists(&specifier)
-}
-
-#[op]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
   state.token.is_cancelled()
@@ -2768,15 +2761,45 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
   let open_docs = documents.documents(true, true);
-
-  let mut result = Vec::with_capacity(open_docs.len() + 1);
+  let mut result = Vec::new();
+  let mut seen = HashSet::new();
 
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
-    result.push("asset:///node_types.d.ts".to_string());
+    let specifier = "asset:///node_types.d.ts";
+    result.push(specifier.to_string());
+    seen.insert(specifier);
   }
 
-  result.extend(open_docs.into_iter().map(|d| d.specifier().to_string()));
+  // inject these next because they're global
+  for import in documents.module_graph_imports() {
+    if seen.insert(import.as_str()) {
+      result.push(import.to_string());
+    }
+  }
+
+  // finally include the documents and all their dependencies
+  for doc in &open_docs {
+    let specifier = doc.specifier();
+    if seen.insert(specifier.as_str()) {
+      result.push(specifier.to_string());
+    }
+  }
+
+  // and then all their dependencies (do this after to avoid exists calls)
+  for doc in &open_docs {
+    for dep in doc.dependencies().values() {
+      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
+        if seen.insert(specifier.as_str()) {
+          // only include dependencies we know to exist otherwise typescript will error
+          if documents.exists(specifier) {
+            result.push(specifier.to_string());
+          }
+        }
+      }
+    }
+  }
+
   result
 }
 
@@ -2803,49 +2826,43 @@ fn op_script_version(
 /// server.
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![init_extension(performance)],
+    extensions: vec![deno_tsc::init_ops(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
 }
 
-fn init_extension(performance: Arc<Performance>) -> Extension {
-  Extension::builder("deno_tsc")
-    .ops(vec![
-      op_exists::decl(),
-      op_is_cancelled::decl(),
-      op_is_node_file::decl(),
-      op_load::decl(),
-      op_resolve::decl(),
-      op_respond::decl(),
-      op_script_names::decl(),
-      op_script_version::decl(),
-    ])
-    .state(move |state| {
-      state.put(State::new(
-        Arc::new(StateSnapshot::default()),
-        performance.clone(),
-      ));
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_tsc,
+  ops = [
+    op_is_cancelled,
+    op_is_node_file,
+    op_load,
+    op_resolve,
+    op_respond,
+    op_script_names,
+    op_script_version,
+  ],
+  options = {
+    performance: Arc<Performance>
+  },
+  state = |state, options| {
+    state.put(State::new(
+      Arc::new(StateSnapshot::default()),
+      options.performance,
+    ));
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 /// Instruct a language server runtime to start the language server and provide
 /// it with a minimal bootstrap configuration.
-fn start(
-  runtime: &mut JsRuntime,
-  debug: bool,
-  state_snapshot: &StateSnapshot,
-) -> Result<(), AnyError> {
-  let root_uri = state_snapshot
-    .root_uri
-    .clone()
-    .unwrap_or_else(|| Url::parse("cache:///").unwrap());
-  let init_config = json!({ "debug": debug, "rootUri": root_uri });
+fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
+  let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
-  runtime.execute_script(&located_script_name!(), &init_src)?;
+  runtime.execute_script(located_script_name!(), init_src)?;
   Ok(())
 }
 
@@ -3433,7 +3450,7 @@ pub fn request(
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({request_params});");
-  runtime.execute_script(&located_script_name!(), &request_src)?;
+  runtime.execute_script(located_script_name!(), request_src)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -3496,8 +3513,7 @@ mod tests {
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default());
-    start(&mut runtime, debug, &state_snapshot)
-      .expect("could not start server");
+    start(&mut runtime, debug).unwrap();
     let ts_config = TsConfig::new(config);
     assert_eq!(
       request(
@@ -4037,34 +4053,6 @@ mod tests {
         "file:///a.ts": []
       })
     );
-  }
-
-  #[test]
-  fn test_op_exists() {
-    let temp_dir = TempDir::new();
-    let (mut rt, state_snapshot, _) = setup(
-      &temp_dir,
-      false,
-      json!({
-        "target": "esnext",
-        "module": "esnext",
-        "lib": ["deno.ns", "deno.window"],
-        "noEmit": true,
-      }),
-      &[],
-    );
-    let performance = Arc::new(Performance::default());
-    let state = State::new(state_snapshot, performance);
-    let op_state = rt.op_state();
-    let mut op_state = op_state.borrow_mut();
-    op_state.put(state);
-    let actual = op_exists::call(
-      &mut op_state,
-      SpecifierArgs {
-        specifier: "/error/unknown:something/index.d.ts".to_string(),
-      },
-    );
-    assert!(!actual);
   }
 
   #[test]

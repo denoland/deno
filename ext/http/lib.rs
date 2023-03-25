@@ -14,13 +14,11 @@ use deno_core::futures::future::Pending;
 use deno_core::futures::future::RemoteHandle;
 use deno_core::futures::future::Shared;
 use deno_core::futures::never::Never;
-use deno_core::futures::pin_mut;
 use deno_core::futures::ready;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -29,7 +27,6 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -61,6 +58,7 @@ use std::io;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
+use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -77,22 +75,21 @@ use crate::reader_stream::ShutdownHandle;
 pub mod compressible;
 mod reader_stream;
 
-pub fn init() -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_web", "deno_net", "deno_fetch", "deno_websocket"])
-    .esm(include_js_files!("01_http.js",))
-    .ops(vec![
-      op_http_accept::decl(),
-      op_http_write_headers::decl(),
-      op_http_headers::decl(),
-      op_http_write::decl(),
-      op_http_write_resource::decl(),
-      op_http_shutdown::decl(),
-      op_http_websocket_accept_header::decl(),
-      op_http_upgrade_websocket::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_http,
+  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  ops = [
+    op_http_accept,
+    op_http_write_headers,
+    op_http_headers,
+    op_http_write,
+    op_http_write_resource,
+    op_http_shutdown,
+    op_http_websocket_accept_header,
+    op_http_upgrade_websocket,
+  ],
+  esm = ["01_http.js"],
+);
 
 pub enum HttpSocketAddr {
   IpSocket(std::net::SocketAddr),
@@ -142,8 +139,8 @@ impl HttpConnResource {
 
     // A local task that polls the hyper connection future to completion.
     let task_fut = async move {
-      pin_mut!(shutdown_fut);
-      pin_mut!(conn_fut);
+      let conn_fut = pin!(conn_fut);
+      let shutdown_fut = pin!(shutdown_fut);
       let result = match select(conn_fut, shutdown_fut).await {
         Either::Left((result, _)) => result,
         Either::Right((_, mut conn_fut)) => {
@@ -539,7 +536,11 @@ fn req_url(
       .to_string(),
     ),
   };
-  let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
+  let path = req
+    .uri()
+    .path_and_query()
+    .map(|p| p.as_str())
+    .unwrap_or("/");
   [scheme, "://", &host, path].concat()
 }
 
