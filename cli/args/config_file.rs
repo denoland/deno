@@ -440,6 +440,16 @@ pub struct LintConfig {
   pub report: Option<String>,
 }
 
+impl LintConfig {
+  pub fn extend_files(&self, files: &FilesConfig) -> Self {
+    Self {
+      rules: self.rules.clone(),
+      files: self.files.clone() + files.clone(),
+      report: self.report.clone(),
+    }
+  }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {
@@ -560,6 +570,15 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
+impl FmtConfig {
+  pub fn extend_files(&self, files: &FilesConfig) -> Self {
+    FmtConfig {
+      options: self.options.clone(),
+      files: self.files.clone() + files.clone(),
+    }
+  }
+}
+
 /// `test` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
@@ -592,6 +611,14 @@ pub struct TestConfig {
   pub files: FilesConfig,
 }
 
+impl TestConfig {
+  pub fn extend_files(&self, files: &FilesConfig) -> Self {
+    TestConfig {
+      files: self.files.clone() + files.clone(),
+    }
+  }
+}
+
 /// `bench` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
@@ -622,6 +649,14 @@ impl SerializedBenchConfig {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BenchConfig {
   pub files: FilesConfig,
+}
+
+impl BenchConfig {
+  pub fn extend_files(&self, files: &FilesConfig) -> Self {
+    BenchConfig {
+      files: self.files.clone() + files.clone(),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
