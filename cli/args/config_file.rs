@@ -644,6 +644,8 @@ pub struct ConfigFileJson {
   pub test: Option<Value>,
   pub bench: Option<Value>,
   pub lock: Option<Value>,
+  pub include: Option<Value>,
+  pub exclude: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
