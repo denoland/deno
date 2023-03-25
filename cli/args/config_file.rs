@@ -858,6 +858,27 @@ impl ConfigFile {
     self.json.imports.is_some() || self.json.scopes.is_some()
   }
 
+  pub fn to_files_config(&self) -> Result<Option<FilesConfig>, AnyError> {
+    let include: Vec<String> = if let Some(include) = self.json.include.clone()
+    {
+      serde_json::from_value(include)
+        .context("Failed to parse \"include\" configuration")?
+    } else {
+      Vec::new()
+    };
+
+    let exclude: Vec<String> = if let Some(exclude) = self.json.exclude.clone()
+    {
+      serde_json::from_value(exclude)
+        .context("Failed to parse \"exclude\" configuration")?
+    } else {
+      Vec::new()
+    };
+
+    let raw_fies_config = SerializedFilesConfig { include, exclude };
+    Ok(Some(raw_fies_config.into_resolved(&self.specifier)?))
+  }
+
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
     if let Some(config) = self.json.fmt.clone() {
       let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
@@ -1465,20 +1486,14 @@ mod tests {
       .expect("error parsing lint object")
       .expect("lint object should be defined");
     assert_eq!(lint_config.files.include, vec![PathBuf::from("/deno/src/")]);
-    assert_eq!(
-      lint_config.files.exclude,
-      vec![PathBuf::from("/deno/npm/")]
-    );
+    assert_eq!(lint_config.files.exclude, vec![PathBuf::from("/deno/npm/")]);
 
     let fmt_config = config_file
       .to_fmt_config()
       .expect("error parsing fmt object")
       .expect("fmt object should be defined");
     assert_eq!(fmt_config.files.include, vec![PathBuf::from("/deno/src/")]);
-    assert_eq!(
-      fmt_config.files.exclude,
-      vec![PathBuf::from("/deno/npm/")],
-    );
+    assert_eq!(fmt_config.files.exclude, vec![PathBuf::from("/deno/npm/")],);
   }
 
   #[test]
