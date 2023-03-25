@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::process::{Command, Stdio};
+use std::process::Command;
 use test_util::deno_cmd;
 
 #[cfg(debug_assertions)]
