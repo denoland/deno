@@ -7,6 +7,7 @@ use aes::cipher::KeyIvInit;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::Resource;
+use digest::KeyInit;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -14,12 +15,14 @@ use std::rc::Rc;
 
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
-  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128ECB, Aes128GCM, etc.
+  Aes128Ecb(Box<ecb::Encryptor<aes::Aes128>>),
+  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128GCM, etc.
 }
 
 enum Decipher {
   Aes128Cbc(Box<cbc::Decryptor<aes::Aes128>>),
-  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128ECB, Aes128GCM, etc.
+  Aes128Ecb(Box<ecb::Decryptor<aes::Aes128>>),
+  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128GCM, etc.
 }
 
 pub struct CipherContext {
@@ -99,6 +102,7 @@ impl Cipher {
       "aes-128-cbc" => {
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
+      "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
     })
   }
@@ -113,6 +117,12 @@ impl Cipher {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      Aes128Ecb(encryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
     }
   }
 
@@ -122,6 +132,12 @@ impl Cipher {
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
+        let _ = (*encryptor)
+          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot pad the input data"))?;
+        Ok(())
+      }
+      Aes128Ecb(encryptor) => {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| type_error("Cannot pad the input data"))?;
@@ -142,6 +158,7 @@ impl Decipher {
       "aes-128-cbc" => {
         Aes128Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
+      "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
     })
   }
@@ -156,6 +173,12 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      Aes128Ecb(decryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          decryptor.decrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
     }
   }
 
@@ -165,6 +188,12 @@ impl Decipher {
     use Decipher::*;
     match self {
       Aes128Cbc(decryptor) => {
+        let _ = (*decryptor)
+          .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot unpad the input data"))?;
+        Ok(())
+      }
+      Aes128Ecb(decryptor) => {
         let _ = (*decryptor)
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| type_error("Cannot unpad the input data"))?;

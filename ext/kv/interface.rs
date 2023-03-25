@@ -292,3 +292,15 @@ pub enum MutationKind {
   Min(Value),
   Max(Value),
 }
+
+impl MutationKind {
+  pub fn value(&self) -> Option<&Value> {
+    match self {
+      MutationKind::Set(value) => Some(value),
+      MutationKind::Sum(value) => Some(value),
+      MutationKind::Min(value) => Some(value),
+      MutationKind::Max(value) => Some(value),
+      MutationKind::Delete => None,
+    }
+  }
+}
