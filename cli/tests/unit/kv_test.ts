@@ -7,9 +7,44 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
+let isCI: boolean;
+try {
+  isCI = Deno.env.get("CI") !== undefined;
+} catch {
+  isCI = true;
+}
+
+Deno.test({
+  name: "openKv :memory: no permissions",
+  permissions: {},
+  async fn() {
+    const db = await Deno.openKv(":memory:");
+    await db.close();
+  },
+});
+
+Deno.test({
+  name: "openKv invalid filenames",
+  permissions: {},
+  async fn() {
+    await assertRejects(
+      async () => await Deno.openKv(""),
+      TypeError,
+      "Filename cannot be empty",
+    );
+    await assertRejects(
+      async () => await Deno.openKv(":foo"),
+      TypeError,
+      "Filename cannot start with ':' unless prefixed with './'",
+    );
+  },
+});
+
 function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   Deno.test({
     name,
+    // https://github.com/denoland/deno/issues/18363
+    ignore: Deno.build.os === "darwin" && isCI,
     async fn() {
       const db: Deno.Kv = await Deno.openKv(
         ":memory:",
@@ -513,6 +548,16 @@ async function setupData(db: Deno.Kv) {
     .commit();
 }
 
+dbTest("get many", async (db) => {
+  await setupData(db);
+  const entries = await db.getMany([["b", "a"], ["a"], ["c"]]);
+  assertEquals(entries, [
+    { key: ["b", "a"], value: 100, versionstamp: "00000000000000010000" },
+    { key: ["a"], value: -1, versionstamp: "00000000000000010000" },
+    { key: ["c"], value: null, versionstamp: null },
+  ]);
+});
+
 dbTest("list prefix", async (db) => {
   await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"] }));
@@ -563,6 +608,14 @@ dbTest("list prefix with end empty", async (db) => {
   await setupData(db);
   const entries = await collect(db.list({ prefix: ["a"], end: ["a", "a"] }));
   assertEquals(entries.length, 0);
+});
+
+dbTest("list prefix with empty prefix", async (db) => {
+  await db.set(["a"], 1);
+  const entries = await collect(db.list({ prefix: [] }));
+  assertEquals(entries, [
+    { key: ["a"], value: 1, versionstamp: "00000000000000010000" },
+  ]);
 });
 
 dbTest("list prefix reverse", async (db) => {
@@ -930,4 +983,157 @@ dbTest("invalid mutation type rejects", async (db) => {
       .mutate({ key: ["a"], type: "foobar", value: "123" })
       .commit();
   }, TypeError);
+});
+
+dbTest("key ordering", async (db) => {
+  await db.atomic()
+    .set([new Uint8Array(0x1)], 0)
+    .set(["a"], 0)
+    .set([1n], 0)
+    .set([3.14], 0)
+    .set([false], 0)
+    .set([true], 0)
+    .commit();
+
+  assertEquals((await collect(db.list({ prefix: [] }))).map((x) => x.key), [
+    [new Uint8Array(0x1)],
+    ["a"],
+    [1n],
+    [3.14],
+    [false],
+    [true],
+  ]);
+});
+
+dbTest("key size limit", async (db) => {
+  // 1 byte prefix + 1 byte suffix + 2045 bytes key
+  const lastValidKey = new Uint8Array(2046).fill(1);
+  const firstInvalidKey = new Uint8Array(2047).fill(1);
+
+  await db.set([lastValidKey], 1);
+
+  assertEquals(await db.get([lastValidKey]), {
+    key: [lastValidKey],
+    value: 1,
+    versionstamp: "00000000000000010000",
+  });
+
+  await assertRejects(
+    async () => await db.set([firstInvalidKey], 1),
+    TypeError,
+    "key too large for write (max 2048 bytes)",
+  );
+
+  await assertRejects(
+    async () => await db.get([firstInvalidKey]),
+    TypeError,
+    "key too large for read (max 2049 bytes)",
+  );
+});
+
+dbTest("value size limit", async (db) => {
+  const lastValidValue = new Uint8Array(65536);
+  const firstInvalidValue = new Uint8Array(65537);
+
+  await db.set(["a"], lastValidValue);
+  assertEquals(await db.get(["a"]), {
+    key: ["a"],
+    value: lastValidValue,
+    versionstamp: "00000000000000010000",
+  });
+
+  await assertRejects(
+    async () => await db.set(["b"], firstInvalidValue),
+    TypeError,
+    "value too large (max 65536 bytes)",
+  );
+});
+
+dbTest("operation size limit", async (db) => {
+  const lastValidKeys: Deno.KvKey[] = new Array(10).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+  const firstInvalidKeys: Deno.KvKey[] = new Array(11).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+
+  assertEquals((await db.getMany(lastValidKeys)).length, 10);
+
+  await assertRejects(
+    async () => await db.getMany(firstInvalidKeys),
+    TypeError,
+    "too many ranges (max 10)",
+  );
+
+  assertEquals(
+    (await collect(db.list({
+      prefix: ["a"],
+    }, {
+      batchSize: 1000,
+    }))).length,
+    0,
+  );
+
+  assertRejects(
+    async () =>
+      await collect(db.list({
+        prefix: ["a"],
+      }, {
+        batchSize: 1001,
+      })),
+    TypeError,
+    "too many entries (max 1000)",
+  );
+
+  // when batchSize is not specified, limit is used but is clamped to 500
+  assertEquals(
+    (await collect(db.list({
+      prefix: ["a"],
+    }, {
+      limit: 1001,
+    }))).length,
+    0,
+  );
+
+  assertEquals(
+    await db.atomic().check(...lastValidKeys.map((key) => ({
+      key,
+      versionstamp: null,
+    }))).mutate(...lastValidKeys.map((key) => ({
+      key,
+      type: "set",
+      value: 1,
+    } satisfies Deno.KvMutation))).commit(),
+    true,
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic().check(...firstInvalidKeys.map((key) => ({
+        key,
+        versionstamp: null,
+      }))).mutate(...lastValidKeys.map((key) => ({
+        key,
+        type: "set",
+        value: 1,
+      } satisfies Deno.KvMutation))).commit(),
+    TypeError,
+    "too many checks (max 10)",
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic().check(...lastValidKeys.map((key) => ({
+        key,
+        versionstamp: null,
+      }))).mutate(...firstInvalidKeys.map((key) => ({
+        key,
+        type: "set",
+        value: 1,
+      } satisfies Deno.KvMutation))).commit(),
+    TypeError,
+    "too many mutations (max 10)",
+  );
 });

@@ -2,7 +2,7 @@
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
-import * as _ts from "./dts/typescript";
+import * as _ts from "./dts/typescript.d.ts";
 
 declare global {
   namespace ts {
@@ -10,9 +10,10 @@ declare global {
     var libMap: Map<string, string>;
     var base64encode: (host: ts.CompilerHost, input: string) => string;
     var normalizePath: (path: string) => string;
+
     interface SourceFile {
       version?: string;
-      fileName: string;
+      scriptSnapShot?: _ts.IScriptSnapshot;
     }
 
     interface CompilerHost {
@@ -26,16 +27,13 @@ declare global {
 
     var performance: Performance;
 
-    namespace deno {
-      function setIsNodeSourceFileCallback(
-        callback: (sourceFile: SourceFile) => boolean,
-      );
-      function setNodeBuiltInModuleNames(names: readonly string[]);
-      function setNodeOnlyGlobalNames(names: readonly string[]);
-    }
+    function setLocalizedDiagnosticMessages(
+      messages: Record<string, string>,
+    ): void;
   }
 
   namespace ts {
+    // @ts-ignore allow using an export = here
     export = _ts;
   }
 

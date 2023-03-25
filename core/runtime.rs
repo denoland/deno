@@ -215,6 +215,7 @@ fn v8_init(
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-change-array-by-copy",
+    " --no-harmony-rab-gsab",
   );
 
   if predictable {
@@ -411,7 +412,6 @@ impl JsRuntime {
         }
 
         global_context = v8::Global::new(scope, context);
-        scope.set_default_context(context);
       }
       (isolate, snapshot_options)
     } else {
@@ -751,7 +751,7 @@ impl JsRuntime {
             realm.execute_script(
               self.v8_isolate(),
               file_source.specifier,
-              file_source.code.load()?,
+              file_source.load()?,
             )?;
           }
         }
@@ -930,6 +930,14 @@ impl JsRuntime {
   /// `Error` can usually be downcast to `JsError`.
   pub fn snapshot(mut self) -> v8::StartupData {
     self.state.borrow_mut().inspector.take();
+
+    // Set the context to be snapshot's default context
+    {
+      let context = self.global_context();
+      let mut scope = self.handle_scope();
+      let local_context = v8::Local::new(&mut scope, context);
+      scope.set_default_context(local_context);
+    }
 
     // Serialize the module map and store its data in the snapshot.
     {
@@ -2417,6 +2425,25 @@ impl JsRuntime {
 /// Every method of [`JsRealm`] will panic if you call it with a reference to a
 /// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
+/// In other words, the [`v8::Isolate`] parameter for all the related [`JsRealm`] methods
+/// must be extracted from the pre-existing [`JsRuntime`].
+///
+/// Example usage with the [`JsRealm::execute_script`] method:
+/// ```
+/// use deno_core::JsRuntime;
+/// use deno_core::RuntimeOptions;
+///
+/// let mut runtime = JsRuntime::new(RuntimeOptions::default());
+/// let new_realm = runtime
+///         .create_realm()
+///         .expect("Handle the error properly");
+/// let source_code = "var a = 0; a + 1";
+/// let result = new_realm
+///         .execute_script(runtime.v8_isolate(), "<anon>", source_code)
+///         .expect("Handle the error properly");
+/// # drop(result);
+/// ```
+///
 /// # Lifetime of the realm
 ///
 /// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
@@ -2452,6 +2479,7 @@ impl JsRealm {
       .clone()
   }
 
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   pub fn handle_scope<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2459,6 +2487,7 @@ impl JsRealm {
     v8::HandleScope::with_context(isolate, &self.0)
   }
 
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   pub fn global_object<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2485,7 +2514,9 @@ impl JsRealm {
   /// Executes traditional JavaScript code (traditional = not ES modules) in the
   /// realm's context.
   ///
-  /// `name` can be a filepath or any other string, eg.
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
+  ///
+  /// The `name` parameter can be a filepath or any other string. E.g.:
   ///
   ///   - "/some/file/path.js"
   ///   - "<anon>"
@@ -2513,7 +2544,7 @@ impl JsRealm {
     let scope = &mut self.handle_scope(isolate);
 
     let source = Self::string_from_code(scope, &source_code).unwrap();
-    assert!(name.is_ascii());
+    debug_assert!(name.is_ascii());
     let name =
       v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
     let origin = bindings::script_origin(scope, name);
@@ -4842,6 +4873,25 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
+  }
+
+  #[test]
+  fn test_resizable_array_buffer() {
+    // Verify that "resizable ArrayBuffer" is disabled
+    let mut runtime = JsRuntime::new(Default::default());
+    runtime
+      .execute_script(
+        "test_rab.js",
+        r#"const a = new ArrayBuffer(100, {maxByteLength: 200});
+        if (a.byteLength !== 100) {
+          throw new Error('wrong byte length');
+        }
+        if (a.maxByteLength !== undefined) {
+          throw new Error("ArrayBuffer shouldn't have maxByteLength");
+        }
+        "#,
+      )
+      .unwrap();
   }
 
   #[tokio::test]
