@@ -59,6 +59,7 @@ pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
   pub json: bool,
+  pub no_run: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -799,6 +800,12 @@ fn bench_subcommand<'a>() -> Command<'a> {
         .takes_value(true)
         .multiple_values(true)
         .multiple_occurrences(true),
+    )
+    .arg(
+      Arg::new("no-run")
+        .long("no-run")
+        .help("Cache bench modules, but don't run benchmarks")
+        .takes_value(false),
     )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
@@ -2442,11 +2449,14 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Vec::new()
   };
 
+  let no_run = matches.is_present("no-run");
+
   watch_arg_parse(flags, matches, false);
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
     json,
+    no_run,
   });
 }
 
@@ -6684,6 +6694,7 @@ mod tests {
       "--unstable",
       "--no-npm",
       "--no-remote",
+      "--no-run",
       "--filter",
       "- foo",
       "--location",
@@ -6701,6 +6712,7 @@ mod tests {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
           json: true,
+          no_run: true,
           files: FileFlags {
             include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
             ignore: vec![],
@@ -6728,6 +6740,7 @@ mod tests {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
           json: false,
+          no_run: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
