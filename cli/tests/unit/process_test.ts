@@ -658,6 +658,6 @@ Deno.test(
     p.close();
     p.stdout.close();
     assertStrictEquals(code, 1);
-    assertStringIncludes(stderr, "No such file or directory");
+    assertStringIncludes(stderr, "Failed getting cwd.");
   },
 );

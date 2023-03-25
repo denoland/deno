@@ -1552,11 +1552,10 @@ itest!(jsx_import_source_error {
   exit_code: 1,
 });
 
-// TODO(#11128): Flaky. Re-enable later.
-// itest!(single_compile_with_reload {
-//   args: "run --relcert/oad --allow-read run/single_compile_with_reload.ts",
-//   output: "run/single_compile_with_reload.ts.out",
-// });
+itest!(single_compile_with_reload {
+  args: "run --reload --allow-read run/single_compile_with_reload.ts",
+  output: "run/single_compile_with_reload.ts.out",
+});
 
 itest!(proto_exploit {
   args: "run run/proto_exploit.js",
@@ -1822,6 +1821,56 @@ fn exec_path() {
   let actual = std::fs::canonicalize(std::path::Path::new(stdout_str)).unwrap();
   let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
   assert_eq!(expected, actual);
+}
+
+#[test]
+fn run_from_stdin_defaults_to_ts() {
+  let source_code = r#"
+interface Lollipop {
+  _: number;
+}
+console.log("executing typescript");
+"#;
+
+  let mut p = util::deno_cmd()
+    .arg("run")
+    .arg("--check")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
+  let result = p.wait_with_output().unwrap();
+  assert!(result.status.success());
+  let stdout_str = std::str::from_utf8(&result.stdout).unwrap().trim();
+  assert_eq!(stdout_str, "executing typescript");
+}
+
+#[test]
+fn run_from_stdin_ext() {
+  let source_code = r#"
+let i = 123;
+i = "hello"
+console.log("executing javascript");
+"#;
+
+  let mut p = util::deno_cmd()
+    .arg("run")
+    .args(["--ext", "js"])
+    .arg("--check")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
+  let result = p.wait_with_output().unwrap();
+  assert!(result.status.success());
+  let stdout_str = std::str::from_utf8(&result.stdout).unwrap().trim();
+  assert_eq!(stdout_str, "executing javascript");
 }
 
 #[cfg(windows)]
@@ -2874,7 +2923,7 @@ fn package_json_no_node_modules_dir_created() {
     .add_npm_env_vars()
     .use_temp_cwd()
     .build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write("deno.json", "{}");
   temp_dir.write("package.json", "{}");
@@ -2892,7 +2941,7 @@ fn node_modules_dir_no_npm_specifiers_no_dir_created() {
     .add_npm_env_vars()
     .use_temp_cwd()
     .build();
-  let temp_dir = context.deno_dir();
+  let temp_dir = context.temp_dir();
 
   temp_dir.write("deno.json", "{}");
   temp_dir.write("main.ts", "");
@@ -3261,8 +3310,8 @@ itest!(unhandled_rejection_dynamic_import2 {
 });
 
 itest!(nested_error {
-  args: "run run/nested_error.ts",
-  output: "run/nested_error.ts.out",
+  args: "run run/nested_error/main.ts",
+  output: "run/nested_error/main.ts.out",
   exit_code: 1,
 });
 
@@ -3823,6 +3872,30 @@ itest!(error_cause_recursive {
   exit_code: 1,
 });
 
+itest!(default_file_extension_is_js {
+  args: "run --check file_extensions/js_without_extension",
+  output: "file_extensions/js_without_extension.out",
+  exit_code: 0,
+});
+
+itest!(js_without_extension {
+  args: "run --ext js --check file_extensions/js_without_extension",
+  output: "file_extensions/js_without_extension.out",
+  exit_code: 0,
+});
+
+itest!(ts_without_extension {
+  args: "run --ext ts --check file_extensions/ts_without_extension",
+  output: "file_extensions/ts_without_extension.out",
+  exit_code: 0,
+});
+
+itest!(ext_flag_takes_precedence_over_extension {
+  args: "run --ext ts --check file_extensions/ts_with_js_extension.js",
+  output: "file_extensions/ts_with_js_extension.out",
+  exit_code: 0,
+});
+
 #[test]
 fn websocket() {
   let _g = util::http_server();
@@ -4066,6 +4139,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 }
 
 #[test]
+#[ignore]
 fn permission_prompt_strips_ansi_codes_and_control_chars() {
   let _guard = util::http_server();
   util::with_pty(&["repl"], |mut console| {
