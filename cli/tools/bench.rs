@@ -4,8 +4,8 @@ use crate::args::BenchOptions;
 use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::graph_util::contains_specifier;
-use crate::graph_util::graph_valid;
+use crate::display::write_json_to_stdout;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
@@ -14,6 +14,7 @@ use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
+use crate::version::get_user_agent;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::error::generic_error;
@@ -24,7 +25,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
-use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -43,6 +43,7 @@ use tokio::sync::mpsc::UnboundedSender;
 #[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
   filter: TestFilter,
+  json: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -64,7 +65,7 @@ pub enum BenchEvent {
   Result(usize, BenchResult),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
@@ -111,7 +112,13 @@ impl BenchReport {
   }
 }
 
-fn create_reporter(show_output: bool) -> Box<dyn BenchReporter + Send> {
+fn create_reporter(
+  show_output: bool,
+  json: bool,
+) -> Box<dyn BenchReporter + Send> {
+  if json {
+    return Box::new(JsonReporter::new());
+  }
   Box::new(ConsoleReporter::new(show_output))
 }
 
@@ -123,6 +130,81 @@ pub trait BenchReporter {
   fn report_wait(&mut self, desc: &BenchDescription);
   fn report_output(&mut self, output: &str);
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporterOutput {
+  runtime: String,
+  cpu: String,
+  benches: Vec<JsonReporterBench>,
+}
+
+impl Default for JsonReporterOutput {
+  fn default() -> Self {
+    Self {
+      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      cpu: mitata::cpu::name(),
+      benches: vec![],
+    }
+  }
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporterBench {
+  origin: String,
+  group: Option<String>,
+  name: String,
+  baseline: bool,
+  results: Vec<BenchResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonReporter(JsonReporterOutput);
+
+impl JsonReporter {
+  fn new() -> Self {
+    Self(Default::default())
+  }
+}
+
+impl BenchReporter for JsonReporter {
+  fn report_group_summary(&mut self) {}
+  #[cold]
+  fn report_plan(&mut self, _plan: &BenchPlan) {}
+
+  fn report_end(&mut self, _report: &BenchReport) {
+    match write_json_to_stdout(self) {
+      Ok(_) => (),
+      Err(e) => println!("{e}"),
+    }
+  }
+
+  fn report_register(&mut self, _desc: &BenchDescription) {}
+
+  fn report_wait(&mut self, _desc: &BenchDescription) {}
+
+  fn report_output(&mut self, _output: &str) {}
+
+  fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    let maybe_bench = self.0.benches.iter_mut().find(|bench| {
+      bench.origin == desc.origin
+        && bench.group == desc.group
+        && bench.name == desc.name
+        && bench.baseline == desc.baseline
+    });
+
+    if let Some(bench) = maybe_bench {
+      bench.results.push(result.clone());
+    } else {
+      self.0.benches.push(JsonReporterBench {
+        origin: desc.origin.clone(),
+        group: desc.group.clone(),
+        name: desc.name.clone(),
+        baseline: desc.baseline,
+        results: vec![result.clone()],
+      });
+    }
+  }
 }
 
 struct ConsoleReporter {
@@ -359,7 +441,7 @@ async fn bench_specifier(
     &ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::bench::init(channel, filter)],
+    vec![ops::bench::deno_bench::init_ops(channel, filter)],
     Default::default(),
   )
   .await?;
@@ -378,12 +460,14 @@ async fn bench_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
+  let option_for_handles = options.clone();
+
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let ps = ps.clone();
     let permissions = permissions.clone();
     let specifier = specifier;
     let sender = sender.clone();
-    let options = options.clone();
+    let options = option_for_handles.clone();
 
     tokio::task::spawn_blocking(move || {
       let future = bench_specifier(ps, permissions, specifier, sender, options);
@@ -400,7 +484,8 @@ async fn bench_specifiers(
     tokio::task::spawn(async move {
       let mut used_only = false;
       let mut report = BenchReport::new();
-      let mut reporter = create_reporter(log_level != Some(Level::Error));
+      let mut reporter =
+        create_reporter(log_level != Some(Level::Error), options.json);
       let mut benches = IndexMap::new();
 
       while let Some(event) = receiver.recv().await {
@@ -511,6 +596,7 @@ pub async fn run_benchmarks(
     specifiers,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&bench_options.filter),
+      json: bench_options.json,
     },
   )
   .await?;
@@ -538,7 +624,7 @@ pub async fn run_benchmarks_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let bench_options = &bench_options;
-    let ps = ps.borrow();
+    let ps = ps.borrow().clone();
 
     async move {
       let bench_modules =
@@ -548,20 +634,10 @@ pub async fn run_benchmarks_with_watch(
       let mut modules_to_reload = if files_changed {
         Vec::new()
       } else {
-        bench_modules
-          .iter()
-          .map(|url| (url.clone(), ModuleKind::Esm))
-          .collect()
+        bench_modules.clone()
       };
-      let graph = ps
-        .create_graph(
-          bench_modules
-            .iter()
-            .map(|s| (s.clone(), ModuleKind::Esm))
-            .collect(),
-        )
-        .await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      let graph = ps.create_graph(bench_modules.clone()).await?;
+      graph_valid_with_cli_options(&graph, &bench_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {
@@ -573,7 +649,7 @@ pub async fn run_benchmarks_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(module) = maybe_module {
+          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
@@ -602,6 +678,7 @@ pub async fn run_benchmarks_with_watch(
             }
           }
         }
+
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
@@ -614,11 +691,12 @@ pub async fn run_benchmarks_with_watch(
         );
 
         if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-          }) {
-            if modules.contains(&&path) {
-              modules_to_reload.push((specifier, ModuleKind::Esm));
+          for path in changed
+            .iter()
+            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+          {
+            if modules.contains(&path) {
+              modules_to_reload.push(specifier);
               break;
             }
           }
@@ -649,18 +727,17 @@ pub async fn run_benchmarks_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
-    ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow();
     let bench_options = &bench_options;
+    ps.borrow_mut().reset_for_file_watcher();
+    let ps = ps.borrow().clone();
 
     async move {
       let specifiers =
         collect_specifiers(&bench_options.files, is_supported_bench_path)?
-          .iter()
-          .filter(|specifier| contains_specifier(&modules_to_reload, specifier))
-          .cloned()
+          .into_iter()
+          .filter(|specifier| modules_to_reload.contains(specifier))
           .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
@@ -671,6 +748,7 @@ pub async fn run_benchmarks_with_watch(
         specifiers,
         BenchSpecifierOptions {
           filter: TestFilter::from_flag(&bench_options.filter),
+          json: bench_options.json,
         },
       )
       .await?;
@@ -691,4 +769,389 @@ pub async fn run_benchmarks_with_watch(
   .await?;
 
   Ok(())
+}
+
+mod mitata {
+  // Copyright 2022 evanwashere
+  //
+  // Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+  //
+  // The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+  //
+  // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+  use crate::colors;
+  use std::str::FromStr;
+
+  fn fmt_duration(time: f64) -> String {
+    // SAFETY: this is safe since its just reformatting numbers
+    unsafe {
+      if time < 1e0 {
+        return format!(
+          "{} ps",
+          f64::from_str(&format!("{:.2}", time * 1e3)).unwrap_unchecked()
+        );
+      }
+
+      if time < 1e3 {
+        return format!(
+          "{} ns",
+          f64::from_str(&format!("{:.2}", time)).unwrap_unchecked()
+        );
+      }
+      if time < 1e6 {
+        return format!(
+          "{} µs",
+          f64::from_str(&format!("{:.2}", time / 1e3)).unwrap_unchecked()
+        );
+      }
+      if time < 1e9 {
+        return format!(
+          "{} ms",
+          f64::from_str(&format!("{:.2}", time / 1e6)).unwrap_unchecked()
+        );
+      }
+      if time < 1e12 {
+        return format!(
+          "{} s",
+          f64::from_str(&format!("{:.2}", time / 1e9)).unwrap_unchecked()
+        );
+      }
+      if time < 36e11 {
+        return format!(
+          "{} m",
+          f64::from_str(&format!("{:.2}", time / 60e9)).unwrap_unchecked()
+        );
+      }
+
+      format!(
+        "{} h",
+        f64::from_str(&format!("{:.2}", time / 36e11)).unwrap_unchecked()
+      )
+    }
+  }
+
+  pub mod cpu {
+    #![allow(dead_code)]
+
+    pub fn name() -> String {
+      #[cfg(target_os = "linux")]
+      return linux();
+      #[cfg(target_os = "macos")]
+      return macos();
+      #[cfg(target_os = "windows")]
+      return windows();
+
+      #[allow(unreachable_code)]
+      {
+        "unknown".to_string()
+      }
+    }
+
+    pub fn macos() -> String {
+      let mut sysctl = std::process::Command::new("sysctl");
+
+      sysctl.arg("-n");
+      sysctl.arg("machdep.cpu.brand_string");
+      return std::str::from_utf8(
+        &sysctl.output().map_or(Vec::from("unknown"), |x| x.stdout),
+      )
+      .unwrap()
+      .trim()
+      .to_string();
+    }
+
+    pub fn windows() -> String {
+      let mut wmi = std::process::Command::new("wmic");
+
+      wmi.arg("cpu");
+      wmi.arg("get");
+      wmi.arg("name");
+
+      return match wmi.output() {
+        Err(_) => String::from("unknown"),
+
+        Ok(x) => {
+          let x = String::from_utf8_lossy(&x.stdout);
+          return x.lines().nth(1).unwrap_or("unknown").trim().to_string();
+        }
+      };
+    }
+
+    pub fn linux() -> String {
+      let info =
+        std::fs::read_to_string("/proc/cpuinfo").unwrap_or(String::new());
+
+      for line in info.lines() {
+        let mut iter = line.split(':');
+        let key = iter.next().unwrap_or("");
+
+        if key.contains("Hardware")
+          || key.contains("Processor")
+          || key.contains("chip type")
+          || key.contains("model name")
+          || key.starts_with("cpu type")
+          || key.starts_with("cpu model")
+        {
+          return iter.next().unwrap_or("unknown").trim().to_string();
+        }
+      }
+
+      String::from("unknown")
+    }
+  }
+
+  pub mod reporter {
+    use super::*;
+
+    #[derive(Clone, PartialEq)]
+    pub struct Error {
+      pub message: String,
+      pub stack: Option<String>,
+    }
+
+    #[derive(Clone, PartialEq)]
+    pub struct BenchmarkStats {
+      pub avg: f64,
+      pub min: f64,
+      pub max: f64,
+      pub p75: f64,
+      pub p99: f64,
+      pub p995: f64,
+    }
+
+    #[derive(Clone, PartialEq)]
+    pub struct GroupBenchmark {
+      pub name: String,
+      pub group: String,
+      pub baseline: bool,
+      pub stats: BenchmarkStats,
+    }
+
+    #[derive(Clone, PartialEq)]
+    pub struct Options {
+      size: usize,
+      pub avg: bool,
+      pub colors: bool,
+      pub min_max: bool,
+      pub percentiles: bool,
+    }
+
+    impl Options {
+      pub fn new(names: &[&str]) -> Options {
+        Options {
+          avg: true,
+          colors: true,
+          min_max: true,
+          size: size(names),
+          percentiles: true,
+        }
+      }
+    }
+
+    pub fn size(names: &[&str]) -> usize {
+      let mut max = 9;
+
+      for name in names {
+        if max < name.len() {
+          max = name.len();
+        }
+      }
+
+      2 + max
+    }
+
+    pub fn br(options: &Options) -> String {
+      let mut s = String::new();
+
+      s.push_str(&"-".repeat(
+        options.size
+          + 14 * options.avg as usize
+          + 24 * options.min_max as usize,
+      ));
+
+      if options.percentiles {
+        s.push(' ');
+        s.push_str(&"-".repeat(9 + 10 + 10));
+      }
+
+      s
+    }
+
+    pub fn benchmark_error(n: &str, e: &Error, options: &Options) -> String {
+      let size = options.size;
+      let mut s = String::new();
+
+      s.push_str(&format!("{:<size$}", n));
+      s.push_str(&format!(
+        "{}: {}",
+        &(if !options.colors {
+          "error".to_string()
+        } else {
+          colors::red("error").to_string()
+        }),
+        e.message
+      ));
+
+      if let Some(ref stack) = e.stack {
+        s.push('\n');
+
+        match options.colors {
+          false => s.push_str(stack),
+          true => s.push_str(&colors::gray(stack).to_string()),
+        }
+      }
+
+      s
+    }
+
+    pub fn header(options: &Options) -> String {
+      let size = options.size;
+      let mut s = String::new();
+
+      s.push_str(&format!("{:<size$}", "benchmark"));
+      if options.avg {
+        s.push_str(&format!("{:>14}", "time (avg)"));
+      }
+      if options.min_max {
+        s.push_str(&format!("{:>24}", "(min … max)"));
+      }
+      if options.percentiles {
+        s.push_str(&format!(" {:>9} {:>9} {:>9}", "p75", "p99", "p995"));
+      }
+
+      s
+    }
+
+    pub fn benchmark(
+      name: &str,
+      stats: &BenchmarkStats,
+      options: &Options,
+    ) -> String {
+      let size = options.size;
+      let mut s = String::new();
+
+      s.push_str(&format!("{:<size$}", name));
+
+      if !options.colors {
+        if options.avg {
+          s.push_str(&format!(
+            "{:>14}",
+            format!("{}/iter", fmt_duration(stats.avg))
+          ));
+        }
+        if options.min_max {
+          s.push_str(&format!(
+            "{:>24}",
+            format!(
+              "({} … {})",
+              fmt_duration(stats.min),
+              fmt_duration(stats.max)
+            )
+          ));
+        }
+        if options.percentiles {
+          s.push_str(&format!(
+            " {:>9} {:>9} {:>9}",
+            fmt_duration(stats.p75),
+            fmt_duration(stats.p99),
+            fmt_duration(stats.p995)
+          ));
+        }
+      } else {
+        if options.avg {
+          s.push_str(&format!(
+            "{:>23}",
+            format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
+          ));
+        }
+        if options.min_max {
+          s.push_str(&format!(
+            "{:>42}",
+            format!(
+              "({} … {})",
+              colors::cyan(fmt_duration(stats.min)),
+              colors::magenta(fmt_duration(stats.max))
+            )
+          ));
+        }
+        if options.percentiles {
+          s.push_str(&format!(
+            " {:>18} {:>18} {:>18}",
+            colors::magenta(fmt_duration(stats.p75)),
+            colors::magenta(fmt_duration(stats.p99)),
+            colors::magenta(fmt_duration(stats.p995))
+          ));
+        }
+      }
+
+      s
+    }
+
+    pub fn summary(benchmarks: &[GroupBenchmark], options: &Options) -> String {
+      let mut s = String::new();
+      let mut benchmarks = benchmarks.to_owned();
+      benchmarks.sort_by(|a, b| a.stats.avg.partial_cmp(&b.stats.avg).unwrap());
+      let baseline = benchmarks
+        .iter()
+        .find(|b| b.baseline)
+        .unwrap_or(&benchmarks[0]);
+
+      if !options.colors {
+        s.push_str(&format!("summary\n  {}", baseline.name));
+
+        for b in benchmarks.iter().filter(|b| *b != baseline) {
+          let faster = b.stats.avg >= baseline.stats.avg;
+          let diff = f64::from_str(&format!(
+            "{:.2}",
+            1.0 / baseline.stats.avg * b.stats.avg
+          ))
+          .unwrap();
+          let inv_diff = f64::from_str(&format!(
+            "{:.2}",
+            1.0 / b.stats.avg * baseline.stats.avg
+          ))
+          .unwrap();
+          s.push_str(&format!(
+            "\n   {}x times {} than {}",
+            if faster { diff } else { inv_diff },
+            if faster { "faster" } else { "slower" },
+            b.name
+          ));
+        }
+      } else {
+        s.push_str(&format!(
+          "{}\n  {}",
+          colors::bold("summary"),
+          colors::cyan_bold(&baseline.name)
+        ));
+
+        for b in benchmarks.iter().filter(|b| *b != baseline) {
+          let faster = b.stats.avg >= baseline.stats.avg;
+          let diff = f64::from_str(&format!(
+            "{:.2}",
+            1.0 / baseline.stats.avg * b.stats.avg
+          ))
+          .unwrap();
+          let inv_diff = f64::from_str(&format!(
+            "{:.2}",
+            1.0 / b.stats.avg * baseline.stats.avg
+          ))
+          .unwrap();
+          s.push_str(&format!(
+            "\n   {}x {} than {}",
+            if faster {
+              colors::green(diff.to_string()).to_string()
+            } else {
+              colors::red(inv_diff.to_string()).to_string()
+            },
+            if faster { "faster" } else { "slower" },
+            colors::cyan_bold(&b.name)
+          ));
+        }
+      }
+
+      s
+    }
+  }
 }

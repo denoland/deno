@@ -4,9 +4,9 @@ addEventListener("foo", () => {
   throw new Error("bar");
 });
 console.log(1);
-// @ts-ignore Deno.core
-Deno.core.setNextTickCallback(() => console.log("nextTick"));
-// @ts-ignore Deno.core
-Deno.core.setHasTickScheduled(true);
+// @ts-ignore Deno[Deno.internal].core
+Deno[Deno.internal].core.setNextTickCallback(() => console.log("nextTick"));
+// @ts-ignore Deno[Deno.internal].core
+Deno[Deno.internal].core.setHasTickScheduled(true);
 dispatchEvent(new CustomEvent("foo"));
 console.log(2);

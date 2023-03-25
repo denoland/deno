@@ -10,6 +10,7 @@ use termcolor::Color::Black;
 use termcolor::Color::Blue;
 use termcolor::Color::Cyan;
 use termcolor::Color::Green;
+use termcolor::Color::Magenta;
 use termcolor::Color::Red;
 use termcolor::Color::White;
 use termcolor::Color::Yellow;
@@ -102,6 +103,17 @@ pub fn yellow<S: AsRef<str>>(s: S) -> impl fmt::Display {
 pub fn cyan<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Cyan));
+  style(s, style_spec)
+}
+pub fn cyan_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Cyan)).set_bold(true);
+  style(s, style_spec)
+}
+
+pub fn magenta<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Magenta));
   style(s, style_spec)
 }
 

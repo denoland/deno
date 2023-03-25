@@ -9,6 +9,7 @@ use crate::http_util::HttpClient;
 use crate::proc_state::ProcState;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::time;
 use crate::version;
 
 use deno_core::anyhow::bail;
@@ -16,6 +17,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
+use deno_graph::semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -59,7 +61,7 @@ impl RealUpdateCheckerEnvironment {
       http_client,
       cache_file_path,
       // cache the current time
-      current_time: chrono::Utc::now(),
+      current_time: time::utc_now(),
     }
   }
 }
@@ -123,7 +125,7 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
     let file = self.maybe_file.as_ref()?;
     // If the current version saved is not the actualy current version of the binary
     // It means
-    // - We already check for a new vesion today
+    // - We already check for a new version today
     // - The user have probably upgraded today
     // So we should not prompt and wait for tomorrow for the latest version to be updated again
     if file.current_version != self.env.current_version() {
@@ -133,8 +135,8 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
       return None;
     }
 
-    if let Ok(current) = semver::Version::parse(&self.env.current_version()) {
-      if let Ok(latest) = semver::Version::parse(&file.latest_version) {
+    if let Ok(current) = Version::parse_standard(&self.env.current_version()) {
+      if let Ok(latest) = Version::parse_standard(&file.latest_version) {
         if current >= latest {
           return None;
         }
@@ -159,6 +161,25 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
         &file.with_last_prompt(self.env.current_time()).serialize(),
       );
     }
+  }
+}
+
+fn get_minor_version(version: &str) -> &str {
+  version.rsplitn(2, '.').collect::<Vec<&str>>()[1]
+}
+
+fn print_release_notes(current_version: &str, new_version: &str) {
+  if get_minor_version(current_version) != get_minor_version(new_version) {
+    log::info!(
+      "{}{}",
+      "Release notes: https://github.com/denoland/deno/releases/tag/v",
+      &new_version,
+    );
+    log::info!(
+      "{}{}",
+      "Blog post: https://deno.com/blog/v",
+      get_minor_version(new_version)
+    );
   }
 }
 
@@ -199,12 +220,13 @@ pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
           "{} {} → {} ",
           colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
-          colors::cyan(upgrade_version)
+          colors::cyan(&upgrade_version)
         );
         eprintln!(
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
+        print_release_notes(version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
@@ -272,9 +294,9 @@ pub async fn upgrade(
       {
         bail!("Invalid commit hash passed");
       } else if !upgrade_flags.canary
-        && semver::Version::parse(&passed_version).is_err()
+        && Version::parse_standard(&passed_version).is_err()
       {
-        bail!("Invalid semver passed");
+        bail!("Invalid version passed");
       }
 
       let current_is_passed = if upgrade_flags.canary {
@@ -308,8 +330,8 @@ pub async fn upgrade(
         let latest_hash = latest_version.clone();
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = semver::Version::parse(&crate::version::deno()).unwrap();
-        let latest = semver::Version::parse(&latest_version).unwrap();
+        let current = Version::parse_standard(crate::version::deno()).unwrap();
+        let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
       } else {
         false
@@ -322,7 +344,7 @@ pub async fn upgrade(
         log::info!(
           "Local deno version {} is the most recent release",
           if upgrade_flags.canary {
-            crate::version::GIT_COMMIT_HASH.to_string()
+            crate::version::GIT_COMMIT_HASH
           } else {
             crate::version::deno()
           }
@@ -353,17 +375,21 @@ pub async fn upgrade(
 
   let archive_data = download_package(client, &download_url)
     .await
-    .with_context(|| format!("Failed downloading {}", download_url))?;
+    .with_context(|| format!("Failed downloading {download_url}"))?;
 
   log::info!("Deno is upgrading to version {}", &install_version);
 
-  let new_exe_path = unpack(archive_data, cfg!(windows))?;
+  let temp_dir = tempfile::TempDir::new()?;
+  let new_exe_path = unpack_into_dir(archive_data, cfg!(windows), &temp_dir)?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
   if upgrade_flags.dry_run {
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
+    if !upgrade_flags.canary {
+      print_release_notes(version::deno(), &install_version);
+    }
   } else {
     let output_exe_path =
       upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
@@ -395,8 +421,12 @@ pub async fn upgrade(
       }
     }
     log::info!("Upgraded successfully");
+    if !upgrade_flags.canary {
+      print_release_notes(version::deno(), &install_version);
+    }
   }
 
+  drop(temp_dir); // delete the temp dir
   Ok(())
 }
 
@@ -443,18 +473,16 @@ async fn download_package(
   }
 }
 
-pub fn unpack(
+pub fn unpack_into_dir(
   archive_data: Vec<u8>,
   is_windows: bool,
+  temp_dir: &tempfile::TempDir,
 ) -> Result<PathBuf, std::io::Error> {
   const EXE_NAME: &str = "deno";
-  // We use into_path so that the tempdir is not automatically deleted. This is
-  // useful for debugging upgrade, but also so this function can return a path
-  // to the newly uncompressed file without fear of the tempdir being deleted.
-  let temp_dir = secure_tempfile::TempDir::new()?.into_path();
+  let temp_dir_path = temp_dir.path();
   let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir.join(EXE_NAME).with_extension("zip");
-  let exe_path = temp_dir.join(EXE_NAME).with_extension(exe_ext);
+  let archive_path = temp_dir_path.join(EXE_NAME).with_extension("zip");
+  let exe_path = temp_dir_path.join(EXE_NAME).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(&*ARCHIVE_NAME)
@@ -483,21 +511,13 @@ pub fn unpack(
         .arg("-Path")
         .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
-        .arg(format!("'{}'", &temp_dir.to_str().unwrap()))
-        .spawn()?
-        .wait()?
-    }
-    "zip" => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
-        .current_dir(&temp_dir)
-        .arg(&archive_path)
+        .arg(format!("'{}'", &temp_dir_path.to_str().unwrap()))
         .spawn()
         .map_err(|err| {
           if err.kind() == std::io::ErrorKind::NotFound {
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              "`unzip` was not found on your PATH, please install `unzip`",
+              "`powershell.exe` was not found in your PATH",
             )
           } else {
             err
@@ -505,7 +525,25 @@ pub fn unpack(
         })?
         .wait()?
     }
-    ext => panic!("Unsupported archive type: '{}'", ext),
+    "zip" => {
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("unzip")
+        .current_dir(temp_dir_path)
+        .arg(&archive_path)
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`unzip` was not found in your PATH, please install `unzip`",
+            )
+          } else {
+            err
+          }
+        })?
+        .wait()?
+    }
+    ext => panic!("Unsupported archive type: '{ext}'"),
   };
   assert!(unpack_status.success());
   assert!(exe_path.exists());
@@ -665,7 +703,7 @@ mod test {
         file_text: Default::default(),
         current_version: Default::default(),
         latest_version: Arc::new(Mutex::new(Ok("".to_string()))),
-        time: Arc::new(Mutex::new(chrono::Utc::now())),
+        time: Arc::new(Mutex::new(crate::util::time::utc_now())),
       }
     }
 

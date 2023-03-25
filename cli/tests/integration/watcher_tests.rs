@@ -58,6 +58,24 @@ fn wait_contains(s: &str, lines: &mut impl Iterator<Item = String>) {
   wait_for(|msg| msg.contains(s), lines)
 }
 
+/// Before test cases touch files, they need to wait for the watcher to be
+/// ready. Waiting for subcommand output is insufficient.
+/// The file watcher takes a moment to start watching files due to
+/// asynchronicity. It is possible for the watched subcommand to finish before
+/// any files are being watched.
+/// deno must be running with --log-level=debug
+/// file_name should be the file name and, optionally, extension. file_name
+/// may not be a full path, as it is not portable.
+fn wait_for_watcher(
+  file_name: &str,
+  stderr_lines: &mut impl Iterator<Item = String>,
+) {
+  wait_for(
+    |m| m.contains("Watching paths") && m.contains(file_name),
+    stderr_lines,
+  );
+}
+
 fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
   lines.find(|m| m.contains(s)).unwrap()
 }
@@ -74,14 +92,14 @@ fn child_lines(
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STDOUT: {}", line);
+      eprintln!("STDOUT: {line}");
       line
     });
   let stderr_lines = std::io::BufReader::new(child.stderr.take().unwrap())
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      eprintln!("STDERR: {}", line);
+      eprintln!("STDERR: {line}");
       line
     });
   (stdout_lines, stderr_lines)
@@ -402,6 +420,8 @@ fn bundle_js_watch() {
 
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, "Bundle started");
@@ -455,8 +475,9 @@ fn bundle_watch_not_exit() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, "Bundle started");
+  assert_contains!(stderr_lines.next().unwrap(), "Warning");
+  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
+  assert_contains!(stderr_lines.next().unwrap(), "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_eq!(stderr_lines.next().unwrap(), "");
   assert_eq!(stderr_lines.next().unwrap(), "  syntax error ^^");
@@ -505,20 +526,14 @@ fn run_watch_no_dynamic() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   wait_contains("Hello world", &mut stdout_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines);
 
   // Change content of the file
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
 
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("Hello world2", &mut stdout_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines);
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -531,30 +546,21 @@ fn run_watch_no_dynamic() {
 
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("0", &mut stdout_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("another_file.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("another_file.js", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_file, "export const foo = 42;").unwrap();
 
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("42", &mut stdout_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
 
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("error:", &mut stderr_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines);
 
   // Then restore the file
   write(
@@ -565,20 +571,14 @@ fn run_watch_no_dynamic() {
 
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("42", &mut stdout_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("another_file.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("another_file.js", &mut stderr_lines);
 
   // Update the content of the imported file with invalid syntax
   write(&another_file, "syntax error ^^").unwrap();
 
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("error:", &mut stderr_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("another_file.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("another_file.js", &mut stderr_lines);
 
   // Modify the imported file and make sure that restarting occurs
   write(&another_file, "export const foo = 'modified!';").unwrap();
@@ -626,18 +626,18 @@ fn run_watch_external_watch_files() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines);
   wait_contains("Hello world", &mut stdout_lines);
-  wait_for(
-    |m| {
-      m.contains("Watching paths") && m.contains("external_file_to_watch.txt")
-    },
-    &mut stderr_lines,
-  );
+  wait_for_watcher("external_file_to_watch.txt", &mut stderr_lines);
 
   // Change content of the external file
   write(&external_file_to_watch, "Hello world2").unwrap();
-
   wait_contains("Restarting", &mut stderr_lines);
   wait_contains("Process finished", &mut stderr_lines);
+
+  // Again (https://github.com/denoland/deno/issues/17584)
+  write(&external_file_to_watch, "Hello world3").unwrap();
+  wait_contains("Restarting", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
+
   check_alive_then_kill(child);
 }
 
@@ -677,10 +677,7 @@ fn run_watch_load_unload_events() {
 
   // Wait for the first load event to fire
   wait_contains("load", &mut stdout_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines);
 
   // Change content of the file, this time without an interval to keep it alive.
   write(
@@ -735,10 +732,7 @@ fn run_watch_not_exit() {
 
   wait_contains("Process started", &mut stderr_lines);
   wait_contains("error:", &mut stderr_lines);
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("file_to_watch.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines);
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
@@ -795,6 +789,47 @@ fn run_watch_with_import_map_and_relative_paths() {
   assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Process finished");
   assert_contains!(stdout_lines.next().unwrap(), "Hello world");
+
+  check_alive_then_kill(child);
+}
+
+#[test]
+fn run_watch_with_ext_flag() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch");
+  write(&file_to_watch, "interface I{}; console.log(42);").unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--log-level")
+    .arg("debug")
+    .arg("--ext")
+    .arg("ts")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("42", &mut stdout_lines);
+
+  // Make sure the watcher actually restarts and works fine with the proper language
+  wait_for_watcher("file_to_watch", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
+
+  write(
+    &file_to_watch,
+    "type Bear = 'polar' | 'grizzly'; console.log(123);",
+  )
+  .unwrap();
+
+  wait_contains("Restarting!", &mut stderr_lines);
+  wait_contains("123", &mut stdout_lines);
+  wait_contains("Process finished", &mut stderr_lines);
 
   check_alive_then_kill(child);
 }
@@ -1169,7 +1204,7 @@ fn run_watch_dynamic_imports() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-
+  assert_contains!(stderr_lines.next().unwrap(), "No package.json file found");
   assert_contains!(stderr_lines.next().unwrap(), "Process started");
 
   wait_contains(
@@ -1185,10 +1220,7 @@ fn run_watch_dynamic_imports() {
     &mut stdout_lines,
   );
 
-  wait_for(
-    |m| m.contains("Watching paths") && m.contains("imported2.js"),
-    &mut stderr_lines,
-  );
+  wait_for_watcher("imported2.js", &mut stderr_lines);
   wait_contains("finished", &mut stderr_lines);
 
   write(

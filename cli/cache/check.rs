@@ -7,7 +7,7 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 
-use super::common::run_sqlite_pragma;
+use super::common::INITIAL_PRAGMAS;
 
 /// The cache used to tell whether type checking should occur again.
 ///
@@ -58,10 +58,9 @@ impl TypeCheckCache {
 
   fn from_connection(
     conn: Connection,
-    cli_version: String,
+    cli_version: &'static str,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self(Some(conn)))
   }
@@ -71,7 +70,7 @@ impl TypeCheckCache {
       Ok(val) => val,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!("Error retrieving hash: {}", err);
+          panic!("Error retrieving hash: {err}");
         } else {
           log::debug!("Error retrieving hash: {}", err);
           // fail silently when not debugging
@@ -94,7 +93,7 @@ impl TypeCheckCache {
   pub fn add_check_hash(&self, check_hash: u64) {
     if let Err(err) = self.add_check_hash_result(check_hash) {
       if cfg!(debug_assertions) {
-        panic!("Error saving check hash: {}", err);
+        panic!("Error saving check hash: {err}");
       } else {
         log::debug!("Error saving check hash: {}", err);
       }
@@ -134,7 +133,7 @@ impl TypeCheckCache {
     if let Err(err) = self.set_tsbuildinfo_result(specifier, text) {
       // should never error here, but if it ever does don't fail
       if cfg!(debug_assertions) {
-        panic!("Error saving tsbuildinfo: {}", err);
+        panic!("Error saving tsbuildinfo: {err}");
       } else {
         log::debug!("Error saving tsbuildinfo: {}", err);
       }
@@ -158,31 +157,27 @@ impl TypeCheckCache {
   }
 }
 
-fn create_tables(
+fn initialize(
   conn: &Connection,
-  cli_version: String,
+  cli_version: &'static str,
 ) -> Result<(), AnyError> {
-  // INT doesn't store up to u64, so use TEXT
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS checkcache (
-      check_hash TEXT PRIMARY KEY
-    )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS tsbuildinfo (
-        specifier TEXT PRIMARY KEY,
-        text TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )",
-    [],
-  )?;
+  // INT doesn't store up to u64, so use TEXT for check_hash
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  CREATE TABLE IF NOT EXISTS checkcache (
+    check_hash TEXT PRIMARY KEY
+  );
+  CREATE TABLE IF NOT EXISTS tsbuildinfo (
+    specifier TEXT PRIMARY KEY,
+    text TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  ",
+  );
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn
@@ -192,12 +187,12 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(cli_version) {
     conn.execute("DELETE FROM checkcache", params![])?;
     conn.execute("DELETE FROM tsbuildinfo", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
-    stmt.execute(params!["CLI_VERSION", &cli_version])?;
+    stmt.execute(params!["CLI_VERSION", cli_version])?;
   }
 
   Ok(())
@@ -210,8 +205,7 @@ mod test {
   #[test]
   pub fn check_cache_general_use() {
     let conn = Connection::open_in_memory().unwrap();
-    let cache =
-      TypeCheckCache::from_connection(conn, "1.0.0".to_string()).unwrap();
+    let cache = TypeCheckCache::from_connection(conn, "1.0.0").unwrap();
 
     assert!(!cache.has_check_hash(1));
     cache.add_check_hash(1);
@@ -225,8 +219,7 @@ mod test {
 
     // try changing the cli version (should clear)
     let conn = cache.0.unwrap();
-    let cache =
-      TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
+    let cache = TypeCheckCache::from_connection(conn, "2.0.0").unwrap();
     assert!(!cache.has_check_hash(1));
     cache.add_check_hash(1);
     assert!(cache.has_check_hash(1));
@@ -236,8 +229,7 @@ mod test {
 
     // recreating the cache should not remove the data because the CLI version is the same
     let conn = cache.0.unwrap();
-    let cache =
-      TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
+    let cache = TypeCheckCache::from_connection(conn, "2.0.0").unwrap();
     assert!(cache.has_check_hash(1));
     assert!(!cache.has_check_hash(2));
     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));

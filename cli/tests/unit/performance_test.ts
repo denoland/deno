@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertNotStrictEquals,
   assertStringIncludes,
   assertThrows,
   deferred,
@@ -50,14 +51,42 @@ Deno.test(function performanceMark() {
   assert(markEntries[markEntries.length - 1] === mark);
 });
 
+Deno.test(function performanceMarkDetail() {
+  const detail = { foo: "foo" };
+  const mark = performance.mark("test", { detail });
+  assert(mark instanceof PerformanceMark);
+  assertEquals(mark.detail, { foo: "foo" });
+  assertNotStrictEquals(mark.detail, detail);
+});
+
+Deno.test(function performanceMarkDetailArrayBuffer() {
+  const detail = new ArrayBuffer(10);
+  const mark = performance.mark("test", { detail });
+  assert(mark instanceof PerformanceMark);
+  assertEquals(mark.detail, new ArrayBuffer(10));
+  assertNotStrictEquals(mark.detail, detail);
+});
+
+Deno.test(function performanceMarkDetailSubTypedArray() {
+  class SubUint8Array extends Uint8Array {}
+  const detail = new SubUint8Array([1, 2]);
+  const mark = performance.mark("test", { detail });
+  assert(mark instanceof PerformanceMark);
+  assertEquals(mark.detail, new Uint8Array([1, 2]));
+  assertNotStrictEquals(mark.detail, detail);
+});
+
 Deno.test(function performanceMeasure() {
   const markName1 = "mark1";
   const measureName1 = "measure1";
   const measureName2 = "measure2";
   const mark1 = performance.mark(markName1);
+  // Measure against the inaccurate-but-known-good wall clock
+  const now = new Date().valueOf();
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       try {
+        const later = new Date().valueOf();
         const measure1 = performance.measure(measureName1, markName1);
         const measure2 = performance.measure(
           measureName2,
@@ -77,8 +106,10 @@ Deno.test(function performanceMeasure() {
           `duration below 100ms: ${measure1.duration}`,
         );
         assert(
-          measure1.duration < 500,
-          `duration exceeds 500ms: ${measure1.duration}`,
+          measure1.duration < (later - now) * 1.50,
+          `duration exceeds 150% of wallclock time: ${measure1.duration}ms vs ${
+            later - now
+          }ms`,
         );
         const entries = performance.getEntries();
         assert(entries[entries.length - 1] === measure2);

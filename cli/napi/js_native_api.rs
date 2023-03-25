@@ -597,7 +597,7 @@ fn napi_create_external_buffer(
 #[napi_sym::napi_sym]
 fn napi_create_function(
   env: *mut Env,
-  name: *const u8,
+  name: *const c_char,
   length: usize,
   cb: napi_callback,
   cb_info: napi_callback_info,
@@ -606,21 +606,13 @@ fn napi_create_function(
   check_env!(env);
   check_arg!(env, result);
   check_arg_option!(env, cb);
-  check_arg!(env, name);
 
-  if length > INT_MAX as _ {
-    return Err(Error::InvalidArg);
-  }
+  let name = name
+    .as_ref()
+    .map(|_| check_new_from_utf8_len(env, name, length))
+    .transpose()?;
 
-  let name = std::slice::from_raw_parts(name, length);
-  // If it ends with NULL
-  let name = if name[name.len() - 1] == 0 {
-    std::str::from_utf8_unchecked(&name[0..name.len() - 1])
-  } else {
-    std::str::from_utf8_unchecked(name)
-  };
-
-  *result = create_function(env, Some(name), cb, cb_info).into();
+  *result = create_function(env, name, cb, cb_info).into();
   Ok(())
 }
 
@@ -1227,13 +1219,17 @@ fn napi_add_finalizer(
 fn napi_adjust_external_memory(
   env: *mut Env,
   change_in_bytes: i64,
-  adjusted_value: &mut i64,
+  adjusted_value: *mut i64,
 ) -> Result {
   check_env!(env);
+  check_arg!(env, adjusted_value);
+
   let env = unsafe { &mut *env };
   let isolate = &mut *env.isolate_ptr;
   *adjusted_value =
     isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -1427,27 +1423,70 @@ fn napi_define_properties(
   properties: *const napi_property_descriptor,
 ) -> Result {
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
+  if property_count > 0 {
+    check_arg!(env, properties);
+  }
+
   let scope = &mut env.scope();
-  let object = transmute::<napi_value, v8::Local<v8::Object>>(obj);
+
+  let object: v8::Local<v8::Object> = napi_value_unchecked(obj)
+    .try_into()
+    .map_err(|_| Error::ObjectExpected)?;
+
   let properties = std::slice::from_raw_parts(properties, property_count);
   for property in properties {
     let name = if !property.utf8name.is_null() {
-      let name_str = CStr::from_ptr(property.utf8name);
-      let name_str = name_str.to_str().unwrap();
-      v8::String::new(scope, name_str).unwrap()
+      let name_str = CStr::from_ptr(property.utf8name).to_str().unwrap();
+      v8::String::new(scope, name_str)
+        .ok_or(Error::GenericFailure)?
+        .into()
     } else {
-      transmute::<napi_value, v8::Local<v8::String>>(property.name)
+      let property_value = napi_value_unchecked(property.name);
+      v8::Local::<v8::Name>::try_from(property_value)
+        .map_err(|_| Error::NameExpected)?
     };
 
-    let method_ptr = property.method;
+    if property.getter.is_some() || property.setter.is_some() {
+      let local_getter: v8::Local<v8::Value> = if property.getter.is_some() {
+        create_function(env_ptr, None, property.getter, property.data).into()
+      } else {
+        v8::undefined(scope).into()
+      };
+      let local_setter: v8::Local<v8::Value> = if property.setter.is_some() {
+        create_function(env_ptr, None, property.setter, property.data).into()
+      } else {
+        v8::undefined(scope).into()
+      };
 
-    if method_ptr.is_some() {
-      let function: v8::Local<v8::Value> = {
+      let mut desc =
+        v8::PropertyDescriptor::new_from_get_set(local_getter, local_setter);
+      desc.set_enumerable(property.attributes & napi_enumerable != 0);
+      desc.set_configurable(property.attributes & napi_configurable != 0);
+
+      let define_maybe = object.define_property(scope, name, &desc);
+      return_status_if_false!(
+        env_ptr,
+        !define_maybe.unwrap_or(false),
+        napi_invalid_arg
+      );
+    } else if property.method.is_some() {
+      let value: v8::Local<v8::Value> = {
         let function =
           create_function(env_ptr, None, property.method, property.data);
         function.into()
       };
-      object.set(scope, name.into(), function).unwrap();
+      return_status_if_false!(
+        env_ptr,
+        object.set(scope, name.into(), value).is_some(),
+        napi_invalid_arg
+      );
+    } else {
+      let value = napi_value_unchecked(property.value);
+      return_status_if_false!(
+        env_ptr,
+        object.set(scope, name.into(), value).is_some(),
+        napi_invalid_arg
+      );
     }
   }
 
@@ -1501,10 +1540,21 @@ fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> Result {
 }
 
 #[napi_sym::napi_sym]
-fn napi_detach_arraybuffer(_env: *mut Env, value: napi_value) -> Result {
+fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> Result {
+  check_env!(env);
+
   let value = napi_value_unchecked(value);
-  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  ab.detach(None);
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(value)
+    .map_err(|_| Error::ArrayBufferExpected)?;
+
+  if !ab.is_detachable() {
+    return Err(Error::DetachableArraybufferExpected);
+  }
+
+  // Expected to crash for None.
+  ab.detach(None).unwrap();
+
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -1707,12 +1757,12 @@ fn napi_get_element(
 #[napi_sym::napi_sym]
 fn napi_get_global(env: *mut Env, result: *mut napi_value) -> Result {
   check_env!(env);
-  let env = unsafe { &mut *env };
+  check_arg!(env, result);
 
-  let context = &mut env.scope().get_current_context();
-  let global = context.global(&mut env.scope());
-  let value: v8::Local<v8::Value> = global.into();
+  let value: v8::Local<v8::Value> =
+    transmute::<NonNull<v8::Value>, v8::Local<v8::Value>>((*env).global);
   *result = value.into();
+  napi_clear_last_error(env);
   Ok(())
 }
 
@@ -2099,13 +2149,22 @@ fn napi_is_date(
 
 #[napi_sym::napi_sym]
 fn napi_is_detached_arraybuffer(
-  _env: *mut Env,
+  env: *mut Env,
   value: napi_value,
   result: *mut bool,
 ) -> Result {
+  check_env!(env);
+  check_arg!(env, result);
+
   let value = napi_value_unchecked(value);
-  let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  *result = _ab.was_detached();
+
+  *result = match v8::Local::<v8::ArrayBuffer>::try_from(value) {
+    Ok(array_buffer) => array_buffer.was_detached(),
+    Err(_) => false,
+  };
+
+  napi_clear_last_error(env);
+
   Ok(())
 }
 
@@ -2349,14 +2408,14 @@ fn napi_set_element(
 fn napi_set_instance_data(
   env: *mut Env,
   data: *mut c_void,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
 ) -> Result {
   let env = &mut *(env as *mut Env);
   let shared = env.shared_mut();
   shared.instance_data = data;
-  shared.data_finalize = if !(finalize_cb as *const c_void).is_null() {
-    Some(finalize_cb)
+  shared.data_finalize = if finalize_cb.is_some() {
+    finalize_cb
   } else {
     None
   };

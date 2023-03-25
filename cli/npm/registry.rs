@@ -9,29 +9,30 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::BoxFuture;
-use deno_core::futures::FutureExt;
+use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::colors;
+use deno_graph::npm::NpmPackageNv;
+use deno_graph::semver::VersionReq;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 
+use crate::args::package_json::parse_dep_entry_name_and_raw_version;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 
+use super::cache::should_sync_download;
 use super::cache::NpmCache;
-use super::resolution::NpmVersionMatcher;
-use super::semver::NpmVersion;
-use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -43,7 +44,7 @@ pub struct NpmPackageInfo {
   pub dist_tags: HashMap<String, String>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum NpmDependencyEntryKind {
   Dep,
   Peer,
@@ -56,16 +57,16 @@ impl NpmDependencyEntryKind {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NpmDependencyEntry {
   pub kind: NpmDependencyEntryKind,
   pub bare_specifier: String,
   pub name: String,
-  pub version_req: NpmVersionReq,
+  pub version_req: VersionReq,
   /// When the dependency is also marked as a peer dependency,
   /// use this entry to resolve the dependency when it can't
   /// be resolved as a peer dependency.
-  pub peer_dep_version_req: Option<NpmVersionReq>,
+  pub peer_dep_version_req: Option<VersionReq>,
 }
 
 impl PartialOrd for NpmDependencyEntry {
@@ -82,23 +83,31 @@ impl Ord for NpmDependencyEntry {
       Ordering::Equal => other
         .version_req
         .version_text()
-        .cmp(&self.version_req.version_text()),
+        .cmp(self.version_req.version_text()),
       ordering => ordering,
     }
   }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct NpmPeerDependencyMeta {
   #[serde(default)]
   optional: bool,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum NpmPackageVersionBinEntry {
+  String(String),
+  Map(HashMap<String, String>),
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
+  pub bin: Option<NpmPackageVersionBinEntry>,
   // Bare specifier to version (ex. `"typescript": "^3.0.1") or possibly
   // package and version (ex. `"typescript-3.0.1": "npm:typescript@3.0.1"`).
   #[serde(default)]
@@ -114,31 +123,19 @@ impl NpmPackageVersionInfo {
     &self,
   ) -> Result<Vec<NpmDependencyEntry>, AnyError> {
     fn parse_dep_entry(
-      entry: (&String, &String),
+      (key, value): (&String, &String),
       kind: NpmDependencyEntryKind,
     ) -> Result<NpmDependencyEntry, AnyError> {
-      let bare_specifier = entry.0.clone();
       let (name, version_req) =
-        if let Some(package_and_version) = entry.1.strip_prefix("npm:") {
-          if let Some((name, version)) = package_and_version.rsplit_once('@') {
-            (name.to_string(), version.to_string())
-          } else {
-            bail!("could not find @ symbol in npm url '{}'", entry.1);
-          }
-        } else {
-          (entry.0.clone(), entry.1.clone())
-        };
+        parse_dep_entry_name_and_raw_version(key, value)?;
       let version_req =
-        NpmVersionReq::parse(&version_req).with_context(|| {
-          format!(
-            "error parsing version requirement for dependency: {}@{}",
-            bare_specifier, version_req
-          )
+        VersionReq::parse_from_npm(version_req).with_context(|| {
+          format!("error parsing version requirement for dependency: {key}@{version_req}")
         })?;
       Ok(NpmDependencyEntry {
         kind,
-        bare_specifier,
-        name,
+        bare_specifier: key.to_string(),
+        name: name.to_string(),
         version_req,
         peer_dep_version_req: None,
       })
@@ -184,19 +181,6 @@ pub struct NpmPackageVersionDistInfo {
 }
 
 impl NpmPackageVersionDistInfo {
-  #[cfg(test)]
-  pub fn new(
-    tarball: String,
-    shasum: String,
-    integrity: Option<String>,
-  ) -> Self {
-    Self {
-      tarball,
-      shasum,
-      integrity,
-    }
-  }
-
   pub fn integrity(&self) -> Cow<String> {
     self
       .integrity
@@ -206,83 +190,30 @@ impl NpmPackageVersionDistInfo {
   }
 }
 
-pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
-  fn maybe_package_info(
-    &self,
-    name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>>;
-
-  fn package_info(
-    &self,
-    name: &str,
-  ) -> BoxFuture<'static, Result<Arc<NpmPackageInfo>, AnyError>> {
-    let api = self.clone();
-    let name = name.to_string();
-    async move {
-      let maybe_package_info = api.maybe_package_info(&name).await?;
-      match maybe_package_info {
-        Some(package_info) => Ok(package_info),
-        None => bail!("npm package '{}' does not exist", name),
+static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "NPM_CONFIG_REGISTRY";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
       }
     }
-    .boxed()
   }
 
-  fn package_version_info(
-    &self,
-    name: &str,
-    version: &NpmVersion,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageVersionInfo>, AnyError>> {
-    let api = self.clone();
-    let name = name.to_string();
-    let version = version.to_string();
-    async move {
-      let package_info = api.package_info(&name).await?;
-      Ok(package_info.versions.get(&version).cloned())
-    }
-    .boxed()
-  }
+  Url::parse("https://registry.npmjs.org").unwrap()
+});
 
-  /// Clears the internal memory cache.
-  fn clear_memory_cache(&self);
-}
+#[derive(Clone, Debug)]
+pub struct NpmRegistryApi(Arc<dyn NpmRegistryApiInner>);
 
-#[derive(Clone)]
-pub struct RealNpmRegistryApi(Arc<RealNpmRegistryApiInner>);
-
-impl RealNpmRegistryApi {
-  pub fn default_url() -> Url {
-    // todo(dsherret): remove DENO_NPM_REGISTRY in the future (maybe May 2023)
-    let env_var_names = ["NPM_CONFIG_REGISTRY", "DENO_NPM_REGISTRY"];
-    for env_var_name in env_var_names {
-      if let Ok(registry_url) = std::env::var(env_var_name) {
-        // ensure there is a trailing slash for the directory
-        let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-        match Url::parse(&registry_url) {
-          Ok(url) => {
-            if env_var_name == "DENO_NPM_REGISTRY" {
-              log::warn!(
-                "{}",
-                colors::yellow(concat!(
-                  "DENO_NPM_REGISTRY was intended for internal testing purposes only. ",
-                  "Please update to NPM_CONFIG_REGISTRY instead.",
-                )),
-              );
-            }
-            return url;
-          }
-          Err(err) => {
-            log::debug!(
-              "Invalid {} environment variable: {:#}",
-              env_var_name,
-              err,
-            );
-          }
-        }
-      }
-    }
-
-    Url::parse("https://registry.npmjs.org").unwrap()
+impl NpmRegistryApi {
+  pub fn default_url() -> &'static Url {
+    &NPM_REGISTRY_DEFAULT_URL
   }
 
   pub fn new(
@@ -301,26 +232,124 @@ impl RealNpmRegistryApi {
     }))
   }
 
+  /// Creates an npm registry API that will be uninitialized
+  /// and error for every request. This is useful for tests
+  /// or for initializing the LSP.
+  pub fn new_uninitialized() -> Self {
+    Self(Arc::new(NullNpmRegistryApiInner))
+  }
+
+  #[cfg(test)]
+  pub fn new_for_test(api: TestNpmRegistryApiInner) -> NpmRegistryApi {
+    Self(Arc::new(api))
+  }
+
+  pub async fn package_info(
+    &self,
+    name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, AnyError> {
+    let maybe_package_info = self.0.maybe_package_info(name).await?;
+    match maybe_package_info {
+      Some(package_info) => Ok(package_info),
+      None => bail!("npm package '{}' does not exist", name),
+    }
+  }
+
+  pub async fn package_version_info(
+    &self,
+    nv: &NpmPackageNv,
+  ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
+    let package_info = self.package_info(&nv.name).await?;
+    Ok(package_info.versions.get(&nv.version.to_string()).cloned())
+  }
+
+  /// Caches all the package information in memory in parallel.
+  pub async fn cache_in_parallel(
+    &self,
+    package_names: Vec<String>,
+  ) -> Result<(), AnyError> {
+    let mut unresolved_tasks = Vec::with_capacity(package_names.len());
+
+    // cache the package info up front in parallel
+    if should_sync_download() {
+      // for deterministic test output
+      let mut ordered_names = package_names;
+      ordered_names.sort();
+      for name in ordered_names {
+        self.package_info(&name).await?;
+      }
+    } else {
+      for name in package_names {
+        let api = self.clone();
+        unresolved_tasks.push(tokio::task::spawn(async move {
+          // This is ok to call because api will internally cache
+          // the package information in memory.
+          api.package_info(&name).await
+        }));
+      }
+    };
+
+    for result in futures::future::join_all(unresolved_tasks).await {
+      result??; // surface the first error
+    }
+
+    Ok(())
+  }
+
+  /// Clears the internal memory cache.
+  pub fn clear_memory_cache(&self) {
+    self.0.clear_memory_cache();
+  }
+
+  pub fn get_cached_package_info(
+    &self,
+    name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    self.0.get_cached_package_info(name)
+  }
+
   pub fn base_url(&self) -> &Url {
-    &self.0.base_url
+    self.0.base_url()
   }
 }
 
-impl NpmRegistryApi for RealNpmRegistryApi {
-  fn maybe_package_info(
+#[async_trait]
+trait NpmRegistryApiInner: std::fmt::Debug + Sync + Send + 'static {
+  async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
-    let api = self.clone();
-    let name = name.to_string();
-    async move { api.0.maybe_package_info(&name).await }.boxed()
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError>;
+
+  fn clear_memory_cache(&self);
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>>;
+
+  fn base_url(&self) -> &Url;
+}
+
+#[async_trait]
+impl NpmRegistryApiInner for RealNpmRegistryApiInner {
+  fn base_url(&self) -> &Url {
+    &self.base_url
+  }
+
+  async fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    self.maybe_package_info(name).await
   }
 
   fn clear_memory_cache(&self) {
-    self.0.mem_cache.lock().clear();
+    self.mem_cache.lock().clear();
+  }
+
+  fn get_cached_package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    self.mem_cache.lock().get(name).cloned().flatten()
   }
 }
 
+#[derive(Debug)]
 struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
@@ -354,7 +383,11 @@ impl RealNpmRegistryApiInner {
           .load_package_info_from_registry(name)
           .await
           .with_context(|| {
-          format!("Error getting response at {}", self.get_package_url(name))
+          format!(
+            "Error getting response at {} for package \"{}\"",
+            self.get_package_url(name),
+            name
+          )
         })?;
       }
       let maybe_package_info = maybe_package_info.map(Arc::new);
@@ -382,10 +415,7 @@ impl RealNpmRegistryApiInner {
       Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!(
-            "error loading cached npm package info for {}: {:#}",
-            name, err
-          );
+          panic!("error loading cached npm package info for {name}: {err:#}");
         } else {
           None
         }
@@ -428,10 +458,7 @@ impl RealNpmRegistryApiInner {
       self.save_package_info_to_file_cache_result(name, package_info)
     {
       if cfg!(debug_assertions) {
-        panic!(
-          "error saving cached npm package info for {}: {:#}",
-          name, err
-        );
+        panic!("error saving cached npm package info for {name}: {err:#}");
       }
     }
   }
@@ -456,8 +483,7 @@ impl RealNpmRegistryApiInner {
       return Err(custom_error(
         "NotCached",
         format!(
-          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          name
+          "An npm specifier not found in cache: \"{name}\", --cached-only is specified."
         )
       ));
     }
@@ -489,16 +515,44 @@ impl RealNpmRegistryApiInner {
   }
 }
 
+#[derive(Debug)]
+struct NullNpmRegistryApiInner;
+
+#[async_trait]
+impl NpmRegistryApiInner for NullNpmRegistryApiInner {
+  async fn maybe_package_info(
+    &self,
+    _name: &str,
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+    Err(deno_core::anyhow::anyhow!(
+      "Deno bug. Please report. Registry API was not initialized."
+    ))
+  }
+
+  fn clear_memory_cache(&self) {}
+
+  fn get_cached_package_info(
+    &self,
+    _name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    None
+  }
+
+  fn base_url(&self) -> &Url {
+    NpmRegistryApi::default_url()
+  }
+}
+
 /// Note: This test struct is not thread safe for setup
 /// purposes. Construct everything on the same thread.
 #[cfg(test)]
-#[derive(Clone, Default)]
-pub struct TestNpmRegistryApi {
+#[derive(Clone, Default, Debug)]
+pub struct TestNpmRegistryApiInner {
   package_infos: Arc<Mutex<HashMap<String, NpmPackageInfo>>>,
 }
 
 #[cfg(test)]
-impl TestNpmRegistryApi {
+impl TestNpmRegistryApiInner {
   pub fn add_package_info(&self, name: &str, info: NpmPackageInfo) {
     let previous = self.package_infos.lock().insert(name.to_string(), info);
     assert!(previous.is_none());
@@ -582,16 +636,83 @@ impl TestNpmRegistryApi {
 }
 
 #[cfg(test)]
-impl NpmRegistryApi for TestNpmRegistryApi {
-  fn maybe_package_info(
+#[async_trait]
+impl NpmRegistryApiInner for TestNpmRegistryApiInner {
+  async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
     let result = self.package_infos.lock().get(name).cloned();
-    Box::pin(deno_core::futures::future::ready(Ok(result.map(Arc::new))))
+    Ok(result.map(Arc::new))
   }
 
   fn clear_memory_cache(&self) {
     // do nothing for the test api
+  }
+
+  fn get_cached_package_info(
+    &self,
+    _name: &str,
+  ) -> Option<Arc<NpmPackageInfo>> {
+    None
+  }
+
+  fn base_url(&self) -> &Url {
+    NpmRegistryApi::default_url()
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::collections::HashMap;
+
+  use deno_core::serde_json;
+
+  use crate::npm::registry::NpmPackageVersionBinEntry;
+  use crate::npm::NpmPackageVersionDistInfo;
+
+  use super::NpmPackageVersionInfo;
+
+  #[test]
+  fn deserializes_minimal_pkg_info() {
+    let text = r#"{ "version": "1.0.0", "dist": { "tarball": "value", "shasum": "test" } }"#;
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(
+      info,
+      NpmPackageVersionInfo {
+        version: "1.0.0".to_string(),
+        dist: NpmPackageVersionDistInfo {
+          tarball: "value".to_string(),
+          shasum: "test".to_string(),
+          integrity: None,
+        },
+        bin: None,
+        dependencies: Default::default(),
+        peer_dependencies: Default::default(),
+        peer_dependencies_meta: Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deserializes_bin_entry() {
+    // string
+    let text = r#"{ "version": "1.0.0", "bin": "bin-value", "dist": { "tarball": "value", "shasum": "test" } }"#;
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(
+      info.bin,
+      Some(NpmPackageVersionBinEntry::String("bin-value".to_string()))
+    );
+
+    // map
+    let text = r#"{ "version": "1.0.0", "bin": { "a": "a-value", "b": "b-value" }, "dist": { "tarball": "value", "shasum": "test" } }"#;
+    let info: NpmPackageVersionInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(
+      info.bin,
+      Some(NpmPackageVersionBinEntry::Map(HashMap::from([
+        ("a".to_string(), "a-value".to_string()),
+        ("b".to_string(), "b-value".to_string()),
+      ])))
+    );
   }
 }

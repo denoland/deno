@@ -22,10 +22,13 @@ pub enum Error {
   ExpectedObject,
   ExpectedBuffer,
   ExpectedDetachable,
+  ExpectedExternal,
+  ExpectedBigInt,
 
   ExpectedUtf8,
   ExpectedLatin1,
 
+  UnsupportedType,
   LengthMismatch,
 }
 
@@ -45,7 +48,7 @@ impl Display for Error {
   fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
     match self {
       Error::Message(msg) => formatter.write_str(msg),
-      err => formatter.write_str(format!("serde_v8 error: {:?}", err).as_ref()),
+      err => formatter.write_str(format!("serde_v8 error: {err:?}").as_ref()),
     }
   }
 }

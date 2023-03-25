@@ -2,18 +2,24 @@
 
 use crate::bindings;
 use crate::error::generic_error;
+use crate::extensions::ExtensionFileSource;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::snapshot_util::SnapshottedData;
 use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
+use core::panic;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::StreamFuture;
 use futures::stream::TryStreamExt;
 use log::debug;
+use serde::Deserialize;
+use serde::Serialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -21,10 +27,11 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-pub type ModuleId = i32;
+pub type ModuleId = usize;
 pub(crate) type ModuleLoadId = i32;
 
 pub const BOM_CHAR: &[u8] = &[0xef, 0xbb, 0xbf];
@@ -49,7 +56,7 @@ pub(crate) fn validate_import_assertions(
     if key == "type" && !SUPPORTED_TYPE_ASSERTIONS.contains(&value.as_str()) {
       let message = v8::String::new(
         scope,
-        &format!("\"{}\" is not a valid module type.", value),
+        &format!("\"{value}\" is not a valid module type."),
       )
       .unwrap();
       let exception = v8::Exception::type_error(scope, message);
@@ -157,7 +164,8 @@ fn json_module_evaluation_steps<'a>(
 /// how to interpret the module; it is only used to validate
 /// the module against an import assertion (if one is present
 /// in the import statement).
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub enum ModuleType {
   JavaScript,
   Json,
@@ -187,12 +195,153 @@ impl std::fmt::Display for ModuleType {
 // that happened; not only first and final target. It would simplify a lot
 // of things throughout the codebase otherwise we may end up requesting
 // intermediate redirects from file loader.
-#[derive(Debug, Clone, Eq, PartialEq)]
+// NOTE: This should _not_ be made #[derive(Clone)] unless we take some precautions to avoid excessive string copying.
+#[derive(Debug)]
 pub struct ModuleSource {
-  pub code: Box<[u8]>,
+  pub code: ModuleCode,
   pub module_type: ModuleType,
   pub module_url_specified: String,
   pub module_url_found: String,
+}
+
+/// Module code can be sourced from strings or bytes that are either owned or borrowed. This enumeration allows us
+/// to perform a minimal amount of cloning and format-shifting of the underlying data.
+///
+/// Note that any [`ModuleCode`] created from a `'static` byte array or string must contain ASCII characters.
+///
+/// Examples of ways to construct a [`ModuleCode`] object:
+///
+/// ```rust
+/// # use deno_core::ModuleCode;
+///
+/// let code: ModuleCode = "a string".into();
+/// let code: ModuleCode = b"a string".into();
+/// ```
+#[derive(Debug)]
+pub enum ModuleCode {
+  /// Created from static data -- must be 100% 7-bit ASCII!
+  Static(&'static [u8]),
+
+  /// An owned chunk of data.
+  Owned(Vec<u8>),
+
+  /// Scripts loaded from the `deno_graph` infrastructure.
+  Arc(Arc<str>),
+}
+
+impl ModuleCode {
+  #[inline(always)]
+  pub fn as_bytes(&self) -> &[u8] {
+    match self {
+      Self::Static(b) => b,
+      Self::Owned(b) => b,
+      Self::Arc(s) => s.as_bytes(),
+    }
+  }
+
+  pub fn try_static_ascii(&self) -> Option<&'static [u8]> {
+    match self {
+      Self::Static(b) => Some(b),
+      _ => None,
+    }
+  }
+
+  /// Takes a [`ModuleCode`] value as an owned [`String`]. May be slow.
+  pub fn take_as_string(self) -> String {
+    match self {
+      Self::Static(b) => String::from_utf8(b.to_vec()).unwrap(),
+      Self::Owned(b) => String::from_utf8(b).unwrap(),
+      Self::Arc(s) => (*s).to_owned(),
+    }
+  }
+
+  /// Truncates a `ModuleCode`] value, possibly re-allocating or memcpy'ing. May be slow.
+  pub fn truncate(&mut self, index: usize) {
+    match self {
+      Self::Static(b) => *self = Self::Static(&b[..index]),
+      Self::Owned(b) => b.truncate(index),
+      // We can't do much if we have an Arc<str>, so we'll just take ownership of the truncated version
+      Self::Arc(s) => *self = s[..index].to_owned().into(),
+    }
+  }
+}
+
+impl Default for ModuleCode {
+  fn default() -> Self {
+    ModuleCode::Static(&[])
+  }
+}
+
+impl From<Arc<str>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Arc<str>) -> Self {
+    Self::Arc(value)
+  }
+}
+
+impl From<&Arc<str>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &Arc<str>) -> Self {
+    Self::Arc(value.clone())
+  }
+}
+
+impl From<Cow<'static, str>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Cow<'static, str>) -> Self {
+    match value {
+      Cow::Borrowed(b) => b.into(),
+      Cow::Owned(b) => b.into(),
+    }
+  }
+}
+
+impl From<Cow<'static, [u8]>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Cow<'static, [u8]>) -> Self {
+    match value {
+      Cow::Borrowed(b) => b.into(),
+      Cow::Owned(b) => b.into(),
+    }
+  }
+}
+
+impl From<&'static str> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &'static str) -> Self {
+    debug_assert!(value.is_ascii());
+    ModuleCode::Static(value.as_bytes())
+  }
+}
+
+impl From<String> for ModuleCode {
+  #[inline(always)]
+  fn from(value: String) -> Self {
+    value.into_bytes().into()
+  }
+}
+
+impl From<Vec<u8>> for ModuleCode {
+  #[inline(always)]
+  fn from(value: Vec<u8>) -> Self {
+    ModuleCode::Owned(value)
+  }
+}
+
+impl From<&'static [u8]> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &'static [u8]) -> Self {
+    debug_assert!(value.is_ascii());
+    ModuleCode::Static(value)
+  }
+}
+
+impl<const N: usize> From<&'static [u8; N]> for ModuleCode {
+  #[inline(always)]
+  fn from(value: &'static [u8; N]) -> Self {
+    debug_assert!(value.is_ascii());
+    ModuleCode::Static(value)
+  }
 }
 
 pub(crate) type PrepareLoadFuture =
@@ -202,6 +351,7 @@ pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, Error>>;
 type ModuleLoadFuture =
   dyn Future<Output = Result<(ModuleRequest, ModuleSource), Error>>;
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum ResolutionKind {
   /// This kind is used in only one situation: when a module is loaded via
   /// `JsRuntime::load_main_module` and is the top-level module, ie. the one
@@ -271,21 +421,212 @@ pub struct NoopModuleLoader;
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
     &self,
-    _specifier: &str,
-    _referrer: &str,
+    specifier: &str,
+    referrer: &str,
     _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    Err(generic_error("Module loading is not supported"))
+    Err(generic_error(
+      format!("Module loading is not supported; attempted to resolve: \"{specifier}\" from \"{referrer}\"")
+    ))
   }
 
   fn load(
     &self,
-    _module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async { Err(generic_error("Module loading is not supported")) }
-      .boxed_local()
+    let err = generic_error(
+      format!(
+        "Module loading is not supported; attempted to load: \"{module_specifier}\" from \"{maybe_referrer:?}\"",
+      )
+    );
+    async move { Err(err) }.boxed_local()
+  }
+}
+
+/// Helper function, that calls into `loader.resolve()`, but denies resolution
+/// of `ext` scheme if we are running with a snapshot loaded and not
+/// creating a snapshot
+pub(crate) fn resolve_helper(
+  snapshot_loaded_and_not_snapshotting: bool,
+  loader: Rc<dyn ModuleLoader>,
+  specifier: &str,
+  referrer: &str,
+  kind: ResolutionKind,
+) -> Result<ModuleSpecifier, Error> {
+  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("ext:") {
+    return Err(generic_error(
+      "Cannot load extension module from external code",
+    ));
+  }
+
+  loader.resolve(specifier, referrer, kind)
+}
+
+/// Function that can be passed to the `ExtModuleLoader` that allows to
+/// transpile sources before passing to V8.
+pub type ExtModuleLoaderCb =
+  Box<dyn Fn(&ExtensionFileSource) -> Result<ModuleCode, Error>>;
+
+pub struct ExtModuleLoader {
+  module_loader: Rc<dyn ModuleLoader>,
+  esm_sources: Vec<ExtensionFileSource>,
+  used_esm_sources: RefCell<HashMap<String, bool>>,
+  maybe_load_callback: Option<ExtModuleLoaderCb>,
+}
+
+impl Default for ExtModuleLoader {
+  fn default() -> Self {
+    Self {
+      module_loader: Rc::new(NoopModuleLoader),
+      esm_sources: vec![],
+      used_esm_sources: RefCell::new(HashMap::default()),
+      maybe_load_callback: None,
+    }
+  }
+}
+
+impl ExtModuleLoader {
+  pub fn new(
+    module_loader: Option<Rc<dyn ModuleLoader>>,
+    esm_sources: Vec<ExtensionFileSource>,
+    maybe_load_callback: Option<ExtModuleLoaderCb>,
+  ) -> Self {
+    let used_esm_sources: HashMap<String, bool> = esm_sources
+      .iter()
+      .map(|file_source| (file_source.specifier.to_string(), false))
+      .collect();
+
+    ExtModuleLoader {
+      module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
+      esm_sources,
+      used_esm_sources: RefCell::new(used_esm_sources),
+      maybe_load_callback,
+    }
+  }
+}
+
+impl Drop for ExtModuleLoader {
+  fn drop(&mut self) {
+    let used_esm_sources = self.used_esm_sources.get_mut();
+    let unused_modules: Vec<_> = used_esm_sources
+      .iter()
+      .filter(|(_s, v)| !*v)
+      .map(|(s, _)| s)
+      .collect();
+
+    if !unused_modules.is_empty() {
+      let mut msg =
+        "Following modules were passed to ExtModuleLoader but never used:\n"
+          .to_string();
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m);
+        msg.push('\n');
+      }
+      panic!("{}", msg);
+    }
+  }
+}
+
+impl ModuleLoader for ExtModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, Error> {
+    if let Ok(url_specifier) = ModuleSpecifier::parse(specifier) {
+      if url_specifier.scheme() == "ext" {
+        let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
+        if referrer == "." || referrer_specifier.unwrap().scheme() == "ext" {
+          return Ok(url_specifier);
+        } else {
+          return Err(generic_error(
+            "Cannot load extension module from external code",
+          ));
+        };
+      }
+    }
+
+    self.module_loader.resolve(specifier, referrer, kind)
+  }
+
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    if module_specifier.scheme() != "ext" {
+      return self.module_loader.load(
+        module_specifier,
+        maybe_referrer,
+        is_dyn_import,
+      );
+    }
+
+    let specifier = module_specifier.to_string();
+    let maybe_file_source = self
+      .esm_sources
+      .iter()
+      .find(|file_source| file_source.specifier == module_specifier.as_str());
+
+    if let Some(file_source) = maybe_file_source {
+      {
+        let mut used_esm_sources = self.used_esm_sources.borrow_mut();
+        let used = used_esm_sources.get_mut(file_source.specifier).unwrap();
+        *used = true;
+      }
+
+      let result = if let Some(load_callback) = &self.maybe_load_callback {
+        load_callback(file_source)
+      } else {
+        match file_source.load() {
+          Ok(code) => Ok(code),
+          Err(err) => return futures::future::err(err).boxed_local(),
+        }
+      };
+
+      return async move {
+        let code = result?;
+        let source = ModuleSource {
+          code,
+          module_type: ModuleType::JavaScript,
+          module_url_specified: specifier.clone(),
+          module_url_found: specifier.clone(),
+        };
+        Ok(source)
+      }
+      .boxed_local();
+    }
+
+    async move {
+      Err(generic_error(format!(
+        "Cannot find extension module source for specifier {specifier}"
+      )))
+    }
+    .boxed_local()
+  }
+
+  fn prepare_load(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<String>,
+    is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
+    if module_specifier.scheme() == "ext" {
+      return async { Ok(()) }.boxed_local();
+    }
+
+    self.module_loader.prepare_load(
+      op_state,
+      module_specifier,
+      maybe_referrer,
+      is_dyn_import,
+    )
   }
 }
 
@@ -316,8 +657,7 @@ impl ModuleLoader for FsModuleLoader {
     async move {
       let path = module_specifier.to_file_path().map_err(|_| {
         generic_error(format!(
-          "Provided module specifier \"{}\" is not a file URL.",
-          module_specifier
+          "Provided module specifier \"{module_specifier}\" is not a file URL."
         ))
       })?;
       let module_type = if let Some(extension) = path.extension() {
@@ -333,7 +673,7 @@ impl ModuleLoader for FsModuleLoader {
 
       let code = std::fs::read(path)?;
       let module = ModuleSource {
-        code: code.into_boxed_slice(),
+        code: code.into(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
@@ -375,10 +715,11 @@ pub(crate) struct RecursiveModuleLoad {
   module_map_rc: Rc<RefCell<ModuleMap>>,
   pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
   visited: HashSet<ModuleRequest>,
-  // These two fields are copied from `module_map_rc`, but they are cloned ahead
-  // of time to avoid already-borrowed errors.
+  // These three fields are copied from `module_map_rc`, but they are cloned
+  // ahead of time to avoid already-borrowed errors.
   op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
+  snapshot_loaded_and_not_snapshotting: bool,
 }
 
 impl RecursiveModuleLoad {
@@ -434,6 +775,9 @@ impl RecursiveModuleLoad {
       init,
       state: LoadState::Init,
       module_map_rc: module_map_rc.clone(),
+      snapshot_loaded_and_not_snapshotting: module_map_rc
+        .borrow()
+        .snapshot_loaded_and_not_snapshotting,
       op_state,
       loader,
       pending: FuturesUnordered::new(),
@@ -451,7 +795,7 @@ impl RecursiveModuleLoad {
         load.root_module_type = Some(
           module_map_rc
             .borrow()
-            .get_info_by_id(&module_id)
+            .get_info_by_id(module_id)
             .unwrap()
             .module_type,
         );
@@ -462,39 +806,60 @@ impl RecursiveModuleLoad {
 
   fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
-      LoadInit::Main(ref specifier) => {
-        self
-          .loader
-          .resolve(specifier, ".", ResolutionKind::MainModule)
+      LoadInit::Main(ref specifier) => resolve_helper(
+        self.snapshot_loaded_and_not_snapshotting,
+        self.loader.clone(),
+        specifier,
+        ".",
+        ResolutionKind::MainModule,
+      ),
+      LoadInit::Side(ref specifier) => resolve_helper(
+        self.snapshot_loaded_and_not_snapshotting,
+        self.loader.clone(),
+        specifier,
+        ".",
+        ResolutionKind::Import,
+      ),
+      LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
+        resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
+          specifier,
+          referrer,
+          ResolutionKind::DynamicImport,
+        )
       }
-      LoadInit::Side(ref specifier) => {
-        self.loader.resolve(specifier, ".", ResolutionKind::Import)
-      }
-      LoadInit::DynamicImport(ref specifier, ref referrer, _) => self
-        .loader
-        .resolve(specifier, referrer, ResolutionKind::DynamicImport),
     }
   }
 
   async fn prepare(&self) -> Result<(), Error> {
     let op_state = self.op_state.clone();
+
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
-        let spec =
-          self
-            .loader
-            .resolve(specifier, ".", ResolutionKind::MainModule)?;
+        let spec = resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
+          specifier,
+          ".",
+          ResolutionKind::MainModule,
+        )?;
         (spec, None)
       }
       LoadInit::Side(ref specifier) => {
-        let spec =
-          self
-            .loader
-            .resolve(specifier, ".", ResolutionKind::Import)?;
+        let spec = resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
+          specifier,
+          ".",
+          ResolutionKind::Import,
+        )?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        let spec = self.loader.resolve(
+        let spec = resolve_helper(
+          self.snapshot_loaded_and_not_snapshotting,
+          self.loader.clone(),
           specifier,
           referrer,
           ResolutionKind::DynamicImport,
@@ -590,7 +955,7 @@ impl RecursiveModuleLoad {
     self.visited.insert(module_request.clone());
     while let Some((module_id, module_request)) = already_registered.pop_front()
     {
-      let referrer = module_request.specifier.clone();
+      let referrer = ModuleSpecifier::parse(&module_request.specifier).unwrap();
       let imports = self
         .module_map_rc
         .borrow()
@@ -605,17 +970,15 @@ impl RecursiveModuleLoad {
           ) {
             already_registered.push_back((module_id, module_request.clone()));
           } else {
-            let referrer = referrer.clone();
             let request = module_request.clone();
+            let specifier =
+              ModuleSpecifier::parse(&module_request.specifier).unwrap();
+            let referrer = referrer.clone();
             let loader = self.loader.clone();
             let is_dynamic_import = self.is_dynamic_import();
             let fut = async move {
               let load_result = loader
-                .load(
-                  &request.specifier,
-                  Some(referrer.clone()),
-                  is_dynamic_import,
-                )
+                .load(&specifier, Some(referrer.clone()), is_dynamic_import)
                 .await;
               load_result.map(|s| (request, s))
             };
@@ -667,7 +1030,7 @@ impl Stream for RecursiveModuleLoad {
           let asserted_module_type = inner.root_asserted_module_type.unwrap();
           let module_type = inner.root_module_type.unwrap();
           let module_request = ModuleRequest {
-            specifier: module_specifier.clone(),
+            specifier: module_specifier.to_string(),
             asserted_module_type,
           };
           let module_source = ModuleSource {
@@ -691,7 +1054,7 @@ impl Stream for RecursiveModuleLoad {
             _ => AssertedModuleType::JavaScriptOrWasm,
           };
           let module_request = ModuleRequest {
-            specifier: module_specifier.clone(),
+            specifier: module_specifier.to_string(),
             asserted_module_type,
           };
           let loader = inner.loader.clone();
@@ -720,7 +1083,8 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[repr(u32)]
 pub(crate) enum AssertedModuleType {
   JavaScriptOrWasm,
   Json,
@@ -748,12 +1112,13 @@ impl std::fmt::Display for AssertedModuleType {
 /// Usually executable (`JavaScriptOrWasm`) is used, except when an
 /// import assertions explicitly constrains an import to JSON, in
 /// which case this will have a `AssertedModuleType::Json`.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleRequest {
-  pub specifier: ModuleSpecifier,
+  pub specifier: String,
   pub asserted_module_type: AssertedModuleType,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct ModuleInfo {
   #[allow(unused)]
   pub id: ModuleId,
@@ -765,7 +1130,8 @@ pub(crate) struct ModuleInfo {
 }
 
 /// A symbolic module entity.
-enum SymbolicModule {
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub(crate) enum SymbolicModule {
   /// This module is an alias to another module.
   /// This is useful such that multiple names could point to
   /// the same underlying module (particularly due to redirects).
@@ -780,15 +1146,39 @@ pub(crate) enum ModuleError {
   Other(Error),
 }
 
+pub enum ModuleName<'a> {
+  Static(&'static str),
+  NotStatic(&'a str),
+}
+
+impl<'a> ModuleName<'a> {
+  pub fn as_ref(&self) -> &'a str {
+    match self {
+      ModuleName::Static(s) => s,
+      ModuleName::NotStatic(s) => s,
+    }
+  }
+}
+
+impl<'a, S: AsRef<str>> From<&'a S> for ModuleName<'a> {
+  fn from(s: &'a S) -> Self {
+    Self::NotStatic(s.as_ref())
+  }
+}
+
+impl From<&'static str> for ModuleName<'static> {
+  fn from(value: &'static str) -> Self {
+    Self::Static(value)
+  }
+}
+
 /// A collection of JS modules.
 pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
-  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
-  pub handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
-  pub info: HashMap<ModuleId, ModuleInfo>,
-  by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
-  next_module_id: ModuleId,
-  next_load_id: ModuleLoadId,
+  pub handles: Vec<v8::Global<v8::Module>>,
+  pub info: Vec<ModuleInfo>,
+  pub(crate) by_name: HashMap<(String, AssertedModuleType), SymbolicModule>,
+  pub(crate) next_load_id: ModuleLoadId,
 
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
@@ -803,19 +1193,277 @@ pub(crate) struct ModuleMap {
   // This store is used temporarly, to forward parsed JSON
   // value from `new_json_module` to `json_module_evaluation_steps`
   json_value_store: HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
+
+  pub(crate) snapshot_loaded_and_not_snapshotting: bool,
 }
 
 impl ModuleMap {
+  pub fn serialize_for_snapshotting(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> SnapshottedData {
+    let array = v8::Array::new(scope, 3);
+
+    let next_load_id = v8::Integer::new(scope, self.next_load_id);
+    array.set_index(scope, 0, next_load_id.into());
+
+    let info_arr = v8::Array::new(scope, self.info.len() as i32);
+    for (i, info) in self.info.iter().enumerate() {
+      let module_info_arr = v8::Array::new(scope, 5);
+
+      let id = v8::Integer::new(scope, info.id as i32);
+      module_info_arr.set_index(scope, 0, id.into());
+
+      let main = v8::Boolean::new(scope, info.main);
+      module_info_arr.set_index(scope, 1, main.into());
+
+      let name = v8::String::new_from_one_byte(
+        scope,
+        info.name.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap();
+      module_info_arr.set_index(scope, 2, name.into());
+
+      let array_len = 2 * info.requests.len() as i32;
+      let requests_arr = v8::Array::new(scope, array_len);
+      for (i, request) in info.requests.iter().enumerate() {
+        let specifier = v8::String::new_from_one_byte(
+          scope,
+          request.specifier.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
+        requests_arr.set_index(scope, 2 * i as u32, specifier.into());
+
+        let asserted_module_type =
+          v8::Integer::new(scope, request.asserted_module_type as i32);
+        requests_arr.set_index(
+          scope,
+          (2 * i) as u32 + 1,
+          asserted_module_type.into(),
+        );
+      }
+      module_info_arr.set_index(scope, 3, requests_arr.into());
+
+      let module_type = v8::Integer::new(scope, info.module_type as i32);
+      module_info_arr.set_index(scope, 4, module_type.into());
+
+      info_arr.set_index(scope, i as u32, module_info_arr.into());
+    }
+    array.set_index(scope, 1, info_arr.into());
+
+    let by_name_array = v8::Array::new(scope, self.by_name.len() as i32);
+    {
+      for (i, elem) in self.by_name.iter().enumerate() {
+        let arr = v8::Array::new(scope, 3);
+
+        let (specifier, asserted_module_type) = elem.0;
+        let specifier = v8::String::new_from_one_byte(
+          scope,
+          specifier.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
+        arr.set_index(scope, 0, specifier.into());
+
+        let asserted_module_type =
+          v8::Integer::new(scope, *asserted_module_type as i32);
+        arr.set_index(scope, 1, asserted_module_type.into());
+
+        let symbolic_module: v8::Local<v8::Value> = match &elem.1 {
+          SymbolicModule::Alias(alias) => {
+            let alias = v8::String::new_from_one_byte(
+              scope,
+              alias.as_bytes(),
+              v8::NewStringType::Normal,
+            )
+            .unwrap();
+            alias.into()
+          }
+          SymbolicModule::Mod(id) => {
+            let id = v8::Integer::new(scope, *id as i32);
+            id.into()
+          }
+        };
+        arr.set_index(scope, 2, symbolic_module);
+
+        by_name_array.set_index(scope, i as u32, arr.into());
+      }
+    }
+    array.set_index(scope, 2, by_name_array.into());
+
+    let array_global = v8::Global::new(scope, array);
+
+    let handles = self.handles.clone();
+    SnapshottedData {
+      module_map_data: array_global,
+      module_handles: handles,
+    }
+  }
+
+  pub fn update_with_snapshotted_data(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    snapshotted_data: SnapshottedData,
+  ) {
+    let local_data: v8::Local<v8::Array> =
+      v8::Local::new(scope, snapshotted_data.module_map_data);
+
+    {
+      let next_load_id = local_data.get_index(scope, 0).unwrap();
+      assert!(next_load_id.is_int32());
+      let integer = next_load_id.to_integer(scope).unwrap();
+      let val = integer.int32_value(scope).unwrap();
+      self.next_load_id = val;
+    }
+
+    {
+      let info_val = local_data.get_index(scope, 1).unwrap();
+
+      let info_arr: v8::Local<v8::Array> = info_val.try_into().unwrap();
+      let len = info_arr.length() as usize;
+      // Over allocate so executing a few scripts doesn't have to resize this vec.
+      let mut info = Vec::with_capacity(len + 16);
+
+      for i in 0..len {
+        let module_info_arr: v8::Local<v8::Array> = info_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let id = module_info_arr
+          .get_index(scope, 0)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value() as ModuleId;
+
+        let main = module_info_arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_boolean(scope)
+          .is_true();
+
+        let name = module_info_arr
+          .get_index(scope, 2)
+          .unwrap()
+          .to_rust_string_lossy(scope);
+
+        let requests_arr: v8::Local<v8::Array> = module_info_arr
+          .get_index(scope, 3)
+          .unwrap()
+          .try_into()
+          .unwrap();
+        let len = (requests_arr.length() as usize) / 2;
+        let mut requests = Vec::with_capacity(len);
+        for i in 0..len {
+          let specifier = requests_arr
+            .get_index(scope, (2 * i) as u32)
+            .unwrap()
+            .to_rust_string_lossy(scope);
+          let asserted_module_type_no = requests_arr
+            .get_index(scope, (2 * i + 1) as u32)
+            .unwrap()
+            .to_integer(scope)
+            .unwrap()
+            .value();
+          let asserted_module_type = match asserted_module_type_no {
+            0 => AssertedModuleType::JavaScriptOrWasm,
+            1 => AssertedModuleType::Json,
+            _ => unreachable!(),
+          };
+          requests.push(ModuleRequest {
+            specifier,
+            asserted_module_type,
+          });
+        }
+
+        let module_type_no = module_info_arr
+          .get_index(scope, 4)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value();
+        let module_type = match module_type_no {
+          0 => ModuleType::JavaScript,
+          1 => ModuleType::Json,
+          _ => unreachable!(),
+        };
+
+        let module_info = ModuleInfo {
+          id,
+          main,
+          name,
+          requests,
+          module_type,
+        };
+        info.push(module_info);
+      }
+
+      self.info = info;
+    }
+
+    {
+      let by_name_arr: v8::Local<v8::Array> =
+        local_data.get_index(scope, 2).unwrap().try_into().unwrap();
+      let len = by_name_arr.length() as usize;
+      let mut by_name = HashMap::with_capacity(len);
+
+      for i in 0..len {
+        let arr: v8::Local<v8::Array> = by_name_arr
+          .get_index(scope, i as u32)
+          .unwrap()
+          .try_into()
+          .unwrap();
+
+        let specifier =
+          arr.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
+        let asserted_module_type = match arr
+          .get_index(scope, 1)
+          .unwrap()
+          .to_integer(scope)
+          .unwrap()
+          .value()
+        {
+          0 => AssertedModuleType::JavaScriptOrWasm,
+          1 => AssertedModuleType::Json,
+          _ => unreachable!(),
+        };
+        let key = (specifier, asserted_module_type);
+
+        let symbolic_module_val = arr.get_index(scope, 2).unwrap();
+        let val = if symbolic_module_val.is_number() {
+          SymbolicModule::Mod(
+            symbolic_module_val
+              .to_integer(scope)
+              .unwrap()
+              .value()
+              .try_into()
+              .unwrap(),
+          )
+        } else {
+          SymbolicModule::Alias(symbolic_module_val.to_rust_string_lossy(scope))
+        };
+
+        by_name.insert(key, val);
+      }
+
+      self.by_name = by_name;
+    }
+
+    self.handles = snapshotted_data.module_handles;
+  }
+
   pub(crate) fn new(
     loader: Rc<dyn ModuleLoader>,
     op_state: Rc<RefCell<OpState>>,
+    snapshot_loaded_and_not_snapshotting: bool,
   ) -> ModuleMap {
     Self {
-      ids_by_handle: HashMap::new(),
-      handles_by_id: HashMap::new(),
-      info: HashMap::new(),
+      handles: vec![],
+      info: vec![],
       by_name: HashMap::new(),
-      next_module_id: 1,
       next_load_id: 1,
       loader,
       op_state,
@@ -823,6 +1471,7 @@ impl ModuleMap {
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),
       json_value_store: HashMap::new(),
+      snapshot_loaded_and_not_snapshotting,
     }
   }
 
@@ -847,16 +1496,54 @@ impl ModuleMap {
     }
   }
 
-  fn new_json_module(
+  fn string_from_code<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    code: &ModuleCode,
+  ) -> Option<v8::Local<'a, v8::String>> {
+    if let Some(code) = code.try_static_ascii() {
+      v8::String::new_external_onebyte_static(scope, code)
+    } else {
+      v8::String::new_from_utf8(
+        scope,
+        code.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+    }
+  }
+
+  fn string_from_module_name<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    name: &ModuleName,
+  ) -> Option<v8::Local<'a, v8::String>> {
+    match name {
+      ModuleName::Static(s) => {
+        debug_assert!(s.is_ascii());
+        v8::String::new_external_onebyte_static(scope, s.as_bytes())
+      }
+      ModuleName::NotStatic(s) => v8::String::new(scope, s),
+    }
+  }
+
+  fn new_json_module<'a, N: Into<ModuleName<'a>>>(
     &mut self,
     scope: &mut v8::HandleScope,
-    name: &str,
-    source: &[u8],
+    name: N,
+    source: &ModuleCode,
   ) -> Result<ModuleId, ModuleError> {
-    let name_str = v8::String::new(scope, name).unwrap();
+    // Manual monomorphization (TODO: replace w/momo)
+    self.new_json_module_inner(scope, name.into(), source)
+  }
+
+  fn new_json_module_inner(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    name: ModuleName,
+    source: &ModuleCode,
+  ) -> Result<ModuleId, ModuleError> {
+    let name_str = Self::string_from_module_name(scope, &name).unwrap();
     let source_str = v8::String::new_from_utf8(
       scope,
-      strip_bom(source),
+      strip_bom(source.as_bytes()),
       v8::NewStringType::Normal,
     )
     .unwrap();
@@ -885,25 +1572,47 @@ impl ModuleMap {
     let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
     self.json_value_store.insert(handle.clone(), value_handle);
 
-    let id =
-      self.create_module_info(name, ModuleType::Json, handle, false, vec![]);
+    let id = self.create_module_info(
+      name.as_ref(),
+      ModuleType::Json,
+      handle,
+      false,
+      vec![],
+    );
 
     Ok(id)
   }
 
-  // Create and compile an ES module.
-  pub(crate) fn new_es_module(
+  /// Create and compile an ES module. Generic interface that can receive either a `&'static str` or a string with a lifetime. Prefer
+  /// to pass `&'static str` as this allows us to use v8 external strings.
+  pub(crate) fn new_es_module<'a, N: Into<ModuleName<'a>>>(
     &mut self,
     scope: &mut v8::HandleScope,
     main: bool,
-    name: &str,
-    source: &[u8],
+    name: N,
+    source: &ModuleCode,
     is_dynamic_import: bool,
   ) -> Result<ModuleId, ModuleError> {
-    let name_str = v8::String::new(scope, name).unwrap();
-    let source_str =
-      v8::String::new_from_utf8(scope, source, v8::NewStringType::Normal)
-        .unwrap();
+    // Manual monomorphization (TODO: replace w/momo)
+    self.new_es_module_inner(
+      scope,
+      main,
+      name.into(),
+      source,
+      is_dynamic_import,
+    )
+  }
+
+  fn new_es_module_inner(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    main: bool,
+    name: ModuleName,
+    source: &ModuleCode,
+    is_dynamic_import: bool,
+  ) -> Result<ModuleId, ModuleError> {
+    let name_str = Self::string_from_module_name(scope, &name).unwrap();
+    let source_str = Self::string_from_code(scope, source).unwrap();
 
     let origin = bindings::module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, Some(&origin));
@@ -949,9 +1658,11 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier = match self.loader.resolve(
+      let module_specifier = match resolve_helper(
+        self.snapshot_loaded_and_not_snapshotting,
+        self.loader.clone(),
         &import_specifier,
-        name,
+        name.as_ref(),
         if is_dynamic_import {
           ResolutionKind::DynamicImport
         } else {
@@ -964,18 +1675,18 @@ impl ModuleMap {
       let asserted_module_type =
         get_asserted_module_type_from_assertions(&assertions);
       let request = ModuleRequest {
-        specifier: module_specifier,
+        specifier: module_specifier.to_string(),
         asserted_module_type,
       };
       requests.push(request);
     }
 
     if main {
-      let maybe_main_module = self.info.values().find(|module| module.main);
+      let maybe_main_module = self.info.iter().find(|module| module.main);
       if let Some(main_module) = maybe_main_module {
         return Err(ModuleError::Other(generic_error(
           format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
-          name,
+          name.as_ref(),
           main_module.name,
         ))));
       }
@@ -983,7 +1694,7 @@ impl ModuleMap {
 
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let id = self.create_module_info(
-      name,
+      name.as_ref(),
       ModuleType::JavaScript,
       handle,
       main,
@@ -1001,30 +1712,25 @@ impl ModuleMap {
     main: bool,
     requests: Vec<ModuleRequest>,
   ) -> ModuleId {
-    let id = self.next_module_id;
-    self.next_module_id += 1;
+    let id = self.handles.len();
     self.by_name.insert(
       (name.to_string(), module_type.into()),
       SymbolicModule::Mod(id),
     );
-    self.handles_by_id.insert(id, handle.clone());
-    self.ids_by_handle.insert(handle, id);
-    self.info.insert(
+    self.handles.push(handle);
+    self.info.push(ModuleInfo {
       id,
-      ModuleInfo {
-        id,
-        main,
-        name: name.to_string(),
-        requests,
-        module_type,
-      },
-    );
+      main,
+      name: name.to_string(),
+      requests,
+      module_type,
+    });
 
     id
   }
 
   fn get_requested_modules(&self, id: ModuleId) -> Option<&Vec<ModuleRequest>> {
-    self.info.get(&id).map(|i| &i.requests)
+    self.info.get(id).map(|i| &i.requests)
   }
 
   fn is_registered(
@@ -1033,7 +1739,7 @@ impl ModuleMap {
     asserted_module_type: AssertedModuleType,
   ) -> bool {
     if let Some(id) = self.get_id(specifier.as_str(), asserted_module_type) {
-      let info = self.get_info_by_id(&id).unwrap();
+      let info = self.get_info_by_id(id).unwrap();
       return asserted_module_type == info.module_type.into();
     }
 
@@ -1066,21 +1772,21 @@ impl ModuleMap {
     &self,
     id: ModuleId,
   ) -> Option<v8::Global<v8::Module>> {
-    self.handles_by_id.get(&id).cloned()
+    self.handles.get(id).cloned()
   }
 
   pub(crate) fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
-    if let Some(id) = self.ids_by_handle.get(global) {
+    if let Some(id) = self.handles.iter().position(|module| module == global) {
       return self.info.get(id);
     }
 
     None
   }
 
-  pub(crate) fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
+  pub(crate) fn get_info_by_id(&self, id: ModuleId) -> Option<&ModuleInfo> {
     self.info.get(id)
   }
 
@@ -1120,7 +1826,17 @@ impl ModuleMap {
       .borrow_mut()
       .dynamic_import_map
       .insert(load.id, resolver_handle);
-    let resolve_result = module_map_rc.borrow().loader.resolve(
+
+    let (loader, snapshot_loaded_and_not_snapshotting) = {
+      let module_map = module_map_rc.borrow();
+      (
+        module_map.loader.clone(),
+        module_map.snapshot_loaded_and_not_snapshotting,
+      )
+    };
+    let resolve_result = resolve_helper(
+      snapshot_loaded_and_not_snapshotting,
+      loader,
       specifier,
       referrer,
       ResolutionKind::DynamicImport,
@@ -1158,10 +1874,14 @@ impl ModuleMap {
     referrer: &str,
     import_assertions: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier = self
-      .loader
-      .resolve(specifier, referrer, ResolutionKind::Import)
-      .expect("Module should have been already resolved");
+    let resolved_specifier = resolve_helper(
+      self.snapshot_loaded_and_not_snapshotting,
+      self.loader.clone(),
+      specifier,
+      referrer,
+      ResolutionKind::Import,
+    )
+    .expect("Module should have been already resolved");
 
     let module_type =
       get_asserted_module_type_from_assertions(&import_assertions);
@@ -1179,7 +1899,6 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::Extension;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use crate::Snapshot;
@@ -1357,7 +2076,7 @@ import "/a.js";
       }
       match mock_source_code(&inner.url) {
         Some(src) => Poll::Ready(Ok(ModuleSource {
-          code: src.0.as_bytes().to_vec().into_boxed_slice(),
+          code: src.0.into(),
           module_type: ModuleType::JavaScript,
           module_url_specified: inner.url.clone(),
           module_url_found: src.1.to_owned(),
@@ -1417,6 +2136,7 @@ import "/a.js";
     let a_id_fut = runtime.load_main_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
     let l = loads.lock();
@@ -1450,11 +2170,11 @@ import "/a.js";
       modules.get_requested_modules(a_id),
       Some(&vec![
         ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
-          specifier: resolve_url("file:///c.js").unwrap(),
+          specifier: "file:///c.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
       ])
@@ -1462,14 +2182,14 @@ import "/a.js";
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///c.js").unwrap(),
+        specifier: "file:///c.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///d.js").unwrap(),
+        specifier: "file:///d.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       },])
     );
@@ -1519,12 +2239,10 @@ import "/a.js";
       43
     }
 
-    let ext = Extension::builder("test_ext")
-      .ops(vec![op_test::decl()])
-      .build();
+    deno_core::extension!(test_ext, ops = [op_test]);
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![ext],
+      extensions: vec![test_ext::init_ops()],
       module_loader: Some(loader),
       ..Default::default()
     });
@@ -1555,12 +2273,13 @@ import "/a.js";
           scope,
           true,
           &specifier_a,
-          br#"
+          &br#"
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
           Deno.core.ops.op_test(control);
-        "#,
+        "#
+          .into(),
           false,
         )
         .unwrap();
@@ -1570,7 +2289,7 @@ import "/a.js";
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },])
       );
@@ -1580,7 +2299,7 @@ import "/a.js";
           scope,
           false,
           "file:///b.js",
-          b"export function b() { return 'b' }",
+          &b"export function b() { return 'b' }".into(),
           false,
         )
         .unwrap();
@@ -1596,6 +2315,7 @@ import "/a.js";
     runtime.instantiate_module(mod_a).unwrap();
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(mod_a);
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 1);
   }
@@ -1664,11 +2384,12 @@ import "/a.js";
           scope,
           true,
           &specifier_a,
-          br#"
+          &br#"
             import jsonData from './b.json' assert {type: "json"};
             assert(jsonData.a == "b");
             assert(jsonData.c.d == 10);
-          "#,
+          "#
+          .into(),
           false,
         )
         .unwrap();
@@ -1677,7 +2398,7 @@ import "/a.js";
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///b.json").unwrap(),
+          specifier: "file:///b.json".to_string(),
           asserted_module_type: AssertedModuleType::Json,
         },])
       );
@@ -1686,7 +2407,7 @@ import "/a.js";
         .new_json_module(
           scope,
           "file:///b.json",
-          b"{\"a\": \"b\", \"c\": {\"d\": 10}}",
+          &b"{\"a\": \"b\", \"c\": {\"d\": 10}}".into(),
         )
         .unwrap();
       let imports = module_map.get_requested_modules(mod_b).unwrap();
@@ -1735,15 +2456,15 @@ import "/a.js";
       }
     }
 
-    // Test an erroneous dynamic import where the specified module isn't found.
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportErrLoader::default());
-      let count = loader.count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = Rc::new(DynImportErrLoader::default());
+    let count = loader.count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
 
+    // Test an erroneous dynamic import where the specified module isn't found.
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "file:///dyn_import2.js",
@@ -1796,9 +2517,7 @@ import "/a.js";
       let info = ModuleSource {
         module_url_specified: specifier.to_string(),
         module_url_found: specifier.to_string(),
-        code: b"export function b() { return 'b' }"
-          .to_vec()
-          .into_boxed_slice(),
+        code: b"export function b() { return 'b' }".into(),
         module_type: ModuleType::JavaScript,
       };
       async move { Ok(info) }.boxed()
@@ -1818,16 +2537,15 @@ import "/a.js";
 
   #[test]
   fn dyn_import_ok() {
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let resolve_count = loader.resolve_count.clone();
-      let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
-
+    let loader = Rc::new(DynImportOkLoader::default());
+    let prepare_load_count = loader.prepare_load_count.clone();
+    let resolve_count = loader.resolve_count.clone();
+    let load_count = loader.load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    run_in_task(move |cx| {
       // Dynamically import mod_b
       runtime
         .execute_script(
@@ -1867,13 +2585,14 @@ import "/a.js";
   #[test]
   fn dyn_import_borrow_mut_error() {
     // https://github.com/denoland/deno/issues/6054
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = Rc::new(DynImportOkLoader::default());
+    let prepare_load_count = loader.prepare_load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       runtime
         .execute_script(
           "file:///dyn_import3.js",
@@ -1938,7 +2657,7 @@ import "/a.js";
         let info = ModuleSource {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
-          code: code.as_bytes().to_vec().into_boxed_slice(),
+          code: code.into(),
           module_type: ModuleType::JavaScript,
         };
         async move { Ok(info) }.boxed()
@@ -1976,6 +2695,7 @@ import "/a.js";
       let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(circular1_id);
       runtime.run_event_loop(false).await.unwrap();
 
@@ -2004,7 +2724,7 @@ import "/a.js";
       assert_eq!(
         modules.get_requested_modules(circular1_id),
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///circular2.js").unwrap(),
+          specifier: "file:///circular2.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
@@ -2012,7 +2732,7 @@ import "/a.js";
       assert_eq!(
         modules.get_requested_modules(circular2_id),
         Some(&vec![ModuleRequest {
-          specifier: resolve_url("file:///circular3.js").unwrap(),
+          specifier: "file:///circular3.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }])
       );
@@ -2027,11 +2747,11 @@ import "/a.js";
         modules.get_requested_modules(circular3_id),
         Some(&vec![
           ModuleRequest {
-            specifier: resolve_url("file:///circular1.js").unwrap(),
+            specifier: "file:///circular1.js".to_string(),
             asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           },
           ModuleRequest {
-            specifier: resolve_url("file:///circular2.js").unwrap(),
+            specifier: "file:///circular2.js".to_string(),
             asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
           }
         ])
@@ -2056,6 +2776,7 @@ import "/a.js";
       let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(redirect1_id);
       runtime.run_event_loop(false).await.unwrap();
       let l = loads.lock();
@@ -2123,13 +2844,14 @@ import "/a.js";
 
   #[test]
   fn slow_never_ready_modules() {
-    run_in_task(|cx| {
-      let loader = MockLoader::new();
-      let loads = loader.loads.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = MockLoader::new();
+    let loads = loader.loads.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let spec = resolve_url("file:///main.js").unwrap();
       let mut recursive_load =
         runtime.load_main_module(&spec, None).boxed_local();
@@ -2168,12 +2890,13 @@ import "/a.js";
 
   #[test]
   fn loader_disappears_after_error() {
-    run_in_task(|cx| {
-      let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
+    let loader = MockLoader::new();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    run_in_task(move |cx| {
       let spec = resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(cx);
@@ -2210,10 +2933,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     // The behavior should be very similar to /a.js.
     let spec = resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = runtime
-      .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+      .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.into()))
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -2247,11 +2971,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       modules.get_requested_modules(main_id),
       Some(&vec![
         ModuleRequest {
-          specifier: resolve_url("file:///b.js").unwrap(),
+          specifier: "file:///b.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         },
         ModuleRequest {
-          specifier: resolve_url("file:///c.js").unwrap(),
+          specifier: "file:///c.js".to_string(),
           asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
         }
       ])
@@ -2259,14 +2983,14 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///c.js").unwrap(),
+        specifier: "file:///c.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: resolve_url("file:///d.js").unwrap(),
+        specifier: "file:///d.js".to_string(),
         asserted_module_type: AssertedModuleType::JavaScriptOrWasm,
       }])
     );
@@ -2301,17 +3025,13 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
           "file:///main_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///main_module.js".to_string(),
             module_url_found: "file:///main_module.js".to_string(),
-            code: b"if (!import.meta.main) throw Error();"
-              .to_vec()
-              .into_boxed_slice(),
+            code: b"if (!import.meta.main) throw Error();".into(),
             module_type: ModuleType::JavaScript,
           }),
           "file:///side_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///side_module.js".to_string(),
             module_url_found: "file:///side_module.js".to_string(),
-            code: b"if (import.meta.main) throw Error();"
-              .to_vec()
-              .into_boxed_slice(),
+            code: b"if (import.meta.main) throw Error();".into(),
             module_type: ModuleType::JavaScript,
           }),
           _ => unreachable!(),
@@ -2331,6 +3051,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
@@ -2346,6 +3067,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       .boxed_local();
     let side_id = futures::executor::block_on(side_id_fut).unwrap();
 
+    #[allow(clippy::let_underscore_future)]
     let _ = runtime.mod_evaluate(side_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
   }
@@ -2370,10 +3092,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       // The behavior should be very similar to /a.js.
       let spec = resolve_url("file:///main_with_code.js").unwrap();
       let main_id_fut = runtime
-        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.into()))
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(main_id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
       runtime.snapshot()
@@ -2409,10 +3132,11 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       // The behavior should be very similar to /a.js.
       let spec = resolve_url("file:///main_with_code.js").unwrap();
       let main_id_fut = runtime
-        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.into()))
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
+      #[allow(clippy::let_underscore_future)]
       let _ = runtime.mod_evaluate(main_id);
       futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
       runtime.snapshot()
@@ -2430,5 +3154,71 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         "if (globalThis.url !== 'file:///main_with_code.js') throw Error('x')",
       )
       .unwrap();
+  }
+
+  #[test]
+  fn ext_module_loader() {
+    let loader = ExtModuleLoader::default();
+    assert!(loader
+      .resolve("ext:foo", "ext:bar", ResolutionKind::Import)
+      .is_ok());
+    assert_eq!(
+      loader
+        .resolve("ext:foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some("Cannot load extension module from external code".to_string())
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "file://bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some(
+        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"file://bar\""
+          .to_string()
+      )
+    );
+    assert_eq!(
+      loader
+        .resolve("file://foo", "ext:bar", ResolutionKind::Import)
+        .err()
+        .map(|e| e.to_string()),
+      Some(
+        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"ext:bar\""
+        .to_string()
+      )
+    );
+    assert_eq!(
+      resolve_helper(
+        true,
+        Rc::new(loader),
+        "ext:core.js",
+        "file://bar",
+        ResolutionKind::Import,
+      )
+      .err()
+      .map(|e| e.to_string()),
+      Some("Cannot load extension module from external code".to_string())
+    );
+  }
+
+  #[test]
+  fn code_truncate() {
+    let mut s = "123456".to_owned();
+    s.truncate(3);
+
+    let mut code: ModuleCode = "123456".into();
+    code.truncate(3);
+    assert_eq!(s, code.take_as_string());
+
+    let mut code: ModuleCode = "123456".to_owned().into();
+    code.truncate(3);
+    assert_eq!(s, code.take_as_string());
+
+    let arc_str: Arc<str> = "123456".into();
+    let mut code: ModuleCode = arc_str.into();
+    code.truncate(3);
+    assert_eq!(s, code.take_as_string());
   }
 }

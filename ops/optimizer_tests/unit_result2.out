@@ -26,7 +26,7 @@ impl op_set_nodelay {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            argc: 2usize,
+            force_registration: false,
         }
     }
     #[inline]
@@ -108,14 +108,17 @@ struct op_set_nodelay_fast {
     _phantom: ::std::marker::PhantomData<()>,
 }
 impl<'scope> deno_core::v8::fast_api::FastFunction for op_set_nodelay_fast {
+    #[inline(always)]
     fn function(&self) -> *const ::std::ffi::c_void {
         op_set_nodelay_fast_fn as *const ::std::ffi::c_void
     }
+    #[inline(always)]
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
         use deno_core::v8::fast_api::CType;
         &[V8Value, Uint32, Bool, CallbackOptions]
     }
+    #[inline(always)]
     fn return_type(&self) -> deno_core::v8::fast_api::CType {
         deno_core::v8::fast_api::CType::Void
     }
@@ -142,7 +145,6 @@ fn op_set_nodelay_fast_fn<'scope>(
         Err(err) => {
             state.last_fast_op_error.replace(err);
             __opts.fallback = true;
-            Default::default()
         }
     }
 }

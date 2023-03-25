@@ -7,8 +7,7 @@ use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::file_fetcher::File;
-use crate::graph_util::contains_specifier;
-use crate::graph_util::graph_valid;
+use crate::graph_util::graph_valid_with_cli_options;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
@@ -17,6 +16,7 @@ use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
+use crate::util::path::mapped_specifier_for_tsc;
 use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -32,10 +32,9 @@ use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_graph::ModuleKind;
+use deno_runtime::deno_io::Stdio;
+use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::ops::io::Stdio;
-use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
@@ -325,7 +324,7 @@ impl PrettyTestReporter {
     if url.scheme() == "file" {
       if let Some(mut r) = self.cwd.make_relative(&url) {
         if !r.starts_with("../") {
-          r = format!("./{}", r);
+          r = format!("./{r}");
         }
         return r;
       }
@@ -515,7 +514,7 @@ impl PrettyTestReporter {
       );
       print!(" {} ...", root.name);
       for name in ancestor_names {
-        print!(" {} ...", name);
+        print!(" {name} ...");
       }
       print!(" {} ...", description.name);
       self.in_new_line = false;
@@ -586,7 +585,7 @@ impl PrettyTestReporter {
       }
       println!("{}\n", colors::white_bold_on_red(" FAILURES "));
       for failure_title in failure_titles {
-        println!("{}", failure_title);
+        println!("{failure_title}");
       }
     }
 
@@ -602,7 +601,7 @@ impl PrettyTestReporter {
       } else if count == 1 {
         " (1 step)".to_string()
       } else {
-        format!(" ({} steps)", count)
+        format!(" ({count} steps)")
       }
     };
 
@@ -657,7 +656,7 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
   // check if there are any stack frames coming from user code
   let should_filter = frames.iter().any(|f| {
     if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[deno:") || file_name.starts_with("deno:"))
+      !(file_name.starts_with("[ext:") || file_name.starts_with("ext:"))
     } else {
       true
     }
@@ -669,12 +668,11 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
       .rev()
       .skip_while(|f| {
         if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[deno:") || file_name.starts_with("deno:")
+          file_name.starts_with("[ext:") || file_name.starts_with("ext:")
         } else {
           false
         }
       })
-      .into_iter()
       .collect::<Vec<_>>();
     frames.reverse();
     js_error.frames = frames;
@@ -726,7 +724,7 @@ async fn test_specifier(
     ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::testing::init(
+    vec![ops::testing::deno_test::init_ops(
       sender,
       fail_fast_tracker,
       options.filter,
@@ -775,7 +773,6 @@ fn extract_files_from_regex_blocks(
           Some(&"mts") => MediaType::Mts,
           Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => media_type,
           _ => MediaType::Unknown,
         }
       } else {
@@ -803,14 +800,17 @@ fn extract_files_from_regex_blocks(
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
-      let file_specifier = deno_core::resolve_url_or_path(&format!(
-        "{}${}-{}{}",
+      let file_specifier = ModuleSpecifier::parse(&format!(
+        "{}${}-{}",
         specifier,
         file_line_index + line_offset + 1,
         file_line_index + line_offset + line_count + 1,
-        file_media_type.as_ts_extension(),
       ))
       .unwrap();
+      let file_specifier =
+        mapped_specifier_for_tsc(&file_specifier, file_media_type)
+          .map(|s| ModuleSpecifier::parse(&s).unwrap())
+          .unwrap_or(file_specifier);
 
       Some(File {
         local: file_specifier.to_file_path().unwrap(),
@@ -832,7 +832,7 @@ fn extract_files_from_source_comments(
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.as_str().to_string(),
+    specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(source),
     media_type,
     capture_tokens: false,
@@ -987,7 +987,7 @@ pub async fn check_specifiers(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  ps: ProcState,
+  ps: &ProcState,
   permissions: &Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   options: TestSpecifierOptions,
@@ -1328,7 +1328,7 @@ pub async fn run_tests(
   }
 
   test_specifiers(
-    ps,
+    &ps,
     &permissions,
     specifiers_with_mode,
     TestSpecifierOptions {
@@ -1361,7 +1361,6 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let test_options = &test_options;
-
     let ps = ps.borrow().clone();
 
     async move {
@@ -1375,20 +1374,10 @@ pub async fn run_tests_with_watch(
       let mut modules_to_reload = if files_changed {
         Vec::new()
       } else {
-        test_modules
-          .iter()
-          .map(|url| (url.clone(), ModuleKind::Esm))
-          .collect()
+        test_modules.clone()
       };
-      let graph = ps
-        .create_graph(
-          test_modules
-            .iter()
-            .map(|s| (s.clone(), ModuleKind::Esm))
-            .collect(),
-        )
-        .await?;
-      graph_valid(&graph, !no_check, ps.options.check_js())?;
+      let graph = ps.create_graph(test_modules.clone()).await?;
+      graph_valid_with_cli_options(&graph, &test_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1400,7 +1389,7 @@ pub async fn run_tests_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(module) = maybe_module {
+          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
@@ -1442,11 +1431,12 @@ pub async fn run_tests_with_watch(
         );
 
         if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-          }) {
-            if modules.contains(&&path) {
-              modules_to_reload.push((specifier, ModuleKind::Esm));
+          for path in changed
+            .iter()
+            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+          {
+            if modules.contains(&path) {
+              modules_to_reload.push(specifier);
               break;
             }
           }
@@ -1477,7 +1467,7 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
     let test_options = &test_options;
     ps.borrow_mut().reset_for_file_watcher();
@@ -1490,11 +1480,8 @@ pub async fn run_tests_with_watch(
         &test_options.doc,
       )
       .await?
-      .iter()
-      .filter(|(specifier, _)| {
-        contains_specifier(&modules_to_reload, specifier)
-      })
-      .cloned()
+      .into_iter()
+      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
@@ -1505,7 +1492,7 @@ pub async fn run_tests_with_watch(
       }
 
       test_specifiers(
-        ps,
+        &ps,
         permissions,
         specifiers_with_mode,
         TestSpecifierOptions {

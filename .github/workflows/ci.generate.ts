@@ -1,15 +1,18 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as yaml from "https://deno.land/std@0.171.0/encoding/yaml.ts";
+import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
 const windowsRunnerCondition =
   "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
 const Runners = {
   linux:
-    "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}",
+    "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
   macos: "macos-12",
   windows: `\${{ ${windowsRunnerCondition} }}`,
 };
+// bump the number at the start when you want to purge the cache
+const prCacheKeyPrefix =
+  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -20,8 +23,8 @@ const sysRootStep = {
 sudo apt-get remove --purge -y man-db
 
 # Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-15.list
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -43,6 +46,12 @@ sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 
+cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
+cp third_party/prebuilt/linux64/libdl/libdl.a .
+
+sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
+sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
+
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
 cat >> $GITHUB_ENV << __0
@@ -55,6 +64,7 @@ RUSTFLAGS<<__1
   -C linker=clang-15
   -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
+  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -65,6 +75,7 @@ RUSTDOCFLAGS<<__1
   -C linker=clang-15
   -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
+  -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
@@ -81,12 +92,12 @@ const submoduleStep = (submodule: string) => ({
 });
 
 const installRustStep = {
-  uses: "dtolnay/rust-toolchain@stable",
+  uses: "dsherret/rust-toolchain-file@v1",
 };
 const installPythonSteps = [{
   name: "Install Python",
   uses: "actions/setup-python@v4",
-  with: { "python-version": 3.8 },
+  with: { "python-version": 3.11 },
 }, {
   name: "Remove unused versions of Python",
   if: "startsWith(matrix.os, 'windows')",
@@ -138,7 +149,6 @@ function cancelEarlyIfDraftPr(
       name: "Cancel if draft PR",
       id: "exit_early",
       if: "github.event.pull_request.draft == true",
-      shell: "bash",
       run: [
         "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
         "echo Commit message: $GIT_MESSAGE",
@@ -203,13 +213,19 @@ const ci = {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
+      defaults: {
+        run: {
+          // GH actions doesn't use `set -e` by default unless you specify bash
+          shell: "bash",
+        },
+      },
       strategy: {
         matrix: {
           include: [
             {
               os: Runners.macos,
               job: "test",
-              profile: "fastci",
+              profile: "debug",
             },
             {
               os: Runners.macos,
@@ -220,7 +236,7 @@ const ci = {
             {
               os: Runners.windows,
               job: "test",
-              profile: "fastci",
+              profile: "debug",
             },
             {
               os: Runners.windows,
@@ -296,13 +312,10 @@ const ci = {
         },
         ...cancelEarlyIfDraftPr([
           submoduleStep("./test_util/std"),
+          submoduleStep("./third_party"),
           {
             ...submoduleStep("./test_util/wpt"),
             if: "matrix.wpt",
-          },
-          {
-            ...submoduleStep("./third_party"),
-            if: "matrix.job == 'lint' || matrix.job == 'bench'",
           },
           {
             name: "Create source tarballs (release, linux)",
@@ -383,7 +396,6 @@ const ci = {
               "github.repository == 'denoland/deno' &&",
               "github.ref == 'refs/heads/main'",
             ].join("\n"),
-            shell: "bash",
             run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
           },
           {
@@ -392,7 +404,6 @@ const ci = {
           },
           {
             name: "Log versions",
-            shell: "bash",
             run: [
               "python --version",
               "rustc --version",
@@ -420,7 +431,7 @@ const ci = {
                 "~/.cargo/git/db",
               ].join("\n"),
               key:
-                "18-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+                "20-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
             },
           },
           {
@@ -437,8 +448,7 @@ const ci = {
                 "!./target/*/*.tar.gz",
               ].join("\n"),
               key: "never_saved",
-              "restore-keys":
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-",
+              "restore-keys": prCacheKeyPrefix,
             },
           },
           {
@@ -457,7 +467,6 @@ const ci = {
             // identifier '1ecc6299db9ec823' will ever change, but if it does then this
             // command must be updated.
             name: "Shallow clone crates.io index",
-            shell: "bash",
             run: [
               "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
               "then",
@@ -474,6 +483,14 @@ const ci = {
               "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
           },
           {
+            name: "Lint PR title",
+            if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+            env: {
+              PR_TITLE: "${{ github.event.pull_request.title }}",
+            },
+            run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
+          },
+          {
             name: "lint.js",
             if: "matrix.job == 'lint'",
             run:
@@ -481,15 +498,7 @@ const ci = {
           },
           {
             name: "Build debug",
-            if: [
-              "(matrix.job == 'test' || matrix.job == 'bench') &&",
-              "matrix.profile == 'debug'",
-            ].join("\n"),
-            run: "cargo build --locked --all-targets",
-          },
-          {
-            name: "Build fastci",
-            if: "(matrix.job == 'test' && matrix.profile == 'fastci')",
+            if: "matrix.job == 'test' && matrix.profile == 'debug'",
             run: "cargo build --locked --all-targets",
             env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
@@ -557,6 +566,7 @@ const ci = {
               "github.repository == 'denoland/deno' &&",
               "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
             ].join("\n"),
+            shell: "pwsh",
             run:
               "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip",
           },
@@ -584,7 +594,6 @@ const ci = {
             env: {
               CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
             },
-            shell: "bash",
             run:
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
           },
@@ -592,22 +601,24 @@ const ci = {
             name: "Test debug",
             if: [
               "matrix.job == 'test' && matrix.profile == 'debug' &&",
-              "!startsWith(github.ref, 'refs/tags/')",
+              "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
             ].join("\n"),
             run: "cargo test --locked",
+            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
-            name: "Test fastci",
-            if: "matrix.job == 'test' && matrix.profile == 'fastci'",
+            name: "Test debug (fast)",
+            if: [
+              "matrix.job == 'test' && matrix.profile == 'debug' && ",
+              "!startsWith(matrix.os, 'ubuntu')",
+            ].join("\n"),
             run: [
               // Run unit then integration tests. Skip doc tests here
               // since they are sometimes very slow on Mac.
               "cargo test --locked --lib",
               "cargo test --locked --test '*'",
             ].join("\n"),
-            env: {
-              CARGO_PROFILE_DEV_DEBUG: 0,
-            },
+            env: { CARGO_PROFILE_DEV_DEBUG: 0 },
           },
           {
             name: "Test release",
@@ -625,7 +636,6 @@ const ci = {
             name: "Check deno binary",
             if:
               "matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')",
-            shell: "bash",
             run: 'target/release/deno eval "console.log(1+2)" | grep 3',
             env: {
               NO_COLOR: 1,
@@ -751,7 +761,7 @@ const ci = {
           {
             name: "Build product size info",
             if:
-              "matrix.job != 'lint' && matrix.profile != 'fastci' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+              "matrix.job != 'lint' && matrix.profile != 'debug' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
             run: [
               'du -hd1 "./target/${{ matrix.profile }}"',
               'du -ha  "./target/${{ matrix.profile }}/deno"',
@@ -789,13 +799,11 @@ const ci = {
             env: {
               CLOUDSDK_PYTHON: "${{env.pythonLocation}}\\python.exe",
             },
-            shell: "bash",
             run:
               'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           },
           {
             name: "Create release notes",
-            shell: "bash",
             if: [
               "matrix.job == 'test' &&",
               "matrix.profile == 'release' &&",
@@ -832,11 +840,11 @@ const ci = {
             },
           },
           {
-            // In main branch, always creates fresh cache
+            // In main branch, always create a fresh cache
             name: "Save cache build output (main)",
             uses: "actions/cache/save@v3",
             if:
-              "(matrix.profile == 'release' || matrix.profile == 'fastci') && github.ref == 'refs/heads/main'",
+              "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
             with: {
               path: [
                 "./target",
@@ -844,8 +852,7 @@ const ci = {
                 "!./target/*/*.zip",
                 "!./target/*/*.tar.gz",
               ].join("\n"),
-              key:
-                "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}",
+              key: prCacheKeyPrefix + "${{ github.sha }}",
             },
           },
         ]),
@@ -853,7 +860,7 @@ const ci = {
     },
     "publish-canary": {
       name: "publish canary",
-      "runs-on": "ubuntu-20.04",
+      "runs-on": "ubuntu-22.04",
       needs: ["build"],
       if:
         "github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'",
