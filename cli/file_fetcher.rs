@@ -50,10 +50,6 @@ pub const SUPPORTED_SCHEMES: [&str; 5] =
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct File {
-  /// The path to the local version of the source file.  For local files this
-  /// will be the direct path to that file.  For remote files, it will be the
-  /// path to the file in the HTTP cache.
-  pub local: PathBuf,
   /// For remote files, if there was an `X-TypeScript-Type` header, the parsed
   /// out value of that header.
   pub maybe_types: Option<String>,
@@ -90,13 +86,12 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
-  let bytes = fs::read(&local)?;
+  let bytes = fs::read(local)?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
   let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from_specifier(specifier);
 
   Ok(File {
-    local,
     maybe_types: None,
     media_type,
     source: source.into(),
@@ -218,13 +213,6 @@ impl FileFetcher {
     bytes: Vec<u8>,
     headers: &HashMap<String, String>,
   ) -> Result<File, AnyError> {
-    let local =
-      self
-        .http_cache
-        .get_cache_filename(specifier)
-        .ok_or_else(|| {
-          generic_error("Cannot convert specifier to cached filename.")
-        })?;
     let maybe_content_type = headers.get("content-type");
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
@@ -238,7 +226,6 @@ impl FileFetcher {
     };
 
     Ok(File {
-      local,
       maybe_types,
       media_type,
       source: source.into(),
@@ -292,22 +279,10 @@ impl FileFetcher {
     debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
     let (source, content_type) = get_source_from_data_url(specifier)?;
     let (media_type, _) = map_content_type(specifier, Some(&content_type));
-
-    let local =
-      self
-        .http_cache
-        .get_cache_filename(specifier)
-        .ok_or_else(|| {
-          generic_error("Cannot convert specifier to cached filename.")
-        })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
-    self
-      .http_cache
-      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
-      local,
       maybe_types: None,
       media_type,
       source: source.into(),
@@ -340,22 +315,10 @@ impl FileFetcher {
     let (media_type, maybe_charset) =
       map_content_type(specifier, Some(&content_type));
     let source = get_source_from_bytes(bytes, maybe_charset)?;
-
-    let local =
-      self
-        .http_cache
-        .get_cache_filename(specifier)
-        .ok_or_else(|| {
-          generic_error("Cannot convert specifier to cached filename.")
-        })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
-    self
-      .http_cache
-      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
-      local,
       maybe_types: None,
       media_type,
       source: source.into(),
@@ -999,7 +962,6 @@ mod tests {
       ModuleSpecifier::from_file_path(local.as_os_str().to_str().unwrap())
         .unwrap();
     let file = File {
-      local,
       maybe_types: None,
       media_type: MediaType::TypeScript,
       source: "some source code".into(),
