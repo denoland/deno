@@ -1426,6 +1426,48 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_config_with_global_files_only() {
+    let config_text = r#"{
+      "include": ["src/"],
+      "exclude": ["npm/"]
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+
+    let (options_value, _) =
+      config_file.to_compiler_options().expect("error parsing");
+    assert!(options_value.is_object());
+
+    let files_config = config_file
+      .to_files_config()
+      .expect("error parsing files object")
+      .expect("files object should be defined");
+    assert_eq!(files_config.include, vec![PathBuf::from("/deno/src/")]);
+    assert_eq!(files_config.exclude, vec![PathBuf::from("/deno/npm/")]);
+
+    let lint_config = config_file
+      .to_lint_config()
+      .expect("error parsing lint object")
+      .expect("lint object should be defined");
+    assert_eq!(lint_config.files.include, vec![PathBuf::from("/deno/src/")]);
+    assert_eq!(
+      lint_config.files.exclude,
+      vec![PathBuf::from("/deno/npm/")]
+    );
+
+    let fmt_config = config_file
+      .to_fmt_config()
+      .expect("error parsing fmt object")
+      .expect("fmt object should be defined");
+    assert_eq!(fmt_config.files.include, vec![PathBuf::from("/deno/src/")]);
+    assert_eq!(
+      fmt_config.files.exclude,
+      vec![PathBuf::from("/deno/npm/")],
+    );
+  }
+
+  #[test]
   fn test_parse_config_with_invalid_file() {
     let config_text = "{foo:bar}";
     let config_specifier =
