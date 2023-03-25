@@ -23,6 +23,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
+use std::ops::Add;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -347,6 +348,17 @@ impl FilesConfig {
     // Ignore files not in the include list if it's not empty.
     self.include.is_empty()
       || self.include.iter().any(|i| file_path.starts_with(i))
+  }
+}
+
+impl Add for FilesConfig {
+  type Output = Self;
+
+  fn add(self, rhs: Self) -> Self::Output {
+    FilesConfig {
+      include: [&self.include[..], &rhs.include[..]].concat(),
+      exclude: [&self.exclude[..], &rhs.exclude[..]].concat(),
+    }
   }
 }
 
