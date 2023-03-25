@@ -48,6 +48,9 @@ pub(crate) fn make_template(sym: &Symbol, trampoline: &Trampoline) -> Template {
   let ret = if needs_unwrap(&sym.result_type) {
     params.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
     fast_api::Type::Void
+  } else if sym.result_type == NativeType::Buffer {
+    // Buffer can be used as a return type and converts differently than in parameters.
+    fast_api::Type::Pointer
   } else {
     fast_api::Type::from(&sym.result_type)
   };
@@ -71,9 +74,9 @@ impl Trampoline {
 }
 
 pub(crate) struct Template {
-  args: Box<[fast_api::Type]>,
-  ret: fast_api::CType,
-  symbol_ptr: *const c_void,
+  pub args: Box<[fast_api::Type]>,
+  pub ret: fast_api::CType,
+  pub symbol_ptr: *const c_void,
 }
 
 impl fast_api::FastFunction for Template {
@@ -106,9 +109,8 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::I64 => fast_api::Type::Int64,
       NativeType::U64 => fast_api::Type::Uint64,
       NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Pointer | NativeType::Function => {
-        fast_api::Type::Uint64
-      }
+      NativeType::USize => fast_api::Type::Uint64,
+      NativeType::Pointer | NativeType::Function => fast_api::Type::Pointer,
       NativeType::Buffer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
       NativeType::Struct(_) => {
         fast_api::Type::TypedArray(fast_api::CType::Uint8)

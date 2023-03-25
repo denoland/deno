@@ -5,6 +5,8 @@ use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 
+use crate::args::package_json;
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::CachedUrlMetadata;
@@ -17,6 +19,9 @@ use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -30,14 +35,15 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReference;
 use deno_graph::npm::NpmPackageReq;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -242,7 +248,7 @@ impl AssetOrDocument {
 
 #[derive(Debug, Default)]
 struct DocumentDependencies {
-  deps: BTreeMap<String, deno_graph::Dependency>,
+  deps: IndexMap<String, deno_graph::Dependency>,
   maybe_types_dependency: Option<deno_graph::TypesDependency>,
 }
 
@@ -255,7 +261,7 @@ impl DocumentDependencies {
     }
   }
 
-  pub fn from_module(module: &deno_graph::Module) -> Self {
+  pub fn from_module(module: &deno_graph::EsmModule) -> Self {
     Self {
       deps: module.dependencies.clone(),
       maybe_types_dependency: module.maybe_types_dependency.clone(),
@@ -263,7 +269,7 @@ impl DocumentDependencies {
   }
 }
 
-type ModuleResult = Result<deno_graph::Module, deno_graph::ModuleGraphError>;
+type ModuleResult = Result<deno_graph::EsmModule, deno_graph::ModuleGraphError>;
 type ParsedSourceResult = Result<ParsedSource, deno_ast::Diagnostic>;
 
 #[derive(Debug)]
@@ -484,7 +490,8 @@ impl Document {
   pub fn script_version(&self) -> String {
     self
       .maybe_lsp_version()
-      .map_or_else(|| self.fs_version().to_string(), |v| v.to_string())
+      .map(|v| v.to_string())
+      .unwrap_or_else(|| self.fs_version().to_string())
   }
 
   pub fn is_diagnosable(&self) -> bool {
@@ -521,7 +528,7 @@ impl Document {
     if let Some(Ok(module)) = &self.0.maybe_module {
       return module.media_type;
     }
-    let specifier_media_type = MediaType::from(&self.0.specifier);
+    let specifier_media_type = MediaType::from_specifier(&self.0.specifier);
     if specifier_media_type != MediaType::Unknown {
       return specifier_media_type;
     }
@@ -542,9 +549,7 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  fn maybe_module(
-    &self,
-  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
+  fn maybe_esm_module(&self) -> Option<&ModuleResult> {
     self.0.maybe_module.as_ref()
   }
 
@@ -572,7 +577,7 @@ impl Document {
     }
   }
 
-  pub fn dependencies(&self) -> &BTreeMap<String, deno_graph::Dependency> {
+  pub fn dependencies(&self) -> &IndexMap<String, deno_graph::Dependency> {
     &self.0.dependencies.deps
   }
 
@@ -583,7 +588,7 @@ impl Document {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let module = self.maybe_module()?.as_ref().ok()?;
+    let module = self.maybe_esm_module()?.as_ref().ok()?;
     let position = deno_graph::Position {
       line: position.line as usize,
       character: position.character as usize,
@@ -814,12 +819,14 @@ pub struct Documents {
   resolver_config_hash: u64,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
-  imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
+  imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: CliGraphResolver,
-  /// The npm package requirements.
-  npm_reqs: Arc<HashSet<NpmPackageReq>>,
+  /// The npm package requirements found in a package.json file.
+  npm_package_json_reqs: Arc<Vec<NpmPackageReq>>,
+  /// The npm package requirements found in npm specifiers.
+  npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
@@ -838,10 +845,19 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
-      npm_reqs: Default::default(),
+      npm_package_json_reqs: Default::default(),
+      npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
+  }
+
+  pub fn module_graph_imports(&self) -> impl Iterator<Item = &ModuleSpecifier> {
+    self
+      .imports
+      .values()
+      .flat_map(|i| i.dependencies.values())
+      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -886,15 +902,13 @@ impl Documents {
         let mut file_system_docs = self.file_system_docs.lock();
         file_system_docs.docs.remove(specifier)
       })
-      .map_or_else(
-        || {
-          Err(custom_error(
-            "NotFound",
-            format!("The specifier \"{specifier}\" was not found."),
-          ))
-        },
-        Ok,
-      )?;
+      .map(Ok)
+      .unwrap_or_else(|| {
+        Err(custom_error(
+          "NotFound",
+          format!("The specifier \"{specifier}\" was not found."),
+        ))
+      })?;
     self.dirty = true;
     let doc = doc.with_change(version, changes, self.get_resolver())?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());
@@ -939,7 +953,6 @@ impl Documents {
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    // keep this fast because it's used by op_exists, which is a hot path in tsc
     let specifier = self.specifier_resolver.resolve(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
@@ -970,9 +983,15 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> HashSet<NpmPackageReq> {
+  pub fn npm_package_reqs(&mut self) -> Vec<NpmPackageReq> {
     self.calculate_dependents_if_dirty();
-    (*self.npm_reqs).clone()
+    let mut reqs = Vec::with_capacity(
+      self.npm_package_json_reqs.len() + self.npm_specifier_reqs.len(),
+    );
+    // resolve the package.json reqs first, then the npm specifiers
+    reqs.extend(self.npm_package_json_reqs.iter().cloned());
+    reqs.extend(self.npm_specifier_reqs.iter().cloned());
+    reqs
   }
 
   /// Returns if a @types/node package was injected into the npm
@@ -1083,7 +1102,7 @@ impl Documents {
       }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
-          let media_type = MediaType::from(&specifier);
+          let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
@@ -1103,19 +1122,10 @@ impl Documents {
         .and_then(|r| r.maybe_specifier())
       {
         results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
-      } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
-        results.push(maybe_npm_resolver.map(|npm_resolver| {
-          NodeResolution::into_specifier_and_media_type(
-            node_resolve_npm_reference(
-              &npm_ref,
-              NodeResolutionMode::Types,
-              npm_resolver,
-              &mut PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten(),
-          )
-        }));
+      } else if let Ok(npm_req_ref) =
+        NpmPackageReqReference::from_str(&specifier)
+      {
+        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm_resolver));
       } else {
         results.push(None);
       }
@@ -1159,29 +1169,62 @@ impl Documents {
     &mut self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
+    maybe_package_json: Option<&PackageJson>,
+    npm_registry_api: NpmRegistryApi,
+    npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
+      maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      if let Some(jsx_config) = maybe_jsx_config {
-        hasher.write_hashable(&jsx_config);
-      }
+      hasher.write_hashable(&maybe_jsx_config);
+      hasher.write_hashable(&maybe_package_json_deps);
       hasher.finish()
     }
 
+    let maybe_package_json_deps = maybe_package_json.map(|package_json| {
+      package_json::get_local_package_json_version_reqs(package_json)
+    });
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
+      maybe_package_json_deps.as_ref(),
     );
-    self.resolver = CliGraphResolver::new(maybe_jsx_config, maybe_import_map);
+    self.npm_package_json_reqs = Arc::new({
+      match &maybe_package_json_deps {
+        Some(deps) => {
+          let mut reqs = deps
+            .values()
+            .filter_map(|r| r.as_ref().ok())
+            .cloned()
+            .collect::<Vec<_>>();
+          reqs.sort();
+          reqs
+        }
+        None => Vec::new(),
+      }
+    });
+    let deps_installer = PackageJsonDepsInstaller::new(
+      npm_registry_api.clone(),
+      npm_resolution.clone(),
+      maybe_package_json_deps,
+    );
+    self.resolver = CliGraphResolver::new(
+      maybe_jsx_config,
+      maybe_import_map,
+      false,
+      npm_registry_api,
+      npm_resolution,
+      deps_installer,
+    );
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1198,7 +1241,7 @@ impl Documents {
           })
           .collect()
       } else {
-        HashMap::new()
+        IndexMap::new()
       },
     );
 
@@ -1241,7 +1284,7 @@ impl Documents {
           // perf: ensure this is not added to unless this specifier has never
           // been analyzed in order to not cause an extra file system lookup
           self.pending_specifiers.push_back(dep.clone());
-          if let Ok(reference) = NpmPackageReference::from_specifier(dep) {
+          if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
             self.npm_reqs.insert(reference.req);
           }
         }
@@ -1305,7 +1348,11 @@ impl Documents {
     }
 
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
-    self.npm_reqs = Arc::new(npm_reqs);
+    self.npm_specifier_reqs = Arc::new({
+      let mut reqs = npm_reqs.into_iter().collect::<Vec<_>>();
+      reqs.sort();
+      reqs
+    });
     self.dirty = false;
     file_system_docs.dirty = false;
   }
@@ -1319,22 +1366,11 @@ impl Documents {
     specifier: &ModuleSpecifier,
     maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
-      return maybe_npm_resolver.map(|npm_resolver| {
-        NodeResolution::into_specifier_and_media_type(
-          node_resolve_npm_reference(
-            &npm_ref,
-            NodeResolutionMode::Types,
-            npm_resolver,
-            &mut PermissionsContainer::allow_all(),
-          )
-          .ok()
-          .flatten(),
-        )
-      });
+    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
+      return node_resolve_npm_req_ref(npm_ref, maybe_npm_resolver);
     }
     let doc = self.get(specifier)?;
-    let maybe_module = doc.maybe_module().and_then(|r| r.as_ref().ok());
+    let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module
       .and_then(|m| m.maybe_types_dependency.as_ref().map(|d| &d.dependency));
     if let Some(specifier) =
@@ -1359,6 +1395,29 @@ impl Documents {
     }
     None
   }
+}
+
+fn node_resolve_npm_req_ref(
+  npm_req_ref: NpmPackageReqReference,
+  maybe_npm_resolver: Option<&NpmPackageResolver>,
+) -> Option<(ModuleSpecifier, MediaType)> {
+  maybe_npm_resolver.map(|npm_resolver| {
+    NodeResolution::into_specifier_and_media_type(
+      npm_resolver
+        .pkg_req_ref_to_nv_ref(npm_req_ref)
+        .ok()
+        .and_then(|pkg_id_ref| {
+          node_resolve_npm_reference(
+            &pkg_id_ref,
+            NodeResolutionMode::Types,
+            npm_resolver,
+            &mut PermissionsContainer::allow_all(),
+          )
+          .ok()
+          .flatten()
+        }),
+    )
+  })
 }
 
 /// Loader that will look at the open documents.
@@ -1424,20 +1483,20 @@ fn analyze_module(
   match parsed_source_result {
     Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
       specifier,
-      deno_graph::ModuleKind::Esm,
       maybe_headers,
       parsed_source,
       Some(resolver),
     )),
-    Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
-      specifier.clone(),
-      err.clone(),
+    Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
+      deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
     )),
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use crate::npm::NpmResolution;
+
   use super::*;
   use import_map::ImportMap;
   use test_util::TempDir;
@@ -1538,6 +1597,10 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
+    let npm_registry_api = NpmRegistryApi::new_uninitialized();
+    let npm_resolution =
+      NpmResolution::new(npm_registry_api.clone(), None, None);
+
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
     let temp_dir = TempDir::new();
@@ -1567,7 +1630,13 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file2.ts".to_string())
         .unwrap();
 
-      documents.update_config(Some(Arc::new(import_map)), None);
+      documents.update_config(
+        Some(Arc::new(import_map)),
+        None,
+        None,
+        npm_registry_api.clone(),
+        npm_resolution.clone(),
+      );
 
       // open the document
       let document = documents.open(
@@ -1600,7 +1669,13 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file3.ts".to_string())
         .unwrap();
 
-      documents.update_config(Some(Arc::new(import_map)), None);
+      documents.update_config(
+        Some(Arc::new(import_map)),
+        None,
+        None,
+        npm_registry_api,
+        npm_resolution,
+      );
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();

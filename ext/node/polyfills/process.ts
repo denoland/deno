@@ -2,21 +2,18 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 const internals = globalThis.__bootstrap.internals;
-import { core } from "internal:deno_node/polyfills/_core.ts";
-import {
-  notImplemented,
-  warnNotImplemented,
-} from "internal:deno_node/polyfills/_utils.ts";
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+import { core } from "ext:deno_node/_core.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_UNKNOWN_SIGNAL,
   errnoException,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { getOptionValue } from "internal:deno_node/polyfills/internal/options.ts";
-import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { fromFileUrl, join } from "internal:deno_node/polyfills/path.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { getOptionValue } from "ext:deno_node/internal/options.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { fromFileUrl, join } from "ext:deno_node/path.ts";
 import {
   arch as arch_,
   chdir,
@@ -25,21 +22,21 @@ import {
   nextTick as _nextTick,
   version,
   versions,
-} from "internal:deno_node/polyfills/_process/process.ts";
-import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
+} from "ext:deno_node/_process/process.ts";
+import { _exiting } from "ext:deno_node/_process/exiting.ts";
 export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
-} from "internal:deno_node/polyfills/_process/streams.mjs";
-import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
+} from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,
   processTicksAndRejections,
   runNextTicks,
-} from "internal:deno_node/polyfills/_next_tick.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import * as files from "internal:runtime/js/40_files.js";
+} from "ext:deno_node/_next_tick.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import * as io from "ext:deno_io/12_io.js";
+import { Command } from "ext:runtime/40_process.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -59,15 +56,11 @@ let stdin = null as any;
 let stdout = null as any;
 
 export { stderr, stdin, stdout };
-import { getBinding } from "internal:deno_node/polyfills/internal_binding/mod.ts";
-import * as constants from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import * as uv from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import type { BindingName } from "internal:deno_node/polyfills/internal_binding/mod.ts";
-import { buildAllowedFlags } from "internal:deno_node/polyfills/internal/process/per_thread.mjs";
-
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoCommand = Deno[Deno.internal]?.nodeUnstable?.Command ||
-  Deno.Command;
+import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
+import * as constants from "ext:deno_node/internal_binding/constants.ts";
+import * as uv from "ext:deno_node/internal_binding/uv.ts";
+import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
+import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
 const notImplementedEvents = [
   "disconnect",
@@ -78,28 +71,6 @@ const notImplementedEvents = [
 ];
 
 export const argv: string[] = [];
-
-// Overwrites the 1st item with getter.
-// TODO(bartlomieju): added "configurable: true" to make this work for binary
-// commands, but that is probably a wrong solution
-// TODO(bartlomieju): move the configuration for all "argv" to
-// "internals.__bootstrapNodeProcess"
-Object.defineProperty(argv, "0", {
-  get: () => {
-    return Deno.execPath();
-  },
-  configurable: true,
-});
-// Overwrites the 2st item with getter.
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule.startsWith("file:")) {
-      return fromFileUrl(Deno.mainModule);
-    } else {
-      return join(Deno.cwd(), "$deno$node.js");
-    }
-  },
-});
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
@@ -276,11 +247,11 @@ function _kill(pid: number, sig: number): number {
   if (sig === 0) {
     let status;
     if (Deno.build.os === "windows") {
-      status = (new DenoCommand("powershell.exe", {
+      status = (new Command("powershell.exe", {
         args: ["Get-Process", "-pid", pid],
       })).outputSync();
     } else {
-      status = (new DenoCommand("kill", {
+      status = (new Command("kill", {
         args: ["-0", pid],
       })).outputSync();
     }
@@ -647,7 +618,11 @@ class Process extends EventEmitter {
     execPath = path;
   }
 
-  #startTime = Date.now();
+  setStartTime(t: number) {
+    this.#startTime = t;
+  }
+
+  #startTime = 0;
   /** https://nodejs.org/api/process.html#processuptime */
   uptime() {
     return (Date.now() - this.#startTime) / 1000;
@@ -689,9 +664,35 @@ export const removeAllListeners = process.removeAllListeners;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
+  argv0: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
 ) {
+  // Overwrites the 1st item with getter.
+  if (typeof argv0 === "string") {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return argv0;
+      },
+    });
+  } else {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return Deno.execPath();
+      },
+    });
+  }
+
+  // Overwrites the 2st item with getter.
+  Object.defineProperty(argv, "1", {
+    get: () => {
+      if (Deno.mainModule.startsWith("file:")) {
+        return fromFileUrl(Deno.mainModule);
+      } else {
+        return join(Deno.cwd(), "$deno$node.js");
+      }
+    },
+  });
   for (let i = 0; i < args.length; i++) {
     argv[i + 2] = args[i];
   }
@@ -748,20 +749,23 @@ internals.__bootstrapNodeProcess = function (
   });
 
   // Initializes stdin
-  stdin = stdio.stdin = process.stdin = initStdin();
+  stdin = process.stdin = initStdin();
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = stdio.stderr = process.stderr = createWritableStdioStream(
-    files.stderr,
+  stderr = process.stderr = createWritableStdioStream(
+    io.stderr,
     "stderr",
   );
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdio.stdout = process.stdout = createWritableStdioStream(
-    files.stdout,
+  stdout = process.stdout = createWritableStdioStream(
+    io.stdout,
     "stdout",
   );
 
+  process.setStartTime(Date.now());
+  // @ts-ignore Remove setStartTime and #startTime is not modifiable
+  delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
 

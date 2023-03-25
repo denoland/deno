@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { join } from "std/path/mod.ts";
+import { partition } from "../../../test_util/std/collections/partition.ts";
+import { join } from "../../../test_util/std/path/mod.ts";
 
 /**
  * The test suite matches the folders inside the `test` folder inside the
@@ -34,7 +35,7 @@ export const ignoreList = Object.entries(config.ignore).reduce(
     paths.forEach((path) => total.push(new RegExp(join(suite, path))));
     return total;
   },
-  [],
+  [/package\.json/],
 );
 
 export function getPathsFromTestSuites(suites: TestSuites): string[] {
@@ -51,4 +52,15 @@ export function getPathsFromTestSuites(suites: TestSuites): string[] {
     }
   }
   return testPaths;
+}
+
+const PARALLEL_PATTERN = Deno.build.os == "windows"
+  ? /^parallel[/\/]/
+  : /^parallel\//;
+
+export function partitionParallelTestPaths(
+  testPaths: string[],
+): { parallel: string[]; sequential: string[] } {
+  const partitions = partition(testPaths, (p) => !!p.match(PARALLEL_PATTERN));
+  return { parallel: partitions[0], sequential: partitions[1] };
 }

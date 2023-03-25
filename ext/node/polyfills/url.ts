@@ -27,8 +27,8 @@ import {
   ERR_INVALID_FILE_URL_PATH,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "ext:deno_node/internal/errors.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   CHAR_0,
   CHAR_9,
@@ -65,25 +65,17 @@ import {
   CHAR_UPPERCASE_Z,
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
-} from "internal:deno_node/polyfills/path/_constants.ts";
-import * as path from "internal:deno_node/polyfills/path.ts";
-import {
-  regexNonASCII,
-  regexPunycode,
-  toASCII,
-  toUnicode,
-} from "internal:deno_node/polyfills/internal/idna.ts";
-import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
-import {
-  encodeStr,
-  hexTable,
-} from "internal:deno_node/polyfills/internal/querystring.ts";
-import querystring from "internal:deno_node/polyfills/querystring.ts";
+} from "ext:deno_node/path/_constants.ts";
+import * as path from "ext:deno_node/path.ts";
+import { toASCII, toUnicode } from "ext:deno_node/punycode.ts";
+import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
+import querystring from "ext:deno_node/querystring.ts";
 import type {
   ParsedUrlQuery,
   ParsedUrlQueryInput,
-} from "internal:deno_node/polyfills/querystring.ts";
-import { URL, URLSearchParams } from "internal:deno_url/00_url.js";
+} from "ext:deno_node/querystring.ts";
+import { URL, URLSearchParams } from "ext:deno_url/00_url.js";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
@@ -1263,10 +1255,6 @@ export function resolveObject(source: string | Url, relative: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToASCII(domain: string) {
-  if (regexPunycode.test(domain) && regexNonASCII.test(domain)) {
-    return ""; // Failure case
-  }
-
   return toASCII(domain);
 }
 
@@ -1277,10 +1265,6 @@ export function domainToASCII(domain: string) {
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
 export function domainToUnicode(domain: string) {
-  if (regexPunycode.test(domain) && regexNonASCII.test(domain)) {
-    return ""; // Failure case
-  }
-
   return toUnicode(domain);
 }
 

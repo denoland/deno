@@ -14,7 +14,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::colors;
 use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
@@ -67,7 +67,7 @@ impl CliMainWorker {
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
-      self.initialize_main_module_for_node().await?;
+      self.initialize_main_module_for_node()?;
       deno_node::load_cjs_module(
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
@@ -78,7 +78,7 @@ impl CliMainWorker {
       self.execute_main_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
 
     loop {
       self
@@ -87,13 +87,13 @@ impl CliMainWorker {
         .await?;
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
     }
 
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
@@ -129,7 +129,7 @@ impl CliMainWorker {
         self
           .inner
           .worker
-          .dispatch_load_event(&located_script_name!())?;
+          .dispatch_load_event(located_script_name!())?;
         self.pending_unload = true;
 
         let result = loop {
@@ -140,7 +140,7 @@ impl CliMainWorker {
           match self
             .inner
             .worker
-            .dispatch_beforeunload_event(&located_script_name!())
+            .dispatch_beforeunload_event(located_script_name!())
           {
             Ok(default_prevented) if default_prevented => {} // continue loop
             Ok(_) => break Ok(()),
@@ -154,7 +154,7 @@ impl CliMainWorker {
         self
           .inner
           .worker
-          .dispatch_unload_event(&located_script_name!())?;
+          .dispatch_unload_event(located_script_name!())?;
 
         Ok(())
       }
@@ -166,7 +166,7 @@ impl CliMainWorker {
           let _ = self
             .inner
             .worker
-            .dispatch_unload_event(&located_script_name!());
+            .dispatch_unload_event(located_script_name!());
         }
       }
     }
@@ -185,7 +185,7 @@ impl CliMainWorker {
     // failures.
     if self.ps.options.trace_ops() {
       self.worker.js_runtime.execute_script(
-        &located_script_name!(),
+        located_script_name!(),
         "Deno[Deno.internal].core.enableOpCallTracing();",
       )?;
     }
@@ -200,19 +200,19 @@ impl CliMainWorker {
       self.execute_side_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
     self.run_tests(&self.ps.options.shuffle_tests()).await?;
     loop {
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
       self.worker.run_event_loop(false).await?;
     }
 
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       self
@@ -230,7 +230,7 @@ impl CliMainWorker {
     self.enable_test();
 
     self.worker.execute_script(
-      &located_script_name!(),
+      located_script_name!(),
       "Deno[Deno.internal].core.enableOpCallTracing();",
     )?;
 
@@ -239,18 +239,18 @@ impl CliMainWorker {
       self.execute_side_module_possibly_with_npm().await?;
     }
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
     self.run_tests(&None).await?;
     loop {
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
       self.worker.run_event_loop(false).await?;
     }
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
     Ok(())
   }
 
@@ -260,18 +260,18 @@ impl CliMainWorker {
     // We execute the module module as a side module so that import.meta.main is not set.
     self.execute_side_module_possibly_with_npm().await?;
 
-    self.worker.dispatch_load_event(&located_script_name!())?;
+    self.worker.dispatch_load_event(located_script_name!())?;
     self.run_benchmarks().await?;
     loop {
       if !self
         .worker
-        .dispatch_beforeunload_event(&located_script_name!())?
+        .dispatch_beforeunload_event(located_script_name!())?
       {
         break;
       }
       self.worker.run_event_loop(false).await?;
     }
-    self.worker.dispatch_unload_event(&located_script_name!())?;
+    self.worker.dispatch_unload_event(located_script_name!())?;
     Ok(())
   }
 
@@ -293,35 +293,34 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages()
-      || self.ps.has_node_builtin_specifier()
+    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
     {
-      self.initialize_main_module_for_node().await?;
+      self.initialize_main_module_for_node()?;
     }
     self.worker.evaluate_module(id).await
   }
 
-  async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
-    deno_node::initialize_runtime(
-      &mut self.worker.js_runtime,
-      self.ps.options.node_modules_dir(),
-    )
-    .await?;
+  fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
+    let mut maybe_binary_command_name = None;
+
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
-      if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
+      if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
         // to be the name of the binary command instead of deno
         let binary_name = pkg_ref
           .sub_path
           .as_deref()
           .unwrap_or(pkg_ref.req.name.as_str());
-        deno_node::initialize_binary_command(
-          &mut self.worker.js_runtime,
-          binary_name,
-        )
-        .await?;
+        maybe_binary_command_name = Some(binary_name.to_string());
       }
     }
+
+    deno_node::initialize_runtime(
+      &mut self.worker.js_runtime,
+      self.ps.options.has_node_modules_dir(),
+      maybe_binary_command_name,
+    )?;
+
     Ok(())
   }
 
@@ -421,7 +420,7 @@ pub async fn create_main_worker_for_test_or_bench(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
   create_main_worker_internal(
     ps,
@@ -439,25 +438,28 @@ async fn create_main_worker_internal(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
   bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
-    NpmPackageReference::from_specifier(&main_module)
+    NpmPackageReqReference::from_specifier(&main_module)
   {
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
+    let pkg_nv = ps
+      .npm_resolution
+      .resolve_pkg_id_from_pkg_req(&package_ref.req)?
+      .nv;
     let node_resolution = node::node_resolve_binary_export(
-      &package_ref.req,
+      &pkg_nv,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
-      &mut PermissionsContainer::allow_all(),
     )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
-  } else if ps.npm_resolver.is_npm_main() {
+  } else if ps.options.is_npm_main() {
     let node_resolution =
       node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
     let is_main_cjs =
@@ -508,20 +510,20 @@ async fn create_main_worker_internal(
       debug_flag: ps
         .options
         .log_level()
-        .map_or(false, |l| l == log::Level::Debug),
+        .map(|l| l == log::Level::Debug)
+        .unwrap_or(false),
       enable_testing_features: ps.options.enable_testing_features(),
       locale: deno_core::v8::icu::get_language_tag(),
       location: ps.options.location_flag().clone(),
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
-      runtime_version: version::deno(),
+      runtime_version: version::deno().to_string(),
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.options.unstable(),
-      user_agent: version::get_user_agent(),
+      user_agent: version::get_user_agent().to_string(),
       inspect: ps.options.is_inspecting(),
     },
     extensions,
-    extensions_with_js: vec![],
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
@@ -626,9 +628,9 @@ fn create_web_worker_pre_execute_module_callback(
       if ps.npm_resolver.has_packages() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
-          ps.options.node_modules_dir(),
-        )
-        .await?;
+          ps.options.has_node_modules_dir(),
+          None,
+        )?;
       }
 
       Ok(worker)
@@ -639,7 +641,7 @@ fn create_web_worker_pre_execute_module_callback(
 
 fn create_web_worker_callback(
   ps: ProcState,
-  stdio: deno_runtime::ops::io::Stdio,
+  stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -676,16 +678,17 @@ fn create_web_worker_callback(
         debug_flag: ps
           .options
           .log_level()
-          .map_or(false, |l| l == log::Level::Debug),
+          .map(|l| l == log::Level::Debug)
+          .unwrap_or(false),
         enable_testing_features: ps.options.enable_testing_features(),
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),
-        runtime_version: version::deno(),
+        runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.options.unstable(),
-        user_agent: version::get_user_agent(),
+        user_agent: version::get_user_agent().to_string(),
         inspect: ps.options.is_inspecting(),
       },
       extensions,
@@ -727,14 +730,15 @@ fn create_web_worker_callback(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::resolve_url_or_path;
+  use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
   use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
-    let main_module = resolve_url_or_path("./hello.js").unwrap();
+    let main_module =
+      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
@@ -754,7 +758,6 @@ mod tests {
         inspect: false,
       },
       extensions: vec![],
-      extensions_with_js: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
@@ -785,7 +788,7 @@ mod tests {
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
     let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -802,7 +805,7 @@ mod tests {
       .parent()
       .unwrap()
       .join("tests/circular1.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -817,7 +820,9 @@ mod tests {
   async fn execute_mod_resolve_error() {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
-    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
+    let module_specifier =
+      resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
+        .unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }
@@ -828,7 +833,7 @@ mod tests {
     // tests).
     let mut worker = create_test_worker();
     let p = test_util::testdata_path().join("run/001_hello.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
   }

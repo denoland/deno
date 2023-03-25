@@ -22,7 +22,7 @@ impl op_read_sync {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            argc: 2usize,
+            force_registration: false,
         }
     }
     #[inline]

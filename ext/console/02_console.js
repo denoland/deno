@@ -17,8 +17,9 @@ const {
   BooleanPrototype,
   BooleanPrototypeToString,
   ObjectKeys,
-  ObjectCreate,
   ObjectAssign,
+  ObjectCreate,
+  ObjectFreeze,
   ObjectIs,
   ObjectValues,
   ObjectFromEntries,
@@ -49,13 +50,13 @@ const {
   TypeError,
   NumberIsInteger,
   NumberParseInt,
-  RegExp,
   RegExpPrototype,
   RegExpPrototypeTest,
   RegExpPrototypeToString,
   SafeArrayIterator,
   SafeStringIterator,
   SafeSet,
+  SafeRegExp,
   SetPrototype,
   SetPrototypeEntries,
   SetPrototypeGetSize,
@@ -117,7 +118,7 @@ const {
   WeakMapPrototype,
   WeakSetPrototype,
 } = primordials;
-import * as colors from "internal:deno_console/01_colors.js";
+import * as colors from "ext:deno_console/01_colors.js";
 
 function isInvalidDate(x) {
   return isNaN(DatePrototypeGetTime(x));
@@ -149,19 +150,19 @@ function isTypedArray(x) {
 }
 
 const tableChars = {
-  middleMiddle: "─",
-  rowMiddle: "┼",
-  topRight: "┐",
-  topLeft: "┌",
-  leftMiddle: "├",
-  topMiddle: "┬",
-  bottomRight: "┘",
-  bottomLeft: "└",
-  bottomMiddle: "┴",
-  rightMiddle: "┤",
-  left: "│ ",
-  right: " │",
-  middle: " │ ",
+  middleMiddle: "\u2500",
+  rowMiddle: "\u253c",
+  topRight: "\u2510",
+  topLeft: "\u250c",
+  leftMiddle: "\u251c",
+  topMiddle: "\u252c",
+  bottomRight: "\u2518",
+  bottomLeft: "\u2514",
+  bottomMiddle: "\u2534",
+  rightMiddle: "\u2524",
+  left: "\u2502 ",
+  right: " \u2502",
+  middle: " \u2502 ",
 };
 
 function isFullWidthCodePoint(code) {
@@ -203,7 +204,7 @@ function isFullWidthCodePoint(code) {
   );
 }
 
-function getStringWidth(str) {
+export function getStringWidth(str) {
   str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
   let width = 0;
 
@@ -287,6 +288,11 @@ function cliTable(head, columns) {
 }
 /* End of forked part */
 
+// We can match Node's quoting behavior exactly by swapping the double quote and
+// single quote in this array. That would give preference to single quotes.
+// However, we prefer double quotes as the default.
+const QUOTES = ['"', "'", "`"];
+
 const DEFAULT_INSPECT_OPTIONS = {
   depth: 4,
   indentLevel: 0,
@@ -299,6 +305,11 @@ const DEFAULT_INSPECT_OPTIONS = {
   getters: false,
   showHidden: false,
   strAbbreviateSize: 100,
+  /** You can override the quotes preference in inspectString.
+   * Used by util.inspect() */
+  // TODO(kt3k): Consider using symbol as a key to hide this from the public
+  // API.
+  quotes: QUOTES,
 };
 
 const DEFAULT_INDENT = "  "; // Default indent string
@@ -379,7 +390,7 @@ function inspectFunction(value, inspectOptions) {
     // from MDN spec
     return cyan(`${refStr}[${cstrName}: ${value.name}]`) + suffix;
   }
-  return cyan(`${refStr}[${cstrName}]`) + suffix;
+  return cyan(`${refStr}[${cstrName} (anonymous)]`) + suffix;
 }
 
 function inspectIterable(
@@ -677,7 +688,7 @@ function _inspectValue(
 
   switch (typeof value) {
     case "string":
-      return green(quoteString(value));
+      return green(quoteString(value, inspectOptions));
     case "number": // Numbers are yellow
       // Special handling of -0
       return yellow(ObjectIs(value, -0) ? "-0" : `${value}`);
@@ -686,7 +697,7 @@ function _inspectValue(
     case "undefined": // undefined is gray
       return gray(String(value));
     case "symbol": // Symbols are green
-      return green(maybeQuoteSymbol(value));
+      return green(maybeQuoteSymbol(value, inspectOptions));
     case "bigint": // Bigints are yellow
       return yellow(`${value}n`);
     case "function": // Function string is cyan
@@ -730,11 +741,6 @@ function inspectValue(
   return x;
 }
 
-// We can match Node's quoting behavior exactly by swapping the double quote and
-// single quote in this array. That would give preference to single quotes.
-// However, we prefer double quotes as the default.
-const QUOTES = ['"', "'", "`"];
-
 /** Surround the string in quotes.
  *
  * The quote symbol is chosen by taking the first of the `QUOTES` array which
@@ -743,35 +749,39 @@ const QUOTES = ['"', "'", "`"];
  * Insert a backslash before any occurrence of the chosen quote symbol and
  * before any backslash.
  */
-function quoteString(string) {
+function quoteString(string, inspectOptions = DEFAULT_INSPECT_OPTIONS) {
+  const quotes = inspectOptions.quotes;
   const quote =
-    ArrayPrototypeFind(QUOTES, (c) => !StringPrototypeIncludes(string, c)) ??
-      QUOTES[0];
-  const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
+    ArrayPrototypeFind(quotes, (c) => !StringPrototypeIncludes(string, c)) ??
+      quotes[0];
+  const escapePattern = new SafeRegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
   string = replaceEscapeSequences(string);
   return `${quote}${string}${quote}`;
 }
 
+const ESCAPE_PATTERN = new SafeRegExp(/([\b\f\n\r\t\v])/g);
+const ESCAPE_MAP = ObjectFreeze({
+  "\b": "\\b",
+  "\f": "\\f",
+  "\n": "\\n",
+  "\r": "\\r",
+  "\t": "\\t",
+  "\v": "\\v",
+});
+
+// deno-lint-ignore no-control-regex
+const ESCAPE_PATTERN2 = new SafeRegExp(/[\x00-\x1f\x7f-\x9f]/g);
+
 // Replace escape sequences that can modify output.
 function replaceEscapeSequences(string) {
-  const escapeMap = {
-    "\b": "\\b",
-    "\f": "\\f",
-    "\n": "\\n",
-    "\r": "\\r",
-    "\t": "\\t",
-    "\v": "\\v",
-  };
-
   return StringPrototypeReplace(
     StringPrototypeReplace(
       string,
-      /([\b\f\n\r\t\v])/g,
-      (c) => escapeMap[c],
+      ESCAPE_PATTERN,
+      (c) => ESCAPE_MAP[c],
     ),
-    // deno-lint-ignore no-control-regex
-    /[\x00-\x1f\x7f-\x9f]/g,
+    new SafeRegExp(ESCAPE_PATTERN2),
     (c) =>
       "\\x" +
       StringPrototypePadStart(
@@ -782,26 +792,37 @@ function replaceEscapeSequences(string) {
   );
 }
 
+const QUOTE_STRING_PATTERN = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_0-9]*$/);
+
 // Surround a string with quotes when it is required (e.g the string not a valid identifier).
-function maybeQuoteString(string) {
-  if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_0-9]*$/, string)) {
+function maybeQuoteString(string, inspectOptions) {
+  if (
+    RegExpPrototypeTest(QUOTE_STRING_PATTERN, string)
+  ) {
     return replaceEscapeSequences(string);
   }
 
-  return quoteString(string);
+  return quoteString(string, inspectOptions);
 }
 
+const QUOTE_SYMBOL_REG = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/);
+
 // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
-function maybeQuoteSymbol(symbol) {
+function maybeQuoteSymbol(symbol, inspectOptions) {
   if (symbol.description === undefined) {
     return SymbolPrototypeToString(symbol);
   }
 
-  if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_.0-9]*$/, symbol.description)) {
+  if (
+    RegExpPrototypeTest(
+      QUOTE_SYMBOL_REG,
+      symbol.description,
+    )
+  ) {
     return SymbolPrototypeToString(symbol);
   }
 
-  return `Symbol(${quoteString(symbol.description)})`;
+  return `Symbol(${quoteString(symbol.description, inspectOptions)})`;
 }
 
 const CTX_STACK = [];
@@ -827,7 +848,7 @@ function inspectValueWithQuotes(
       const trunc = value.length > abbreviateSize
         ? StringPrototypeSlice(value, 0, abbreviateSize) + "..."
         : value;
-      return green(quoteString(trunc)); // Quoted strings are green
+      return green(quoteString(trunc, inspectOptions)); // Quoted strings are green
     }
     default:
       return inspectValue(value, inspectOptions);
@@ -980,6 +1001,9 @@ function inspectRegExp(value, inspectOptions) {
   return red(RegExpPrototypeToString(value)); // RegExps are red
 }
 
+const AGGREGATE_ERROR_HAS_AT_PATTERN = new SafeRegExp(/\s+at/);
+const AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN = new SafeRegExp(/^(?!\s*$)/gm);
+
 function inspectError(value, cyan) {
   const causes = [value];
 
@@ -1012,7 +1036,7 @@ function inspectError(value, cyan) {
     const stackLines = StringPrototypeSplit(value.stack, "\n");
     while (true) {
       const line = ArrayPrototypeShift(stackLines);
-      if (RegExpPrototypeTest(/\s+at/, line)) {
+      if (RegExpPrototypeTest(AGGREGATE_ERROR_HAS_AT_PATTERN, line)) {
         ArrayPrototypeUnshift(stackLines, line);
         break;
       } else if (typeof line === "undefined") {
@@ -1028,7 +1052,7 @@ function inspectError(value, cyan) {
         (error) =>
           StringPrototypeReplace(
             inspectArgs([error]),
-            /^(?!\s*$)/gm,
+            AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN,
             StringPrototypeRepeat(" ", 4),
           ),
       ),
@@ -1083,7 +1107,11 @@ function inspectBigIntObject(value, inspectOptions) {
 
 function inspectSymbolObject(value, inspectOptions) {
   const cyan = maybeColor(colors.cyan, inspectOptions);
-  return cyan(`[Symbol: ${maybeQuoteSymbol(SymbolPrototypeValueOf(value))}]`); // wrappers are in cyan
+  return cyan(
+    `[Symbol: ${
+      maybeQuoteSymbol(SymbolPrototypeValueOf(value), inspectOptions)
+    }]`,
+  ); // wrappers are in cyan
 }
 
 const PromiseState = {
@@ -1188,21 +1216,24 @@ function inspectRawObject(
         : red(`[Thrown ${error.name}: ${error.message}]`);
       ArrayPrototypePush(
         entries,
-        `${maybeQuoteString(key)}: ${inspectedValue}`,
+        `${maybeQuoteString(key, inspectOptions)}: ${inspectedValue}`,
       );
     } else {
       const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
       if (descriptor.get !== undefined && descriptor.set !== undefined) {
         ArrayPrototypePush(
           entries,
-          `${maybeQuoteString(key)}: [Getter/Setter]`,
+          `${maybeQuoteString(key, inspectOptions)}: [Getter/Setter]`,
         );
       } else if (descriptor.get !== undefined) {
-        ArrayPrototypePush(entries, `${maybeQuoteString(key)}: [Getter]`);
+        ArrayPrototypePush(
+          entries,
+          `${maybeQuoteString(key, inspectOptions)}: [Getter]`,
+        );
       } else {
         ArrayPrototypePush(
           entries,
-          `${maybeQuoteString(key)}: ${
+          `${maybeQuoteString(key, inspectOptions)}: ${
             inspectValueWithQuotes(value[key], inspectOptions)
           }`,
         );
@@ -1232,21 +1263,24 @@ function inspectRawObject(
         : red(`Thrown ${error.name}: ${error.message}`);
       ArrayPrototypePush(
         entries,
-        `[${maybeQuoteSymbol(key)}]: ${inspectedValue}`,
+        `[${maybeQuoteSymbol(key, inspectOptions)}]: ${inspectedValue}`,
       );
     } else {
       const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
       if (descriptor.get !== undefined && descriptor.set !== undefined) {
         ArrayPrototypePush(
           entries,
-          `[${maybeQuoteSymbol(key)}]: [Getter/Setter]`,
+          `[${maybeQuoteSymbol(key, inspectOptions)}]: [Getter/Setter]`,
         );
       } else if (descriptor.get !== undefined) {
-        ArrayPrototypePush(entries, `[${maybeQuoteSymbol(key)}]: [Getter]`);
+        ArrayPrototypePush(
+          entries,
+          `[${maybeQuoteSymbol(key, inspectOptions)}]: [Getter]`,
+        );
       } else {
         ArrayPrototypePush(
           entries,
-          `[${maybeQuoteSymbol(key)}]: ${
+          `[${maybeQuoteSymbol(key, inspectOptions)}]: ${
             inspectValueWithQuotes(value[key], inspectOptions)
           }`,
         );
@@ -1257,12 +1291,17 @@ function inspectRawObject(
   inspectOptions.indentLevel--;
 
   // Making sure color codes are ignored when calculating the total length
+  const entriesText = colors.stripColor(ArrayPrototypeJoin(entries, ""));
   const totalLength = entries.length + inspectOptions.indentLevel +
-    colors.stripColor(ArrayPrototypeJoin(entries, "")).length;
+    entriesText.length;
 
   if (entries.length === 0) {
     baseString = "{}";
-  } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
+  } else if (
+    totalLength > LINE_BREAKING_LENGTH ||
+    !inspectOptions.compact ||
+    StringPrototypeIncludes(entriesText, "\n")
+  ) {
     const entryIndent = StringPrototypeRepeat(
       DEFAULT_INDENT,
       inspectOptions.indentLevel + 1,
@@ -1299,6 +1338,16 @@ function inspectObject(value, inspectOptions, proxyDetails) {
     typeof value[customInspect] === "function"
   ) {
     return String(value[customInspect](inspect, inspectOptions));
+  }
+  if (
+    ReflectHas(value, nodeCustomInspect) &&
+    typeof value[nodeCustomInspect] === "function"
+  ) {
+    // TODO(kt3k): The last inspect needs to be util.inspect of Node.js.
+    // We need to move the implementation of util.inspect to this file.
+    return String(
+      value[nodeCustomInspect](inspectOptions.depth, inspectOptions, inspect),
+    );
   }
   // This non-unique symbol is used to support op_crates, ie.
   // in extensions/web we don't want to depend on public
@@ -1519,12 +1568,25 @@ const colorKeywords = new Map([
   ["rebeccapurple", "#663399"],
 ]);
 
+const HASH_PATTERN = new SafeRegExp(
+  /^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/,
+);
+const SMALL_HASH_PATTERN = new SafeRegExp(
+  /^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/,
+);
+const RGB_PATTERN = new SafeRegExp(
+  /^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/,
+);
+const HSL_PATTERN = new SafeRegExp(
+  /^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/,
+);
+
 function parseCssColor(colorString) {
   if (MapPrototypeHas(colorKeywords, colorString)) {
     colorString = MapPrototypeGet(colorKeywords, colorString);
   }
   // deno-fmt-ignore
-  const hashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
+  const hashMatch = StringPrototypeMatch(colorString, HASH_PATTERN);
   if (hashMatch != null) {
     return [
       Number(`0x${hashMatch[1]}`),
@@ -1533,7 +1595,7 @@ function parseCssColor(colorString) {
     ];
   }
   // deno-fmt-ignore
-  const smallHashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
+  const smallHashMatch = StringPrototypeMatch(colorString, SMALL_HASH_PATTERN);
   if (smallHashMatch != null) {
     return [
       Number(`0x${smallHashMatch[1]}0`),
@@ -1542,7 +1604,7 @@ function parseCssColor(colorString) {
     ];
   }
   // deno-fmt-ignore
-  const rgbMatch = StringPrototypeMatch(colorString, /^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+  const rgbMatch = StringPrototypeMatch(colorString, RGB_PATTERN);
   if (rgbMatch != null) {
     return [
       MathRound(MathMax(0, MathMin(255, Number(rgbMatch[1])))),
@@ -1551,7 +1613,7 @@ function parseCssColor(colorString) {
     ];
   }
   // deno-fmt-ignore
-  const hslMatch = StringPrototypeMatch(colorString, /^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+  const hslMatch = StringPrototypeMatch(colorString, HSL_PATTERN);
   if (hslMatch != null) {
     // https://www.rapidtables.com/convert/color/hsl-to-rgb.html
     let h = Number(hslMatch[1]) % 360;
@@ -1598,6 +1660,8 @@ function getDefaultCss() {
     textDecorationLine: [],
   };
 }
+
+const SPACE_PATTERN = new SafeRegExp(/\s+/g);
 
 function parseCss(cssString) {
   const css = getDefaultCss();
@@ -1665,7 +1729,7 @@ function parseCss(cssString) {
       }
     } else if (key == "text-decoration-line") {
       css.textDecorationLine = [];
-      const lineTypes = StringPrototypeSplit(value, /\s+/g);
+      const lineTypes = StringPrototypeSplit(value, SPACE_PATTERN);
       for (let i = 0; i < lineTypes.length; ++i) {
         const lineType = lineTypes[i];
         if (
@@ -1685,7 +1749,7 @@ function parseCss(cssString) {
     } else if (key == "text-decoration") {
       css.textDecorationColor = null;
       css.textDecorationLine = [];
-      const args = StringPrototypeSplit(value, /\s+/g);
+      const args = StringPrototypeSplit(value, SPACE_PATTERN);
       for (let i = 0; i < args.length; ++i) {
         const arg = args[i];
         const maybeColor = parseCssColor(arg);
@@ -2261,6 +2325,7 @@ class Console {
 }
 
 const customInspect = SymbolFor("Deno.customInspect");
+const nodeCustomInspect = SymbolFor("nodejs.util.inspect.custom");
 
 function inspect(
   value,

@@ -26,7 +26,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReference;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -88,6 +88,7 @@ impl DiagnosticsPublisher {
 
       self
         .client
+        .when_outside_lsp_lock()
         .publish_diagnostics(specifier, version_diagnostics.clone(), version)
         .await;
     }
@@ -490,7 +491,7 @@ async fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
   lint_options: &LintOptions,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
@@ -614,7 +615,7 @@ pub enum DenoDiagnostic {
   /// A data module was not found in the cache.
   NoCacheData(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
-  NoCacheNpm(NpmPackageReference, ModuleSpecifier),
+  NoCacheNpm(NpmPackageReqReference, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -905,12 +906,13 @@ fn diagnose_resolution(
               .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
-      } else if let Ok(pkg_ref) = NpmPackageReference::from_specifier(specifier)
+      } else if let Ok(pkg_ref) =
+        NpmPackageReqReference::from_specifier(specifier)
       {
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           if npm_resolver
-            .resolve_package_folder_from_deno_module(&pkg_ref.req)
+            .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
             diagnostics.push(
@@ -929,9 +931,9 @@ fn diagnose_resolution(
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_ref =
-            NpmPackageReference::from_str("npm:@types/node").unwrap();
+            NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
-            .resolve_package_folder_from_deno_module(&types_node_ref.req)
+            .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
             diagnostics.push(
@@ -1161,7 +1163,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,
@@ -1176,14 +1178,11 @@ let c: number = "a";
       let mut disabled_config = mock_config();
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
-        (
-          specifier.clone(),
-          SpecifierSettings {
-            enable: false,
-            enable_paths: Vec::new(),
-            code_lens: Default::default(),
-          },
-        ),
+        SpecifierSettings {
+          enable: false,
+          enable_paths: Vec::new(),
+          code_lens: Default::default(),
+        },
       );
 
       let diagnostics = generate_lint_diagnostics(

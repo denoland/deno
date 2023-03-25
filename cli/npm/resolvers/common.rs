@@ -1,30 +1,34 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
+use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::args::Lockfile;
 use crate::npm::cache::should_sync_download;
-use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmResolutionPackage;
 
-pub trait InnerNpmPackageResolver: Send + Sync {
+/// Part of the resolution that interacts with the file system.
+#[async_trait]
+pub trait NpmPackageFsResolver: Send + Sync {
+  /// Specifier for the root directory.
+  fn root_dir_url(&self) -> &Url;
+
+  /// The local node_modules folder if it is applicable to the implementation.
+  fn node_modules_path(&self) -> Option<PathBuf>;
+
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_req: &NpmPackageReq,
+    id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_package(
@@ -39,34 +43,15 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  fn package_size(
-    &self,
-    package_id: &NpmPackageNodeId,
-  ) -> Result<u64, AnyError>;
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
-  fn has_packages(&self) -> bool;
-
-  fn add_package_reqs(
-    &self,
-    packages: Vec<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>>;
-
-  fn set_package_reqs(
-    &self,
-    packages: HashSet<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>>;
-
-  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>>;
+  async fn cache_packages(&self) -> Result<(), AnyError>;
 
   fn ensure_read_permission(
     &self,
     permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
-
-  fn snapshot(&self) -> NpmResolutionSnapshot;
-
-  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError>;
 }
 
 /// Caches all the packages in parallel.
@@ -79,7 +64,7 @@ pub async fn cache_packages(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    packages.sort_by(|a, b| a.id.cmp(&b.id));
+    packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   }
 
   let mut handles = Vec::with_capacity(packages.len());
@@ -89,11 +74,7 @@ pub async fn cache_packages(
     let registry_url = registry_url.clone();
     let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(
-          (package.id.name.as_str(), &package.id.version),
-          &package.dist,
-          &registry_url,
-        )
+        .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
         .await
     });
     if sync_download {

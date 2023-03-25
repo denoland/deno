@@ -15,7 +15,6 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -29,8 +28,11 @@ use socket2::Socket;
 use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::str::FromStr;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -43,35 +45,6 @@ use trust_dns_resolver::config::ResolverOpts;
 use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
-
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
-  vec![
-    op_net_accept_tcp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_accept_unix::decl(),
-    op_net_connect_tcp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_connect_unix::decl::<P>(),
-    op_net_listen_tcp::decl::<P>(),
-    op_net_listen_udp::decl::<P>(),
-    op_node_unstable_net_listen_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unix::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unixpacket::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_node_unstable_net_listen_unixpacket::decl::<P>(),
-    op_net_recv_udp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_recv_unixpacket::decl(),
-    op_net_send_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_send_unixpacket::decl::<P>(),
-    op_dns_resolve::decl::<P>(),
-    op_set_nodelay::decl(),
-    op_set_keepalive::decl(),
-  ]
-}
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -186,6 +159,151 @@ where
 }
 
 #[op]
+async fn op_net_join_multi_v4_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: String,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
+
+  socket.join_multicast_v4(addr, interface_addr)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_join_multi_v6_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: u32,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv6Addr::from_str(address.as_str())?;
+
+  socket.join_multicast_v6(&addr, multi_interface)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_leave_multi_v4_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: String,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
+
+  socket.leave_multicast_v4(addr, interface_addr)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_leave_multi_v6_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: u32,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv6Addr::from_str(address.as_str())?;
+
+  socket.leave_multicast_v6(&addr, multi_interface)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_set_multi_loopback_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  is_v4_membership: bool,
+  loopback: bool,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  if is_v4_membership {
+    socket.set_multicast_loop_v4(loopback)?
+  } else {
+    socket.set_multicast_loop_v6(loopback)?;
+  }
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_set_multi_ttl_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  ttl: u32,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  socket.set_multicast_ttl_v4(ttl)?;
+
+  Ok(())
+}
+
+#[op]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
@@ -296,6 +414,7 @@ fn net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -331,9 +450,18 @@ where
   let socket_addr = socket2::SockAddr::from(addr);
   socket_tmp.bind(&socket_addr)?;
   socket_tmp.set_nonblocking(true)?;
+
   // Enable messages to be sent to the broadcast address (255.255.255.255) by default
   socket_tmp.set_broadcast(true)?;
+
+  if domain == Domain::IPV4 {
+    socket_tmp.set_multicast_loop_v4(loopback)?;
+  } else {
+    socket_tmp.set_multicast_loop_v6(loopback)?;
+  }
+
   let std_socket: std::net::UdpSocket = socket_tmp.into();
+
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {
@@ -350,12 +478,13 @@ fn op_net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_udp::<NP>(state, addr, reuse_address)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
 #[op]
@@ -363,11 +492,12 @@ fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  net_listen_udp::<NP>(state, addr, reuse_address)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]
@@ -650,7 +780,6 @@ fn rdata_to_return_record(
 mod tests {
   use super::*;
   use crate::UnstableChecker;
-  use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use socket2::SockRef;
@@ -906,16 +1035,17 @@ mod tests {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
     });
-    let my_ext = Extension::builder("test_ext")
-      .state(move |state| {
+
+    deno_core::extension!(
+      test_ext,
+      state = |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });
-        Ok(())
-      })
-      .build();
+      }
+    );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![my_ext],
+      extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
 

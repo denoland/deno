@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
@@ -93,10 +94,13 @@ where
   P: NodePermissions + 'static,
 {
   // Guarantee that "from" is absolute.
-  let from = deno_core::resolve_path(&from)
-    .unwrap()
-    .to_file_path()
-    .unwrap();
+  let from = deno_core::resolve_path(
+    &from,
+    &std::env::current_dir().context("Unable to get CWD")?,
+  )
+  .unwrap()
+  .to_file_path()
+  .unwrap();
 
   ensure_read_permission::<P>(state, &from)?;
 

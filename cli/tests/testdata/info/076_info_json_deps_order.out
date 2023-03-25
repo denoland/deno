@@ -4,6 +4,7 @@
   ],
   "modules": [
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "./recursive_imports/A.ts",
@@ -22,13 +23,13 @@
           }
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]076_info_json_deps_order.ts",
       "specifier": "file://[WILDCARD]/076_info_json_deps_order.ts",
       "mediaType": "TypeScript",
       "size": 81
     },
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "./B.ts",
@@ -63,13 +64,13 @@
           }
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]A.ts",
       "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
       "mediaType": "TypeScript",
       "size": 108
     },
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "./C.ts",
@@ -104,13 +105,13 @@
           }
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]B.ts",
       "specifier": "file://[WILDCARD]/recursive_imports/B.ts",
       "mediaType": "TypeScript",
       "size": 108
     },
     {
+      "kind": "esm",
       "dependencies": [
         {
           "specifier": "./A.ts",
@@ -145,7 +146,6 @@
           }
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]C.ts",
       "specifier": "file://[WILDCARD]/recursive_imports/C.ts",
       "mediaType": "TypeScript",

@@ -14,6 +14,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::resolve_url;
+use deno_core::ModuleCode;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
@@ -21,6 +22,8 @@ use deno_core::ModuleType;
 use deno_core::OpState;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
+use deno_graph::EsmModule;
+use deno_graph::JsonModule;
 use deno_runtime::permissions::PermissionsContainer;
 use std::cell::RefCell;
 use std::pin::Pin;
@@ -28,7 +31,7 @@ use std::rc::Rc;
 use std::str;
 
 struct ModuleCodeSource {
-  pub code: String,
+  pub code: ModuleCode,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -78,24 +81,36 @@ impl CliModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.scheme() == "node" {
-      unreachable!("Node built-in modules should be handled internally.");
+      unreachable!(); // Node built-in modules should be handled internally.
     }
 
     let graph = self.ps.graph();
     match graph.get(specifier) {
-      Some(deno_graph::Module {
-        maybe_source: Some(code),
+      Some(deno_graph::Module::Json(JsonModule {
+        source,
         media_type,
         specifier,
         ..
-      }) => {
-        let code = match media_type {
+      })) => Ok(ModuleCodeSource {
+        code: source.into(),
+        found_url: specifier.clone(),
+        media_type: *media_type,
+      }),
+      Some(deno_graph::Module::Esm(EsmModule {
+        source,
+        media_type,
+        specifier,
+        ..
+      })) => {
+        let code: ModuleCode = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => code.to_string(),
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
+          | MediaType::Json => source.into(),
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
+            Default::default()
+          }
           MediaType::TypeScript
           | MediaType::Mts
           | MediaType::Cts
@@ -107,7 +122,7 @@ impl CliModuleLoader {
               &self.ps.parsed_source_cache,
               specifier,
               *media_type,
-              code,
+              source,
               &self.ps.emit_options,
               self.ps.emit_options_hash,
             )?
@@ -179,9 +194,9 @@ impl CliModuleLoader {
         )?
       };
       ModuleCodeSource {
-        code,
+        code: code.into(),
         found_url: specifier.clone(),
-        media_type: MediaType::from(specifier),
+        media_type: MediaType::from_specifier(specifier),
       }
     } else {
       self.load_prepared_module(specifier, maybe_referrer)?
@@ -196,7 +211,7 @@ impl CliModuleLoader {
       code_without_source_map(code_source.code)
     };
     Ok(ModuleSource {
-      code: code.into_bytes().into_boxed_slice(),
+      code,
       module_url_specified: specifier.to_string(),
       module_url_found: code_source.found_url.to_string(),
       module_type: match code_source.media_type {
@@ -295,10 +310,8 @@ impl SourceMapGetter for CliModuleLoader {
   ) -> Option<String> {
     let graph = self.ps.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
-      Some(deno_graph::Module {
-        maybe_source: Some(code),
-        ..
-      }) => code,
+      Some(deno_graph::Module::Esm(module)) => &module.source,
+      Some(deno_graph::Module::Json(module)) => &module.source,
       _ => return None,
     };
     // Do NOT use .lines(): it skips the terminating empty line.

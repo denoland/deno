@@ -22,10 +22,13 @@ pub enum Error {
   ExpectedObject,
   ExpectedBuffer,
   ExpectedDetachable,
+  ExpectedExternal,
+  ExpectedBigInt,
 
   ExpectedUtf8,
   ExpectedLatin1,
 
+  UnsupportedType,
   LengthMismatch,
 }
 

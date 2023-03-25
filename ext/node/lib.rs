@@ -1,11 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
-use deno_core::include_js_files_dir;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
@@ -15,6 +12,7 @@ use std::rc::Rc;
 
 mod crypto;
 pub mod errors;
+mod idna;
 mod ops;
 mod package_json;
 mod path;
@@ -95,51 +93,64 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
-pub fn init_polyfill() -> Extension {
-  let esm_files = include_js_files_dir!(
+deno_core::extension!(deno_node,
+  deps = [ deno_io, deno_fs ],
+  parameters = [P: NodePermissions],
+  ops = [
+    crypto::op_node_create_decipheriv,
+    crypto::op_node_cipheriv_encrypt,
+    crypto::op_node_cipheriv_final,
+    crypto::op_node_create_cipheriv,
+    crypto::op_node_create_hash,
+    crypto::op_node_decipheriv_decrypt,
+    crypto::op_node_decipheriv_final,
+    crypto::op_node_hash_update,
+    crypto::op_node_hash_update_str,
+    crypto::op_node_hash_digest,
+    crypto::op_node_hash_digest_hex,
+    crypto::op_node_hash_clone,
+    crypto::op_node_private_encrypt,
+    crypto::op_node_private_decrypt,
+    crypto::op_node_public_encrypt,
+    winerror::op_node_sys_to_uv_error,
+    v8::op_v8_cached_data_version_tag,
+    v8::op_v8_get_heap_statistics,
+    idna::op_node_idna_domain_to_ascii,
+    idna::op_node_idna_domain_to_unicode,
+    idna::op_node_idna_punycode_decode,
+    idna::op_node_idna_punycode_encode,
+    op_node_build_os,
+
+    ops::op_require_init_paths,
+    ops::op_require_node_module_paths<P>,
+    ops::op_require_proxy_path,
+    ops::op_require_is_deno_dir_package,
+    ops::op_require_resolve_deno_dir,
+    ops::op_require_is_request_relative,
+    ops::op_require_resolve_lookup_paths,
+    ops::op_require_try_self_parent_path<P>,
+    ops::op_require_try_self<P>,
+    ops::op_require_real_path<P>,
+    ops::op_require_path_is_absolute,
+    ops::op_require_path_dirname,
+    ops::op_require_stat<P>,
+    ops::op_require_path_resolve,
+    ops::op_require_path_basename,
+    ops::op_require_read_file<P>,
+    ops::op_require_as_file_path,
+    ops::op_require_resolve_exports<P>,
+    ops::op_require_read_closest_package_json<P>,
+    ops::op_require_read_package_scope<P>,
+    ops::op_require_package_imports_resolve<P>,
+    ops::op_require_break_on_next_statement,
+  ],
+  esm_entry_point = "ext:deno_node/02_init.js",
+  esm = [
     dir "polyfills",
+    "00_globals.js",
+    "01_require.js",
+    "02_init.js",
     "_core.ts",
-    "_crypto/crypto_browserify/asn1.js/base/buffer.js",
-    "_crypto/crypto_browserify/asn1.js/base/node.js",
-    "_crypto/crypto_browserify/asn1.js/base/reporter.js",
-    "_crypto/crypto_browserify/asn1.js/constants/der.js",
-    "_crypto/crypto_browserify/asn1.js/decoders/der.js",
-    "_crypto/crypto_browserify/asn1.js/decoders/pem.js",
-    "_crypto/crypto_browserify/asn1.js/encoders/der.js",
-    "_crypto/crypto_browserify/asn1.js/encoders/pem.js",
-    "_crypto/crypto_browserify/asn1.js/mod.js",
-    "_crypto/crypto_browserify/bn.js/bn.js",
-    "_crypto/crypto_browserify/browserify_aes/aes.js",
-    "_crypto/crypto_browserify/browserify_aes/auth_cipher.js",
-    "_crypto/crypto_browserify/browserify_aes/decrypter.js",
-    "_crypto/crypto_browserify/browserify_aes/encrypter.js",
-    "_crypto/crypto_browserify/browserify_aes/ghash.js",
-    "_crypto/crypto_browserify/browserify_aes/incr32.js",
-    "_crypto/crypto_browserify/browserify_aes/mod.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/cbc.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/cfb.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/cfb1.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/cfb8.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/ctr.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/ecb.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/mod.js",
-    "_crypto/crypto_browserify/browserify_aes/modes/ofb.js",
-    "_crypto/crypto_browserify/browserify_aes/stream_cipher.js",
-    "_crypto/crypto_browserify/browserify_aes/xor.ts",
-    "_crypto/crypto_browserify/browserify_rsa.js",
-    "_crypto/crypto_browserify/cipher_base.js",
-    "_crypto/crypto_browserify/evp_bytes_to_key.ts",
-    "_crypto/crypto_browserify/parse_asn1/asn1.js",
-    "_crypto/crypto_browserify/parse_asn1/certificate.js",
-    "_crypto/crypto_browserify/parse_asn1/fix_proc.js",
-    "_crypto/crypto_browserify/parse_asn1/mod.js",
-    "_crypto/crypto_browserify/public_encrypt/mgf.js",
-    "_crypto/crypto_browserify/public_encrypt/mod.js",
-    "_crypto/crypto_browserify/public_encrypt/private_decrypt.js",
-    "_crypto/crypto_browserify/public_encrypt/public_encrypt.js",
-    "_crypto/crypto_browserify/public_encrypt/with_public.js",
-    "_crypto/crypto_browserify/public_encrypt/xor.js",
-    "_crypto/crypto_browserify/randombytes.ts",
     "_events.mjs",
     "_fs/_fs_access.ts",
     "_fs/_fs_appendFile.ts",
@@ -187,7 +198,6 @@ pub fn init_polyfill() -> Extension {
     "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
-    "_process/stdio.mjs",
     "_process/streams.mjs",
     "_readline.mjs",
     "_stream.mjs",
@@ -221,7 +231,6 @@ pub fn init_polyfill() -> Extension {
     "events.ts",
     "fs.ts",
     "fs/promises.ts",
-    "global.ts",
     "http.ts",
     "http2.ts",
     "https.ts",
@@ -235,64 +244,29 @@ pub fn init_polyfill() -> Extension {
     "internal_binding/async_wrap.ts",
     "internal_binding/buffer.ts",
     "internal_binding/cares_wrap.ts",
-    "internal_binding/config.ts",
     "internal_binding/connection_wrap.ts",
     "internal_binding/constants.ts",
-    "internal_binding/contextify.ts",
-    "internal_binding/credentials.ts",
     "internal_binding/crypto.ts",
-    "internal_binding/errors.ts",
-    "internal_binding/fs_dir.ts",
-    "internal_binding/fs_event_wrap.ts",
-    "internal_binding/fs.ts",
     "internal_binding/handle_wrap.ts",
-    "internal_binding/heap_utils.ts",
-    "internal_binding/http_parser.ts",
-    "internal_binding/icu.ts",
-    "internal_binding/inspector.ts",
-    "internal_binding/js_stream.ts",
-    "internal_binding/messaging.ts",
     "internal_binding/mod.ts",
-    "internal_binding/module_wrap.ts",
-    "internal_binding/native_module.ts",
-    "internal_binding/natives.ts",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",
-    "internal_binding/options.ts",
-    "internal_binding/os.ts",
-    "internal_binding/performance.ts",
     "internal_binding/pipe_wrap.ts",
-    "internal_binding/process_methods.ts",
-    "internal_binding/report.ts",
-    "internal_binding/serdes.ts",
-    "internal_binding/signal_wrap.ts",
-    "internal_binding/spawn_sync.ts",
     "internal_binding/stream_wrap.ts",
     "internal_binding/string_decoder.ts",
     "internal_binding/symbols.ts",
-    "internal_binding/task_queue.ts",
     "internal_binding/tcp_wrap.ts",
-    "internal_binding/timers.ts",
-    "internal_binding/tls_wrap.ts",
-    "internal_binding/trace_events.ts",
-    "internal_binding/tty_wrap.ts",
     "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
-    "internal_binding/url.ts",
     "internal_binding/util.ts",
     "internal_binding/uv.ts",
-    "internal_binding/v8.ts",
-    "internal_binding/worker.ts",
-    "internal_binding/zlib.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
-    "internal/blob.mjs",
     "internal/buffer.mjs",
     "internal/child_process.ts",
     "internal/cli_table.ts",
     "internal/console/constructor.mjs",
     "internal/constants.ts",
-    "internal/crypto/_hex.ts",
     "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
     "internal/crypto/_randomFill.ts",
@@ -309,7 +283,6 @@ pub fn init_polyfill() -> Extension {
     "internal/crypto/random.ts",
     "internal/crypto/scrypt.ts",
     "internal/crypto/sig.ts",
-    "internal/crypto/types.ts",
     "internal/crypto/util.ts",
     "internal/crypto/x509.ts",
     "internal/dgram.ts",
@@ -320,7 +293,6 @@ pub fn init_polyfill() -> Extension {
     "internal/errors.ts",
     "internal/event_target.mjs",
     "internal/fixed_queue.ts",
-    "internal/freelist.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/hide_stack_frames.ts",
@@ -345,7 +317,6 @@ pub fn init_polyfill() -> Extension {
     "internal/streams/duplex.mjs",
     "internal/streams/end-of-stream.mjs",
     "internal/streams/lazy_transform.mjs",
-    "internal/streams/legacy.mjs",
     "internal/streams/passthrough.mjs",
     "internal/streams/readable.mjs",
     "internal/streams/state.mjs",
@@ -361,9 +332,6 @@ pub fn init_polyfill() -> Extension {
     "internal/util/inspect.mjs",
     "internal/util/types.ts",
     "internal/validators.mjs",
-    "module_all.ts",
-    "module_esm.ts",
-    "module.js",
     "net.ts",
     "os.ts",
     "path.ts",
@@ -393,7 +361,6 @@ pub fn init_polyfill() -> Extension {
     "timers/promises.ts",
     "tls.ts",
     "tty.ts",
-    "upstream_modules.ts",
     "url.ts",
     "util.ts",
     "util/types.ts",
@@ -402,84 +369,41 @@ pub fn init_polyfill() -> Extension {
     "wasi.ts",
     "worker_threads.ts",
     "zlib.ts",
-  );
+  ],
+  options = {
+    maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  },
+  state = |state, options| {
+    if let Some(npm_resolver) = options.maybe_npm_resolver {
+      state.put(npm_resolver);
+    }
+  },
+);
 
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .esm(esm_files)
-    .esm_entry_point("internal:deno_node/polyfills/module_all.ts")
-    .ops(vec![
-      crypto::op_node_create_hash::decl(),
-      crypto::op_node_hash_update::decl(),
-      crypto::op_node_hash_digest::decl(),
-      crypto::op_node_hash_clone::decl(),
-      winerror::op_node_sys_to_uv_error::decl(),
-      v8::op_v8_cached_data_version_tag::decl(),
-      v8::op_v8_get_heap_statistics::decl(),
-      op_node_build_os::decl(),
-    ])
-    .build()
-}
-
-pub fn init<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  Extension::builder("deno_node_loading")
-    .esm(include_js_files!(
-      "01_node.js",
-      "02_require.js",
-      "module_es_shim.js",
-    ))
-    .ops(vec![
-      ops::op_require_init_paths::decl(),
-      ops::op_require_node_module_paths::decl::<P>(),
-      ops::op_require_proxy_path::decl(),
-      ops::op_require_is_deno_dir_package::decl(),
-      ops::op_require_resolve_deno_dir::decl(),
-      ops::op_require_is_request_relative::decl(),
-      ops::op_require_resolve_lookup_paths::decl(),
-      ops::op_require_try_self_parent_path::decl::<P>(),
-      ops::op_require_try_self::decl::<P>(),
-      ops::op_require_real_path::decl::<P>(),
-      ops::op_require_path_is_absolute::decl(),
-      ops::op_require_path_dirname::decl(),
-      ops::op_require_stat::decl::<P>(),
-      ops::op_require_path_resolve::decl(),
-      ops::op_require_path_basename::decl(),
-      ops::op_require_read_file::decl::<P>(),
-      ops::op_require_as_file_path::decl(),
-      ops::op_require_resolve_exports::decl::<P>(),
-      ops::op_require_read_closest_package_json::decl::<P>(),
-      ops::op_require_read_package_scope::decl::<P>(),
-      ops::op_require_package_imports_resolve::decl::<P>(),
-      ops::op_require_break_on_next_statement::decl(),
-    ])
-    .state(move |state| {
-      if let Some(npm_resolver) = maybe_npm_resolver.clone() {
-        state.put(npm_resolver);
-      }
-      Ok(())
-    })
-    .build()
-}
-
-pub async fn initialize_runtime(
+pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
+  maybe_binary_command_name: Option<String>,
 ) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName);
-      if (usesLocalNodeModulesDir) {{
-        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
-      }}
-    }})('{}', {});"#,
+  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
+    format!("\"{}\"", binary_command_name)
+  } else {
+    "undefined".to_string()
+  };
+  let source_code = format!(
+    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
+      Deno[Deno.internal].node.initialize(
+        nodeGlobalThisName, 
+        usesLocalNodeModulesDir,
+        argv0
+      );
+    }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME.as_str(),
     uses_local_node_modules_dir,
+    argv0
   );
 
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
 }
 
@@ -493,38 +417,15 @@ pub fn load_cjs_module(
     text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
-  let source_code = &format!(
-    r#"(function loadCjsModule(module, inspectBrk) {{
-      if (inspectBrk) {{
-        Deno[Deno.internal].require.setInspectBrk();
-      }}
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}', {inspect_brk});"#,
+  let source_code = format!(
+    r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
+      Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
+    }})('{module}', {main}, {inspect_brk});"#,
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
   );
 
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
-}
-
-pub async fn initialize_binary_command(
-  js_runtime: &mut JsRuntime,
-  binary_name: &str,
-) -> Result<(), AnyError> {
-  // overwrite what's done in deno_std in order to set the binary arg name
-  let source_code = &format!(
-    r#"(async function initializeBinaryCommand(binaryName) {{
-      const process = Deno[Deno.internal].node.globalThis.process;
-      Object.defineProperty(process.argv, "0", {{
-        get: () => binaryName,
-      }});
-    }})('{binary_name}');"#,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
 }

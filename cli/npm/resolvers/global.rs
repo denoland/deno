@@ -2,51 +2,41 @@
 
 //! Code for global npm cache resolution.
 
-use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
+use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::futures::future::BoxFuture;
-use deno_core::futures::FutureExt;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReq;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::args::Lockfile;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
-use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageNodeId;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmResolutionPackage;
-use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
-use super::common::InnerNpmPackageResolver;
+use super::common::NpmPackageFsResolver;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug, Clone)]
 pub struct GlobalNpmPackageResolver {
   cache: NpmCache,
-  resolution: Arc<NpmResolution>,
+  resolution: NpmResolution,
   registry_url: Url,
 }
 
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: RealNpmRegistryApi,
-    initial_snapshot: Option<NpmResolutionSnapshot>,
+    registry_url: Url,
+    resolution: NpmResolution,
   ) -> Self {
-    let registry_url = api.base_url().to_owned();
-    let resolution = Arc::new(NpmResolution::new(api, initial_snapshot));
-
     Self {
       cache,
       resolution,
@@ -54,7 +44,7 @@ impl GlobalNpmPackageResolver {
     }
   }
 
-  fn package_folder(&self, id: &NpmPackageNodeId) -> PathBuf {
+  fn package_folder(&self, id: &NpmPackageId) -> PathBuf {
     let folder_id = self
       .resolution
       .resolve_package_cache_folder_id_from_id(id)
@@ -76,13 +66,21 @@ impl GlobalNpmPackageResolver {
   }
 }
 
-impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
+#[async_trait]
+impl NpmPackageFsResolver for GlobalNpmPackageResolver {
+  fn root_dir_url(&self) -> &Url {
+    self.cache.root_dir_url()
+  }
+
+  fn node_modules_path(&self) -> Option<PathBuf> {
+    None
+  }
+
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_req: &NpmPackageReq,
+    id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
-    let pkg = self.resolution.resolve_package_from_deno_module(pkg_req)?;
-    Ok(self.package_folder(&pkg.id))
+    Ok(self.package_folder(id))
   }
 
   fn resolve_package_folder_from_package(
@@ -107,7 +105,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
         .resolution
         .resolve_package_from_package(name, &referrer_pkg_id)?
     };
-    Ok(self.package_folder(&pkg.id))
+    Ok(self.package_folder(&pkg.pkg_id))
   }
 
   fn resolve_package_folder_from_specifier(
@@ -125,37 +123,13 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     )
   }
 
-  fn package_size(
-    &self,
-    package_id: &NpmPackageNodeId,
-  ) -> Result<u64, AnyError> {
-    let package_folder = self.package_folder(package_id);
+  fn package_size(&self, id: &NpmPackageId) -> Result<u64, AnyError> {
+    let package_folder = self.package_folder(id);
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
-  fn has_packages(&self) -> bool {
-    self.resolution.has_packages()
-  }
-
-  fn add_package_reqs(
-    &self,
-    packages: Vec<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move { resolver.resolution.add_package_reqs(packages).await }.boxed()
-  }
-
-  fn set_package_reqs(
-    &self,
-    packages: HashSet<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move { resolver.resolution.set_package_reqs(packages).await }.boxed()
-  }
-
-  fn cache_packages(&self) -> BoxFuture<'static, Result<(), AnyError>> {
-    let resolver = self.clone();
-    async move { cache_packages_in_resolver(&resolver).await }.boxed()
+  async fn cache_packages(&self) -> Result<(), AnyError> {
+    cache_packages_in_resolver(self).await
   }
 
   fn ensure_read_permission(
@@ -165,14 +139,6 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
     ensure_registry_read_permission(permissions, &registry_path, path)
-  }
-
-  fn snapshot(&self) -> NpmResolutionSnapshot {
-    self.resolution.snapshot()
-  }
-
-  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    self.resolution.lock(lockfile)
   }
 }
 

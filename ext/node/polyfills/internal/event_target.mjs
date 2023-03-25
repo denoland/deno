@@ -6,23 +6,25 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { validateObject, validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { emitWarning } from "internal:deno_node/polyfills/process.ts";
-import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
-import { Event as WebEvent, EventTarget as WebEventTarget } from "internal:deno_web/02_event.js";
+} from "ext:deno_node/internal/errors.ts";
+import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
+import { emitWarning } from "ext:deno_node/process.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { Event as WebEvent, EventTarget as WebEventTarget } from "ext:deno_web/02_event.js";
 
 import {
   customInspectSymbol,
   kEmptyObject,
   kEnumerableProperty,
-} from "internal:deno_node/polyfills/internal/util.mjs";
-import { inspect } from "internal:deno_node/polyfills/util.ts";
+} from "ext:deno_node/internal/util.mjs";
+import { inspect } from "ext:deno_node/util.ts";
+
+const { ObjectAssign } = globalThis.__bootstrap.primordials;
 
 const kIsEventTarget = Symbol.for("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,
@@ -95,7 +97,7 @@ class Event extends WebEvent {
       return name;
     }
 
-    const opts = Object.assign({}, options, {
+    const opts = ObjectAssign({}, options, {
       depth: NumberIsInteger(options.depth) ? options.depth - 1 : options.depth,
     });
 
