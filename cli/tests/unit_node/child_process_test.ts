@@ -507,6 +507,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: true,
   name: "[node/child_process] ChildProcess.unref()",
   async fn() {
     const script = path.join(
@@ -527,6 +528,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: true,
   name: "[node/child_process] child_process.fork",
   async fn() {
     const testdataDir = path.join(

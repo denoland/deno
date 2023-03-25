@@ -236,7 +236,7 @@ Deno.test(function consoleTestStringifyCircular() {
   nu: null,
   arrowFunc: [Function: arrowFunc],
   extendedClass: Extended { a: 1, b: 2 },
-  nFunc: [Function],
+  nFunc: [Function (anonymous)],
   extendedCstr: [Class: Extended],
   o: {
     num: 2,
@@ -395,7 +395,13 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
+  f: [Function: f] {
+    x: [Function (anonymous)],
+    y: 3,
+    z: [Function (anonymous)],
+    b: [Function: bar],
+    a: Map {}
+  }
 }`,
   );
 
@@ -407,9 +413,9 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
     stringify({ f }),
     `{
   f: <ref *1> [Function: f] {
-    x: [Function],
+    x: [Function (anonymous)],
     y: 3,
-    z: [Function],
+    z: [Function (anonymous)],
     b: [Function: bar],
     a: Map {},
     s: [Circular *1],
@@ -2154,4 +2160,35 @@ Deno.test(function inspectorMethods() {
   console.timeStamp("test");
   console.profile("test");
   console.profileEnd("test");
+});
+
+Deno.test(function inspectQuotesOverride() {
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("foo", { quotes: ["'", '"', "`"] }),
+    "'foo'",
+  );
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("'foo'", { quotes: ["'", '"', "`"] }),
+    `"'foo'"`,
+  );
+});
+
+Deno.test(function inspectAnonymousFunctions() {
+  assertEquals(Deno.inspect(() => {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(function () {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(async () => {}), "[AsyncFunction (anonymous)]");
+  assertEquals(
+    Deno.inspect(async function () {}),
+    "[AsyncFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(function* () {}),
+    "[GeneratorFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(async function* () {}),
+    "[AsyncGeneratorFunction (anonymous)]",
+  );
 });

@@ -12,7 +12,6 @@ use crate::tools::test::TestStepDescription;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
@@ -25,28 +24,30 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
-pub fn init(
-  sender: TestEventSender,
-  fail_fast_tracker: FailFastTracker,
-  filter: TestFilter,
-) -> Extension {
-  Extension::builder("deno_test")
-    .ops(vec![
-      op_pledge_test_permissions::decl(),
-      op_restore_test_permissions::decl(),
-      op_get_test_origin::decl(),
-      op_register_test::decl(),
-      op_register_test_step::decl(),
-      op_dispatch_test_event::decl(),
-      op_tests_should_stop::decl(),
-    ])
-    .state(move |state| {
-      state.put(sender.clone());
-      state.put(fail_fast_tracker.clone());
-      state.put(filter.clone());
-    })
-    .build()
-}
+deno_core::extension!(deno_test,
+  ops = [
+    op_pledge_test_permissions,
+    op_restore_test_permissions,
+    op_get_test_origin,
+    op_register_test,
+    op_register_test_step,
+    op_dispatch_test_event,
+    op_tests_should_stop,
+  ],
+  options = {
+    sender: TestEventSender,
+    fail_fast_tracker: FailFastTracker,
+    filter: TestFilter,
+  },
+  state = |state, options| {
+    state.put(options.sender);
+    state.put(options.fail_fast_tracker);
+    state.put(options.filter);
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);

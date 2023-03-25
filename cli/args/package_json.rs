@@ -44,7 +44,7 @@ pub enum PackageJsonDepValueParseError {
   SchemeValue(#[from] PackageJsonDepNpmSchemeValueParseError),
   #[error(transparent)]
   Specifier(#[from] NpmVersionReqSpecifierParseError),
-  #[error("Not implemented scheme: {scheme}")]
+  #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
 }
 
@@ -71,7 +71,7 @@ pub fn get_local_package_json_version_reqs(
       || value.starts_with("https:")
     {
       return Err(PackageJsonDepValueParseError::Unsupported {
-        scheme: key.split(':').next().unwrap().to_string(),
+        scheme: value.split(':').next().unwrap().to_string(),
       });
     }
     let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value)
@@ -254,39 +254,39 @@ mod test {
     let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
     package_json.dependencies = Some(HashMap::from([
       ("test".to_string(), "1".to_string()),
-      ("work".to_string(), "workspace:1.1.1".to_string()),
-      ("file".to_string(), "file:something".to_string()),
-      ("git".to_string(), "git:something".to_string()),
-      ("http".to_string(), "http://something".to_string()),
-      ("https".to_string(), "https://something".to_string()),
+      ("work-test".to_string(), "workspace:1.1.1".to_string()),
+      ("file-test".to_string(), "file:something".to_string()),
+      ("git-test".to_string(), "git:something".to_string()),
+      ("http-test".to_string(), "http://something".to_string()),
+      ("https-test".to_string(), "https://something".to_string()),
     ]));
     let result = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
       result,
       BTreeMap::from([
         (
-          "file".to_string(),
-          Err("Not implemented scheme: file".to_string()),
+          "file-test".to_string(),
+          Err("Not implemented scheme 'file'".to_string()),
         ),
         (
-          "git".to_string(),
-          Err("Not implemented scheme: git".to_string()),
+          "git-test".to_string(),
+          Err("Not implemented scheme 'git'".to_string()),
         ),
         (
-          "http".to_string(),
-          Err("Not implemented scheme: http".to_string()),
+          "http-test".to_string(),
+          Err("Not implemented scheme 'http'".to_string()),
         ),
         (
-          "https".to_string(),
-          Err("Not implemented scheme: https".to_string()),
+          "https-test".to_string(),
+          Err("Not implemented scheme 'https'".to_string()),
         ),
         (
           "test".to_string(),
           Ok(NpmPackageReq::from_str("test@1").unwrap())
         ),
         (
-          "work".to_string(),
-          Err("Not implemented scheme: work".to_string()),
+          "work-test".to_string(),
+          Err("Not implemented scheme 'workspace'".to_string()),
         )
       ])
     );
