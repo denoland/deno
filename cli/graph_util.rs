@@ -96,7 +96,12 @@ pub fn graph_valid(
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!("\n    at {range}"));
+          message.push_str(&format!(
+            "\n    at {}:{}:{}",
+            colors::cyan(range.specifier.as_str()),
+            colors::yellow(&(range.start.line + 1).to_string()),
+            colors::yellow(&(range.start.character + 1).to_string())
+          ));
         }
       }
 
