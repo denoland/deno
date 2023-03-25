@@ -440,7 +440,6 @@ dependencies = [
  "bitflags",
  "clap_lex",
  "indexmap",
- "lazy_static",
  "strsim",
  "termcolor",
  "textwrap",
@@ -750,7 +749,6 @@ dependencies = [
  "libc",
  "log",
  "lsp-types",
- "mitata",
  "monch",
  "napi_sym",
  "nix",
@@ -2699,15 +2697,6 @@ dependencies = [
  "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "mitata"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21fd49a3bd69c5be5d2c21899e2995ed99193b48e2c9f3ac09596a0d69f7fa79"
-dependencies = [
- "clap",
 ]
 
 [[package]]
