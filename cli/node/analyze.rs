@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 
@@ -49,7 +49,7 @@ pub fn esm_code_with_node_globals(
     let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
       specifier: specifier.to_string(),
       text_info: text_info.clone(),
-      media_type: deno_ast::MediaType::from(specifier),
+      media_type: deno_ast::MediaType::from_specifier(specifier),
       capture_tokens: true,
       scope_analysis: true,
       maybe_syntax: None,
@@ -76,11 +76,11 @@ pub fn esm_code_with_node_globals(
   let global_this_expr = if has_global_this {
     global_this_expr
   } else {
-    write!(result, "var globalThis = {};", global_this_expr).unwrap();
+    write!(result, "var globalThis = {global_this_expr};").unwrap();
     "globalThis"
   };
   for global in globals {
-    write!(result, "var {0} = {1}.{0};", global, global_this_expr).unwrap();
+    write!(result, "var {global} = {global_this_expr}.{global};").unwrap();
   }
 
   let file_text = text_info.text_str();

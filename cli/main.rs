@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod args;
 mod auth_tokens;
@@ -29,52 +29,31 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::proc_state::ProcState;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::util::display;
+use crate::util::v8::get_v8_flags_from_env;
+use crate::util::v8::init_v8_flags;
 
 use args::CliOptions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::v8_set_flags;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::run_local;
 use std::env;
-use std::iter::once;
 use std::path::PathBuf;
-
-fn init_v8_flags(v8_flags: &[String]) {
-  let v8_flags_includes_help = v8_flags
-    .iter()
-    .any(|flag| flag == "-help" || flag == "--help");
-  // Keep in sync with `standalone.rs`.
-  let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-    .chain(v8_flags.iter().cloned())
-    .collect::<Vec<_>>();
-  let unrecognized_v8_flags = v8_set_flags(v8_flags)
-    .into_iter()
-    .skip(1)
-    .collect::<Vec<_>>();
-  if !unrecognized_v8_flags.is_empty() {
-    for f in unrecognized_v8_flags {
-      eprintln!("error: V8 did not recognize flag '{}'", f);
-    }
-    eprintln!("\nFor a list of V8 flags, use '--v8-flags=--help'");
-    std::process::exit(1);
-  }
-  if v8_flags_includes_help {
-    std::process::exit(0);
-  }
-}
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   match flags.subcommand.clone() {
     DenoSubcommand::Bench(bench_flags) => {
-      if flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await?;
+      let cli_options = CliOptions::from_flags(flags)?;
+      let bench_options = cli_options.resolve_bench_options(bench_flags)?;
+      if cli_options.watch_paths().is_some() {
+        tools::bench::run_benchmarks_with_watch(cli_options, bench_options)
+          .await?;
       } else {
-        tools::bench::run_benchmarks(flags, bench_flags).await?;
+        tools::bench::run_benchmarks(cli_options, bench_options).await?;
       }
       Ok(0)
     }
@@ -109,19 +88,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Fmt(fmt_flags) => {
-      let config = CliOptions::from_flags(flags)?;
-
-      if fmt_flags.files.len() == 1
-        && fmt_flags.files[0].to_string_lossy() == "-"
-      {
-        let maybe_fmt_config = config.to_fmt_config()?;
-        tools::fmt::format_stdin(
-          fmt_flags,
-          maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-        )?;
-      } else {
-        tools::fmt::format(&config, fmt_flags).await?;
-      }
+      let cli_options = CliOptions::from_flags(flags.clone())?;
+      let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
+      tools::fmt::format(cli_options, fmt_options).await?;
       Ok(0)
     }
     DenoSubcommand::Init(init_flags) => {
@@ -148,7 +117,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if lint_flags.rules {
         tools::lint::print_rules_list(lint_flags.json);
       } else {
-        tools::lint::lint(flags, lint_flags).await?;
+        let cli_options = CliOptions::from_flags(flags)?;
+        let lint_options = cli_options.resolve_lint_options(lint_flags)?;
+        tools::lint::lint(cli_options, lint_options).await?;
       }
       Ok(0)
     }
@@ -159,7 +130,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags, run_flags).await
+        tools::run::run_script(flags).await
       }
     }
     DenoSubcommand::Task(task_flags) => {
@@ -168,7 +139,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Test(test_flags) => {
       if let Some(ref coverage_dir) = flags.coverage_dir {
         std::fs::create_dir_all(coverage_dir)
-          .with_context(|| format!("Failed creating: {}", coverage_dir))?;
+          .with_context(|| format!("Failed creating: {coverage_dir}"))?;
         // this is set in order to ensure spawned processes use the same
         // coverage directory
         env::set_var(
@@ -176,11 +147,13 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
           PathBuf::from(coverage_dir).canonicalize()?,
         );
       }
+      let cli_options = CliOptions::from_flags(flags)?;
+      let test_options = cli_options.resolve_test_options(test_flags)?;
 
-      if flags.watch.is_some() {
-        tools::test::run_tests_with_watch(flags, test_flags).await?;
+      if cli_options.watch_paths().is_some() {
+        tools::test::run_tests_with_watch(cli_options, test_options).await?;
       } else {
-        tools::test::run_tests(flags, test_flags).await?;
+        tools::test::run_tests(cli_options, test_options).await?;
       }
 
       Ok(0)
@@ -195,7 +168,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Upgrade(upgrade_flags) => {
-      tools::upgrade::upgrade(upgrade_flags).await?;
+      tools::upgrade::upgrade(flags, upgrade_flags).await?;
       Ok(0)
     }
     DenoSubcommand::Vendor(vendor_flags) => {
@@ -233,7 +206,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let mut error_string = format!("{:?}", error);
+      let mut error_string = format!("{error:?}");
       let mut error_code = 1;
 
       if let Some(e) = error.downcast_ref::<JsError>() {
@@ -260,6 +233,10 @@ pub fn main() {
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
+  deno_runtime::permissions::set_prompt_callbacks(
+    Box::new(util::draw_thread::DrawThread::hide),
+    Box::new(util::draw_thread::DrawThread::show),
+  );
 
   let args: Vec<String> = env::args().collect();
 
@@ -284,9 +261,8 @@ pub fn main() {
       }
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
-    if !flags.v8_flags.is_empty() {
-      init_v8_flags(&flags.v8_flags);
-    }
+
+    init_v8_flags(&flags.v8_flags, get_v8_flags_from_env());
 
     util::logger::init(flags.log_level);
 

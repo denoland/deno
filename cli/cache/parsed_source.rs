@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -17,7 +19,7 @@ use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 
-use super::common::run_sqlite_pragma;
+use super::common::INITIAL_PRAGMAS;
 use super::FastInsecureHasher;
 
 #[derive(Clone, Default)]
@@ -52,7 +54,7 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCacheSources {
 #[derive(Clone)]
 pub struct ParsedSourceCache {
   db_cache_path: Option<PathBuf>,
-  cli_version: String,
+  cli_version: &'static str,
   sources: ParsedSourceCacheSources,
 }
 
@@ -65,19 +67,23 @@ impl ParsedSourceCache {
     }
   }
 
-  pub fn get_parsed_source_from_module(
-    &self,
-    module: &deno_graph::Module,
-  ) -> Result<Option<ParsedSource>, AnyError> {
-    if let Some(source) = &module.maybe_source {
-      Ok(Some(self.get_or_parse_module(
-        &module.specifier,
-        source.clone(),
-        module.media_type,
-      )?))
-    } else {
-      Ok(None)
+  pub fn reset_for_file_watcher(&self) -> Self {
+    Self {
+      db_cache_path: self.db_cache_path.clone(),
+      cli_version: self.cli_version,
+      sources: Default::default(),
     }
+  }
+
+  pub fn get_parsed_source_from_esm_module(
+    &self,
+    module: &deno_graph::EsmModule,
+  ) -> Result<ParsedSource, deno_ast::Diagnostic> {
+    self.get_or_parse_module(
+      &module.specifier,
+      module.source.clone(),
+      module.media_type,
+    )
   }
 
   /// Gets the matching `ParsedSource` from the cache
@@ -110,7 +116,7 @@ impl ParsedSourceCache {
   pub fn as_analyzer(&self) -> Box<dyn deno_graph::ModuleAnalyzer> {
     match ParsedSourceCacheModuleAnalyzer::new(
       self.db_cache_path.as_deref(),
-      self.cli_version.clone(),
+      self.cli_version,
       self.sources.clone(),
     ) {
       Ok(analyzer) => Box::new(analyzer),
@@ -140,7 +146,7 @@ struct ParsedSourceCacheModuleAnalyzer {
 impl ParsedSourceCacheModuleAnalyzer {
   pub fn new(
     db_file_path: Option<&Path>,
-    cli_version: String,
+    cli_version: &'static str,
     sources: ParsedSourceCacheSources,
   ) -> Result<Self, AnyError> {
     log::debug!("Loading cached module analyzer.");
@@ -153,11 +159,10 @@ impl ParsedSourceCacheModuleAnalyzer {
 
   fn from_connection(
     conn: Connection,
-    cli_version: String,
+    cli_version: &'static str,
     sources: ParsedSourceCacheSources,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, cli_version)?;
+    initialize(&conn, cli_version)?;
 
     Ok(Self { conn, sources })
   }
@@ -181,7 +186,7 @@ impl ParsedSourceCacheModuleAnalyzer {
     let mut stmt = self.conn.prepare_cached(query)?;
     let mut rows = stmt.query(params![
       &specifier.as_str(),
-      &media_type.to_string(),
+      serialize_media_type(media_type),
       &expected_source_hash,
     ])?;
     if let Some(row) = rows.next()? {
@@ -208,11 +213,35 @@ impl ParsedSourceCacheModuleAnalyzer {
     let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier.as_str(),
-      &media_type.to_string(),
-      &source_hash.to_string(),
+      serialize_media_type(media_type),
+      &source_hash,
       &serde_json::to_string(&module_info)?,
     ])?;
     Ok(())
+  }
+}
+
+// todo(dsherret): change this to be stored as an integer next time
+// the cache version is bumped
+fn serialize_media_type(media_type: MediaType) -> &'static str {
+  use MediaType::*;
+  match media_type {
+    JavaScript => "1",
+    Jsx => "2",
+    Mjs => "3",
+    Cjs => "4",
+    TypeScript => "5",
+    Mts => "6",
+    Cts => "7",
+    Dts => "8",
+    Dmts => "9",
+    Dcts => "10",
+    Tsx => "11",
+    Json => "12",
+    Wasm => "13",
+    TsBuildInfo => "14",
+    SourceMap => "15",
+    Unknown => "16",
   }
 }
 
@@ -258,27 +287,27 @@ impl deno_graph::ModuleAnalyzer for ParsedSourceCacheModuleAnalyzer {
   }
 }
 
-fn create_tables(
+fn initialize(
   conn: &Connection,
-  cli_version: String,
+  cli_version: &'static str,
 ) -> Result<(), AnyError> {
-  // INT doesn't store up to u64, so use TEXT for source_hash
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS moduleinfocache (
-        specifier TEXT PRIMARY KEY,
-        media_type TEXT NOT NULL,
-        source_hash TEXT NOT NULL,
-        module_info TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )",
-    [],
-  )?;
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  -- INT doesn't store up to u64, so use TEXT for source_hash
+  CREATE TABLE IF NOT EXISTS moduleinfocache (
+    specifier TEXT PRIMARY KEY,
+    media_type TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    module_info TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  "
+  );
+
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn
@@ -288,7 +317,7 @@ fn create_tables(
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(cli_version) {
     conn.execute("DELETE FROM moduleinfocache", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
@@ -314,7 +343,7 @@ mod test {
     let conn = Connection::open_in_memory().unwrap();
     let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
       conn,
-      "1.0.0".to_string(),
+      "1.0.0",
       Default::default(),
     )
     .unwrap();
@@ -377,7 +406,7 @@ mod test {
     let conn = cache.conn;
     let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
       conn,
-      "1.0.0".to_string(),
+      "1.0.0",
       Default::default(),
     )
     .unwrap();
@@ -394,7 +423,7 @@ mod test {
     let conn = cache.conn;
     let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
       conn,
-      "1.0.1".to_string(),
+      "1.0.1",
       Default::default(),
     )
     .unwrap();

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { assertEquals, loadTestLibrary } from "./common.js";
 
@@ -14,4 +14,5 @@ Deno.test("napi object wrap new", function () {
   obj.increment();
   obj.set_value(10);
   assertEquals(obj.get_value(), 10);
+  assertEquals(objectWrap.NapiObject.factory(), 64);
 });

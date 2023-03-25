@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "./test_util.ts";
 
 Deno.test(
@@ -151,6 +151,8 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
   const process = new Deno.Command(Deno.execPath(), {
     args: ["eval", "--unstable", scriptText],
     stdin: "piped",
+    stdout: "piped",
+    stderr: "null",
   }).spawn();
 
   const waitSignal = async () => {

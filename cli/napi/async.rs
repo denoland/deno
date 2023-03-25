@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_runtime::deno_napi::*;
 
@@ -39,7 +39,7 @@ fn napi_cancel_async_work(
 /// Frees a previously allocated work object.
 #[napi_sym::napi_sym]
 fn napi_delete_async_work(_env: &mut Env, work: napi_async_work) -> Result {
-  let work = Box::from_raw(work);
+  let work = Box::from_raw(work as *mut AsyncWork);
   drop(work);
 
   Ok(())

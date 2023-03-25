@@ -1,15 +1,25 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use serde::de::{self, SeqAccess as _, Visitor};
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use serde::de::SeqAccess as _;
+use serde::de::Visitor;
+use serde::de::{self};
 use serde::Deserialize;
 
-use crate::error::{Error, Result};
-use crate::keys::{v8_struct_key, KeyCache};
+use crate::error::Error;
+use crate::error::Result;
+use crate::keys::v8_struct_key;
+use crate::keys::KeyCache;
+use crate::magic;
+use crate::magic::transl8::visit_magic;
 use crate::magic::transl8::FromV8;
-use crate::magic::transl8::{visit_magic, MagicType};
+use crate::magic::transl8::MagicType;
 use crate::payload::ValueType;
-use crate::{
-  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
-};
+use crate::AnyValue;
+use crate::BigInt;
+use crate::ByteString;
+use crate::DetachedBuffer;
+use crate::StringOrBuffer;
+use crate::U16String;
+use crate::ZeroCopyBuf;
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -126,6 +136,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
           self.deserialize_f64(visitor)
         }
       }
+      ValueType::BigInt => Err(Error::UnsupportedType),
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
@@ -163,18 +174,17 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     self.deserialize_f64(visitor)
   }
-
   fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
   where
     V: Visitor<'de>,
   {
     visitor.visit_f64(
       if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
-        x.value() as f64
+        x.value()
       } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
         bigint_to_f64(x)
       } else if let Some(x) = self.input.number_value(self.scope) {
-        x as f64
+        x
       } else if let Some(x) = self.input.to_big_int(self.scope) {
         bigint_to_f64(x)
       } else {
@@ -340,8 +350,14 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       StringOrBuffer::MAGIC_NAME => {
         visit_magic(visitor, StringOrBuffer::from_v8(self.scope, self.input)?)
       }
+      BigInt::MAGIC_NAME => {
+        visit_magic(visitor, BigInt::from_v8(self.scope, self.input)?)
+      }
       magic::Value::MAGIC_NAME => {
         visit_magic(visitor, magic::Value::from_v8(self.scope, self.input)?)
+      }
+      AnyValue::MAGIC_NAME => {
+        visit_magic(visitor, AnyValue::from_v8(self.scope, self.input)?)
       }
       _ => {
         // Regular struct

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
 //! <https://chromedevtools.github.io/devtools-protocol/>
@@ -109,6 +109,16 @@ impl Drop for JsRuntimeInspector {
 impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
     &self.v8_inspector_client
+  }
+
+  unsafe fn base_ptr(
+    this: *const Self,
+  ) -> *const v8::inspector::V8InspectorClientBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_inspector_client) }
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
@@ -343,6 +353,23 @@ impl JsRuntimeInspector {
         PollState::Polling => {} // Poll the session handler again.
         PollState::Parked => thread::park(), // Park the thread.
         _ => unreachable!(),
+      };
+    }
+  }
+
+  /// This function blocks the thread until at least one inspector client has
+  /// established a websocket connection.
+  pub fn wait_for_session(&mut self) {
+    loop {
+      match self.sessions.get_mut().established.iter_mut().next() {
+        Some(_session) => {
+          self.flags.get_mut().waiting_for_session = false;
+          break;
+        }
+        None => {
+          self.flags.get_mut().waiting_for_session = true;
+          let _ = self.poll_sessions(None).unwrap();
+        }
       };
     }
   }
@@ -630,6 +657,14 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     &self.v8_channel
   }
 
+  unsafe fn base_ptr(this: *const Self) -> *const v8::inspector::ChannelBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_channel) }
+  }
+
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
     &mut self.v8_channel
   }
@@ -679,7 +714,8 @@ pub struct LocalInspectorSession {
   v8_session_rx: UnboundedReceiver<InspectorMsg>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
-  notification_queue: Vec<Value>,
+  notification_tx: UnboundedSender<Value>,
+  notification_rx: Option<UnboundedReceiver<Value>>,
 }
 
 impl LocalInspectorSession {
@@ -690,19 +726,20 @@ impl LocalInspectorSession {
     let response_tx_map = HashMap::new();
     let next_message_id = 0;
 
-    let notification_queue = Vec::new();
+    let (notification_tx, notification_rx) = mpsc::unbounded::<Value>();
 
     Self {
       v8_session_tx,
       v8_session_rx,
       response_tx_map,
       next_message_id,
-      notification_queue,
+      notification_tx,
+      notification_rx: Some(notification_rx),
     }
   }
 
-  pub fn notifications(&mut self) -> Vec<Value> {
-    self.notification_queue.split_off(0)
+  pub fn take_notification_rx(&mut self) -> UnboundedReceiver<Value> {
+    self.notification_rx.take().unwrap()
   }
 
   pub async fn post_message<T: serde::Serialize>(
@@ -778,7 +815,8 @@ impl LocalInspectorSession {
         .unwrap();
     } else {
       let message = serde_json::from_str(&inspector_msg.content).unwrap();
-      self.notification_queue.push(message);
+      // Ignore if the receiver has been dropped.
+      let _ = self.notification_tx.unbounded_send(message);
     }
   }
 }

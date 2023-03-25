@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 
@@ -13,7 +13,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::common::run_sqlite_pragma;
+use super::common::INITIAL_PRAGMAS;
 use super::FastInsecureHasher;
 
 // todo(dsherret): use deno_ast::CjsAnalysisData directly when upgrading deno_ast
@@ -24,6 +24,7 @@ struct CjsAnalysisData {
   pub reexports: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct NodeAnalysisCache {
   db_file_path: Option<PathBuf>,
   inner: Arc<Mutex<Option<Option<NodeAnalysisCacheInner>>>>,
@@ -101,13 +102,13 @@ impl NodeAnalysisCache {
       None => {
         let maybe_inner = match NodeAnalysisCacheInner::new(
           self.db_file_path.as_deref(),
-          crate::version::deno(),
+          crate::version::deno().to_string(),
         ) {
           Ok(cache) => Some(cache),
           Err(err) => {
             // should never error here, but if it ever does don't fail
             if cfg!(debug_assertions) {
-              panic!("Error creating node analysis cache: {:#}", err);
+              panic!("Error creating node analysis cache: {err:#}");
             } else {
               log::debug!("Error creating node analysis cache: {:#}", err);
               None
@@ -123,7 +124,7 @@ impl NodeAnalysisCache {
       Err(err) => {
         // should never error here, but if it ever does don't fail
         if cfg!(debug_assertions) {
-          panic!("Error using esm analysis: {:#}", err);
+          panic!("Error using esm analysis: {err:#}");
         } else {
           log::debug!("Error using esm analysis: {:#}", err);
         }
@@ -154,8 +155,7 @@ impl NodeAnalysisCacheInner {
     conn: Connection,
     version: String,
   ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, &version)?;
+    initialize(&conn, &version)?;
 
     Ok(Self { conn })
   }
@@ -252,48 +252,39 @@ impl NodeAnalysisCacheInner {
     let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier,
-      &source_hash.to_string(),
+      &source_hash,
       &serde_json::to_string(top_level_decls)?,
     ])?;
     Ok(())
   }
 }
 
-fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
+fn initialize(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
   // INT doesn't store up to u64, so use TEXT for source_hash
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS cjsanalysiscache (
-        specifier TEXT PRIMARY KEY,
-        source_hash TEXT NOT NULL,
-        data TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE UNIQUE INDEX IF NOT EXISTS cjsanalysiscacheidx
-    ON cjsanalysiscache(specifier)",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS esmglobalscache (
-        specifier TEXT PRIMARY KEY,
-        source_hash TEXT NOT NULL,
-        data TEXT NOT NULL
-      )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE UNIQUE INDEX IF NOT EXISTS esmglobalscacheidx
-      ON esmglobalscache(specifier)",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )",
-    [],
-  )?;
+  let query = format!(
+    "{INITIAL_PRAGMAS}
+  CREATE TABLE IF NOT EXISTS cjsanalysiscache (
+    specifier TEXT PRIMARY KEY,
+    source_hash TEXT NOT NULL,
+    data TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS cjsanalysiscacheidx
+  ON cjsanalysiscache(specifier);
+  CREATE TABLE IF NOT EXISTS esmglobalscache (
+    specifier TEXT PRIMARY KEY,
+    source_hash TEXT NOT NULL,
+    data TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS esmglobalscacheidx
+      ON esmglobalscache(specifier);
+  CREATE TABLE IF NOT EXISTS info (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  "
+  );
+
+  conn.execute_batch(&query)?;
 
   // delete the cache when the CLI version changes
   let data_cli_version: Option<String> = conn
@@ -303,7 +294,7 @@ fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
       |row| row.get(0),
     )
     .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
+  if data_cli_version.as_deref() != Some(cli_version) {
     conn.execute("DELETE FROM cjsanalysiscache", params![])?;
     conn.execute("DELETE FROM esmglobalscache", params![])?;
     let mut stmt = conn

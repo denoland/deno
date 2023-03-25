@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -120,7 +120,7 @@ fn validate_options(
       format!("Failed to canonicalize: {}", output_dir.display())
     })?;
 
-    if import_map_path.starts_with(&output_dir) {
+    if import_map_path.starts_with(output_dir) {
       // canonicalize to make the test for this pass on the CI
       let cwd = canonicalize_path(&std::env::current_dir()?)?;
       // We don't allow using the output directory to help generate the
@@ -153,9 +153,12 @@ fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
     Some(f) => f,
     None => return false,
   };
+
   let fmt_config = ps
     .options
-    .to_fmt_config()
+    .maybe_config_file()
+    .as_ref()
+    .and_then(|config| config.to_fmt_config().ok())
     .unwrap_or_default()
     .unwrap_or_default();
   let result = update_config_file(
@@ -265,11 +268,8 @@ async fn create_graph(
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| {
-      let url = resolve_url_or_path(p)?;
-      Ok((url, deno_graph::ModuleKind::Esm))
-    })
-    .collect::<Result<Vec<_>, AnyError>>()?;
+    .map(|p| resolve_url_or_path(p, ps.options.initial_cwd()))
+    .collect::<Result<Vec<_>, _>>()?;
 
   ps.create_graph(entry_points).await
 }

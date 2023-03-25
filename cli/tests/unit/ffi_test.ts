@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { assertThrows } from "./test_util.ts";
 
@@ -29,7 +29,8 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
     Deno.dlopen("/usr/lib/libc.so.6", {});
   }, Deno.errors.PermissionDenied);
   const fnptr = new Deno.UnsafeFnPointer(
-    0n,
+    // @ts-expect-error: Not NonNullable but null check is after premissions check.
+    null,
     {
       parameters: ["u32", "pointer"],
       result: "void",
@@ -41,7 +42,10 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
   assertThrows(() => {
     Deno.UnsafePointer.of(new Uint8Array(0));
   }, Deno.errors.PermissionDenied);
-  const ptrView = new Deno.UnsafePointerView(0n);
+  const ptrView = new Deno.UnsafePointerView(
+    // @ts-expect-error: Not NonNullable but null check is after premissions check.
+    null,
+  );
   assertThrows(() => {
     ptrView.copyInto(new Uint8Array(0));
   }, Deno.errors.PermissionDenied);

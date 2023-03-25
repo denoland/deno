@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   dirname,
   fromFileUrl,
@@ -8,7 +8,7 @@ import {
 } from "../test_util/std/path/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
 export { existsSync, walk } from "../test_util/std/fs/mod.ts";
-export { TextLineStream } from "../test_util/std/streams/delimiter.ts";
+export { TextLineStream } from "../test_util/std/streams/text_line_stream.ts";
 export { delay } from "../test_util/std/async/delay.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));

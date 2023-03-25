@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertThrows, fail } from "./test_util.ts";
 
 Deno.test("Errors work", () => {
@@ -15,6 +15,7 @@ Deno.test("Errors work", () => {
   assert(new Deno.errors.InvalidData("msg") instanceof Error);
   assert(new Deno.errors.TimedOut("msg") instanceof Error);
   assert(new Deno.errors.Interrupted("msg") instanceof Error);
+  assert(new Deno.errors.WouldBlock("msg") instanceof Error);
   assert(new Deno.errors.WriteZero("msg") instanceof Error);
   assert(new Deno.errors.UnexpectedEof("msg") instanceof Error);
   assert(new Deno.errors.BadResource("msg") instanceof Error);

@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
@@ -6,7 +8,7 @@ pub trait Pty: Read {
   fn write_text(&mut self, text: &str);
 
   fn write_line(&mut self, text: &str) {
-    self.write_text(&format!("{}\n", text));
+    self.write_text(&format!("{text}\n"));
   }
 
   /// Reads the output to the EOF.
@@ -24,7 +26,7 @@ pub fn create_pty(
   cwd: impl AsRef<Path>,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn Pty> {
-  let fork = pty::fork::Fork::from_ptmx().unwrap();
+  let fork = pty2::fork::Fork::from_ptmx().unwrap();
   if fork.is_parent().is_ok() {
     Box::new(unix::UnixPty { fork })
   } else {
@@ -48,7 +50,7 @@ mod unix {
   use super::Pty;
 
   pub struct UnixPty {
-    pub fork: pty::fork::Fork,
+    pub fork: pty2::fork::Fork,
   }
 
   impl Drop for UnixPty {
@@ -440,7 +442,7 @@ mod windows {
     let mut parts = env_vars
       .into_iter()
       // each environment variable is in the form `name=value\0`
-      .map(|(key, value)| format!("{}={}\0", key, value))
+      .map(|(key, value)| format!("{key}={value}\0"))
       .collect::<Vec<_>>();
 
     // all strings in an environment block must be case insensitively

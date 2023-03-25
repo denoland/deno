@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
@@ -17,20 +17,23 @@ use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::emit::emit_parsed_source;
 use crate::file_fetcher::FileFetcher;
+use crate::graph_util::build_graph_with_npm_resolution;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::GraphData;
-use crate::graph_util::ModuleEntry;
+use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
-use crate::npm::resolve_npm_package_reqs;
+use crate::npm::create_npm_fs_resolver;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
-use crate::npm::RealNpmRegistryApi;
-use crate::resolver::CliResolver;
+use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
+use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -38,34 +41,29 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
-use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::create_graph;
-use deno_graph::source::CacheInfo;
-use deno_graph::source::LoadFuture;
+use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
-use deno_graph::ModuleKind;
-use deno_graph::Resolved;
+use deno_graph::Module;
+use deno_graph::ModuleGraph;
+use deno_graph::Resolution;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use log::warn;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -76,12 +74,13 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: DenoDir,
-  pub file_fetcher: FileFetcher,
+  pub file_fetcher: Arc<FileFetcher>,
+  pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
   pub emit_options_hash: u64,
-  pub graph_data: Arc<RwLock<GraphData>>,
+  graph_container: ModuleGraphContainer,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -91,14 +90,16 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  maybe_resolver: Option<Arc<CliResolver>>,
+  pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
+  pub npm_api: NpmRegistryApi,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
+  pub npm_resolution: NpmResolution,
+  pub package_json_deps_installer: PackageJsonDepsInstaller,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
-  node_std_graph_prepared: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -128,21 +129,62 @@ impl ProcState {
     let ps =
       Self::build_with_sender(cli_options, Some(files_to_watch_sender.clone()))
         .await?;
+    ps.init_watcher();
+    Ok(ps)
+  }
 
-    // Add the extra files listed in the watch flag
-    if let Some(watch_paths) = ps.options.watch_paths() {
+  /// Reset all runtime state to its default. This should be used on file
+  /// watcher restarts.
+  pub fn reset_for_file_watcher(&mut self) {
+    self.0 = Arc::new(Inner {
+      dir: self.dir.clone(),
+      options: self.options.clone(),
+      emit_cache: self.emit_cache.clone(),
+      emit_options_hash: self.emit_options_hash,
+      emit_options: self.emit_options.clone(),
+      file_fetcher: self.file_fetcher.clone(),
+      http_client: self.http_client.clone(),
+      graph_container: Default::default(),
+      lockfile: self.lockfile.clone(),
+      maybe_import_map: self.maybe_import_map.clone(),
+      maybe_inspector_server: self.maybe_inspector_server.clone(),
+      root_cert_store: self.root_cert_store.clone(),
+      blob_store: self.blob_store.clone(),
+      broadcast_channel: Default::default(),
+      shared_array_buffer_store: Default::default(),
+      compiled_wasm_module_store: Default::default(),
+      parsed_source_cache: self.parsed_source_cache.reset_for_file_watcher(),
+      resolver: self.resolver.clone(),
+      maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
+      node_analysis_cache: self.node_analysis_cache.clone(),
+      npm_api: self.npm_api.clone(),
+      npm_cache: self.npm_cache.clone(),
+      npm_resolver: self.npm_resolver.clone(),
+      npm_resolution: self.npm_resolution.clone(),
+      package_json_deps_installer: self.package_json_deps_installer.clone(),
+      cjs_resolutions: Default::default(),
+      progress_bar: self.progress_bar.clone(),
+    });
+    self.init_watcher();
+  }
+
+  // Add invariant files like the import map and explicit watch flag list to
+  // the watcher. Dedup for build_for_file_watcher and reset_for_file_watcher.
+  fn init_watcher(&self) {
+    let files_to_watch_sender = match &self.0.maybe_file_watcher_reporter {
+      Some(reporter) => &reporter.sender,
+      None => return,
+    };
+    if let Some(watch_paths) = self.options.watch_paths() {
       files_to_watch_sender.send(watch_paths.clone()).unwrap();
     }
-
-    if let Ok(Some(import_map_path)) = ps
+    if let Ok(Some(import_map_path)) = self
       .options
       .resolve_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
     {
       files_to_watch_sender.send(vec![import_map_path]).unwrap();
     }
-
-    Ok(ps)
   }
 
   async fn build_with_sender(
@@ -158,7 +200,7 @@ impl ProcState {
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
-    let progress_bar = ProgressBar::default();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
     let http_client = HttpClient::new(
       Some(root_cert_store.clone()),
       cli_options.unsafely_ignore_certificate_errors().clone(),
@@ -170,36 +212,63 @@ impl ProcState {
       http_client.clone(),
       blob_store.clone(),
       Some(progress_bar.clone()),
-    )?;
+    );
 
     let lockfile = cli_options.maybe_lock_file();
-    let maybe_import_map_specifier =
-      cli_options.resolve_import_map_specifier()?;
 
-    let maybe_import_map =
-      if let Some(import_map_specifier) = maybe_import_map_specifier {
-        let file = file_fetcher
-          .fetch(&import_map_specifier, &mut Permissions::allow_all())
-          .await
-          .context(format!(
-            "Unable to load '{}' import map",
-            import_map_specifier
-          ))?;
-        let import_map =
-          import_map_from_text(&import_map_specifier, &file.source)?;
-        Some(Arc::new(import_map))
-      } else {
-        None
-      };
-
+    let npm_registry_url = NpmRegistryApi::default_url().to_owned();
+    let npm_cache = NpmCache::from_deno_dir(
+      &dir,
+      cli_options.cache_setting(),
+      http_client.clone(),
+      progress_bar.clone(),
+    );
+    let npm_api = NpmRegistryApi::new(
+      npm_registry_url.clone(),
+      npm_cache.clone(),
+      http_client.clone(),
+      progress_bar.clone(),
+    );
+    let npm_snapshot = cli_options
+      .resolve_npm_resolution_snapshot(&npm_api)
+      .await?;
+    let npm_resolution = NpmResolution::new(
+      npm_api.clone(),
+      npm_snapshot,
+      lockfile.as_ref().cloned(),
+    );
+    let npm_fs_resolver = create_npm_fs_resolver(
+      npm_cache,
+      &progress_bar,
+      npm_registry_url,
+      npm_resolution.clone(),
+      cli_options.node_modules_dir_path(),
+    );
+    let npm_resolver = NpmPackageResolver::new(
+      npm_resolution.clone(),
+      npm_fs_resolver,
+      lockfile.as_ref().cloned(),
+    );
+    let package_json_deps_installer = PackageJsonDepsInstaller::new(
+      npm_api.clone(),
+      npm_resolution.clone(),
+      cli_options.maybe_package_json_deps(),
+    );
+    let maybe_import_map = cli_options
+      .resolve_import_map(&file_fetcher)
+      .await?
+      .map(Arc::new);
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let resolver = Arc::new(CliGraphResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
-    );
-    let maybe_resolver = maybe_cli_resolver.map(Arc::new);
+      cli_options.no_npm(),
+      npm_api.clone(),
+      npm_resolution.clone(),
+      package_json_deps_installer.clone(),
+    ));
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -215,33 +284,12 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = RealNpmRegistryApi::default_url();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let api = RealNpmRegistryApi::new(
-      registry_url,
-      npm_cache.clone(),
-      http_client,
-      progress_bar.clone(),
-    );
-    let maybe_lockfile = lockfile.as_ref().cloned();
-    let mut npm_resolver = NpmPackageResolver::new(
-      npm_cache.clone(),
-      api,
-      cli_options.no_npm(),
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
-    );
-    if let Some(lockfile) = maybe_lockfile.clone() {
-      npm_resolver
-        .add_lockfile_and_maybe_regenerate_snapshot(lockfile)
-        .await?;
-    }
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -254,8 +302,9 @@ impl ProcState {
         .write_hashable(&emit_options)
         .finish(),
       emit_options,
-      file_fetcher,
-      graph_data: Default::default(),
+      file_fetcher: Arc::new(file_fetcher),
+      http_client,
+      graph_container: Default::default(),
       lockfile,
       maybe_import_map,
       maybe_inspector_server,
@@ -265,14 +314,16 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       parsed_source_cache,
-      maybe_resolver,
+      resolver,
       maybe_file_watcher_reporter,
       node_analysis_cache,
+      npm_api,
       npm_cache,
       npm_resolver,
+      npm_resolution,
+      package_json_deps_installer,
       cjs_resolutions: Default::default(),
       progress_bar,
-      node_std_graph_prepared: AtomicBool::new(false),
     })))
   }
 
@@ -286,85 +337,23 @@ impl ProcState {
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: TsTypeLib,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
-    reload_on_watch: bool,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
-    let has_root_npm_specifier = roots.iter().any(|r| {
-      r.scheme() == "npm" && NpmPackageReference::from_specifier(r).is_ok()
-    });
-    let roots = roots
-      .into_iter()
-      .map(|s| (s, ModuleKind::Esm))
-      .collect::<Vec<_>>();
-
-    if !reload_on_watch && !has_root_npm_specifier {
-      let graph_data = self.graph_data.read();
-      if self.options.type_check_mode() == TypeCheckMode::None
-        || graph_data.is_type_checked(&roots, &lib)
-      {
-        if let Some(result) = graph_data.check(
-          &roots,
-          self.options.type_check_mode() != TypeCheckMode::None,
-          false,
-        ) {
-          // TODO(bartlomieju): this is strange... ideally there should be only
-          // one codepath in `prepare_module_load` so we don't forget things
-          // like writing a lockfile. Figure a way to refactor this function.
-          if let Some(ref lockfile) = self.lockfile {
-            let g = lockfile.lock();
-            g.write()?;
-          }
-          return result;
-        }
-      }
-    }
     let mut cache = cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
-      root_permissions.clone(),
-      dynamic_permissions.clone(),
+      self.options.resolve_file_header_overrides(),
+      root_permissions,
+      dynamic_permissions,
+      self.options.node_modules_dir_specifier(),
     );
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver =
-      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
-
-    struct ProcStateLoader<'a> {
-      inner: &'a mut cache::FetchCacher,
-      graph_data: Arc<RwLock<GraphData>>,
-      reload: bool,
-    }
-    impl Loader for ProcStateLoader<'_> {
-      fn get_cache_info(
-        &self,
-        specifier: &ModuleSpecifier,
-      ) -> Option<CacheInfo> {
-        self.inner.get_cache_info(specifier)
-      }
-      fn load(
-        &mut self,
-        specifier: &ModuleSpecifier,
-        is_dynamic: bool,
-      ) -> LoadFuture {
-        let graph_data = self.graph_data.read();
-        let found_specifier = graph_data.follow_redirect(specifier);
-        match graph_data.get(&found_specifier) {
-          Some(_) if !self.reload => {
-            Box::pin(futures::future::ready(Err(anyhow!(""))))
-          }
-          _ => self.inner.load(specifier, is_dynamic),
-        }
-      }
-    }
-    let mut loader = ProcStateLoader {
-      inner: &mut cache,
-      graph_data: self.graph_data.clone(),
-      reload: reload_on_watch,
-    };
-
+    let graph_resolver = self.resolver.as_graph_resolver();
+    let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
     let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
       if let Some(reporter) = &self.maybe_file_watcher_reporter {
         Some(reporter)
@@ -373,59 +362,60 @@ impl ProcState {
       };
 
     let analyzer = self.parsed_source_cache.as_analyzer();
+
     log::debug!("Creating module graph.");
-    let graph = create_graph(
+    let mut graph_update_permit =
+      self.graph_container.acquire_update_permit().await;
+    let graph = graph_update_permit.graph_mut();
+
+    // Determine any modules that have already been emitted this session and
+    // should be skipped.
+    let reload_exclusions: HashSet<ModuleSpecifier> =
+      graph.specifiers().map(|(s, _)| s.clone()).collect();
+
+    build_graph_with_npm_resolution(
+      graph,
+      &self.npm_resolver,
       roots.clone(),
-      &mut loader,
-      deno_graph::GraphOptions {
+      &mut cache,
+      deno_graph::BuildOptions {
         is_dynamic,
         imports: maybe_imports,
-        resolver: maybe_resolver,
+        resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_npm_resolver),
         module_analyzer: Some(&*analyzer),
         reporter: maybe_file_watcher_reporter,
       },
     )
-    .await;
+    .await?;
 
     // If there is a lockfile, validate the integrity of all the modules.
     if let Some(lockfile) = &self.lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
+      graph_lock_or_exit(graph, &mut lockfile.lock());
     }
 
-    // Determine any modules that have already been emitted this session and
-    // should be skipped.
-    let reload_exclusions: HashSet<ModuleSpecifier> = {
-      let graph_data = self.graph_data.read();
-      graph_data.entries().map(|(s, _)| s).cloned().collect()
-    };
+    graph_valid_with_cli_options(graph, &roots, &self.options)?;
+    // save the graph and get a reference to the new graph
+    let graph = graph_update_permit.commit();
 
-    let npm_package_reqs = {
-      let mut graph_data = self.graph_data.write();
-      graph_data.add_graph(&graph, reload_on_watch);
-      let check_js = self.options.check_js();
-      graph_data
-        .check(
-          &roots,
-          self.options.type_check_mode() != TypeCheckMode::None,
-          check_js,
-        )
-        .unwrap()?;
-      graph_data.npm_package_reqs().clone()
-    };
-
-    if !npm_package_reqs.is_empty() {
-      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
-      self.prepare_node_std_graph().await?;
+    if graph.has_node_specifier
+      && self.options.type_check_mode() != TypeCheckMode::None
+    {
+      self
+        .npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
     }
 
     drop(_pb_clear_guard);
 
     // type check if necessary
-    let is_std_node = roots.len() == 1 && roots[0].0 == *node::MODULE_ALL_URL;
-    if self.options.type_check_mode() != TypeCheckMode::None && !is_std_node {
+    if self.options.type_check_mode() != TypeCheckMode::None
+      && !self.graph_container.is_type_checked(&roots, lib)
+    {
       log::debug!("Type checking.");
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
-      let roots = roots.clone();
+      let graph = Arc::new(graph.segment(&roots));
       let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
@@ -436,27 +426,17 @@ impl ProcState {
           .ts_config,
         log_checks: true,
         reload: self.options.reload_flag()
-          && !roots.iter().all(|r| reload_exclusions.contains(&r.0)),
+          && !roots.iter().all(|r| reload_exclusions.contains(r)),
       };
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
-      let graph_data = self.graph_data.clone();
-      let check_result = check::check(
-        &roots,
-        graph_data,
-        &check_cache,
-        self.npm_resolver.clone(),
-        options,
-      )?;
+      let check_result =
+        check::check(graph, &check_cache, &self.npm_resolver, options)?;
+      self.graph_container.set_type_checked(&roots, lib);
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
       log::debug!("{}", check_result.stats);
-    }
-
-    if self.options.type_check_mode() != TypeCheckMode::None {
-      let mut graph_data = self.graph_data.write();
-      graph_data.set_type_checked(&roots, lib);
     }
 
     // any updates to the lockfile should be updated now
@@ -480,32 +460,17 @@ impl ProcState {
 
     let specifiers = files
       .iter()
-      .map(|file| resolve_url_or_path(file))
+      .map(|file| resolve_url_or_path(file, self.options.initial_cwd()))
       .collect::<Result<Vec<_>, _>>()?;
     self
       .prepare_module_load(
         specifiers,
         false,
         lib,
-        Permissions::allow_all(),
-        Permissions::allow_all(),
-        false,
+        PermissionsContainer::allow_all(),
+        PermissionsContainer::allow_all(),
       )
       .await
-  }
-
-  /// Add the builtin node modules to the graph data.
-  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
-    if self.node_std_graph_prepared.load(Ordering::Relaxed) {
-      return Ok(());
-    }
-
-    let node_std_graph = self
-      .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
-      .await?;
-    self.graph_data.write().add_graph(&node_std_graph, false);
-    self.node_std_graph_prepared.store(true, Ordering::Relaxed);
-    Ok(())
   }
 
   fn handle_node_resolve_result(
@@ -529,93 +494,125 @@ impl ProcState {
     &self,
     specifier: &str,
     referrer: &str,
+    permissions: &mut PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
-      if self.npm_resolver.in_npm_package(&referrer) {
+    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
+    // call - maybe it should be caller's responsibility to pass it as an arg?
+    let cwd = std::env::current_dir().context("Unable to get CWD")?;
+    let referrer_result = deno_core::resolve_url_or_path(referrer, &cwd);
+
+    if let Ok(referrer) = referrer_result.as_ref() {
+      if self.npm_resolver.in_npm_package(referrer) {
         // we're in an npm package, so use node resolution
         return self
           .handle_node_resolve_result(node::node_resolve(
             specifier,
-            &referrer,
+            referrer,
             NodeResolutionMode::Execution,
             &self.npm_resolver,
+            permissions,
           ))
           .with_context(|| {
-            format!("Could not resolve '{}' from '{}'.", specifier, referrer)
+            format!("Could not resolve '{specifier}' from '{referrer}'.")
           });
       }
 
-      let graph_data = self.graph_data.read();
-      let found_referrer = graph_data.follow_redirect(&referrer);
-      let maybe_resolved = match graph_data.get(&found_referrer) {
-        Some(ModuleEntry::Module { dependencies, .. }) => {
-          dependencies.get(specifier).map(|d| &d.maybe_code)
+      let graph = self.graph_container.graph();
+      let maybe_resolved = match graph.get(referrer) {
+        Some(Module::Esm(module)) => {
+          module.dependencies.get(specifier).map(|d| &d.maybe_code)
         }
         _ => None,
       };
 
       match maybe_resolved {
-        Some(Resolved::Ok { specifier, .. }) => {
-          if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
-          {
-            if !self.options.unstable()
-              && matches!(found_referrer.scheme(), "http" | "https")
-            {
-              return Err(custom_error(
-                "NotSupported",
-                format!("importing npm specifiers in remote modules requires the --unstable flag (referrer: {})", found_referrer),
-              ));
-            }
+        Some(Resolution::Ok(resolved)) => {
+          let specifier = &resolved.specifier;
 
-            return self
+          return match graph.get(specifier) {
+            Some(Module::Npm(module)) => self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
-                &reference,
+                &module.nv_reference,
                 NodeResolutionMode::Execution,
                 &self.npm_resolver,
+                permissions,
               ))
-              .with_context(|| format!("Could not resolve '{}'.", reference));
-          } else {
-            return Ok(specifier.clone());
-          }
+              .with_context(|| {
+                format!("Could not resolve '{}'.", module.nv_reference)
+              }),
+            Some(Module::Node(module)) => {
+              node::resolve_builtin_node_module(&module.module_name)
+            }
+            Some(Module::Esm(module)) => Ok(module.specifier.clone()),
+            Some(Module::Json(module)) => Ok(module.specifier.clone()),
+            Some(Module::External(module)) => {
+              Ok(node::resolve_specifier_into_node_modules(&module.specifier))
+            }
+            None => Ok(specifier.clone()),
+          };
         }
-        Some(Resolved::Err(err)) => {
+        Some(Resolution::Err(err)) => {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
           ))
         }
-        Some(Resolved::None) | None => {}
+        Some(Resolution::None) | None => {}
       }
+    }
+
+    // Built-in Node modules
+    if let Some(module_name) = specifier.strip_prefix("node:") {
+      return node::resolve_builtin_node_module(module_name);
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
-    let referrer = if referrer.is_empty()
-      && matches!(self.options.sub_command(), DenoSubcommand::Repl(_))
-    {
-      deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
+    let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
+    let referrer = if referrer.is_empty() && is_repl {
+      deno_core::resolve_path("./$deno$repl.ts", &cwd)?
     } else {
-      deno_core::resolve_url_or_path(referrer).unwrap()
+      referrer_result?
     };
 
-    if let Some(resolver) = &self.maybe_resolver {
-      resolver.resolve(specifier, &referrer).to_result()
-    } else {
-      deno_core::resolve_import(specifier, referrer.as_str())
-        .map_err(|err| err.into())
+    // FIXME(bartlomieju): this is another hack way to provide NPM specifier
+    // support in REPL. This should be fixed.
+    let resolution = self.resolver.resolve(specifier, &referrer);
+
+    if is_repl {
+      let specifier = resolution
+        .as_ref()
+        .ok()
+        .map(Cow::Borrowed)
+        .or_else(|| ModuleSpecifier::parse(specifier).ok().map(Cow::Owned));
+      if let Some(specifier) = specifier {
+        if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          let reference =
+            self.npm_resolution.pkg_req_ref_to_nv_ref(reference)?;
+          return self
+            .handle_node_resolve_result(node::node_resolve_npm_reference(
+              &reference,
+              deno_runtime::deno_node::NodeResolutionMode::Execution,
+              &self.npm_resolver,
+              permissions,
+            ))
+            .with_context(|| format!("Could not resolve '{reference}'."));
+        }
+      }
     }
+
+    resolution
   }
 
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {
-    let graph_data = self.graph_data.read();
-    for (specifier, entry) in graph_data.entries() {
-      if let ModuleEntry::Module {
-        code, media_type, ..
-      } = entry
-      {
+    let graph = self.graph();
+    for module in graph.modules() {
+      if let Module::Esm(module) = module {
         let is_emittable = matches!(
-          media_type,
+          module.media_type,
           MediaType::TypeScript
             | MediaType::Mts
             | MediaType::Cts
@@ -626,9 +623,9 @@ impl ProcState {
           emit_parsed_source(
             &self.emit_cache,
             &self.parsed_source_cache,
-            specifier,
-            *media_type,
-            code,
+            &module.specifier,
+            module.media_type,
+            &module.source,
             &self.emit_options,
             self.emit_options_hash,
           )?;
@@ -643,14 +640,16 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
+      self.options.resolve_file_header_overrides(),
+      PermissionsContainer::allow_all(),
+      PermissionsContainer::allow_all(),
+      self.options.node_modules_dir_specifier(),
     )
   }
 
   pub async fn create_graph(
     &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = self.create_graph_loader();
     self.create_graph_with_loader(roots, &mut cache).await
@@ -658,67 +657,58 @@ impl ProcState {
 
   pub async fn create_graph_with_loader(
     &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let cli_resolver = CliGraphResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
+      self.options.no_npm(),
+      self.npm_api.clone(),
+      self.npm_resolution.clone(),
+      self.package_json_deps_installer.clone(),
     );
-    let maybe_graph_resolver =
-      maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
+    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
 
-    let graph = create_graph(
+    let mut graph = ModuleGraph::default();
+    build_graph_with_npm_resolution(
+      &mut graph,
+      &self.npm_resolver,
       roots,
       loader,
-      deno_graph::GraphOptions {
+      deno_graph::BuildOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: maybe_graph_resolver,
+        resolver: Some(graph_resolver),
+        npm_resolver: Some(graph_npm_resolver),
         module_analyzer: Some(&*analyzer),
         reporter: None,
       },
     )
-    .await;
+    .await?;
 
-    // add the found npm package requirements to the npm resolver and cache them
-    let npm_package_reqs = resolve_npm_package_reqs(&graph);
-    if !npm_package_reqs.is_empty() {
-      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
+    if graph.has_node_specifier
+      && self.options.type_check_mode() != TypeCheckMode::None
+    {
+      self
+        .npm_resolver
+        .inject_synthetic_types_node_package()
+        .await?;
     }
 
     Ok(graph)
   }
-}
 
-pub fn import_map_from_text(
-  specifier: &Url,
-  json_text: &str,
-) -> Result<ImportMap, AnyError> {
-  debug_assert!(
-    !specifier.as_str().contains("../"),
-    "Import map specifier incorrectly contained ../: {}",
-    specifier.as_str()
-  );
-  let result = import_map::parse_from_json(specifier, json_text)?;
-  if !result.diagnostics.is_empty() {
-    warn!(
-      "Import map diagnostics:\n{}",
-      result
-        .diagnostics
-        .into_iter()
-        .map(|d| format!("  - {}", d))
-        .collect::<Vec<_>>()
-        .join("\n")
-    );
+  pub fn graph(&self) -> Arc<ModuleGraph> {
+    self.graph_container.graph()
   }
-  Ok(result.import_map)
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct FileWatcherReporter {
   sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   file_paths: Arc<Mutex<Vec<PathBuf>>>,

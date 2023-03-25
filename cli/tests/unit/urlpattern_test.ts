@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "./test_util.ts";
 
 Deno.test(function urlPatternFromString() {
@@ -42,4 +42,19 @@ Deno.test(function urlPatternFromInit() {
   assert(!pattern.test("https://deno.com/bar/x"));
 
   assert(pattern.test({ pathname: "/foo/x" }));
+});
+
+Deno.test(function urlPatternWithPrototypePollution() {
+  const originalExec = RegExp.prototype.exec;
+  try {
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
+    const pattern = new URLPattern({
+      pathname: "/foo/:bar",
+    });
+    assert(pattern.test("https://deno.land/foo/x"));
+  } finally {
+    RegExp.prototype.exec = originalExec;
+  }
 });

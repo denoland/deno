@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
@@ -30,7 +30,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -217,10 +217,10 @@ fn get_endpoint_with_match(
         Token::Key(k) if k.name == *key => Some(k),
         _ => None,
       });
-      url = url
-        .replace(&format!("${{{}}}", name), &value.to_string(maybe_key, true));
+      url =
+        url.replace(&format!("${{{name}}}"), &value.to_string(maybe_key, true));
       url = url.replace(
-        &format!("${{{{{}}}}}", name),
+        &format!("${{{{{name}}}}}"),
         &percent_encoding::percent_encode(
           value.to_string(maybe_key, true).as_bytes(),
           COMPONENT,
@@ -278,8 +278,8 @@ fn replace_variable(
   let value = maybe_value.unwrap_or("");
   if let StringOrNumber::String(name) = &variable.name {
     url_str
-      .replace(&format!("${{{}}}", name), value)
-      .replace(&format! {"${{{{{}}}}}", name}, value)
+      .replace(&format!("${{{name}}}"), value)
+      .replace(&format! {"${{{{{name}}}}}"}, value)
   } else {
     url_str
   }
@@ -295,18 +295,20 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   }
   for registry in &config.registries {
     let (_, keys) = string_to_regex(&registry.schema, None)?;
-    let key_names: Vec<String> = keys.map_or_else(Vec::new, |keys| {
-      keys
-        .iter()
-        .filter_map(|k| {
-          if let StringOrNumber::String(s) = &k.name {
-            Some(s.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
-    });
+    let key_names: Vec<String> = keys
+      .map(|keys| {
+        keys
+          .iter()
+          .filter_map(|k| {
+            if let StringOrNumber::String(s) = &k.name {
+              Some(s.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      })
+      .unwrap_or_default();
 
     for key_name in &key_names {
       if !registry
@@ -442,7 +444,7 @@ impl ModuleRegistry {
       http_client,
       BlobStore::default(),
       None,
-    )?;
+    );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
     Ok(Self {
@@ -519,7 +521,7 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch_with_accept(
         specifier,
-        &mut Permissions::allow_all(),
+        PermissionsContainer::allow_all(),
         Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
       )
       .await;
@@ -617,7 +619,7 @@ impl ModuleRegistry {
         .ok()?;
         let file = self
           .file_fetcher
-          .fetch(&endpoint, &mut Permissions::allow_all())
+          .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
           .ok()?;
         let documentation: lsp::Documentation =
@@ -664,18 +666,20 @@ impl ModuleRegistry {
               })
               .ok()?;
             let mut i = tokens.len();
-            let last_key_name =
-              StringOrNumber::String(tokens.iter().last().map_or_else(
-                || "".to_string(),
-                |t| {
+            let last_key_name = StringOrNumber::String(
+              tokens
+                .iter()
+                .last()
+                .map(|t| {
                   if let Token::Key(key) = t {
                     if let StringOrNumber::String(s) = &key.name {
                       return s.clone();
                     }
                   }
                   "".to_string()
-                },
-              ));
+                })
+                .unwrap_or_default(),
+            );
             loop {
               let matcher = Matcher::new(&tokens[..i], None)
                 .map_err(|e| {
@@ -723,7 +727,7 @@ impl ModuleRegistry {
                         }
                         for (idx, item) in items.into_iter().enumerate() {
                           let mut label = if let Some(p) = &prefix {
-                            format!("{}{}", p, item)
+                            format!("{p}{item}")
                           } else {
                             item.clone()
                           };
@@ -880,7 +884,7 @@ impl ModuleRegistry {
                             is_incomplete = true;
                           }
                           for (idx, item) in items.into_iter().enumerate() {
-                            let path = format!("{}{}", prefix, item);
+                            let path = format!("{prefix}{item}");
                             let kind = Some(lsp::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();
@@ -955,7 +959,7 @@ impl ModuleRegistry {
             None
           } else {
             Some(lsp::CompletionList {
-              items: completions.into_iter().map(|(_, i)| i).collect(),
+              items: completions.into_values().collect(),
               is_incomplete,
             })
           };
@@ -973,7 +977,7 @@ impl ModuleRegistry {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .ok()?;
     serde_json::from_str(&file.source).ok()
@@ -988,7 +992,7 @@ impl ModuleRegistry {
       .origins
       .keys()
       .filter_map(|k| {
-        let mut origin = k.as_str().to_string();
+        let mut origin = k.to_string();
         if origin.ends_with('/') {
           origin.pop();
         }
@@ -1030,7 +1034,7 @@ impl ModuleRegistry {
     let specifier = ModuleSpecifier::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1066,7 +1070,7 @@ impl ModuleRegistry {
         .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(

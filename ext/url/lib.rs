@@ -1,15 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod urlpattern;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::path::PathBuf;
@@ -17,25 +15,21 @@ use std::path::PathBuf;
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/url",
-      "00_url.js",
-      "01_urlpattern.js",
-    ))
-    .ops(vec![
-      op_url_reparse::decl(),
-      op_url_parse::decl(),
-      op_url_get_serialization::decl(),
-      op_url_parse_with_base::decl(),
-      op_url_parse_search_params::decl(),
-      op_url_stringify_search_params::decl(),
-      op_urlpattern_parse::decl(),
-      op_urlpattern_process_match_input::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_url,
+  deps = [deno_webidl],
+  ops = [
+    op_url_reparse,
+    op_url_parse,
+    op_url_get_serialization,
+    op_url_parse_with_base,
+    op_url_parse_search_params,
+    op_url_stringify_search_params,
+    op_urlpattern_parse,
+    op_urlpattern_process_match_input
+  ],
+  esm = ["00_url.js", "01_urlpattern.js"],
+);
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
 #[op]

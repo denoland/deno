@@ -1,4 +1,4 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "test_util"
@@ -17,11 +17,13 @@ path = "src/test_server.rs"
 anyhow.workspace = true
 async-stream = "0.3.3"
 atty.workspace = true
+backtrace = "0.3.67"
 base64.workspace = true
 flate2.workspace = true
 futures.workspace = true
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
 lazy_static = "1.4.0"
+lsp-types.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true
@@ -30,17 +32,18 @@ regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
 rustls-pemfile.workspace = true
-semver.workspace = true
+semver = "=1.0.14"
 serde.workspace = true
 serde_json.workspace = true
 tar.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-tungstenite.workspace = true
 url.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-pty = "0.2.2"
+pty2 = "0.1.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }

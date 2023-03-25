@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+mod byte_stream;
 mod fs_fetch_handler;
 
 use data_url::DataUrl;
@@ -9,7 +10,6 @@ use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
@@ -22,7 +22,6 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -31,6 +30,7 @@ use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use http::header::CONTENT_LENGTH;
+use http::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -55,7 +55,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 
 // Re-export reqwest and data_url
 pub use data_url;
@@ -63,12 +62,15 @@ pub use reqwest;
 
 pub use fs_fetch_handler::FsFetchHandler;
 
+use crate::byte_stream::MpscByteStream;
+
 #[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
   pub root_cert_store: Option<RootCertStore>,
   pub proxy: Option<Proxy>,
-  pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub request_builder_hook:
+    Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
@@ -88,44 +90,41 @@ impl Default for Options {
   }
 }
 
-pub fn init<FP>(options: Options) -> Extension
-where
-  FP: FetchPermissions + 'static,
-{
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/fetch",
-      "01_fetch_util.js",
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
-    .ops(vec![
-      op_fetch::decl::<FP>(),
-      op_fetch_send::decl(),
-      op_fetch_custom_client::decl::<FP>(),
-    ])
-    .state(move |state| {
-      state.put::<Options>(options.clone());
-      state.put::<reqwest::Client>({
-        create_http_client(
-          options.user_agent.clone(),
-          options.root_cert_store.clone(),
-          vec![],
-          options.proxy.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-          options.client_cert_chain_and_key.clone(),
-        )
-        .unwrap()
-      });
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_fetch,
+  deps = [ deno_webidl, deno_web, deno_url, deno_console ],
+  parameters = [FP: FetchPermissions],
+  ops = [
+    op_fetch<FP>,
+    op_fetch_send,
+    op_fetch_custom_client<FP>,
+  ],
+  esm = [
+    "20_headers.js",
+    "21_formdata.js",
+    "22_body.js",
+    "22_http_client.js",
+    "23_request.js",
+    "23_response.js",
+    "26_fetch.js"
+  ],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options.clone());
+    state.put::<reqwest::Client>({
+      create_http_client(
+        &options.options.user_agent,
+        options.options.root_cert_store,
+        vec![],
+        options.options.proxy,
+        options.options.unsafely_ignore_certificate_errors,
+        options.options.client_cert_chain_and_key
+      )
+      .unwrap()
+    });
+  },
+);
 
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
@@ -227,8 +226,7 @@ where
 
       if method != Method::GET {
         return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {}.",
-          method
+          "Fetching files only supports the GET method. Received {method}."
         )));
       }
 
@@ -250,13 +248,19 @@ where
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;
 
+      // Make sure that we have a valid URI early, as reqwest's `RequestBuilder::send`
+      // internally uses `expect_uri`, which panics instead of returning a usable `Result`.
+      if url.as_str().parse::<Uri>().is_err() {
+        return Err(type_error("Invalid URL"));
+      }
+
       let mut request = client.request(method.clone(), url);
 
       let request_body_rid = if has_body {
         match data {
           None => {
             // If no body is passed, we return a writer for streaming the body.
-            let (tx, rx) = mpsc::channel::<std::io::Result<bytes::Bytes>>(1);
+            let (stream, tx) = MpscByteStream::new();
 
             // If the size of the body is known, we include a content-length
             // header explicitly.
@@ -265,7 +269,7 @@ where
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
 
-            request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
+            request = request.body(Body::wrap_stream(stream));
 
             let request_body_rid =
               state.resource_table.add(FetchRequestBodyResource {
@@ -312,7 +316,8 @@ where
 
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
-        request = request_builder_hook(request);
+        request = request_builder_hook(request)
+          .map_err(|err| type_error(err.to_string()))?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -337,11 +342,11 @@ where
     }
     "data" => {
       let data_url = DataUrl::process(url.as_str())
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let (body, _) = data_url
         .decode_to_vec()
-        .map_err(|e| type_error(format!("{:?}", e)))?;
+        .map_err(|e| type_error(format!("{e:?}")))?;
 
       let response = http::Response::builder()
         .status(http::StatusCode::OK)
@@ -361,7 +366,7 @@ where
       // because the URL isn't an object URL.
       return Err(type_error("Blob for the given URL not found."));
     }
-    _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
+    _ => return Err(type_error(format!("scheme '{scheme}' not supported"))),
   };
 
   Ok(FetchReturn {
@@ -459,7 +464,7 @@ impl Resource for FetchCancelHandle {
 }
 
 pub struct FetchRequestBodyResource {
-  body: AsyncRefCell<mpsc::Sender<std::io::Result<bytes::Bytes>>>,
+  body: AsyncRefCell<mpsc::Sender<Option<bytes::Bytes>>>,
   cancel: CancelHandle,
 }
 
@@ -474,10 +479,32 @@ impl Resource for FetchRequestBodyResource {
       let nwritten = bytes.len();
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
-        type_error("request body receiver not connected (request closed)")
-      })?;
+      body
+        .send(Some(bytes))
+        .or_cancel(cancel)
+        .await?
+        .map_err(|_| {
+          type_error("request body receiver not connected (request closed)")
+        })?;
       Ok(WriteOutcome::Full { nwritten })
+    })
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      // There is a case where hyper knows the size of the response body up
+      // front (through content-length header on the resp), where it will drop
+      // the body once that content length has been reached, regardless of if
+      // the stream is complete or not. This is expected behaviour, but it means
+      // that if you stream a body with an up front known size (eg a Blob),
+      // explicit shutdown can never succeed because the body (and by extension
+      // the receiver) will have dropped by the time we try to shutdown. As such
+      // we ignore if the receiver is closed, because we know that the request
+      // is complete in good health in that case.
+      body.send(None).or_cancel(cancel).await?.ok();
+      Ok(())
     })
   }
 
@@ -604,7 +631,7 @@ where
     .collect::<Vec<_>>();
 
   let client = create_http_client(
-    options.user_agent.clone(),
+    &options.user_agent,
     options.root_cert_store.clone(),
     ca_certs,
     args.proxy,
@@ -619,7 +646,7 @@ where
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
-  user_agent: String,
+  user_agent: &str,
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   proxy: Option<Proxy>,

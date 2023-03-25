@@ -1,6 +1,7 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::json_types::CoverageRange;
 use super::json_types::FunctionCoverage;
@@ -73,8 +74,8 @@ pub fn merge_scripts(
   }
 
   let functions: Vec<FunctionCoverage> = range_to_funcs
-    .into_iter()
-    .map(|(_, funcs)| merge_functions(funcs).unwrap())
+    .into_values()
+    .map(|funcs| merge_functions(funcs).unwrap())
     .collect();
 
   Some(ScriptCoverage {
@@ -355,7 +356,11 @@ fn merge_range_tree_children<'a>(
     let mut matching_trees: Vec<&'a mut RangeTree<'a>> = Vec::new();
     for (_parent_index, children) in child_forests.iter_mut().enumerate() {
       let next_tree: Option<&'a mut RangeTree<'a>> = {
-        if children.peek().map_or(false, |tree| tree.start == *event) {
+        if children
+          .peek()
+          .map(|tree| tree.start == *event)
+          .unwrap_or(false)
+        {
           children.next()
         } else {
           None

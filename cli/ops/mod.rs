@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
@@ -10,18 +10,21 @@ pub mod bench;
 pub mod testing;
 
 pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
-  vec![init_proc_state(ps)]
+  vec![deno_cli::init_ops(ps)]
 }
 
-fn init_proc_state(ps: ProcState) -> Extension {
-  Extension::builder()
-    .ops(vec![op_npm_process_state::decl()])
-    .state(move |state| {
-      state.put(ps.clone());
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_cli,
+  ops = [op_npm_process_state],
+  options = {
+    ps: ProcState,
+  },
+  state = |state, options| {
+    state.put(options.ps);
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 #[op]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {

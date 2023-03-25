@@ -1,12 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::cache::NodeAnalysisCache;
-use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -15,11 +13,13 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::located_script_name;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
+use deno_graph::npm::NpmPackageNv;
+use deno_graph::npm::NpmPackageNvReference;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
+use deno_runtime::deno_node::find_builtin_node_module;
 use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
@@ -27,19 +27,20 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::path_to_declaration_path;
 use deno_runtime::deno_node::NodeModuleKind;
+use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
-use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
+use deno_runtime::permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::FileFetcher;
-use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod analyze;
 
@@ -61,7 +62,7 @@ impl NodeResolution {
         if specifier.starts_with("node:") {
           ModuleSpecifier::parse(&specifier).unwrap()
         } else {
-          ModuleSpecifier::parse(&format!("node:{}", specifier)).unwrap()
+          ModuleSpecifier::parse(&format!("node:{specifier}")).unwrap()
         }
       }
     }
@@ -72,7 +73,7 @@ impl NodeResolution {
   ) -> (ModuleSpecifier, MediaType) {
     match resolution {
       Some(NodeResolution::CommonJs(specifier)) => {
-        let media_type = MediaType::from(&specifier);
+        let media_type = MediaType::from_specifier(&specifier);
         (
           specifier,
           match media_type {
@@ -84,7 +85,7 @@ impl NodeResolution {
         )
       }
       Some(NodeResolution::Esm(specifier)) => {
-        let media_type = MediaType::from(&specifier);
+        let media_type = MediaType::from_specifier(&specifier);
         (
           specifier,
           match media_type {
@@ -97,245 +98,21 @@ impl NodeResolution {
       }
       Some(resolution) => (resolution.into_url(), MediaType::Dts),
       None => (
-        ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap(),
+        ModuleSpecifier::parse("internal:///missing_dependency.d.ts").unwrap(),
         MediaType::Dts,
       ),
     }
   }
 }
 
-struct NodeModulePolyfill {
-  /// Name of the module like "assert" or "timers/promises"
-  name: &'static str,
-
-  /// Specifier relative to the root of `deno_std` repo, like "node/asser.ts"
-  specifier: &'static str,
-}
-
-static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
-  NodeModulePolyfill {
-    name: "assert",
-    specifier: "node/assert.ts",
-  },
-  NodeModulePolyfill {
-    name: "assert/strict",
-    specifier: "node/assert/strict.ts",
-  },
-  NodeModulePolyfill {
-    name: "async_hooks",
-    specifier: "node/async_hooks.ts",
-  },
-  NodeModulePolyfill {
-    name: "buffer",
-    specifier: "node/buffer.ts",
-  },
-  NodeModulePolyfill {
-    name: "child_process",
-    specifier: "node/child_process.ts",
-  },
-  NodeModulePolyfill {
-    name: "cluster",
-    specifier: "node/cluster.ts",
-  },
-  NodeModulePolyfill {
-    name: "console",
-    specifier: "node/console.ts",
-  },
-  NodeModulePolyfill {
-    name: "constants",
-    specifier: "node/constants.ts",
-  },
-  NodeModulePolyfill {
-    name: "crypto",
-    specifier: "node/crypto.ts",
-  },
-  NodeModulePolyfill {
-    name: "dgram",
-    specifier: "node/dgram.ts",
-  },
-  NodeModulePolyfill {
-    name: "dns",
-    specifier: "node/dns.ts",
-  },
-  NodeModulePolyfill {
-    name: "dns/promises",
-    specifier: "node/dns/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "domain",
-    specifier: "node/domain.ts",
-  },
-  NodeModulePolyfill {
-    name: "events",
-    specifier: "node/events.ts",
-  },
-  NodeModulePolyfill {
-    name: "fs",
-    specifier: "node/fs.ts",
-  },
-  NodeModulePolyfill {
-    name: "fs/promises",
-    specifier: "node/fs/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "http",
-    specifier: "node/http.ts",
-  },
-  NodeModulePolyfill {
-    name: "https",
-    specifier: "node/https.ts",
-  },
-  NodeModulePolyfill {
-    name: "module",
-    // NOTE(bartlomieju): `module` is special, because we don't want to use
-    // `deno_std/node/module.ts`, but instead use a special shim that we
-    // provide in `ext/node`.
-    specifier: "[USE `deno_node::MODULE_ES_SHIM` to get this module]",
-  },
-  NodeModulePolyfill {
-    name: "net",
-    specifier: "node/net.ts",
-  },
-  NodeModulePolyfill {
-    name: "os",
-    specifier: "node/os.ts",
-  },
-  NodeModulePolyfill {
-    name: "path",
-    specifier: "node/path.ts",
-  },
-  NodeModulePolyfill {
-    name: "path/posix",
-    specifier: "node/path/posix.ts",
-  },
-  NodeModulePolyfill {
-    name: "path/win32",
-    specifier: "node/path/win32.ts",
-  },
-  NodeModulePolyfill {
-    name: "perf_hooks",
-    specifier: "node/perf_hooks.ts",
-  },
-  NodeModulePolyfill {
-    name: "process",
-    specifier: "node/process.ts",
-  },
-  NodeModulePolyfill {
-    name: "querystring",
-    specifier: "node/querystring.ts",
-  },
-  NodeModulePolyfill {
-    name: "readline",
-    specifier: "node/readline.ts",
-  },
-  NodeModulePolyfill {
-    name: "stream",
-    specifier: "node/stream.ts",
-  },
-  NodeModulePolyfill {
-    name: "stream/consumers",
-    specifier: "node/stream/consumers.mjs",
-  },
-  NodeModulePolyfill {
-    name: "stream/promises",
-    specifier: "node/stream/promises.mjs",
-  },
-  NodeModulePolyfill {
-    name: "stream/web",
-    specifier: "node/stream/web.ts",
-  },
-  NodeModulePolyfill {
-    name: "string_decoder",
-    specifier: "node/string_decoder.ts",
-  },
-  NodeModulePolyfill {
-    name: "sys",
-    specifier: "node/sys.ts",
-  },
-  NodeModulePolyfill {
-    name: "timers",
-    specifier: "node/timers.ts",
-  },
-  NodeModulePolyfill {
-    name: "timers/promises",
-    specifier: "node/timers/promises.ts",
-  },
-  NodeModulePolyfill {
-    name: "tls",
-    specifier: "node/tls.ts",
-  },
-  NodeModulePolyfill {
-    name: "tty",
-    specifier: "node/tty.ts",
-  },
-  NodeModulePolyfill {
-    name: "url",
-    specifier: "node/url.ts",
-  },
-  NodeModulePolyfill {
-    name: "util",
-    specifier: "node/util.ts",
-  },
-  NodeModulePolyfill {
-    name: "util/types",
-    specifier: "node/util/types.ts",
-  },
-  NodeModulePolyfill {
-    name: "v8",
-    specifier: "node/v8.ts",
-  },
-  NodeModulePolyfill {
-    name: "vm",
-    specifier: "node/vm.ts",
-  },
-  NodeModulePolyfill {
-    name: "worker_threads",
-    specifier: "node/worker_threads.ts",
-  },
-  NodeModulePolyfill {
-    name: "zlib",
-    specifier: "node/zlib.ts",
-  },
-];
-
-static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
-  if let Ok(url_str) = std::env::var("DENO_NODE_COMPAT_URL") {
-    let url = Url::parse(&url_str).expect(
-      "Malformed DENO_NODE_COMPAT_URL value, make sure it's a file URL ending with a slash"
-    );
-    return url;
-  }
-
-  CURRENT_STD_URL.clone()
-});
-
-pub static MODULE_ALL_URL: Lazy<Url> =
-  Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
-
-fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
-  SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
-}
-
-fn is_builtin_node_module(specifier: &str) -> bool {
-  find_builtin_node_module(specifier).is_some()
-}
-
-pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
-  // NOTE(bartlomieju): `module` is special, because we don't want to use
-  // `deno_std/node/module.ts`, but instead use a special shim that we
-  // provide in `ext/node`.
-  if specifier == "module" {
-    return Ok(Url::parse("node:module").unwrap());
-  }
-
-  if let Some(module) = find_builtin_node_module(specifier) {
-    let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
-    return Ok(module_url);
+// TODO(bartlomieju): seems super wasteful to parse specified each time
+pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
+  if let Some(module) = find_builtin_node_module(module_name) {
+    return Ok(ModuleSpecifier::parse(module.specifier).unwrap());
   }
 
   Err(generic_error(format!(
-    "Unknown built-in Node module: {}",
-    specifier
+    "Unknown built-in \"node:\" module: {module_name}"
   )))
 }
 
@@ -389,45 +166,6 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   ])
 });
 
-pub async fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName) {{
-      const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
-    }})('{}', '{}');"#,
-    MODULE_ALL_URL.as_str(),
-    NODE_GLOBAL_THIS_NAME.as_str(),
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
-
-pub async fn initialize_binary_command(
-  js_runtime: &mut JsRuntime,
-  binary_name: &str,
-) -> Result<(), AnyError> {
-  // overwrite what's done in deno_std in order to set the binary arg name
-  let source_code = &format!(
-    r#"(async function initializeBinaryCommand(binaryName) {{
-      const process = Deno[Deno.internal].node.globalThis.process;
-      Object.defineProperty(process.argv, "0", {{
-        get: () => binaryName,
-      }});
-    }})('{}');"#,
-    binary_name,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
-
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
 pub fn node_resolve(
@@ -435,11 +173,12 @@ pub fn node_resolve(
   referrer: &ModuleSpecifier,
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  if is_builtin_node_module(specifier) {
+  if deno_node::is_builtin_node_module(specifier) {
     return Ok(Some(NodeResolution::BuiltIn(specifier.to_string())));
   }
 
@@ -454,7 +193,7 @@ pub fn node_resolve(
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
 
-      if is_builtin_node_module(&specifier) {
+      if deno_node::is_builtin_node_module(&specifier) {
         return Ok(Some(NodeResolution::BuiltIn(specifier)));
       }
     }
@@ -476,6 +215,7 @@ pub fn node_resolve(
     DEFAULT_CONDITIONS,
     mode,
     npm_resolver,
+    permissions,
   )?;
   let url = match url {
     Some(url) => url,
@@ -502,27 +242,29 @@ pub fn node_resolve(
 }
 
 pub fn node_resolve_npm_reference(
-  reference: &NpmPackageReference,
+  reference: &NpmPackageNvReference,
   mode: NodeResolutionMode,
   npm_resolver: &NpmPackageResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
+    npm_resolver.resolve_package_folder_from_deno_module(&reference.nv)?;
   let node_module_kind = NodeModuleKind::Esm;
   let maybe_resolved_path = package_config_resolve(
     &reference
       .sub_path
       .as_ref()
-      .map(|s| format!("./{}", s))
+      .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     node_module_kind,
     DEFAULT_CONDITIONS,
     mode,
     npm_resolver,
+    permissions,
   )
   .with_context(|| {
-    format!("Error resolving package config for '{}'.", reference)
+    format!("Error resolving package config for '{reference}'")
   })?;
   let resolved_path = match maybe_resolved_path {
     Some(resolved_path) => resolved_path,
@@ -544,23 +286,68 @@ pub fn node_resolve_npm_reference(
   Ok(Some(resolve_response))
 }
 
+/// Resolves a specifier that is pointing into a node_modules folder.
+///
+/// Note: This should be called whenever getting the specifier from
+/// a Module::External(module) reference because that module might
+/// not be fully resolved at the time deno_graph is analyzing it
+/// because the node_modules folder might not exist at that time.
+pub fn resolve_specifier_into_node_modules(
+  specifier: &ModuleSpecifier,
+) -> ModuleSpecifier {
+  specifier
+    .to_file_path()
+    .ok()
+    // this path might not exist at the time the graph is being created
+    // because the node_modules folder might not yet exist
+    .and_then(|path| canonicalize_path_maybe_not_exists(&path).ok())
+    .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
+    .unwrap_or_else(|| specifier.clone())
+}
+
+pub fn node_resolve_binary_commands(
+  pkg_nv: &NpmPackageNv,
+  npm_resolver: &NpmPackageResolver,
+) -> Result<Vec<String>, AnyError> {
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
+  let package_json_path = package_folder.join("package.json");
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
+
+  Ok(match package_json.bin {
+    Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
+    Some(Value::Object(o)) => {
+      o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
+    }
+    _ => Vec::new(),
+  })
+}
+
 pub fn node_resolve_binary_export(
-  pkg_req: &NpmPackageReq,
+  pkg_nv: &NpmPackageNv,
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<NodeResolution, AnyError> {
   let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+  let package_json = PackageJson::load(
+    npm_resolver,
+    &mut PermissionsContainer::allow_all(),
+    package_json_path,
+  )?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
       "package '{}' did not have a bin property in its package.json",
-      &pkg_req.name,
+      &pkg_nv.name,
     ),
   };
-  let bin_entry = resolve_bin_entry_value(pkg_req, bin_name, bin)?;
+  let bin_entry = resolve_bin_entry_value(pkg_nv, bin_name, bin)?;
   let url =
     ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
 
@@ -571,13 +358,13 @@ pub fn node_resolve_binary_export(
 }
 
 fn resolve_bin_entry_value<'a>(
-  pkg_req: &NpmPackageReq,
+  pkg_nv: &NpmPackageNv,
   bin_name: Option<&str>,
   bin: &'a Value,
 ) -> Result<&'a str, AnyError> {
   let bin_entry = match bin {
     Value::String(_) => {
-      if bin_name.is_some() && bin_name.unwrap() != pkg_req.name {
+      if bin_name.is_some() && bin_name.unwrap() != pkg_nv.name {
         None
       } else {
         Some(bin)
@@ -589,10 +376,10 @@ fn resolve_bin_entry_value<'a>(
       } else if o.len() == 1 || o.len() > 1 && o.values().all(|v| v == o.values().next().unwrap()) {
         o.values().next()
       } else {
-        o.get(&pkg_req.name)
+        o.get(&pkg_nv.name)
       }
     },
-    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_req.name),
+    _ => bail!("package '{}' did not have a bin property with a string or object value in its package.json", pkg_nv),
   };
   let bin_entry = match bin_entry {
     Some(e) => e,
@@ -601,15 +388,14 @@ fn resolve_bin_entry_value<'a>(
         .as_object()
         .map(|o| {
           o.keys()
-            .into_iter()
-            .map(|k| format!(" * npm:{}/{}", pkg_req, k))
+            .map(|k| format!(" * npm:{pkg_nv}/{k}"))
             .collect::<Vec<_>>()
         })
         .unwrap_or_default();
       bail!(
         "package '{}' did not have a bin entry for '{}' in its package.json{}",
-        pkg_req.name,
-        bin_name.unwrap_or(&pkg_req.name),
+        pkg_nv,
+        bin_name.unwrap_or(&pkg_nv.name),
         if keys.is_empty() {
           "".to_string()
         } else {
@@ -622,35 +408,9 @@ fn resolve_bin_entry_value<'a>(
     Value::String(s) => Ok(s),
     _ => bail!(
       "package '{}' had a non-string sub property of bin in its package.json",
-      pkg_req.name,
+      pkg_nv,
     ),
   }
-}
-
-pub fn load_cjs_module_from_ext_node(
-  js_runtime: &mut JsRuntime,
-  module: &str,
-  main: bool,
-  inspect_brk: bool,
-) -> Result<(), AnyError> {
-  fn escape_for_single_quote_string(text: &str) -> String {
-    text.replace('\\', r"\\").replace('\'', r"\'")
-  }
-
-  let source_code = &format!(
-    r#"(function loadCjsModule(module, inspectBrk) {{
-      if (inspectBrk) {{
-        Deno[Deno.internal].require.setInspectBrk();
-      }}
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}', {inspect_brk});"#,
-    main = main,
-    module = escape_for_single_quote_string(module),
-    inspect_brk = inspect_brk,
-  );
-
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
 }
 
 fn package_config_resolve(
@@ -660,11 +420,12 @@ fn package_config_resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
   let package_config =
-    PackageJson::load(npm_resolver, package_json_path.clone())?;
+    PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
     let result = package_exports_resolve(
       &package_json_path,
@@ -675,6 +436,7 @@ fn package_config_resolve(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     );
     match result {
       Ok(found) => return Ok(Some(found)),
@@ -707,7 +469,11 @@ pub fn url_to_node_resolution(
   if url_str.starts_with("http") {
     Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-    let package_config = get_closest_package_json(&url, npm_resolver)?;
+    let package_config = get_closest_package_json(
+      &url,
+      npm_resolver,
+      &mut PermissionsContainer::allow_all(),
+    )?;
     if package_config.typ == "module" {
       Ok(NodeResolution::Esm(url))
     } else {
@@ -717,8 +483,7 @@ pub fn url_to_node_resolution(
     Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".ts") {
     Err(generic_error(format!(
-      "TypeScript files are not supported in npm packages: {}",
-      url
+      "TypeScript files are not supported in npm packages: {url}"
     )))
   } else {
     Ok(NodeResolution::CommonJs(url))
@@ -754,7 +519,7 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
+  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(p) {
     (stats.is_dir(), stats.is_file())
   } else {
     (false, false)
@@ -781,6 +546,7 @@ fn module_resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
@@ -806,6 +572,7 @@ fn module_resolve(
         conditions,
         mode,
         npm_resolver,
+        permissions,
       )
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
     )
@@ -819,6 +586,7 @@ fn module_resolve(
       conditions,
       mode,
       npm_resolver,
+      permissions,
     )?
     .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
   };
@@ -849,15 +617,13 @@ fn add_export(
     // so assign it to a temporary variable that won't have a conflict, then re-export
     // it as a string
     source.push(format!(
-      "const __deno_export_{}__ = {};",
-      temp_var_count, initializer
+      "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{}__ as \"{}\" }};",
-      temp_var_count, name
+      "export {{ __deno_export_{temp_var_count}__ as \"{name}\" }};"
     ));
   } else {
-    source.push(format!("export const {} = {};", name, initializer));
+    source.push(format!("export const {name} = {initializer};"));
   }
 }
 
@@ -874,6 +640,7 @@ pub fn translate_cjs_to_esm(
   media_type: MediaType,
   npm_resolver: &NpmPackageResolver,
   node_analysis_cache: &NodeAnalysisCache,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
     analysis_cache: &NodeAnalysisCache,
@@ -913,7 +680,9 @@ pub fn translate_cjs_to_esm(
   let mut handled_reexports: HashSet<String> = HashSet::default();
 
   let mut source = vec![
-    r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
+    r#"import {createRequire as __internalCreateRequire} from "node:module";
+    const require = __internalCreateRequire(import.meta.url);"#
+      .to_string(),
   ];
 
   let analysis = perform_cjs_analysis(
@@ -951,9 +720,10 @@ pub fn translate_cjs_to_esm(
       &["deno", "require", "default"],
       NodeResolutionMode::Execution,
       npm_resolver,
+      permissions,
     )?;
     let reexport_specifier =
-      ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
+      ModuleSpecifier::from_file_path(resolved_reexport).unwrap();
     // Second, read the source code from disk
     let reexport_file = file_fetcher
       .get_source(&reexport_specifier)
@@ -1004,7 +774,7 @@ pub fn translate_cjs_to_esm(
       add_export(
         &mut source,
         export,
-        &format!("mod[\"{}\"]", export),
+        &format!("mod[\"{export}\"]"),
         &mut temp_var_count,
       );
     }
@@ -1022,6 +792,7 @@ fn resolve(
   conditions: &[&str],
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
+  permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if specifier.starts_with('/') {
     todo!();
@@ -1051,7 +822,7 @@ fn resolve(
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
     let package_json =
-      PackageJson::load(npm_resolver, package_json_path.clone())?;
+      PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
 
     if let Some(exports) = &package_json.exports {
       return package_exports_resolve(
@@ -1063,6 +834,7 @@ fn resolve(
         conditions,
         mode,
         npm_resolver,
+        permissions,
       );
     }
 
@@ -1075,7 +847,7 @@ fn resolve(
           let package_json_path = d.join("package.json");
           if package_json_path.exists() {
             let package_json =
-              PackageJson::load(npm_resolver, package_json_path)?;
+              PackageJson::load(npm_resolver, permissions, package_json_path)?;
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(d.join(main).clean());
             }
@@ -1139,7 +911,7 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url
     .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
+    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {url}"))
 }
 
 fn to_file_path_string(url: &ModuleSpecifier) -> String {
@@ -1255,7 +1027,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         Some("bin1"),
         &value
       )
@@ -1266,7 +1038,7 @@ mod tests {
     // should resolve the value with the same name when not specified
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         None,
         &value
       )
@@ -1277,7 +1049,7 @@ mod tests {
     // should not resolve when specified value does not exist
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
         Some("other"),
         &value
       )
@@ -1285,19 +1057,19 @@ mod tests {
       .unwrap()
       .to_string(),
       concat!(
-        "package 'test' did not have a bin entry for 'other' in its package.json\n",
+        "package 'test@1.1.1' did not have a bin entry for 'other' in its package.json\n",
         "\n",
         "Possibilities:\n",
-        " * npm:test/bin1\n",
-        " * npm:test/bin2\n",
-        " * npm:test/test"
+        " * npm:test@1.1.1/bin1\n",
+        " * npm:test@1.1.1/bin2\n",
+        " * npm:test@1.1.1/test"
       )
     );
 
     // should not resolve when default value can't be determined
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("asdf@1.2").unwrap(),
+        &NpmPackageNv::from_str("asdf@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1305,12 +1077,12 @@ mod tests {
       .unwrap()
       .to_string(),
       concat!(
-        "package 'asdf' did not have a bin entry for 'asdf' in its package.json\n",
+        "package 'asdf@1.2.3' did not have a bin entry for 'asdf' in its package.json\n",
         "\n",
         "Possibilities:\n",
-        " * npm:asdf@1.2/bin1\n",
-        " * npm:asdf@1.2/bin2\n",
-        " * npm:asdf@1.2/test"
+        " * npm:asdf@1.2.3/bin1\n",
+        " * npm:asdf@1.2.3/bin2\n",
+        " * npm:asdf@1.2.3/test"
       )
     );
 
@@ -1321,7 +1093,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1333,14 +1105,14 @@ mod tests {
     let value = json!("./value");
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageReq::from_str("test").unwrap(),
+        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
         Some("path"),
         &value
       )
       .err()
       .unwrap()
       .to_string(),
-      "package 'test' did not have a bin entry for 'path' in its package.json"
+      "package 'test@1.2.3' did not have a bin entry for 'path' in its package.json"
     );
   }
 }

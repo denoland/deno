@@ -1,42 +1,54 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use syn::{
-  parse::{Parse, ParseStream},
-  punctuated::Punctuated,
-  Error, Ident, Result, Token,
-};
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use syn::parse::Parse;
+use syn::parse::ParseStream;
+use syn::Error;
+use syn::Ident;
+use syn::Result;
+use syn::Token;
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Attributes {
   pub is_unstable: bool,
   pub is_v8: bool,
   pub must_be_fast: bool,
   pub deferred: bool,
   pub is_wasm: bool,
+  pub relation: Option<Ident>,
 }
 
 impl Parse for Attributes {
   fn parse(input: ParseStream) -> Result<Self> {
-    let vars = Punctuated::<Ident, Token![,]>::parse_terminated(input)?;
-
-    let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
-    let vars: Vec<_> = vars.iter().map(String::as_str).collect();
-    for var in vars.iter() {
-      if !["unstable", "v8", "fast", "deferred", "wasm"].contains(var) {
-        return Err(Error::new(
-          input.span(),
-          "invalid attribute, expected one of: unstable, v8, fast, deferred, wasm",
-        ));
-      }
+    let mut self_ = Self::default();
+    let mut fast = false;
+    while let Ok(v) = input.parse::<Ident>() {
+      match v.to_string().as_str() {
+        "unstable" => self_.is_unstable = true,
+        "v8" => self_.is_v8 = true,
+        "fast" => fast = true,
+        "deferred" => self_.deferred = true,
+        "wasm" => self_.is_wasm = true,
+        "slow" => {
+          if !fast {
+            return Err(Error::new(
+              input.span(),
+              "relational attributes can only be used with fast attribute",
+            ));
+          }
+          input.parse::<Token![=]>()?;
+          self_.relation = Some(input.parse()?);
+        }
+        _ => {
+          return Err(Error::new(
+             input.span(),
+            "invalid attribute, expected one of: unstable, v8, fast, deferred, wasm",
+            ));
+        }
+      };
+      let _ = input.parse::<Token![,]>();
     }
 
-    let is_wasm = vars.contains(&"wasm");
+    self_.must_be_fast = self_.is_wasm || fast;
 
-    Ok(Self {
-      is_unstable: vars.contains(&"unstable"),
-      is_v8: vars.contains(&"v8"),
-      deferred: vars.contains(&"deferred"),
-      must_be_fast: is_wasm || vars.contains(&"fast"),
-      is_wasm,
-    })
+    Ok(self_)
   }
 }

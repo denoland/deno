@@ -1,9 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
@@ -58,7 +57,6 @@ declare class WorkerGlobalScope extends EventTarget {
 /** @category Web APIs */
 declare class WorkerNavigator {
   constructor();
-  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
@@ -19,10 +19,13 @@ use std::cell::RefCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::task::Context;
 use std::task::Poll;
+use v8::fast_api::CFunctionInfo;
+use v8::fast_api::CTypeInfo;
 
 /// Wrapper around a Future, which causes that Future to be polled immediately.
 ///
@@ -91,6 +94,7 @@ where
   }
 }
 
+pub type RealmIdx = usize;
 pub type PromiseId = i32;
 pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub type OpFn =
@@ -133,7 +137,7 @@ impl OpError {
   pub fn new(get_class: GetErrorClassFn, err: Error) -> Self {
     Self {
       class_name: (get_class)(&err),
-      message: format!("{:#}", err),
+      message: format!("{err:#}"),
       code: crate::error_codes::get_error_code(&err),
     }
   }
@@ -153,8 +157,44 @@ pub fn to_op_result<R: Serialize + 'static>(
 pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
-  pub decl: OpDecl,
+  pub decl: Rc<OpDecl>,
+  pub fast_fn_c_info: Option<NonNull<v8::fast_api::CFunctionInfo>>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
+  // Index of the current realm into `JsRuntimeState::known_realms`.
+  pub realm_idx: RealmIdx,
+}
+
+impl OpCtx {
+  pub fn new(
+    id: OpId,
+    realm_idx: RealmIdx,
+    decl: Rc<OpDecl>,
+    state: Rc<RefCell<OpState>>,
+    runtime_state: Weak<RefCell<JsRuntimeState>>,
+  ) -> Self {
+    let mut fast_fn_c_info = None;
+
+    if let Some(fast_fn) = &decl.fast_fn {
+      let args = CTypeInfo::new_from_slice(fast_fn.args());
+      let ret = CTypeInfo::new(fast_fn.return_type());
+
+      // SAFETY: all arguments are coming from the trait and they have
+      // static lifetime
+      let c_fn = unsafe {
+        CFunctionInfo::new(args.as_ptr(), fast_fn.args().len(), ret.as_ptr())
+      };
+      fast_fn_c_info = Some(c_fn);
+    }
+
+    OpCtx {
+      id,
+      state,
+      runtime_state,
+      decl,
+      realm_idx,
+      fast_fn_c_info,
+    }
+  }
 }
 
 /// Maintains the resources and ops inside a JS runtime.

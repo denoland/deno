@@ -1,11 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
+use deno_graph::Module;
 use deno_runtime::colors;
 
 use crate::args::BundleFlags;
@@ -25,21 +25,36 @@ pub async fn bundle(
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let cli_options = Arc::new(CliOptions::from_flags(flags)?);
+
+  log::info!(
+    "{} \"deno bundle\" is deprecated and will be removed in the future.",
+    colors::yellow("Warning"),
+  );
+  log::info!(
+    "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
+  );
+
+  let module_specifier = cli_options.resolve_main_module()?;
+
   let resolver = |_| {
     let cli_options = cli_options.clone();
-    let source_file1 = bundle_flags.source_file.clone();
-    let source_file2 = bundle_flags.source_file.clone();
+    let module_specifier = &module_specifier;
     async move {
-      let module_specifier = resolve_url_or_path(&source_file1)?;
-
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
-      let graph = create_graph_and_maybe_check(module_specifier, &ps).await?;
+      let graph =
+        create_graph_and_maybe_check(vec![module_specifier.clone()], &ps)
+          .await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
         .filter_map(|(_, r)| {
-          r.as_ref().ok().and_then(|(s, _, _)| s.to_file_path().ok())
+          r.ok().and_then(|module| match module {
+            Module::Esm(m) => m.specifier.to_file_path().ok(),
+            Module::Json(m) => m.specifier.to_file_path().ok(),
+            // nothing to watch
+            Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
+          })
         })
         .collect();
 
@@ -59,14 +74,14 @@ pub async fn bundle(
         result: Ok((ps, graph)),
       },
       Err(e) => ResolutionResult::Restart {
-        paths_to_watch: vec![PathBuf::from(source_file2)],
+        paths_to_watch: vec![module_specifier.to_file_path().unwrap()],
         result: Err(e),
       },
     })
   };
 
   let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
-    let out_file = bundle_flags.out_file.clone();
+    let out_file = &bundle_flags.out_file;
     async move {
       // at the moment, we don't support npm specifiers in deno bundle, so show an error
       error_for_any_npm_specifier(&graph)?;
@@ -74,7 +89,7 @@ pub async fn bundle(
       let bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
       log::debug!(">>>>> bundle END");
 
-      if let Some(out_file) = out_file.as_ref() {
+      if let Some(out_file) = out_file {
         let output_bytes = bundle_output.code.as_bytes();
         let output_len = output_bytes.len();
         util::fs::write_file(out_file, output_bytes, 0o644)?;
@@ -136,7 +151,7 @@ fn bundle_module_graph(
   graph: &deno_graph::ModuleGraph,
   ps: &ProcState,
 ) -> Result<deno_emit::BundleEmit, AnyError> {
-  log::info!("{} {}", colors::green("Bundle"), graph.roots[0].0);
+  log::info!("{} {}", colors::green("Bundle"), graph.roots[0]);
 
   let ts_config_result = ps
     .options

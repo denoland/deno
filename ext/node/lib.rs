@@ -1,27 +1,32 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
-use deno_core::normalize_path;
+use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::url::Url;
-use deno_core::Extension;
-use deno_core::JsRuntimeInspector;
-use deno_core::OpState;
+use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+mod crypto;
 pub mod errors;
+mod idna;
+mod ops;
 mod package_json;
 mod path;
+mod polyfill;
 mod resolution;
+mod v8;
+mod winerror;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
+pub use polyfill::find_builtin_node_module;
+pub use polyfill::is_builtin_node_module;
+pub use polyfill::NodeModulePolyfill;
+pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::get_closest_package_json;
 pub use resolution::get_package_scope_config;
 pub use resolution::legacy_main_resolve;
@@ -32,7 +37,6 @@ pub use resolution::path_to_declaration_path;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
-use std::cell::RefCell;
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
@@ -53,10 +57,12 @@ pub trait RequireNpmResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool;
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError>;
 }
-
-pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
 
 pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
   let now = std::time::SystemTime::now();
@@ -65,7 +71,7 @@ pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
     .unwrap()
     .as_secs();
   // use a changing variable name to make it hard to depend on this
-  format!("__DENO_NODE_GLOBAL_THIS_{}__", seconds)
+  format!("__DENO_NODE_GLOBAL_THIS_{seconds}__")
 });
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -77,573 +83,349 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set
 });
 
-pub fn init<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/node",
-      "01_node.js",
-      "02_require.js",
-    ))
-    .ops(vec![
-      op_require_init_paths::decl(),
-      op_require_node_module_paths::decl::<P>(),
-      op_require_proxy_path::decl(),
-      op_require_is_deno_dir_package::decl(),
-      op_require_resolve_deno_dir::decl(),
-      op_require_is_request_relative::decl(),
-      op_require_resolve_lookup_paths::decl(),
-      op_require_try_self_parent_path::decl::<P>(),
-      op_require_try_self::decl(),
-      op_require_real_path::decl::<P>(),
-      op_require_path_is_absolute::decl(),
-      op_require_path_dirname::decl(),
-      op_require_stat::decl::<P>(),
-      op_require_path_resolve::decl(),
-      op_require_path_basename::decl(),
-      op_require_read_file::decl::<P>(),
-      op_require_as_file_path::decl(),
-      op_require_resolve_exports::decl(),
-      op_require_read_closest_package_json::decl::<P>(),
-      op_require_read_package_scope::decl(),
-      op_require_package_imports_resolve::decl::<P>(),
-      op_require_break_on_next_statement::decl(),
-    ])
-    .state(move |state| {
-      if let Some(npm_resolver) = maybe_npm_resolver.clone() {
-        state.put(npm_resolver);
-      }
-      Ok(())
-    })
-    .build()
-}
-
-fn ensure_read_permission<P>(
-  state: &mut OpState,
-  file_path: &Path,
-) -> Result<(), AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  let resolver = {
-    let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
-    resolver.clone()
-  };
-  if resolver.ensure_read_permission(file_path).is_ok() {
-    return Ok(());
-  }
-
-  state.borrow_mut::<P>().check_read(file_path)
-}
-
 #[op]
-pub fn op_require_init_paths() -> Vec<String> {
-  // todo(dsherret): this code is node compat mode specific and
-  // we probably don't want it for small mammal, so ignore it for now
-
-  // let (home_dir, node_path) = if cfg!(windows) {
-  //   (
-  //     std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
-  //     std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
-  //   )
-  // } else {
-  //   (
-  //     std::env::var("HOME").unwrap_or_else(|_| "".into()),
-  //     std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
-  //   )
-  // };
-
-  // let mut prefix_dir = std::env::current_exe().unwrap();
-  // if cfg!(windows) {
-  //   prefix_dir = prefix_dir.join("..").join("..")
-  // } else {
-  //   prefix_dir = prefix_dir.join("..")
-  // }
-
-  // let mut paths = vec![prefix_dir.join("lib").join("node")];
-
-  // if !home_dir.is_empty() {
-  //   paths.insert(0, PathBuf::from(&home_dir).join(".node_libraries"));
-  //   paths.insert(0, PathBuf::from(&home_dir).join(".nod_modules"));
-  // }
-
-  // let mut paths = paths
-  //   .into_iter()
-  //   .map(|p| p.to_string_lossy().to_string())
-  //   .collect();
-
-  // if !node_path.is_empty() {
-  //   let delimiter = if cfg!(windows) { ";" } else { ":" };
-  //   let mut node_paths: Vec<String> = node_path
-  //     .split(delimiter)
-  //     .filter(|e| !e.is_empty())
-  //     .map(|s| s.to_string())
-  //     .collect();
-  //   node_paths.append(&mut paths);
-  //   paths = node_paths;
-  // }
-
-  vec![]
-}
-
-#[op]
-pub fn op_require_node_module_paths<P>(
-  state: &mut OpState,
-  from: String,
-) -> Result<Vec<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  // Guarantee that "from" is absolute.
-  let from = deno_core::resolve_path(&from)
+fn op_node_build_os() -> String {
+  std::env::var("TARGET")
     .unwrap()
-    .to_file_path()
-    .unwrap();
-
-  ensure_read_permission::<P>(state, &from)?;
-
-  if cfg!(windows) {
-    // return root node_modules when path is 'D:\\'.
-    let from_str = from.to_str().unwrap();
-    if from_str.len() >= 3 {
-      let bytes = from_str.as_bytes();
-      if bytes[from_str.len() - 1] == b'\\' && bytes[from_str.len() - 2] == b':'
-      {
-        let p = from_str.to_owned() + "node_modules";
-        return Ok(vec![p]);
-      }
-    }
-  } else {
-    // Return early not only to avoid unnecessary work, but to *avoid* returning
-    // an array of two items for a root: [ '//node_modules', '/node_modules' ]
-    if from.to_string_lossy() == "/" {
-      return Ok(vec!["/node_modules".to_string()]);
-    }
-  }
-
-  let mut paths = vec![];
-  let mut current_path = from.as_path();
-  let mut maybe_parent = Some(current_path);
-  while let Some(parent) = maybe_parent {
-    if !parent.ends_with("/node_modules") {
-      paths.push(parent.join("node_modules").to_string_lossy().to_string());
-      current_path = parent;
-      maybe_parent = current_path.parent();
-    }
-  }
-
-  if !cfg!(windows) {
-    // Append /node_modules to handle root paths.
-    paths.push("/node_modules".to_string());
-  }
-
-  Ok(paths)
+    .split('-')
+    .nth(2)
+    .unwrap()
+    .to_string()
 }
 
-#[op]
-fn op_require_proxy_path(filename: String) -> String {
-  // Allow a directory to be passed as the filename
-  let trailing_slash = if cfg!(windows) {
-    // Node also counts a trailing forward slash as a
-    // directory for node on Windows, but not backslashes
-    // on non-Windows platforms
-    filename.ends_with('\\') || filename.ends_with('/')
+deno_core::extension!(deno_node,
+  deps = [ deno_io, deno_fs ],
+  parameters = [P: NodePermissions],
+  ops = [
+    crypto::op_node_create_decipheriv,
+    crypto::op_node_cipheriv_encrypt,
+    crypto::op_node_cipheriv_final,
+    crypto::op_node_create_cipheriv,
+    crypto::op_node_create_hash,
+    crypto::op_node_decipheriv_decrypt,
+    crypto::op_node_decipheriv_final,
+    crypto::op_node_hash_update,
+    crypto::op_node_hash_update_str,
+    crypto::op_node_hash_digest,
+    crypto::op_node_hash_digest_hex,
+    crypto::op_node_hash_clone,
+    crypto::op_node_private_encrypt,
+    crypto::op_node_private_decrypt,
+    crypto::op_node_public_encrypt,
+    winerror::op_node_sys_to_uv_error,
+    v8::op_v8_cached_data_version_tag,
+    v8::op_v8_get_heap_statistics,
+    idna::op_node_idna_domain_to_ascii,
+    idna::op_node_idna_domain_to_unicode,
+    idna::op_node_idna_punycode_decode,
+    idna::op_node_idna_punycode_encode,
+    op_node_build_os,
+
+    ops::op_require_init_paths,
+    ops::op_require_node_module_paths<P>,
+    ops::op_require_proxy_path,
+    ops::op_require_is_deno_dir_package,
+    ops::op_require_resolve_deno_dir,
+    ops::op_require_is_request_relative,
+    ops::op_require_resolve_lookup_paths,
+    ops::op_require_try_self_parent_path<P>,
+    ops::op_require_try_self<P>,
+    ops::op_require_real_path<P>,
+    ops::op_require_path_is_absolute,
+    ops::op_require_path_dirname,
+    ops::op_require_stat<P>,
+    ops::op_require_path_resolve,
+    ops::op_require_path_basename,
+    ops::op_require_read_file<P>,
+    ops::op_require_as_file_path,
+    ops::op_require_resolve_exports<P>,
+    ops::op_require_read_closest_package_json<P>,
+    ops::op_require_read_package_scope<P>,
+    ops::op_require_package_imports_resolve<P>,
+    ops::op_require_break_on_next_statement,
+  ],
+  esm_entry_point = "ext:deno_node/02_init.js",
+  esm = [
+    dir "polyfills",
+    "00_globals.js",
+    "01_require.js",
+    "02_init.js",
+    "_core.ts",
+    "_events.mjs",
+    "_fs/_fs_access.ts",
+    "_fs/_fs_appendFile.ts",
+    "_fs/_fs_chmod.ts",
+    "_fs/_fs_chown.ts",
+    "_fs/_fs_close.ts",
+    "_fs/_fs_common.ts",
+    "_fs/_fs_constants.ts",
+    "_fs/_fs_copy.ts",
+    "_fs/_fs_dir.ts",
+    "_fs/_fs_dirent.ts",
+    "_fs/_fs_exists.ts",
+    "_fs/_fs_fdatasync.ts",
+    "_fs/_fs_fstat.ts",
+    "_fs/_fs_fsync.ts",
+    "_fs/_fs_ftruncate.ts",
+    "_fs/_fs_futimes.ts",
+    "_fs/_fs_link.ts",
+    "_fs/_fs_lstat.ts",
+    "_fs/_fs_mkdir.ts",
+    "_fs/_fs_mkdtemp.ts",
+    "_fs/_fs_open.ts",
+    "_fs/_fs_opendir.ts",
+    "_fs/_fs_read.ts",
+    "_fs/_fs_readdir.ts",
+    "_fs/_fs_readFile.ts",
+    "_fs/_fs_readlink.ts",
+    "_fs/_fs_realpath.ts",
+    "_fs/_fs_rename.ts",
+    "_fs/_fs_rm.ts",
+    "_fs/_fs_rmdir.ts",
+    "_fs/_fs_stat.ts",
+    "_fs/_fs_symlink.ts",
+    "_fs/_fs_truncate.ts",
+    "_fs/_fs_unlink.ts",
+    "_fs/_fs_utimes.ts",
+    "_fs/_fs_watch.ts",
+    "_fs/_fs_write.mjs",
+    "_fs/_fs_writeFile.ts",
+    "_fs/_fs_writev.mjs",
+    "_http_agent.mjs",
+    "_http_common.ts",
+    "_http_outgoing.ts",
+    "_next_tick.ts",
+    "_pako.mjs",
+    "_process/exiting.ts",
+    "_process/process.ts",
+    "_process/streams.mjs",
+    "_readline.mjs",
+    "_stream.mjs",
+    "_tls_common.ts",
+    "_tls_wrap.ts",
+    "_util/_util_callbackify.ts",
+    "_util/asserts.ts",
+    "_util/async.ts",
+    "_util/os.ts",
+    "_util/std_asserts.ts",
+    "_util/std_fmt_colors.ts",
+    "_util/std_testing_diff.ts",
+    "_utils.ts",
+    "_zlib_binding.mjs",
+    "_zlib.mjs",
+    "assert.ts",
+    "assert/strict.ts",
+    "assertion_error.ts",
+    "async_hooks.ts",
+    "buffer.ts",
+    "child_process.ts",
+    "cluster.ts",
+    "console.ts",
+    "constants.ts",
+    "crypto.ts",
+    "dgram.ts",
+    "diagnostics_channel.ts",
+    "dns.ts",
+    "dns/promises.ts",
+    "domain.ts",
+    "events.ts",
+    "fs.ts",
+    "fs/promises.ts",
+    "http.ts",
+    "http2.ts",
+    "https.ts",
+    "inspector.ts",
+    "internal_binding/_libuv_winerror.ts",
+    "internal_binding/_listen.ts",
+    "internal_binding/_node.ts",
+    "internal_binding/_timingSafeEqual.ts",
+    "internal_binding/_utils.ts",
+    "internal_binding/ares.ts",
+    "internal_binding/async_wrap.ts",
+    "internal_binding/buffer.ts",
+    "internal_binding/cares_wrap.ts",
+    "internal_binding/connection_wrap.ts",
+    "internal_binding/constants.ts",
+    "internal_binding/crypto.ts",
+    "internal_binding/handle_wrap.ts",
+    "internal_binding/mod.ts",
+    "internal_binding/node_file.ts",
+    "internal_binding/node_options.ts",
+    "internal_binding/pipe_wrap.ts",
+    "internal_binding/stream_wrap.ts",
+    "internal_binding/string_decoder.ts",
+    "internal_binding/symbols.ts",
+    "internal_binding/tcp_wrap.ts",
+    "internal_binding/types.ts",
+    "internal_binding/udp_wrap.ts",
+    "internal_binding/util.ts",
+    "internal_binding/uv.ts",
+    "internal/assert.mjs",
+    "internal/async_hooks.ts",
+    "internal/buffer.mjs",
+    "internal/child_process.ts",
+    "internal/cli_table.ts",
+    "internal/console/constructor.mjs",
+    "internal/constants.ts",
+    "internal/crypto/_keys.ts",
+    "internal/crypto/_randomBytes.ts",
+    "internal/crypto/_randomFill.ts",
+    "internal/crypto/_randomInt.ts",
+    "internal/crypto/certificate.ts",
+    "internal/crypto/cipher.ts",
+    "internal/crypto/constants.ts",
+    "internal/crypto/diffiehellman.ts",
+    "internal/crypto/hash.ts",
+    "internal/crypto/hkdf.ts",
+    "internal/crypto/keygen.ts",
+    "internal/crypto/keys.ts",
+    "internal/crypto/pbkdf2.ts",
+    "internal/crypto/random.ts",
+    "internal/crypto/scrypt.ts",
+    "internal/crypto/sig.ts",
+    "internal/crypto/util.ts",
+    "internal/crypto/x509.ts",
+    "internal/dgram.ts",
+    "internal/dns/promises.ts",
+    "internal/dns/utils.ts",
+    "internal/dtrace.ts",
+    "internal/error_codes.ts",
+    "internal/errors.ts",
+    "internal/event_target.mjs",
+    "internal/fixed_queue.ts",
+    "internal/fs/streams.mjs",
+    "internal/fs/utils.mjs",
+    "internal/hide_stack_frames.ts",
+    "internal/http.ts",
+    "internal/idna.ts",
+    "internal/net.ts",
+    "internal/normalize_encoding.mjs",
+    "internal/options.ts",
+    "internal/primordials.mjs",
+    "internal/process/per_thread.mjs",
+    "internal/querystring.ts",
+    "internal/readline/callbacks.mjs",
+    "internal/readline/emitKeypressEvents.mjs",
+    "internal/readline/interface.mjs",
+    "internal/readline/promises.mjs",
+    "internal/readline/symbols.mjs",
+    "internal/readline/utils.mjs",
+    "internal/stream_base_commons.ts",
+    "internal/streams/add-abort-signal.mjs",
+    "internal/streams/buffer_list.mjs",
+    "internal/streams/destroy.mjs",
+    "internal/streams/duplex.mjs",
+    "internal/streams/end-of-stream.mjs",
+    "internal/streams/lazy_transform.mjs",
+    "internal/streams/passthrough.mjs",
+    "internal/streams/readable.mjs",
+    "internal/streams/state.mjs",
+    "internal/streams/transform.mjs",
+    "internal/streams/utils.mjs",
+    "internal/streams/writable.mjs",
+    "internal/test/binding.ts",
+    "internal/timers.mjs",
+    "internal/url.ts",
+    "internal/util.mjs",
+    "internal/util/comparisons.ts",
+    "internal/util/debuglog.ts",
+    "internal/util/inspect.mjs",
+    "internal/util/types.ts",
+    "internal/validators.mjs",
+    "net.ts",
+    "os.ts",
+    "path.ts",
+    "path/_constants.ts",
+    "path/_interface.ts",
+    "path/_util.ts",
+    "path/common.ts",
+    "path/glob.ts",
+    "path/mod.ts",
+    "path/posix.ts",
+    "path/separator.ts",
+    "path/win32.ts",
+    "perf_hooks.ts",
+    "process.ts",
+    "punycode.ts",
+    "querystring.ts",
+    "readline.ts",
+    "readline/promises.ts",
+    "repl.ts",
+    "stream.ts",
+    "stream/consumers.mjs",
+    "stream/promises.mjs",
+    "stream/web.ts",
+    "string_decoder.ts",
+    "sys.ts",
+    "timers.ts",
+    "timers/promises.ts",
+    "tls.ts",
+    "tty.ts",
+    "url.ts",
+    "util.ts",
+    "util/types.ts",
+    "v8.ts",
+    "vm.ts",
+    "wasi.ts",
+    "worker_threads.ts",
+    "zlib.ts",
+  ],
+  options = {
+    maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  },
+  state = |state, options| {
+    if let Some(npm_resolver) = options.maybe_npm_resolver {
+      state.put(npm_resolver);
+    }
+  },
+);
+
+pub fn initialize_runtime(
+  js_runtime: &mut JsRuntime,
+  uses_local_node_modules_dir: bool,
+  maybe_binary_command_name: Option<String>,
+) -> Result<(), AnyError> {
+  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
+    format!("\"{}\"", binary_command_name)
   } else {
-    filename.ends_with('/')
+    "undefined".to_string()
   };
+  let source_code = format!(
+    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
+      Deno[Deno.internal].node.initialize(
+        nodeGlobalThisName, 
+        usesLocalNodeModulesDir,
+        argv0
+      );
+    }})('{}', {}, {});"#,
+    NODE_GLOBAL_THIS_NAME.as_str(),
+    uses_local_node_modules_dir,
+    argv0
+  );
 
-  if trailing_slash {
-    let p = PathBuf::from(filename);
-    p.join("noop.js").to_string_lossy().to_string()
-  } else {
-    filename
-  }
+  js_runtime.execute_script(located_script_name!(), source_code)?;
+  Ok(())
 }
 
-#[op]
-fn op_require_is_request_relative(request: &str) -> bool {
-  if request.starts_with("./") || request.starts_with("../") || request == ".."
-  {
-    return true;
+pub fn load_cjs_module(
+  js_runtime: &mut JsRuntime,
+  module: &str,
+  main: bool,
+  inspect_brk: bool,
+) -> Result<(), AnyError> {
+  fn escape_for_single_quote_string(text: &str) -> String {
+    text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
-  if cfg!(windows) {
-    if request.starts_with(".\\") {
-      return true;
-    }
+  let source_code = format!(
+    r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
+      Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
+    }})('{module}', {main}, {inspect_brk});"#,
+    main = main,
+    module = escape_for_single_quote_string(module),
+    inspect_brk = inspect_brk,
+  );
 
-    if request.starts_with("..\\") {
-      return true;
-    }
-  }
-
-  false
-}
-
-#[op]
-fn op_require_resolve_deno_dir(
-  state: &mut OpState,
-  request: String,
-  parent_filename: String,
-) -> Option<String> {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
-  resolver
-    .resolve_package_folder_from_package(
-      &request,
-      &PathBuf::from(parent_filename),
-      NodeResolutionMode::Execution,
-    )
-    .ok()
-    .map(|p| p.to_string_lossy().to_string())
-}
-
-#[op]
-fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
-  resolver.in_npm_package(&PathBuf::from(path))
-}
-
-#[op]
-fn op_require_resolve_lookup_paths(
-  request: String,
-  maybe_parent_paths: Option<Vec<String>>,
-  parent_filename: String,
-) -> Option<Vec<String>> {
-  if !request.starts_with('.')
-    || (request.len() > 1
-      && !request.starts_with("..")
-      && !request.starts_with("./")
-      && (!cfg!(windows) || !request.starts_with(".\\")))
-  {
-    let module_paths = vec![];
-    let mut paths = module_paths;
-    if let Some(mut parent_paths) = maybe_parent_paths {
-      if !parent_paths.is_empty() {
-        paths.append(&mut parent_paths);
-      }
-    }
-
-    if !paths.is_empty() {
-      return Some(paths);
-    } else {
-      return None;
-    }
-  }
-
-  // In REPL, parent.filename is null.
-  // if (!parent || !parent.id || !parent.filename) {
-  //   // Make require('./path/to/foo') work - normally the path is taken
-  //   // from realpath(__filename) but in REPL there is no filename
-  //   const mainPaths = ['.'];
-
-  //   debug('looking for %j in %j', request, mainPaths);
-  //   return mainPaths;
-  // }
-
-  let p = PathBuf::from(parent_filename);
-  Some(vec![p.parent().unwrap().to_string_lossy().to_string()])
-}
-
-#[op]
-fn op_require_path_is_absolute(p: String) -> bool {
-  PathBuf::from(p).is_absolute()
-}
-
-#[op]
-fn op_require_stat<P>(
-  state: &mut OpState,
-  path: String,
-) -> Result<i32, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  let path = PathBuf::from(path);
-  ensure_read_permission::<P>(state, &path)?;
-  if let Ok(metadata) = std::fs::metadata(&path) {
-    if metadata.is_file() {
-      return Ok(0);
-    } else {
-      return Ok(1);
-    }
-  }
-
-  Ok(-1)
-}
-
-#[op]
-fn op_require_real_path<P>(
-  state: &mut OpState,
-  request: String,
-) -> Result<String, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  let path = PathBuf::from(request);
-  ensure_read_permission::<P>(state, &path)?;
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
-  }
-  Ok(canonicalized_path.to_string_lossy().to_string())
-}
-
-fn path_resolve(parts: Vec<String>) -> String {
-  assert!(!parts.is_empty());
-  let mut p = PathBuf::from(&parts[0]);
-  if parts.len() > 1 {
-    for part in &parts[1..] {
-      p = p.join(part);
-    }
-  }
-  normalize_path(p).to_string_lossy().to_string()
-}
-
-#[op]
-fn op_require_path_resolve(parts: Vec<String>) -> String {
-  path_resolve(parts)
-}
-
-#[op]
-fn op_require_path_dirname(request: String) -> Result<String, AnyError> {
-  let p = PathBuf::from(request);
-  if let Some(parent) = p.parent() {
-    Ok(parent.to_string_lossy().to_string())
-  } else {
-    Err(generic_error("Path doesn't have a parent"))
-  }
-}
-
-#[op]
-fn op_require_path_basename(request: String) -> Result<String, AnyError> {
-  let p = PathBuf::from(request);
-  if let Some(path) = p.file_name() {
-    Ok(path.to_string_lossy().to_string())
-  } else {
-    Err(generic_error("Path doesn't have a file name"))
-  }
-}
-
-#[op]
-fn op_require_try_self_parent_path<P>(
-  state: &mut OpState,
-  has_parent: bool,
-  maybe_parent_filename: Option<String>,
-  maybe_parent_id: Option<String>,
-) -> Result<Option<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  if !has_parent {
-    return Ok(None);
-  }
-
-  if let Some(parent_filename) = maybe_parent_filename {
-    return Ok(Some(parent_filename));
-  }
-
-  if let Some(parent_id) = maybe_parent_id {
-    if parent_id == "<repl>" || parent_id == "internal/preload" {
-      if let Ok(cwd) = std::env::current_dir() {
-        ensure_read_permission::<P>(state, &cwd)?;
-        return Ok(Some(cwd.to_string_lossy().to_string()));
-      }
-    }
-  }
-  Ok(None)
-}
-
-#[op]
-fn op_require_try_self(
-  state: &mut OpState,
-  parent_path: Option<String>,
-  request: String,
-) -> Result<Option<String>, AnyError> {
-  if parent_path.is_none() {
-    return Ok(None);
-  }
-
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let pkg = resolution::get_package_scope_config(
-    &Url::from_file_path(parent_path.unwrap()).unwrap(),
-    &*resolver,
-  )
-  .ok();
-  if pkg.is_none() {
-    return Ok(None);
-  }
-
-  let pkg = pkg.unwrap();
-  if pkg.exports.is_none() {
-    return Ok(None);
-  }
-  if pkg.name.is_none() {
-    return Ok(None);
-  }
-
-  let pkg_name = pkg.name.as_ref().unwrap().to_string();
-  let mut expansion = ".".to_string();
-
-  if request == pkg_name {
-    // pass
-  } else if request.starts_with(&format!("{}/", pkg_name)) {
-    expansion += &request[pkg_name.len()..];
-  } else {
-    return Ok(None);
-  }
-
-  let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
-  if let Some(exports) = &pkg.exports {
-    resolution::package_exports_resolve(
-      &pkg.path,
-      expansion,
-      exports,
-      &referrer,
-      NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
-      &*resolver,
-    )
-    .map(|r| Some(r.to_string_lossy().to_string()))
-  } else {
-    Ok(None)
-  }
-}
-
-#[op]
-fn op_require_read_file<P>(
-  state: &mut OpState,
-  file_path: String,
-) -> Result<String, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  let file_path = PathBuf::from(file_path);
-  ensure_read_permission::<P>(state, &file_path)?;
-  Ok(std::fs::read_to_string(file_path)?)
-}
-
-#[op]
-pub fn op_require_as_file_path(file_or_url: String) -> String {
-  if let Ok(url) = Url::parse(&file_or_url) {
-    if let Ok(p) = url.to_file_path() {
-      return p.to_string_lossy().to_string();
-    }
-  }
-
-  file_or_url
-}
-
-#[op]
-fn op_require_resolve_exports(
-  state: &mut OpState,
-  modules_path: String,
-  _request: String,
-  name: String,
-  expansion: String,
-  parent_path: String,
-) -> Result<Option<String>, AnyError> {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-
-  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
-    modules_path
-  } else {
-    path_resolve(vec![modules_path, name])
-  };
-  let pkg = PackageJson::load(
-    &*resolver,
-    PathBuf::from(&pkg_path).join("package.json"),
-  )?;
-
-  if let Some(exports) = &pkg.exports {
-    let referrer = Url::from_file_path(parent_path).unwrap();
-    resolution::package_exports_resolve(
-      &pkg.path,
-      format!(".{}", expansion),
-      exports,
-      &referrer,
-      NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
-      &*resolver,
-    )
-    .map(|r| Some(r.to_string_lossy().to_string()))
-  } else {
-    Ok(None)
-  }
-}
-
-#[op]
-fn op_require_read_closest_package_json<P>(
-  state: &mut OpState,
-  filename: String,
-) -> Result<PackageJson, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  ensure_read_permission::<P>(
-    state,
-    PathBuf::from(&filename).parent().unwrap(),
-  )?;
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  resolution::get_closest_package_json(
-    &Url::from_file_path(filename).unwrap(),
-    &*resolver,
-  )
-}
-
-#[op]
-fn op_require_read_package_scope(
-  state: &mut OpState,
-  package_json_path: String,
-) -> Option<PackageJson> {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let package_json_path = PathBuf::from(package_json_path);
-  PackageJson::load(&*resolver, package_json_path).ok()
-}
-
-#[op]
-fn op_require_package_imports_resolve<P>(
-  state: &mut OpState,
-  parent_filename: String,
-  request: String,
-) -> Result<Option<String>, AnyError>
-where
-  P: NodePermissions + 'static,
-{
-  let parent_path = PathBuf::from(&parent_filename);
-  ensure_read_permission::<P>(state, &parent_path)?;
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let pkg = PackageJson::load(&*resolver, parent_path.join("package.json"))?;
-
-  if pkg.imports.is_some() {
-    let referrer =
-      deno_core::url::Url::from_file_path(&parent_filename).unwrap();
-    let r = resolution::package_imports_resolve(
-      &request,
-      &referrer,
-      NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
-      &*resolver,
-    )
-    .map(|r| Some(Url::from_file_path(r).unwrap().to_string()));
-    state.put(resolver);
-    r
-  } else {
-    Ok(None)
-  }
-}
-
-#[op]
-fn op_require_break_on_next_statement(state: &mut OpState) {
-  let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
-  inspector
-    .borrow_mut()
-    .wait_for_session_and_break_on_next_statement()
+  js_runtime.execute_script(located_script_name!(), source_code)?;
+  Ok(())
 }

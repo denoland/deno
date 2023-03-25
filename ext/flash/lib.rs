@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // False positive lint for explicit drops.
 // https://github.com/rust-lang/rust-clippy/issues/6446
@@ -16,18 +16,17 @@ use deno_core::v8::fast_api;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_core::V8_WRAPPER_OBJECT_INDEX;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
-use http::header::HeaderName;
 use http::header::CONNECTION;
 use http::header::CONTENT_LENGTH;
 use http::header::EXPECT;
 use http::header::TRANSFER_ENCODING;
+use http::HeaderName;
 use http::HeaderValue;
 use log::trace;
 use mio::net::TcpListener;
@@ -107,7 +106,7 @@ fn op_flash_respond(
 }
 
 #[op(fast)]
-fn op_try_flash_respond_chuncked(
+fn op_try_flash_respond_chunked(
   op_state: &mut OpState,
   server_id: u32,
   token: u32,
@@ -184,7 +183,7 @@ async fn op_flash_respond_async(
 }
 
 #[op]
-async fn op_flash_respond_chuncked(
+async fn op_flash_respond_chunked(
   op_state: Rc<RefCell<OpState>>,
   server_id: u32,
   token: u32,
@@ -373,11 +372,9 @@ unsafe fn op_flash_respond_fast(
   let ctx = &mut *(ptr as *mut ServerContext);
 
   let response = &*response;
-  if let Some(response) = response.get_storage_if_aligned() {
-    flash_respond(ctx, token, shutdown, response)
-  } else {
-    todo!();
-  }
+  // Uint8Array is always byte-aligned.
+  let response = response.get_storage_if_aligned().unwrap_unchecked();
+  flash_respond(ctx, token, shutdown, response)
 }
 
 macro_rules! get_request {
@@ -552,7 +549,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &NextRequestFast, None);
+    let func = builder.build_fast(scope, &NextRequestFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "nextRequest").unwrap();
@@ -575,7 +572,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &GetMethodFast, None);
+    let func = builder.build_fast(scope, &GetMethodFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "getMethod").unwrap();
@@ -613,7 +610,7 @@ fn op_flash_make_request<'scope>(
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &RespondFast, None);
+    let func = builder.build_fast(scope, &RespondFast, None, None, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "respond").unwrap();
@@ -665,6 +662,26 @@ fn op_flash_headers(
       .map(|h| (h.name.as_bytes().into(), h.value.into()))
       .collect(),
   )
+}
+
+#[op]
+fn op_flash_addr(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+) -> Result<(String, u16), AnyError> {
+  let mut op_state = state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx
+    .servers
+    .get_mut(&server_id)
+    .ok_or_else(|| type_error("server closed"))?;
+  let req = &ctx
+    .requests
+    .get(&token)
+    .ok_or_else(|| type_error("request closed"))?;
+  let socket = req.socket();
+  Ok((socket.addr.ip().to_string(), socket.addr.port()))
 }
 
 // Remember the first packet we read? It probably also has some body data. This op quickly copies it into
@@ -723,7 +740,7 @@ fn op_flash_first_packet(
           return Ok(Some(buf.into()));
         }
         Err(e) => {
-          return Err(type_error(format!("{}", e)));
+          return Err(type_error(format!("{e}")));
         }
       }
     }
@@ -754,7 +771,11 @@ async fn op_flash_read_body(
     .as_mut()
     .unwrap()
   };
-  let tx = ctx.requests.get_mut(&token).unwrap();
+  let tx = match ctx.requests.get_mut(&token) {
+    Some(tx) => tx,
+    // request was already consumed by caller
+    None => return 0,
+  };
 
   if tx.te_chunked {
     let mut decoder =
@@ -769,7 +790,7 @@ async fn op_flash_read_body(
           return n;
         }
         Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
-          panic!("chunked read error: {}", e);
+          panic!("chunked read error: {e}");
         }
         Err(_) => {
           drop(_lock);
@@ -932,7 +953,7 @@ fn run_server(
       match token {
         Token(0) => loop {
           match listener.accept() {
-            Ok((mut socket, _)) => {
+            Ok((mut socket, addr)) => {
               counter += 1;
               let token = Token(counter);
               poll
@@ -958,6 +979,7 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
+                addr,
               });
 
               trace!("New connection: {}", token.0);
@@ -1489,8 +1511,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
   if !unstable.0 {
     eprintln!(
-      "Unstable API '{}'. The --unstable flag must be provided.",
-      api_name
+      "Unstable API '{api_name}'. The --unstable flag must be provided."
     );
     std::process::exit(70);
   }
@@ -1504,43 +1525,49 @@ pub trait FlashPermissions {
   ) -> Result<(), AnyError>;
 }
 
-pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder()
-    .js(deno_core::include_js_files!(
-      prefix "deno:ext/flash",
-      "01_http.js",
-    ))
-    .ops(vec![
-      op_flash_serve::decl::<P>(),
-      op_node_unstable_flash_serve::decl::<P>(),
-      op_flash_respond::decl(),
-      op_flash_respond_async::decl(),
-      op_flash_respond_chuncked::decl(),
-      op_flash_method::decl(),
-      op_flash_path::decl(),
-      op_flash_headers::decl(),
-      op_flash_next::decl(),
-      op_flash_next_server::decl(),
-      op_flash_next_async::decl(),
-      op_flash_read_body::decl(),
-      op_flash_upgrade_websocket::decl(),
-      op_flash_drive_server::decl(),
-      op_flash_wait_for_listening::decl(),
-      op_flash_first_packet::decl(),
-      op_flash_has_body_stream::decl(),
-      op_flash_close_server::decl(),
-      op_flash_make_request::decl(),
-      op_flash_write_resource::decl(),
-      op_try_flash_respond_chuncked::decl(),
-    ])
-    .state(move |op_state| {
-      op_state.put(Unstable(unstable));
-      op_state.put(FlashContext {
-        next_server_id: 0,
-        join_handles: HashMap::default(),
-        servers: HashMap::default(),
-      });
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_flash,
+  deps = [
+    deno_web,
+    deno_net,
+    deno_fetch,
+    deno_websocket,
+    deno_http
+  ],
+  parameters = [P: FlashPermissions],
+  ops = [
+    op_flash_serve<P>,
+    op_node_unstable_flash_serve<P>,
+    op_flash_respond,
+    op_flash_respond_async,
+    op_flash_respond_chunked,
+    op_flash_method,
+    op_flash_path,
+    op_flash_headers,
+    op_flash_addr,
+    op_flash_next,
+    op_flash_next_server,
+    op_flash_next_async,
+    op_flash_read_body,
+    op_flash_upgrade_websocket,
+    op_flash_drive_server,
+    op_flash_wait_for_listening,
+    op_flash_first_packet,
+    op_flash_has_body_stream,
+    op_flash_close_server,
+    op_flash_make_request,
+    op_flash_write_resource,
+    op_try_flash_respond_chunked,
+  ],
+  esm = [ "01_http.js" ],
+  options = {
+    unstable: bool,
+  },
+  state = |state, options| {
+    state.put(Unstable(options.unstable));
+    state.put(FlashContext {
+      next_server_id: 0,
+      join_handles: HashMap::default(),
+      servers: HashMap::default(),
+    });
+  },
+);

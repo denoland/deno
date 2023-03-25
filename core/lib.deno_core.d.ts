@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -19,7 +19,7 @@ declare namespace Deno {
 
     /** Mark following promise as "unref", ie. event loop will exit
      * if there are only "unref" promises left. */
-    function unrefOps(promiseId: number): void;
+    function unrefOp(promiseId: number): void;
 
     /**
      * List of all registered ops, in the form of a map that maps op
@@ -184,5 +184,13 @@ declare namespace Deno {
       after_hook?: (promise: Promise<unknown>) => void,
       resolve_hook?: (promise: Promise<unknown>) => void,
     ): void;
+
+    const build: {
+      target: string;
+      arch: string;
+      os: string;
+      vendor: string;
+      env: string | undefined;
+    };
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //! This example shows how to use swc to transpile TypeScript and JSX/TSX
 //! modules.
 //!
@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::Context;
 use anyhow::Error;
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
@@ -21,6 +22,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSourceFuture;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
+use deno_core::ResolutionKind;
 use deno_core::RuntimeOptions;
 use futures::FutureExt;
 
@@ -31,7 +33,7 @@ impl ModuleLoader for TypescriptModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _is_main: bool,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
     Ok(resolve_import(specifier, referrer)?)
   }
@@ -46,10 +48,10 @@ impl ModuleLoader for TypescriptModuleLoader {
     async move {
       let path = module_specifier
         .to_file_path()
-        .map_err(|_| anyhow!("Only file: URLs are supported."))?;
+        .map_err(|_| anyhow!("Only file:// URLs are supported."))?;
 
-      let media_type = MediaType::from(&path);
-      let (module_type, should_transpile) = match MediaType::from(&path) {
+      let media_type = MediaType::from_path(&path);
+      let (module_type, should_transpile) = match MediaType::from_path(&path) {
         MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
           (ModuleType::JavaScript, false)
         }
@@ -80,7 +82,7 @@ impl ModuleLoader for TypescriptModuleLoader {
         code
       };
       let module = ModuleSource {
-        code: code.into_bytes().into_boxed_slice(),
+        code: code.into(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
@@ -97,15 +99,18 @@ fn main() -> Result<(), Error> {
     println!("Usage: target/examples/debug/ts_module_loader <path_to_module>");
     std::process::exit(1);
   }
-  let main_url = args[1].clone();
-  println!("Run {}", main_url);
+  let main_url = &args[1];
+  println!("Run {main_url}");
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(Rc::new(TypescriptModuleLoader)),
     ..Default::default()
   });
 
-  let main_module = resolve_path(&main_url)?;
+  let main_module = resolve_path(
+    main_url,
+    &std::env::current_dir().context("Unable to get CWD")?,
+  )?;
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;
