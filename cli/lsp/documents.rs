@@ -528,7 +528,7 @@ impl Document {
     if let Some(Ok(module)) = &self.0.maybe_module {
       return module.media_type;
     }
-    let specifier_media_type = MediaType::from(&self.0.specifier);
+    let specifier_media_type = MediaType::from_specifier(&self.0.specifier);
     if specifier_media_type != MediaType::Unknown {
       return specifier_media_type;
     }
@@ -1102,7 +1102,7 @@ impl Documents {
       }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
-          let media_type = MediaType::from(&specifier);
+          let media_type = MediaType::from_specifier(&specifier);
           results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
@@ -1487,9 +1487,8 @@ fn analyze_module(
       parsed_source,
       Some(resolver),
     )),
-    Err(err) => Err(deno_graph::ModuleGraphError::ParseErr(
-      specifier.clone(),
-      err.clone(),
+    Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
+      deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
     )),
   }
 }

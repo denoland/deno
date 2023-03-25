@@ -25,6 +25,7 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
+use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -33,6 +34,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_io::Stdio;
+use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
@@ -430,6 +432,10 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops(),
+      deno_kv::deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(None),
+        unstable,
+      ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
@@ -575,16 +581,16 @@ impl WebWorker {
     "#;
     let poll_for_messages_fn = self
       .js_runtime
-      .execute_script(&located_script_name!(), script)
+      .execute_script(located_script_name!(), script)
       .expect("Failed to execute worker bootstrap script");
     self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script(
+  pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
-    name: &str,
-    source_code: &str,
+    name: &'static str,
+    source_code: S,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())
@@ -744,7 +750,7 @@ fn print_worker_error(
 pub fn run_web_worker(
   worker: WebWorker,
   specifier: ModuleSpecifier,
-  maybe_source_code: Option<String>,
+  mut maybe_source_code: Option<String>,
   preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -772,8 +778,8 @@ pub fn run_web_worker(
     };
 
     // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code {
-      let r = worker.execute_script(&located_script_name!(), &source_code);
+    let result = if let Some(source_code) = maybe_source_code.take() {
+      let r = worker.execute_script(located_script_name!(), source_code);
       worker.start_polling_for_messages();
       r
     } else {

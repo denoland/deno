@@ -36,6 +36,7 @@ semver = "=1.0.14"
 serde.workspace = true
 serde_json.workspace = true
 tar.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-tungstenite.workspace = true

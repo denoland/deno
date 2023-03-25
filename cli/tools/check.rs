@@ -102,6 +102,7 @@ pub fn check(
     maybe_npm_resolver: Some(npm_resolver.clone()),
     maybe_tsbuildinfo,
     root_names,
+    check_mode: options.type_check_mode,
   })?;
 
   let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
@@ -264,8 +265,7 @@ fn get_tsc_roots(
     }
   }
 
-  // todo(https://github.com/denoland/deno_graph/pull/253/): pre-allocate this
-  let mut result = Vec::new();
+  let mut result = Vec::with_capacity(graph.specifiers_count());
   if graph.has_node_specifier {
     // inject a specifier that will resolve node types
     result.push((
@@ -313,6 +313,7 @@ fn get_tsc_roots(
       maybe_get_check_entry(module, check_js)
     }
   }));
+
   result
 }
 

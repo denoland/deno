@@ -49,7 +49,7 @@ pub fn esm_code_with_node_globals(
     let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
       specifier: specifier.to_string(),
       text_info: text_info.clone(),
-      media_type: deno_ast::MediaType::from(specifier),
+      media_type: deno_ast::MediaType::from_specifier(specifier),
       capture_tokens: true,
       scope_analysis: true,
       maybe_syntax: None,

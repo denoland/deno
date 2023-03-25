@@ -1339,6 +1339,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
   } else {
     (path.canonicalize()?, FILE_FLAG_BACKUP_SEMANTICS)
   };
+  // SAFETY: winapi calls
   unsafe {
     let mut path: Vec<_> = p.as_os_str().encode_wide().collect();
     path.push(0);

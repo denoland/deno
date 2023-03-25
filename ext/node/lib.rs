@@ -390,7 +390,7 @@ pub fn initialize_runtime(
   } else {
     "undefined".to_string()
   };
-  let source_code = &format!(
+  let source_code = format!(
     r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
       Deno[Deno.internal].node.initialize(
         nodeGlobalThisName, 
@@ -403,7 +403,7 @@ pub fn initialize_runtime(
     argv0
   );
 
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
 }
 
@@ -417,7 +417,7 @@ pub fn load_cjs_module(
     text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
-  let source_code = &format!(
+  let source_code = format!(
     r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
       Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
     }})('{module}', {main}, {inspect_brk});"#,
@@ -426,6 +426,6 @@ pub fn load_cjs_module(
     inspect_brk = inspect_brk,
   );
 
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
 }
