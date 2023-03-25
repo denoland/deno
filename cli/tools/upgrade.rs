@@ -266,7 +266,7 @@ pub async fn upgrade(
   let ps = ProcState::build(flags).await?;
   let current_exe_path = std::env::current_exe()?;
   let output_exe_path =
-    upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
+    upgrade_flags.output.as_ref().unwrap_or(current_exe_path);
   let metadata = fs::metadata(&output_exe_path)?;
   let permissions = metadata.permissions();
 
