@@ -1080,7 +1080,7 @@ Generate html reports from lcov:
         .long("threshold")
         .takes_value(true)
         .require_equals(true)
-        .help("Set a coverage threshold"),
+        .help("UNSTABLE: Set a coverage threshold. If the lines, branches or functions coverage falls below the threshold, an error will be thrown."),
     )
     .arg(
       Arg::new("files")
