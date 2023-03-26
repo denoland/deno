@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use std::thread;
@@ -68,7 +66,7 @@ impl BootstrapOptions {
     {
       let args = v8::Array::new(scope, self.args.len() as i32);
       for (idx, arg) in self.args.iter().enumerate() {
-        let arg_str = v8::String::new(scope, &arg).unwrap();
+        let arg_str = v8::String::new(scope, arg).unwrap();
         args.set_index(scope, idx as u32, arg_str.into());
       }
       array.set_index(scope, 0, args.into());
@@ -191,35 +189,10 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::Boolean::new(scope, self.unstable);
+      let val = v8::Boolean::new(scope, self.enable_testing_features);
       array.set_index(scope, 16, val.into());
     }
 
     array
-  }
-
-  pub fn as_json(&self) -> serde_json::Value {
-    json!({
-      // Shared bootstrap args
-      "args": self.args,
-      "cpuCount": self.cpu_count,
-      "debugFlag": self.debug_flag,
-      "denoVersion": self.runtime_version,
-      "locale": self.locale,
-      "location": self.location,
-      "noColor": self.no_color,
-      "isTty": self.is_tty,
-      "tsVersion": self.ts_version,
-      "unstableFlag": self.unstable,
-      // Web worker only
-      "enableTestingFeaturesFlag": self.enable_testing_features,
-      // Env values
-      "pid": std::process::id(),
-      "ppid": ppid(),
-      "target": env!("TARGET"),
-      "v8Version": deno_core::v8_version(),
-      "userAgent": self.user_agent,
-      "inspectFlag": self.inspect,
-    })
   }
 }
