@@ -119,6 +119,7 @@ pub struct BenchOptions {
   pub files: FilesConfig,
   pub filter: Option<String>,
   pub json: bool,
+  pub no_run: bool,
 }
 
 impl BenchOptions {
@@ -134,6 +135,7 @@ impl BenchOptions {
       ),
       filter: bench_flags.filter,
       json: bench_flags.json,
+      no_run: bench_flags.no_run,
     })
   }
 }
