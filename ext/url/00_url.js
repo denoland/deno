@@ -41,6 +41,12 @@ const SET_SEARCH = 7;
 const SET_USERNAME = 8;
 
 // Helper functions
+/**
+ * @param {string} href
+ * @param {number} setter
+ * @param {string} value
+ * @returns {string}
+ */
 function opUrlReparse(href, setter, value) {
   const status = ops.op_url_reparse(
     href,
@@ -51,6 +57,11 @@ function opUrlReparse(href, setter, value) {
   return getSerialization(status, href);
 }
 
+/**
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {number}
+ */
 function opUrlParse(href, maybeBase) {
   if (maybeBase === undefined) {
     return ops.op_url_parse(href, componentsBuf);
@@ -62,6 +73,12 @@ function opUrlParse(href, maybeBase) {
   );
 }
 
+/**
+ * @param {number} status
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {string}
+ */
 function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
@@ -350,7 +367,7 @@ class URL {
 
   /**
    * @param {string} url
-   * @param {string} base
+   * @param {string} [base]
    */
   constructor(url, base = undefined) {
     const prefix = "Failed to construct 'URL'";
@@ -369,7 +386,7 @@ class URL {
 
   /**
    * @param {string} url
-   * @param {string} base
+   * @param {string} [base]
    */
   static canParse(url, base = undefined) {
     const prefix = "Failed to call 'URL.canParse'";
