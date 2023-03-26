@@ -6,6 +6,7 @@ use std::io::BufRead;
 use test_util as util;
 use test_util::assert_contains;
 use test_util::TempDir;
+use tokio::io::AsyncBufReadExt;
 
 use util::assert_not_contains;
 
@@ -54,6 +55,31 @@ fn wait_for(
   }
 }
 
+async fn async_next_line<R>(lines: &mut tokio::io::Lines<R>) -> String
+where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  lines.next_line().await.unwrap().unwrap()
+}
+
+async fn async_wait_contains<R>(s: &str, lines: &mut tokio::io::Lines<R>)
+where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  let wait = || async move {
+    loop {
+      if lines.next_line().await.unwrap().unwrap().contains(s) {
+        return;
+      }
+    }
+  };
+
+  tokio::select! {
+   _ = wait() => {},
+   _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {panic!("Output did not contain \"{}\" after {} seconds", s, 1);  }
+  };
+}
+
 fn wait_contains(s: &str, lines: &mut impl Iterator<Item = String>) {
   wait_for(|msg| msg.contains(s), lines)
 }
@@ -83,6 +109,25 @@ fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
 fn check_alive_then_kill(mut child: std::process::Child) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
+}
+
+fn async_child_lines(
+  child: &mut std::process::Child,
+) -> (
+  tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
+  tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStderr>>,
+) {
+  let stdout_lines = tokio::io::BufReader::new(
+    tokio::process::ChildStdout::from_std(child.stdout.take().unwrap())
+      .unwrap(),
+  )
+  .lines();
+  let stderr_lines = tokio::io::BufReader::new(
+    tokio::process::ChildStderr::from_std(child.stderr.take().unwrap())
+      .unwrap(),
+  )
+  .lines();
+  (stdout_lines, stderr_lines)
 }
 
 fn child_lines(
@@ -136,6 +181,7 @@ fn lint_watch_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
   let next_line = stderr_lines.next().unwrap();
+
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
@@ -395,8 +441,8 @@ fn fmt_check_all_files_on_each_change_test() {
   check_alive_then_kill(child);
 }
 
-#[test]
-fn bundle_js_watch() {
+#[tokio::test]
+async fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
   let t = TempDir::new();
@@ -418,38 +464,48 @@ fn bundle_js_watch() {
     .spawn()
     .unwrap();
 
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
+  // let (sync_stdout_lines, mut sync_stderr_lines) = child_lines(&mut deno);
+  let (_stdout_lines, mut stderr_lines) = async_child_lines(&mut deno);
 
-  assert_contains!(stderr_lines.next().unwrap(), "Warning");
-  assert_contains!(stderr_lines.next().unwrap(), "deno_emit");
-  assert_contains!(stderr_lines.next().unwrap(), "Check");
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, "Bundle started");
-  assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
-  assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
+  assert_contains!(async_next_line(&mut stderr_lines).await, "Warning");
+  assert_contains!(async_next_line(&mut stderr_lines).await, "deno_emit");
+  assert_contains!(async_next_line(&mut stderr_lines).await, "Check");
+  assert_contains!(async_next_line(&mut stderr_lines).await, "Bundle started");
+  assert_contains!(
+    async_next_line(&mut stderr_lines).await,
+    "file_to_watch.ts"
+  );
+  assert_contains!(async_next_line(&mut stderr_lines).await, "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  wait_contains("Bundle finished", &mut stderr_lines);
+
+  async_wait_contains("Bundle finished", &mut stderr_lines).await;
 
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Check");
-  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(async_next_line(&mut stderr_lines).await, "Check");
+  let next_line = async_next_line(&mut stderr_lines).await;
   // Should not clear screen, as we are in non-TTY environment
   assert_not_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "File change detected!");
-  assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.ts");
-  assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
+  assert_contains!(
+    async_next_line(&mut stderr_lines).await,
+    "file_to_watch.ts"
+  );
+  assert_contains!(async_next_line(&mut stderr_lines).await, "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  wait_contains("Bundle finished", &mut stderr_lines);
+  async_wait_contains("Bundle finished", &mut stderr_lines).await;
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
-  assert_contains!(stderr_lines.next().unwrap(), "error: ");
-  wait_contains("Bundle failed", &mut stderr_lines);
+  assert_contains!(
+    async_next_line(&mut stderr_lines).await,
+    "File change detected!"
+  );
+  assert_contains!(async_next_line(&mut stderr_lines).await, "error: ");
+  async_wait_contains("Bundle failed", &mut stderr_lines).await;
   check_alive_then_kill(deno);
 }
 
