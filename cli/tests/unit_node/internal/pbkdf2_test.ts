@@ -329,20 +329,22 @@ Deno.test("pbkdf2 hashes data correctly", () => {
     salt,
   }) => {
     for (const algorithm in results) {
-      pbkdf2(
-        key,
-        salt,
-        iterations,
-        dkLen,
-        algorithm as Algorithms,
-        (err, res) => {
-          assert(!err, String(err));
-          assertEquals(
-            res?.toString("hex"),
-            results[algorithm as Algorithms],
-          );
-        },
-      );
+      if (Object.hasOwn(results, algorithm)) {
+        pbkdf2(
+          key,
+          salt,
+          iterations,
+          dkLen,
+          algorithm as Algorithms,
+          (err, res) => {
+            assert(!err, String(err));
+            assertEquals(
+              res?.toString("hex"),
+              results[algorithm as Algorithms],
+            );
+          },
+        );
+      }
     }
   });
 });
@@ -356,11 +358,13 @@ Deno.test("pbkdf2Sync hashes data correctly", () => {
     salt,
   }) => {
     for (const algorithm in results) {
-      assertEquals(
-        pbkdf2Sync(key, salt, iterations, dkLen, algorithm as Algorithms)
-          .toString("hex"),
-        results[algorithm as Algorithms],
-      );
+      if (Object.hasOwn(results, algorithm)) {
+        assertEquals(
+          pbkdf2Sync(key, salt, iterations, dkLen, algorithm as Algorithms)
+            .toString("hex"),
+          results[algorithm as Algorithms],
+        );
+      }
     }
   });
 });
