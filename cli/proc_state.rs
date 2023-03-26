@@ -136,6 +136,7 @@ impl ProcState {
   /// Reset all runtime state to its default. This should be used on file
   /// watcher restarts.
   pub fn reset_for_file_watcher(&mut self) {
+    self.blob_store.clear();
     self.0 = Arc::new(Inner {
       dir: self.dir.clone(),
       options: self.options.clone(),

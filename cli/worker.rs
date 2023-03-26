@@ -742,21 +742,7 @@ mod tests {
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
-      bootstrap: BootstrapOptions {
-        args: vec![],
-        cpu_count: 1,
-        debug_flag: false,
-        enable_testing_features: false,
-        locale: deno_core::v8::icu::get_language_tag(),
-        location: None,
-        no_color: true,
-        is_tty: false,
-        runtime_version: "x".to_string(),
-        ts_version: "x".to_string(),
-        unstable: false,
-        user_agent: "x".to_string(),
-        inspect: false,
-      },
+      bootstrap: BootstrapOptions::default(),
       extensions: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
