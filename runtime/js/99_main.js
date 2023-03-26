@@ -45,7 +45,6 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as colors from "ext:deno_console/01_colors.js";
-import * as net from "ext:deno_net/01_net.js";
 import {
   inspectArgs,
   quoteString,
@@ -59,7 +58,6 @@ import { denoNs, denoNsUnstable } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
-import * as flash from "ext:deno_flash/01_http.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,

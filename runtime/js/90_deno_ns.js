@@ -153,7 +153,10 @@ const denoNs = {
 };
 
 const denoNsUnstable = {
-  listenDatagram: net.listenDatagram,
+  listenDatagram: net.createListenDatagram(
+    ops.op_net_listen_udp,
+    ops.op_net_listen_unixpacket,
+  ),
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
@@ -171,10 +174,6 @@ const denoNsUnstable = {
   upgradeHttp: http.upgradeHttp,
   upgradeHttpRaw: flash.upgradeHttpRaw,
   serve: flash.createServe(ops.op_flash_serve),
-  listenDatagram: net.createListenDatagram(
-    ops.op_net_listen_udp,
-    ops.op_net_listen_unixpacket,
-  ),
   openKv: kv.openKv,
   Kv: kv.Kv,
   KvU64: kv.KvU64,
