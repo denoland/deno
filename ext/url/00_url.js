@@ -52,31 +52,14 @@ function opUrlReparse(href, setter, value) {
 }
 
 function opUrlParse(href, maybeBase) {
-  let status;
   if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf);
-  } else {
-    status = ops.op_url_parse_with_base(
-      href,
-      maybeBase,
-      componentsBuf,
-    );
+    return ops.op_url_parse(href, componentsBuf);
   }
-  return getSerialization(status, href, maybeBase);
-}
-
-function opUrlCanParse(href, maybeBase) {
-  let status;
-  if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf);
-  } else {
-    status = ops.op_url_parse_with_base(
-      href,
-      maybeBase,
-      componentsBuf,
-    );
-  }
-  return status === 0 || status === 1;
+  return ops.op_url_parse_with_base(
+    href,
+    maybeBase,
+    componentsBuf,
+  );
 }
 
 function getSerialization(status, href, maybeBase) {
@@ -379,7 +362,8 @@ class URL {
       });
     }
     this[webidl.brand] = webidl.brand;
-    this.#serialization = opUrlParse(url, base);
+    const status = opUrlParse(url, base);
+    this.#serialization = getSerialization(status, url, base);
     this.#updateComponents();
   }
 
@@ -396,7 +380,8 @@ class URL {
         context: "Argument 2",
       });
     }
-    return opUrlCanParse(url, base);
+    const status = opUrlParse(url, base);
+    return status === 0 || status === 1;
   }
 
   #updateComponents() {
@@ -550,7 +535,8 @@ class URL {
       prefix,
       context: "Argument 1",
     });
-    this.#serialization = opUrlParse(value);
+    const status = opUrlParse(value);
+    this.#serialization = getSerialization(status, value);
     this.#updateComponents();
     this.#updateSearchParams();
   }
