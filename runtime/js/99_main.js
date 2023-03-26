@@ -465,16 +465,6 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   if (runtimeOptions.unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
-    // These have to initialized here and not in `90_deno_ns.js` because
-    // the op function that needs to be passed will be invalidated by creating
-    // a snapshot
-    ObjectAssign(finalDenoNs, {
-      serve: flash.createServe(ops.op_flash_serve),
-      listenDatagram: net.createListenDatagram(
-        ops.op_net_listen_udp,
-        ops.op_net_listen_unixpacket,
-      ),
-    });
   }
 
   // Setup `Deno` global - we're actually overriding already existing global
@@ -554,16 +544,6 @@ function bootstrapWorkerRuntime(
 
   if (runtimeOptions.unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
-    // These have to initialized here and not in `90_deno_ns.js` because
-    // the op function that needs to be passed will be invalidated by creating
-    // a snapshot
-    ObjectAssign(finalDenoNs, {
-      serve: flash.createServe(ops.op_flash_serve),
-      listenDatagram: net.createListenDatagram(
-        ops.op_net_listen_udp,
-        ops.op_net_listen_unixpacket,
-      ),
-    });
   }
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(runtimeOptions.pid),

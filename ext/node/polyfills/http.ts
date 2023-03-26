@@ -191,7 +191,7 @@ const METHODS = [
 
 type Chunk = string | Buffer | Uint8Array;
 
-const DenoServe = flash.createServe(ops.op_node_unstable_flash_server);
+const DenoServe = flash.createServe(ops.op_node_unstable_flash_serve);
 const DenoUpgradeHttpRaw = flash.upgradeHttpRaw;
 
 const ENCODER = new TextEncoder();
