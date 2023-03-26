@@ -809,7 +809,7 @@ fn bench_subcommand() -> Command {
       Arg::new("no-run")
         .long("no-run")
         .help("Cache bench modules, but don't run benchmarks")
-        .takes_value(false),
+        .action(ArgAction::SetTrue),
     )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
@@ -2375,7 +2375,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Vec::new()
   };
 
-  let no_run = matches.is_present("no-run");
+  let no_run = matches.get_flag("no-run");
 
   watch_arg_parse(flags, matches, false);
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
