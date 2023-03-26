@@ -19,12 +19,10 @@ Node.js compat testing in Deno repository.
 
 ## Steps to add new test cases from Node.js test cases
 
-1. Update `tests` property of `//cli/tests/node_compat/config.json`.
-
-- For example, if you want to add `test/paralles/test-foo.js` from Node.js test
-  cases, then add `test-foo.js` entry in `tests.parallel` array property in
-  `config.json`
-
+1. Update `tests` property of `//cli/tests/node_compat/config.json`. For
+   example, if you want to add `test/paralles/test-foo.js` from Node.js test
+   cases, then add `test-foo.js` entry in `tests.parallel` array property in
+   `config.json`
 1. Run `./tools/node_compat/setup.ts`
 
 The above command copies the updated items from Node.js tarball to the Deno
