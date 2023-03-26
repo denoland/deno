@@ -455,27 +455,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   setUserAgent(runtimeOptions.userAgent);
   setLanguage(runtimeOptions.locale);
 
-  // These have to initialized here and not in `90_deno_ns.js` because
-  // the op function that needs to be passed will be invalidated by creating
-  // a snapshot
-  ObjectAssign(internals, {
-    nodeUnstable: {
-      serve: flash.createServe(ops.op_node_unstable_flash_serve),
-      upgradeHttpRaw: flash.upgradeHttpRaw,
-      listenDatagram: net.createListenDatagram(
-        ops.op_node_unstable_net_listen_udp,
-        ops.op_node_unstable_net_listen_unixpacket,
-      ),
-    },
-  });
-
-  // FIXME(bartlomieju): temporarily add whole `Deno.core` to
-  // `Deno[Deno.internal]` namespace. It should be removed and only necessary
-  // methods should be left there.
-  ObjectAssign(internals, {
-    core,
-  });
-
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(runtimeOptions.pid),
     ppid: util.readOnly(runtimeOptions.ppid),
@@ -572,27 +551,6 @@ function bootstrapWorkerRuntime(
   setLanguage(runtimeOptions.locale);
 
   globalThis.pollForMessages = pollForMessages;
-
-  // These have to initialized here and not in `90_deno_ns.js` because
-  // the op function that needs to be passed will be invalidated by creating
-  // a snapshot
-  ObjectAssign(internals, {
-    nodeUnstable: {
-      serve: flash.createServe(ops.op_node_unstable_flash_serve),
-      upgradeHttpRaw: flash.upgradeHttpRaw,
-      listenDatagram: net.createListenDatagram(
-        ops.op_node_unstable_net_listen_udp,
-        ops.op_node_unstable_net_listen_unixpacket,
-      ),
-    },
-  });
-
-  // FIXME(bartlomieju): temporarily add whole `Deno.core` to
-  // `Deno[Deno.internal]` namespace. It should be removed and only necessary
-  // methods should be left there.
-  ObjectAssign(internals, {
-    core,
-  });
 
   if (runtimeOptions.unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
