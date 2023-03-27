@@ -5,6 +5,7 @@ use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
 use crate::emit::get_source_hash;
+use crate::npm::NpmRegistryApi;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
 use crate::util::fs::FileCollector;
@@ -595,11 +596,13 @@ fn filter_coverages(
   let exclude: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
+  let npm_registry_url = NpmRegistryApi::default_url().host_str().unwrap();
+
   coverages
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
-        || e.url.contains("registry.npmjs.org")
+        || e.url.contains(npm_registry_url)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap");
