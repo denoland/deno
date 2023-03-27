@@ -86,7 +86,7 @@ impl BootstrapOptions {
       let val = v8::String::new_from_one_byte(
         scope,
         self.runtime_version.as_bytes(),
-        v8::NewStringType::Normal,
+        v8::NewStringType::Internalized,
       )
       .unwrap();
       array.set_index(scope, 3, val.into());
@@ -104,13 +104,7 @@ impl BootstrapOptions {
 
     {
       let val: v8::Local<v8::Value> = if let Some(location) = &self.location {
-        v8::String::new_from_one_byte(
-          scope,
-          location.as_str().as_bytes(),
-          v8::NewStringType::Normal,
-        )
-        .unwrap()
-        .into()
+        v8::String::new(scope, location.as_str()).unwrap().into()
       } else {
         v8::undefined(scope).into()
       };
@@ -154,10 +148,9 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::String::new_from_one_byte(
+      let val = v8::String::new_external_onebyte_static(
         scope,
         env!("TARGET").as_bytes(),
-        v8::NewStringType::Normal,
       )
       .unwrap();
       array.set_index(scope, 12, val.into());
