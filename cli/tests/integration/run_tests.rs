@@ -4101,28 +4101,23 @@ itest!(permission_args_quiet {
 });
 
 // Regression test for https://github.com/denoland/deno/issues/16772
-#[ignore]
 #[test]
 fn file_fetcher_preserves_permissions() {
   let _guard = util::http_server();
-  util::with_pty(&["repl"], |mut console| {
-    console.write_text(
+  util::with_pty2(&["repl"], |mut console| {
+    console.write_line(
       "const a = import('http://127.0.0.1:4545/run/019_media_types.ts');",
     );
-    console.write_text("y");
-    console.write_line("");
-    console.write_line("close();");
-    let output = console.read_all_output();
-    assert_contains!(output, "success");
-    assert_contains!(output, "true");
+    console.expect("Allow?");
+    console.write_line_raw("y");
+    console.expect_all(&["success", "true"]);
   });
 }
 
-#[ignore]
 #[test]
 fn stdio_streams_are_locked_in_permission_prompt() {
   let _guard = util::http_server();
-  util::with_pty(&[
+  util::with_pty2(&[
     "repl",
     "--allow-read=run/stdio_streams_are_locked_in_permission_prompt/worker.js,run/stdio_streams_are_locked_in_permission_prompt/text.txt"
     ], |mut console| {
@@ -4130,32 +4125,25 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       r#"new Worker(`${Deno.cwd()}/run/stdio_streams_are_locked_in_permissions_prompt/worker.js`, { type: "module" });
       await Deno.writeTextFile("./run/stdio_streams_are_locked_in_permissions_prompt/text.txt", "some code");"#,
     );
-    console.write_line("y");
-    console.write_line("close();");
-    let output = console.read_all_output();
-
+    console.write_line_raw("y");
     let expected_output = r#"\x1b[1;1H\x1b[0JAre you sure you want to continue?"#;
-    assert_eq!(output, expected_output);
+    console.expect(expected_output);
   });
 }
 
 #[test]
-#[ignore]
 fn permission_prompt_strips_ansi_codes_and_control_chars() {
   let _guard = util::http_server();
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line(
       r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
     );
-    console.write_line("close();");
-    let output = console.read_all_output();
-
-    assert!(output.contains(
-      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\"."
-    ));
+    console.expect(
+      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\".",
+    )
   });
 
-  util::with_pty(&["repl"], |mut console| {
+  util::with_pty2(&["repl"], |mut console| {
     console.write_line(
       r#"
 const boldANSI = "\u001b[1m" // bold
@@ -4178,10 +4166,8 @@ Deno[Object.getOwnPropertySymbols(Deno)[0]].core.ops.op_spawn_child({
     stderr: "piped"
 }, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
     );
-    console.write_line("close();");
-    let output = console.read_all_output();
 
-    assert!(output.contains(r#"┌ ⚠️  Deno requests run access to "cat""#));
+    console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
   });
 }
 

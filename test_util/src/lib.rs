@@ -21,6 +21,7 @@ use rustls::Certificate;
 use rustls::PrivateKey;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::env;
 use std::io;
@@ -44,6 +45,7 @@ use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
+use std::time::Instant;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -2187,6 +2189,7 @@ type PtyLoggingSession = expectrl::Session<PtyProcess, PtyLoggedStream>;
 trait ExpectrlSession: Read + Write {
   fn send_line(&mut self, s: &str) -> std::io::Result<()>;
   fn expect(&mut self, s: &str) -> Result<expectrl::Captures, expectrl::Error>;
+  fn try_read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
 }
 
 macro_rules! implement_expectrl_session {
@@ -2201,6 +2204,10 @@ macro_rules! implement_expectrl_session {
         s: &str,
       ) -> Result<expectrl::Captures, expectrl::Error> {
         self.0.expect(s)
+      }
+
+      fn try_read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.try_read(buf)
       }
     }
 
@@ -2257,16 +2264,59 @@ impl PtyNew {
     }
   }
 
-  pub fn read_all_output(&mut self) -> String {
-    let mut text = String::new();
-    self.0.read_to_string(&mut text).unwrap();
-    text
+  pub fn read_until(&mut self, end_text: impl AsRef<str>) -> String {
+    // doing a "close();\n" then reading the remaining text will hang on
+    // windows maybe due to a bug in expectrl, so for now just read until
+    // the provided text is found
+    self.read_until_condition(|text| text.contains(end_text.as_ref()))
   }
 
-  pub fn expect(&mut self, line: impl AsRef<str>) {
-    if let Err(err) = self.0.expect(line.as_ref()) {
+  pub fn expect(&mut self, text: impl AsRef<str>) {
+    if let Err(err) = self.0.expect(text.as_ref()) {
       panic!("{:#} at {}", err, failed_position!())
     }
+  }
+
+  /// Consumes and expects to find all the text until a timeout is hit.
+  pub fn expect_all(&mut self, texts: &[&str]) {
+    let mut pending_texts: HashSet<&&str> = HashSet::from_iter(texts);
+    let text = self.read_until_condition(|text| {
+      for pending_text in pending_texts.clone() {
+        if text.contains(pending_text) {
+          pending_texts.remove(pending_text);
+        }
+      }
+      pending_texts.is_empty()
+    });
+    if !pending_texts.is_empty() {
+      let vec = pending_texts
+        .drain()
+        .map(|v| format!("'{}'", v))
+        .collect::<Vec<_>>();
+      eprintln!("TEXT: {:?}", text);
+      panic!("{} not matched at {}", vec.join(", "), failed_position!())
+    }
+  }
+
+  fn read_until_condition(
+    &mut self,
+    mut condition: impl FnMut(&str) -> bool,
+  ) -> String {
+    let mut text_bytes = Vec::new();
+    let timeout_time =
+      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
+    while Instant::now() < timeout_time {
+      let mut buf = [0; 256];
+      if let Ok(count) = self.0.try_read(&mut buf) {
+        text_bytes.extend(&buf[0..count]);
+      } else {
+        std::thread::sleep(Duration::from_millis(10));
+      }
+      if condition(&String::from_utf8_lossy(&text_bytes)) {
+        break;
+      }
+    }
+    String::from_utf8_lossy(&text_bytes).to_string()
   }
 }
 
