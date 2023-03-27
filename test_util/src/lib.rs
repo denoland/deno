@@ -1916,6 +1916,41 @@ impl DerefMut for DenoCmd {
   }
 }
 
+impl DenoCmd {
+  pub fn spawn(&mut self) -> Result<DenoChild, std::io::Error> {
+    Ok(DenoChild {
+      _deno_dir: self._deno_dir.clone(),
+      child: self.cmd.spawn()?,
+    })
+  }
+}
+
+/// We need to keep the [`TempDir`] around until the child has finished executing, so
+/// this acts as a RAII guard.
+pub struct DenoChild {
+  _deno_dir: TempDir,
+  child: Child,
+}
+
+impl Deref for DenoChild {
+  type Target = Child;
+  fn deref(&self) -> &Child {
+    &self.child
+  }
+}
+
+impl DerefMut for DenoChild {
+  fn deref_mut(&mut self) -> &mut Child {
+    &mut self.child
+  }
+}
+
+impl DenoChild {
+  pub fn wait_with_output(self) -> Result<Output, std::io::Error> {
+    self.child.wait_with_output()
+  }
+}
+
 pub fn deno_cmd() -> DenoCmd {
   let deno_dir = new_deno_dir();
   deno_cmd_with_deno_dir(&deno_dir)
