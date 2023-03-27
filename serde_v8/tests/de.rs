@@ -6,6 +6,7 @@ use serde_v8::utils::js_exec;
 use serde_v8::utils::v8_do;
 use serde_v8::BigInt;
 use serde_v8::ByteString;
+use serde_v8::DetachedBuffer;
 use serde_v8::Error;
 use serde_v8::U16String;
 use serde_v8::ZeroCopyBuf;
@@ -222,24 +223,28 @@ fn de_obj_with_numeric_keys() {
 fn de_string_or_buffer() {
   dedo("'hello'", |scope, v| {
     let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(sob.as_ref(), &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
+    sob.open(|bytes| assert_eq!(bytes, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]));
+    sob.open_str(|res| assert_eq!(res, Ok("hello")));
   });
 
   dedo("new Uint8Array([97])", |scope, v| {
     let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(sob.as_ref(), &[97]);
+    sob.open(|bytes| assert_eq!(bytes, &[97]));
+    sob.open_str(|res| assert_eq!(res, Ok("a")));
   });
 
   dedo("new Uint8Array([128])", |scope, v| {
     let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(sob.as_ref(), &[128]);
+    sob.open(|bytes| assert_eq!(bytes, &[128]));
+    sob.open_str(|res| assert!(res.is_err()));
   });
 
   dedo(
     "(Uint8Array.from([0x68, 0x65, 0x6C, 0x6C, 0x6F]))",
     |scope, v| {
       let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
-      assert_eq!(sob.as_ref(), &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
+      sob.open(|bytes| assert_eq!(bytes, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]));
+      sob.open_str(|res| assert_eq!(res, Ok("hello")));
     },
   );
 }
@@ -249,22 +254,36 @@ fn de_buffers() {
   // ArrayBufferView
   dedo("new Uint8Array([97])", |scope, v| {
     let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(&*buf, &[97]);
+    buf.open(|bytes| assert_eq!(bytes, &[97]));
   });
 
   // ArrayBuffer
   dedo("(new Uint8Array([97])).buffer", |scope, v| {
     let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(&*buf, &[97]);
+    buf.open(|bytes| assert_eq!(bytes, &[97]));
   });
 
   dedo(
     "(Uint8Array.from([0x68, 0x65, 0x6C, 0x6C, 0x6F]))",
     |scope, v| {
       let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
-      assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
+      buf.open(|bytes| assert_eq!(bytes, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]));
     },
   );
+
+  dedo("Uint8Array.from([97]).buffer", |scope, v| {
+    let ab = v8::Local::<v8::ArrayBuffer>::try_from(v).unwrap();
+    ab.detach(None);
+    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
+    buf.open(|bytes| assert_eq!(bytes, &[0; 0]));
+  });
+
+  dedo("Uint8Array.from([97]).buffer", |scope, v| {
+    let buf: DetachedBuffer = serde_v8::from_v8(scope, v).unwrap();
+    buf.open(|bytes| assert_eq!(bytes, &[97]));
+    let ab = v8::Local::<v8::ArrayBuffer>::try_from(v).unwrap();
+    assert!(ab.was_detached());
+  });
 }
 
 // Structs

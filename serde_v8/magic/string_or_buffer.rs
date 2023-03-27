@@ -4,7 +4,6 @@ use super::transl8::FromV8;
 use super::transl8::ToV8;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
-use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum StringOrBuffer {
@@ -14,25 +13,53 @@ pub enum StringOrBuffer {
 
 impl_magic!(StringOrBuffer);
 
-impl Deref for StringOrBuffer {
-  type Target = [u8];
-  fn deref(&self) -> &Self::Target {
+impl StringOrBuffer {
+  /// View the byte representation of the underlying byte slice or string.
+  ///
+  /// ### Safety
+  ///
+  /// V8 must never be invoked or the underlying [v8::BackingStore] accessed or
+  /// resized for the duration of the callback `cb`'s execution.
+  pub fn open<'s, F, R>(&'s self, cb: F) -> R
+  where
+    F: FnOnce(&[u8]) -> R,
+  {
     match self {
-      Self::Buffer(b) => b.as_ref(),
-      Self::String(s) => s.as_bytes(),
+      StringOrBuffer::Buffer(buf) => buf.open(cb),
+      StringOrBuffer::String(str) => cb(str.as_bytes()),
+    }
+  }
+
+  /// View the string representation of the underlying byte slice or string. If
+  /// the underlying bytes can not be represented as a UTF-8 string, an error is
+  /// passed to `cb`.
+  ///
+  /// ### Safety
+  ///
+  /// V8 must never be invoked or the underlying [v8::BackingStore] accessed or
+  /// resized for the duration of the callback `cb`'s execution.
+  pub fn open_str<'s, F, R>(&'s self, cb: F) -> R
+  where
+    F: FnOnce(Result<&str, std::str::Utf8Error>) -> R,
+  {
+    match self {
+      StringOrBuffer::String(str) => cb(Ok(str)),
+      StringOrBuffer::Buffer(buf) => {
+        buf.open(|bytes| cb(std::str::from_utf8(bytes)))
+      }
     }
   }
 }
 
-impl<'a> TryFrom<&'a StringOrBuffer> for &'a str {
-  type Error = std::str::Utf8Error;
-  fn try_from(value: &'a StringOrBuffer) -> Result<Self, Self::Error> {
-    match value {
-      StringOrBuffer::String(s) => Ok(s.as_str()),
-      StringOrBuffer::Buffer(b) => std::str::from_utf8(b.as_ref()),
-    }
-  }
-}
+// impl<'a> TryFrom<&'a StringOrBuffer> for &'a str {
+//   type Error = std::str::Utf8Error;
+//   fn try_from(value: &'a StringOrBuffer) -> Result<Self, Self::Error> {
+//     match value {
+//       StringOrBuffer::String(s) => Ok(s.as_str()),
+//       StringOrBuffer::Buffer(b) => std::str::from_utf8(b.as_ref()),
+//     }
+//   }
+// }
 
 impl ToV8 for StringOrBuffer {
   fn to_v8<'a>(
@@ -40,24 +67,7 @@ impl ToV8 for StringOrBuffer {
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     match self {
-      Self::Buffer(buf) => {
-        let buf: Box<[u8]> = match buf {
-          ZeroCopyBuf::FromV8(buf) => {
-            let value: &[u8] = buf;
-            value.into()
-          }
-          ZeroCopyBuf::Temp(_) => unreachable!(),
-          ZeroCopyBuf::ToV8(ref mut x) => {
-            x.take().expect("ZeroCopyBuf was empty")
-          }
-        };
-        let backing_store =
-          v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-        Ok(
-          v8::ArrayBuffer::with_backing_store(scope, &backing_store.into())
-            .into(),
-        )
-      }
+      Self::Buffer(buf) => buf.to_v8(scope),
       Self::String(s) => crate::to_v8(scope, s),
     }
   }
@@ -74,14 +84,5 @@ impl FromV8 for StringOrBuffer {
       return Ok(Self::String(s));
     }
     Err(Error::ExpectedBuffer)
-  }
-}
-
-impl From<StringOrBuffer> for bytes::Bytes {
-  fn from(sob: StringOrBuffer) -> Self {
-    match sob {
-      StringOrBuffer::Buffer(b) => b.into(),
-      StringOrBuffer::String(s) => s.into_bytes().into(),
-    }
   }
 }

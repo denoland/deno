@@ -144,7 +144,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       // e.g: for untagged enums or StringOrBuffer
       ValueType::ArrayBufferView | ValueType::ArrayBuffer => {
         magic::v8slice::V8Slice::from_v8(&mut *self.scope, self.input)
-          .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
+          .and_then(|zb| visitor.visit_byte_buf(zb.to_vec()))
       }
     }
   }
@@ -449,8 +449,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
-      .and_then(|zb| visitor.visit_bytes(&zb))
+    self.deserialize_byte_buf(visitor)
   }
 
   fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
@@ -458,7 +457,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
-      .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
+      .and_then(|zb| visitor.visit_byte_buf(zb.to_vec()))
   }
 }
 
