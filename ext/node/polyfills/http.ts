@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { _normalizeArgs, ListenOptions, Socket } from "ext:deno_node/net.ts";
@@ -19,7 +17,6 @@ import { Agent } from "ext:deno_node/_http_agent.mjs";
 import { chunkExpression as RE_TE_CHUNKED } from "ext:deno_node/_http_common.ts";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import * as flash from "ext:deno_flash/01_http.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -191,8 +188,11 @@ const METHODS = [
 
 type Chunk = string | Buffer | Uint8Array;
 
-const DenoServe = flash.createServe(ops.op_node_unstable_flash_serve);
-const DenoUpgradeHttpRaw = flash.upgradeHttpRaw;
+// @ts-ignore Deno[Deno.internal] is used on purpose here
+const DenoServe = Deno[Deno.internal]?.nodeUnstable?.serve || Deno.serve;
+// @ts-ignore Deno[Deno.internal] is used on purpose here
+const DenoUpgradeHttpRaw = Deno[Deno.internal]?.nodeUnstable?.upgradeHttpRaw ||
+  Deno.upgradeHttpRaw;
 
 const ENCODER = new TextEncoder();
 

@@ -25,10 +25,14 @@ import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "ext:deno_node/process.ts";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { osUptime } from "ext:runtime/30_os.js";
+
 export const constants = os;
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno_std/issues/1436";
+
+// @ts-ignore Deno[Deno.internal] is used on purpose here
+const DenoOsUptime = Deno[Deno.internal]?.nodeUnstable?.osUptime ||
+  Deno.osUptime;
 
 interface CPUTimes {
   /** The number of milliseconds the CPU has spent in user mode */
@@ -306,7 +310,7 @@ export function type(): string {
 
 /** Returns the Operating System uptime in number of seconds. */
 export function uptime(): number {
-  return osUptime();
+  return DenoOsUptime();
 }
 
 /** Not yet implemented */
