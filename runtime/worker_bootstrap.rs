@@ -184,7 +184,7 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::Boolean::new(scope, self.unstable);
+      let val = v8::Boolean::new(scope, self.inspect);
       array.set_index(scope, 15, val.into());
     }
 
