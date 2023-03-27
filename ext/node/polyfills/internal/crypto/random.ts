@@ -15,6 +15,8 @@ export {
 } from "ext:deno_node/internal/crypto/_randomFill.ts";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
 
+const { ops } = globalThis.__bootstrap.core;
+
 export type LargeNumberLike =
   | ArrayBufferView
   | SharedArrayBuffer
@@ -51,10 +53,10 @@ export function checkPrime(
 }
 
 export function checkPrimeSync(
-  _candidate: LargeNumberLike,
-  _options?: CheckPrimeOptions,
+  candidate: LargeNumberLike,
+  options?: CheckPrimeOptions,
 ): boolean {
-  notImplemented("crypto.checkPrimeSync");
+  return ops.op_node_check_prime(candidate, options?.checks ?? 0);
 }
 
 export interface GeneratePrimeOptions {

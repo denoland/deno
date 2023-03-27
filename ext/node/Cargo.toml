@@ -23,6 +23,9 @@ idna = "0.3.0"
 indexmap.workspace = true
 md-5 = "0.10.5"
 md4 = "0.10.2"
+num-bigint.workspace = true
+num-integer = "0.1.45"
+num-traits = "0.2.14"
 once_cell.workspace = true
 path-clean = "=0.1.0"
 rand.workspace = true

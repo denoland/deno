@@ -1155,6 +1155,9 @@ dependencies = [
  "indexmap",
  "md-5",
  "md4",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "once_cell",
  "path-clean",
  "rand",
@@ -2815,6 +2818,7 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
+ "rand",
  "serde",
 ]
 

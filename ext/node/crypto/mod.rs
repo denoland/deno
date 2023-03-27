@@ -2,6 +2,7 @@
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::serde_v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
@@ -17,6 +18,12 @@ use rsa::RsaPublicKey;
 
 mod cipher;
 mod digest;
+mod primes;
+
+#[op]
+pub fn op_node_check_prime(num: serde_v8::BigInt, checks: usize) -> bool {
+  primes::is_probably_prime(&num, checks)
+}
 
 #[op(fast)]
 pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
