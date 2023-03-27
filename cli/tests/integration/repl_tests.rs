@@ -8,7 +8,7 @@ use util::TempDir;
 
 #[test]
 fn pty_multiline() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("(\n1 + 2\n)");
     console.expect("3");
     console.write_line("{\nfoo: \"foo\"\n}");
@@ -36,7 +36,7 @@ fn pty_multiline() {
 
 #[test]
 fn pty_null() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("null");
     console.expect("null");
   });
@@ -45,7 +45,7 @@ fn pty_null() {
 #[test]
 fn pty_unpaired_braces() {
   for right_brace in &[")", "]", "}"] {
-    util::with_pty2(&["repl"], |mut console| {
+    util::with_pty(&["repl"], |mut console| {
       console.write_line(right_brace);
       console.expect("parse error: Expression expected");
     });
@@ -54,7 +54,7 @@ fn pty_unpaired_braces() {
 
 #[test]
 fn pty_bad_input() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("'\\u{1f3b5}'[0]");
     console.expect("Unterminated string literal");
   });
@@ -62,7 +62,7 @@ fn pty_bad_input() {
 
 #[test]
 fn pty_syntax_error_input() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("('\\u')");
     console.expect("Bad character escape sequence, expected 4 hex characters");
 
@@ -76,7 +76,7 @@ fn pty_syntax_error_input() {
 
 #[test]
 fn pty_complete_symbol() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line_raw("Symbol.it\t");
     console.expect("Symbol(Symbol.iterator)");
   });
@@ -84,7 +84,7 @@ fn pty_complete_symbol() {
 
 #[test]
 fn pty_complete_declarations() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("class MyClass {}");
     console.expect("undefined");
     console.write_line_raw("My\t");
@@ -98,7 +98,7 @@ fn pty_complete_declarations() {
 
 #[test]
 fn pty_complete_primitives() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("let func = function test(){}");
     console.expect("undefined");
     console.write_line_raw("func.appl\t");
@@ -120,7 +120,7 @@ fn pty_complete_primitives() {
 
 #[test]
 fn pty_complete_expression() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_text_raw("Deno.\t\t");
     console.expect("Display all");
     console.write_text_raw("y");
@@ -130,7 +130,7 @@ fn pty_complete_expression() {
 
 #[test]
 fn pty_complete_imports() {
-  util::with_pty2(&["repl", "-A"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     // single quotes
     console.write_line_raw("import './run/001_hel\t'");
     console.expect("Hello World");
@@ -141,7 +141,7 @@ fn pty_complete_imports() {
   });
 
   // ensure when the directory changes that the suggestions come from the cwd
-  util::with_pty2(&["repl", "-A"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     console.write_line("Deno.chdir('./subdir');");
     console.expect("undefined");
     console.write_line_raw("import '../run/001_hel\t'");
@@ -152,7 +152,7 @@ fn pty_complete_imports() {
 #[test]
 fn pty_complete_imports_no_panic_empty_specifier() {
   // does not panic when tabbing when empty
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line_raw("import '\t';");
     console.expect("not prefixed with");
   });
@@ -160,7 +160,7 @@ fn pty_complete_imports_no_panic_empty_specifier() {
 
 #[test]
 fn pty_ignore_symbols() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line_raw("Array.Symbol\t");
     console.expect("undefined");
   });
@@ -168,7 +168,7 @@ fn pty_ignore_symbols() {
 
 #[test]
 fn pty_assign_global_this() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("globalThis = 40 + 2;");
     console.expect("42");
   });
@@ -176,7 +176,7 @@ fn pty_assign_global_this() {
 
 #[test]
 fn pty_assign_deno_keys_and_deno() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line(
       "Object.keys(Deno).forEach((key)=>{try{Deno[key] = undefined} catch {}})",
     );
@@ -191,7 +191,7 @@ fn pty_assign_deno_keys_and_deno() {
 
 #[test]
 fn pty_internal_repl() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("globalThis");
     console.write_line_raw("1 + 256");
     let output = console.read_until("257");
@@ -211,7 +211,7 @@ fn pty_internal_repl() {
 #[test]
 fn pty_emoji() {
   // windows was having issues displaying this
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line(r#"console.log('\u{1F995}');"#);
     console.expect("🦕");
   });
@@ -219,7 +219,7 @@ fn pty_emoji() {
 
 #[test]
 fn console_log() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('hello');");
     console.expect("hello");
     console.write_line("'world'");
@@ -229,7 +229,7 @@ fn console_log() {
 
 #[test]
 fn object_literal() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("{}");
     console.expect("{}");
     console.write_line("{   foo: 'bar'   }");
@@ -239,7 +239,7 @@ fn object_literal() {
 
 #[test]
 fn block_expression() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("{};");
     console.expect("undefined");
     console.write_line("{\"\"}");
@@ -249,7 +249,7 @@ fn block_expression() {
 
 #[test]
 fn await_resolve() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("await Promise.resolve('done')");
     console.expect("\"done\"");
   });
@@ -257,7 +257,7 @@ fn await_resolve() {
 
 #[test]
 fn await_timeout() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("await new Promise((r) => setTimeout(r, 0, 'done'))");
     console.expect("\"done\"");
   });
@@ -265,7 +265,7 @@ fn await_timeout() {
 
 #[test]
 fn let_redeclaration() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("let foo = 0;");
     console.expect("undefined");
     console.write_line("foo");
@@ -279,7 +279,7 @@ fn let_redeclaration() {
 
 #[test]
 fn repl_cwd() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     console.write_line("Deno.cwd()");
     console.expect("testdata");
   });
@@ -287,7 +287,7 @@ fn repl_cwd() {
 
 #[test]
 fn typescript() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("function add(a: number, b: number) { return a + b }");
     console.expect("undefined");
     console.write_line("const result: number = add(1, 2) as number;");
@@ -299,7 +299,7 @@ fn typescript() {
 
 #[test]
 fn typescript_declarations() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("namespace Test { export enum Values { A, B, C } }");
     console.expect("undefined");
     console.write_line("Test.Values.A");
@@ -315,7 +315,7 @@ fn typescript_declarations() {
 
 #[test]
 fn typescript_decorators() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console
       .write_line("function dec(target) { target.prototype.test = () => 2; }");
     console.expect("undefined");
@@ -328,7 +328,7 @@ fn typescript_decorators() {
 
 #[test]
 fn eof() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("1 + 2");
     console.expect("3");
   });
@@ -336,7 +336,7 @@ fn eof() {
 
 #[test]
 fn strict() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("let a = {};");
     console.expect("undefined");
     console.write_line("Object.preventExtensions(a)");
@@ -364,7 +364,7 @@ fn close_command() {
 
 #[test]
 fn function() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("Deno.writeFileSync");
     console.expect("[Function: writeFileSync]");
   });
@@ -372,7 +372,7 @@ fn function() {
 
 #[test]
 fn multiline() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("(\n1 + 2\n)");
     console.expect("3");
   });
@@ -380,7 +380,7 @@ fn multiline() {
 
 #[test]
 fn import() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     console.write_line("import('./subdir/auto_print_hello.ts')");
     console.expect("hello!");
   });
@@ -388,7 +388,7 @@ fn import() {
 
 #[test]
 fn import_declarations() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl", "-A"], |mut console| {
     console.write_line("import './subdir/auto_print_hello.ts'");
     console.expect("hello!");
   });
@@ -396,7 +396,7 @@ fn import_declarations() {
 
 #[test]
 fn exports_stripped() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("const test = 5 + 1; export default test;");
     console.expect("6");
     console.write_line("export class Test {}");
@@ -406,7 +406,7 @@ fn exports_stripped() {
 
 #[test]
 fn call_eval_unterminated() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("eval('{')");
     console.expect("Unexpected end of input");
   });
@@ -414,7 +414,7 @@ fn call_eval_unterminated() {
 
 #[test]
 fn unpaired_braces() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     for right_brace in &[")", "]", "}"] {
       console.write_line(right_brace);
       console.expect("Expression expected");
@@ -424,7 +424,7 @@ fn unpaired_braces() {
 
 #[test]
 fn reference_error() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("not_a_variable");
     console.expect("not_a_variable is not defined");
   });
@@ -432,7 +432,7 @@ fn reference_error() {
 
 #[test]
 fn syntax_error() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("syntax error");
     console.expect("parse error: Expected ';', '}' or <eof>");
     // ensure it keeps accepting input after
@@ -444,7 +444,7 @@ fn syntax_error() {
 #[test]
 fn syntax_error_jsx() {
   // JSX is not supported in the REPL
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("const element = <div />;");
     console.expect("Expression expected");
   });
@@ -452,7 +452,7 @@ fn syntax_error_jsx() {
 
 #[test]
 fn type_error() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("console()");
     console.expect("console is not a function");
   });
@@ -460,7 +460,7 @@ fn type_error() {
 
 #[test]
 fn variable() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("var a = 123 + 456;");
     console.expect("undefined");
     console.write_line("a");
@@ -470,7 +470,7 @@ fn variable() {
 
 #[test]
 fn lexical_scoped_variable() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("let a = 123 + 456;");
     console.expect("undefined");
     console.write_line("a");
@@ -549,7 +549,7 @@ fn disable_history_file() {
 
 #[test]
 fn save_last_eval() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("1 + 2");
     console.expect("3");
     console.write_line("_ + 3");
@@ -559,7 +559,7 @@ fn save_last_eval() {
 
 #[test]
 fn save_last_thrown() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("throw 1 + 2");
     console.expect("Uncaught 3");
     console.write_line("_error + 3");
@@ -569,7 +569,7 @@ fn save_last_thrown() {
 
 #[test]
 fn assign_underscore() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("_ = 1");
     console.expect("Last evaluation result is no longer saved to _.");
     console.write_line("2 + 3");
@@ -581,7 +581,7 @@ fn assign_underscore() {
 
 #[test]
 fn assign_underscore_error() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("_error = 1");
     console.expect("Last thrown error is no longer saved to _error.");
     console.write_line("throw 2");
@@ -593,7 +593,7 @@ fn assign_underscore_error() {
 
 #[test]
 fn custom_inspect() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line(
       r#"const o = {
       [Symbol.for("Deno.customInspect")]() {
@@ -609,7 +609,7 @@ fn custom_inspect() {
 
 #[test]
 fn eval_flag_valid_input() {
-  util::with_pty2(&["repl", "--eval", "const t = 10;"], |mut console| {
+  util::with_pty(&["repl", "--eval", "const t = 10;"], |mut console| {
     console.write_line("t * 500");
     console.expect("5000");
   });
@@ -700,12 +700,14 @@ fn eval_file_flag_multiple_files() {
 
 #[test]
 fn pty_clear_function() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
     console.expect("hello");
     console.write_line_raw("clear();");
     if cfg!(windows) {
-      console.expect("\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K");
+      // expect a bunch of these in the output
+      console
+        .expect("\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n");
     } else {
       console.expect("[1;1H");
     }
@@ -719,12 +721,12 @@ fn pty_clear_function() {
 #[test]
 fn pty_tab_handler() {
   // If the last character is **not** whitespace, we show the completions
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_text_raw("a\t\t");
     console.expect_all(&["addEventListener", "alert", "atob"]);
   });
   // If the last character is whitespace, we just insert a tab
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("const a = 5;");
     console.expect("undefined");
     console.write_text_raw("a; \t\ta + 2;\n"); // last character is whitespace
@@ -734,7 +736,7 @@ fn pty_tab_handler() {
 
 #[test]
 fn repl_report_error() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
     console.expect("1");
     // TODO(nayeemrmn): The REPL should report event errors and rejections.
@@ -747,7 +749,7 @@ fn repl_report_error() {
 
 #[test]
 fn pty_aggregate_error() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("await Promise.any([])");
     console.expect("AggregateError");
   });
@@ -859,7 +861,7 @@ fn npm_packages() {
 
 #[test]
 fn pty_tab_indexable_props() {
-  util::with_pty2(&["repl"], |mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("const arr = [1, 2, 3]");
     console.expect("undefined");
     console.write_text_raw("arr.\t\t");

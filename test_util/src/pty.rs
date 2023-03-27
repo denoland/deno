@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 
-pub trait Pty: Read {
+pub trait Pty: Read + Write {
   fn write_text(&mut self, text: &str);
 
   fn write_line(&mut self, text: &str) {
@@ -72,6 +73,16 @@ mod unix {
       master.read(buf)
     }
   }
+
+  impl Write for UnixPty {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+      self.fork.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+      self.fork.flush()
+    }
+  }
 }
 
 #[cfg(target_os = "windows")]
@@ -93,6 +104,7 @@ pub fn create_pty(
 #[cfg(target_os = "windows")]
 mod windows {
   use std::collections::HashMap;
+  use std::io::ErrorKind;
   use std::io::Read;
   use std::io::Write;
   use std::path::Path;
@@ -105,11 +117,13 @@ mod windows {
   use winapi::shared::winerror::S_OK;
   use winapi::um::consoleapi::ClosePseudoConsole;
   use winapi::um::consoleapi::CreatePseudoConsole;
+  use winapi::um::fileapi::FlushFileBuffers;
   use winapi::um::fileapi::ReadFile;
   use winapi::um::fileapi::WriteFile;
   use winapi::um::handleapi::DuplicateHandle;
   use winapi::um::handleapi::INVALID_HANDLE_VALUE;
   use winapi::um::namedpipeapi::CreatePipe;
+  use winapi::um::namedpipeapi::PeekNamedPipe;
   use winapi::um::processthreadsapi::CreateProcessW;
   use winapi::um::processthreadsapi::DeleteProcThreadAttributeList;
   use winapi::um::processthreadsapi::GetCurrentProcess;
@@ -134,6 +148,15 @@ mod windows {
       let success = $expression;
       if success != TRUE {
         panic!("{}", std::io::Error::last_os_error().to_string())
+      }
+    };
+  }
+
+  macro_rules! handle_err {
+    ($expression:expr) => {
+      let success = $expression;
+      if success != TRUE {
+        return Err(std::io::Error::last_os_error());
       }
     };
   }
@@ -185,7 +208,11 @@ mod windows {
         let command = format!(
           "\"{}\" {}",
           program.as_ref().to_string_lossy(),
-          args.join(" ")
+          args
+            .iter()
+            .map(|a| format!("\"{}\"", a))
+            .collect::<Vec<_>>()
+            .join(" ")
         )
         .trim()
         .to_string();
@@ -242,26 +269,36 @@ mod windows {
 
   impl Read for WinPseudoConsole {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-      loop {
-        let mut bytes_read = 0;
-        // SAFETY:
-        // winapi call
-        let success = unsafe {
-          ReadFile(
-            self.stdout_read_handle.as_raw_handle(),
-            buf.as_mut_ptr() as _,
-            buf.len() as u32,
-            &mut bytes_read,
-            ptr::null_mut(),
-          )
-        };
-
-        // ignore zero-byte writes
-        let is_zero_byte_write = bytes_read == 0 && success == TRUE;
-        if !is_zero_byte_write {
-          return Ok(bytes_read as usize);
-        }
+      // don't do a blocking read in order to support timing out
+      let mut bytes_available = 0;
+      // SAFETY: winapi call
+      handle_err!(unsafe {
+        PeekNamedPipe(
+          self.stdout_read_handle.as_raw_handle(),
+          ptr::null_mut(),
+          0,
+          ptr::null_mut(),
+          &mut bytes_available,
+          ptr::null_mut(),
+        )
+      });
+      if bytes_available == 0 {
+        return Err(std::io::Error::new(ErrorKind::WouldBlock, "Would block."));
       }
+
+      let mut bytes_read = 0;
+      // SAFETY: winapi call
+      handle_err!(unsafe {
+        ReadFile(
+          self.stdout_read_handle.as_raw_handle(),
+          buf.as_mut_ptr() as _,
+          buf.len() as u32,
+          &mut bytes_read,
+          ptr::null_mut(),
+        )
+      });
+
+      Ok(bytes_read as usize)
     }
   }
 
@@ -280,7 +317,7 @@ mod windows {
       let mut bytes_written = 0;
       // SAFETY:
       // winapi call
-      assert_win_success!(unsafe {
+      handle_err!(unsafe {
         WriteFile(
           self.stdin_write_handle.as_raw_handle(),
           buffer.as_ptr() as *const _,
@@ -293,6 +330,10 @@ mod windows {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
+      // SAFETY: winapi call
+      handle_err!(unsafe {
+        FlushFileBuffers(self.stdin_write_handle.as_raw_handle())
+      });
       Ok(())
     }
   }
@@ -307,12 +348,10 @@ mod windows {
     }
 
     pub fn duplicate(&self) -> WinHandle {
-      // SAFETY:
-      // winapi call
+      // SAFETY: winapi call
       let process_handle = unsafe { GetCurrentProcess() };
       let mut duplicate_handle = ptr::null_mut();
-      // SAFETY:
-      // winapi call
+      // SAFETY: winapi call
       assert_win_success!(unsafe {
         DuplicateHandle(
           process_handle,
@@ -410,8 +449,7 @@ mod windows {
 
   impl Drop for ProcThreadAttributeList {
     fn drop(&mut self) {
-      // SAFETY:
-      // winapi call
+      // SAFETY: winapi call
       unsafe { DeleteProcThreadAttributeList(self.as_mut_ptr()) };
     }
   }
@@ -420,8 +458,7 @@ mod windows {
     let mut read_handle = std::ptr::null_mut();
     let mut write_handle = std::ptr::null_mut();
 
-    // SAFETY:
-    // Creating an anonymous pipe with winapi.
+    // SAFETY: Creating an anonymous pipe with winapi.
     assert_win_success!(unsafe {
       CreatePipe(&mut read_handle, &mut write_handle, ptr::null_mut(), 0)
     });

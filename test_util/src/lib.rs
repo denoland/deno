@@ -1755,7 +1755,7 @@ pub fn http_server() -> HttpServerGuard {
 
 /// Helper function to strip ansi codes.
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
-  console_static_text::strip_ansi_codes(s)
+  console_static_text::ansi::strip_ansi_codes(s)
 }
 
 pub fn run(
@@ -2073,173 +2073,24 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-pub enum PtyData {
-  Input(&'static str),
-  Output(&'static str),
-}
-
-pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use std::io::BufRead;
-
-  with_pty(&args.split_whitespace().collect::<Vec<_>>(), |console| {
-    let mut buf_reader = std::io::BufReader::new(console);
-    for d in data.iter() {
-      match d {
-        PtyData::Input(s) => {
-          println!("INPUT {}", s.escape_debug());
-          buf_reader.get_mut().write_text(s);
-
-          // Because of tty echo, we should be able to read the same string back.
-          assert!(s.ends_with('\n'));
-          let mut echo = String::new();
-          buf_reader.read_line(&mut echo).unwrap();
-          let echo = normalize_text(&echo);
-          println!("ECHO: {}", echo.escape_debug());
-
-          // Windows may also echo the previous line, so only check the end
-          assert_ends_with!(&echo, normalize_text(s));
-        }
-        PtyData::Output(s) => {
-          let mut line = String::new();
-          if s.ends_with('\n') {
-            buf_reader.read_line(&mut line).unwrap();
-          } else {
-            // assumes the buffer won't have overlapping virtual terminal sequences
-            while normalize_text(&line).len() < normalize_text(s).len() {
-              let mut buf = [0; 64 * 1024];
-              let bytes_read = buf_reader.read(&mut buf).unwrap();
-              assert!(bytes_read > 0);
-              let buf_str = std::str::from_utf8(&buf)
-                .unwrap()
-                .trim_end_matches(char::from(0));
-              line += buf_str;
-            }
-          }
-          println!("OUTPUT {}", line.escape_debug());
-          assert_eq!(normalize_text(&line), normalize_text(s));
-        }
-      }
-    }
-  });
-
-  // This normalization function is not comprehensive
-  // and may need to updated as new scenarios emerge.
-  fn normalize_text(text: &str) -> String {
-    lazy_static! {
-      static ref MOVE_CURSOR_RIGHT_ONE_RE: Regex =
-        Regex::new(r"\x1b\[1C").unwrap();
-      static ref FOUND_SEQUENCES_RE: Regex =
-        Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
-      static ref CARRIAGE_RETURN_RE: Regex =
-        Regex::new(r"[^\n]*\r([^\n])").unwrap();
-    }
-
-    // any "move cursor right" sequences should just be a space
-    let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
-    // replace additional virtual terminal sequences that strip ansi codes doesn't catch
-    let text = FOUND_SEQUENCES_RE.replace_all(&text, "");
-    // strip any ansi codes, which also strips more terminal sequences
-    let text = strip_ansi_codes(&text);
-    // get rid of any text that is overwritten with only a carriage return
-    let text = CARRIAGE_RETURN_RE.replace_all(&text, "$1");
-    // finally, trim surrounding whitespace
-    text.trim().to_string()
-  }
-}
-
-pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
-  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    eprintln!("Ignoring non-tty environment.");
-    return;
-  }
-
-  let deno_dir = new_deno_dir();
-  let mut env_vars = std::collections::HashMap::new();
-  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  env_vars.insert(
-    "DENO_DIR".to_string(),
-    deno_dir.path().to_string_lossy().to_string(),
-  );
-  let pty = pty::create_pty(
-    &deno_exe_path().to_string_lossy().to_string(),
-    deno_args,
-    testdata_path(),
-    Some(env_vars),
-  );
-
-  action(pty);
-}
-
 // todo(THIS PR): move to pty module
-
-// todo(dsherret): the below is way too verbose.
-// Logged https://github.com/zhiburt/expectrl/issues/62
-#[cfg(unix)]
-type PtyProcess = expectrl::process::unix::UnixProcess;
-#[cfg(windows)]
-type PtyProcess = expectrl::process::windows::WinProcess;
-#[cfg(unix)]
-type PtyProcessStream = expectrl::process::unix::PtyStream;
-#[cfg(windows)]
-type PtyProcessStream = expectrl::process::windows::ProcessStream;
-type PtyLoggedStream =
-  expectrl::stream::log::LoggedStream<PtyProcessStream, io::Stderr>;
-type PtyLoggingSession = expectrl::Session<PtyProcess, PtyLoggedStream>;
-
-trait ExpectrlSession: Read + Write {
-  fn send_line(&mut self, s: &str) -> std::io::Result<()>;
-  fn expect(&mut self, s: &str) -> Result<expectrl::Captures, expectrl::Error>;
-  fn try_read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
+pub struct PtyNew {
+  pty: Box<dyn pty::Pty>,
+  read_bytes: Vec<u8>,
+  last_index: usize,
 }
-
-macro_rules! implement_expectrl_session {
-  ($struct_name:ident) => {
-    impl ExpectrlSession for $struct_name {
-      fn send_line(&mut self, s: &str) -> std::io::Result<()> {
-        self.0.send_line(s)
-      }
-
-      fn expect(
-        &mut self,
-        s: &str,
-      ) -> Result<expectrl::Captures, expectrl::Error> {
-        self.0.expect(s)
-      }
-
-      fn try_read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.0.try_read(buf)
-      }
-    }
-
-    impl Read for $struct_name {
-      fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
-      }
-    }
-
-    impl Write for $struct_name {
-      fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-      }
-
-      fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-      }
-    }
-  };
-}
-
-struct LoggingExpectrlSession(PtyLoggingSession);
-implement_expectrl_session!(LoggingExpectrlSession);
-
-struct DefaultExpectrlSession(expectrl::session::Session);
-implement_expectrl_session!(DefaultExpectrlSession);
-
-pub struct PtyNew(Box<dyn ExpectrlSession>);
 
 impl PtyNew {
   pub fn write_text_raw(&mut self, line: impl AsRef<str>) {
-    self.0.write_all(line.as_ref().as_bytes()).unwrap()
+    let line = if cfg!(windows) {
+      line.as_ref().replace('\n', "\r\n")
+    } else {
+      line.as_ref().to_string()
+    };
+    if let Err(err) = self.pty.write(line.as_bytes()) {
+      panic!("{:#} at {}", err, failed_position!())
+    }
+    self.pty.flush().unwrap();
   }
 
   pub fn write_line(&mut self, line: impl AsRef<str>) {
@@ -2254,39 +2105,47 @@ impl PtyNew {
 
   /// Writes a line without checking if it's in the output.
   pub fn write_line_raw(&mut self, line: impl AsRef<str>) {
-    let line = if cfg!(windows) {
-      line.as_ref().replace('\n', "\r\n")
-    } else {
-      line.as_ref().to_string()
-    };
-    if let Err(err) = self.0.send_line(&line) {
-      panic!("{:#} at {}", err, failed_position!())
-    }
+    self.write_text_raw(format!("{}\n", line.as_ref()));
   }
 
   pub fn read_until(&mut self, end_text: impl AsRef<str>) -> String {
-    // doing a "close();\n" then reading the remaining text will hang on
-    // windows maybe due to a bug in expectrl, so for now just read until
-    // the provided text is found
-    self.read_until_condition(|text| text.contains(end_text.as_ref()))
+    self.read_until_condition(|text| {
+      text
+        .find(end_text.as_ref())
+        .map(|index| index + end_text.as_ref().len())
+    })
   }
 
   pub fn expect(&mut self, text: impl AsRef<str>) {
-    if let Err(err) = self.0.expect(text.as_ref()) {
-      panic!("{:#} at {}", err, failed_position!())
-    }
+    self.read_until(text.as_ref());
   }
 
   /// Consumes and expects to find all the text until a timeout is hit.
   pub fn expect_all(&mut self, texts: &[&str]) {
     let mut pending_texts: HashSet<&&str> = HashSet::from_iter(texts);
+    let mut max_index: Option<usize> = None;
     let text = self.read_until_condition(|text| {
       for pending_text in pending_texts.clone() {
-        if text.contains(pending_text) {
+        if let Some(index) = text.find(pending_text) {
+          let index = index + pending_text.len();
+          match &max_index {
+            Some(current) => {
+              if *current < index {
+                max_index = Some(index);
+              }
+            }
+            None => {
+              max_index = Some(index);
+            }
+          }
           pending_texts.remove(pending_text);
         }
       }
-      pending_texts.is_empty()
+      if pending_texts.is_empty() {
+        max_index
+      } else {
+        None
+      }
     });
     if !pending_texts.is_empty() {
       let vec = pending_texts
@@ -2300,32 +2159,50 @@ impl PtyNew {
 
   fn read_until_condition(
     &mut self,
-    mut condition: impl FnMut(&str) -> bool,
+    mut condition: impl FnMut(&str) -> Option<usize>,
   ) -> String {
-    let mut text_bytes = Vec::new();
     let timeout_time =
       Instant::now().checked_add(Duration::from_secs(5)).unwrap();
     while Instant::now() < timeout_time {
-      let mut buf = [0; 256];
-      if let Ok(count) = self.0.try_read(&mut buf) {
-        text_bytes.extend(&buf[0..count]);
-      } else {
-        std::thread::sleep(Duration::from_millis(10));
-      }
-      if condition(&String::from_utf8_lossy(&text_bytes)) {
-        break;
+      self.fill_more_bytes();
+      let text = self.next_text();
+      if let Some(end_index) = condition(&text) {
+        self.last_index += end_index;
+        return text[..end_index].to_string();
       }
     }
-    String::from_utf8_lossy(&text_bytes).to_string()
+
+    let text = self.next_text();
+    eprintln!(
+      "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
+      String::from_utf8_lossy(&self.read_bytes)
+    );
+    eprintln!("Next text: {:?}", text);
+    panic!("Timed out at {}", failed_position!())
+  }
+
+  fn next_text(&self) -> String {
+    let text = String::from_utf8_lossy(&self.read_bytes).to_string();
+    let text = strip_ansi_codes(&text);
+    text[self.last_index..].to_string()
+  }
+
+  fn fill_more_bytes(&mut self) {
+    let mut buf = [0; 256];
+    if let Ok(count) = self.pty.read(&mut buf) {
+      self.read_bytes.extend(&buf[0..count]);
+    } else {
+      std::thread::sleep(Duration::from_millis(10));
+    }
   }
 }
 
-pub fn with_pty2(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
-  if cfg!(windows) && std::env::var("CI").is_ok() {
-    // todo(dsherret): re-enable https://github.com/zhiburt/expectrl/issues/52
-    eprintln!("Ignoring windows CI.");
-    return;
-  }
+pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
+  // todo: investigate if this works
+  // if cfg!(windows) && std::env::var("CI").is_ok() {
+  //   eprintln!("Ignoring windows CI.");
+  //   return;
+  // }
 
   let deno_dir = new_deno_dir();
   let mut env_vars = std::collections::HashMap::new();
@@ -2334,22 +2211,17 @@ pub fn with_pty2(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
     "DENO_DIR".to_string(),
     deno_dir.path().to_string_lossy().to_string(),
   );
-  let mut cmd =
-    std::process::Command::new(deno_exe_path().to_string_lossy().to_string());
-  cmd
-    .current_dir(testdata_path())
-    .args(deno_args)
-    .envs(env_vars);
-  let p = expectrl::Session::spawn(cmd).unwrap();
-  let enable_logging = true;
-  let p: Box<dyn ExpectrlSession> = if enable_logging {
-    Box::new(LoggingExpectrlSession(
-      p.with_log(std::io::stderr()).unwrap(),
-    ))
-  } else {
-    Box::new(DefaultExpectrlSession(p))
-  };
-  action(PtyNew(p))
+  let pty = pty::create_pty(
+    &deno_exe_path().to_string_lossy().to_string(),
+    deno_args,
+    testdata_path(),
+    Some(env_vars),
+  );
+  action(PtyNew {
+    pty,
+    read_bytes: Vec::new(),
+    last_index: 0,
+  })
 }
 
 pub struct WrkOutput {

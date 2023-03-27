@@ -53,7 +53,7 @@ itest!(task_non_existent {
 #[test]
 fn task_emoji() {
   // this bug only appears when using a pty/tty
-  test_util::with_pty2(
+  test_util::with_pty(
     &["task", "--config", "task/deno_json/deno.json", "echo_emoji"],
     |mut console| {
       console.expect("Task echo_emoji echo 🔥\r\n🔥");
