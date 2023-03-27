@@ -56,13 +56,12 @@ where
 
   tokio::time::timeout(timeout, lines.next_line())
     .await
-    .expect(
-      format!(
+    .unwrap_or_else(|_| {
+      panic!(
         "Output did not contain a new line after {} seconds",
         timeout.as_secs()
       )
-      .as_str(),
-    )
+    })
     .unwrap()
 }
 
@@ -76,7 +75,7 @@ where
 {
   while let Some(line) = lines.next_line().await.unwrap() {
     if condition(line.as_str()) {
-      return Some(line.to_string());
+      return Some(line);
     }
   }
 
@@ -91,15 +90,14 @@ where
 
   tokio::time::timeout(timeout, wait_for(|line| line.contains(s), lines))
     .await
-    .expect(
-      format!(
+    .unwrap_or_else(|_| {
+      panic!(
         "Output did not contain \"{}\" after {} seconds",
         s,
         timeout.as_secs()
       )
-      .as_str(),
-    )
-    .expect(format!("Output ended without containing \"{}\"", s).as_str())
+    })
+    .unwrap_or_else(|| panic!("Output ended without containing \"{}\"", s))
 }
 
 /// Before test cases touch files, they need to wait for the watcher to be
@@ -127,21 +125,19 @@ where
     ),
   )
   .await
-  .expect(
-    format!(
+  .unwrap_or_else(|_| {
+    panic!(
       "Watcher did not start for file \"{}\" after {} seconds",
       file_name,
       timeout.as_secs()
     )
-    .as_str(),
-  )
-  .expect(
-    format!(
+  })
+  .unwrap_or_else(|| {
+    panic!(
       "Output ended without before the watcher started watching file \"{}\"",
       file_name
     )
-    .as_str(),
-  )
+  })
 }
 
 fn check_alive_then_kill(mut child: std::process::Child) {
@@ -525,10 +521,10 @@ async fn bundle_js_watch() {
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
 
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  let next_line = next_line(&mut stderr_lines).await.unwrap();
+  let line = next_line(&mut stderr_lines).await.unwrap();
   // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&next_line, CLEAR_SCREEN);
-  assert_contains!(&next_line, "File change detected!");
+  assert_not_contains!(&line, CLEAR_SCREEN);
+  assert_contains!(&line, "File change detected!");
   assert_contains!(
     next_line(&mut stderr_lines).await.unwrap(),
     "file_to_watch.ts"
@@ -602,10 +598,10 @@ async fn bundle_watch_not_exit() {
   write(&file_to_watch, "console.log(42);").unwrap();
 
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
-  let next_line = next_line(&mut stderr_lines).await.unwrap();
+  let line = next_line(&mut stderr_lines).await.unwrap();
   // Should not clear screen, as we are in non-TTY environment
-  assert_not_contains!(&next_line, CLEAR_SCREEN);
-  assert_contains!(&next_line, "File change detected!");
+  assert_not_contains!(&line, CLEAR_SCREEN);
+  assert_contains!(&line, "File change detected!");
   assert_contains!(
     next_line(&mut stderr_lines).await.unwrap(),
     "file_to_watch.ts"
@@ -900,8 +896,8 @@ async fn run_watch_with_import_map_and_relative_paths() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-  let next_line = next_line(&mut stderr_lines).await.unwrap();
-  assert_contains!(&next_line, "Process started");
+  let line = next_line(&mut stderr_lines).await.unwrap();
+  assert_contains!(&line, "Process started");
   assert_contains!(
     next_line(&mut stderr_lines).await.unwrap(),
     "Process finished"
