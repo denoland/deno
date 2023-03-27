@@ -20,6 +20,7 @@ mod polyfill;
 mod resolution;
 mod v8;
 mod winerror;
+mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -119,6 +120,13 @@ deno_core::extension!(deno_node,
     idna::op_node_idna_domain_to_unicode,
     idna::op_node_idna_punycode_decode,
     idna::op_node_idna_punycode_encode,
+    zlib::op_zlib_new,
+    zlib::op_zlib_close,
+    zlib::op_zlib_close_if_pending,
+    zlib::op_zlib_write,
+    zlib::op_zlib_write_async,
+    zlib::op_zlib_init,
+    zlib::op_zlib_reset,
     op_node_build_os,
 
     ops::op_require_init_paths,
@@ -195,7 +203,6 @@ deno_core::extension!(deno_node,
     "_http_common.ts",
     "_http_outgoing.ts",
     "_next_tick.ts",
-    "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
