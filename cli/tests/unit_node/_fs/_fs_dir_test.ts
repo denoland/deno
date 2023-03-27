@@ -55,7 +55,7 @@ Deno.test({
 
       let calledBack = false;
       const fileFromCallback: Dirent | null = await new Dir(
-        testDir
+        testDir,
         // deno-lint-ignore no-explicit-any
       ).read((err: any, res: Dirent) => {
         assert(res === null);
@@ -89,10 +89,10 @@ Deno.test({
         // deno-lint-ignore no-explicit-any
         (_err: any, secondResult: Dirent) => {
           assert(
-            secondResult.name === "bar.txt" || secondResult.name === "foo.txt"
+            secondResult.name === "bar.txt" || secondResult.name === "foo.txt",
           );
           secondCallback = true;
-        }
+        },
       );
       const thirdRead: Dirent | null = await dir.read();
       const fourthRead: Dirent | null = await dir.read();
@@ -186,7 +186,7 @@ Deno.test(
         await Deno.remove(tempDir);
       },
     });
-  }
+  },
 );
 
 Deno.test(
@@ -205,5 +205,5 @@ Deno.test(
         await Deno.remove(tempDir);
       },
     });
-  }
+  },
 );
