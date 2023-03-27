@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, fail } from "../../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  fail,
+} from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import Dir from "./_fs_dir.ts";
-import type Dirent from "./_fs_dirent.ts";
+import Dir from "ext:deno_node/_fs/_fs_dir.ts";
+import type Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 
 Deno.test({
   name: "Closing current directory with callback is successful",
@@ -51,7 +55,7 @@ Deno.test({
 
       let calledBack = false;
       const fileFromCallback: Dirent | null = await new Dir(
-        testDir,
+        testDir
         // deno-lint-ignore no-explicit-any
       ).read((err: any, res: Dirent) => {
         assert(res === null);
@@ -85,11 +89,10 @@ Deno.test({
         // deno-lint-ignore no-explicit-any
         (_err: any, secondResult: Dirent) => {
           assert(
-            secondResult.name === "bar.txt" ||
-              secondResult.name === "foo.txt",
+            secondResult.name === "bar.txt" || secondResult.name === "foo.txt"
           );
           secondCallback = true;
-        },
+        }
       );
       const thirdRead: Dirent | null = await dir.read();
       const fourthRead: Dirent | null = await dir.read();
@@ -167,34 +170,40 @@ Deno.test({
   },
 });
 
-Deno.test("[std/node/fs] Dir.close callback isn't called twice if error is thrown", async () => {
-  const tempDir = await Deno.makeTempDir();
-  const importUrl = new URL("./_fs_dir.ts", import.meta.url);
-  await assertCallbackErrorUncaught({
-    prelude: `
+Deno.test(
+  "[std/node/fs] Dir.close callback isn't called twice if error is thrown",
+  async () => {
+    const tempDir = await Deno.makeTempDir();
+    const importUrl = new URL("./_fs_dir.ts", import.meta.url);
+    await assertCallbackErrorUncaught({
+      prelude: `
     import Dir from ${JSON.stringify(importUrl)};
 
     const dir = new Dir(${JSON.stringify(tempDir)});
     `,
-    invocation: "dir.close(",
-    async cleanup() {
-      await Deno.remove(tempDir);
-    },
-  });
-});
+      invocation: "dir.close(",
+      async cleanup() {
+        await Deno.remove(tempDir);
+      },
+    });
+  }
+);
 
-Deno.test("[std/node/fs] Dir.read callback isn't called twice if error is thrown", async () => {
-  const tempDir = await Deno.makeTempDir();
-  const importUrl = new URL("./_fs_dir.ts", import.meta.url);
-  await assertCallbackErrorUncaught({
-    prelude: `
+Deno.test(
+  "[std/node/fs] Dir.read callback isn't called twice if error is thrown",
+  async () => {
+    const tempDir = await Deno.makeTempDir();
+    const importUrl = new URL("./_fs_dir.ts", import.meta.url);
+    await assertCallbackErrorUncaught({
+      prelude: `
     import Dir from ${JSON.stringify(importUrl)};
 
     const dir = new Dir(${JSON.stringify(tempDir)});
     `,
-    invocation: "dir.read(",
-    async cleanup() {
-      await Deno.remove(tempDir);
-    },
-  });
-});
+      invocation: "dir.read(",
+      async cleanup() {
+        await Deno.remove(tempDir);
+      },
+    });
+  }
+);
