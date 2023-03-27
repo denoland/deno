@@ -91,7 +91,7 @@ impl Drop for CacheDB {
       if let Some(conn) = inner {
         tokio::task::spawn_blocking(move || {
           drop(conn);
-          log::debug!(
+          log::trace!(
             "Cleaned up SQLite connection at {}",
             path.to_string_lossy()
           );
