@@ -5,7 +5,6 @@ use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
 use crate::emit::get_source_hash;
-use crate::npm::NpmRegistryApi;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
 use crate::util::fs::FileCollector;
@@ -586,6 +585,7 @@ fn collect_coverages(
 }
 
 fn filter_coverages(
+  npm_registry_url: &str,
   coverages: Vec<ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
@@ -595,8 +595,6 @@ fn filter_coverages(
 
   let exclude: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
-
-  let npm_registry_url = NpmRegistryApi::default_url().host_str().unwrap();
 
   coverages
     .into_iter()
@@ -624,9 +622,11 @@ pub async fn cover_files(
   }
 
   let ps = ProcState::build(flags).await?;
+  let registry_url = ps.npm_api.base_url().domain().unwrap();
 
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
+    registry_url,
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
