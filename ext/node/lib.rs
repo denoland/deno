@@ -43,6 +43,10 @@ pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
+pub trait NodeFs {
+  fn current_dir() -> Result<PathBuf, AnyError>;
+}
+
 pub trait RequireNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
@@ -96,7 +100,7 @@ fn op_node_build_os() -> String {
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [P: NodePermissions],
+  parameters = [P: NodePermissions, FS: NodeFs],
   ops = [
     crypto::op_node_create_decipheriv,
     crypto::op_node_cipheriv_encrypt,
@@ -130,7 +134,7 @@ deno_core::extension!(deno_node,
     op_node_build_os,
 
     ops::op_require_init_paths,
-    ops::op_require_node_module_paths<P>,
+    ops::op_require_node_module_paths<P, FS>,
     ops::op_require_proxy_path,
     ops::op_require_is_deno_dir_package,
     ops::op_require_resolve_deno_dir,

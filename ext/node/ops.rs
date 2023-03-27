@@ -13,6 +13,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::NodeFs;
+
 use super::resolution;
 use super::NodeModuleKind;
 use super::NodePermissions;
@@ -86,17 +88,18 @@ pub fn op_require_init_paths() -> Vec<String> {
 }
 
 #[op]
-pub fn op_require_node_module_paths<P>(
+pub fn op_require_node_module_paths<P, FS>(
   state: &mut OpState,
   from: String,
 ) -> Result<Vec<String>, AnyError>
 where
   P: NodePermissions + 'static,
+  FS: NodeFs + 'static,
 {
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(
     &from,
-    &std::env::current_dir().context("Unable to get CWD")?,
+    &(FS::current_dir()).context("Unable to get CWD")?,
   )
   .unwrap()
   .to_file_path()
