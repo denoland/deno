@@ -240,10 +240,13 @@ impl CacheDB {
 
     let path = self.path.as_ref().unwrap();
 
-    log::warn!(
+    // There are rare times in the tests when we can't initialize a cache DB the first time, but it succeeds the second time, so
+    // we don't log these at a debug level.
+    log::trace!(
       "Could not initialize cache database '{}', retrying... ({err:?})",
       path.to_string_lossy(),
     );
+
     // Try a second time
     let err = match self.open_connection_and_init(&self.path) {
       Ok(conn) => return Ok(ConnectionState::Connected(conn)),
