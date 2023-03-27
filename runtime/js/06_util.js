@@ -1,42 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 const primordials = globalThis.__bootstrap.primordials;
-const {
-  Promise,
-  SafeArrayIterator,
-} = primordials;
-let logDebug = false;
-let logSource = "JS";
-
-function setLogDebug(debug, source) {
-  logDebug = debug;
-  if (source) {
-    logSource = source;
-  }
-}
-
-function log(...args) {
-  if (logDebug) {
-    // if we destructure `console` off `globalThis` too early, we don't bind to
-    // the right console, therefore we don't log anything out.
-    globalThis.console.log(
-      `DEBUG ${logSource} -`,
-      ...new SafeArrayIterator(args),
-    );
-  }
-}
-
-function createResolvable() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  promise.resolve = resolve;
-  promise.reject = reject;
-  return promise;
-}
+const { Promise } = primordials;
 
 function writable(value) {
   return {
@@ -74,12 +39,4 @@ function getterOnly(getter) {
   };
 }
 
-export {
-  createResolvable,
-  getterOnly,
-  log,
-  nonEnumerable,
-  readOnly,
-  setLogDebug,
-  writable,
-};
+export { createResolvable, getterOnly, nonEnumerable, readOnly, writable };

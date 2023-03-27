@@ -315,6 +315,7 @@ fn create_handles(
 /// Each `WebWorker` is either a child of `MainWorker` or other
 /// `WebWorker`.
 pub struct WebWorker {
+  #[allow(unused)]
   id: WorkerId,
   pub js_runtime: JsRuntime,
   pub name: String,
@@ -568,12 +569,8 @@ impl WebWorker {
       let undefined = v8::undefined(scope);
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
-      let id_str: v8::Local<v8::Value> =
-        v8::String::new(scope, &format!("{}", self.id))
-          .unwrap()
-          .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[args.into(), name_str, id_str])
+        .call(scope, undefined.into(), &[args.into(), name_str])
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.

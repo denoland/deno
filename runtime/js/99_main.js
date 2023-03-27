@@ -294,29 +294,20 @@ core.registerErrorBuilder(
   },
 );
 
-function runtimeStart(
-  denoVersion,
-  v8Version,
-  tsVersion,
-  target,
-  debugFlag,
-  noColor,
-  isTty,
-  source,
-) {
+// NOTE(bartlomieju): these are necessary to set up `deno_core` in a way
+// that we expect it to be set. It feels like most of this work could happend
+// during snapshot time, instead of on startup.
+function setupDenoCore() {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   ops.op_set_format_exception_callback(formatException);
-  version.setVersions(
-    denoVersion,
-    v8Version,
-    tsVersion,
-  );
-  core.setBuildInfo(target);
-  util.setLogDebug(debugFlag, source);
-  setNoColor(noColor || !isTty);
+  core.setPromiseRejectCallback(promiseRejectCallback);
+
+  // TODO(bartlomieju): this should most likely be done in `deno_core`
+  // by default. It relies on ops to map stack traces, so if these ops are not
+  // present, it will still work fine. Might rely on `formatException` though.
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }
@@ -418,7 +409,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    // 2: debugFlag,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -442,6 +433,47 @@ function bootstrapMainRuntime(runtimeOptions) {
   delete globalThis.bootstrap;
   hasBootstrapped = true;
 
+  ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+  ObjectDefineProperties(globalThis, {
+    close: util.writable(windowClose),
+    closed: util.getterOnly(() => windowIsClosing),
+  });
+  if (unstableFlag) {
+    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+  }
+
+  // This line makes `globalThis` an instance of `Window` class, so `window`
+  // global is now available.
+  ObjectSetPrototypeOf(globalThis, Window.prototype);
+
+  // Set up `globalThis` (and by extension `window`) as an `EventTarget`
+  // and define event listeners for it.
+  event.setEventTargetData(globalThis);
+  event.saveGlobalThisReference(globalThis);
+  event.defineEventHandler(globalThis, "error");
+  event.defineEventHandler(globalThis, "load");
+  event.defineEventHandler(globalThis, "beforeunload");
+  event.defineEventHandler(globalThis, "unload");
+  event.defineEventHandler(globalThis, "unhandledrejection");
+
+  setupDenoCore();
+
+  if (inspectFlag) {
+    const consoleFromV8 = core.console;
+    const consoleFromDeno = globalThis.console;
+    wrapConsole(consoleFromDeno, consoleFromV8);
+  }
+
+  // TODO(bartlomieju): version and build info could be set during snapshot
+  // time, instead of serializing and sending over several strings on startup.
+  version.setVersions(
+    denoVersion,
+    v8Version,
+    tsVersion,
+  );
+  core.setBuildInfo(target);
+
+  setNoColor(noColor || !isTty);
   // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
   // writable, so that they can mock it themselves if they like. If the flag was
   // set, define `globalThis.location`, using the provided value.
@@ -453,48 +485,14 @@ function bootstrapMainRuntime(runtimeOptions) {
     location.setLocationHref(location_);
   }
 
-  if (unstableFlag) {
-    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
-  }
-  ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
-  ObjectDefineProperties(globalThis, {
-    close: util.writable(windowClose),
-    closed: util.getterOnly(() => windowIsClosing),
-  });
-  ObjectSetPrototypeOf(globalThis, Window.prototype);
-
-  if (inspectFlag) {
-    const consoleFromV8 = core.console;
-    const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
-  }
-
-  event.setEventTargetData(globalThis);
-  event.saveGlobalThisReference(globalThis);
-
-  event.defineEventHandler(globalThis, "error");
-  event.defineEventHandler(globalThis, "load");
-  event.defineEventHandler(globalThis, "beforeunload");
-  event.defineEventHandler(globalThis, "unload");
-  event.defineEventHandler(globalThis, "unhandledrejection");
-
-  core.setPromiseRejectCallback(promiseRejectCallback);
-
-  runtimeStart(
-    denoVersion,
-    v8Version,
-    tsVersion,
-    target,
-    debugFlag,
-    noColor,
-    isTty,
-  );
-
   setNumCpus(cpuCount);
   setUserAgent(userAgent);
   setLanguage(locale);
-
+  
   let ppid = undefined;
+
+  // Last pass at setting up `Deno` global - we're actually overriding an
+  // already existing global `Deno` that was done in `core/01_core.js`.
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
     ppid: util.getterOnly(() => {
@@ -512,19 +510,10 @@ function bootstrapMainRuntime(runtimeOptions) {
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
   }
-
-  // Setup `Deno` global - we're actually overriding already existing global
-  // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-
-  util.log("args", args);
 }
 
-function bootstrapWorkerRuntime(
-  runtimeOptions,
-  name,
-  internalName,
-) {
+function bootstrapWorkerRuntime(runtimeOptions, name) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
@@ -532,7 +521,7 @@ function bootstrapWorkerRuntime(
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    // 2: debugFlag,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -551,16 +540,11 @@ function bootstrapWorkerRuntime(
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
-  const consoleFromV8 = globalThis.Deno.core.console;
-
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
   hasBootstrapped = true;
 
-  if (unstableFlag) {
-    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
-  }
   ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
   ObjectDefineProperties(globalThis, {
     name: util.writable(name),
@@ -568,6 +552,12 @@ function bootstrapWorkerRuntime(
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
   });
+  if (unstableFlag) {
+    ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+  }
+
+  // This is only set up for testing purposed, but users can still enable
+  // it with a CLI flag which is undocumented.
   if (enableTestingFeaturesFlag) {
     ObjectDefineProperty(
       globalThis,
@@ -575,19 +565,40 @@ function bootstrapWorkerRuntime(
       util.writable(importScripts),
     );
   }
+
+  // This line makes `globalThis` an instance of `DedicatedWorkerGlobalScope`
+  // class, so `self` global is now available.
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
-  const consoleFromDeno = globalThis.console;
-  wrapConsole(consoleFromDeno, consoleFromV8);
-
+  // Set up `globalThis` (and by extension `self`) as an `EventTarget`
+  // and define event listeners for it.
   event.setEventTargetData(globalThis);
   event.saveGlobalThisReference(globalThis);
-
   event.defineEventHandler(self, "message");
   event.defineEventHandler(self, "error", undefined, true);
   event.defineEventHandler(self, "unhandledrejection");
 
-  core.setPromiseRejectCallback(promiseRejectCallback);
+  setupDenoCore();
+
+  if (runtimeOptions.inspectFlag) {
+    const consoleFromV8 = core.console;
+    const consoleFromDeno = globalThis.console;
+    wrapConsole(consoleFromDeno, consoleFromV8);
+  }
+
+  // TODO(bartlomieju): version and build info could be set during snapshot
+  // time, instead of serializing and sending over several strings on startup.
+  version.setVersions(
+    denoVersion,
+    v8Version,
+    tsVersion,
+  );
+  core.setBuildInfo(target);
+  setNoColor(noColor || !isTty);
+  location.setLocationHref(location_);
+
+  setNumCpus(cpuCount);
+  setLanguage(locale);
 
   // `Deno.exit()` is an alias to `self.close()`. Setting and exit
   // code using an op in worker context is a no-op.
@@ -595,34 +606,21 @@ function bootstrapWorkerRuntime(
     workerClose();
   });
 
-  runtimeStart(
-    denoVersion,
-    v8Version,
-    tsVersion,
-    target,
-    debugFlag,
-    noColor,
-    isTty,
-    internalName ?? name,
-  );
-
-  location.setLocationHref(location_);
-
-  setNumCpus(cpuCount);
-  setLanguage(locale);
-
+  // This is temporary - when bootstrapping from Rust, this function will be
+  // grabbed and removed from the global scope, immediately after this function
+  // returns.
   globalThis.pollForMessages = pollForMessages;
 
-  if (unstableFlag) {
-    ObjectAssign(finalDenoNs, denoNsUnstable);
-  }
+  // Last pass at setting up `Deno` global - we're actually overriding an
+  // already existing global `Deno` that was done in `core/01_core.js`.
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
     noColor: util.readOnly(noColor),
     args: util.readOnly(ObjectFreeze(args)),
   });
-  // Setup `Deno` global - we're actually overriding already
-  // existing global `Deno` with `Deno` namespace from "./deno.ts".
+  if (unstableFlag) {
+    ObjectAssign(finalDenoNs, denoNsUnstable);
+  }
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 }
 

@@ -217,6 +217,8 @@ class WorkerNavigator {
 
 const workerNavigator = webidl.createBranded(WorkerNavigator);
 
+// TODO(bartlomieju): this is broken, on line 230. The base class can be the same
+// for both `WorkerNavigator` and `Navigator` but the prototype is different.
 ObjectDefineProperties(WorkerNavigator.prototype, {
   hardwareConcurrency: {
     configurable: true,
@@ -246,30 +248,37 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
 const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
 const mainRuntimeGlobalProperties = {
-  Location: location.locationConstructorDescriptor,
+  // Shared with worker
   location: location.locationDescriptor,
+  navigator: util.getterOnly(() => navigator),
+  self: util.getterOnly(() => globalThis),
+
+  Location: location.locationConstructorDescriptor,
+  Navigator: util.nonEnumerable(Navigator),
+
   Window: globalInterfaces.windowConstructorDescriptor,
   window: util.getterOnly(() => globalThis),
-  self: util.getterOnly(() => globalThis),
-  Navigator: util.nonEnumerable(Navigator),
-  navigator: util.getterOnly(() => navigator),
+
   alert: util.writable(prompt.alert),
   confirm: util.writable(prompt.confirm),
   prompt: util.writable(prompt.prompt),
+
   localStorage: util.getterOnly(webStorage.localStorage),
   sessionStorage: util.getterOnly(webStorage.sessionStorage),
   Storage: util.nonEnumerable(webStorage.Storage),
 };
 
 const workerRuntimeGlobalProperties = {
-  WorkerLocation: location.workerLocationConstructorDescriptor,
   location: location.workerLocationDescriptor,
+  navigator: util.getterOnly(() => workerNavigator),
+  self: util.getterOnly(() => globalThis),
+
+  WorkerLocation: location.workerLocationConstructorDescriptor,
+  WorkerNavigator: util.nonEnumerable(WorkerNavigator),
+
   WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
   DedicatedWorkerGlobalScope:
     globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
-  WorkerNavigator: util.nonEnumerable(WorkerNavigator),
-  navigator: util.getterOnly(() => workerNavigator),
-  self: util.getterOnly(() => globalThis),
 };
 
 export {
