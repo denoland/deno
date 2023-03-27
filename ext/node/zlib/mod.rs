@@ -158,8 +158,7 @@ impl ZlibInner {
         // https://github.com/rust-lang/rust/issues/53667
         // 
         // Data was encoded with dictionary
-        if self.err == Z_NEED_DICT && self.dictionary.is_some() {
-          let dictionary = self.dictionary.as_ref().unwrap();
+        if let (Z_NEED_DICT, Some(dictionary)) = (self.err, &self.dictionary) {
           self.err = self.strm.inflate_set_dictionary(dictionary);
 
           if self.err == Z_OK {
