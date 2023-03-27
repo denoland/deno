@@ -83,6 +83,11 @@ impl Drop for CacheDB {
       _ => return,
     };
 
+    // TODO(mmastrac): we should ensure tokio runtimes are consistently available or not
+    if tokio::runtime::Handle::try_current().is_err() {
+      return;
+    }
+
     // For on-disk caches, see if we're the last holder of the Arc.
     let arc = std::mem::take(&mut self.conn);
     if let Ok(inner) = Arc::try_unwrap(arc) {
@@ -161,10 +166,13 @@ impl CacheDB {
 
   fn spawn_eager_init_thread(&self) {
     let clone = self.clone();
-    tokio::task::spawn_blocking(move || {
-      let lock = clone.conn.lock();
-      clone.initialize(&lock);
-    });
+    // TODO(mmastrac): we should ensure tokio runtimes are consistently available or not
+    if tokio::runtime::Handle::try_current().is_ok() {
+      tokio::task::spawn_blocking(move || {
+        let lock = clone.conn.lock();
+        clone.initialize(&lock);
+      });
+    }
   }
 
   /// Open the connection in memory or on disk.
