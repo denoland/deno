@@ -6,6 +6,7 @@ use std::io::BufRead;
 use test_util as util;
 use test_util::assert_contains;
 use test_util::TempDir;
+use util::DenoChild;
 
 use util::assert_not_contains;
 
@@ -80,7 +81,7 @@ fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
   lines.find(|m| m.contains(s)).unwrap()
 }
 
-fn check_alive_then_kill(mut child: std::process::Child) {
+fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
 }

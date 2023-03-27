@@ -11,11 +11,11 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
 use std::io::BufRead;
-use std::process::Child;
 use test_util as util;
 use test_util::TempDir;
 use tokio::net::TcpStream;
 use util::http_server;
+use util::DenoChild;
 
 struct InspectorTester {
   socket_tx: SplitSink<
@@ -30,7 +30,7 @@ struct InspectorTester {
     >,
   >,
   notification_filter: Box<dyn FnMut(&str) -> bool + 'static>,
-  child: Child,
+  child: DenoChild,
   stderr_lines: Box<dyn Iterator<Item = String>>,
   stdout_lines: Box<dyn Iterator<Item = String>>,
 }
@@ -40,7 +40,7 @@ fn ignore_script_parsed(msg: &str) -> bool {
 }
 
 impl InspectorTester {
-  async fn create<F>(mut child: Child, notification_filter: F) -> Self
+  async fn create<F>(mut child: DenoChild, notification_filter: F) -> Self
   where
     F: FnMut(&str) -> bool + 'static,
   {
