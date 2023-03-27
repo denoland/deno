@@ -723,7 +723,7 @@ fn lsp_hover_asset() {
       "textDocument": {
         "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
       },
-      "position": { "line": 109, "character": 13 }
+      "position": { "line": 111, "character": 13 }
     }),
   );
   assert_eq!(
@@ -737,8 +737,8 @@ fn lsp_hover_asset() {
         "Enables basic storage and retrieval of dates and times."
       ],
       "range": {
-        "start": { "line": 109, "character": 10, },
-        "end": { "line": 109, "character": 14, }
+        "start": { "line": 111, "character": 10, },
+        "end": { "line": 111, "character": 14, }
       }
     })
   );
@@ -928,143 +928,155 @@ fn lsp_inlay_hints_not_enabled() {
 
 #[test]
 fn lsp_workspace_enable_paths() {
-  let context = TestContextBuilder::new().build();
-  // we aren't actually writing anything to the tempdir in this test, but we
-  // just need a legitimate file path on the host system so that logic that
-  // tries to convert to and from the fs paths works on all env
-  let temp_dir = context.temp_dir();
+  fn run_test(use_trailing_slash: bool) {
+    let context = TestContextBuilder::new().build();
+    // we aren't actually writing anything to the tempdir in this test, but we
+    // just need a legitimate file path on the host system so that logic that
+    // tries to convert to and from the fs paths works on all env
+    let temp_dir = context.temp_dir();
 
-  let root_specifier = temp_dir.uri();
+    let root_specifier = temp_dir.uri();
 
-  let mut client = context.new_lsp_command().build();
-  client.initialize_with_config(
-    |builder| {
-      builder
-        .set_enable_paths(vec!["./worker".to_string()])
-        .set_root_uri(root_specifier.clone())
-        .set_workspace_folders(vec![lsp::WorkspaceFolder {
-          uri: root_specifier.clone(),
-          name: "project".to_string(),
-        }])
-        .set_deno_enable(false);
-    },
-    json!([{
-      "enable": false,
-      "enablePaths": ["./worker"],
-    }]),
-  );
+    let mut client = context.new_lsp_command().build();
+    client.initialize_with_config(
+      |builder| {
+        builder
+          .set_enable_paths(vec!["./worker".to_string()])
+          .set_root_uri(root_specifier.clone())
+          .set_workspace_folders(vec![lsp::WorkspaceFolder {
+            uri: if use_trailing_slash {
+              root_specifier.clone()
+            } else {
+              ModuleSpecifier::parse(
+                root_specifier.as_str().strip_suffix('/').unwrap(),
+              )
+              .unwrap()
+            },
+            name: "project".to_string(),
+          }])
+          .set_deno_enable(false);
+      },
+      json!([{
+        "enable": false,
+        "enablePaths": ["./worker"],
+      }]),
+    );
 
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./other/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./worker/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  client.did_open(json!({
-    "textDocument": {
-      "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "console.log(Date.now());\n"
-    }
-  }));
-
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(res, json!(null));
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }));
 
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./other/file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(res, json!(null));
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
+      }
+    }));
 
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./worker/file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(method) DateConstructor.now(): number",
-        },
-        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-      ],
-      "range": {
-        "start": { "line": 0, "character": 17, },
-        "end": { "line": 0, "character": 20, }
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
       }
-    })
-  );
+    }));
 
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+    client.did_open(json!({
       "textDocument": {
         "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
-      },
-      "position": { "line": 0, "character": 19 }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!({
-      "contents": [
-        {
-          "language": "typescript",
-          "value": "(method) DateConstructor.now(): number",
-        },
-        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
-      ],
-      "range": {
-        "start": { "line": 0, "character": 17, },
-        "end": { "line": 0, "character": 20, }
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Date.now());\n"
       }
-    })
-  );
+    }));
 
-  client.shutdown();
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(res, json!(null));
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./other/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(res, json!(null));
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(
+      res,
+      json!({
+        "contents": [
+          {
+            "language": "typescript",
+            "value": "(method) DateConstructor.now(): number",
+          },
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+        ],
+        "range": {
+          "start": { "line": 0, "character": 17, },
+          "end": { "line": 0, "character": 20, }
+        }
+      })
+    );
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(
+      res,
+      json!({
+        "contents": [
+          {
+            "language": "typescript",
+            "value": "(method) DateConstructor.now(): number",
+          },
+          "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+        ],
+        "range": {
+          "start": { "line": 0, "character": 17, },
+          "end": { "line": 0, "character": 20, }
+        }
+      })
+    );
+
+    client.shutdown();
+  }
+
+  run_test(true);
+  run_test(false);
 }
 
 #[test]
@@ -3674,23 +3686,6 @@ export class DuckConfig {
         }]
       }
     }, {
-      "title": "Add all missing imports",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 0, "character": 50 },
-          "end": { "line": 0, "character": 67 }
-        },
-        "severity": 1,
-        "code": 2304,
-        "source": "deno-ts",
-        "message": "Cannot find name 'DuckConfigOptions'."
-      }],
-      "data": {
-        "specifier": "file:///a/file00.ts",
-        "fixId": "fixMissingImport"
-      }
-    }, {
       "title": "Add import from \"./file01.ts\"",
       "kind": "quickfix",
       "diagnostics": [{
@@ -3717,6 +3712,23 @@ export class DuckConfig {
             "newText": "import { DuckConfig } from \"./file01.ts\";\n\n"
           }]
         }]
+      }
+    }, {
+      "title": "Add all missing imports",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 0, "character": 50 },
+          "end": { "line": 0, "character": 67 }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'DuckConfigOptions'."
+      }],
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
       }
     }])
   );
@@ -3830,6 +3842,19 @@ fn lsp_code_actions_refactor() {
   assert_eq!(
     res,
     json!([{
+      "title": "Move to a new file",
+      "kind": "refactor.move.newFile",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 1, "character": 0 }
+        },
+        "refactorName": "Move to a new file",
+        "actionName": "Move to a new file"
+      }
+    }, {
       "title": "Extract to function in module scope",
       "kind": "refactor.extract.function",
       "isPreferred": false,
@@ -3854,19 +3879,6 @@ fn lsp_code_actions_refactor() {
         },
         "refactorName": "Extract Symbol",
         "actionName": "constant_scope_0"
-      }
-    }, {
-      "title": "Move to a new file",
-      "kind": "refactor.move.newFile",
-      "isPreferred": false,
-      "data": {
-        "specifier": "file:///a/file.ts",
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 }
-        },
-        "refactorName": "Move to a new file",
-        "actionName": "Move to a new file"
       }
     }, {
       "title": "Convert default export to named export",
@@ -4047,19 +4059,6 @@ fn lsp_code_actions_refactor_no_disabled_support() {
   assert_eq!(
     res,
     json!([{
-      "title": "Extract to function in module scope",
-      "kind": "refactor.extract.function",
-      "isPreferred": false,
-      "data": {
-        "specifier": "file:///a/file.ts",
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 14, "character": 0 }
-        },
-        "refactorName": "Extract Symbol",
-        "actionName": "function_scope_0"
-      }
-    }, {
       "title": "Move to a new file",
       "kind": "refactor.move.newFile",
       "isPreferred": false,
@@ -4071,6 +4070,19 @@ fn lsp_code_actions_refactor_no_disabled_support() {
         },
         "refactorName": "Move to a new file",
         "actionName": "Move to a new file"
+      }
+    }, {
+      "title": "Extract to function in module scope",
+      "kind": "refactor.extract.function",
+      "isPreferred": false,
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 14, "character": 0 }
+        },
+        "refactorName": "Extract Symbol",
+        "actionName": "function_scope_0"
       }
     }])
   );
@@ -4394,6 +4406,7 @@ fn lsp_completions_auto_import() {
     panic!("completions items missing 'foo' symbol");
   }
 
+  // the request here is one of the items in `list`
   let res = client.write_request(
     "completionItem/resolve",
     json!({
@@ -4411,10 +4424,11 @@ fn lsp_completions_auto_import() {
           "specifier": "file:///a/file.ts",
           "position": 12,
           "name": "foo",
-          "source": "./b",
+          "source": "./b.ts",
           "data": {
             "exportName": "foo",
-            "moduleSpecifier": "./b",
+            "exportMapKey": "foo|6843|file:///a/b",
+            "moduleSpecifier": "./b.ts",
             "fileName": "file:///a/b.ts"
           },
           "useCodeSnippet": false
@@ -6357,53 +6371,68 @@ fn lsp_workspace_symbol() {
   );
   assert_eq!(
     res,
-    json!([
-      {
-        "name": "fieldA",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file.ts",
-          "range": {
-            "start": { "line": 1, "character": 2 },
-            "end": { "line": 1, "character": 17 }
-          }
+    json!([{
+      "name": "fieldA",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 17 }
+        }
+      },
+      "containerName": "A"
+    }, {
+      "name": "fieldB",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file.ts",
+        "range": {
+          "start": { "line": 2, "character": 2 },
+          "end": { "line": 2, "character": 17 }
+        }
+      },
+      "containerName": "A"
+    }, {
+      "name": "fieldC",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file_01.ts",
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 17 }
+        }
+      },
+      "containerName": "B"
+    }, {
+      "name": "fieldD",
+      "kind": 8,
+      "location": {
+        "uri": "file:///a/file_01.ts",
+        "range": {
+          "start": { "line": 2, "character": 2 },
+          "end": { "line": 2, "character": 17 }
+        }
+      },
+      "containerName": "B"
+    }, {
+      "name": "ClassFieldDecoratorContext",
+      "kind": 11,
+      "location": {
+        "uri": "deno:/asset/lib.decorators.d.ts",
+        "range": {
+          "start": {
+            "line": 331,
+            "character": 0,
+          },
+          "end": {
+            "line": 371,
+            "character": 1,
+          },
         },
-        "containerName": "A"
-      }, {
-        "name": "fieldB",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file.ts",
-          "range": {
-            "start": { "line": 2, "character": 2 },
-            "end": { "line": 2, "character": 17 }
-          }
-        },
-        "containerName": "A"
-      }, {
-        "name": "fieldC",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": { "line": 1, "character": 2 },
-            "end": { "line": 1, "character": 17 }
-          }
-        },
-        "containerName": "B"
-      }, {
-        "name": "fieldD",
-        "kind": 8,
-        "location": {
-          "uri": "file:///a/file_01.ts",
-          "range": {
-            "start": { "line": 2, "character": 2 },
-            "end": { "line": 2, "character": 17 }
-          }
-        },
-        "containerName": "B"
-      }
-    ])
+      },
+      "containerName": "",
+    }])
   );
   client.shutdown();
 }

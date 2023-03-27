@@ -1967,6 +1967,18 @@ impl deno_ffi::FfiPermissions for PermissionsContainer {
   }
 }
 
+impl deno_kv::sqlite::SqliteDbHandlerPermissions for PermissionsContainer {
+  #[inline(always)]
+  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check(p, Some(api_name))
+  }
+
+  #[inline(always)]
+  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check(p, Some(api_name))
+  }
+}
+
 fn unit_permission_from_flag_bool(
   flag: bool,
   name: &'static str,

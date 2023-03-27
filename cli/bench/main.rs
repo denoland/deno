@@ -502,7 +502,7 @@ async fn main() -> Result<()> {
     let mut syscall_count = HashMap::<String, i64>::new();
 
     for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
-      let mut file = secure_tempfile::NamedTempFile::new()?;
+      let mut file = tempfile::NamedTempFile::new()?;
 
       let exit_status = Command::new("strace")
         .args([
@@ -524,7 +524,14 @@ async fn main() -> Result<()> {
       file.as_file_mut().read_to_string(&mut output)?;
 
       let strace_result = test_util::parse_strace_output(&output);
-      let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
+      let clone =
+        strace_result
+          .get("clone")
+          .map(|d| d.calls)
+          .unwrap_or_else(|| {
+            strace_result.get("clone3").map(|d| d.calls).unwrap_or(0)
+          })
+          + 1;
       let total = strace_result.get("total").unwrap().calls;
       thread_count.insert(name.to_string(), clone as i64);
       syscall_count.insert(name.to_string(), total as i64);

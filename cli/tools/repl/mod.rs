@@ -6,7 +6,6 @@ use crate::colors;
 use crate::proc_state::ProcState;
 use crate::worker::create_main_worker;
 use deno_core::error::AnyError;
-use deno_core::resolve_path;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
@@ -82,8 +81,7 @@ async fn read_eval_file(
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
-  let main_module =
-    resolve_path("./$deno$repl.ts", ps.options.initial_cwd()).unwrap();
+  let main_module = ps.options.resolve_main_module()?;
   let mut worker = create_main_worker(
     &ps,
     main_module,
