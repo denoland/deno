@@ -280,7 +280,8 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 #[test]
 fn no_npm_cache_coverage() {
   let context = TestContext::default();
-  let tempdir = context.deno_dir();
+  // let tempdir = context.deno_dir();
+  let tempdir = util::new_deno_dir();
   let tempdir = tempdir.path().join("cov");
 
   let output = context

@@ -623,6 +623,8 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
+  // file:///var/folders/24/8k48jl6d249_n_qfxwsl6xvm0000gn/T/deno-cli-testM9DwRS/npm/registry.npmjs.org
+  // file:///private/var/folders/24/8k48jl6d249_n_qfxwsl6xvm0000gn/T/deno-cli-testM9DwRS/npm/registry.npmjs.org
   let cli_options = Arc::new(CliOptions::from_flags(flags.clone())?);
   let ps = ProcState::build(flags).await?;
 
