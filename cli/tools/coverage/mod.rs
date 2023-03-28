@@ -635,7 +635,6 @@ pub async fn cover_files(
 
   let npm_folder_filepath =
     Url::from_file_path(npm_folder_path.to_str().unwrap()).unwrap();
-  println!("{}", npm_folder_filepath);
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     npm_folder_filepath.as_str(),
