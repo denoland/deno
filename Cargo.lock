@@ -1155,6 +1155,7 @@ dependencies = [
  "md4",
  "once_cell",
  "path-clean",
+ "pbkdf2",
  "rand",
  "regex",
  "ripemd",
@@ -1163,6 +1164,7 @@ dependencies = [
  "sha-1 0.10.0",
  "sha2",
  "sha3",
+ "tokio",
  "typenum",
 ]
 
@@ -3062,6 +3064,16 @@ name = "pathdiff"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8835116a5c179084a830efb3adc117ab007512b535bc1a21c991d3b32a6b44dd"
+
+[[package]]
+name = "pbkdf2"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0ca0b5a68607598bf3bad68f32227a8164f6254833f84eafaac409cd6746c31"
+dependencies = [
+ "digest 0.10.6",
+ "hmac",
+]
 
 [[package]]
 name = "pem-rfc7468"
