@@ -159,7 +159,7 @@ fn pty_complete_imports_no_panic_empty_specifier() {
       console.expect_any(&["not prefixed with", "https://deno.land"]);
     } else {
       console.write_raw("import '\t");
-      console.expect("import 'https://deno.land'");
+      console.expect("import 'https://deno.land");
     }
   });
 }
