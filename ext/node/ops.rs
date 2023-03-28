@@ -13,7 +13,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::NodeFs;
+use crate::NodeEnv;
 
 use super::resolution;
 use super::NodeModuleKind;
@@ -88,24 +88,23 @@ pub fn op_require_init_paths() -> Vec<String> {
 }
 
 #[op]
-pub fn op_require_node_module_paths<P, FS>(
+pub fn op_require_node_module_paths<Env>(
   state: &mut OpState,
   from: String,
 ) -> Result<Vec<String>, AnyError>
 where
-  P: NodePermissions + 'static,
-  FS: NodeFs + 'static,
+  Env: NodeEnv + 'static,
 {
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(
     &from,
-    &(FS::current_dir()).context("Unable to get CWD")?,
+    &std::env::current_dir().context("Unable to get CWD")?,
   )
   .unwrap()
   .to_file_path()
   .unwrap();
 
-  ensure_read_permission::<P>(state, &from)?;
+  ensure_read_permission::<Env::P>(state, &from)?;
 
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
@@ -255,15 +254,15 @@ fn op_require_path_is_absolute(p: String) -> bool {
 }
 
 #[op]
-fn op_require_stat<P>(
+fn op_require_stat<Env>(
   state: &mut OpState,
   path: String,
 ) -> Result<i32, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   let path = PathBuf::from(path);
-  ensure_read_permission::<P>(state, &path)?;
+  ensure_read_permission::<Env::P>(state, &path)?;
   if let Ok(metadata) = std::fs::metadata(&path) {
     if metadata.is_file() {
       return Ok(0);
@@ -276,15 +275,15 @@ where
 }
 
 #[op]
-fn op_require_real_path<P>(
+fn op_require_real_path<Env>(
   state: &mut OpState,
   request: String,
 ) -> Result<String, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   let path = PathBuf::from(request);
-  ensure_read_permission::<P>(state, &path)?;
+  ensure_read_permission::<Env::P>(state, &path)?;
   let mut canonicalized_path = path.canonicalize()?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
@@ -334,14 +333,14 @@ fn op_require_path_basename(request: String) -> Result<String, AnyError> {
 }
 
 #[op]
-fn op_require_try_self_parent_path<P>(
+fn op_require_try_self_parent_path<Env>(
   state: &mut OpState,
   has_parent: bool,
   maybe_parent_filename: Option<String>,
   maybe_parent_id: Option<String>,
 ) -> Result<Option<String>, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   if !has_parent {
     return Ok(None);
@@ -354,7 +353,7 @@ where
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
       if let Ok(cwd) = std::env::current_dir() {
-        ensure_read_permission::<P>(state, &cwd)?;
+        ensure_read_permission::<Env::P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().to_string()));
       }
     }
@@ -363,20 +362,20 @@ where
 }
 
 #[op]
-fn op_require_try_self<P>(
+fn op_require_try_self<Env>(
   state: &mut OpState,
   parent_path: Option<String>,
   request: String,
 ) -> Result<Option<String>, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   if parent_path.is_none() {
     return Ok(None);
   }
 
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<Env::P>();
   let pkg = resolution::get_package_scope_config(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
     &*resolver,
@@ -426,15 +425,15 @@ where
 }
 
 #[op]
-fn op_require_read_file<P>(
+fn op_require_read_file<Env>(
   state: &mut OpState,
   file_path: String,
 ) -> Result<String, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   let file_path = PathBuf::from(file_path);
-  ensure_read_permission::<P>(state, &file_path)?;
+  ensure_read_permission::<Env::P>(state, &file_path)?;
   Ok(std::fs::read_to_string(file_path)?)
 }
 
@@ -450,7 +449,7 @@ pub fn op_require_as_file_path(file_or_url: String) -> String {
 }
 
 #[op]
-fn op_require_resolve_exports<P>(
+fn op_require_resolve_exports<Env>(
   state: &mut OpState,
   uses_local_node_modules_dir: bool,
   modules_path: String,
@@ -460,10 +459,10 @@ fn op_require_resolve_exports<P>(
   parent_path: String,
 ) -> Result<Option<String>, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<Env::P>();
 
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
@@ -498,19 +497,19 @@ where
 }
 
 #[op]
-fn op_require_read_closest_package_json<P>(
+fn op_require_read_closest_package_json<Env>(
   state: &mut OpState,
   filename: String,
 ) -> Result<PackageJson, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
-  ensure_read_permission::<P>(
+  ensure_read_permission::<Env::P>(
     state,
     PathBuf::from(&filename).parent().unwrap(),
   )?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<Env::P>();
   resolution::get_closest_package_json(
     &Url::from_file_path(filename).unwrap(),
     &*resolver,
@@ -519,32 +518,32 @@ where
 }
 
 #[op]
-fn op_require_read_package_scope<P>(
+fn op_require_read_package_scope<Env>(
   state: &mut OpState,
   package_json_path: String,
 ) -> Option<PackageJson>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<Env::P>();
   let package_json_path = PathBuf::from(package_json_path);
   PackageJson::load(&*resolver, permissions, package_json_path).ok()
 }
 
 #[op]
-fn op_require_package_imports_resolve<P>(
+fn op_require_package_imports_resolve<Env>(
   state: &mut OpState,
   parent_filename: String,
   request: String,
 ) -> Result<Option<String>, AnyError>
 where
-  P: NodePermissions + 'static,
+  Env: NodeEnv + 'static,
 {
   let parent_path = PathBuf::from(&parent_filename);
-  ensure_read_permission::<P>(state, &parent_path)?;
+  ensure_read_permission::<Env::P>(state, &parent_path)?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<Env::P>();
   let pkg = PackageJson::load(
     &*resolver,
     permissions,
