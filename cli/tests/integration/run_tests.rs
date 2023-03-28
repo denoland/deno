@@ -2734,7 +2734,7 @@ fn issue9750() {
     console.write_line_raw("n");
     console.expect_all(&[
       "Denied env access to \"SECRET\".",
-      "error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
+      "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
     ]);
   });
 }
