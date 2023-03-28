@@ -15,7 +15,8 @@ export {
 } from "ext:deno_node/internal/crypto/_randomFill.ts";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 export type LargeNumberLike =
   | ArrayBufferView
@@ -45,11 +46,19 @@ export function checkPrime(
   callback: (err: Error | null, result: boolean) => void,
 ): void;
 export function checkPrime(
-  _candidate: LargeNumberLike,
-  _options?: CheckPrimeOptions | ((err: Error | null, result: boolean) => void),
-  _callback?: (err: Error | null, result: boolean) => void,
+  candidate: LargeNumberLike,
+  options?: CheckPrimeOptions | ((err: Error | null, result: boolean) => void),
+  callback?: (err: Error | null, result: boolean) => void,
 ) {
-  notImplemented("crypto.checkPrime");
+  const checks = typeof options === "object" ? options?.checks : 0;
+  const cb = typeof options === "function" ? options : callback;
+  core.opAsync("op_node_check_prime_async", candidate, checks).then(
+    (result) => {
+      cb?.(null, result);
+    },
+  ).catch((err) => {
+    cb?.(err, false);
+  });
 }
 
 export function checkPrimeSync(
