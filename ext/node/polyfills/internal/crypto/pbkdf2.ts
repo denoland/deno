@@ -50,7 +50,7 @@ export function pbkdf2Sync(
     throw new Error("Invalid digest");
   }
 
-  return DK;
+  return Buffer.from(DK);
 }
 
 /**
@@ -81,7 +81,7 @@ export function pbkdf2(
     digest,
     keylen,
   ).then(
-    (DK) => callback(null, DK),
+    (DK) => callback(null, Buffer.from(DK)),
   )
     .catch((err) => callback(err));
 }
