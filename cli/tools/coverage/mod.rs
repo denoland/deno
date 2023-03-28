@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
@@ -29,6 +30,7 @@ use std::io::Error;
 use std::io::Write;
 use std::io::{self};
 use std::path::PathBuf;
+use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -585,7 +587,7 @@ fn collect_coverages(
 }
 
 fn filter_coverages(
-  npm_registry_url: &str,
+  npm_folder_filepath: &str,
   coverages: Vec<ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
@@ -599,8 +601,9 @@ fn filter_coverages(
   coverages
     .into_iter()
     .filter(|e| {
+      // file:///home/geert-jan/.cache/deno/npm/registry.npmjs.org/chalk/5.2.0/source/utilities.js
       let is_internal = e.url.starts_with("ext:")
-        || e.url.contains(npm_registry_url)
+        || e.url.contains(npm_folder_filepath)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap");
@@ -621,12 +624,20 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
+  let cli_options = Arc::new(CliOptions::from_flags(flags.clone())?);
   let ps = ProcState::build(flags).await?;
-  let registry_url = ps.npm_api.base_url().domain().unwrap();
+
+  let npm_domain = ps.npm_api.base_url().domain().unwrap(); // e.g. registry.npmjs.org
+  let deno_dir = cli_options.resolve_deno_dir()?;
+  let mut npm_folder_path = deno_dir.npm_folder_path();
+  npm_folder_path.push(npm_domain);
+
+  let npm_folder_filepath =
+    Url::from_file_path(npm_folder_path.to_str().unwrap()).unwrap();
 
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
-    registry_url,
+    npm_folder_filepath.as_str(),
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
