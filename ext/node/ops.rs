@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::NodeEnv;
+use crate::NodeFs;
 
 use super::resolution;
 use super::NodeModuleKind;
@@ -98,7 +99,7 @@ where
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(
     &from,
-    &std::env::current_dir().context("Unable to get CWD")?,
+    &(Env::Fs::current_dir()).context("Unable to get CWD")?,
   )
   .unwrap()
   .to_file_path()
@@ -263,7 +264,7 @@ where
 {
   let path = PathBuf::from(path);
   ensure_read_permission::<Env::P>(state, &path)?;
-  if let Ok(metadata) = std::fs::metadata(&path) {
+  if let Ok(metadata) = Env::Fs::metadata(&path) {
     if metadata.is_file() {
       return Ok(0);
     } else {
@@ -352,7 +353,7 @@ where
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
-      if let Ok(cwd) = std::env::current_dir() {
+      if let Ok(cwd) = Env::Fs::current_dir() {
         ensure_read_permission::<Env::P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().to_string()));
       }
@@ -434,7 +435,7 @@ where
 {
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<Env::P>(state, &file_path)?;
-  Ok(std::fs::read_to_string(file_path)?)
+  Ok(Env::Fs::read_to_string(file_path)?)
 }
 
 #[op]
