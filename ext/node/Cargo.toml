@@ -27,6 +27,7 @@ md-5 = "0.10.5"
 md4 = "0.10.2"
 once_cell.workspace = true
 path-clean = "=0.1.0"
+pbkdf2 = "0.12.1"
 rand.workspace = true
 regex.workspace = true
 ripemd = "0.1.3"
@@ -36,4 +37,5 @@ sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sha3 = "0.10.5"
 signature.workspace = true
+tokio.workspace = true
 typenum = "1.15.0"
