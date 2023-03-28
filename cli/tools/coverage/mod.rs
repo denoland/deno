@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CliOptions;
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
@@ -30,7 +29,6 @@ use std::io::Error;
 use std::io::Write;
 use std::io::{self};
 use std::path::PathBuf;
-use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -623,21 +621,12 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  // file:///var/folders/24/8k48jl6d249_n_qfxwsl6xvm0000gn/T/deno-cli-testM9DwRS/npm/registry.npmjs.org
-  // file:///private/var/folders/24/8k48jl6d249_n_qfxwsl6xvm0000gn/T/deno-cli-testM9DwRS/npm/registry.npmjs.org
-  let cli_options = Arc::new(CliOptions::from_flags(flags.clone())?);
   let ps = ProcState::build(flags).await?;
+  let root_dir_url = ps.npm_resolver.root_dir_url();
 
-  let npm_domain = ps.npm_api.base_url().domain().unwrap(); // e.g. registry.npmjs.org
-  let deno_dir = cli_options.resolve_deno_dir()?;
-  let mut npm_folder_path = deno_dir.npm_folder_path();
-  npm_folder_path.push(npm_domain);
-
-  let npm_folder_filepath =
-    Url::from_file_path(npm_folder_path.to_str().unwrap()).unwrap();
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
-    npm_folder_filepath.as_str(),
+    root_dir_url.as_str(),
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
