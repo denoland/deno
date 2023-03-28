@@ -2,10 +2,13 @@
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::serde_v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use num_bigint::BigInt;
+use std::future::Future;
 use std::rc::Rc;
 
 use rsa::padding::PaddingScheme;
@@ -17,6 +20,52 @@ use rsa::RsaPublicKey;
 
 mod cipher;
 mod digest;
+mod primes;
+
+#[op]
+pub fn op_node_check_prime(num: serde_v8::BigInt, checks: usize) -> bool {
+  primes::is_probably_prime(&num, checks)
+}
+
+#[op]
+pub fn op_node_check_prime_bytes(
+  bytes: &[u8],
+  checks: usize,
+) -> Result<bool, AnyError> {
+  let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
+  Ok(primes::is_probably_prime(&candidate, checks))
+}
+
+#[op]
+pub async fn op_node_check_prime_async(
+  num: serde_v8::BigInt,
+  checks: usize,
+) -> Result<bool, AnyError> {
+  // TODO(@littledivy): use rayon for CPU-bound tasks
+  Ok(
+    tokio::task::spawn_blocking(move || {
+      primes::is_probably_prime(&num, checks)
+    })
+    .await?,
+  )
+}
+
+#[op]
+pub fn op_node_check_prime_bytes_async(
+  bytes: &[u8],
+  checks: usize,
+) -> Result<impl Future<Output = Result<bool, AnyError>> + 'static, AnyError> {
+  let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
+  // TODO(@littledivy): use rayon for CPU-bound tasks
+  Ok(async move {
+    Ok(
+      tokio::task::spawn_blocking(move || {
+        primes::is_probably_prime(&candidate, checks)
+      })
+      .await?,
+    )
+  })
+}
 
 #[op(fast)]
 pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
@@ -239,4 +288,117 @@ pub fn op_node_decipheriv_final(
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
   context.r#final(input, output)
+}
+
+#[op]
+pub fn op_node_sign(
+  digest: &[u8],
+  digest_type: &str,
+  key: StringOrBuffer,
+  key_type: &str,
+  key_format: &str,
+) -> Result<ZeroCopyBuf, AnyError> {
+  match key_type {
+    "rsa" => {
+      use rsa::pkcs1v15::SigningKey;
+      use signature::hazmat::PrehashSigner;
+      let key = match key_format {
+        "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
+          .map_err(|_| type_error("Invalid RSA key"))?,
+        // TODO(kt3k): Support der and jwk formats
+        _ => {
+          return Err(type_error(format!(
+            "Unsupported key format: {}",
+            key_format
+          )))
+        }
+      };
+      Ok(
+        match digest_type {
+          "sha224" => {
+            let signing_key = SigningKey::<sha2::Sha224>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          "sha256" => {
+            let signing_key = SigningKey::<sha2::Sha256>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          "sha384" => {
+            let signing_key = SigningKey::<sha2::Sha384>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          "sha512" => {
+            let signing_key = SigningKey::<sha2::Sha512>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          _ => {
+            return Err(type_error(format!(
+              "Unknown digest algorithm: {}",
+              digest_type
+            )))
+          }
+        }
+        .into(),
+      )
+    }
+    _ => Err(type_error(format!(
+      "Signing with {} keys is not supported yet",
+      key_type
+    ))),
+  }
+}
+
+fn pbkdf2_sync(
+  password: &[u8],
+  salt: &[u8],
+  iterations: u32,
+  digest: &str,
+  derived_key: &mut [u8],
+) -> Result<(), AnyError> {
+  macro_rules! pbkdf2_hmac {
+    ($digest:ty) => {{
+      pbkdf2::pbkdf2_hmac::<$digest>(password, salt, iterations, derived_key)
+    }};
+  }
+
+  match digest {
+    "md4" => pbkdf2_hmac!(md4::Md4),
+    "md5" => pbkdf2_hmac!(md5::Md5),
+    "ripemd160" => pbkdf2_hmac!(ripemd::Ripemd160),
+    "sha1" => pbkdf2_hmac!(sha1::Sha1),
+    "sha224" => pbkdf2_hmac!(sha2::Sha224),
+    "sha256" => pbkdf2_hmac!(sha2::Sha256),
+    "sha384" => pbkdf2_hmac!(sha2::Sha384),
+    "sha512" => pbkdf2_hmac!(sha2::Sha512),
+    _ => return Err(type_error("Unknown digest")),
+  }
+
+  Ok(())
+}
+
+#[op]
+pub fn op_node_pbkdf2(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  iterations: u32,
+  digest: &str,
+  derived_key: &mut [u8],
+) -> bool {
+  pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
+}
+
+#[op]
+pub async fn op_node_pbkdf2_async(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  iterations: u32,
+  digest: String,
+  keylen: usize,
+) -> Result<ZeroCopyBuf, AnyError> {
+  tokio::task::spawn_blocking(move || {
+    let mut derived_key = vec![0; keylen];
+    pbkdf2_sync(&password, &salt, iterations, &digest, &mut derived_key)
+      .map(|_| derived_key.into())
+  })
+  .await?
 }

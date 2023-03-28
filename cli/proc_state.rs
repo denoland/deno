@@ -8,6 +8,7 @@ use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
@@ -74,6 +75,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: DenoDir,
+  pub caches: Caches,
   pub file_fetcher: Arc<FileFetcher>,
   pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
@@ -139,6 +141,7 @@ impl ProcState {
     self.blob_store.clear();
     self.0 = Arc::new(Inner {
       dir: self.dir.clone(),
+      caches: self.caches.clone(),
       options: self.options.clone(),
       emit_cache: self.emit_cache.clone(),
       emit_options_hash: self.emit_options_hash,
@@ -192,11 +195,25 @@ impl ProcState {
     cli_options: Arc<CliOptions>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
+    let dir = cli_options.resolve_deno_dir()?;
+    let caches = Caches::default();
+    // Warm up the caches we know we'll likely need based on the CLI mode
+    match cli_options.sub_command() {
+      DenoSubcommand::Run(_) => {
+        _ = caches.dep_analysis_db(&dir);
+        _ = caches.node_analysis_db(&dir);
+      }
+      DenoSubcommand::Check(_) => {
+        _ = caches.dep_analysis_db(&dir);
+        _ = caches.node_analysis_db(&dir);
+        _ = caches.type_checking_cache_db(&dir);
+      }
+      _ => {}
+    }
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
-    let dir = cli_options.resolve_deno_dir()?;
     let deps_cache_location = dir.deps_folder_path();
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
@@ -284,7 +301,7 @@ impl ProcState {
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
-      ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
+      ParsedSourceCache::new(caches.dep_analysis_db(&dir));
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
@@ -292,11 +309,12 @@ impl ProcState {
       progress_bar.clone(),
     );
     let node_analysis_cache =
-      NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
+      NodeAnalysisCache::new(caches.node_analysis_db(&dir));
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
       dir,
+      caches,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()
@@ -430,7 +448,7 @@ impl ProcState {
           && !roots.iter().all(|r| reload_exclusions.contains(r)),
       };
       let check_cache =
-        TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
+        TypeCheckCache::new(self.caches.type_checking_cache_db(&self.dir));
       let check_result =
         check::check(graph, &check_cache, &self.npm_resolver, options)?;
       self.graph_container.set_type_checked(&roots, lib);
