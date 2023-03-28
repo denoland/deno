@@ -601,7 +601,6 @@ fn filter_coverages(
   coverages
     .into_iter()
     .filter(|e| {
-      // file:///home/geert-jan/.cache/deno/npm/registry.npmjs.org/chalk/5.2.0/source/utilities.js
       let is_internal = e.url.starts_with("ext:")
         || e.url.starts_with(npm_folder_filepath)
         || e.url.ends_with("__anonymous__")
