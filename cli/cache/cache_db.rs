@@ -39,7 +39,7 @@ impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
     format!(
       "
-      PRAGMA journal_mode=OFF;
+      PRAGMA journal_mode=TRUNCATE;
       PRAGMA synchronous=NORMAL;
       PRAGMA temp_store=memory;
       PRAGMA page_size=4096;
@@ -83,7 +83,8 @@ impl Drop for CacheDB {
       _ => return,
     };
 
-    // TODO(mmastrac): we should ensure tokio runtimes are consistently available or not
+    // If Deno is panicking, tokio is sometimes gone before we have a chance to shutdown. In
+    // that case, we just allow the drop to happen as expected.
     if tokio::runtime::Handle::try_current().is_err() {
       return;
     }
@@ -166,13 +167,11 @@ impl CacheDB {
 
   fn spawn_eager_init_thread(&self) {
     let clone = self.clone();
-    // TODO(mmastrac): we should ensure tokio runtimes are consistently available or not
-    if tokio::runtime::Handle::try_current().is_ok() {
-      tokio::task::spawn_blocking(move || {
-        let lock = clone.conn.lock();
-        clone.initialize(&lock);
-      });
-    }
+    debug_assert!(tokio::runtime::Handle::try_current().is_ok());
+    tokio::task::spawn_blocking(move || {
+      let lock = clone.conn.lock();
+      clone.initialize(&lock);
+    });
   }
 
   /// Open the connection in memory or on disk.
