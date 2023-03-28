@@ -1,32 +1,172 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
+use std::time::Duration;
+use std::time::Instant;
 
-pub trait Pty: Read + Write {
-  fn write_text(&mut self, text: &str);
+use crate::failed_position;
+use crate::strip_ansi_codes;
 
-  fn write_line(&mut self, text: &str) {
-    self.write_text(&format!("{text}\n"));
+pub struct Pty {
+  pty: Box<dyn SystemPty>,
+  read_bytes: Vec<u8>,
+  last_index: usize,
+}
+
+impl Pty {
+  pub fn new(
+    program: &Path,
+    args: &[&str],
+    cwd: &Path,
+    env_vars: Option<HashMap<String, String>>,
+  ) -> Self {
+    let pty = create_pty(program, args, cwd, env_vars);
+    Self {
+      pty,
+      read_bytes: Vec::new(),
+      last_index: 0,
+    }
   }
 
-  /// Reads the output to the EOF.
-  fn read_all_output(&mut self) -> String {
-    let mut text = String::new();
-    self.read_to_string(&mut text).unwrap();
-    text
+  pub fn is_supported() -> bool {
+    // todo: investigate if this is necessary
+    // if cfg!(windows) && std::env::var("CI").is_ok() {
+    //   eprintln!("Ignoring windows CI.");
+    //   false
+    // } else {
+    true
+    // }
+  }
+
+  pub fn write_text_raw(&mut self, line: impl AsRef<str>) {
+    let line = if cfg!(windows) {
+      line.as_ref().replace('\n', "\r\n")
+    } else {
+      line.as_ref().to_string()
+    };
+    if let Err(err) = self.pty.write(line.as_bytes()) {
+      panic!("{:#} at {}", err, failed_position!())
+    }
+    self.pty.flush().unwrap();
+  }
+
+  pub fn write_line(&mut self, line: impl AsRef<str>) {
+    self.write_line_raw(&line);
+
+    // expect what was written to show up in the output
+    // due to "pty echo"
+    for line in line.as_ref().lines() {
+      self.expect(line);
+    }
+  }
+
+  /// Writes a line without checking if it's in the output.
+  pub fn write_line_raw(&mut self, line: impl AsRef<str>) {
+    self.write_text_raw(format!("{}\n", line.as_ref()));
+  }
+
+  pub fn read_until(&mut self, end_text: impl AsRef<str>) -> String {
+    self.read_until_condition(|text| {
+      text
+        .find(end_text.as_ref())
+        .map(|index| index + end_text.as_ref().len())
+    })
+  }
+
+  pub fn expect(&mut self, text: impl AsRef<str>) {
+    self.read_until(text.as_ref());
+  }
+
+  /// Consumes and expects to find all the text until a timeout is hit.
+  pub fn expect_all(&mut self, texts: &[&str]) {
+    let mut pending_texts: HashSet<&&str> = HashSet::from_iter(texts);
+    let mut max_index: Option<usize> = None;
+    let text = self.read_until_condition(|text| {
+      for pending_text in pending_texts.clone() {
+        if let Some(index) = text.find(pending_text) {
+          let index = index + pending_text.len();
+          match &max_index {
+            Some(current) => {
+              if *current < index {
+                max_index = Some(index);
+              }
+            }
+            None => {
+              max_index = Some(index);
+            }
+          }
+          pending_texts.remove(pending_text);
+        }
+      }
+      if pending_texts.is_empty() {
+        max_index
+      } else {
+        None
+      }
+    });
+    if !pending_texts.is_empty() {
+      let vec = pending_texts
+        .drain()
+        .map(|v| format!("'{}'", v))
+        .collect::<Vec<_>>();
+      eprintln!("TEXT: {:?}", text);
+      panic!("{} not matched at {}", vec.join(", "), failed_position!())
+    }
+  }
+
+  fn read_until_condition(
+    &mut self,
+    mut condition: impl FnMut(&str) -> Option<usize>,
+  ) -> String {
+    let timeout_time =
+      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
+    while Instant::now() < timeout_time {
+      self.fill_more_bytes();
+      let text = self.next_text();
+      if let Some(end_index) = condition(&text) {
+        self.last_index += end_index;
+        return text[..end_index].to_string();
+      }
+    }
+
+    let text = self.next_text();
+    eprintln!(
+      "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
+      String::from_utf8_lossy(&self.read_bytes)
+    );
+    eprintln!("Next text: {:?}", text);
+    panic!("Timed out at {}", failed_position!())
+  }
+
+  fn next_text(&self) -> String {
+    let text = String::from_utf8_lossy(&self.read_bytes).to_string();
+    let text = strip_ansi_codes(&text);
+    text[self.last_index..].to_string()
+  }
+
+  fn fill_more_bytes(&mut self) {
+    let mut buf = [0; 256];
+    if let Ok(count) = self.pty.read(&mut buf) {
+      self.read_bytes.extend(&buf[0..count]);
+    } else {
+      std::thread::sleep(Duration::from_millis(10));
+    }
   }
 }
 
+trait SystemPty: Read + Write {}
+
 #[cfg(unix)]
-pub fn create_pty(
-  program: impl AsRef<Path>,
+fn create_pty(
+  program: &Path,
   args: &[&str],
-  cwd: impl AsRef<Path>,
+  cwd: &Path,
   env_vars: Option<HashMap<String, String>>,
-) -> Box<dyn Pty> {
+) -> Box<dyn SystemPty> {
   let fork = pty2::fork::Fork::from_ptmx().unwrap();
   if fork.is_parent().is_ok() {
     Box::new(unix::UnixPty { fork })
@@ -60,12 +200,7 @@ mod unix {
     }
   }
 
-  impl Pty for UnixPty {
-    fn write_text(&mut self, text: &str) {
-      let mut master = self.fork.is_parent().unwrap();
-      master.write_all(text.as_bytes()).unwrap();
-    }
-  }
+  impl SystemPty for UnixPty {}
 
   impl Read for UnixPty {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -86,18 +221,13 @@ mod unix {
 }
 
 #[cfg(target_os = "windows")]
-pub fn create_pty(
-  program: impl AsRef<Path>,
+fn create_pty(
+  program: &Path,
   args: &[&str],
-  cwd: impl AsRef<Path>,
+  cwd: &Path,
   env_vars: Option<HashMap<String, String>>,
-) -> Box<dyn Pty> {
-  let pty = windows::WinPseudoConsole::new(
-    program,
-    args,
-    &cwd.as_ref().to_string_lossy(),
-    env_vars,
-  );
+) -> Box<dyn SystemPty> {
+  let pty = windows::WinPseudoConsole::new(program, args, cwd, env_vars);
   Box::new(pty)
 }
 
@@ -106,7 +236,6 @@ mod windows {
   use std::collections::HashMap;
   use std::io::ErrorKind;
   use std::io::Read;
-  use std::io::Write;
   use std::path::Path;
   use std::ptr;
   use std::time::Duration;
@@ -141,7 +270,7 @@ mod windows {
   use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
   use winapi::um::winnt::HANDLE;
 
-  use super::Pty;
+  use super::SystemPty;
 
   macro_rules! assert_win_success {
     ($expression:expr) => {
@@ -172,9 +301,9 @@ mod windows {
 
   impl WinPseudoConsole {
     pub fn new(
-      program: impl AsRef<Path>,
+      program: &Path,
       args: &[&str],
-      cwd: &str,
+      cwd: &Path,
       maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
       // https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
@@ -207,7 +336,7 @@ mod windows {
         let mut proc_info: PROCESS_INFORMATION = std::mem::zeroed();
         let command = format!(
           "\"{}\" {}",
-          program.as_ref().to_string_lossy(),
+          program.to_string_lossy(),
           args
             .iter()
             .map(|a| format!("\"{}\"", a))
@@ -216,10 +345,10 @@ mod windows {
         )
         .trim()
         .to_string();
-        let mut application_str =
-          to_windows_str(&program.as_ref().to_string_lossy());
+        let mut application_str = to_windows_str(&program.to_string_lossy());
         let mut command_str = to_windows_str(&command);
-        let mut cwd = to_windows_str(cwd);
+        let cwd = cwd.to_string_lossy().replace('/', "\\");
+        let mut cwd = to_windows_str(&cwd);
 
         assert_win_success!(CreateProcessW(
           application_str.as_mut_ptr(),
@@ -302,15 +431,7 @@ mod windows {
     }
   }
 
-  impl Pty for WinPseudoConsole {
-    fn write_text(&mut self, text: &str) {
-      // windows pseudo console requires a \r\n to do a newline
-      let newline_re = regex::Regex::new("\r?\n").unwrap();
-      self
-        .write_all(newline_re.replace_all(text, "\r\n").as_bytes())
-        .unwrap();
-    }
-  }
+  impl SystemPty for WinPseudoConsole {}
 
   impl std::io::Write for WinPseudoConsole {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {

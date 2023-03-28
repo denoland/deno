@@ -16,16 +16,15 @@ use hyper::StatusCode;
 use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use pretty_assertions::assert_eq;
+use pty::Pty;
 use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::convert::Infallible;
 use std::env;
 use std::io;
-use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
@@ -45,7 +44,6 @@ use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
-use std::time::Instant;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -2073,136 +2071,10 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-// todo(THIS PR): move to pty module
-pub struct PtyNew {
-  pty: Box<dyn pty::Pty>,
-  read_bytes: Vec<u8>,
-  last_index: usize,
-}
-
-impl PtyNew {
-  pub fn write_text_raw(&mut self, line: impl AsRef<str>) {
-    let line = if cfg!(windows) {
-      line.as_ref().replace('\n', "\r\n")
-    } else {
-      line.as_ref().to_string()
-    };
-    if let Err(err) = self.pty.write(line.as_bytes()) {
-      panic!("{:#} at {}", err, failed_position!())
-    }
-    self.pty.flush().unwrap();
+pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Pty)) {
+  if !Pty::is_supported() {
+    return;
   }
-
-  pub fn write_line(&mut self, line: impl AsRef<str>) {
-    self.write_line_raw(&line);
-
-    // expect what was written to show up in the output
-    // due to "pty echo"
-    for line in line.as_ref().lines() {
-      self.expect(line);
-    }
-  }
-
-  /// Writes a line without checking if it's in the output.
-  pub fn write_line_raw(&mut self, line: impl AsRef<str>) {
-    self.write_text_raw(format!("{}\n", line.as_ref()));
-  }
-
-  pub fn read_until(&mut self, end_text: impl AsRef<str>) -> String {
-    self.read_until_condition(|text| {
-      text
-        .find(end_text.as_ref())
-        .map(|index| index + end_text.as_ref().len())
-    })
-  }
-
-  pub fn expect(&mut self, text: impl AsRef<str>) {
-    self.read_until(text.as_ref());
-  }
-
-  /// Consumes and expects to find all the text until a timeout is hit.
-  pub fn expect_all(&mut self, texts: &[&str]) {
-    let mut pending_texts: HashSet<&&str> = HashSet::from_iter(texts);
-    let mut max_index: Option<usize> = None;
-    let text = self.read_until_condition(|text| {
-      for pending_text in pending_texts.clone() {
-        if let Some(index) = text.find(pending_text) {
-          let index = index + pending_text.len();
-          match &max_index {
-            Some(current) => {
-              if *current < index {
-                max_index = Some(index);
-              }
-            }
-            None => {
-              max_index = Some(index);
-            }
-          }
-          pending_texts.remove(pending_text);
-        }
-      }
-      if pending_texts.is_empty() {
-        max_index
-      } else {
-        None
-      }
-    });
-    if !pending_texts.is_empty() {
-      let vec = pending_texts
-        .drain()
-        .map(|v| format!("'{}'", v))
-        .collect::<Vec<_>>();
-      eprintln!("TEXT: {:?}", text);
-      panic!("{} not matched at {}", vec.join(", "), failed_position!())
-    }
-  }
-
-  fn read_until_condition(
-    &mut self,
-    mut condition: impl FnMut(&str) -> Option<usize>,
-  ) -> String {
-    let timeout_time =
-      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
-    while Instant::now() < timeout_time {
-      self.fill_more_bytes();
-      let text = self.next_text();
-      if let Some(end_index) = condition(&text) {
-        self.last_index += end_index;
-        return text[..end_index].to_string();
-      }
-    }
-
-    let text = self.next_text();
-    eprintln!(
-      "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
-      String::from_utf8_lossy(&self.read_bytes)
-    );
-    eprintln!("Next text: {:?}", text);
-    panic!("Timed out at {}", failed_position!())
-  }
-
-  fn next_text(&self) -> String {
-    let text = String::from_utf8_lossy(&self.read_bytes).to_string();
-    let text = strip_ansi_codes(&text);
-    text[self.last_index..].to_string()
-  }
-
-  fn fill_more_bytes(&mut self) {
-    let mut buf = [0; 256];
-    if let Ok(count) = self.pty.read(&mut buf) {
-      self.read_bytes.extend(&buf[0..count]);
-    } else {
-      std::thread::sleep(Duration::from_millis(10));
-    }
-  }
-}
-
-pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
-  // todo: investigate if this works
-  // if cfg!(windows) && std::env::var("CI").is_ok() {
-  //   eprintln!("Ignoring windows CI.");
-  //   return;
-  // }
 
   let deno_dir = new_deno_dir();
   let mut env_vars = std::collections::HashMap::new();
@@ -2211,17 +2083,12 @@ pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(PtyNew)) {
     "DENO_DIR".to_string(),
     deno_dir.path().to_string_lossy().to_string(),
   );
-  let pty = pty::create_pty(
-    &deno_exe_path().to_string_lossy().to_string(),
+  action(Pty::new(
+    &deno_exe_path(),
     deno_args,
-    testdata_path(),
+    &testdata_path(),
     Some(env_vars),
-  );
-  action(PtyNew {
-    pty,
-    read_bytes: Vec::new(),
-    last_index: 0,
-  })
+  ))
 }
 
 pub struct WrkOutput {

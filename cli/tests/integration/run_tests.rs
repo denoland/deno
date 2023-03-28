@@ -6,6 +6,7 @@ use std::io::Read;
 use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
+use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
@@ -4258,19 +4259,30 @@ fn file_fetcher_preserves_permissions() {
 
 #[test]
 fn stdio_streams_are_locked_in_permission_prompt() {
-  let _guard = util::http_server();
-  util::with_pty(&[
-    "repl",
-    "--allow-read=run/stdio_streams_are_locked_in_permission_prompt/worker.js,run/stdio_streams_are_locked_in_permission_prompt/text.txt"
-    ], |mut console| {
-    console.write_line(
-      r#"new Worker(`${Deno.cwd()}/run/stdio_streams_are_locked_in_permissions_prompt/worker.js`, { type: "module" });
-      await Deno.writeTextFile("./run/stdio_streams_are_locked_in_permissions_prompt/text.txt", "some code");"#,
-    );
-    console.write_line_raw("y");
-    let expected_output = r#"\x1b[1;1H\x1b[0JAre you sure you want to continue?"#;
-    console.expect(expected_output);
-  });
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_copy_temp_dir("run/stdio_streams_are_locked_in_permission_prompt")
+    .build();
+  context
+    .new_command()
+    .args("repl --allow-read")
+    .with_pty(|mut console| {
+      console.write_line(
+        r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/worker.js";
+        new Worker(url, { type: "module" });
+        await Deno.writeTextFile("./text.txt", "some code");"#,
+      );
+      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
+      std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
+      console.write_line_raw("invalid");
+      console.expect("Unrecognized option.");
+      console.write_line_raw("y");
+      console.expect("Granted");
+
+      // this output should now be shown below and not above
+      let expected_output = r#"Are you sure you want to continue?"#;
+      console.expect(expected_output);
+    });
 }
 
 #[test]
@@ -4305,7 +4317,8 @@ Deno[Object.getOwnPropertySymbols(Deno)[0]].core.ops.op_spawn_child({
     env: [],
     stdin: "null",
     stdout: "inherit",
-    stderr: "piped"
+    stderr: "piped",
+    windowsRawArguments: [],
 }, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
     );
 

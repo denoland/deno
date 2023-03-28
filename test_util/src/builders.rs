@@ -20,6 +20,7 @@ use crate::failed_position;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
+use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
 use crate::wildcard_match;
@@ -268,34 +269,29 @@ impl TestCommandBuilder {
     self
   }
 
-  pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
-    }
-
-    fn sanitize_output(text: String, args: &[String]) -> String {
-      let mut text = strip_ansi_codes(&text).to_string();
-      // deno test's output capturing flushes with a zero-width space in order to
-      // synchronize the output pipes. Occassionally this zero width space
-      // might end up in the output so strip it from the output comparison here.
-      if args.first().map(|s| s.as_str()) == Some("test") {
-        text = text.replace('\u{200B}', "");
-      }
-      text
-    }
-
+  fn build_cwd(&self) -> PathBuf {
     let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
-    let cwd = if self.context.use_temp_cwd {
+    if self.context.use_temp_cwd {
       assert!(cwd.is_none());
       self.context.temp_dir.path().to_owned()
     } else if let Some(cwd_) = cwd {
       self.context.testdata_dir.join(cwd_)
     } else {
       self.context.testdata_dir.clone()
-    };
-    let args = if self.args_vec.is_empty() {
+    }
+  }
+
+  fn build_command_path(&self) -> PathBuf {
+    let command_name = &self.command_name;
+    if command_name == "deno" {
+      deno_exe_path()
+    } else {
+      PathBuf::from(command_name)
+    }
+  }
+
+  fn build_args(&self) -> Vec<String> {
+    if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
         self
           .args
@@ -314,21 +310,58 @@ impl TestCommandBuilder {
     .map(|arg| {
       arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
-    .collect::<Vec<_>>();
-    let command_name = &self.command_name;
-    let mut command = if command_name == "deno" {
-      Command::new(deno_exe_path())
-    } else {
-      Command::new(command_name)
-    };
-    command.env("DENO_DIR", self.context.deno_dir.path());
+    .collect::<Vec<_>>()
+  }
 
-    println!("command {} {}", command_name, args.join(" "));
+  pub fn with_pty(&self, mut action: impl FnMut(Pty)) {
+    if !Pty::is_supported() {
+      return;
+    }
+
+    let args = self.build_args();
+    let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    let mut envs = self.envs.clone();
+    if !envs.contains_key("NO_COLOR") {
+      // set this by default for pty tests
+      envs.insert("NO_COLOR".to_string(), "1".to_string());
+    }
+    action(Pty::new(
+      &self.build_command_path(),
+      &args,
+      &self.build_cwd(),
+      Some(envs),
+    ))
+  }
+
+  pub fn run(&self) -> TestCommandOutput {
+    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
+      let mut output = String::new();
+      pipe.read_to_string(&mut output).unwrap();
+      output
+    }
+
+    fn sanitize_output(text: String, args: &[String]) -> String {
+      let mut text = strip_ansi_codes(&text).to_string();
+      // deno test's output capturing flushes with a zero-width space in order to
+      // synchronize the output pipes. Occassionally this zero width space
+      // might end up in the output so strip it from the output comparison here.
+      if args.first().map(|s| s.as_str()) == Some("test") {
+        text = text.replace('\u{200B}', "");
+      }
+      text
+    }
+
+    let cwd = self.build_cwd();
+    let args = self.build_args();
+    let mut command = Command::new(self.build_command_path());
+
+    println!("command {} {}", self.command_name, args.join(" "));
     println!("command cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
+    command.env("DENO_DIR", self.context.deno_dir.path());
     command.envs({
       let mut envs = self.context.envs.clone();
       for (key, value) in &self.envs {
