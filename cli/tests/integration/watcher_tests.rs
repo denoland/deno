@@ -6,6 +6,7 @@ use std::io::BufRead;
 use test_util as util;
 use test_util::assert_contains;
 use test_util::TempDir;
+use util::DenoChild;
 
 use util::assert_not_contains;
 
@@ -80,7 +81,7 @@ fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
   lines.find(|m| m.contains(s)).unwrap()
 }
 
-fn check_alive_then_kill(mut child: std::process::Child) {
+fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
 }
@@ -1121,6 +1122,46 @@ fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
+#[test]
+fn run_watch_blob_urls_reset() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_content = r#"
+    const prevUrl = localStorage.getItem("url");
+    if (prevUrl == null) {
+      console.log("first run, storing blob url");
+      const url = URL.createObjectURL(
+        new Blob(["export {}"], { type: "application/javascript" }),
+      );
+      await import(url); // this shouldn't insert into the fs module cache
+      localStorage.setItem("url", url);
+    } else {
+      await import(prevUrl)
+        .then(() => console.log("importing old blob url incorrectly works"))
+        .catch(() => console.log("importing old blob url correctly failed"));
+    }
+    "#;
+  write(&file_to_watch, file_content).unwrap();
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("first run, storing blob url", &mut stdout_lines);
+  wait_contains("finished", &mut stderr_lines);
+  write(&file_to_watch, file_content).unwrap();
+  wait_contains("importing old blob url correctly failed", &mut stdout_lines);
+  wait_contains("finished", &mut stderr_lines);
+  check_alive_then_kill(child);
+}
+
 // Regression test for https://github.com/denoland/deno/issues/15465.
 #[test]
 fn run_watch_reload_once() {
@@ -1204,8 +1245,8 @@ fn run_watch_dynamic_imports() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-  assert_contains!(stderr_lines.next().unwrap(), "No package.json file found");
-  assert_contains!(stderr_lines.next().unwrap(), "Process started");
+  wait_contains("No package.json file found", &mut stderr_lines);
+  wait_contains("Process started", &mut stderr_lines);
 
   wait_contains(
     "Hopefully dynamic import will be watched...",

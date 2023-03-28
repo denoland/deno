@@ -25,13 +25,18 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   AsyncGeneratorPrototype,
-  BigInt64ArrayPrototype,
-  BigUint64ArrayPrototype,
+  BigInt64Array,
+  BigUint64Array,
   DataView,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  Float32Array,
+  Float64Array,
   FinalizationRegistry,
-  Int8ArrayPrototype,
-  Int16ArrayPrototype,
-  Int32ArrayPrototype,
+  Int8Array,
+  Int16Array,
+  Int32Array,
   NumberIsInteger,
   NumberIsNaN,
   MathMin,
@@ -57,12 +62,15 @@ const {
   SymbolAsyncIterator,
   SymbolFor,
   TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   Uint8Array,
-  Uint8ArrayPrototype,
-  Uint16ArrayPrototype,
-  Uint32ArrayPrototype,
-  Uint8ClampedArrayPrototype,
+  Uint16Array,
+  Uint32Array,
+  Uint8ClampedArray,
   WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
@@ -855,7 +863,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
 
     if (done) break;
 
-    if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(chunk) !== "Uint8Array") {
       throw new TypeError(
         "Can't convert value to Uint8Array while consuming the stream",
       );
@@ -1669,31 +1677,74 @@ function readableByteStreamControllerPullInto(
   readIntoRequest,
 ) {
   const stream = controller[_stream];
-  let elementSize = 1;
-  let ctor = DataView;
 
-  if (
-    ObjectPrototypeIsPrototypeOf(Int8ArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(Uint8ClampedArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(Int16ArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(Uint16ArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(Int32ArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(Uint32ArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(BigInt64ArrayPrototype, view) ||
-    ObjectPrototypeIsPrototypeOf(BigUint64ArrayPrototype, view)
-  ) {
-    elementSize = view.constructor.BYTES_PER_ELEMENT;
-    ctor = view.constructor;
-  }
-  const byteOffset = view.byteOffset;
-  const byteLength = view.byteLength;
-
+  let ctor;
+  /** @type {number} */
+  let elementSize;
   /** @type {ArrayBufferLike} */
   let buffer;
+  /** @type {number} */
+  let byteLength;
+  /** @type {number} */
+  let byteOffset;
+
+  const tag = TypedArrayPrototypeGetSymbolToStringTag(view);
+  if (tag === undefined) {
+    ctor = DataView;
+    elementSize = 1;
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+    byteLength = DataViewPrototypeGetByteLength(/** @type {DataView} */ (view));
+    byteOffset = DataViewPrototypeGetByteOffset(/** @type {DataView} */ (view));
+  } else {
+    switch (tag) {
+      case "Int8Array":
+        ctor = Int8Array;
+        break;
+      case "Uint8Array":
+        ctor = Uint8Array;
+        break;
+      case "Uint8ClampedArray":
+        ctor = Uint8ClampedArray;
+        break;
+      case "Int16Array":
+        ctor = Int16Array;
+        break;
+      case "Uint16Array":
+        ctor = Uint16Array;
+        break;
+      case "Int32Array":
+        ctor = Int32Array;
+        break;
+      case "Uint32Array":
+        ctor = Uint32Array;
+        break;
+      case "Float32Array":
+        ctor = Float32Array;
+        break;
+      case "Float64Array":
+        ctor = Float64Array;
+        break;
+      case "BigInt64Array":
+        ctor = BigInt64Array;
+        break;
+      case "BigUint64Array":
+        ctor = BigUint64Array;
+        break;
+      default:
+        throw new TypeError("unreachable");
+    }
+    elementSize = ctor.BYTES_PER_ELEMENT;
+    buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (view));
+    byteLength = TypedArrayPrototypeGetByteLength(
+      /** @type {Uint8Array} */ (view),
+    );
+    byteOffset = TypedArrayPrototypeGetByteOffset(
+      /** @type {Uint8Array} */ (view),
+    );
+  }
 
   try {
-    buffer = transferArrayBuffer(view.buffer);
+    buffer = transferArrayBuffer(buffer);
   } catch (e) {
     readIntoRequest.errorSteps(e);
     return;

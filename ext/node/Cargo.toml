@@ -18,9 +18,11 @@ aes.workspace = true
 cbc.workspace = true
 deno_core.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
+ecb.workspace = true
 hex.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
+libz-sys = { version = "1.1.8", features = ["static"] }
 md-5 = "0.10.5"
 md4 = "0.10.2"
 once_cell.workspace = true

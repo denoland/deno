@@ -27,6 +27,15 @@ use serde::Serialize;
 
 pub use crate::interface::*;
 
+const MAX_WRITE_KEY_SIZE_BYTES: usize = 2048;
+// range selectors can contain 0x00 or 0xff suffixes
+const MAX_READ_KEY_SIZE_BYTES: usize = MAX_WRITE_KEY_SIZE_BYTES + 1;
+const MAX_VALUE_SIZE_BYTES: usize = 65536;
+const MAX_READ_RANGES: usize = 10;
+const MAX_READ_ENTRIES: usize = 1000;
+const MAX_CHECKS: usize = 10;
+const MAX_MUTATIONS: usize = 10;
+
 struct UnstableChecker {
   pub unstable: bool,
 }
@@ -218,6 +227,16 @@ where
       state.resource_table.get::<DatabaseResource<DBH::DB>>(rid)?;
     resource.db.clone()
   };
+
+  if ranges.len() > MAX_READ_RANGES {
+    return Err(type_error(format!(
+      "too many ranges (max {})",
+      MAX_READ_RANGES
+    )));
+  }
+
+  let mut total_entries = 0usize;
+
   let read_ranges = ranges
     .into_iter()
     .map(|(prefix, start, end, limit, reverse, cursor)| {
@@ -225,6 +244,10 @@ where
 
       let (start, end) =
         decode_selector_and_cursor(&selector, reverse, cursor.as_ref())?;
+      check_read_key_size(&start)?;
+      check_read_key_size(&end)?;
+
+      total_entries += limit as usize;
       Ok(ReadRange {
         start,
         end,
@@ -234,6 +257,14 @@ where
       })
     })
     .collect::<Result<Vec<_>, AnyError>>()?;
+
+  if total_entries > MAX_READ_ENTRIES {
+    return Err(type_error(format!(
+      "too many entries (max {})",
+      MAX_READ_ENTRIES
+    )));
+  }
+
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
   };
@@ -499,31 +530,52 @@ where
     resource.db.clone()
   };
 
-  for key in checks
-    .iter()
-    .map(|c| &c.0)
-    .chain(mutations.iter().map(|m| &m.0))
-  {
-    if key.is_empty() {
-      return Err(type_error("key cannot be empty"));
-    }
+  if checks.len() > MAX_CHECKS {
+    return Err(type_error(format!("too many checks (max {})", MAX_CHECKS)));
+  }
+
+  if mutations.len() + enqueues.len() > MAX_MUTATIONS {
+    return Err(type_error(format!(
+      "too many mutations (max {})",
+      MAX_MUTATIONS
+    )));
   }
 
   let checks = checks
     .into_iter()
     .map(TryInto::try_into)
-    .collect::<Result<_, AnyError>>()
+    .collect::<Result<Vec<KvCheck>, AnyError>>()
     .with_context(|| "invalid check")?;
   let mutations = mutations
     .into_iter()
     .map(TryInto::try_into)
-    .collect::<Result<_, AnyError>>()
+    .collect::<Result<Vec<KvMutation>, AnyError>>()
     .with_context(|| "invalid mutation")?;
   let enqueues = enqueues
     .into_iter()
     .map(TryInto::try_into)
-    .collect::<Result<_, AnyError>>()
+    .collect::<Result<Vec<Enqueue>, AnyError>>()
     .with_context(|| "invalid enqueue")?;
+
+  for key in checks
+    .iter()
+    .map(|c| &c.key)
+    .chain(mutations.iter().map(|m| &m.key))
+  {
+    if key.is_empty() {
+      return Err(type_error("key cannot be empty"));
+    }
+
+    check_write_key_size(key)?;
+  }
+
+  for value in mutations.iter().flat_map(|m| m.kind.value()) {
+    check_value_size(value)?;
+  }
+
+  for enqueue in &enqueues {
+    check_enqueue_payload_size(&enqueue.payload)?;
+  }
 
   let atomic_write = AtomicWrite {
     checks,
@@ -548,4 +600,54 @@ fn op_kv_encode_cursor(
   let boundary_key = encode_v8_key(boundary_key)?;
   let cursor = encode_cursor(&selector, &boundary_key)?;
   Ok(cursor)
+}
+
+fn check_read_key_size(key: &[u8]) -> Result<(), AnyError> {
+  if key.len() > MAX_READ_KEY_SIZE_BYTES {
+    Err(type_error(format!(
+      "key too large for read (max {} bytes)",
+      MAX_READ_KEY_SIZE_BYTES
+    )))
+  } else {
+    Ok(())
+  }
+}
+
+fn check_write_key_size(key: &[u8]) -> Result<(), AnyError> {
+  if key.len() > MAX_WRITE_KEY_SIZE_BYTES {
+    Err(type_error(format!(
+      "key too large for write (max {} bytes)",
+      MAX_WRITE_KEY_SIZE_BYTES
+    )))
+  } else {
+    Ok(())
+  }
+}
+
+fn check_value_size(value: &Value) -> Result<(), AnyError> {
+  let payload = match value {
+    Value::Bytes(x) => x,
+    Value::V8(x) => x,
+    Value::U64(_) => return Ok(()),
+  };
+
+  if payload.len() > MAX_VALUE_SIZE_BYTES {
+    Err(type_error(format!(
+      "value too large (max {} bytes)",
+      MAX_VALUE_SIZE_BYTES
+    )))
+  } else {
+    Ok(())
+  }
+}
+
+fn check_enqueue_payload_size(payload: &[u8]) -> Result<(), AnyError> {
+  if payload.len() > MAX_VALUE_SIZE_BYTES {
+    Err(type_error(format!(
+      "enqueue payload too large (max {} bytes)",
+      MAX_VALUE_SIZE_BYTES
+    )))
+  } else {
+    Ok(())
+  }
 }
