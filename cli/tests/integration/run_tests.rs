@@ -2626,10 +2626,10 @@ mod permissions {
     util::with_pty(
       &["run", "--quiet", "--unstable", "run/066_prompt.ts"],
       |mut console| {
-        console.expect("What is your name? [Jane Doe]");
+        console.expect("What is your name? [Jane Doe] ");
         console.write_line_raw("John Doe");
         console.expect("Your name is John Doe.");
-        console.expect("What is your name? [Jane Doe]");
+        console.expect("What is your name? [Jane Doe] ");
         console.write_line_raw("");
         console.expect("Your name is Jane Doe.");
         console.expect("Prompt ");
