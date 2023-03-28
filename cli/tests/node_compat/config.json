@@ -230,6 +230,7 @@
       "test-console-sync-write-error.js",
       "test-console-table.js",
       "test-crypto-hmac.js",
+      "test-crypto-prime.js",
       "test-dgram-close-during-bind.js",
       "test-dgram-close-signal.js",
       "test-diagnostics-channel-has-subscribers.js",
