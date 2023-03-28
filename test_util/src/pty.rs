@@ -171,7 +171,7 @@ fn create_pty(
   if fork.is_parent().is_ok() {
     Box::new(unix::UnixPty { fork })
   } else {
-    std::process::Command::new(program.as_ref())
+    std::process::Command::new(program)
       .current_dir(cwd)
       .args(args)
       .envs(env_vars.unwrap_or_default())
@@ -211,11 +211,13 @@ mod unix {
 
   impl Write for UnixPty {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-      self.fork.write(buf)
+      let mut master = self.fork.is_parent().unwrap();
+      master.write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-      self.fork.flush()
+      let mut master = self.fork.is_parent().unwrap();
+      master.flush()
     }
   }
 }

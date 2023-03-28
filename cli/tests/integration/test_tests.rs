@@ -457,9 +457,10 @@ fn sigint_with_hanging_test() {
     |mut console| {
       std::thread::sleep(std::time::Duration::from_secs(1));
       console.write_line("\x03");
+      let text = console.read_until("hanging_test.ts:10:15");
       wildcard_match(
         include_str!("../testdata/test/sigint_with_hanging_test.out"),
-        &console.read_all_output(),
+        &text,
       );
     },
   );
