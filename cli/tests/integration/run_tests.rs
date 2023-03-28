@@ -4248,7 +4248,7 @@ fn file_fetcher_preserves_permissions() {
   let _guard = util::http_server();
   util::with_pty(&["repl", "--quiet"], |mut console| {
     console.write_line(
-      "const a = await import('http://127.0.0.1:4545/run/019_media_types.ts');",
+      "const a = await import('http://localhost:4545/run/019_media_types.ts');",
     );
     console.expect("Allow?");
     console.write_line_raw("y");
@@ -4266,17 +4266,18 @@ fn stdio_streams_are_locked_in_permission_prompt() {
     .new_command()
     .args("repl --allow-read")
     .with_pty(|mut console| {
-      console.write_line(
-        r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/worker.js";
-        new Worker(url, { type: "module" });
-        await Deno.writeTextFile("./text.txt", "some code");"#,
-      );
+      console.write_line(r#"const url = "file://" + Deno.cwd().replace("\\", "/") + "/run/stdio_streams_are_locked_in_permission_prompt/worker.js";"#);
+      console.expect("undefined");
+      // ensure this file exists
+      console.write_line(r#"const _file = Deno.readTextFileSync("./run/stdio_streams_are_locked_in_permission_prompt/worker.js");"#);
+      console.expect("undefined");
+      console.write_line(r#"new Worker(url, { type: "module" }); await Deno.writeTextFile("./text.txt", "some code");"#);
       console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
       std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
       console.write_line_raw("invalid");
       console.expect("Unrecognized option.");
       console.write_line_raw("y");
-      console.expect("Granted");
+      console.expect("Granted write access to");
 
       // this output should now be shown below and not above
       let expected_output = r#"Are you sure you want to continue?"#;
@@ -4297,27 +4298,33 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
   });
 
   util::with_pty(&["repl"], |mut console| {
-    console.write_line(
-      r#"
-const boldANSI = "\u001b[1m" // bold
-const unboldANSI = "\u001b[22m" // unbold
+    console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
+    console.expect("undefined");
 
-const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}
-├ Requested by \`Deno.Command().output()`
-
-const moveANSIUp = "\u001b[1A" // moves to the start of the line
-const clearANSI = "\u001b[2K" // clears the line
-const moveANSIStart = "\u001b[1000D" // moves to the start of the line
-
-Deno[Object.getOwnPropertySymbols(Deno)[0]].core.ops.op_spawn_child({
+    console.write_line_raw(
+      r#"Deno[Deno.internal].core.ops.op_spawn_child({
     cmd: "cat",
-    args: ["/etc/passwd"],
+    args: ["file.txt"],
     clearEnv: false,
+    cwd: undefined,
     env: [],
+    uid: undefined,
+    gid: undefined,
     stdin: "null",
     stdout: "inherit",
     stderr: "piped",
-    windowsRawArguments: [],
+    signal: undefined,
+    windowsRawArguments: false,
 }, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
     );
 

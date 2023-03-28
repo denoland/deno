@@ -11,6 +11,12 @@ use std::time::Instant;
 use crate::failed_position;
 use crate::strip_ansi_codes;
 
+/// Points to know about when writing pty tests:
+///
+/// - Consecutive writes cause issues where you might write while a prompt
+///   is not showing. So when you write, always `.expect(...)` on the output.
+/// - Similar to the last point, using `.expect(...)` can help make the test
+///   more deterministic. If the test is flaky, try adding more `.expect(...)`s
 pub struct Pty {
   pty: Box<dyn SystemPty>,
   read_bytes: Vec<u8>,
@@ -25,11 +31,16 @@ impl Pty {
     env_vars: Option<HashMap<String, String>>,
   ) -> Self {
     let pty = create_pty(program, args, cwd, env_vars);
-    Self {
+    let mut pty = Self {
       pty,
       read_bytes: Vec::new(),
       last_index: 0,
+    };
+    if args[0] == "repl" && !args.contains(&"--quiet") {
+      // wait for the repl to start up before writing to it
+      pty.expect("exit using ctrl+d, ctrl+c, or close()");
     }
+    pty
   }
 
   pub fn is_supported() -> bool {
@@ -42,7 +53,7 @@ impl Pty {
     // }
   }
 
-  pub fn write_text_raw(&mut self, line: impl AsRef<str>) {
+  pub fn write_raw(&mut self, line: impl AsRef<str>) {
     let line = if cfg!(windows) {
       line.as_ref().replace('\n', "\r\n")
     } else {
@@ -66,11 +77,11 @@ impl Pty {
 
   /// Writes a line without checking if it's in the output.
   pub fn write_line_raw(&mut self, line: impl AsRef<str>) {
-    self.write_text_raw(format!("{}\n", line.as_ref()));
+    self.write_raw(format!("{}\n", line.as_ref()));
   }
 
   pub fn read_until(&mut self, end_text: impl AsRef<str>) -> String {
-    self.read_until_condition(|text| {
+    self.read_until_with_advancing(|text| {
       text
         .find(end_text.as_ref())
         .map(|index| index + end_text.as_ref().len())
@@ -81,11 +92,22 @@ impl Pty {
     self.read_until(text.as_ref());
   }
 
+  pub fn expect_any(&mut self, texts: &[&str]) {
+    self.read_until_with_advancing(|text| {
+      for find_text in texts {
+        if let Some(index) = text.find(find_text) {
+          return Some(index);
+        }
+      }
+      None
+    });
+  }
+
   /// Consumes and expects to find all the text until a timeout is hit.
   pub fn expect_all(&mut self, texts: &[&str]) {
     let mut pending_texts: HashSet<&&str> = HashSet::from_iter(texts);
     let mut max_index: Option<usize> = None;
-    let text = self.read_until_condition(|text| {
+    self.read_until_with_advancing(|text| {
       for pending_text in pending_texts.clone() {
         if let Some(index) = text.find(pending_text) {
           let index = index + pending_text.len();
@@ -108,28 +130,46 @@ impl Pty {
         None
       }
     });
-    if !pending_texts.is_empty() {
-      let vec = pending_texts
-        .drain()
-        .map(|v| format!("'{}'", v))
-        .collect::<Vec<_>>();
-      eprintln!("TEXT: {:?}", text);
-      panic!("{} not matched at {}", vec.join(", "), failed_position!())
-    }
+  }
+
+  /// Expects the raw text to be found, which may include ANSI codes.
+  /// Note: this expects the raw bytes in any output that has already
+  /// occurred or may occur within the next few seconds.
+  pub fn expect_raw_in_current_output(&mut self, text: impl AsRef<str>) {
+    self.read_until_condition(|pty| {
+      let data = String::from_utf8_lossy(&pty.read_bytes);
+      data.contains(text.as_ref())
+    });
+  }
+
+  fn read_until_with_advancing(
+    &mut self,
+    mut condition: impl FnMut(&str) -> Option<usize>,
+  ) -> String {
+    let mut final_text = String::new();
+    self.read_until_condition(|pty| {
+      let text = pty.next_text();
+      if let Some(end_index) = condition(&text) {
+        pty.last_index += end_index;
+        final_text = text[..end_index].to_string();
+        true
+      } else {
+        false
+      }
+    });
+    final_text
   }
 
   fn read_until_condition(
     &mut self,
-    mut condition: impl FnMut(&str) -> Option<usize>,
-  ) -> String {
+    mut condition: impl FnMut(&mut Self) -> bool,
+  ) {
     let timeout_time =
       Instant::now().checked_add(Duration::from_secs(5)).unwrap();
     while Instant::now() < timeout_time {
       self.fill_more_bytes();
-      let text = self.next_text();
-      if let Some(end_index) = condition(&text) {
-        self.last_index += end_index;
-        return text[..end_index].to_string();
+      if condition(self) {
+        return;
       }
     }
 
@@ -151,7 +191,7 @@ impl Pty {
   fn fill_more_bytes(&mut self) {
     let mut buf = [0; 256];
     if let Ok(count) = self.pty.read(&mut buf) {
-      self.read_bytes.extend(&buf[0..count]);
+      self.read_bytes.extend(&buf[..count]);
     } else {
       std::thread::sleep(Duration::from_millis(10));
     }
@@ -159,6 +199,29 @@ impl Pty {
 }
 
 trait SystemPty: Read + Write {}
+
+#[cfg(unix)]
+fn setup_pty(master: &pty2::fork::Master) {
+  use nix::fcntl::fcntl;
+  use nix::fcntl::FcntlArg;
+  use nix::fcntl::OFlag;
+  use nix::sys::termios;
+  use nix::sys::termios::tcgetattr;
+  use nix::sys::termios::tcsetattr;
+  use nix::sys::termios::SetArg;
+  use std::os::fd::AsRawFd;
+
+  let fd = master.as_raw_fd();
+  let mut term = tcgetattr(fd).unwrap();
+  // disable cooked mode
+  term.local_flags.remove(termios::LocalFlags::ICANON);
+  tcsetattr(fd, SetArg::TCSANOW, &term).unwrap();
+
+  // turn on non-blocking mode so we get timeouts
+  let flags = fcntl(fd, FcntlArg::F_GETFL).unwrap();
+  let new_flags = OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK;
+  fcntl(fd, FcntlArg::F_SETFL(new_flags)).unwrap();
+}
 
 #[cfg(unix)]
 fn create_pty(
@@ -169,6 +232,8 @@ fn create_pty(
 ) -> Box<dyn SystemPty> {
   let fork = pty2::fork::Fork::from_ptmx().unwrap();
   if fork.is_parent().is_ok() {
+    let master = fork.is_parent().unwrap();
+    setup_pty(&master);
     Box::new(unix::UnixPty { fork })
   } else {
     std::process::Command::new(program)
@@ -196,7 +261,14 @@ mod unix {
 
   impl Drop for UnixPty {
     fn drop(&mut self) {
-      self.fork.wait().unwrap();
+      use nix::sys::signal::kill;
+      use nix::sys::signal::Signal;
+      use nix::unistd::Pid;
+
+      if let pty2::fork::Fork::Parent(child_pid, _) = self.fork {
+        let pid = Pid::from_raw(child_pid);
+        kill(pid, Signal::SIGTERM).unwrap()
+      }
     }
   }
 

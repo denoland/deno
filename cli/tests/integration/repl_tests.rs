@@ -121,9 +121,9 @@ fn pty_complete_primitives() {
 #[test]
 fn pty_complete_expression() {
   util::with_pty(&["repl"], |mut console| {
-    console.write_text_raw("Deno.\t\t");
+    console.write_raw("Deno.\t\t");
     console.expect("Display all");
-    console.write_text_raw("y");
+    console.write_raw("y");
     console.expect_all(&["symlink", "args", "permissions", "exit"]);
   });
 }
@@ -136,6 +136,7 @@ fn pty_complete_imports() {
     console.expect("Hello World");
     // double quotes
     console.write_line_raw("import { output } from \"./run/045_out\t\"");
+    console.expect("\"./run/045_output.ts\"");
     console.write_line_raw("output('testing output');");
     console.expect("testing output");
   });
@@ -152,9 +153,9 @@ fn pty_complete_imports() {
 #[test]
 fn pty_complete_imports_no_panic_empty_specifier() {
   // does not panic when tabbing when empty
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line_raw("import '\t';");
-    console.expect("not prefixed with");
+  util::with_pty(&["repl", "-A"], |mut console| {
+    console.write_raw("import '\t");
+    console.expect_any(&["not prefixed with", "https://deno.land"]);
   });
 }
 
@@ -702,15 +703,17 @@ fn eval_file_flag_multiple_files() {
 fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
-    console.expect("hello");
+    console.expect_all(&["hello", "undefined"]);
     console.write_line_raw("clear();");
     if cfg!(windows) {
       // expect a bunch of these in the output
       console
         .expect("\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n");
     } else {
-      console.expect("[1;1H");
+      console.expect_raw_in_current_output("[1;1H");
+      console.expect("undefined"); // advance past the "clear()"'s undefined
     }
+    console.expect("> ");
     console.write_line("const clear = 1234 + 2000;");
     console.expect("undefined");
     console.write_line("clear;");
@@ -722,15 +725,20 @@ fn pty_clear_function() {
 fn pty_tab_handler() {
   // If the last character is **not** whitespace, we show the completions
   util::with_pty(&["repl"], |mut console| {
-    console.write_text_raw("a\t\t");
+    console.write_raw("a\t\t");
     console.expect_all(&["addEventListener", "alert", "atob"]);
   });
   // If the last character is whitespace, we just insert a tab
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const a = 5;");
     console.expect("undefined");
-    console.write_text_raw("a; \t\ta + 2;\n"); // last character is whitespace
-    console.expect("a;         a + 2;");
+    console.write_raw("a; \t\ta + 2;\n"); // last character is whitespace
+    console.expect_any(&[
+      // windows
+      "a;         a + 2;",
+      // unix
+      "a; \t\ta + 2;",
+    ]);
   });
 }
 
@@ -738,7 +746,7 @@ fn pty_tab_handler() {
 fn repl_report_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
-    console.expect("1");
+    console.expect_all(&["1", "undefined"]);
     // TODO(nayeemrmn): The REPL should report event errors and rejections.
     console.write_line(r#"reportError(new Error("foo"));"#);
     console.expect("undefined");
@@ -864,7 +872,7 @@ fn pty_tab_indexable_props() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const arr = [1, 2, 3]");
     console.expect("undefined");
-    console.write_text_raw("arr.\t\t");
+    console.write_raw("arr.\t\t");
     console.expect("> arr.");
     let output = console.read_until("> arr.");
     assert_contains!(output, "constructor");

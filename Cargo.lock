@@ -4660,6 +4660,7 @@ dependencies = [
  "hyper",
  "lazy_static",
  "lsp-types",
+ "nix",
  "once_cell",
  "os_pipe",
  "parking_lot 0.12.1",
