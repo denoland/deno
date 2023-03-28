@@ -36,3 +36,8 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+
+pub struct RuntimeNodeEnv;
+impl deno_node::NodeEnv for RuntimeNodeEnv {
+  type P = permissions::PermissionsContainer;
+}
