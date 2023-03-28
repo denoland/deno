@@ -5365,10 +5365,10 @@ class ReadableStreamBYOBRequest {
     }
 
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(this[_view]) === undefined) {
-      buffer = DataViewPrototypeGetBuffer(this[_view]);
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(view);
     } else {
-      buffer = TypedArrayPrototypeGetBuffer(this[_view]);
+      buffer = TypedArrayPrototypeGetBuffer(view);
     }
     if (isDetachedBuffer(buffer)) {
       throw new TypeError(
