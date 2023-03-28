@@ -1150,6 +1150,7 @@ dependencies = [
  "hex",
  "idna 0.3.0",
  "indexmap",
+ "libz-sys",
  "md-5",
  "md4",
  "once_cell",
@@ -2578,6 +2579,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29f835d03d717946d28b1d1ed632eb6f0e24a299388ee623d0c23118d3e8a7fa"
 dependencies = [
  "cc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
+name = "libz-sys"
+version = "1.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9702761c3935f8cc2f101793272e202c72b99da8f4224a19ddcf1279a6450bbf"
+dependencies = [
+ "cc",
+ "libc",
  "pkg-config",
  "vcpkg",
 ]

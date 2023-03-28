@@ -1897,22 +1897,117 @@ pub fn new_deno_dir() -> TempDir {
   TempDir::new()
 }
 
+/// Because we need to keep the [`TempDir`] alive for the entire run of this command,
+/// we have to effectively reproduce the entire builder-pattern object for [`Command`].
 pub struct DenoCmd {
-  // keep the deno dir directory alive for the duration of the command
   _deno_dir: TempDir,
   cmd: Command,
 }
 
-impl Deref for DenoCmd {
-  type Target = Command;
-  fn deref(&self) -> &Command {
-    &self.cmd
+impl DenoCmd {
+  pub fn args<I, S>(&mut self, args: I) -> &mut Self
+  where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.args(args);
+    self
+  }
+
+  pub fn arg<S>(&mut self, arg: S) -> &mut Self
+  where
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.arg(arg);
+    self
+  }
+
+  pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
+  where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.envs(vars);
+    self
+  }
+
+  pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env(key, val);
+    self
+  }
+
+  pub fn env_remove<K>(&mut self, key: K) -> &mut Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env_remove(key);
+    self
+  }
+
+  pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stdin(cfg);
+    self
+  }
+
+  pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stdout(cfg);
+    self
+  }
+
+  pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stderr(cfg);
+    self
+  }
+
+  pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut Self {
+    self.cmd.current_dir(dir);
+    self
+  }
+
+  pub fn output(&mut self) -> Result<std::process::Output, std::io::Error> {
+    self.cmd.output()
+  }
+
+  pub fn status(&mut self) -> Result<std::process::ExitStatus, std::io::Error> {
+    self.cmd.status()
+  }
+
+  pub fn spawn(&mut self) -> Result<DenoChild, std::io::Error> {
+    Ok(DenoChild {
+      _deno_dir: self._deno_dir.clone(),
+      child: self.cmd.spawn()?,
+    })
   }
 }
 
-impl DerefMut for DenoCmd {
-  fn deref_mut(&mut self) -> &mut Command {
-    &mut self.cmd
+/// We need to keep the [`TempDir`] around until the child has finished executing, so
+/// this acts as a RAII guard.
+pub struct DenoChild {
+  _deno_dir: TempDir,
+  child: Child,
+}
+
+impl Deref for DenoChild {
+  type Target = Child;
+  fn deref(&self) -> &Child {
+    &self.child
+  }
+}
+
+impl DerefMut for DenoChild {
+  fn deref_mut(&mut self) -> &mut Child {
+    &mut self.child
+  }
+}
+
+impl DenoChild {
+  pub fn wait_with_output(self) -> Result<Output, std::io::Error> {
+    self.child.wait_with_output()
   }
 }
 

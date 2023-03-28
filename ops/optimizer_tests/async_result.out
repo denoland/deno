@@ -111,6 +111,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_async_result_fast {
         deno_core::v8::fast_api::CType::Void
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_async_result_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     __promise_id: i32,
