@@ -44,13 +44,13 @@ impl Pty {
   }
 
   pub fn is_supported() -> bool {
-    // todo: investigate if this is necessary
-    // if cfg!(windows) && std::env::var("CI").is_ok() {
-    //   eprintln!("Ignoring windows CI.");
-    //   false
-    // } else {
-    true
-    // }
+    if cfg!(windows) && std::env::var("CI").is_ok() {
+      // the pty tests don't really start up on the windows CI for some reason
+      eprintln!("Ignoring windows CI.");
+      false
+    } else {
+      true
+    }
   }
 
   pub fn write_raw(&mut self, line: impl AsRef<str>) {
