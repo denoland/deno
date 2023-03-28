@@ -4,7 +4,6 @@ import {
   assert,
   assertEquals,
 } from "../../../../test_util/std/testing/asserts.ts";
-import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
 type Algorithms =
   | "md5"
