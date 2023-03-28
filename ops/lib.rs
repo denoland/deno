@@ -184,16 +184,16 @@ impl Op {
 
       #[doc(hidden)]
       impl #name {
-        pub fn name() -> &'static str {
+        pub const fn name() -> &'static str {
           stringify!(#name)
         }
 
-        pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
+        pub const fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
           use #core::v8::MapFnTo;
           Self::v8_func::<#type_params>.map_fn_to()
         }
 
-        pub fn decl #generics () -> #core::OpDecl #where_clause {
+        pub const fn decl #generics () -> #core::OpDecl #where_clause {
           #core::OpDecl {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
