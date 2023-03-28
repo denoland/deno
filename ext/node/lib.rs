@@ -119,6 +119,7 @@ deno_core::extension!(deno_node,
     crypto::op_node_check_prime_bytes_async,
     crypto::op_node_pbkdf2,
     crypto::op_node_pbkdf2_async,
+    crypto::op_node_sign,
     winerror::op_node_sys_to_uv_error,
     v8::op_v8_cached_data_version_tag,
     v8::op_v8_get_heap_statistics,
@@ -406,7 +407,7 @@ pub fn initialize_runtime(
   let source_code = format!(
     r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
       Deno[Deno.internal].node.initialize(
-        nodeGlobalThisName, 
+        nodeGlobalThisName,
         usesLocalNodeModulesDir,
         argv0
       );
