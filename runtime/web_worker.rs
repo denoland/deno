@@ -556,8 +556,7 @@ impl WebWorker {
     // WebWorkers can have empty string as name.
     {
       let scope = &mut self.js_runtime.handle_scope();
-      let options_v8 =
-        deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+      let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
       let undefined = v8::undefined(scope);
@@ -568,7 +567,7 @@ impl WebWorker {
           .unwrap()
           .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[options_v8, name_str, id_str])
+        .call(scope, undefined.into(), &[args.into(), name_str, id_str])
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
