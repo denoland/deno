@@ -78,6 +78,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_cow_str_fast {
         deno_core::v8::fast_api::CType::Void
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_cow_str_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     c: *const deno_core::v8::fast_api::FastApiOneByteString,

@@ -329,6 +329,7 @@ pub(crate) fn generate(
   let fast_fn = q!(
     Vars { core, pre_transforms, op_name_fast: &fast_fn_ident, op_name: &ident, fast_fn_inputs, generics, call_generics: &caller_generics, where_clause, idents, transforms, output_transforms, output: &output },
     {
+      #[allow(clippy::too_many_arguments)]
       fn op_name_fast generics (_: core::v8::Local<core::v8::Object>, fast_fn_inputs) -> output where_clause {
         use core::v8;
         use core::_ops;

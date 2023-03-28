@@ -17,7 +17,6 @@ use deno_core::resolve_path;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::ModuleSpecifier;
-use std::path::PathBuf;
 
 pub async fn print_docs(
   flags: Flags,
@@ -69,7 +68,6 @@ pub async fn print_docs(
       let root_specifier =
         resolve_path("./$deno$doc.ts", ps.options.initial_cwd()).unwrap();
       let root = File {
-        local: PathBuf::from("./$deno$doc.ts"),
         maybe_types: None,
         media_type: MediaType::TypeScript,
         source: format!("export * from \"{module_specifier}\";").into(),

@@ -1862,7 +1862,7 @@ declare namespace Deno {
    * matches an expected versionstamp.
    *
    * Keys have a maximum length of 2048 bytes after serialization. Values have a
-   * maximum length of 16 KiB after serialization. Serialization of both keys
+   * maximum length of 64 KiB after serialization. Serialization of both keys
    * and values is somewhat opaque, but one can usually assume that the
    * serialization of any value is about the same length as the resulting string
    * of a JSON serialization of that same value.

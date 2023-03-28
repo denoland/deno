@@ -138,6 +138,12 @@ itest!(filter {
   output: "bench/filter.out",
 });
 
+itest!(no_run {
+  args: "bench --no-run bench/no_run.ts",
+  output: "bench/no_run.out",
+  exit_code: 1,
+});
+
 itest!(no_prompt_by_default {
   args: "bench --quiet bench/no_prompt_by_default.ts",
   exit_code: 1,
