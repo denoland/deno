@@ -7,6 +7,16 @@ import randomFill, {
   randomFillSync,
 } from "ext:deno_node/internal/crypto/_randomFill.ts";
 import randomInt from "ext:deno_node/internal/crypto/_randomInt.ts";
+import {
+  validateFunction,
+  validateInt32,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 export {
@@ -47,31 +57,78 @@ export function checkPrime(
 ): void;
 export function checkPrime(
   candidate: LargeNumberLike,
-  options?: CheckPrimeOptions | ((err: Error | null, result: boolean) => void),
+  options: CheckPrimeOptions | ((err: Error | null, result: boolean) => void) =
+    {},
   callback?: (err: Error | null, result: boolean) => void,
 ) {
-  const checks = typeof options === "object" ? options?.checks : 0;
-  const cb = typeof options === "function" ? options : callback;
-  const op = typeof candidate === "bigint"
-    ? "op_node_check_prime_async"
-    : "op_node_check_prime_bytes_async";
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+
+  validateFunction(callback, "callback");
+  validateObject(options, "options");
+
+  const {
+    checks = 0,
+  } = options!;
+
+  validateInt32(checks, "options.checks", 0);
+
+  let op = "op_node_check_prime_bytes_async";
+  if (typeof candidate === "bigint") {
+    op = "op_node_check_prime_async";
+  } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "candidate",
+      [
+        "ArrayBuffer",
+        "TypedArray",
+        "Buffer",
+        "DataView",
+        "bigint",
+      ],
+      candidate,
+    );
+  }
+
   core.opAsync(op, candidate, checks).then(
     (result) => {
-      cb?.(null, result);
+      callback?.(null, result);
     },
   ).catch((err) => {
-    cb?.(err, false);
+    callback?.(err, false);
   });
 }
 
 export function checkPrimeSync(
   candidate: LargeNumberLike,
-  options?: CheckPrimeOptions,
+  options: CheckPrimeOptions = {},
 ): boolean {
-  const checks = options?.checks ?? 0;
+  validateObject(options, "options");
+
+  const {
+    checks = 0,
+  } = options!;
+
+  validateInt32(checks, "options.checks", 0);
+
   if (typeof candidate === "bigint") {
     return ops.op_node_check_prime(candidate, checks);
+  } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "candidate",
+      [
+        "ArrayBuffer",
+        "TypedArray",
+        "Buffer",
+        "DataView",
+        "bigint",
+      ],
+      candidate,
+    );
   }
+
   return ops.op_node_check_prime_bytes(candidate, checks);
 }
 

@@ -273,30 +273,30 @@ assert(
 //   }
 // }
 
-// [1, 'hello', {}, []].forEach((i) => {
-//   assert.throws(() => checkPrime(i), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-// });
+[1, 'hello', {}, []].forEach((i) => {
+  assert.throws(() => checkPrime(i), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+});
 
-// for (const checks of ['hello', {}, []]) {
-//   assert.throws(() => checkPrime(2n, { checks }, common.mustNotCall()), {
-//     code: 'ERR_INVALID_ARG_TYPE',
-//     message: /checks/
-//   });
-//   assert.throws(() => checkPrimeSync(2n, { checks }), {
-//     code: 'ERR_INVALID_ARG_TYPE',
-//     message: /checks/
-//   });
-// }
+for (const checks of ['hello', {}, []]) {
+  assert.throws(() => checkPrime(2n, { checks }, common.mustNotCall()), {
+    code: 'ERR_INVALID_ARG_TYPE',
+    message: /checks/
+  });
+  assert.throws(() => checkPrimeSync(2n, { checks }), {
+    code: 'ERR_INVALID_ARG_TYPE',
+    message: /checks/
+  });
+}
 
-// for (const checks of [-(2 ** 31), -1, 2 ** 31, 2 ** 32 - 1, 2 ** 32, 2 ** 50]) {
-//   assert.throws(() => checkPrime(2n, { checks }, common.mustNotCall()), {
-//     code: 'ERR_OUT_OF_RANGE',
-//     message: /<= 2147483647/
-//   });
-//   assert.throws(() => checkPrimeSync(2n, { checks }), {
-//     code: 'ERR_OUT_OF_RANGE',
-//     message: /<= 2147483647/
-//   });
-// }
+for (const checks of [-(2 ** 31), -1, 2 ** 31, 2 ** 32 - 1, 2 ** 32, 2 ** 50]) {
+  assert.throws(() => checkPrime(2n, { checks }, common.mustNotCall()), {
+    code: 'ERR_OUT_OF_RANGE',
+    message: /<= 2147483647/
+  });
+  assert.throws(() => checkPrimeSync(2n, { checks }), {
+    code: 'ERR_OUT_OF_RANGE',
+    message: /<= 2147483647/
+  });
+}
