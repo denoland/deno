@@ -154,8 +154,13 @@ fn pty_complete_imports() {
 fn pty_complete_imports_no_panic_empty_specifier() {
   // does not panic when tabbing when empty
   util::with_pty(&["repl", "-A"], |mut console| {
-    console.write_raw("import '\t");
-    console.expect_any(&["not prefixed with", "https://deno.land"]);
+    if cfg!(windows) {
+      console.write_line_raw("import '\t'");
+      console.expect_any(&["not prefixed with", "https://deno.land"]);
+    } else {
+      console.write_raw("import '\t");
+      console.expect("import 'https://deno.land'");
+    }
   });
 }
 
@@ -707,12 +712,13 @@ fn pty_clear_function() {
     console.write_line_raw("clear();");
     if cfg!(windows) {
       // expect a bunch of these in the output
-      console
-        .expect("\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n");
+      console.expect_raw_in_current_output(
+        "\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K\r\n\u{1b}[K",
+      );
     } else {
       console.expect_raw_in_current_output("[1;1H");
-      console.expect("undefined"); // advance past the "clear()"'s undefined
     }
+    console.expect("undefined"); // advance past the "clear()"'s undefined
     console.expect("> ");
     console.write_line("const clear = 1234 + 2000;");
     console.expect("undefined");
