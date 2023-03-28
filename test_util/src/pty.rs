@@ -43,10 +43,9 @@ impl Pty {
   }
 
   pub fn is_supported() -> bool {
-    let is_mac_or_windows = cfg!(target_os = "macos") || cfg!(windows);
-    if is_mac_or_windows && std::env::var("CI").is_ok() {
-      // the pty tests give a ENOTTY error for Mac and don't really start up
-      // on the windows CI for some reason so ignore them for now
+    if cfg!(windows) && std::env::var("CI").is_ok() {
+      // the pty tests don't really start up on the windows CI
+      // for some reason so ignore them for now
       eprintln!("Ignoring windows CI.");
       false
     } else {
@@ -241,7 +240,12 @@ fn create_pty(
   cwd: &Path,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn SystemPty> {
-  let fork = pty2::fork::Fork::from_ptmx().unwrap();
+  let fork = pty2::fork::Fork::new(if cfg!(target_os = "macos") {
+    "/dev/pty"
+  } else {
+    "/dev/ptmx"
+  })
+  .unwrap();
   if fork.is_parent().is_ok() {
     let master = fork.is_parent().unwrap();
     setup_pty(&master);
