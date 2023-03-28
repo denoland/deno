@@ -240,3 +240,61 @@ pub fn op_node_decipheriv_final(
     .map_err(|_| type_error("Cipher context is already in use"))?;
   context.r#final(input, output)
 }
+
+#[op]
+pub fn op_node_sign(
+  digest: &[u8],
+  digest_type: &str,
+  key: StringOrBuffer,
+  key_type: &str,
+  key_format: &str,
+) -> Result<ZeroCopyBuf, AnyError> {
+  match key_type {
+    "rsa" => {
+      use rsa::pkcs1v15::SigningKey;
+      use signature::hazmat::PrehashSigner;
+      let key = match key_format {
+        "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
+          .map_err(|_| type_error("Invalid RSA key"))?,
+        // TODO(kt3k): Support der and jwk formats
+        _ => {
+          return Err(type_error(format!(
+            "Unsupported key format: {}",
+            key_format
+          )))
+        }
+      };
+      Ok(
+        match digest_type {
+          "sha224" => {
+            let signing_key = SigningKey::<sha2::Sha224>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          "sha256" => {
+            let signing_key = SigningKey::<sha2::Sha256>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          "sha384" => {
+            let signing_key = SigningKey::<sha2::Sha384>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          "sha512" => {
+            let signing_key = SigningKey::<sha2::Sha512>::new_with_prefix(key);
+            signing_key.sign_prehash(digest)?.to_vec()
+          }
+          _ => {
+            return Err(type_error(format!(
+              "Unknown digest algorithm: {}",
+              digest_type
+            )))
+          }
+        }
+        .into(),
+      )
+    }
+    _ => Err(type_error(format!(
+      "Signing with {} keys is not supported yet",
+      key_type
+    ))),
+  }
+}

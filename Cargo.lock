@@ -1163,6 +1163,7 @@ dependencies = [
  "sha-1 0.10.0",
  "sha2",
  "sha3",
+ "signature",
  "typenum",
 ]
 
