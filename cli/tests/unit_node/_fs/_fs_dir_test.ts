@@ -5,7 +5,9 @@ import {
   fail,
 } from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { Dir, type Dirent } from "node:fs";
+import { Dir as DirOrig, type Dirent } from "node:fs";
+
+const Dir = DirOrig as any;
 
 Deno.test({
   name: "Closing current directory with callback is successful",
@@ -82,7 +84,7 @@ Deno.test({
 
     try {
       let secondCallback = false;
-      const dir: Dir = new Dir(testDir);
+      const dir = new Dir(testDir);
       const firstRead: Dirent | null = await dir.read();
       const secondRead: Dirent | null = await dir.read(
         // deno-lint-ignore no-explicit-any
@@ -122,7 +124,7 @@ Deno.test({
     f2.close();
 
     try {
-      const dir: Dir = new Dir(testDir);
+      const dir = new Dir(testDir);
       const firstRead: Dirent | null = dir.readSync();
       const secondRead: Dirent | null = dir.readSync();
       const thirdRead: Dirent | null = dir.readSync();
@@ -153,7 +155,7 @@ Deno.test({
     f2.close();
 
     try {
-      const dir: Dir = new Dir(testDir);
+      const dir = new Dir(testDir);
       const results: Array<string | null> = [];
 
       for await (const file of dir[Symbol.asyncIterator]()) {
@@ -173,10 +175,9 @@ Deno.test(
   "[std/node/fs] Dir.close callback isn't called twice if error is thrown",
   async () => {
     const tempDir = await Deno.makeTempDir();
-    const importUrl = new URL("./_fs_dir.ts", import.meta.url);
     await assertCallbackErrorUncaught({
       prelude: `
-    import Dir from ${JSON.stringify(importUrl)};
+    import { Dir } from "node:fs";
 
     const dir = new Dir(${JSON.stringify(tempDir)});
     `,
@@ -192,10 +193,9 @@ Deno.test(
   "[std/node/fs] Dir.read callback isn't called twice if error is thrown",
   async () => {
     const tempDir = await Deno.makeTempDir();
-    const importUrl = new URL("./_fs_dir.ts", import.meta.url);
     await assertCallbackErrorUncaught({
       prelude: `
-    import Dir from ${JSON.stringify(importUrl)};
+    import { Dir } from "node:fs";
 
     const dir = new Dir(${JSON.stringify(tempDir)});
     `,
