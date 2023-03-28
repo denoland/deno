@@ -123,6 +123,8 @@ mod install;
 mod js_unit_tests;
 #[path = "lint_tests.rs"]
 mod lint;
+#[path = "linux_tests.rs"]
+mod linux;
 #[path = "lsp_tests.rs"]
 mod lsp;
 #[path = "macos_tests.rs"]
