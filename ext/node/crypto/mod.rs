@@ -8,6 +8,7 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use num_bigint::BigInt;
+use std::future::Future;
 use std::rc::Rc;
 
 use rsa::padding::PaddingScheme;
@@ -41,19 +42,29 @@ pub async fn op_node_check_prime_async(
   checks: usize,
 ) -> Result<bool, AnyError> {
   // TODO(@littledivy): use rayon for CPU-bound tasks
-  Ok(tokio::task::spawn_blocking(move || primes::is_probably_prime(&num, checks))
-    .await?)
+  Ok(
+    tokio::task::spawn_blocking(move || {
+      primes::is_probably_prime(&num, checks)
+    })
+    .await?,
+  )
 }
 
 #[op]
 pub fn op_node_check_prime_bytes_async(
   bytes: &[u8],
   checks: usize,
-) -> impl Future<Output = Result<bool, AnyError> + 'static, AnyError> {
+) -> Result<impl Future<Output = Result<bool, AnyError>> + 'static, AnyError> {
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   // TODO(@littledivy): use rayon for CPU-bound tasks
-  Ok(tokio::task::spawn_blocking(move || primes::is_probably_prime(&candidate, checks))
-    .await?)
+  Ok(async move {
+    Ok(
+      tokio::task::spawn_blocking(move || {
+        primes::is_probably_prime(&candidate, checks)
+      })
+      .await?,
+    )
+  })
 }
 
 #[op(fast)]

@@ -50,6 +50,10 @@ fn witnessexp(b: &BigInt, e: &BigInt, m: &BigInt) -> Witness {
 }
 
 pub(crate) fn is_probably_prime(n: &BigInt, count: usize) -> bool {
+  if *n == BigInt::from(1) {
+    return false;
+  }
+
   if *n == BigInt::from(2) {
     return true;
   }

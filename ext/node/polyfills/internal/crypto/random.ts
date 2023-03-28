@@ -52,7 +52,10 @@ export function checkPrime(
 ) {
   const checks = typeof options === "object" ? options?.checks : 0;
   const cb = typeof options === "function" ? options : callback;
-  core.opAsync("op_node_check_prime_async", candidate, checks).then(
+  const op = typeof candidate === "bigint"
+    ? "op_node_check_prime_async"
+    : "op_node_check_prime_bytes_async";
+  core.opAsync(op, candidate, checks).then(
     (result) => {
       cb?.(null, result);
     },
@@ -65,7 +68,11 @@ export function checkPrimeSync(
   candidate: LargeNumberLike,
   options?: CheckPrimeOptions,
 ): boolean {
-  return ops.op_node_check_prime(candidate, options?.checks ?? 0);
+  const checks = options?.checks ?? 0;
+  if (typeof candidate === "bigint") {
+    return ops.op_node_check_prime(candidate, checks);
+  }
+  return ops.op_node_check_prime_bytes(candidate, checks);
 }
 
 export interface GeneratePrimeOptions {
