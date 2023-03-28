@@ -4433,7 +4433,7 @@ fn lsp_completions_auto_import() {
       }
     }
   });
-  assert_eq!(serde_json::to_value(&item.unwrap()).unwrap(), req);
+  assert_eq!(serde_json::to_value(item.unwrap()).unwrap(), req);
 
   let res = client.write_request("completionItem/resolve", req);
   assert_eq!(
