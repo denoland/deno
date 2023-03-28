@@ -45,7 +45,6 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as colors from "ext:deno_console/01_colors.js";
-import * as net from "ext:deno_net/01_net.js";
 import {
   inspectArgs,
   quoteString,
@@ -59,7 +58,6 @@ import { denoNs, denoNsUnstable } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
-import * as flash from "ext:deno_flash/01_http.js";
 import {
   mainRuntimeGlobalProperties,
   setLanguage,
@@ -493,27 +491,6 @@ function bootstrapMainRuntime(runtimeOptions) {
   setUserAgent(userAgent);
   setLanguage(locale);
 
-  // These have to initialized here and not in `90_deno_ns.js` because
-  // the op function that needs to be passed will be invalidated by creating
-  // a snapshot
-  ObjectAssign(internals, {
-    nodeUnstable: {
-      serve: flash.createServe(ops.op_node_unstable_flash_serve),
-      upgradeHttpRaw: flash.upgradeHttpRaw,
-      listenDatagram: net.createListenDatagram(
-        ops.op_node_unstable_net_listen_udp,
-        ops.op_node_unstable_net_listen_unixpacket,
-      ),
-    },
-  });
-
-  // FIXME(bartlomieju): temporarily add whole `Deno.core` to
-  // `Deno[Deno.internal]` namespace. It should be removed and only necessary
-  // methods should be left there.
-  ObjectAssign(internals, {
-    core,
-  });
-
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
     ppid: util.readOnly(ppid),
@@ -524,16 +501,6 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
-    // These have to initialized here and not in `90_deno_ns.js` because
-    // the op function that needs to be passed will be invalidated by creating
-    // a snapshot
-    ObjectAssign(finalDenoNs, {
-      serve: flash.createServe(ops.op_flash_serve),
-      listenDatagram: net.createListenDatagram(
-        ops.op_net_listen_udp,
-        ops.op_net_listen_unixpacket,
-      ),
-    });
   }
 
   // Setup `Deno` global - we're actually overriding already existing global
@@ -637,39 +604,8 @@ function bootstrapWorkerRuntime(
 
   globalThis.pollForMessages = pollForMessages;
 
-  // These have to initialized here and not in `90_deno_ns.js` because
-  // the op function that needs to be passed will be invalidated by creating
-  // a snapshot
-  ObjectAssign(internals, {
-    nodeUnstable: {
-      serve: flash.createServe(ops.op_node_unstable_flash_serve),
-      upgradeHttpRaw: flash.upgradeHttpRaw,
-      listenDatagram: net.createListenDatagram(
-        ops.op_node_unstable_net_listen_udp,
-        ops.op_node_unstable_net_listen_unixpacket,
-      ),
-    },
-  });
-
-  // FIXME(bartlomieju): temporarily add whole `Deno.core` to
-  // `Deno[Deno.internal]` namespace. It should be removed and only necessary
-  // methods should be left there.
-  ObjectAssign(internals, {
-    core,
-  });
-
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
-    // These have to initialized here and not in `90_deno_ns.js` because
-    // the op function that needs to be passed will be invalidated by creating
-    // a snapshot
-    ObjectAssign(finalDenoNs, {
-      serve: flash.createServe(ops.op_flash_serve),
-      listenDatagram: net.createListenDatagram(
-        ops.op_net_listen_udp,
-        ops.op_net_listen_unixpacket,
-      ),
-    });
   }
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
