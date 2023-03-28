@@ -72,7 +72,7 @@ pub(crate) fn is_probably_prime(n: &BigInt, count: usize) -> bool {
   let mut rng = rand::thread_rng();
   for _ in 0..count {
     let a = rng.gen_range(BigInt::one()..n.clone());
-    let we = witnessexp(&a, &(n - BigInt::one()), &n);
+    let we = witnessexp(&a, &(n - BigInt::one()), n);
     if we.wit != BigInt::zero() || we.pow != BigInt::one() {
       return false;
     }
