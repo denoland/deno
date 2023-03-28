@@ -603,7 +603,7 @@ fn filter_coverages(
     .filter(|e| {
       // file:///home/geert-jan/.cache/deno/npm/registry.npmjs.org/chalk/5.2.0/source/utilities.js
       let is_internal = e.url.starts_with("ext:")
-        || e.url.contains(npm_folder_filepath)
+        || e.url.starts_with(npm_folder_filepath)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap");
