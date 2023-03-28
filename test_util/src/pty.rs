@@ -8,7 +8,6 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::failed_position;
 use crate::strip_ansi_codes;
 
 /// Points to know about when writing pty tests:
@@ -44,8 +43,10 @@ impl Pty {
   }
 
   pub fn is_supported() -> bool {
-    if cfg!(windows) && std::env::var("CI").is_ok() {
-      // the pty tests don't really start up on the windows CI for some reason
+    let is_mac_or_windows = cfg!(target_os = "macos") || cfg!(windows);
+    if is_mac_or_windows && std::env::var("CI").is_ok() {
+      // the pty tests give a ENOTTY error for Mac and don't really start up
+      // on the windows CI for some reason so ignore them for now
       eprintln!("Ignoring windows CI.");
       false
     } else {
@@ -53,6 +54,7 @@ impl Pty {
     }
   }
 
+  #[track_caller]
   pub fn write_raw(&mut self, line: impl AsRef<str>) {
     let line = if cfg!(windows) {
       line.as_ref().replace('\n', "\r\n")
@@ -60,11 +62,12 @@ impl Pty {
       line.as_ref().to_string()
     };
     if let Err(err) = self.pty.write(line.as_bytes()) {
-      panic!("{:#} at {}", err, failed_position!())
+      panic!("{:#}", err)
     }
     self.pty.flush().unwrap();
   }
 
+  #[track_caller]
   pub fn write_line(&mut self, line: impl AsRef<str>) {
     self.write_line_raw(&line);
 
@@ -76,10 +79,12 @@ impl Pty {
   }
 
   /// Writes a line without checking if it's in the output.
+  #[track_caller]
   pub fn write_line_raw(&mut self, line: impl AsRef<str>) {
     self.write_raw(format!("{}\n", line.as_ref()));
   }
 
+  #[track_caller]
   pub fn read_until(&mut self, end_text: impl AsRef<str>) -> String {
     self.read_until_with_advancing(|text| {
       text
@@ -88,10 +93,12 @@ impl Pty {
     })
   }
 
+  #[track_caller]
   pub fn expect(&mut self, text: impl AsRef<str>) {
     self.read_until(text.as_ref());
   }
 
+  #[track_caller]
   pub fn expect_any(&mut self, texts: &[&str]) {
     self.read_until_with_advancing(|text| {
       for find_text in texts {
@@ -104,6 +111,7 @@ impl Pty {
   }
 
   /// Consumes and expects to find all the text until a timeout is hit.
+  #[track_caller]
   pub fn expect_all(&mut self, texts: &[&str]) {
     let mut pending_texts: HashSet<&&str> = HashSet::from_iter(texts);
     let mut max_index: Option<usize> = None;
@@ -135,6 +143,7 @@ impl Pty {
   /// Expects the raw text to be found, which may include ANSI codes.
   /// Note: this expects the raw bytes in any output that has already
   /// occurred or may occur within the next few seconds.
+  #[track_caller]
   pub fn expect_raw_in_current_output(&mut self, text: impl AsRef<str>) {
     self.read_until_condition(|pty| {
       let data = String::from_utf8_lossy(&pty.read_bytes);
@@ -142,6 +151,7 @@ impl Pty {
     });
   }
 
+  #[track_caller]
   fn read_until_with_advancing(
     &mut self,
     mut condition: impl FnMut(&str) -> Option<usize>,
@@ -160,6 +170,7 @@ impl Pty {
     final_text
   }
 
+  #[track_caller]
   fn read_until_condition(
     &mut self,
     mut condition: impl FnMut(&mut Self) -> bool,
@@ -179,7 +190,7 @@ impl Pty {
       String::from_utf8_lossy(&self.read_bytes)
     );
     eprintln!("Next text: {:?}", text);
-    panic!("Timed out at {}", failed_position!())
+    panic!("Timed out.")
   }
 
   fn next_text(&self) -> String {

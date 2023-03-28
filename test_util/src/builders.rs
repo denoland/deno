@@ -16,7 +16,6 @@ use pretty_assertions::assert_eq;
 use crate::copy_dir_recursive;
 use crate::deno_exe_path;
 use crate::env_vars_for_npm_tests_no_sync_download;
-use crate::failed_position;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
@@ -456,13 +455,10 @@ impl Drop for TestCommandOutput {
   fn drop(&mut self) {
     fn panic_unasserted_output(text: &str) {
       println!("OUTPUT\n{text}\nOUTPUT");
-      panic!(
-        concat!(
-          "The non-empty text of the command was not asserted at {}. ",
-          "Call `output.skip_output_check()` to skip if necessary.",
-        ),
-        failed_position!()
-      );
+      panic!(concat!(
+        "The non-empty text of the command was not asserted. ",
+        "Call `output.skip_output_check()` to skip if necessary.",
+      ),);
     }
 
     if std::thread::panicking() {
@@ -471,9 +467,8 @@ impl Drop for TestCommandOutput {
     // force the caller to assert these
     if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
       panic!(
-        "The non-zero exit code of the command was not asserted: {:?} at {}.",
+        "The non-zero exit code of the command was not asserted: {:?}",
         self.exit_code,
-        failed_position!(),
       )
     }
 
@@ -544,6 +539,7 @@ impl TestCommandOutput {
       .expect("call .split_output() on the builder")
   }
 
+  #[track_caller]
   pub fn assert_exit_code(&self, expected_exit_code: i32) -> &Self {
     let actual_exit_code = self.exit_code();
 
@@ -551,26 +547,22 @@ impl TestCommandOutput {
       if *exit_code != expected_exit_code {
         self.print_output();
         panic!(
-          "bad exit code, expected: {:?}, actual: {:?} at {}",
-          expected_exit_code,
-          exit_code,
-          failed_position!(),
+          "bad exit code, expected: {:?}, actual: {:?}",
+          expected_exit_code, exit_code,
         );
       }
     } else {
       self.print_output();
       if let Some(signal) = self.signal() {
         panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?} at {}",
+          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
           actual_exit_code,
           signal,
-          failed_position!(),
         );
       } else {
         panic!(
-          "process terminated without status code on non unix platform, expected exit code: {:?} at {}",
+          "process terminated without status code on non unix platform, expected exit code: {:?}",
           actual_exit_code,
-          failed_position!(),
         );
       }
     }
@@ -587,14 +579,17 @@ impl TestCommandOutput {
     }
   }
 
+  #[track_caller]
   pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
     self.inner_assert_matches_text(self.combined_output(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_matches_file(&self, file_path: impl AsRef<Path>) -> &Self {
     self.inner_assert_matches_file(self.combined_output(), file_path)
   }
 
+  #[track_caller]
   pub fn assert_stdout_matches_text(
     &self,
     expected_text: impl AsRef<str>,
@@ -602,6 +597,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_text(self.stdout(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_stdout_matches_file(
     &self,
     file_path: impl AsRef<Path>,
@@ -609,6 +605,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_file(self.stdout(), file_path)
   }
 
+  #[track_caller]
   pub fn assert_stderr_matches_text(
     &self,
     expected_text: impl AsRef<str>,
@@ -616,6 +613,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_text(self.stderr(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_stderrr_matches_file(
     &self,
     file_path: impl AsRef<Path>,
@@ -623,6 +621,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_file(self.stderr(), file_path)
   }
 
+  #[track_caller]
   fn inner_assert_matches_text(
     &self,
     actual: &str,
@@ -630,15 +629,16 @@ impl TestCommandOutput {
   ) -> &Self {
     let expected = expected.as_ref();
     if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected, "at {}", failed_position!());
+      assert_eq!(actual, expected);
     } else if !wildcard_match(expected, actual) {
       println!("OUTPUT START\n{actual}\nOUTPUT END");
       println!("EXPECTED START\n{expected}\nEXPECTED END");
-      panic!("pattern match failed at {}", failed_position!());
+      panic!("pattern match failed");
     }
     self
   }
 
+  #[track_caller]
   fn inner_assert_matches_file(
     &self,
     actual: &str,
