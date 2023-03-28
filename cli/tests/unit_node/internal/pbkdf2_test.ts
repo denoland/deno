@@ -331,7 +331,7 @@ Deno.test("pbkdf2 hashes data correctly", async () => {
     for (const algorithm in results) {
       if (Object.hasOwn(results, algorithm)) {
         promises.push(
-          new Promise((resolve) => {
+          new Promise((resolve, reject) => {
             pbkdf2(
               key,
               salt,
@@ -339,12 +339,16 @@ Deno.test("pbkdf2 hashes data correctly", async () => {
               dkLen,
               algorithm as Algorithms,
               (err, res) => {
-                assert(!err, String(err));
-                assertEquals(
-                  res?.toString("hex"),
-                  results[algorithm as Algorithms],
-                );
-                resolve();
+                try {
+                  assert(!err, String(err));
+                  assertEquals(
+                    res?.toString("hex"),
+                    results[algorithm as Algorithms],
+                  );
+                  resolve();
+                } catch (e) {
+                  reject(e);
+                }
               },
             );
           }),
