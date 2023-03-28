@@ -7,6 +7,7 @@ import {
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { Dir as DirOrig, type Dirent } from "node:fs";
 
+// deno-lint-ignore no-explicit-any
 const Dir = DirOrig as any;
 
 Deno.test({
