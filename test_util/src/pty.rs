@@ -188,7 +188,7 @@ mod unix {
   use std::io::Read;
   use std::io::Write;
 
-  use super::Pty;
+  use super::SystemPty;
 
   pub struct UnixPty {
     pub fork: pty2::fork::Fork,
@@ -210,11 +210,11 @@ mod unix {
   }
 
   impl Write for UnixPty {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
       self.fork.write(buf)
     }
 
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> std::io::Result<()> {
       self.fork.flush()
     }
   }
