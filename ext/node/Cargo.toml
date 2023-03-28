@@ -30,6 +30,7 @@ num-integer = "0.1.45"
 num-traits = "0.2.14"
 once_cell.workspace = true
 path-clean = "=0.1.0"
+pbkdf2 = "0.12.1"
 rand.workspace = true
 regex.workspace = true
 ripemd = "0.1.3"
