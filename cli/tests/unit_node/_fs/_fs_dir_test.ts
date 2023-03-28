@@ -5,8 +5,7 @@ import {
   fail,
 } from "../../../../test_util/std/testing/asserts.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import Dir from "ext:deno_node/_fs/_fs_dir.ts";
-import type Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
+import { Dir, type Dirent } from "node:fs";
 
 Deno.test({
   name: "Closing current directory with callback is successful",
