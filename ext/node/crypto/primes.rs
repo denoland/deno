@@ -298,8 +298,8 @@ mod tests {
       BigInt::parse_bytes(b"3317044064679887385961981", 10).unwrap(),
     ];
 
-    for (i, p) in a014233.iter().enumerate() {
-      assert!(!is_probably_prime(&p, 16), "{} should be composite", p);
+    for p in a014233 {
+      assert!(!is_probably_prime(p, 16), "{} should be composite", p);
     }
   }
 }
