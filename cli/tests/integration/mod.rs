@@ -123,12 +123,8 @@ mod install;
 mod js_unit_tests;
 #[path = "lint_tests.rs"]
 mod lint;
-#[path = "linux_tests.rs"]
-mod linux;
 #[path = "lsp_tests.rs"]
 mod lsp;
-#[path = "macos_tests.rs"]
-mod macos;
 #[path = "node_compat_tests.rs"]
 mod node_compat_tests;
 #[path = "node_unit_tests.rs"]
@@ -139,6 +135,8 @@ mod npm;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "shared_library_tests.rs"]
+mod shared_library_tests;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]
