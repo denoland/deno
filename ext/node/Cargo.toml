@@ -39,5 +39,6 @@ serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sha3 = "0.10.5"
+signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
