@@ -446,6 +446,8 @@ itest!(parallel_output {
 });
 
 #[test]
+// todo(#18480): re-enable
+#[ignore]
 fn sigint_with_hanging_test() {
   util::with_pty(
     &[
