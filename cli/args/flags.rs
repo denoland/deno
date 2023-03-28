@@ -12,7 +12,6 @@ use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
-use once_cell::sync::Lazy;
 use std::env;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
@@ -25,29 +24,6 @@ use std::str::FromStr;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_allow_net;
-
-static LONG_VERSION: Lazy<String> = Lazy::new(|| {
-  format!(
-    "{} ({}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
-    if crate::version::is_canary() {
-      "canary"
-    } else {
-      env!("PROFILE")
-    },
-    env!("TARGET"),
-    deno_core::v8_version(),
-    crate::version::TYPESCRIPT
-  )
-});
-
-static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
-  crate::version::deno()
-    .split('+')
-    .next()
-    .unwrap()
-    .to_string()
-});
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -616,11 +592,12 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
 
-static DENO_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "A modern JavaScript and TypeScript runtime
+static DENO_HELP: &str = concat!(
+  "A modern JavaScript and TypeScript runtime
 
-Docs: https://deno.land/manual@v{}
+Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
@@ -635,10 +612,8 @@ To execute a script:
 To evaluate code in the shell:
 
   deno eval \"console.log(30933 + 404)\"
-",
-    SHORT_VERSION.as_str()
-  )
-});
+"
+);
 
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
@@ -718,12 +693,25 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
 }
 
 fn clap_root() -> Command {
+  let long_version = format!(
+    "{} ({}, {})\nv8 {}\ntypescript {}",
+    crate::version::deno(),
+    if crate::version::is_canary() {
+      "canary"
+    } else {
+      env!("PROFILE")
+    },
+    env!("TARGET"),
+    deno_core::v8_version(),
+    crate::version::TYPESCRIPT
+  );
+
   Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
     .max_term_width(80)
     .version(crate::version::deno())
-    .long_version(LONG_VERSION.as_str())
+    .long_version(long_version)
     .arg(
       Arg::new("unstable")
         .long("unstable")
@@ -771,7 +759,7 @@ fn clap_root() -> Command {
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
     .subcommand(vendor_subcommand())
-    .long_about(DENO_HELP.as_str())
+    .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
 
@@ -818,12 +806,12 @@ fn bench_subcommand() -> Command {
     .long_about(
       "Run benchmarks using Deno's built-in bench tool.
 
-Evaluate the given modules, run all benches declared with 'Deno.bench()' \
+Evaluate the given modules, run all benches declared with 'Deno.bench()'
 and report results to standard output:
 
   deno bench src/fetch_bench.ts src/signal_bench.ts
 
-Directory arguments are expanded to all contained files matching the \
+Directory arguments are expanded to all contained files matching the
 glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
   deno bench src/",
@@ -870,12 +858,12 @@ fn cache_subcommand() -> Command {
     .long_about(
       "Cache and compile remote dependencies recursively.
 
-Download and compile a module with all of its static dependencies and save \
+Download and compile a module with all of its static dependencies and save
 them in the local cache, without running any code:
 
   deno cache https://deno.land/std/http/file_server.ts
 
-Future runs of this module will trigger no downloads or compilation unless \
+Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
     )
 }
@@ -922,9 +910,9 @@ fn compile_subcommand() -> Command {
         .long("include")
         .help("UNSTABLE: Additional module to include in the module graph")
         .long_help(
-          "Includes an additional module in the compiled executable's module \
-    graph. Use this flag if a dynamically imported module or a web worker main \
-    module fails to load in the executable. This flag can be passed multiple \
+          "Includes an additional module in the compiled executable's module
+    graph. Use this flag if a dynamically imported module or a web worker main
+    module fails to load in the executable. This flag can be passed multiple
     times, to include multiple additional modules.",
         )
         .action(ArgAction::Append)
@@ -957,19 +945,19 @@ fn compile_subcommand() -> Command {
   deno compile -A https://deno.land/std/http/file_server.ts
   deno compile --output color_util https://deno.land/std/examples/colors.ts
 
-Any flags passed which affect runtime behavior, such as '--unstable', \
-'--allow-*', '--v8-flags', etc. are encoded into the output executable and \
+Any flags passed which affect runtime behavior, such as '--unstable',
+'--allow-*', '--v8-flags', etc. are encoded into the output executable and
 used at runtime as if they were passed to a similar 'deno run' command.
 
-The executable name is inferred by default: Attempt to take the file stem of \
-the URL path. The above example would become 'file_server'. If the file stem \
-is something generic like 'main', 'mod', 'index' or 'cli', and the path has no \
-parent, take the file name of the parent path. Otherwise settle with the \
+The executable name is inferred by default: Attempt to take the file stem of
+the URL path. The above example would become 'file_server'. If the file stem
+is something generic like 'main', 'mod', 'index' or 'cli', and the path has no
+parent, take the file name of the parent path. Otherwise settle with the
 generic name. If the resulting name has an '@...' suffix, strip it.
 
-Cross-compiling to different target architectures is supported using the \
-`--target` flag. On the first invocation with deno will download proper \
-binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not \
+Cross-compiling to different target architectures is supported using the
+`--target` flag. On the first invocation with deno will download proper
+binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not
 supported in canary.
 ",
     )
@@ -1014,8 +1002,8 @@ Exclude urls ending with test.ts and test.js:
 
   deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
-Include urls that start with the file schema and exclude files ending with \
-test.ts and test.js, for an url to match it must match the include pattern and \
+Include urls that start with the file schema and exclude files ending with
+test.ts and test.js, for an url to match it must match the include pattern and
 not match the exclude pattern:
 
   deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
@@ -1071,8 +1059,8 @@ Generate html reports from lcov:
         .value_parser(value_parser!(PathBuf))
         .help("Output file (defaults to stdout) for lcov")
         .long_help(
-          "Exports the coverage report in lcov format to the given file. \
-    Filename should be passed along with '=' For example '--output=foo.lcov' \
+          "Exports the coverage report in lcov format to the given file.
+    Filename should be passed along with '=' For example '--output=foo.lcov'
     If no --output arg is specified then the report is written to stdout.",
         )
         .require_equals(true)
@@ -1433,23 +1421,22 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno")
 }
 
-static LSP_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "The 'deno lsp' subcommand provides a way for code editors and IDEs to
+static LSP_HELP: &str = concat!(
+  "The 'deno lsp' subcommand provides a way for code editors and IDEs to
 interact with Deno using the Language Server Protocol. Usually humans do not
 use this subcommand directly. For example, 'deno lsp' can provide IDEs with
 go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
-https://deno.land/manual@v{}/getting_started/setup_your_environment#editors-and-ides",
-    SHORT_VERSION.as_str()
-  )
-});
+https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/getting_started/setup_your_environment#editors-and-ides",
+);
 
 fn lsp_subcommand() -> Command {
   Command::new("lsp")
     .about("Start the language server")
-    .long_about(LSP_HELP.as_str())
+    .long_about(LSP_HELP)
 }
 
 fn lint_subcommand() -> Command {
@@ -2053,15 +2040,14 @@ fn inspect_args(app: Command) -> Command {
     )
 }
 
-static IMPORT_MAP_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "Load import map file from local file or remote URL.
-  Docs: https://deno.land/manual@v{}/linking_to_external_code/import_maps
-  Specification: https://wicg.github.io/import-maps/
-  Examples: https://github.com/WICG/import-maps#the-import-map",
-    SHORT_VERSION.as_str()
-  )
-});
+static IMPORT_MAP_HELP: &str = concat!(
+  "Load import map file from local file or remote URL.
+Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/linking_to_external_code/import_maps
+Specification: https://wicg.github.io/import-maps/
+Examples: https://github.com/WICG/import-maps#the-import-map",
+);
 
 fn import_map_arg() -> Arg {
   Arg::new("import-map")
@@ -2069,7 +2055,7 @@ fn import_map_arg() -> Arg {
     .alias("importmap")
     .value_name("FILE")
     .help("Load import map file")
-    .long_help(IMPORT_MAP_HELP.as_str())
+    .long_help(IMPORT_MAP_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
@@ -2161,7 +2147,7 @@ fn v8_flags_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .help("Set V8 command line options")
-    .long_help("To see a list of all available flags use --v8-flags=--help. \
+    .long_help("To see a list of all available flags use --v8-flags=--help.
     Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
 }
 
@@ -2193,7 +2179,7 @@ Additional paths might be watched by passing them as arguments to this flag.",
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.action(ArgAction::SetTrue).long_help(
-      "Watch for file changes and restart process automatically. \
+      "Watch for file changes and restart process automatically.
       Only local files from entry point module graph are watched.",
     )
   }
@@ -2215,8 +2201,8 @@ fn no_check_arg() -> Arg {
     .long("no-check")
     .help("Skip type-checking modules")
     .long_help(
-      "Skip type-checking. If the value of '--no-check=remote' is supplied, \
-      diagnostic errors from remote modules will be ignored.",
+      "Skip type-checking. If the value of '--no-check=remote' is supplied,
+diagnostic errors from remote modules will be ignored.",
     )
 }
 
@@ -2231,7 +2217,7 @@ fn check_arg() -> Arg {
     .long_help(
       "Type-check modules.
 
-Deno does not type-check modules automatically from v1.23 onwards. Pass this \
+Deno does not type-check modules automatically from v1.23 onwards. Pass this
 flag to enable type-checking or use the 'deno check' subcommand.
 
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
@@ -2259,7 +2245,9 @@ fn lock_arg() -> Arg {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file. If value is not provided, defaults to \"deno.lock\" in the current working directory.")
+    .help("Check the specified lock file. 
+
+If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
     .value_parser(value_parser!(PathBuf))
     .value_hint(ValueHint::FilePath)
@@ -2281,16 +2269,15 @@ fn no_lock_arg() -> Arg {
     .conflicts_with("lock")
 }
 
-static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "The configuration file can be used to configure different aspects of \
-      deno including TypeScript, linting, and code formatting. Typically the \
-      configuration file will be called `deno.json` or `deno.jsonc` and \
-      automatically detected; in that case this flag is not necessary. \
-      See https://deno.land/manual@v{}/getting_started/configuration_file",
-    SHORT_VERSION.as_str()
-  )
-});
+static CONFIG_HELP: &str = concat!(
+  "The configuration file can be used to configure different aspects of
+deno including TypeScript, linting, and code formatting. Typically the
+configuration file will be called `deno.json` or `deno.jsonc` and
+automatically detected; in that case this flag is not necessary.
+See https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/getting_started/configuration_file"
+);
 
 fn config_arg() -> Arg {
   Arg::new("config")
@@ -2298,7 +2285,7 @@ fn config_arg() -> Arg {
     .long("config")
     .value_name("FILE")
     .help("Specify the configuration file")
-    .long_help(CONFIG_HELP.as_str())
+    .long_help(CONFIG_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
