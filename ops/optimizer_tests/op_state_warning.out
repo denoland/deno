@@ -109,6 +109,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_listen_fast {
         deno_core::v8::fast_api::CType::Uint32
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_listen_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,

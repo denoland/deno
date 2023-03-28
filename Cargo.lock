@@ -1150,10 +1150,15 @@ dependencies = [
  "hex",
  "idna 0.3.0",
  "indexmap",
+ "libz-sys",
  "md-5",
  "md4",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "once_cell",
  "path-clean",
+ "pbkdf2",
  "rand",
  "regex",
  "ripemd",
@@ -1162,6 +1167,8 @@ dependencies = [
  "sha-1 0.10.0",
  "sha2",
  "sha3",
+ "signature",
+ "tokio",
  "typenum",
 ]
 
@@ -2583,6 +2590,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "libz-sys"
+version = "1.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9702761c3935f8cc2f101793272e202c72b99da8f4224a19ddcf1279a6450bbf"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "linked-hash-map"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2831,6 +2850,7 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
+ "rand",
  "serde",
 ]
 
@@ -3049,6 +3069,16 @@ name = "pathdiff"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8835116a5c179084a830efb3adc117ab007512b535bc1a21c991d3b32a6b44dd"
+
+[[package]]
+name = "pbkdf2"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0ca0b5a68607598bf3bad68f32227a8164f6254833f84eafaac409cd6746c31"
+dependencies = [
+ "digest 0.10.6",
+ "hmac",
+]
 
 [[package]]
 name = "pem-rfc7468"

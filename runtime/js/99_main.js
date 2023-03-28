@@ -290,20 +290,29 @@ core.registerErrorBuilder(
   },
 );
 
-function runtimeStart(runtimeOptions, source) {
+function runtimeStart(
+  denoVersion,
+  v8Version,
+  tsVersion,
+  target,
+  debugFlag,
+  noColor,
+  isTty,
+  source,
+) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   ops.op_set_format_exception_callback(formatException);
   version.setVersions(
-    runtimeOptions.denoVersion,
-    runtimeOptions.v8Version,
-    runtimeOptions.tsVersion,
+    denoVersion,
+    v8Version,
+    tsVersion,
   );
-  core.setBuildInfo(runtimeOptions.target);
-  util.setLogDebug(runtimeOptions.debugFlag, source);
-  colors.setNoColor(runtimeOptions.noColor || !runtimeOptions.isTty);
+  core.setBuildInfo(target);
+  util.setLogDebug(debugFlag, source);
+  colors.setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }
@@ -401,6 +410,27 @@ function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
+
+  const [
+    args,
+    cpuCount,
+    debugFlag,
+    denoVersion,
+    locale,
+    location_,
+    noColor,
+    isTty,
+    tsVersion,
+    unstableFlag,
+    pid,
+    ppid,
+    target,
+    v8Version,
+    userAgent,
+    inspectFlag,
+    _,
+  ] = runtimeOptions;
+
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -412,15 +442,15 @@ function bootstrapMainRuntime(runtimeOptions) {
   // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
   // writable, so that they can mock it themselves if they like. If the flag was
   // set, define `globalThis.location`, using the provided value.
-  if (runtimeOptions.location == null) {
+  if (location_ === undefined) {
     mainRuntimeGlobalProperties.location = {
       writable: true,
     };
   } else {
-    location.setLocationHref(runtimeOptions.location);
+    location.setLocationHref(location_);
   }
 
-  if (runtimeOptions.unstableFlag) {
+  if (unstableFlag) {
     ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
   }
   ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
@@ -430,7 +460,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   });
   ObjectSetPrototypeOf(globalThis, Window.prototype);
 
-  if (runtimeOptions.inspectFlag) {
+  if (inspectFlag) {
     const consoleFromV8 = core.console;
     const consoleFromDeno = globalThis.console;
     wrapConsole(consoleFromDeno, consoleFromV8);
@@ -447,21 +477,29 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   core.setPromiseRejectCallback(promiseRejectCallback);
 
-  runtimeStart(runtimeOptions);
+  runtimeStart(
+    denoVersion,
+    v8Version,
+    tsVersion,
+    target,
+    debugFlag,
+    noColor,
+    isTty,
+  );
 
-  setNumCpus(runtimeOptions.cpuCount);
-  setUserAgent(runtimeOptions.userAgent);
-  setLanguage(runtimeOptions.locale);
+  setNumCpus(cpuCount);
+  setUserAgent(userAgent);
+  setLanguage(locale);
 
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.readOnly(runtimeOptions.pid),
-    ppid: util.readOnly(runtimeOptions.ppid),
-    noColor: util.readOnly(runtimeOptions.noColor),
-    args: util.readOnly(ObjectFreeze(runtimeOptions.args)),
+    pid: util.readOnly(pid),
+    ppid: util.readOnly(ppid),
+    noColor: util.readOnly(noColor),
+    args: util.readOnly(ObjectFreeze(args)),
     mainModule: util.getterOnly(opMainModule),
   });
 
-  if (runtimeOptions.unstableFlag) {
+  if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
   }
 
@@ -469,7 +507,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
-  util.log("args", runtimeOptions.args);
+  util.log("args", args);
 }
 
 function bootstrapWorkerRuntime(
@@ -481,6 +519,26 @@ function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
 
+  const [
+    args,
+    cpuCount,
+    debugFlag,
+    denoVersion,
+    locale,
+    location_,
+    noColor,
+    isTty,
+    tsVersion,
+    unstableFlag,
+    pid,
+    _ppid,
+    target,
+    v8Version,
+    _userAgent,
+    _inspectFlag,
+    enableTestingFeaturesFlag,
+  ] = runtimeOptions;
+
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
 
@@ -491,7 +549,7 @@ function bootstrapWorkerRuntime(
   delete globalThis.bootstrap;
   hasBootstrapped = true;
 
-  if (runtimeOptions.unstableFlag) {
+  if (unstableFlag) {
     ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
   }
   ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
@@ -501,7 +559,7 @@ function bootstrapWorkerRuntime(
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
   });
-  if (runtimeOptions.enableTestingFeaturesFlag) {
+  if (enableTestingFeaturesFlag) {
     ObjectDefineProperty(
       globalThis,
       "importScripts",
@@ -529,24 +587,30 @@ function bootstrapWorkerRuntime(
   });
 
   runtimeStart(
-    runtimeOptions,
+    denoVersion,
+    v8Version,
+    tsVersion,
+    target,
+    debugFlag,
+    noColor,
+    isTty,
     internalName ?? name,
   );
 
-  location.setLocationHref(runtimeOptions.location);
+  location.setLocationHref(location_);
 
-  setNumCpus(runtimeOptions.cpuCount);
-  setLanguage(runtimeOptions.locale);
+  setNumCpus(cpuCount);
+  setLanguage(locale);
 
   globalThis.pollForMessages = pollForMessages;
 
-  if (runtimeOptions.unstableFlag) {
+  if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
   }
   ObjectDefineProperties(finalDenoNs, {
-    pid: util.readOnly(runtimeOptions.pid),
-    noColor: util.readOnly(runtimeOptions.noColor),
-    args: util.readOnly(ObjectFreeze(runtimeOptions.args)),
+    pid: util.readOnly(pid),
+    noColor: util.readOnly(noColor),
+    args: util.readOnly(ObjectFreeze(args)),
   });
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
