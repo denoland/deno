@@ -240,3 +240,58 @@ pub fn op_node_decipheriv_final(
     .map_err(|_| type_error("Cipher context is already in use"))?;
   context.r#final(input, output)
 }
+
+fn pbkdf2_sync(
+  password: &[u8],
+  salt: &[u8],
+  iterations: u32,
+  digest: &str,
+  derived_key: &mut [u8],
+) -> Result<(), AnyError> {
+  macro_rules! pbkdf2_hmac {
+    ($digest:ty) => {{
+      pbkdf2::pbkdf2_hmac::<$digest>(password, salt, iterations, derived_key)
+    }};
+  }
+
+  match digest {
+    "md4" => pbkdf2_hmac!(md4::Md4),
+    "md5" => pbkdf2_hmac!(md5::Md5),
+    "ripemd160" => pbkdf2_hmac!(ripemd::Ripemd160),
+    "sha1" => pbkdf2_hmac!(sha1::Sha1),
+    "sha224" => pbkdf2_hmac!(sha2::Sha224),
+    "sha256" => pbkdf2_hmac!(sha2::Sha256),
+    "sha384" => pbkdf2_hmac!(sha2::Sha384),
+    "sha512" => pbkdf2_hmac!(sha2::Sha512),
+    _ => return Err(type_error("Unknown digest")),
+  }
+
+  Ok(())
+}
+
+#[op]
+pub fn op_node_pbkdf2(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  iterations: u32,
+  digest: &str,
+  derived_key: &mut [u8],
+) -> bool {
+  pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
+}
+
+#[op]
+pub async fn op_node_pbkdf2_async(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  iterations: u32,
+  digest: String,
+  keylen: usize,
+) -> Result<ZeroCopyBuf, AnyError> {
+  tokio::task::spawn_blocking(move || {
+    let mut derived_key = vec![0; keylen];
+    pbkdf2_sync(&password, &salt, iterations, &digest, &mut derived_key)
+      .map(|_| derived_key.into())
+  })
+  .await?
+}
