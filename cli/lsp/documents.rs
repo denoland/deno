@@ -1156,7 +1156,7 @@ impl Documents {
 
   pub fn update_config(
     &mut self,
-    root_dirs: Vec<Url>,
+    root_urls: Vec<Url>,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
@@ -1164,17 +1164,17 @@ impl Documents {
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
-      root_dirs: &[Url],
+      root_urls: &[Url],
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(&{
-        // ensure these are sorted
-        let mut root_dirs = root_dirs.to_vec();
-        root_dirs.sort_unstable();
-        root_dirs
+        // ensure these are sorted (they should be, but this is a safeguard)
+        let mut root_urls = root_urls.to_vec();
+        root_urls.sort_unstable();
+        root_urls
       });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
@@ -1191,7 +1191,7 @@ impl Documents {
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &root_dirs,
+      &root_urls,
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
@@ -1245,14 +1245,14 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies(root_dirs);
+      self.refresh_dependencies(root_urls);
       self.resolver_config_hash = new_resolver_config_hash;
     }
 
     self.dirty = true;
   }
 
-  fn refresh_dependencies(&mut self, root_dirs: Vec<Url>) {
+  fn refresh_dependencies(&mut self, root_urls: Vec<Url>) {
     fn is_auto_discoverable_dir(dir_path: &Path) -> bool {
       if let Some(dir_name) = dir_path.file_name() {
         let dir_name = dir_name.to_string_lossy().to_lowercase();
@@ -1287,9 +1287,11 @@ impl Documents {
       fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
 
     let mut pending_dirs = VecDeque::new();
-    for dir in root_dirs {
-      if let Ok(path) = dir.to_file_path() {
-        pending_dirs.push_back(path.to_path_buf());
+    for root_url in root_urls {
+      if let Ok(path) = root_url.to_file_path() {
+        if path.is_dir() {
+          pending_dirs.push_back(path.to_path_buf());
+        }
       }
     }
 
@@ -1315,7 +1317,7 @@ impl Documents {
         if file_type.is_dir() {
           pending_dirs.push_back(new_path);
         } else if file_type.is_file() {
-          let media_type: MediaType = (&new_path).into();
+          let media_type = MediaType::from_path(&new_path);
           let is_diagnosable = match media_type {
             MediaType::JavaScript
             | MediaType::Jsx

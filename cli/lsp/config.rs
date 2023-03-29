@@ -485,22 +485,24 @@ impl Config {
       .unwrap_or_else(|| self.settings.workspace.enable)
   }
 
-  pub fn root_dirs(&self) -> Vec<Url> {
-    let mut dirs: Vec<Url> = Vec::new();
+  /// Gets the root urls that may contain directories or specific
+  /// file paths.
+  pub fn root_urls(&self) -> Vec<Url> {
+    let mut urls: Vec<Url> = Vec::new();
     for (workspace, enabled_paths) in &self.enabled_paths {
       if !enabled_paths.is_empty() {
-        dirs.extend(enabled_paths.iter().cloned());
+        urls.extend(enabled_paths.iter().cloned());
       } else {
-        dirs.push(workspace.clone());
+        urls.push(workspace.clone());
       }
     }
-    if dirs.is_empty() {
+    if urls.is_empty() {
       if let Some(root_dir) = &self.root_uri {
-        dirs.push(root_dir.clone())
+        urls.push(root_dir.clone())
       }
     }
-    sort_and_remove_child_dirs(&mut dirs);
-    dirs
+    sort_and_remove_non_leaf_urls(&mut urls);
+    urls
   }
 
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
@@ -639,7 +641,8 @@ impl Config {
   }
 }
 
-fn sort_and_remove_child_dirs(dirs: &mut Vec<Url>) {
+/// Removes any URLs that are a descendant of another URL in the collection.
+fn sort_and_remove_non_leaf_urls(dirs: &mut Vec<Url>) {
   if dirs.is_empty() {
     return;
   }
@@ -819,13 +822,13 @@ mod tests {
   }
 
   #[test]
-  fn test_sort_and_remove_child_dirs() {
+  fn test_sort_and_remove_non_leaf_urls() {
     fn run_test(dirs: Vec<&str>, expected_output: Vec<&str>) {
       let mut dirs = dirs
         .into_iter()
         .map(|dir| Url::parse(dir).unwrap())
         .collect();
-      sort_and_remove_child_dirs(&mut dirs);
+      sort_and_remove_non_leaf_urls(&mut dirs);
       let dirs: Vec<_> = dirs.iter().map(|dir| dir.as_str()).collect();
       assert_eq!(dirs, expected_output);
     }

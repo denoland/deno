@@ -1137,7 +1137,7 @@ impl Inner {
 
   fn refresh_documents_config(&mut self) {
     self.documents.update_config(
-      self.config.root_dirs(),
+      self.config.root_urls(),
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
       self.maybe_package_json.as_ref(),
