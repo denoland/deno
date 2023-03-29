@@ -808,7 +808,7 @@ pub enum DocumentsFilter {
   /// Includes all the diagnosable documents (open & file system).
   AllDiagnosable,
   /// Includes only the diagnosable documents that are open.
-  OpenAndDiagnosable,
+  OpenDiagnosable,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1026,7 +1026,7 @@ impl Documents {
   /// based on the provided filter.
   pub fn documents(&self, filter: DocumentsFilter) -> Vec<Document> {
     match filter {
-      DocumentsFilter::OpenAndDiagnosable => self
+      DocumentsFilter::OpenDiagnosable => self
         .open_docs
         .values()
         .filter_map(|doc| {

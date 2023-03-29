@@ -457,7 +457,7 @@ async fn generate_lint_diagnostics(
 ) -> DiagnosticVec {
   let documents = snapshot
     .documents
-    .documents(DocumentsFilter::OpenAndDiagnosable);
+    .documents(DocumentsFilter::OpenDiagnosable);
   let workspace_settings = config.settings.workspace.clone();
   let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
@@ -533,7 +533,7 @@ async fn generate_ts_diagnostics(
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
     .documents
-    .documents(DocumentsFilter::OpenAndDiagnosable)
+    .documents(DocumentsFilter::OpenDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
@@ -1030,7 +1030,7 @@ async fn generate_deno_diagnostics(
 
   for document in snapshot
     .documents
-    .documents(DocumentsFilter::OpenAndDiagnosable)
+    .documents(DocumentsFilter::OpenDiagnosable)
   {
     if token.is_cancelled() {
       break;

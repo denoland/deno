@@ -2761,7 +2761,7 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
-  let open_docs = documents.documents(DocumentsFilter::OpenAndDiagnosable);
+  let open_docs = documents.documents(DocumentsFilter::OpenDiagnosable);
   let mut result = Vec::new();
   let mut seen = HashSet::new();
 

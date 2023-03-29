@@ -3224,9 +3224,7 @@ impl Inner {
     )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
-    let open_docs = self
-      .documents
-      .documents(DocumentsFilter::OpenAndDiagnosable);
+    let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(Some(PrepareCacheResult {
       cli_options,
       open_docs,
