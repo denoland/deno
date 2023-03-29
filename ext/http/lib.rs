@@ -32,11 +32,13 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
+use deno_core::WriteOutcome;
 use deno_core::ZeroCopyBuf;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
+use httparse::Status;
 use hyper::body::Bytes;
 use hyper::body::HttpBody;
 use hyper::body::SizeHint;
@@ -48,6 +50,8 @@ use hyper::Body;
 use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
+use memmem::Searcher;
+use memmem::TwoWaySearcher;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -65,15 +69,18 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::task::spawn_local;
+use websocket_upgrade::WebSocketUpgrade;
 
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
 
 pub mod compressible;
 mod reader_stream;
+mod websocket_upgrade;
 
 deno_core::extension!(
   deno_http,
@@ -86,6 +93,7 @@ deno_core::extension!(
     op_http_write_resource,
     op_http_shutdown,
     op_http_websocket_accept_header,
+    op_http_upgrade_early,
     op_http_upgrade_websocket,
   ],
   esm = ["01_http.js"],
@@ -936,6 +944,114 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
     format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
   Ok(base64::encode(digest))
+}
+
+struct EarlyUpgradeSocket(Rc<AsyncRefCell<EarlyUpgradeSocketInner>>);
+
+enum EarlyUpgradeSocketInner {
+  PreResponse(Rc<HttpStreamResource>, WebSocketUpgrade),
+  PostResponse(hyper::upgrade::Upgraded),
+}
+
+impl Resource for EarlyUpgradeSocket {
+  fn name(&self) -> Cow<str> {
+    "early upgrade socket".into()
+  }
+
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+    let self_clone = self.clone();
+    Box::pin(async move {
+      let mut borrow = self_clone.0.borrow_mut().await;
+      let inner = &mut *borrow;
+      if let EarlyUpgradeSocketInner::PostResponse(upgraded) = inner {
+        // TODO(mmastrac): This seems inefficient
+        let mut buf = vec![0; limit];
+        let read = upgraded.read(&mut buf).await?;
+        buf.truncate(read);
+        Ok(buf.into())
+      } else {
+        Ok(BufView::empty())
+      }
+    })
+  }
+
+  fn write(
+    self: Rc<Self>,
+    buf: BufView,
+  ) -> AsyncResult<deno_core::WriteOutcome> {
+    println!("write {:?}", buf.to_vec());
+    let self_clone = self.clone();
+    Box::pin(async move {
+      let mut borrow = self_clone.0.borrow_mut().await;
+      let inner = &mut *borrow;
+      match inner {
+        EarlyUpgradeSocketInner::PreResponse(stream, upgrade) => {
+          if let Some((resp, extra)) = upgrade.write(&buf)? {
+            println!("{:?}", resp);
+            let new_wr = HttpResponseWriter::Closed;
+            let mut old_wr =
+              RcRef::map(stream.clone(), |r| &r.wr).borrow_mut().await;
+            let response_tx = match replace(&mut *old_wr, new_wr) {
+              HttpResponseWriter::Headers(response_tx) => response_tx,
+              _ => return Err(http_error("response headers already sent")),
+            };
+
+            match response_tx.send(resp) {
+              Err(_) => {
+                stream.conn.closed().await?;
+                return Err(http_error(
+                  "connection closed while sending response",
+                ));
+              }
+              _ => {}
+            };
+
+            let mut old_rd =
+              RcRef::map(stream.clone(), |r| &r.rd).borrow_mut().await;
+            let new_rd = HttpRequestReader::Closed;
+            let upgraded = match replace(&mut *old_rd, new_rd) {
+              HttpRequestReader::Headers(request) => {
+                println!("Got upgrade");
+                hyper::upgrade::on(request).await?
+              }
+              _ => {
+                return Err(http_error("response already started"));
+              }
+            };
+            println!("Upgraded");
+
+            // TODO(mmastrac): Write the rest of the stream, or return a partial write outcome
+            *inner = EarlyUpgradeSocketInner::PostResponse(upgraded);
+          }
+          Ok(WriteOutcome::Full {
+            nwritten: buf.len(),
+          })
+        }
+        EarlyUpgradeSocketInner::PostResponse(upgraded) => {
+          let write = upgraded.write(&buf).await?;
+          Ok(WriteOutcome::Full { nwritten: write })
+        }
+      }
+    })
+  }
+}
+
+#[op]
+async fn op_http_upgrade_early(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<ResourceId, AnyError> {
+  let stream = state
+    .borrow_mut()
+    .resource_table
+    .get::<HttpStreamResource>(rid)?;
+  let resources = &mut state.borrow_mut().resource_table;
+  let socket =
+    EarlyUpgradeSocketInner::PreResponse(stream, WebSocketUpgrade::default());
+  let rid =
+    resources.add(EarlyUpgradeSocket(Rc::new(AsyncRefCell::new(socket))));
+  println!("rid = {}", rid);
+  Ok(rid)
 }
 
 struct UpgradedStream(hyper::upgrade::Upgraded);
