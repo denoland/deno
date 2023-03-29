@@ -44,6 +44,7 @@ use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
 use super::documents::Documents;
+use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
 use super::logging::lsp_log;
 use super::lsp_custom;
@@ -3223,7 +3224,7 @@ impl Inner {
     )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
-    let open_docs = self.documents.documents(true, true);
+    let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(Some(PrepareCacheResult {
       cli_options,
       open_docs,
@@ -3341,7 +3342,7 @@ impl Inner {
       let mut contents = String::new();
       let mut documents_specifiers = self
         .documents
-        .documents(false, false)
+        .documents(DocumentsFilter::All)
         .into_iter()
         .map(|d| d.specifier().clone())
         .collect::<Vec<_>>();
