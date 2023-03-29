@@ -15,6 +15,7 @@ use regex::Regex;
 use crate::errors;
 use crate::package_json::PackageJson;
 use crate::path::PathClean;
+use crate::NodeFs;
 use crate::NodePermissions;
 use crate::RealFs;
 use crate::RequireNpmResolver;
@@ -183,7 +184,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
-pub fn package_imports_resolve(
+pub fn package_imports_resolve<Fs: NodeFs>(
   name: &str,
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
@@ -208,7 +209,7 @@ pub fn package_imports_resolve(
     package_json_path = Some(package_config.path.clone());
     if let Some(imports) = &package_config.imports {
       if imports.contains_key(name) && !name.contains('*') {
-        let maybe_resolved = resolve_package_target(
+        let maybe_resolved = resolve_package_target::<Fs>(
           package_json_path.as_ref().unwrap(),
           imports.get(name).unwrap().to_owned(),
           "".to_string(),
@@ -251,7 +252,7 @@ pub fn package_imports_resolve(
 
         if !best_match.is_empty() {
           let target = imports.get(best_match).unwrap().to_owned();
-          let maybe_resolved = resolve_package_target(
+          let maybe_resolved = resolve_package_target::<Fs>(
             package_json_path.as_ref().unwrap(),
             target,
             best_match_subpath.unwrap(),
@@ -316,7 +317,7 @@ fn throw_invalid_subpath(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_package_target_string(
+fn resolve_package_target_string<Fs: NodeFs>(
   target: String,
   subpath: String,
   match_: String,
@@ -355,7 +356,7 @@ fn resolve_package_target_string(
         };
         let package_json_url =
           ModuleSpecifier::from_file_path(package_json_path).unwrap();
-        return match package_resolve(
+        return match package_resolve::<Fs>(
           &export_target,
           &package_json_url,
           referrer_kind,
@@ -426,7 +427,7 @@ fn resolve_package_target_string(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_package_target(
+fn resolve_package_target<Fs: NodeFs>(
   package_json_path: &Path,
   target: Value,
   subpath: String,
@@ -441,7 +442,7 @@ fn resolve_package_target(
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   if let Some(target) = target.as_str() {
-    return resolve_package_target_string(
+    return resolve_package_target_string::<Fs>(
       target.to_string(),
       subpath,
       package_subpath,
@@ -469,7 +470,7 @@ fn resolve_package_target(
 
     let mut last_error = None;
     for target_item in target_arr {
-      let resolved_result = resolve_package_target(
+      let resolved_result = resolve_package_target::<Fs>(
         package_json_path,
         target_item.to_owned(),
         subpath.clone(),
@@ -519,7 +520,7 @@ fn resolve_package_target(
       {
         let condition_target = target_obj.get(key).unwrap().to_owned();
 
-        let resolved = resolve_package_target(
+        let resolved = resolve_package_target::<Fs>(
           package_json_path,
           condition_target,
           subpath.clone(),
@@ -567,7 +568,7 @@ fn throw_exports_not_found(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn package_exports_resolve(
+pub fn package_exports_resolve<Fs: NodeFs>(
   package_json_path: &Path,
   package_subpath: String,
   package_exports: &Map<String, Value>,
@@ -583,7 +584,7 @@ pub fn package_exports_resolve(
     && !package_subpath.ends_with('/')
   {
     let target = package_exports.get(&package_subpath).unwrap().to_owned();
-    let resolved = resolve_package_target(
+    let resolved = resolve_package_target::<Fs>(
       package_json_path,
       target,
       "".to_string(),
@@ -643,7 +644,7 @@ pub fn package_exports_resolve(
 
   if !best_match.is_empty() {
     let target = package_exports.get(best_match).unwrap().to_owned();
-    let maybe_resolved = resolve_package_target(
+    let maybe_resolved = resolve_package_target::<Fs>(
       package_json_path,
       target,
       best_match_subpath.unwrap(),
@@ -726,7 +727,7 @@ fn parse_package_name(
   Ok((package_name, package_subpath, is_scoped))
 }
 
-pub fn package_resolve(
+pub fn package_resolve<Fs: NodeFs>(
   specifier: &str,
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
@@ -745,7 +746,7 @@ pub fn package_resolve(
     && package_config.name.as_ref() == Some(&package_name)
   {
     if let Some(exports) = &package_config.exports {
-      return package_exports_resolve(
+      return package_exports_resolve::<Fs>(
         &package_config.path,
         package_subpath,
         exports,
@@ -782,9 +783,9 @@ pub fn package_resolve(
 
   // Package match.
   let package_json =
-    PackageJson::load::<RealFs>(npm_resolver, permissions, package_json_path)?;
+    PackageJson::load::<Fs>(npm_resolver, permissions, package_json_path)?;
   if let Some(exports) = &package_json.exports {
-    return package_exports_resolve(
+    return package_exports_resolve::<Fs>(
       &package_json.path,
       package_subpath,
       exports,

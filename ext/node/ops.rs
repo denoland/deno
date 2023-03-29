@@ -409,7 +409,7 @@ where
 
   let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
-    resolution::package_exports_resolve(
+    resolution::package_exports_resolve::<Env::Fs>(
       &pkg.path,
       expansion,
       exports,
@@ -481,7 +481,7 @@ where
 
   if let Some(exports) = &pkg.exports {
     let referrer = Url::from_file_path(parent_path).unwrap();
-    resolution::package_exports_resolve(
+    resolution::package_exports_resolve::<Env::Fs>(
       &pkg.path,
       format!(".{expansion}"),
       exports,
@@ -555,7 +555,7 @@ where
   if pkg.imports.is_some() {
     let referrer =
       deno_core::url::Url::from_file_path(&parent_filename).unwrap();
-    let r = resolution::package_imports_resolve(
+    let r = resolution::package_imports_resolve::<Env::Fs>(
       &request,
       &referrer,
       NodeModuleKind::Cjs,

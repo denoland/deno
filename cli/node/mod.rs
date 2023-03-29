@@ -431,7 +431,7 @@ fn package_config_resolve(
     package_json_path.clone(),
   )?;
   if let Some(exports) = &package_config.exports {
-    let result = package_exports_resolve(
+    let result = package_exports_resolve::<RealFs>(
       &package_json_path,
       package_subpath.to_string(),
       exports,
@@ -569,7 +569,7 @@ fn module_resolve(
     }
   } else if specifier.starts_with('#') {
     Some(
-      package_imports_resolve(
+      package_imports_resolve::<RealFs>(
         specifier,
         referrer,
         NodeModuleKind::Esm,
@@ -583,7 +583,7 @@ fn module_resolve(
   } else if let Ok(resolved) = Url::parse(specifier) {
     Some(resolved)
   } else {
-    package_resolve(
+    package_resolve::<RealFs>(
       specifier,
       referrer,
       NodeModuleKind::Esm,
@@ -832,7 +832,7 @@ fn resolve(
     )?;
 
     if let Some(exports) = &package_json.exports {
-      return package_exports_resolve(
+      return package_exports_resolve::<deno_node::RealFs>(
         &package_json_path,
         package_subpath,
         exports,
