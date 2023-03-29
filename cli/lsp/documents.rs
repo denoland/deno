@@ -1264,7 +1264,7 @@ impl Documents {
     fn is_auto_discoverable_dir(dir_path: &Path) -> bool {
       if let Some(dir_name) = dir_path.file_name() {
         let dir_name = dir_name.to_string_lossy().to_lowercase();
-        matches!(dir_name.as_str(), "node_modules" | ".git")
+        !matches!(dir_name.as_str(), "node_modules" | ".git")
       } else {
         false
       }
@@ -1282,6 +1282,27 @@ impl Documents {
       }
     }
 
+    fn is_diagnosable(media_type: MediaType) -> bool {
+      match media_type {
+        MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Tsx => true,
+        MediaType::Json
+        | MediaType::Wasm
+        | MediaType::SourceMap
+        | MediaType::TsBuildInfo
+        | MediaType::Unknown => false,
+      }
+    }
+
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
@@ -1293,12 +1314,42 @@ impl Documents {
     let mut fs_docs = self.file_system_docs.lock();
     let mut not_found_docs =
       fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+    let open_docs = &mut self.open_docs;
+
+    let mut handle_file_path = |file_path: &Path| {
+      let media_type = MediaType::from_path(&file_path);
+      if !is_diagnosable(media_type) || !is_auto_discoverable_file(&file_path) {
+        return;
+      }
+      let specifier = match ModuleSpecifier::from_file_path(&file_path) {
+        Ok(specifier) => specifier,
+        Err(_) => return,
+      };
+
+      // mark this document as having been found
+      not_found_docs.remove(&specifier);
+
+      if !open_docs.contains_key(&specifier)
+        && !fs_docs.docs.contains_key(&specifier)
+      {
+        fs_docs.refresh_document(&self.cache, resolver, &specifier);
+      } else {
+        // update the existing entry to have the new resolver
+        if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+          if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+            *doc = new_doc;
+          }
+        }
+      }
+    };
 
     let mut pending_dirs = VecDeque::new();
     for root_url in root_urls {
       if let Ok(path) = root_url.to_file_path() {
         if path.is_dir() {
           pending_dirs.push_back(path.to_path_buf());
+        } else {
+          handle_file_path(&path);
         }
       }
     }
@@ -1325,46 +1376,7 @@ impl Documents {
         if file_type.is_dir() {
           pending_dirs.push_back(new_path);
         } else if file_type.is_file() {
-          let media_type = MediaType::from_path(&new_path);
-          let is_diagnosable = match media_type {
-            MediaType::JavaScript
-            | MediaType::Jsx
-            | MediaType::Mjs
-            | MediaType::Cjs
-            | MediaType::TypeScript
-            | MediaType::Mts
-            | MediaType::Cts
-            | MediaType::Dts
-            | MediaType::Dmts
-            | MediaType::Dcts
-            | MediaType::Tsx => true,
-            MediaType::Json
-            | MediaType::Wasm
-            | MediaType::SourceMap
-            | MediaType::TsBuildInfo
-            | MediaType::Unknown => false,
-          };
-          if !is_diagnosable || !is_auto_discoverable_file(&new_path) {
-            continue;
-          }
-          let specifier = match ModuleSpecifier::from_file_path(&new_path) {
-            Ok(specifier) => specifier,
-            Err(_) => continue,
-          };
-
-          if !self.open_docs.contains_key(&specifier)
-            && !fs_docs.docs.contains_key(&specifier)
-          {
-            fs_docs.refresh_document(&self.cache, resolver, &specifier);
-          } else {
-            not_found_docs.remove(&specifier);
-            // update the existing entry to have the new resolver
-            if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
-              if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
-                *doc = new_doc;
-              }
-            }
-          }
+          handle_file_path(&new_path);
         }
       }
     }

@@ -487,8 +487,14 @@ impl Config {
 
   /// Gets the root urls that may contain directories or specific
   /// file paths.
-  pub fn root_urls(&self) -> Vec<Url> {
+  pub fn enabled_root_urls(&self) -> Vec<Url> {
     let mut urls: Vec<Url> = Vec::new();
+
+    if !self.settings.workspace.enable && self.enabled_paths.is_empty() {
+      // do not return any urls when disabled
+      return urls;
+    }
+
     for (workspace, enabled_paths) in &self.enabled_paths {
       if !enabled_paths.is_empty() {
         urls.extend(enabled_paths.iter().cloned());
