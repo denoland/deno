@@ -447,7 +447,7 @@ fn package_config_resolve(
       Err(exports_err) => {
         if mode.is_types() && package_subpath == "." {
           if let Ok(Some(path)) =
-            legacy_main_resolve(&package_config, referrer_kind, mode)
+            legacy_main_resolve::<RealFs>(&package_config, referrer_kind, mode)
           {
             return Ok(Some(path));
           } else {
@@ -459,7 +459,7 @@ fn package_config_resolve(
     }
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_config, referrer_kind, mode);
+    return legacy_main_resolve::<RealFs>(&package_config, referrer_kind, mode);
   }
 
   Ok(Some(package_dir.join(package_subpath)))

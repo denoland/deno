@@ -798,7 +798,7 @@ pub fn package_resolve<Fs: NodeFs>(
     .map(Some);
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json, referrer_kind, mode);
+    return legacy_main_resolve::<Fs>(&package_json, referrer_kind, mode);
   }
 
   let file_path = package_json.path.parent().unwrap().join(&package_subpath);
@@ -855,15 +855,15 @@ fn get_closest_package_json_path(
   bail!("did not find package.json in {}", root_pkg_folder.display())
 }
 
-fn file_exists(path: &Path) -> bool {
-  if let Ok(stats) = std::fs::metadata(path) {
+fn file_exists<Fs: NodeFs>(path: &Path) -> bool {
+  if let Ok(stats) = Fs::metadata(path) {
     stats.is_file()
   } else {
     false
   }
 }
 
-pub fn legacy_main_resolve(
+pub fn legacy_main_resolve<Fs: NodeFs>(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
   mode: NodeResolutionMode,
@@ -889,7 +889,7 @@ pub fn legacy_main_resolve(
 
   if let Some(main) = maybe_main {
     let guess = package_json.path.parent().unwrap().join(main).clean();
-    if file_exists(&guess) {
+    if file_exists::<Fs>(&guess) {
       return Ok(Some(guess));
     }
 
@@ -918,7 +918,7 @@ pub fn legacy_main_resolve(
         .unwrap()
         .join(format!("{main}{ending}"))
         .clean();
-      if file_exists(&guess) {
+      if file_exists::<Fs>(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(Some(guess));
       }
@@ -941,7 +941,7 @@ pub fn legacy_main_resolve(
       .unwrap()
       .join(index_file_name)
       .clean();
-    if file_exists(&guess) {
+    if file_exists::<Fs>(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
       return Ok(Some(guess));
     }
