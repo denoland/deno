@@ -40,11 +40,10 @@ impl ModuleLoader for TypescriptModuleLoader {
 
   fn load(
     &self,
-    module_specifier: &ModuleSpecifier,
+    module_specifier: ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
     async move {
       let path = module_specifier
         .to_file_path()
@@ -81,13 +80,11 @@ impl ModuleLoader for TypescriptModuleLoader {
       } else {
         code
       };
-      let module = ModuleSource {
-        code: code.into(),
+      Ok(ModuleSource::new(
         module_type,
-        module_url_specified: module_specifier.to_string(),
-        module_url_found: module_specifier.to_string(),
-      };
-      Ok(module)
+        code.into(),
+        module_specifier,
+      ))
     }
     .boxed_local()
   }
@@ -113,7 +110,7 @@ fn main() -> Result<(), Error> {
   )?;
 
   let future = async move {
-    let mod_id = js_runtime.load_main_module(&main_module, None).await?;
+    let mod_id = js_runtime.load_main_module(main_module, None).await?;
     let result = js_runtime.mod_evaluate(mod_id);
     js_runtime.run_event_loop(false).await?;
     result.await?

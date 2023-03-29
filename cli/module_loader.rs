@@ -92,7 +92,7 @@ impl CliModuleLoader {
         specifier,
         ..
       })) => Ok(ModuleCodeSource {
-        code: source.into(),
+        code: ModuleCode::from_arc(source.clone()),
         found_url: specifier.clone(),
         media_type: *media_type,
       }),
@@ -107,7 +107,7 @@ impl CliModuleLoader {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => source.into(),
+          | MediaType::Json => ModuleCode::from_arc(source.clone()),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             Default::default()
           }
@@ -153,11 +153,11 @@ impl CliModuleLoader {
 
   fn load_sync(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Result<ModuleSource, AnyError> {
-    let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
+    let code_source = if self.ps.npm_resolver.in_npm_package(&specifier) {
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path).with_context(|| {
         let mut msg = "Unable to load ".to_string();
@@ -169,7 +169,7 @@ impl CliModuleLoader {
         msg
       })?;
 
-      let code = if self.ps.cjs_resolutions.lock().contains(specifier) {
+      let code = if self.ps.cjs_resolutions.lock().contains(&specifier) {
         let mut permissions = if is_dynamic {
           self.dynamic_permissions.clone()
         } else {
@@ -178,7 +178,7 @@ impl CliModuleLoader {
         // translate cjs to esm if it's cjs and inject node globals
         node::translate_cjs_to_esm(
           &self.ps.file_fetcher,
-          specifier,
+          &specifier,
           code,
           MediaType::Cjs,
           &self.ps.npm_resolver,
@@ -189,17 +189,17 @@ impl CliModuleLoader {
         // only inject node globals for esm
         node::esm_code_with_node_globals(
           &self.ps.node_analysis_cache,
-          specifier,
+          &specifier,
           code,
         )?
       };
       ModuleCodeSource {
         code: code.into(),
         found_url: specifier.clone(),
-        media_type: MediaType::from_specifier(specifier),
+        media_type: MediaType::from_specifier(&specifier),
       }
     } else {
-      self.load_prepared_module(specifier, maybe_referrer)?
+      self.load_prepared_module(&specifier, maybe_referrer)?
     };
     let code = if self.ps.options.is_inspecting() {
       // we need the code with the source map in order for
@@ -210,10 +210,15 @@ impl CliModuleLoader {
       // because we don't need it
       code_without_source_map(code_source.code)
     };
+    let module_url_found = if code_source.found_url == specifier {
+      None
+    } else {
+      Some(code_source.found_url.into())
+    };
     Ok(ModuleSource {
       code,
-      module_url_specified: specifier.to_string(),
-      module_url_found: code_source.found_url.to_string(),
+      module_url_specified: specifier.into(),
+      module_url_found,
       module_type: match code_source.media_type {
         MediaType::Json => ModuleType::Json,
         _ => ModuleType::JavaScript,
@@ -239,7 +244,7 @@ impl ModuleLoader for CliModuleLoader {
 
   fn load(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
@@ -256,11 +261,11 @@ impl ModuleLoader for CliModuleLoader {
   fn prepare_load(
     &self,
     _op_state: Rc<RefCell<OpState>>,
-    specifier: &ModuleSpecifier,
+    specifier: ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    if self.ps.npm_resolver.in_npm_package(specifier) {
+    if self.ps.npm_resolver.in_npm_package(&specifier) {
       // nothing to prepare
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }

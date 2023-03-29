@@ -11,6 +11,7 @@ use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
+use deno_core::fast;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
@@ -572,11 +573,13 @@ impl WebWorker {
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
     // Save a reference to function that will start polling for messages
     // from a worker host; it will be called after the user code is loaded.
-    let script = r#"
+    let script = fast!(
+      r#"
     const pollForMessages = globalThis.pollForMessages;
     delete globalThis.pollForMessages;
     pollForMessages
-    "#;
+    "#
+    );
     let poll_for_messages_fn = self
       .js_runtime
       .execute_script(located_script_name!(), script)
@@ -585,10 +588,10 @@ impl WebWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script<S: Into<ModuleCode>>(
+  pub fn execute_script(
     &mut self,
     name: &'static str,
-    source_code: S,
+    source_code: ModuleCode,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())
@@ -597,7 +600,7 @@ impl WebWorker {
   /// Loads and instantiates specified JavaScript module as "main" module.
   pub async fn preload_main_module(
     &mut self,
-    module_specifier: &ModuleSpecifier,
+    module_specifier: ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
@@ -608,7 +611,7 @@ impl WebWorker {
   /// Loads and instantiates specified JavaScript module as "side" module.
   pub async fn preload_side_module(
     &mut self,
-    module_specifier: &ModuleSpecifier,
+    module_specifier: ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
@@ -622,7 +625,7 @@ impl WebWorker {
   /// side module code.
   pub async fn execute_side_module(
     &mut self,
-    module_specifier: &ModuleSpecifier,
+    module_specifier: ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.preload_side_module(module_specifier).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
@@ -777,13 +780,13 @@ pub fn run_web_worker(
 
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code.take() {
-      let r = worker.execute_script(located_script_name!(), source_code);
+      let r = worker.execute_script(located_script_name!(), source_code.into());
       worker.start_polling_for_messages();
       r
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      match worker.preload_main_module(&specifier).await {
+      match worker.preload_main_module(specifier).await {
         Ok(id) => {
           worker = match (pre_execute_module_cb)(worker).await {
             Ok(worker) => worker,
