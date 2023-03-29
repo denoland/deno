@@ -39,9 +39,20 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
 
+pub trait NodeEnv {
+  type P: NodePermissions;
+  // TODO(bartlomieju):
+  // type Fs: NodeFs;
+}
+
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
+
+// TODO(bartlomieju):
+// pub trait NodeFs {
+//   fn current_dir() -> Result<PathBuf, AnyError>;
+// }
 
 pub trait RequireNpmResolver {
   fn resolve_package_folder_from_package(
@@ -96,7 +107,7 @@ fn op_node_build_os() -> String {
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [P: NodePermissions],
+  parameters = [Env: NodeEnv],
   ops = [
     crypto::op_node_create_decipheriv,
     crypto::op_node_cipheriv_encrypt,
@@ -137,26 +148,26 @@ deno_core::extension!(deno_node,
     op_node_build_os,
 
     ops::op_require_init_paths,
-    ops::op_require_node_module_paths<P>,
+    ops::op_require_node_module_paths<Env>,
     ops::op_require_proxy_path,
     ops::op_require_is_deno_dir_package,
     ops::op_require_resolve_deno_dir,
     ops::op_require_is_request_relative,
     ops::op_require_resolve_lookup_paths,
-    ops::op_require_try_self_parent_path<P>,
-    ops::op_require_try_self<P>,
-    ops::op_require_real_path<P>,
+    ops::op_require_try_self_parent_path<Env>,
+    ops::op_require_try_self<Env>,
+    ops::op_require_real_path<Env>,
     ops::op_require_path_is_absolute,
     ops::op_require_path_dirname,
-    ops::op_require_stat<P>,
+    ops::op_require_stat<Env>,
     ops::op_require_path_resolve,
     ops::op_require_path_basename,
-    ops::op_require_read_file<P>,
+    ops::op_require_read_file<Env>,
     ops::op_require_as_file_path,
-    ops::op_require_resolve_exports<P>,
-    ops::op_require_read_closest_package_json<P>,
-    ops::op_require_read_package_scope<P>,
-    ops::op_require_package_imports_resolve<P>,
+    ops::op_require_resolve_exports<Env>,
+    ops::op_require_read_closest_package_json<Env>,
+    ops::op_require_read_package_scope<Env>,
+    ops::op_require_package_imports_resolve<Env>,
     ops::op_require_break_on_next_statement,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",

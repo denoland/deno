@@ -10,7 +10,6 @@ use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
 
-use backtrace::Backtrace;
 use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 
@@ -20,6 +19,7 @@ use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
+use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
 use crate::wildcard_match;
@@ -268,34 +268,29 @@ impl TestCommandBuilder {
     self
   }
 
-  pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
-    }
-
-    fn sanitize_output(text: String, args: &[String]) -> String {
-      let mut text = strip_ansi_codes(&text).to_string();
-      // deno test's output capturing flushes with a zero-width space in order to
-      // synchronize the output pipes. Occassionally this zero width space
-      // might end up in the output so strip it from the output comparison here.
-      if args.first().map(|s| s.as_str()) == Some("test") {
-        text = text.replace('\u{200B}', "");
-      }
-      text
-    }
-
+  fn build_cwd(&self) -> PathBuf {
     let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
-    let cwd = if self.context.use_temp_cwd {
+    if self.context.use_temp_cwd {
       assert!(cwd.is_none());
       self.context.temp_dir.path().to_owned()
     } else if let Some(cwd_) = cwd {
       self.context.testdata_dir.join(cwd_)
     } else {
       self.context.testdata_dir.clone()
-    };
-    let args = if self.args_vec.is_empty() {
+    }
+  }
+
+  fn build_command_path(&self) -> PathBuf {
+    let command_name = &self.command_name;
+    if command_name == "deno" {
+      deno_exe_path()
+    } else {
+      PathBuf::from(command_name)
+    }
+  }
+
+  fn build_args(&self) -> Vec<String> {
+    if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
         self
           .args
@@ -314,21 +309,58 @@ impl TestCommandBuilder {
     .map(|arg| {
       arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
     })
-    .collect::<Vec<_>>();
-    let command_name = &self.command_name;
-    let mut command = if command_name == "deno" {
-      Command::new(deno_exe_path())
-    } else {
-      Command::new(command_name)
-    };
-    command.env("DENO_DIR", self.context.deno_dir.path());
+    .collect::<Vec<_>>()
+  }
 
-    println!("command {} {}", command_name, args.join(" "));
+  pub fn with_pty(&self, mut action: impl FnMut(Pty)) {
+    if !Pty::is_supported() {
+      return;
+    }
+
+    let args = self.build_args();
+    let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    let mut envs = self.envs.clone();
+    if !envs.contains_key("NO_COLOR") {
+      // set this by default for pty tests
+      envs.insert("NO_COLOR".to_string(), "1".to_string());
+    }
+    action(Pty::new(
+      &self.build_command_path(),
+      &args,
+      &self.build_cwd(),
+      Some(envs),
+    ))
+  }
+
+  pub fn run(&self) -> TestCommandOutput {
+    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
+      let mut output = String::new();
+      pipe.read_to_string(&mut output).unwrap();
+      output
+    }
+
+    fn sanitize_output(text: String, args: &[String]) -> String {
+      let mut text = strip_ansi_codes(&text).to_string();
+      // deno test's output capturing flushes with a zero-width space in order to
+      // synchronize the output pipes. Occassionally this zero width space
+      // might end up in the output so strip it from the output comparison here.
+      if args.first().map(|s| s.as_str()) == Some("test") {
+        text = text.replace('\u{200B}', "");
+      }
+      text
+    }
+
+    let cwd = self.build_cwd();
+    let args = self.build_args();
+    let mut command = Command::new(self.build_command_path());
+
+    println!("command {} {}", self.command_name, args.join(" "));
     println!("command cwd {:?}", &cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
+    command.env("DENO_DIR", self.context.deno_dir.path());
     command.envs({
       let mut envs = self.context.envs.clone();
       for (key, value) in &self.envs {
@@ -423,13 +455,10 @@ impl Drop for TestCommandOutput {
   fn drop(&mut self) {
     fn panic_unasserted_output(text: &str) {
       println!("OUTPUT\n{text}\nOUTPUT");
-      panic!(
-        concat!(
-          "The non-empty text of the command was not asserted at {}. ",
-          "Call `output.skip_output_check()` to skip if necessary.",
-        ),
-        failed_position()
-      );
+      panic!(concat!(
+        "The non-empty text of the command was not asserted. ",
+        "Call `output.skip_output_check()` to skip if necessary.",
+      ),);
     }
 
     if std::thread::panicking() {
@@ -438,9 +467,8 @@ impl Drop for TestCommandOutput {
     // force the caller to assert these
     if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
       panic!(
-        "The non-zero exit code of the command was not asserted: {:?} at {}.",
+        "The non-zero exit code of the command was not asserted: {:?}",
         self.exit_code,
-        failed_position(),
       )
     }
 
@@ -511,6 +539,7 @@ impl TestCommandOutput {
       .expect("call .split_output() on the builder")
   }
 
+  #[track_caller]
   pub fn assert_exit_code(&self, expected_exit_code: i32) -> &Self {
     let actual_exit_code = self.exit_code();
 
@@ -518,26 +547,22 @@ impl TestCommandOutput {
       if *exit_code != expected_exit_code {
         self.print_output();
         panic!(
-          "bad exit code, expected: {:?}, actual: {:?} at {}",
-          expected_exit_code,
-          exit_code,
-          failed_position(),
+          "bad exit code, expected: {:?}, actual: {:?}",
+          expected_exit_code, exit_code,
         );
       }
     } else {
       self.print_output();
       if let Some(signal) = self.signal() {
         panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?} at {}",
+          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
           actual_exit_code,
           signal,
-          failed_position(),
         );
       } else {
         panic!(
-          "process terminated without status code on non unix platform, expected exit code: {:?} at {}",
+          "process terminated without status code on non unix platform, expected exit code: {:?}",
           actual_exit_code,
-          failed_position(),
         );
       }
     }
@@ -554,14 +579,17 @@ impl TestCommandOutput {
     }
   }
 
+  #[track_caller]
   pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
     self.inner_assert_matches_text(self.combined_output(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_matches_file(&self, file_path: impl AsRef<Path>) -> &Self {
     self.inner_assert_matches_file(self.combined_output(), file_path)
   }
 
+  #[track_caller]
   pub fn assert_stdout_matches_text(
     &self,
     expected_text: impl AsRef<str>,
@@ -569,6 +597,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_text(self.stdout(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_stdout_matches_file(
     &self,
     file_path: impl AsRef<Path>,
@@ -576,6 +605,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_file(self.stdout(), file_path)
   }
 
+  #[track_caller]
   pub fn assert_stderr_matches_text(
     &self,
     expected_text: impl AsRef<str>,
@@ -583,6 +613,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_text(self.stderr(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_stderrr_matches_file(
     &self,
     file_path: impl AsRef<Path>,
@@ -590,6 +621,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_file(self.stderr(), file_path)
   }
 
+  #[track_caller]
   fn inner_assert_matches_text(
     &self,
     actual: &str,
@@ -597,15 +629,16 @@ impl TestCommandOutput {
   ) -> &Self {
     let expected = expected.as_ref();
     if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected, "at {}", failed_position());
+      assert_eq!(actual, expected);
     } else if !wildcard_match(expected, actual) {
       println!("OUTPUT START\n{actual}\nOUTPUT END");
       println!("EXPECTED START\n{expected}\nEXPECTED END");
-      panic!("pattern match failed at {}", failed_position());
+      panic!("pattern match failed");
     }
     self
   }
 
+  #[track_caller]
   fn inner_assert_matches_file(
     &self,
     actual: &str,
@@ -619,22 +652,4 @@ impl TestCommandOutput {
       });
     self.inner_assert_matches_text(actual, expected_text)
   }
-}
-
-fn failed_position() -> String {
-  let backtrace = Backtrace::new();
-
-  for frame in backtrace.frames() {
-    for symbol in frame.symbols() {
-      if let Some(filename) = symbol.filename() {
-        if !filename.to_string_lossy().ends_with("builders.rs") {
-          let line_num = symbol.lineno().unwrap_or(0);
-          let line_col = symbol.colno().unwrap_or(0);
-          return format!("{}:{}:{}", filename.display(), line_num, line_col);
-        }
-      }
-    }
-  }
-
-  "<unknown>".to_string()
 }
