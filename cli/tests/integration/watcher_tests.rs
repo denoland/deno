@@ -11,11 +11,33 @@ use util::assert_not_contains;
 
 const CLEAR_SCREEN: &str = r#"[2J"#;
 
+/// Logs to stderr every time next_line() is called
+struct LoggingLines<R>
+where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  pub lines: tokio::io::Lines<R>,
+  pub stream_name: String,
+}
+
+impl<R> LoggingLines<R>
+where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  pub async fn next_line(&mut self) -> tokio::io::Result<Option<String>> {
+    let line = self.lines.next_line().await;
+    eprintln!(
+      "{}: {}",
+      self.stream_name,
+      line.as_ref().unwrap().clone().unwrap()
+    );
+    line
+  }
+}
+
 // Helper function to skip watcher output that contains "Restarting"
 // phrase.
-async fn skip_restarting_line<R>(
-  stderr_lines: &mut tokio::io::Lines<R>,
-) -> String
+async fn skip_restarting_line<R>(stderr_lines: &mut LoggingLines<R>) -> String
 where
   R: tokio::io::AsyncBufRead + Unpin,
 {
@@ -27,7 +49,7 @@ where
   }
 }
 
-async fn read_all_lints<R>(stderr_lines: &mut tokio::io::Lines<R>) -> String
+async fn read_all_lints<R>(stderr_lines: &mut LoggingLines<R>) -> String
 where
   R: tokio::io::AsyncBufRead + Unpin,
 {
@@ -48,7 +70,7 @@ where
   str
 }
 
-async fn next_line<R>(lines: &mut tokio::io::Lines<R>) -> Option<String>
+async fn next_line<R>(lines: &mut LoggingLines<R>) -> Option<String>
 where
   R: tokio::io::AsyncBufRead + Unpin,
 {
@@ -68,7 +90,7 @@ where
 /// Returns the matched line or None if there are no more lines in this stream
 async fn wait_for<R>(
   condition: impl Fn(&str) -> bool,
-  lines: &mut tokio::io::Lines<R>,
+  lines: &mut LoggingLines<R>,
 ) -> Option<String>
 where
   R: tokio::io::AsyncBufRead + Unpin,
@@ -82,7 +104,7 @@ where
   None
 }
 
-async fn wait_contains<R>(s: &str, lines: &mut tokio::io::Lines<R>) -> String
+async fn wait_contains<R>(s: &str, lines: &mut LoggingLines<R>) -> String
 where
   R: tokio::io::AsyncBufRead + Unpin,
 {
@@ -110,7 +132,7 @@ where
 /// may not be a full path, as it is not portable.
 async fn wait_for_watcher<R>(
   file_name: &str,
-  stderr_lines: &mut tokio::io::Lines<R>,
+  stderr_lines: &mut LoggingLines<R>,
 ) -> String
 where
   R: tokio::io::AsyncBufRead + Unpin,
@@ -148,19 +170,25 @@ fn check_alive_then_kill(mut child: std::process::Child) {
 fn child_lines(
   child: &mut std::process::Child,
 ) -> (
-  tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
-  tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStderr>>,
+  LoggingLines<tokio::io::BufReader<tokio::process::ChildStdout>>,
+  LoggingLines<tokio::io::BufReader<tokio::process::ChildStderr>>,
 ) {
-  let stdout_lines = tokio::io::BufReader::new(
-    tokio::process::ChildStdout::from_std(child.stdout.take().unwrap())
-      .unwrap(),
-  )
-  .lines();
-  let stderr_lines = tokio::io::BufReader::new(
-    tokio::process::ChildStderr::from_std(child.stderr.take().unwrap())
-      .unwrap(),
-  )
-  .lines();
+  let stdout_lines = LoggingLines {
+    lines: tokio::io::BufReader::new(
+      tokio::process::ChildStdout::from_std(child.stdout.take().unwrap())
+        .unwrap(),
+    )
+    .lines(),
+    stream_name: "STDOUT".to_string(),
+  };
+  let stderr_lines = LoggingLines {
+    lines: tokio::io::BufReader::new(
+      tokio::process::ChildStderr::from_std(child.stderr.take().unwrap())
+        .unwrap(),
+    )
+    .lines(),
+    stream_name: "STDERR".to_string(),
+  };
   (stdout_lines, stderr_lines)
 }
 
