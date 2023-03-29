@@ -198,11 +198,8 @@ fn pty_assign_deno_keys_and_deno() {
 #[test]
 fn pty_internal_repl() {
   util::with_pty(&["repl"], |mut console| {
-    console.write_line("globalThis");
-    console.write_line_raw("1 + 256");
-    let output = console.read_until("257");
-    assert_contains!(output, "clear:");
-    assert_not_contains!(output, "__DENO_");
+    console.write_line("'Length: ' + Object.keys(globalThis).filter(k => k.startsWith('__DENO_')).length;");
+    console.expect("Length: 0");
 
     console.write_line_raw("__\t\t");
     console.expect("> __");
