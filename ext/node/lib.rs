@@ -20,6 +20,7 @@ mod polyfill;
 mod resolution;
 mod v8;
 mod winerror;
+mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -38,9 +39,20 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
 
+pub trait NodeEnv {
+  type P: NodePermissions;
+  // TODO(bartlomieju):
+  // type Fs: NodeFs;
+}
+
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
+
+// TODO(bartlomieju):
+// pub trait NodeFs {
+//   fn current_dir() -> Result<PathBuf, AnyError>;
+// }
 
 pub trait RequireNpmResolver {
   fn resolve_package_folder_from_package(
@@ -95,7 +107,7 @@ fn op_node_build_os() -> String {
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [P: NodePermissions],
+  parameters = [Env: NodeEnv],
   ops = [
     crypto::op_node_create_decipheriv,
     crypto::op_node_cipheriv_encrypt,
@@ -112,6 +124,13 @@ deno_core::extension!(deno_node,
     crypto::op_node_private_encrypt,
     crypto::op_node_private_decrypt,
     crypto::op_node_public_encrypt,
+    crypto::op_node_check_prime,
+    crypto::op_node_check_prime_async,
+    crypto::op_node_check_prime_bytes,
+    crypto::op_node_check_prime_bytes_async,
+    crypto::op_node_pbkdf2,
+    crypto::op_node_pbkdf2_async,
+    crypto::op_node_sign,
     winerror::op_node_sys_to_uv_error,
     v8::op_v8_cached_data_version_tag,
     v8::op_v8_get_heap_statistics,
@@ -119,29 +138,36 @@ deno_core::extension!(deno_node,
     idna::op_node_idna_domain_to_unicode,
     idna::op_node_idna_punycode_decode,
     idna::op_node_idna_punycode_encode,
+    zlib::op_zlib_new,
+    zlib::op_zlib_close,
+    zlib::op_zlib_close_if_pending,
+    zlib::op_zlib_write,
+    zlib::op_zlib_write_async,
+    zlib::op_zlib_init,
+    zlib::op_zlib_reset,
     op_node_build_os,
 
     ops::op_require_init_paths,
-    ops::op_require_node_module_paths<P>,
+    ops::op_require_node_module_paths<Env>,
     ops::op_require_proxy_path,
     ops::op_require_is_deno_dir_package,
     ops::op_require_resolve_deno_dir,
     ops::op_require_is_request_relative,
     ops::op_require_resolve_lookup_paths,
-    ops::op_require_try_self_parent_path<P>,
-    ops::op_require_try_self<P>,
-    ops::op_require_real_path<P>,
+    ops::op_require_try_self_parent_path<Env>,
+    ops::op_require_try_self<Env>,
+    ops::op_require_real_path<Env>,
     ops::op_require_path_is_absolute,
     ops::op_require_path_dirname,
-    ops::op_require_stat<P>,
+    ops::op_require_stat<Env>,
     ops::op_require_path_resolve,
     ops::op_require_path_basename,
-    ops::op_require_read_file<P>,
+    ops::op_require_read_file<Env>,
     ops::op_require_as_file_path,
-    ops::op_require_resolve_exports<P>,
-    ops::op_require_read_closest_package_json<P>,
-    ops::op_require_read_package_scope<P>,
-    ops::op_require_package_imports_resolve<P>,
+    ops::op_require_resolve_exports<Env>,
+    ops::op_require_read_closest_package_json<Env>,
+    ops::op_require_read_package_scope<Env>,
+    ops::op_require_package_imports_resolve<Env>,
     ops::op_require_break_on_next_statement,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
@@ -195,7 +221,6 @@ deno_core::extension!(deno_node,
     "_http_common.ts",
     "_http_outgoing.ts",
     "_next_tick.ts",
-    "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
@@ -393,7 +418,7 @@ pub fn initialize_runtime(
   let source_code = format!(
     r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
       Deno[Deno.internal].node.initialize(
-        nodeGlobalThisName, 
+        nodeGlobalThisName,
         usesLocalNodeModulesDir,
         argv0
       );

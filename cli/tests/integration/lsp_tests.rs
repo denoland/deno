@@ -4402,40 +4402,40 @@ fn lsp_completions_auto_import() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  if !list.items.iter().any(|item| item.label == "foo") {
+  let item = list.items.iter().find(|item| item.label == "foo");
+  if item.is_none() {
     panic!("completions items missing 'foo' symbol");
   }
 
-  // the request here is one of the items in `list`
-  let res = client.write_request(
-    "completionItem/resolve",
-    json!({
-      "label": "foo",
-      "kind": 6,
-      "sortText": "￿16",
-      "commitCharacters": [
-        ".",
-        ",",
-        ";",
-        "("
-      ],
-      "data": {
-        "tsc": {
-          "specifier": "file:///a/file.ts",
-          "position": 12,
-          "name": "foo",
-          "source": "./b.ts",
-          "data": {
-            "exportName": "foo",
-            "exportMapKey": "foo|6843|file:///a/b",
-            "moduleSpecifier": "./b.ts",
-            "fileName": "file:///a/b.ts"
-          },
-          "useCodeSnippet": false
-        }
+  let req = json!({
+    "label": "foo",
+    "kind": 6,
+    "sortText": "￿16",
+    "commitCharacters": [
+      ".",
+      ",",
+      ";",
+      "("
+    ],
+    "data": {
+      "tsc": {
+        "specifier": "file:///a/file.ts",
+        "position": 12,
+        "name": "foo",
+        "source": "./b.ts",
+        "data": {
+          "exportName": "foo",
+          "exportMapKey": "foo|6843|file:///a/b",
+          "moduleSpecifier": "./b.ts",
+          "fileName": "file:///a/b.ts"
+        },
+        "useCodeSnippet": false
       }
-    }),
-  );
+    }
+  });
+  assert_eq!(serde_json::to_value(item.unwrap()).unwrap(), req);
+
+  let res = client.write_request("completionItem/resolve", req);
   assert_eq!(
     res,
     json!({

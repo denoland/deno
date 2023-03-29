@@ -6,6 +6,7 @@ use test_util as util;
 use test_util::assert_contains;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
+use util::DenoChild;
 
 use util::assert_not_contains;
 
@@ -162,7 +163,7 @@ where
   })
 }
 
-fn check_alive_then_kill(mut child: std::process::Child) {
+fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
 }
@@ -1427,14 +1428,8 @@ async fn run_watch_dynamic_imports() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "No package.json file found"
-  );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "Process started"
-  );
+  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Process started", &mut stderr_lines).await;
 
   wait_contains(
     "Hopefully dynamic import will be watched...",

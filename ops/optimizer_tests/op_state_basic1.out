@@ -105,6 +105,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for foo_fast {
         deno_core::v8::fast_api::CType::Uint32
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn foo_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     a: u32,

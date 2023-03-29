@@ -127,6 +127,7 @@ where
         deno_core::v8::fast_api::CType::Void
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_now_fast_fn<'scope, TP>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,

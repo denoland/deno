@@ -79,6 +79,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_unit_fast {
         deno_core::v8::fast_api::CType::Void
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_unit_fast_fn<'scope>(_: deno_core::v8::Local<deno_core::v8::Object>) -> () {
     use deno_core::v8;
     use deno_core::_ops;
