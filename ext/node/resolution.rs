@@ -17,7 +17,6 @@ use crate::package_json::PackageJson;
 use crate::path::PathClean;
 use crate::NodeFs;
 use crate::NodePermissions;
-use crate::RealFs;
 use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
@@ -203,7 +202,7 @@ pub fn package_imports_resolve<Fs: NodeFs>(
   }
 
   let package_config =
-    get_package_scope_config(referrer, npm_resolver, permissions)?;
+    get_package_scope_config::<Fs>(referrer, npm_resolver, permissions)?;
   let mut package_json_path = None;
   if package_config.exists {
     package_json_path = Some(package_config.path.clone());
@@ -741,7 +740,7 @@ pub fn package_resolve<Fs: NodeFs>(
 
   // ResolveSelf
   let package_config =
-    get_package_scope_config(referrer, npm_resolver, permissions)?;
+    get_package_scope_config::<Fs>(referrer, npm_resolver, permissions)?;
   if package_config.exists
     && package_config.name.as_ref() == Some(&package_name)
   {
@@ -813,7 +812,7 @@ pub fn package_resolve<Fs: NodeFs>(
   }
 }
 
-pub fn get_package_scope_config(
+pub fn get_package_scope_config<Fs: NodeFs>(
   referrer: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
   permissions: &mut dyn NodePermissions,
@@ -821,16 +820,16 @@ pub fn get_package_scope_config(
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
   let package_json_path = root_folder.join("package.json");
-  PackageJson::load::<RealFs>(npm_resolver, permissions, package_json_path)
+  PackageJson::load::<Fs>(npm_resolver, permissions, package_json_path)
 }
 
-pub fn get_closest_package_json(
+pub fn get_closest_package_json<Fs: NodeFs>(
   url: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
   let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
-  PackageJson::load::<RealFs>(npm_resolver, permissions, package_json_path)
+  PackageJson::load::<Fs>(npm_resolver, permissions, package_json_path)
 }
 
 fn get_closest_package_json_path(

@@ -15,7 +15,6 @@ use std::rc::Rc;
 
 use crate::NodeEnv;
 use crate::NodeFs;
-use crate::RealFs;
 
 use super::resolution;
 use super::NodeModuleKind;
@@ -378,7 +377,7 @@ where
 
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
-  let pkg = resolution::get_package_scope_config(
+  let pkg = resolution::get_package_scope_config::<Env::Fs>(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
     &*resolver,
     permissions,
@@ -473,7 +472,7 @@ where
   } else {
     path_resolve(vec![modules_path, name])
   };
-  let pkg = PackageJson::load::<RealFs>(
+  let pkg = PackageJson::load::<Env::Fs>(
     &*resolver,
     permissions,
     PathBuf::from(&pkg_path).join("package.json"),
@@ -512,7 +511,7 @@ where
   )?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
-  resolution::get_closest_package_json(
+  resolution::get_closest_package_json::<Env::Fs>(
     &Url::from_file_path(filename).unwrap(),
     &*resolver,
     permissions,
@@ -530,7 +529,7 @@ where
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
   let package_json_path = PathBuf::from(package_json_path);
-  PackageJson::load::<RealFs>(&*resolver, permissions, package_json_path).ok()
+  PackageJson::load::<Env::Fs>(&*resolver, permissions, package_json_path).ok()
 }
 
 #[op]
@@ -546,7 +545,7 @@ where
   ensure_read_permission::<Env::P>(state, &parent_path)?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
-  let pkg = PackageJson::load::<RealFs>(
+  let pkg = PackageJson::load::<Env::Fs>(
     &*resolver,
     permissions,
     parent_path.join("package.json"),

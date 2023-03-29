@@ -473,7 +473,7 @@ pub fn url_to_node_resolution(
   if url_str.starts_with("http") {
     Ok(NodeResolution::Esm(url))
   } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-    let package_config = get_closest_package_json(
+    let package_config = get_closest_package_json::<RealFs>(
       &url,
       npm_resolver,
       &mut PermissionsContainer::allow_all(),
