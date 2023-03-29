@@ -485,8 +485,7 @@ impl Config {
       .unwrap_or_else(|| self.settings.workspace.enable)
   }
 
-  /// Gets the root urls that may contain directories or specific
-  /// file paths.
+  /// Gets the root directories or file paths based on the workspace config.
   pub fn enabled_root_urls(&self) -> Vec<Url> {
     let mut urls: Vec<Url> = Vec::new();
 

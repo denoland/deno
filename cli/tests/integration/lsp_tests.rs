@@ -7024,3 +7024,56 @@ Deno.test({
 
   client.shutdown();
 }
+
+#[test]
+fn lsp_closed_file_find_references() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./mod.ts", "export const a = 5;");
+  temp_dir.write(
+    "./mod.test.ts",
+    "import { a } from './mod.ts'; console.log(a);",
+  );
+  let temp_dir_url = temp_dir.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir_url.join("mod.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export const a = 5;"#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": temp_dir_url.join("mod.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": temp_dir_url.join("mod.test.ts").unwrap(),
+      "range": {
+        "start": { "line": 0, "character": 9 },
+        "end": { "line": 0, "character": 10 }
+      }
+    }, {
+      "uri": temp_dir_url.join("mod.test.ts").unwrap(),
+      "range": {
+        "start": { "line": 0, "character": 42 },
+        "end": { "line": 0, "character": 43 }
+      }
+    }])
+  );
+
+  client.shutdown();
+}
