@@ -41,11 +41,11 @@ impl NodeResolutionMode {
 }
 
 /// Checks if the resolved file has a corresponding declaration file.
-pub fn path_to_declaration_path(
+pub fn path_to_declaration_path<Fs: NodeFs>(
   path: PathBuf,
   referrer_kind: NodeModuleKind,
 ) -> Option<PathBuf> {
-  fn probe_extensions(
+  fn probe_extensions<Fs: NodeFs>(
     path: &Path,
     referrer_kind: NodeModuleKind,
   ) -> Option<PathBuf> {
@@ -53,11 +53,11 @@ pub fn path_to_declaration_path(
       NodeModuleKind::Cjs => with_known_extension(path, "d.cts"),
       NodeModuleKind::Esm => with_known_extension(path, "d.mts"),
     };
-    if specific_dts_path.exists() {
+    if Fs::metadata(&specific_dts_path).is_ok() {
       return Some(specific_dts_path);
     }
     let dts_path = with_known_extension(path, "d.ts");
-    if dts_path.exists() {
+    if Fs::metadata(&dts_path).is_ok() {
       Some(dts_path)
     } else {
       None
@@ -71,11 +71,13 @@ pub fn path_to_declaration_path(
   {
     return Some(path);
   }
-  if let Some(path) = probe_extensions(&path, referrer_kind) {
+  if let Some(path) = probe_extensions::<Fs>(&path, referrer_kind) {
     return Some(path);
   }
   if path.is_dir() {
-    if let Some(path) = probe_extensions(&path.join("index"), referrer_kind) {
+    if let Some(path) =
+      probe_extensions::<Fs>(&path.join("index"), referrer_kind)
+    {
       return Some(path);
     }
   }
@@ -457,7 +459,7 @@ fn resolve_package_target<Fs: NodeFs>(
     )
     .map(|path| {
       if mode.is_types() {
-        path_to_declaration_path(path, referrer_kind)
+        path_to_declaration_path::<Fs>(path, referrer_kind)
       } else {
         Some(path)
       }
@@ -805,7 +807,7 @@ pub fn package_resolve<Fs: NodeFs>(
 
   if mode.is_types() {
     let maybe_declaration_path =
-      path_to_declaration_path(file_path, referrer_kind);
+      path_to_declaration_path::<Fs>(file_path, referrer_kind);
     Ok(maybe_declaration_path)
   } else {
     Ok(Some(file_path))
@@ -828,18 +830,19 @@ pub fn get_closest_package_json<Fs: NodeFs>(
   npm_resolver: &dyn RequireNpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
-  let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
+  let package_json_path =
+    get_closest_package_json_path::<Fs>(url, npm_resolver)?;
   PackageJson::load::<Fs>(npm_resolver, permissions, package_json_path)
 }
 
-fn get_closest_package_json_path(
+fn get_closest_package_json_path<Fs: NodeFs>(
   url: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   let file_path = url.to_file_path().unwrap();
   let mut current_dir = file_path.parent().unwrap();
   let package_json_path = current_dir.join("package.json");
-  if package_json_path.exists() {
+  if Fs::metadata(&package_json_path).is_ok() {
     return Ok(package_json_path);
   }
   let root_pkg_folder = npm_resolver
@@ -847,7 +850,7 @@ fn get_closest_package_json_path(
   while current_dir.starts_with(&root_pkg_folder) {
     current_dir = current_dir.parent().unwrap();
     let package_json_path = current_dir.join("package.json");
-    if package_json_path.exists() {
+    if Fs::metadata(&package_json_path).is_ok() {
       return Ok(package_json_path);
     }
   }
@@ -876,7 +879,9 @@ pub fn legacy_main_resolve<Fs: NodeFs>(
         // a corresponding declaration file
         if let Some(main) = package_json.main(referrer_kind) {
           let main = package_json.path.parent().unwrap().join(main).clean();
-          if let Some(path) = path_to_declaration_path(main, referrer_kind) {
+          if let Some(path) =
+            path_to_declaration_path::<Fs>(main, referrer_kind)
+          {
             return Ok(Some(path));
           }
         }

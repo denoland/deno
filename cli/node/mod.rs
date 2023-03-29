@@ -228,10 +228,11 @@ pub fn node_resolve(
       let path = url.to_file_path().unwrap();
       // todo(16370): the module kind is not correct here. I think we need
       // typescript to tell us if the referrer is esm or cjs
-      let path = match path_to_declaration_path(path, NodeModuleKind::Esm) {
-        Some(path) => path,
-        None => return Ok(None),
-      };
+      let path =
+        match path_to_declaration_path::<RealFs>(path, NodeModuleKind::Esm) {
+          Some(path) => path,
+          None => return Ok(None),
+        };
       ModuleSpecifier::from_file_path(path).unwrap()
     }
   };
@@ -274,7 +275,8 @@ pub fn node_resolve_npm_reference(
   let resolved_path = match mode {
     NodeResolutionMode::Execution => resolved_path,
     NodeResolutionMode::Types => {
-      match path_to_declaration_path(resolved_path, node_module_kind) {
+      match path_to_declaration_path::<RealFs>(resolved_path, node_module_kind)
+      {
         Some(path) => path,
         None => return Ok(None),
       }
@@ -560,7 +562,7 @@ fn module_resolve(
       // todo(dsherret): the node module kind is not correct and we
       // should use the value provided by typescript instead
       let declaration_path =
-        path_to_declaration_path(file_path, NodeModuleKind::Esm);
+        path_to_declaration_path::<RealFs>(file_path, NodeModuleKind::Esm);
       declaration_path.map(|declaration_path| {
         ModuleSpecifier::from_file_path(declaration_path).unwrap()
       })
