@@ -15,6 +15,7 @@ use std::rc::Rc;
 
 use crate::NodeEnv;
 use crate::NodeFs;
+use crate::RealFs;
 
 use super::resolution;
 use super::NodeModuleKind;
@@ -472,7 +473,7 @@ where
   } else {
     path_resolve(vec![modules_path, name])
   };
-  let pkg = PackageJson::load(
+  let pkg = PackageJson::load::<RealFs>(
     &*resolver,
     permissions,
     PathBuf::from(&pkg_path).join("package.json"),
@@ -529,7 +530,7 @@ where
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
   let package_json_path = PathBuf::from(package_json_path);
-  PackageJson::load(&*resolver, permissions, package_json_path).ok()
+  PackageJson::load::<RealFs>(&*resolver, permissions, package_json_path).ok()
 }
 
 #[op]
@@ -545,7 +546,7 @@ where
   ensure_read_permission::<Env::P>(state, &parent_path)?;
   let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
-  let pkg = PackageJson::load(
+  let pkg = PackageJson::load::<RealFs>(
     &*resolver,
     permissions,
     parent_path.join("package.json"),

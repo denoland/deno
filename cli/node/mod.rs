@@ -31,6 +31,7 @@ use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
+use deno_runtime::deno_node::RealFs;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::permissions::PermissionsContainer;
@@ -312,7 +313,7 @@ pub fn node_resolve_binary_commands(
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(
+  let package_json = PackageJson::load::<RealFs>(
     npm_resolver,
     &mut PermissionsContainer::allow_all(),
     package_json_path,
@@ -335,7 +336,7 @@ pub fn node_resolve_binary_export(
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
   let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(
+  let package_json = PackageJson::load::<RealFs>(
     npm_resolver,
     &mut PermissionsContainer::allow_all(),
     package_json_path,
@@ -424,8 +425,11 @@ fn package_config_resolve(
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
-  let package_config =
-    PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
+  let package_config = PackageJson::load::<RealFs>(
+    npm_resolver,
+    permissions,
+    package_json_path.clone(),
+  )?;
   if let Some(exports) = &package_config.exports {
     let result = package_exports_resolve(
       &package_json_path,
@@ -821,8 +825,11 @@ fn resolve(
 
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
-    let package_json =
-      PackageJson::load(npm_resolver, permissions, package_json_path.clone())?;
+    let package_json = PackageJson::load::<RealFs>(
+      npm_resolver,
+      permissions,
+      package_json_path.clone(),
+    )?;
 
     if let Some(exports) = &package_json.exports {
       return package_exports_resolve(
@@ -846,8 +853,11 @@ fn resolve(
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
           if package_json_path.exists() {
-            let package_json =
-              PackageJson::load(npm_resolver, permissions, package_json_path)?;
+            let package_json = PackageJson::load::<RealFs>(
+              npm_resolver,
+              permissions,
+              package_json_path,
+            )?;
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(d.join(main).clean());
             }

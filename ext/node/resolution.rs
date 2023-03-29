@@ -16,6 +16,7 @@ use crate::errors;
 use crate::package_json::PackageJson;
 use crate::path::PathClean;
 use crate::NodePermissions;
+use crate::RealFs;
 use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
@@ -781,7 +782,7 @@ pub fn package_resolve(
 
   // Package match.
   let package_json =
-    PackageJson::load(npm_resolver, permissions, package_json_path)?;
+    PackageJson::load::<RealFs>(npm_resolver, permissions, package_json_path)?;
   if let Some(exports) = &package_json.exports {
     return package_exports_resolve(
       &package_json.path,
@@ -819,7 +820,7 @@ pub fn get_package_scope_config(
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
   let package_json_path = root_folder.join("package.json");
-  PackageJson::load(npm_resolver, permissions, package_json_path)
+  PackageJson::load::<RealFs>(npm_resolver, permissions, package_json_path)
 }
 
 pub fn get_closest_package_json(
@@ -828,7 +829,7 @@ pub fn get_closest_package_json(
   permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
   let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
-  PackageJson::load(npm_resolver, permissions, package_json_path)
+  PackageJson::load::<RealFs>(npm_resolver, permissions, package_json_path)
 }
 
 fn get_closest_package_json_path(

@@ -159,9 +159,9 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       if sub_dir.is_dir() {
         // if doing types resolution, only resolve the package if it specifies a types property
         if mode.is_types() && !name.starts_with("@types/") {
-          let package_json = PackageJson::load_skip_read_permission(
-            sub_dir.join("package.json"),
-          )?;
+          let package_json = PackageJson::load_skip_read_permission::<
+            deno_runtime::deno_node::RealFs,
+          >(sub_dir.join("package.json"))?;
           if package_json.types.is_some() {
             return Ok(sub_dir);
           }
