@@ -75,7 +75,7 @@ async fn next_line<R>(lines: &mut LoggingLines<R>) -> Option<String>
 where
   R: tokio::io::AsyncBufRead + Unpin,
 {
-  let timeout = tokio::time::Duration::from_secs(1);
+  let timeout = tokio::time::Duration::from_secs(60);
 
   tokio::time::timeout(timeout, lines.next_line())
     .await
