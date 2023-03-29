@@ -53,7 +53,10 @@ pub struct ReplLanguageServer {
 
 impl ReplLanguageServer {
   pub async fn new_initialized() -> Result<ReplLanguageServer, AnyError> {
+    // downgrade info and warn lsp logging to debug
     super::logging::set_lsp_log_level(log::Level::Debug);
+    super::logging::set_lsp_warn_level(log::Level::Debug);
+
     let language_server =
       super::language_server::LanguageServer::new(Client::new_for_repl());
 

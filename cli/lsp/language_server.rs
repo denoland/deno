@@ -13,7 +13,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
-use log::warn;
 use serde_json::from_value;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -46,6 +45,7 @@ use super::documents::Document;
 use super::documents::Documents;
 use super::documents::LanguageId;
 use super::logging::lsp_log;
+use super::logging::lsp_warn;
 use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
@@ -674,7 +674,7 @@ impl Inner {
       if let Some(ignored_options) = maybe_ignored_options {
         // TODO(@kitsonk) turn these into diagnostics that can be sent to the
         // client
-        warn!("{}", ignored_options);
+        lsp_warn!("{}", ignored_options);
       }
     }
 
@@ -1165,9 +1165,10 @@ impl Inner {
           LanguageId::Unknown
         });
     if language_id == LanguageId::Unknown {
-      warn!(
+      lsp_warn!(
         "Unsupported language id \"{}\" received for document \"{}\".",
-        params.text_document.language_id, params.text_document.uri
+        params.text_document.language_id,
+        params.text_document.uri
       );
     }
     let document = self.documents.open(
@@ -1209,7 +1210,7 @@ impl Inner {
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
     if let Err(err) = self.npm_resolver.set_package_reqs(package_reqs).await {
-      warn!("Could not set npm package requirements. {:#}", err);
+      lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
   }
 
@@ -1462,7 +1463,7 @@ impl Inner {
       Ok(None) => Some(Vec::new()),
       Err(err) => {
         // TODO(lucacasonato): handle error properly
-        warn!("Format error: {:#}", err);
+        lsp_warn!("Format error: {:#}", err);
         None
       }
     };
@@ -2845,7 +2846,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .register_capability(vec![registration])
         .await
       {
-        warn!("Client errored on capabilities.\n{:#}", err);
+        lsp_warn!("Client errored on capabilities.\n{:#}", err);
       }
     }
 
