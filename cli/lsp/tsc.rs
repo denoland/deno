@@ -2778,19 +2778,18 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     }
   }
 
-  // finally, include the documents and all their dependencies
+  // finally include the documents and all their dependencies
   for doc in &all_docs {
-    let specifier = doc.specifier();
-    if seen.insert(specifier.as_str()) && documents.exists(specifier) {
-      // only include dependencies we know to exist otherwise typescript will error
-      result.push(specifier.to_string());
-    }
-
-    for dep in doc.dependencies().values() {
-      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
-        if seen.insert(specifier.as_str()) && documents.exists(specifier) {
-          result.push(specifier.to_string());
-        }
+    let specifiers = std::iter::once(doc.specifier()).chain(
+      doc
+        .dependencies()
+        .values()
+        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
+    );
+    for specifier in specifiers {
+      if seen.insert(specifier.as_str()) && documents.exists(specifier) {
+        // only include dependencies we know to exist otherwise typescript will error
+        result.push(specifier.to_string());
       }
     }
   }
