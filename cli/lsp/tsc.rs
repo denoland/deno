@@ -151,6 +151,26 @@ impl TsServer {
     let value = rx.await??;
     Ok(serde_json::from_value::<R>(value)?)
   }
+
+  // todo(dsherret): refactor the rest of the request methods to have
+  // methods to call on this struct, then make `RequestMethod` and
+  // friends internal
+
+  pub async fn find_references(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: &ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<Vec<ReferencedSymbol>>, LspError> {
+    let req = RequestMethod::FindReferences {
+      specifier: specifier.clone(),
+      position,
+    };
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get references from TypeScript: {}", err);
+      LspError::internal_error()
+    })
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -3200,7 +3220,10 @@ pub enum RequestMethod {
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Finds the document references for a specific position.
-  FindReferences((ModuleSpecifier, u32)),
+  FindReferences {
+    specifier: ModuleSpecifier,
+    position: u32,
+  },
   /// Get signature help items for a specific position.
   GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
   /// Get a selection range for a specific position.
@@ -3370,7 +3393,10 @@ impl RequestMethod {
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
-      RequestMethod::FindReferences((specifier, position)) => json!({
+      RequestMethod::FindReferences {
+        specifier,
+        position,
+      } => json!({
         "id": id,
         "method": "findReferences",
         "specifier": state.denormalize_specifier(specifier),

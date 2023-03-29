@@ -1947,18 +1947,14 @@ impl Inner {
     let mark = self.performance.mark("references", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
-    let req = tsc::RequestMethod::FindReferences((
-      specifier.clone(),
-      line_index.offset_tsc(params.text_document_position.position)?,
-    ));
-    let maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>> = self
+    let maybe_referenced_symbols = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get references from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
+      .find_references(
+        self.snapshot(),
+        &specifier,
+        line_index.offset_tsc(params.text_document_position.position)?,
+      )
+      .await?;
 
     if let Some(symbols) = maybe_referenced_symbols {
       let mut results = Vec::new();

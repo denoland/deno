@@ -300,13 +300,15 @@ async fn resolve_references_code_lens(
   let asset_or_document =
     language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_document.line_index();
-  let req = tsc::RequestMethod::FindReferences((
-    data.specifier.clone(),
-    line_index.offset_tsc(code_lens.range.start)?,
-  ));
   let snapshot = language_server.snapshot();
-  let maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>> =
-    language_server.ts_server.request(snapshot, req).await?;
+  let maybe_referenced_symbols = language_server
+    .ts_server
+    .find_references(
+      snapshot,
+      &data.specifier,
+      line_index.offset_tsc(code_lens.range.start)?,
+    )
+    .await?;
   if let Some(symbols) = maybe_referenced_symbols {
     let mut locations = Vec::new();
     for reference in symbols.iter().flat_map(|s| &s.references) {
