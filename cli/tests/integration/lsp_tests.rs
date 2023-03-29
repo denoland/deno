@@ -3092,6 +3092,98 @@ fn lsp_nav_tree_updates() {
 }
 
 #[test]
+fn lsp_find_references() {
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/mod.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export const a = 5;"#
+    }
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/mod.test.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import { a } from './mod.ts'; console.log(a);"#
+    }
+  }));
+
+  // test without including the declaration
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/mod.ts",
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 9 },
+        "end": { "line": 0, "character": 10 }
+      }
+    }, {
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 42 },
+        "end": { "line": 0, "character": 43 }
+      }
+    }])
+  );
+
+  // test with including the declaration
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/mod.ts",
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": true
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": "file:///a/mod.ts",
+      "range": {
+        "start": { "line": 0, "character": 13 },
+        "end": { "line": 0, "character": 14 }
+      }
+    }, {
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 9 },
+        "end": { "line": 0, "character": 10 }
+      }
+    }, {
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 42 },
+        "end": { "line": 0, "character": 43 }
+      }
+    }])
+  );
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_signature_help() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();

@@ -148,7 +148,8 @@ impl TsServer {
     if self.0.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    rx.await?.map(|v| serde_json::from_value::<R>(v).unwrap())
+    let value = rx.await??;
+    Ok(serde_json::from_value::<R>(value)?)
   }
 }
 
@@ -1687,10 +1688,31 @@ pub struct CombinedCodeActions {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReferenceEntry {
-  // is_write_access: bool,
+pub struct ReferencedSymbol {
+  pub definition: ReferencedSymbolDefinitionInfo,
+  pub references: Vec<ReferencedSymbolEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencedSymbolDefinitionInfo {
+  #[serde(flatten)]
+  pub definition_info: DefinitionInfo,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencedSymbolEntry {
   #[serde(default)]
   pub is_definition: bool,
+  #[serde(flatten)]
+  pub entry: ReferenceEntry,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceEntry {
+  // is_write_access: bool,
   // is_in_string: Option<bool>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
@@ -3177,8 +3199,8 @@ pub enum RequestMethod {
   GetOutliningSpans(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
-  /// Get document references for a specific position.
-  GetReferences((ModuleSpecifier, u32)),
+  /// Finds the document references for a specific position.
+  FindReferences((ModuleSpecifier, u32)),
   /// Get signature help items for a specific position.
   GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
   /// Get a selection range for a specific position.
@@ -3348,9 +3370,9 @@ impl RequestMethod {
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
-      RequestMethod::GetReferences((specifier, position)) => json!({
+      RequestMethod::FindReferences((specifier, position)) => json!({
         "id": id,
-        "method": "getReferences",
+        "method": "findReferences",
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),

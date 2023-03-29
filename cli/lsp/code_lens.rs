@@ -300,25 +300,26 @@ async fn resolve_references_code_lens(
   let asset_or_document =
     language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_document.line_index();
-  let req = tsc::RequestMethod::GetReferences((
+  let req = tsc::RequestMethod::FindReferences((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
   ));
   let snapshot = language_server.snapshot();
-  let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
+  let maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>> =
     language_server.ts_server.request(snapshot, req).await?;
-  if let Some(references) = maybe_references {
+  if let Some(symbols) = maybe_referenced_symbols {
     let mut locations = Vec::new();
-    for reference in references {
+    for reference in symbols.iter().flat_map(|s| &s.references) {
       if reference.is_definition {
         continue;
       }
       let reference_specifier =
-        resolve_url(&reference.document_span.file_name)?;
+        resolve_url(&reference.entry.document_span.file_name)?;
       let asset_or_doc =
         language_server.get_asset_or_document(&reference_specifier)?;
       locations.push(
         reference
+          .entry
           .to_location(asset_or_doc.line_index(), &language_server.url_map),
       );
     }
