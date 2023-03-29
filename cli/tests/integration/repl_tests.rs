@@ -888,7 +888,11 @@ fn pty_tab_indexable_props() {
 
 #[test]
 fn package_json_uncached_no_error() {
-  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let test_context = TestContextBuilder::for_npm()
+    .use_temp_cwd()
+    .use_http_server()
+    .env("RUST_BACKTRACE", "1")
+    .build();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
     "package.json",
@@ -906,5 +910,14 @@ fn package_json_uncached_no_error() {
       console.all_output(),
       "Could not set npm package requirements",
     );
+
+    // should support getting the package now though
+    console
+      .write_line("import { getValue, setValue } from '@denotest/esm-basic';");
+    console.expect("undefined");
+    console.write_line("setValue(12 + 30);");
+    console.expect("undefined");
+    console.write_line("getValue()");
+    console.expect("42")
   });
 }

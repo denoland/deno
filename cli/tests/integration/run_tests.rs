@@ -4248,8 +4248,6 @@ itest!(permission_args_quiet {
 
 // Regression test for https://github.com/denoland/deno/issues/16772
 #[test]
-// todo(dsherret): getting a dns error on windows for some reason
-#[cfg(unix)]
 fn file_fetcher_preserves_permissions() {
   let _guard = util::http_server();
   util::with_pty(&["repl", "--quiet"], |mut console| {

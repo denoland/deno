@@ -1209,7 +1209,11 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    if let Err(err) = self.npm_resolver.set_package_reqs(package_reqs).await {
+    if let Err(err) = self
+      .npm_resolver
+      .set_package_reqs((*package_reqs).clone())
+      .await
+    {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
   }
