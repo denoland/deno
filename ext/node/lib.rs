@@ -58,14 +58,17 @@ pub trait NodeFs {
 pub struct RealFs;
 impl NodeFs for RealFs {
   fn current_dir() -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
     std::env::current_dir()
   }
 
   fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata> {
+    #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path)
   }
 
   fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    #[allow(clippy::disallowed_methods)]
     std::fs::read_to_string(path)
   }
 }
