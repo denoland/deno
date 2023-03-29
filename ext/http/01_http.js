@@ -16,6 +16,7 @@ import {
 import {
   _flash,
   fromInnerRequest,
+  toInnerRequest,
   newInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
@@ -61,6 +62,7 @@ const {
 } = primordials;
 
 const connErrorSymbol = Symbol("connError");
+const streamRid = Symbol("streamRid");
 const _deferred = Symbol("upgradeHttpDeferred");
 
 class HttpConn {
@@ -135,6 +137,7 @@ class HttpConn {
       body !== null ? new InnerBody(body) : null,
       false,
     );
+    innerRequest[streamRid] = streamRid;
     const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
@@ -471,6 +474,17 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
+function upgradeHttp2(req) {
+  return upgradeHttp2Inner(req);
+}
+
+async function upgradeHttp2Inner(req) {
+  const inner = toInnerRequest(req);
+  const res = await core.opAsync("op_http_upgrade_early", inner[streamRid]);
+  // TODO(mmastrac): We're missing the remote address properties here
+  return new Deno.Conn(res, null, null);
+}
+
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
 const tabCharCode = StringPrototypeCharCodeAt("\t", 0);
 const commaCharCode = StringPrototypeCharCodeAt(",", 0);
@@ -545,4 +559,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, HttpConn, upgradeHttp, upgradeWebSocket };
+export { _ws, HttpConn, upgradeHttp, upgradeHttp2, upgradeWebSocket };

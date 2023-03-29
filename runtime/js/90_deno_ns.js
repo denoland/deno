@@ -172,6 +172,7 @@ const denoNsUnstable = {
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   upgradeHttp: http.upgradeHttp,
+  upgradeHttp2: http.upgradeHttp2,
   upgradeHttpRaw: flash.upgradeHttpRaw,
   serve: flash.createServe(ops.op_flash_serve),
   openKv: kv.openKv,
