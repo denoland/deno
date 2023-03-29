@@ -6,6 +6,7 @@ use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
 use super::documents::Document;
+use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -454,7 +455,9 @@ async fn generate_lint_diagnostics(
   lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
-  let documents = snapshot.documents.documents(true, true);
+  let documents = snapshot
+    .documents
+    .documents(DocumentsFilter::OpenDiagnosable);
   let workspace_settings = config.settings.workspace.clone();
   let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
@@ -530,7 +533,7 @@ async fn generate_ts_diagnostics(
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
     .documents
-    .documents(true, true)
+    .documents(DocumentsFilter::OpenDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
@@ -1025,7 +1028,10 @@ async fn generate_deno_diagnostics(
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
 
-  for document in snapshot.documents.documents(true, true) {
+  for document in snapshot
+    .documents
+    .documents(DocumentsFilter::OpenDiagnosable)
+  {
     if token.is_cancelled() {
       break;
     }
