@@ -40,7 +40,7 @@ export async function checkCopyright() {
     "*Cargo.toml",
   ]);
 
-  let totalCount = 0;
+  const errors = [];
   const sourceFilesSet = new Set(sourceFiles);
 
   for (const file of sourceFilesSet) {
@@ -53,8 +53,7 @@ export async function checkCopyright() {
           "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
         )
       ) {
-        console.log(ERROR_MSG + file);
-        totalCount += 1;
+        errors.push(ERROR_MSG + file);
       }
       continue;
     }
@@ -65,13 +64,15 @@ export async function checkCopyright() {
         "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
       )
     ) {
-      console.log(ERROR_MSG + file);
-      totalCount += 1;
+      errors.push(ERROR_MSG + file);
     }
   }
 
-  if (totalCount > 0) {
-    throw new Error(`Copyright checker had ${totalCount} errors.`);
+  if (errors.length > 0) {
+    // show all the errors at the same time to prevent overlap with
+    // other running scripts that may be outputting
+    console.error(errors.join("\n"));
+    throw new Error(`Copyright checker had ${errors.length} errors.`);
   }
 }
 

@@ -59,6 +59,7 @@ use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
+use super::urls::LspClientUrl;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
@@ -338,7 +339,10 @@ impl LanguageServer {
             match &ls.config.workspace_folders {
               Some(entry) => {
                 for (specifier, folder) in entry {
-                  specifiers.insert(specifier.clone(), folder.uri.clone());
+                  specifiers.insert(
+                    specifier.clone(),
+                    LspClientUrl::new(folder.uri.clone()),
+                  );
                 }
               }
               None => {
@@ -377,7 +381,7 @@ impl LanguageServer {
       let mut ls = self.0.write().await;
       if let Ok(configs) = configs_result {
         for (value, internal_uri) in
-          configs.into_iter().zip(specifiers.into_iter().map(|s| s.1))
+          configs.into_iter().zip(specifiers.into_iter().map(|s| s.0))
         {
           match value {
             Ok(specifier_settings) => {
@@ -509,14 +513,14 @@ impl Inner {
     &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<AssetOrDocument> {
-    self.get_maybe_asset_or_document(specifier).map_or_else(
-      || {
+    self
+      .get_maybe_asset_or_document(specifier)
+      .map(Ok)
+      .unwrap_or_else(|| {
         Err(LspError::invalid_params(format!(
           "Unable to find asset or document for: {specifier}"
         )))
-      },
-      Ok,
-    )
+      })
   }
 
   /// Searches assets and documents for the provided specifier.
@@ -638,7 +642,7 @@ impl Inner {
   fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
     if specifier.scheme() == "asset" {
       matches!(
-        MediaType::from(specifier),
+        MediaType::from_specifier(specifier),
         MediaType::JavaScript
           | MediaType::Jsx
           | MediaType::Mjs
@@ -1678,16 +1682,12 @@ impl Inner {
     // Refactor
     let start = line_index.offset_tsc(params.range.start)?;
     let length = line_index.offset_tsc(params.range.end)? - start;
-    let only =
-      params
-        .context
-        .only
-        .as_ref()
-        .map_or(String::default(), |values| {
-          values
-            .first()
-            .map_or(String::default(), |v| v.as_str().to_owned())
-        });
+    let only = params
+      .context
+      .only
+      .as_ref()
+      .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
+      .unwrap_or_default();
     let req = tsc::RequestMethod::GetApplicableRefactors((
       specifier.clone(),
       tsc::TextSpan { start, length },
@@ -2873,9 +2873,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let (client, client_uri, specifier, had_specifier_settings) = {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
-      let client_uri = params.text_document.uri.clone();
-      let specifier =
-        inner.url_map.normalize_url(&client_uri, LspUrlKind::File);
+      let client_uri = LspClientUrl::new(params.text_document.uri.clone());
+      let specifier = inner
+        .url_map
+        .normalize_url(client_uri.as_url(), LspUrlKind::File);
       let document = inner.did_open(&specifier, params).await;
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);

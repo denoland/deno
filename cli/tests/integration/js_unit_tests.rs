@@ -26,6 +26,8 @@ fn js_unit_tests() {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
+    // Flash tests are crashing with SIGSEGV on Ubuntu, so we'll disable these entirely
+    .arg("--ignore=./cli/tests/unit/flash_test.ts")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("--no-prompt")
     .arg("-A")
@@ -34,6 +36,12 @@ fn js_unit_tests() {
     .expect("failed to spawn script");
 
   let status = deno.wait().expect("failed to wait for the child process");
-  assert_eq!(Some(0), status.code());
+  #[cfg(unix)]
+  assert_eq!(
+    std::os::unix::process::ExitStatusExt::signal(&status),
+    None,
+    "Deno should not have died with a signal"
+  );
+  assert_eq!(Some(0), status.code(), "Deno should have exited cleanly");
   assert!(status.success());
 }

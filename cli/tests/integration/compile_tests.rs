@@ -412,6 +412,82 @@ fn standalone_runtime_flags() {
 }
 
 #[test]
+fn standalone_ext_flag_ts() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("ext_flag_ts.exe")
+  } else {
+    dir.path().join("ext_flag_ts")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--ext")
+    .arg("ts")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./file_extensions/ts_without_extension")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(
+    util::strip_ansi_codes(&stdout_str),
+    "executing typescript with no extension\n"
+  );
+}
+
+#[test]
+fn standalone_ext_flag_js() {
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("ext_flag_js.exe")
+  } else {
+    dir.path().join("ext_flag_js")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--ext")
+    .arg("js")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./file_extensions/js_without_extension")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(
+    util::strip_ansi_codes(&stdout_str),
+    "executing javascript with no extension\n"
+  );
+}
+
+#[test]
 fn standalone_import_map() {
   let dir = TempDir::new();
   let exe = if cfg!(windows) {
@@ -566,6 +642,91 @@ fn check_local_by_default2() {
 }
 
 #[test]
+fn workers_basic() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("basic.exe")
+  } else {
+    dir.path().join("basic")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--no-check")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/workers/basic.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  let expected = std::fs::read_to_string(
+    util::testdata_path().join("./compile/workers/basic.out"),
+  )
+  .unwrap();
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+}
+
+#[test]
+fn workers_not_in_module_map() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("not_in_module_map.exe")
+  } else {
+    dir.path().join("not_in_module_map")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/workers/not_in_module_map.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(!output.status.success());
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.starts_with(concat!(
+    "error: Uncaught (in worker \"\") Module not found\n",
+    "error: Uncaught (in promise) Error: Unhandled error in child worker.\n"
+  )));
+}
+
+#[test]
+fn workers_with_include_flag() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("workers_with_include_flag.exe")
+  } else {
+    dir.path().join("workers_with_include_flag")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--include")
+    .arg(util::testdata_path().join("./compile/workers/worker.ts"))
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/workers/not_in_module_map.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(output.status.success());
+  let expected_stdout =
+    concat!("Hello from worker!\n", "Received 42\n", "Closing\n");
+  assert_eq!(&String::from_utf8(output.stdout).unwrap(), expected_stdout);
+}
+
+#[test]
 fn dynamic_import() {
   let _guard = util::http_server();
   let dir = TempDir::new();
@@ -580,6 +741,40 @@ fn dynamic_import() {
     .arg("--output")
     .arg(&exe)
     .arg(util::testdata_path().join("./compile/dynamic_imports/main.ts"))
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+
+  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
+  assert!(output.status.success());
+  let expected = std::fs::read_to_string(
+    util::testdata_path().join("./compile/dynamic_imports/main.out"),
+  )
+  .unwrap();
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+}
+
+#[test]
+fn dynamic_import_unanalyzable() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("dynamic_import_unanalyzable.exe")
+  } else {
+    dir.path().join("dynamic_import_unanalyzable")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--allow-read")
+    .arg("--include")
+    .arg(util::testdata_path().join("./compile/dynamic_imports/import1.ts"))
+    .arg("--output")
+    .arg(&exe)
+    .arg(
+      util::testdata_path()
+        .join("./compile/dynamic_imports/main_unanalyzable.ts"),
+    )
     .output()
     .unwrap();
   assert!(output.status.success());

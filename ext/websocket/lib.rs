@@ -7,23 +7,20 @@ use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::ExtensionBuilder;
 
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
-use http::header::HeaderName;
+use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use http::Request;
@@ -498,67 +495,30 @@ pub async fn op_ws_next_event(
   Ok(res)
 }
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_url", "deno_webidl"],
-  )
-}
-
-fn ops<P: WebSocketPermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  user_agent: String,
-  root_cert_store: Option<RootCertStore>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_ws_check_permission_and_cancel_handle::decl::<P>(),
-      op_ws_create::decl::<P>(),
-      op_ws_send::decl(),
-      op_ws_close::decl(),
-      op_ws_next_event::decl(),
-    ])
-    .state(move |state| {
-      state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-      state.put(UnsafelyIgnoreCertificateErrors(
-        unsafely_ignore_certificate_errors.clone(),
-      ));
-      state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
-    })
-}
-
-pub fn init_ops_and_esm<P: WebSocketPermissions + 'static>(
-  user_agent: String,
-  root_cert_store: Option<RootCertStore>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-) -> Extension {
-  ops::<P>(
-    &mut ext(),
-    user_agent,
-    root_cert_store,
-    unsafely_ignore_certificate_errors,
-  )
-  .esm(include_js_files!(
-    "01_websocket.js",
-    "02_websocketstream.js",
-  ))
-  .build()
-}
-
-pub fn init_ops<P: WebSocketPermissions + 'static>(
-  user_agent: String,
-  root_cert_store: Option<RootCertStore>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-) -> Extension {
-  ops::<P>(
-    &mut ext(),
-    user_agent,
-    root_cert_store,
-    unsafely_ignore_certificate_errors,
-  )
-  .build()
-}
+deno_core::extension!(deno_websocket,
+  deps = [ deno_url, deno_webidl ],
+  parameters = [P: WebSocketPermissions],
+  ops = [
+    op_ws_check_permission_and_cancel_handle<P>,
+    op_ws_create<P>,
+    op_ws_send,
+    op_ws_close,
+    op_ws_next_event,
+  ],
+  esm = [ "01_websocket.js", "02_websocketstream.js" ],
+  options = {
+    user_agent: String,
+    root_cert_store: Option<RootCertStore>,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>
+  },
+  state = |state, options| {
+    state.put::<WsUserAgent>(WsUserAgent(options.user_agent));
+    state.put(UnsafelyIgnoreCertificateErrors(
+      options.unsafely_ignore_certificate_errors,
+    ));
+    state.put::<WsRootStore>(WsRootStore(options.root_cert_store));
+  },
+);
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_websocket.d.ts")

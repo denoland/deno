@@ -1,0 +1,5 @@
+worker.js imported from main thread
+Starting worker
+Hello from worker!
+Received 42
+Closing

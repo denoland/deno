@@ -11,13 +11,13 @@ pub use deno_flash;
 pub use deno_fs;
 pub use deno_http;
 pub use deno_io;
+pub use deno_kv;
 pub use deno_napi;
 pub use deno_net;
 pub use deno_node;
 pub use deno_tls;
 pub use deno_url;
 pub use deno_web;
-pub use deno_webgpu;
 pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
@@ -36,3 +36,8 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+
+pub struct RuntimeNodeEnv;
+impl deno_node::NodeEnv for RuntimeNodeEnv {
+  type P = permissions::PermissionsContainer;
+}

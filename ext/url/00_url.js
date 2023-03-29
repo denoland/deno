@@ -326,7 +326,7 @@ function trim(s) {
   return s;
 }
 
-// Represents a "no port" value. A port in URL cannot be greater than 2^16 − 1
+// Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
 const NO_PORT = 65536;
 
 const componentsBuf = new Uint32Array(8);
