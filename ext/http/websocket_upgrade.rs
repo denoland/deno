@@ -14,8 +14,8 @@ use once_cell::sync::OnceCell;
 
 use crate::http_error;
 
+/// Given a buffer that ends in `\n\n` or `\r\n\r\n`, returns a parsed [`Request<Body>`].
 fn parse_response(header_bytes: &[u8]) -> Result<Response<Body>, AnyError> {
-  println!("{:?}", std::str::from_utf8(header_bytes));
   let mut headers = [httparse::EMPTY_HEADER; 16];
   let status = httparse::parse_headers(header_bytes, &mut headers)?;
   match status {
@@ -33,6 +33,7 @@ fn parse_response(header_bytes: &[u8]) -> Result<Response<Body>, AnyError> {
   }
 }
 
+/// Find a newline in a slice.
 fn find_newline(slice: &[u8]) -> Option<usize> {
   for i in 0..slice.len() {
     if slice[i] == b'\n' {
@@ -113,10 +114,12 @@ impl WebSocketUpgrade {
         if let Some(index) = header_searcher.search_in(&self.buf) {
           let response = parse_response(&self.buf[..index + 4])?;
           let mut buf = std::mem::take(&mut self.buf);
+          self.state = Complete;
           Ok(Some((response, buf.split_off(index + 4).freeze())))
         } else if let Some(index) = header_searcher2.search_in(&self.buf) {
           let response = parse_response(&self.buf[..index + 2])?;
           let mut buf = std::mem::take(&mut self.buf);
+          self.state = Complete;
           Ok(Some((response, buf.split_off(index + 2).freeze())))
         } else {
           Ok(None)
