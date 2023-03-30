@@ -38,7 +38,6 @@ use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
-use httparse::Status;
 use hyper::body::Bytes;
 use hyper::body::HttpBody;
 use hyper::body::SizeHint;
@@ -50,8 +49,6 @@ use hyper::Body;
 use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
-use memmem::Searcher;
-use memmem::TwoWaySearcher;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -949,7 +946,11 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
 struct EarlyUpgradeSocket(Rc<AsyncRefCell<EarlyUpgradeSocketInner>>);
 
 enum EarlyUpgradeSocketInner {
-  PreResponse(Rc<HttpStreamResource>, WebSocketUpgrade),
+  PreResponse(
+    Rc<HttpStreamResource>,
+    WebSocketUpgrade,
+    tokio::sync::broadcast::Sender<()>,
+  ),
   PostResponse(hyper::upgrade::Upgraded),
 }
 
@@ -961,16 +962,26 @@ impl Resource for EarlyUpgradeSocket {
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     let self_clone = self.clone();
     Box::pin(async move {
-      let mut borrow = self_clone.0.borrow_mut().await;
-      let inner = &mut *borrow;
-      if let EarlyUpgradeSocketInner::PostResponse(upgraded) = inner {
-        // TODO(mmastrac): This seems inefficient
-        let mut buf = vec![0; limit];
-        let read = upgraded.read(&mut buf).await?;
-        buf.truncate(read);
-        Ok(buf.into())
-      } else {
-        Ok(BufView::empty())
+      loop {
+        let mut borrow = self_clone.0.borrow_mut().await;
+        let inner = &mut *borrow;
+        if let EarlyUpgradeSocketInner::PreResponse(_, _, tx) = inner {
+          let mut rx = tx.subscribe();
+          drop(inner);
+          drop(borrow);
+          _ = rx.recv().await?;
+          continue;
+        }
+
+        let mut borrow = self_clone.0.borrow_mut().await;
+        let inner = &mut *borrow;
+        if let EarlyUpgradeSocketInner::PostResponse(upgraded) = inner {
+          // TODO(mmastrac): This seems inefficient
+          let mut buf = vec![0; limit];
+          let read = upgraded.read(&mut buf).await?;
+          buf.truncate(read);
+          return Ok(buf.into());
+        }
       }
     })
   }
@@ -984,7 +995,7 @@ impl Resource for EarlyUpgradeSocket {
       let mut borrow = self_clone.0.borrow_mut().await;
       let inner = &mut *borrow;
       match inner {
-        EarlyUpgradeSocketInner::PreResponse(stream, upgrade) => {
+        EarlyUpgradeSocketInner::PreResponse(stream, upgrade, tx) => {
           if let Some((resp, extra)) = upgrade.write(&buf)? {
             let new_wr = HttpResponseWriter::Closed;
             let mut old_wr =
@@ -1018,7 +1029,9 @@ impl Resource for EarlyUpgradeSocket {
 
             // If we had extra data after the response, write that to the upgraded connection
             upgraded.write_all(&extra).await?;
+            let tx = tx.clone();
             *inner = EarlyUpgradeSocketInner::PostResponse(upgraded);
+            _ = tx.send(());
           }
         }
         EarlyUpgradeSocketInner::PostResponse(upgraded) => {
@@ -1029,6 +1042,10 @@ impl Resource for EarlyUpgradeSocket {
         nwritten: buf.len(),
       })
     })
+  }
+
+  fn close(self: Rc<Self>) {
+    println!("close!!!");
   }
 }
 
@@ -1042,8 +1059,12 @@ async fn op_http_upgrade_early(
     .resource_table
     .get::<HttpStreamResource>(rid)?;
   let resources = &mut state.borrow_mut().resource_table;
-  let socket =
-    EarlyUpgradeSocketInner::PreResponse(stream, WebSocketUpgrade::default());
+  let (tx, _rx) = tokio::sync::broadcast::channel(1);
+  let socket = EarlyUpgradeSocketInner::PreResponse(
+    stream,
+    WebSocketUpgrade::default(),
+    tx,
+  );
   let rid =
     resources.add(EarlyUpgradeSocket(Rc::new(AsyncRefCell::new(socket))));
   Ok(rid)
