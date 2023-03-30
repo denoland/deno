@@ -11,21 +11,21 @@ use std::fs;
 use std::process::Stdio;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
-use test_util::lsp::LspClientBuilder;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
 
 #[test]
 fn lsp_startup_shutdown() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.shutdown();
 }
 
 #[test]
 fn lsp_init_tsconfig() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
   temp_dir.write(
@@ -58,7 +58,7 @@ fn lsp_init_tsconfig() {
 
 #[test]
 fn lsp_tsconfig_types() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
   temp_dir.write(
@@ -98,7 +98,8 @@ fn lsp_tsconfig_types() {
 
 #[test]
 fn lsp_tsconfig_bad_config_path() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder
       .set_config("bad_tsconfig.json")
@@ -123,7 +124,7 @@ fn lsp_tsconfig_bad_config_path() {
 
 #[test]
 fn lsp_triple_slash_types() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let a_dts = "// deno-lint-ignore-file no-var\ndeclare var a: string;";
   temp_dir.write("a.d.ts", a_dts);
@@ -146,7 +147,7 @@ fn lsp_triple_slash_types() {
 
 #[test]
 fn lsp_import_map() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let import_map = r#"{
   "imports": {
@@ -205,7 +206,7 @@ fn lsp_import_map() {
 
 #[test]
 fn lsp_import_map_data_url() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
@@ -230,7 +231,7 @@ fn lsp_import_map_data_url() {
 
 #[test]
 fn lsp_import_map_config_file() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.import_map.jsonc",
@@ -297,7 +298,7 @@ fn lsp_import_map_config_file() {
 
 #[test]
 fn lsp_import_map_embedded_in_config_file() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.embedded_import_map.jsonc",
@@ -358,7 +359,7 @@ fn lsp_import_map_embedded_in_config_file() {
 
 #[test]
 fn lsp_deno_task() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.jsonc",
@@ -393,7 +394,7 @@ fn lsp_deno_task() {
 
 #[test]
 fn lsp_import_assertions() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
@@ -509,7 +510,7 @@ fn lsp_import_assertions() {
 
 #[test]
 fn lsp_import_map_import_completions() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "import-map.json",
@@ -649,7 +650,8 @@ fn lsp_import_map_import_completions() {
 
 #[test]
 fn lsp_hover() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -690,7 +692,8 @@ fn lsp_hover() {
 
 #[test]
 fn lsp_hover_asset() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -747,7 +750,7 @@ fn lsp_hover_asset() {
 
 #[test]
 fn lsp_hover_disabled() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_deno_enable(false);
@@ -779,7 +782,7 @@ fn lsp_hover_disabled() {
 
 #[test]
 fn lsp_inlay_hints() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.enable_inlay_hints();
@@ -882,7 +885,8 @@ fn lsp_inlay_hints() {
 
 #[test]
 fn lsp_inlay_hints_not_enabled() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -1135,7 +1139,8 @@ fn lsp_workspace_enable_paths() {
 
 #[test]
 fn lsp_hover_unstable_disabled() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -1174,7 +1179,8 @@ fn lsp_hover_unstable_disabled() {
 
 #[test]
 fn lsp_hover_unstable_enabled() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_unstable(true);
   });
@@ -1217,7 +1223,8 @@ fn lsp_hover_unstable_enabled() {
 
 #[test]
 fn lsp_hover_change_mbc() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -1282,7 +1289,7 @@ fn lsp_hover_change_mbc() {
 
 #[test]
 fn lsp_hover_closed_document() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("a.ts", r#"export const a = "a";"#);
   temp_dir.write("b.ts", r#"export * from "./a.ts";"#);
@@ -1374,7 +1381,10 @@ fn lsp_hover_closed_document() {
 
 #[test]
 fn lsp_hover_dependency() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -1520,7 +1530,8 @@ fn lsp_hover_dependency() {
 // unable to resolve dependencies when there was an invalid syntax in the module
 #[test]
 fn lsp_hover_deps_preserved_when_invalid_parse() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -1611,7 +1622,10 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
 
 #[test]
 fn lsp_hover_typescript_types() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
@@ -1664,7 +1678,8 @@ fn lsp_hover_typescript_types() {
 
 #[test]
 fn lsp_hover_jsdoc_symbol_link() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -1714,7 +1729,8 @@ fn lsp_hover_jsdoc_symbol_link() {
 
 #[test]
 fn lsp_goto_type_definition() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -1756,7 +1772,8 @@ fn lsp_goto_type_definition() {
 
 #[test]
 fn lsp_call_hierarchy() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -1885,7 +1902,8 @@ fn lsp_call_hierarchy() {
 
 #[test]
 fn lsp_large_doc_changes() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let large_file_text =
     fs::read_to_string(testdata_path().join("lsp").join("large_file.txt"))
@@ -1986,7 +2004,8 @@ fn lsp_large_doc_changes() {
 
 #[test]
 fn lsp_document_symbol() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -2185,7 +2204,8 @@ fn lsp_document_symbol() {
 
 #[test]
 fn lsp_folding_range() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -2231,7 +2251,8 @@ fn lsp_folding_range() {
 
 #[test]
 fn lsp_rename() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -2283,7 +2304,8 @@ fn lsp_rename() {
 
 #[test]
 fn lsp_selection_range() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -2360,7 +2382,8 @@ fn lsp_selection_range() {
 
 #[test]
 fn lsp_semantic_tokens() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -2419,7 +2442,8 @@ fn lsp_semantic_tokens() {
 
 #[test]
 fn lsp_code_lens() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -2593,7 +2617,8 @@ fn lsp_code_lens() {
 
 #[test]
 fn lsp_code_lens_impl() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -2739,7 +2764,8 @@ fn lsp_code_lens_impl() {
 
 #[test]
 fn lsp_code_lens_test() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.disable_testing_api().set_code_lens(None);
   });
@@ -2994,7 +3020,8 @@ fn lsp_code_lens_test() {
 
 #[test]
 fn lsp_code_lens_test_disabled() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.disable_testing_api().set_code_lens(Some(json!({
       "implementations": true,
@@ -3034,7 +3061,8 @@ fn lsp_code_lens_test_disabled() {
 
 #[test]
 fn lsp_code_lens_non_doc_nav_tree() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -3091,7 +3119,8 @@ fn lsp_code_lens_non_doc_nav_tree() {
 
 #[test]
 fn lsp_nav_tree_updates() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -3231,7 +3260,8 @@ fn lsp_nav_tree_updates() {
 
 #[test]
 fn lsp_find_references() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -3339,7 +3369,8 @@ fn lsp_find_references() {
 
 #[test]
 fn lsp_signature_help() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -3459,7 +3490,8 @@ fn lsp_signature_help() {
 
 #[test]
 fn lsp_code_actions() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -3646,7 +3678,8 @@ fn lsp_code_actions() {
 
 #[test]
 fn lsp_code_actions_deno_cache() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
       "textDocument": {
@@ -3735,7 +3768,8 @@ fn lsp_code_actions_deno_cache() {
 
 #[test]
 fn lsp_code_actions_deno_cache_npm() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -3819,7 +3853,8 @@ fn lsp_code_actions_deno_cache_npm() {
 
 #[test]
 fn lsp_code_actions_imports() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
       "textDocument": {
@@ -4059,7 +4094,8 @@ export class DuckConfig {
 
 #[test]
 fn lsp_code_actions_refactor() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -4268,7 +4304,8 @@ fn lsp_code_actions_refactor() {
 
 #[test]
 fn lsp_code_actions_refactor_no_disabled_support() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.with_capabilities(|c| {
       let doc = c.text_document.as_mut().unwrap();
@@ -4337,7 +4374,8 @@ fn lsp_code_actions_refactor_no_disabled_support() {
 
 #[test]
 fn lsp_code_actions_deadlock() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let large_file_text =
     fs::read_to_string(testdata_path().join("lsp").join("large_file.txt"))
@@ -4460,7 +4498,8 @@ fn lsp_code_actions_deadlock() {
 
 #[test]
 fn lsp_completions() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -4518,7 +4557,8 @@ fn lsp_completions() {
 
 #[test]
 fn lsp_completions_private_fields() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -4542,7 +4582,8 @@ fn lsp_completions_private_fields() {
 
 #[test]
 fn lsp_completions_optional() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -4624,7 +4665,8 @@ fn lsp_completions_optional() {
 
 #[test]
 fn lsp_completions_auto_import() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -4708,7 +4750,8 @@ fn lsp_completions_auto_import() {
 
 #[test]
 fn lsp_completions_snippet() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
     json!({
@@ -4802,7 +4845,8 @@ fn lsp_completions_snippet() {
 
 #[test]
 fn lsp_completions_no_snippet() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.with_capabilities(|c| {
       let doc = c.text_document.as_mut().unwrap();
@@ -4856,7 +4900,10 @@ fn lsp_completions_no_snippet() {
 
 #[test]
 fn lsp_completions_npm() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
@@ -4992,7 +5039,10 @@ fn lsp_completions_npm() {
 
 #[test]
 fn lsp_npm_specifier_unopened_file() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
@@ -5071,7 +5121,10 @@ fn lsp_npm_specifier_unopened_file() {
 
 #[test]
 fn lsp_completions_node_specifier() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -5292,7 +5345,10 @@ fn lsp_completions_node_specifier() {
 
 #[test]
 fn lsp_completions_registry() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.add_test_server_suggestions();
@@ -5355,7 +5411,10 @@ fn lsp_completions_registry() {
 
 #[test]
 fn lsp_completions_registry_empty() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.add_test_server_suggestions();
@@ -5415,7 +5474,10 @@ fn lsp_completions_registry_empty() {
 
 #[test]
 fn lsp_auto_discover_registry() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -5448,7 +5510,10 @@ fn lsp_auto_discover_registry() {
 
 #[test]
 fn lsp_cache_location() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let temp_dir = context.temp_dir();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
@@ -5537,7 +5602,10 @@ fn lsp_cache_location() {
 /// and cache files.
 #[test]
 fn lsp_tls_cert() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder
@@ -5624,7 +5692,10 @@ fn lsp_tls_cert() {
 
 #[test]
 fn lsp_diagnostics_warn_redirect() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
@@ -5700,7 +5771,10 @@ fn lsp_diagnostics_warn_redirect() {
 
 #[test]
 fn lsp_redirect_quick_fix() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(
@@ -5784,7 +5858,8 @@ fn lsp_redirect_quick_fix() {
 
 #[test]
 fn lsp_diagnostics_deprecated() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -5830,7 +5905,8 @@ fn lsp_diagnostics_deprecated() {
 
 #[test]
 fn lsp_diagnostics_deno_types() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client
     .did_open(json!({
@@ -5857,7 +5933,8 @@ fn lsp_diagnostics_deno_types() {
 
 #[test]
 fn lsp_diagnostics_refresh_dependents() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -5945,7 +6022,8 @@ struct PerformanceAverages {
 
 #[test]
 fn lsp_performance() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -5997,7 +6075,8 @@ fn lsp_performance() {
 
 #[test]
 fn lsp_format_no_changes() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6026,7 +6105,8 @@ fn lsp_format_no_changes() {
 
 #[test]
 fn lsp_format_error() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6054,7 +6134,8 @@ fn lsp_format_error() {
 
 #[test]
 fn lsp_format_mbc() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6109,7 +6190,7 @@ fn lsp_format_mbc() {
 
 #[test]
 fn lsp_format_exclude_with_config() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
   temp_dir.write(
@@ -6162,7 +6243,7 @@ fn lsp_format_exclude_with_config() {
 
 #[test]
 fn lsp_format_exclude_default_config() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
   temp_dir.write(
@@ -6215,7 +6296,8 @@ fn lsp_format_exclude_default_config() {
 
 #[test]
 fn lsp_format_json() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6270,7 +6352,8 @@ fn lsp_format_json() {
 
 #[test]
 fn lsp_json_no_diagnostics() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6307,7 +6390,8 @@ fn lsp_json_no_diagnostics() {
 
 #[test]
 fn lsp_format_markdown() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6354,7 +6438,7 @@ fn lsp_format_markdown() {
 
 #[test]
 fn lsp_format_with_config() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.fmt.jsonc",
@@ -6461,7 +6545,8 @@ fn lsp_format_with_config() {
 
 #[test]
 fn lsp_markdown_no_diagnostics() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6498,7 +6583,10 @@ fn lsp_markdown_no_diagnostics() {
 
 #[test]
 fn lsp_configuration_did_change() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -6591,7 +6679,8 @@ fn lsp_configuration_did_change() {
 
 #[test]
 fn lsp_workspace_symbol() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6685,7 +6774,8 @@ fn lsp_workspace_symbol() {
 
 #[test]
 fn lsp_code_actions_ignore_lint() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6808,7 +6898,8 @@ fn lsp_code_actions_ignore_lint() {
 /// This test exercises updating an existing deno-lint-ignore-file comment.
 #[test]
 fn lsp_code_actions_update_ignore_lint() {
-  let mut client = LspClientBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -6933,7 +7024,7 @@ console.log(snake_case);
 
 #[test]
 fn lsp_lint_with_config() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
   temp_dir.write(
@@ -6974,7 +7065,7 @@ fn lsp_lint_with_config() {
 
 #[test]
 fn lsp_lint_exclude_with_config() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
   temp_dir.write(
@@ -7015,7 +7106,10 @@ fn lsp_lint_exclude_with_config() {
 
 #[test]
 fn lsp_jsx_import_source_pragma() {
-  let context = TestContextBuilder::new().use_http_server().build();
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -7112,7 +7206,7 @@ struct TestRunResponseParams {
 
 #[test]
 fn lsp_testing_api() {
-  let context = TestContextBuilder::new().build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
   let contents = r#"

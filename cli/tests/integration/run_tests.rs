@@ -2716,7 +2716,7 @@ itest!(byte_order_mark {
 fn issue9750() {
   TestContext::default()
     .new_command()
-    .args_vec(&["run", "--prompt", "run/issue9750.js"])
+    .args_vec(["run", "--prompt", "run/issue9750.js"])
     .with_pty(|mut console| {
       console.expect("Enter 'yy':");
       console.write_line_raw("yy");
