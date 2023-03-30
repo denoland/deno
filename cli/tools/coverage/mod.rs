@@ -588,6 +588,7 @@ fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
+  npm_root_dir: &str,
 ) -> Vec<ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -599,6 +600,7 @@ fn filter_coverages(
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
+        || e.url.starts_with(npm_root_dir)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
         || e.url.ends_with(".snap");
@@ -620,12 +622,14 @@ pub async fn cover_files(
   }
 
   let ps = ProcState::build(flags).await?;
+  let root_dir_url = ps.npm_resolver.root_dir_url();
 
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
+    root_dir_url.as_str(),
   );
 
   let proc_coverages: Vec<_> = script_coverages

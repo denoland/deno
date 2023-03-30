@@ -17,6 +17,7 @@ use rusqlite::OptionalExtension;
 use rusqlite::Transaction;
 
 use crate::AtomicWrite;
+use crate::CommitResult;
 use crate::Database;
 use crate::DatabaseHandler;
 use crate::KvEntry;
@@ -216,7 +217,10 @@ impl Database for SqliteDb {
     Ok(responses)
   }
 
-  async fn atomic_write(&self, write: AtomicWrite) -> Result<bool, AnyError> {
+  async fn atomic_write(
+    &self,
+    write: AtomicWrite,
+  ) -> Result<Option<CommitResult>, AnyError> {
     let mut db = self.0.borrow_mut();
 
     let tx = db.transaction()?;
@@ -228,7 +232,7 @@ impl Database for SqliteDb {
         .optional()?
         .map(version_to_versionstamp);
       if real_versionstamp != check.versionstamp {
-        return Ok(false);
+        return Ok(None);
       }
     }
 
@@ -273,7 +277,11 @@ impl Database for SqliteDb {
 
     tx.commit()?;
 
-    Ok(true)
+    let new_vesionstamp = version_to_versionstamp(version);
+
+    Ok(Some(CommitResult {
+      versionstamp: new_vesionstamp,
+    }))
   }
 }
 

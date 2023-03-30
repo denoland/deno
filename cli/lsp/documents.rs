@@ -43,11 +43,13 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use indexmap::IndexMap;
+use lsp::Url;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
+use std::fs::ReadDir;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
@@ -775,18 +777,6 @@ impl FileSystemDocuments {
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
   }
-
-  pub fn refresh_dependencies(
-    &mut self,
-    resolver: &dyn deno_graph::source::Resolver,
-  ) {
-    for doc in self.docs.values_mut() {
-      if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
-        *doc = new_doc;
-      }
-    }
-    self.dirty = true;
-  }
 }
 
 fn get_document_path(
@@ -798,6 +788,17 @@ fn get_document_path(
     "file" => specifier_to_file_path(specifier).ok(),
     _ => cache.get_cache_filename(specifier),
   }
+}
+
+/// Specify the documents to include on a `documents.documents(...)` call.
+#[derive(Debug, Clone, Copy)]
+pub enum DocumentsFilter {
+  /// Includes all the documents (diagnosable & non-diagnosable, open & file system).
+  All,
+  /// Includes all the diagnosable documents (open & file system).
+  AllDiagnosable,
+  /// Includes only the diagnosable documents that are open.
+  OpenDiagnosable,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -823,8 +824,6 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: CliGraphResolver,
-  /// The npm package requirements found in a package.json file.
-  npm_package_json_reqs: Arc<Vec<NpmPackageReq>>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -845,7 +844,6 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
-      npm_package_json_reqs: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -983,15 +981,9 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Vec<NpmPackageReq> {
+  pub fn npm_package_reqs(&mut self) -> Arc<Vec<NpmPackageReq>> {
     self.calculate_dependents_if_dirty();
-    let mut reqs = Vec::with_capacity(
-      self.npm_package_json_reqs.len() + self.npm_specifier_reqs.len(),
-    );
-    // resolve the package.json reqs first, then the npm specifiers
-    reqs.extend(self.npm_package_json_reqs.iter().cloned());
-    reqs.extend(self.npm_specifier_reqs.iter().cloned());
-    reqs
+    self.npm_specifier_reqs.clone()
   }
 
   /// Returns if a @types/node package was injected into the npm
@@ -1011,47 +1003,44 @@ impl Documents {
     }
   }
 
-  /// Return a vector of documents that are contained in the document store,
-  /// where `open_only` flag would provide only those documents currently open
-  /// in the editor and `diagnosable_only` would provide only those documents
-  /// that the language server can provide diagnostics for.
-  pub fn documents(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<Document> {
-    if open_only {
-      self
+  /// Return a collection of documents that are contained in the document store
+  /// based on the provided filter.
+  pub fn documents(&self, filter: DocumentsFilter) -> Vec<Document> {
+    match filter {
+      DocumentsFilter::OpenDiagnosable => self
         .open_docs
         .values()
         .filter_map(|doc| {
-          if !diagnosable_only || doc.is_diagnosable() {
+          if doc.is_diagnosable() {
             Some(doc.clone())
           } else {
             None
           }
         })
-        .collect()
-    } else {
-      // it is technically possible for a Document to end up in both the open
-      // and closed documents so we need to ensure we don't return duplicates
-      let mut seen_documents = HashSet::new();
-      let file_system_docs = self.file_system_docs.lock();
-      self
-        .open_docs
-        .values()
-        .chain(file_system_docs.docs.values())
-        .filter_map(|doc| {
-          // this prefers the open documents
-          if seen_documents.insert(doc.specifier().clone())
-            && (!diagnosable_only || doc.is_diagnosable())
-          {
-            Some(doc.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
+        .collect(),
+      DocumentsFilter::AllDiagnosable | DocumentsFilter::All => {
+        let diagnosable_only =
+          matches!(filter, DocumentsFilter::AllDiagnosable);
+        // it is technically possible for a Document to end up in both the open
+        // and closed documents so we need to ensure we don't return duplicates
+        let mut seen_documents = HashSet::new();
+        let file_system_docs = self.file_system_docs.lock();
+        self
+          .open_docs
+          .values()
+          .chain(file_system_docs.docs.values())
+          .filter_map(|doc| {
+            // this prefers the open documents
+            if seen_documents.insert(doc.specifier().clone())
+              && (!diagnosable_only || doc.is_diagnosable())
+            {
+              Some(doc.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      }
     }
   }
 
@@ -1167,6 +1156,7 @@ impl Documents {
 
   pub fn update_config(
     &mut self,
+    root_urls: Vec<Url>,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
@@ -1174,11 +1164,18 @@ impl Documents {
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
+      root_urls: &[Url],
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
+      hasher.write_hashable(&{
+        // ensure these are sorted (they should be, but this is a safeguard)
+        let mut root_urls = root_urls.to_vec();
+        root_urls.sort_unstable();
+        root_urls
+      });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
@@ -1194,24 +1191,11 @@ impl Documents {
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
+      &root_urls,
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
     );
-    self.npm_package_json_reqs = Arc::new({
-      match &maybe_package_json_deps {
-        Some(deps) => {
-          let mut reqs = deps
-            .values()
-            .filter_map(|r| r.as_ref().ok())
-            .cloned()
-            .collect::<Vec<_>>();
-          reqs.sort();
-          reqs
-        }
-        None => Vec::new(),
-      }
-    });
     let deps_installer = PackageJsonDepsInstaller::new(
       npm_registry_api.clone(),
       npm_resolution.clone(),
@@ -1247,21 +1231,51 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies();
+      self.refresh_dependencies(root_urls);
       self.resolver_config_hash = new_resolver_config_hash;
     }
 
     self.dirty = true;
   }
 
-  fn refresh_dependencies(&mut self) {
+  fn refresh_dependencies(&mut self, root_urls: Vec<Url>) {
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
         *doc = new_doc;
       }
     }
-    self.file_system_docs.lock().refresh_dependencies(resolver);
+
+    // update the file system documents
+    let mut fs_docs = self.file_system_docs.lock();
+    let mut not_found_docs =
+      fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+    let open_docs = &mut self.open_docs;
+
+    for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
+      // mark this document as having been found
+      not_found_docs.remove(&specifier);
+
+      if !open_docs.contains_key(&specifier)
+        && !fs_docs.docs.contains_key(&specifier)
+      {
+        fs_docs.refresh_document(&self.cache, resolver, &specifier);
+      } else {
+        // update the existing entry to have the new resolver
+        if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+          if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+            *doc = new_doc;
+          }
+        }
+      }
+    }
+
+    // clean up and remove any documents that weren't found
+    for uri in not_found_docs {
+      fs_docs.docs.remove(&uri);
+    }
+
+    fs_docs.dirty = true;
   }
 
   /// Iterate through the documents, building a map where the key is a unique
@@ -1493,12 +1507,150 @@ fn analyze_module(
   }
 }
 
+/// Iterator that finds documents that can be preloaded into
+/// the LSP on startup.
+struct PreloadDocumentFinder {
+  pending_dirs: Vec<PathBuf>,
+  pending_files: Vec<PathBuf>,
+  current_entries: Option<ReadDir>,
+}
+
+impl PreloadDocumentFinder {
+  pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
+    let mut finder = PreloadDocumentFinder {
+      pending_dirs: Default::default(),
+      pending_files: Default::default(),
+      current_entries: Default::default(),
+    };
+    for root_url in root_urls {
+      if let Ok(path) = root_url.to_file_path() {
+        if path.is_dir() {
+          finder.pending_dirs.push(path);
+        } else {
+          finder.pending_files.push(path);
+        }
+      }
+    }
+    finder
+  }
+
+  fn read_next_file_entry(&mut self) -> Option<ModuleSpecifier> {
+    fn is_discoverable_dir(dir_path: &Path) -> bool {
+      if let Some(dir_name) = dir_path.file_name() {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        !matches!(dir_name.as_str(), "node_modules" | ".git")
+      } else {
+        false
+      }
+    }
+
+    if let Some(mut entries) = self.current_entries.take() {
+      while let Some(entry) = entries.next() {
+        if let Ok(entry) = entry {
+          let path = entry.path();
+          if let Ok(file_type) = entry.file_type() {
+            if file_type.is_dir() && is_discoverable_dir(&path) {
+              self.pending_dirs.push(path);
+            } else if file_type.is_file() {
+              if let Some(specifier) = Self::get_valid_specifier(&path) {
+                // restore the next entries for next time
+                self.current_entries = Some(entries);
+                return Some(specifier);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    None
+  }
+
+  fn get_valid_specifier(path: &Path) -> Option<ModuleSpecifier> {
+    fn is_discoverable_file(file_path: &Path) -> bool {
+      // Don't auto-discover minified files as they are likely to be very large
+      // and likely not to have dependencies on code outside them that would
+      // be useful in the LSP
+      if let Some(file_name) = file_path.file_name() {
+        let file_name = file_name.to_string_lossy().to_lowercase();
+        !file_name.as_str().contains(".min.")
+      } else {
+        false
+      }
+    }
+
+    fn is_discoverable_media_type(media_type: MediaType) -> bool {
+      match media_type {
+        MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Tsx => true,
+        MediaType::Json // ignore because json never depends on other files
+        | MediaType::Wasm
+        | MediaType::SourceMap
+        | MediaType::TsBuildInfo
+        | MediaType::Unknown => false,
+      }
+    }
+
+    let media_type = MediaType::from_path(path);
+    if is_discoverable_media_type(media_type) && is_discoverable_file(path) {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+        return Some(specifier);
+      }
+    }
+    None
+  }
+
+  fn queue_next_file_entries(&mut self) {
+    debug_assert!(self.current_entries.is_none());
+    while let Some(dir_path) = self.pending_dirs.pop() {
+      if let Ok(entries) = fs::read_dir(&dir_path) {
+        self.current_entries = Some(entries);
+        break;
+      }
+    }
+  }
+}
+
+impl Iterator for PreloadDocumentFinder {
+  type Item = ModuleSpecifier;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    // drain the pending files
+    while let Some(path) = self.pending_files.pop() {
+      if let Some(specifier) = Self::get_valid_specifier(&path) {
+        return Some(specifier);
+      }
+    }
+
+    // then go through the current entries and directories
+    while !self.pending_dirs.is_empty() || self.current_entries.is_some() {
+      match self.read_next_file_entry() {
+        Some(entry) => return Some(entry),
+        None => {
+          self.queue_next_file_entries();
+        }
+      }
+    }
+    None
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::npm::NpmResolution;
 
   use super::*;
   use import_map::ImportMap;
+  use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
@@ -1592,7 +1744,7 @@ console.log(b, "hello deno");
 
     // At this point the document will be in both documents and the shared file system documents.
     // Now make sure that the original documents doesn't return both copies
-    assert_eq!(documents.documents(false, false).len(), 1);
+    assert_eq!(documents.documents(DocumentsFilter::All).len(), 1);
   }
 
   #[test]
@@ -1631,6 +1783,7 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(
+        vec![],
         Some(Arc::new(import_map)),
         None,
         None,
@@ -1670,6 +1823,7 @@ console.log(b, "hello deno");
         .unwrap();
 
       documents.update_config(
+        vec![],
         Some(Arc::new(import_map)),
         None,
         None,
@@ -1690,5 +1844,65 @@ console.log(b, "hello deno");
         Some(file3_specifier),
       );
     }
+  }
+
+  #[test]
+  pub fn test_pre_load_document_finder() {
+    let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("root1/node_modules/");
+    temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
+
+    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/.git");
+    temp_dir.create_dir_all("root1/file.ts"); // no, directory
+    temp_dir.write("root1/mod1.ts", ""); // yes
+    temp_dir.write("root1/mod2.js", ""); // yes
+    temp_dir.write("root1/mod3.tsx", ""); // yes
+    temp_dir.write("root1/mod4.d.ts", ""); // yes
+    temp_dir.write("root1/mod5.jsx", ""); // yes
+    temp_dir.write("root1/mod6.mjs", ""); // yes
+    temp_dir.write("root1/mod7.mts", ""); // yes
+    temp_dir.write("root1/mod8.d.mts", ""); // yes
+    temp_dir.write("root1/other.json", ""); // no, json
+    temp_dir.write("root1/other.txt", ""); // no, text file
+    temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
+    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+
+    temp_dir.create_dir_all("root2/folder");
+    temp_dir.write("root2/file1.ts", ""); // yes, provided
+    temp_dir.write("root2/file2.ts", ""); // no, not provided
+    temp_dir.write("root2/folder/main.ts", ""); // yes, provided
+
+    temp_dir.create_dir_all("root3/");
+    temp_dir.write("root3/mod.ts", ""); // no, not provided
+
+    let mut urls = PreloadDocumentFinder::from_root_urls(&vec![
+      temp_dir.uri().join("root1/").unwrap(),
+      temp_dir.uri().join("root2/file1.ts").unwrap(),
+      temp_dir.uri().join("root2/folder/").unwrap(),
+    ])
+    .collect::<Vec<_>>();
+
+    // order doesn't matter
+    urls.sort();
+
+    assert_eq!(
+      urls,
+      vec![
+        temp_dir.uri().join("root1/mod1.ts").unwrap(),
+        temp_dir.uri().join("root1/mod2.js").unwrap(),
+        temp_dir.uri().join("root1/mod3.tsx").unwrap(),
+        temp_dir.uri().join("root1/mod4.d.ts").unwrap(),
+        temp_dir.uri().join("root1/mod5.jsx").unwrap(),
+        temp_dir.uri().join("root1/mod6.mjs").unwrap(),
+        temp_dir.uri().join("root1/mod7.mts").unwrap(),
+        temp_dir.uri().join("root1/mod8.d.mts").unwrap(),
+        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+      ]
+    );
   }
 }

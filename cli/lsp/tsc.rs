@@ -3,6 +3,7 @@
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
+use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -19,6 +20,7 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
+use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
@@ -42,7 +44,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
-use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -113,7 +114,7 @@ impl TsServer {
           }
           let value = request(&mut ts_runtime, state_snapshot, req, token);
           if tx.send(value).is_err() {
-            warn!("Unable to send result to client.");
+            lsp_warn!("Unable to send result to client.");
           }
         }
       })
@@ -148,7 +149,28 @@ impl TsServer {
     if self.0.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    rx.await?.map(|v| serde_json::from_value::<R>(v).unwrap())
+    let value = rx.await??;
+    Ok(serde_json::from_value::<R>(value)?)
+  }
+
+  // todo(dsherret): refactor the rest of the request methods to have
+  // methods to call on this struct, then make `RequestMethod` and
+  // friends internal
+
+  pub async fn find_references(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: &ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<Vec<ReferencedSymbol>>, LspError> {
+    let req = RequestMethod::FindReferences {
+      specifier: specifier.clone(),
+      position,
+    };
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get references from TypeScript: {}", err);
+      LspError::internal_error()
+    })
   }
 }
 
@@ -1687,10 +1709,31 @@ pub struct CombinedCodeActions {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReferenceEntry {
-  // is_write_access: bool,
+pub struct ReferencedSymbol {
+  pub definition: ReferencedSymbolDefinitionInfo,
+  pub references: Vec<ReferencedSymbolEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencedSymbolDefinitionInfo {
+  #[serde(flatten)]
+  pub definition_info: DefinitionInfo,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencedSymbolEntry {
   #[serde(default)]
   pub is_definition: bool,
+  #[serde(flatten)]
+  pub entry: ReferenceEntry,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceEntry {
+  // is_write_access: bool,
   // is_in_string: Option<bool>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
@@ -2760,9 +2803,9 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
-  let open_docs = documents.documents(true, true);
-  let mut result = Vec::new();
+  let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
+  let mut result = Vec::new();
 
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
@@ -2779,23 +2822,17 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // finally include the documents and all their dependencies
-  for doc in &open_docs {
-    let specifier = doc.specifier();
-    if seen.insert(specifier.as_str()) {
-      result.push(specifier.to_string());
-    }
-  }
-
-  // and then all their dependencies (do this after to avoid exists calls)
-  for doc in &open_docs {
-    for dep in doc.dependencies().values() {
-      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
-        if seen.insert(specifier.as_str()) {
-          // only include dependencies we know to exist otherwise typescript will error
-          if documents.exists(specifier) {
-            result.push(specifier.to_string());
-          }
-        }
+  for doc in &all_docs {
+    let specifiers = std::iter::once(doc.specifier()).chain(
+      doc
+        .dependencies()
+        .values()
+        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
+    );
+    for specifier in specifiers {
+      if seen.insert(specifier.as_str()) && documents.exists(specifier) {
+        // only include dependencies we know to exist otherwise typescript will error
+        result.push(specifier.to_string());
       }
     }
   }
@@ -3177,8 +3214,11 @@ pub enum RequestMethod {
   GetOutliningSpans(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
-  /// Get document references for a specific position.
-  GetReferences((ModuleSpecifier, u32)),
+  /// Finds the document references for a specific position.
+  FindReferences {
+    specifier: ModuleSpecifier,
+    position: u32,
+  },
   /// Get signature help items for a specific position.
   GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
   /// Get a selection range for a specific position.
@@ -3348,9 +3388,12 @@ impl RequestMethod {
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
-      RequestMethod::GetReferences((specifier, position)) => json!({
+      RequestMethod::FindReferences {
+        specifier,
+        position,
+      } => json!({
         "id": id,
-        "method": "getReferences",
+        "method": "findReferences",
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
