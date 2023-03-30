@@ -982,6 +982,7 @@ impl Resource for EarlyUpgradeSocket {
           // TODO(mmastrac): This seems inefficient
           let mut buf = vec![0; limit];
           let read = upgraded.read(&mut buf).await?;
+          println!("got!!! {}", read);
           buf.truncate(read);
           return Ok(buf.into());
         }
