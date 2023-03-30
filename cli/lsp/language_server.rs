@@ -1954,27 +1954,23 @@ impl Inner {
     let mark = self.performance.mark("references", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
-    let req = tsc::RequestMethod::GetReferences((
-      specifier.clone(),
-      line_index.offset_tsc(params.text_document_position.position)?,
-    ));
-    let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
+    let maybe_referenced_symbols = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get references from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
+      .find_references(
+        self.snapshot(),
+        &specifier,
+        line_index.offset_tsc(params.text_document_position.position)?,
+      )
+      .await?;
 
-    if let Some(references) = maybe_references {
+    if let Some(symbols) = maybe_referenced_symbols {
       let mut results = Vec::new();
-      for reference in references {
+      for reference in symbols.iter().flat_map(|s| &s.references) {
         if !params.context.include_declaration && reference.is_definition {
           continue;
         }
         let reference_specifier =
-          resolve_url(&reference.document_span.file_name).unwrap();
+          resolve_url(&reference.entry.document_span.file_name).unwrap();
         let reference_line_index = if reference_specifier == specifier {
           line_index.clone()
         } else {
@@ -1982,8 +1978,11 @@ impl Inner {
             self.get_asset_or_document(&reference_specifier)?;
           asset_or_doc.line_index()
         };
-        results
-          .push(reference.to_location(reference_line_index, &self.url_map));
+        results.push(
+          reference
+            .entry
+            .to_location(reference_line_index, &self.url_map),
+        );
       }
 
       self.performance.measure(mark);
