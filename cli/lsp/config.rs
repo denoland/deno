@@ -850,4 +850,44 @@ mod tests {
     );
     run_test(vec![], vec![]);
   }
+
+  #[test]
+  fn config_enabled_root_urls() {
+    let mut config = Config::new();
+    let root_dir = Url::parse("file:///example/").unwrap();
+    config.root_uri = Some(root_dir.clone());
+    config.settings.workspace.enable = false;
+    config.settings.workspace.enable_paths = Vec::new();
+    assert_eq!(config.enabled_root_urls(), vec![]);
+
+    config.settings.workspace.enable = true;
+    assert_eq!(config.enabled_root_urls(), vec![root_dir]);
+
+    config.settings.workspace.enable = false;
+    let root_dir1 = Url::parse("file:///root1/").unwrap();
+    let root_dir2 = Url::parse("file:///root2/").unwrap();
+    let root_dir3 = Url::parse("file:///root3/").unwrap();
+    config.enabled_paths = HashMap::from([
+      (
+        root_dir1.clone(),
+        vec![
+          root_dir1.join("sub_dir").unwrap(),
+          root_dir1.join("sub_dir/other").unwrap(),
+          root_dir1.join("test.ts").unwrap(),
+        ],
+      ),
+      (root_dir2.clone(), vec![root_dir2.join("other.ts").unwrap()]),
+      (root_dir3.clone(), vec![]),
+    ]);
+
+    assert_eq!(
+      config.enabled_root_urls(),
+      vec![
+        root_dir1.join("sub_dir").unwrap(),
+        root_dir1.join("test.ts").unwrap(),
+        root_dir2.join("other.ts").unwrap(),
+        root_dir3
+      ]
+    );
+  }
 }
