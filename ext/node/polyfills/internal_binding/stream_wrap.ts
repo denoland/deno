@@ -276,6 +276,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
+    console.log("read in stream wrap");
     let buf = new Uint8Array(SUGGESTED_SIZE);
 
     let nread: number | null;
@@ -328,6 +329,7 @@ export class LibuvStreamWrap extends HandleWrap {
    * @param data The Uint8Array buffer to write to the stream.
    */
   async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
+    console.log("write", data);
     const { byteLength } = data;
 
     try {
@@ -337,6 +339,7 @@ export class LibuvStreamWrap extends HandleWrap {
         nwritten += await this[kStreamBaseField]!.write(
           data.subarray(nwritten),
         );
+        console.log("nwritten", nwritten, data.length);
       }
     } catch (e) {
       let status: number;

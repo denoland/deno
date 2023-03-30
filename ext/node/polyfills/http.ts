@@ -655,7 +655,8 @@ class ServerImpl extends EventEmitter {
   constructor(handler?: ServerHandler) {
     super();
     // @ts-ignore Might be undefined without `--unstable` flag
-    this.#isFlashServer = typeof DenoServe == "function";
+    // TODO(bartlomieju):
+    this.#isFlashServer = false;
     if (this.#isFlashServer) {
       this.#servePromise = deferred();
       this.#servePromise.then(() => this.emit("close"));
@@ -703,7 +704,7 @@ class ServerImpl extends EventEmitter {
   }
 
   async #listenLoop() {
-    const go = async (httpConn: Deno.HttpConn) => {
+    const go = async (tcpConn: Deno.Conn, httpConn: Deno.HttpConn) => {
       try {
         for (;;) {
           let reqEvent = null;
@@ -721,8 +722,50 @@ class ServerImpl extends EventEmitter {
             break;
           }
           const req = new IncomingMessageForServer(reqEvent.request);
-          const res = new ServerResponse(reqEvent, undefined);
-          this.emit("request", req, res);
+          console.log(
+            "req",
+            req.upgrade,
+            this.listenerCount("upgrade"),
+          );
+          if (req.upgrade && this.listenerCount("upgrade") > 0) {
+            const conn = await Deno.upgradeHttp2(
+              reqEvent.request,
+              tcpConn,
+            ) as Deno.Conn;
+            console.log(
+              "conn",
+              conn,
+              conn.rid,
+              conn.remoteAddr,
+              conn.localAddr,
+            );
+            const w = conn.write;
+            const r = conn.read;
+            conn.read = function (...args) {
+              console.log("read", args);
+              return r.apply(this, args);
+            };
+            // conn.write = function (...args) {
+            //   console.log("write for conn", args);
+            //   let written;
+            //   try {
+            //     written = w.apply(this, args);
+            //   } catch (e) {
+            //     console.log("write failed", e);
+            //     throw e;
+            //   }
+            //   console.log("w", written);
+            //   return w;
+            // };
+            const socket = new Socket({
+              handle: new TCP(constants.SERVER, conn),
+            });
+            this.emit("upgrade", req, socket, Buffer.from([]));
+            return;
+          } else {
+            const res = new ServerResponse(reqEvent, undefined);
+            this.emit("request", req, res);
+          }
         }
       } finally {
         this.#httpConnections.delete(httpConn);
@@ -743,7 +786,7 @@ class ServerImpl extends EventEmitter {
         }
 
         this.#httpConnections.add(httpConn);
-        go(httpConn);
+        go(conn, httpConn);
       }
     }
   }

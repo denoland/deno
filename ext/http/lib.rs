@@ -950,16 +950,24 @@ enum EarlyUpgradeSocketInner {
     Rc<HttpStreamResource>,
     WebSocketUpgrade,
     // Readers need to block in this state, so they can wait here for the broadcast.
-    tokio::sync::broadcast::Sender<Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>>,
+    tokio::sync::broadcast::Sender<
+      Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
+    >,
   ),
   PostResponse(
     Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
-    Rc<AsyncRefCell<tokio::io::WriteHalf<hyper::upgrade::Upgraded>>>),
+    Rc<AsyncRefCell<tokio::io::WriteHalf<hyper::upgrade::Upgraded>>>,
+  ),
 }
 
 impl EarlyUpgradeSocket {
   /// Gets a reader without holding the lock.
-  async fn get_reader(self: Rc<Self>) -> Result<Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>, AnyError> {
+  async fn get_reader(
+    self: Rc<Self>,
+  ) -> Result<
+    Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
+    AnyError,
+  > {
     let mut borrow = self.0.borrow_mut().await;
     let inner = &mut *borrow;
     match inner {
@@ -969,9 +977,7 @@ impl EarlyUpgradeSocket {
         drop(borrow);
         Ok(rx.recv().await?)
       }
-      EarlyUpgradeSocketInner::PostResponse(rx, _) => {
-        Ok(rx.clone())
-      }
+      EarlyUpgradeSocketInner::PostResponse(rx, _) => Ok(rx.clone()),
     }
   }
 
@@ -1015,7 +1021,7 @@ impl EarlyUpgradeSocket {
 
           let (rx, tx) = tokio::io::split(upgraded);
           let rx = Rc::new(AsyncRefCell::new(rx));
-          let tx =  Rc::new(AsyncRefCell::new(tx));
+          let tx = Rc::new(AsyncRefCell::new(tx));
 
           // Take the tx and rx lock before we allow anything else to happen because we want to control
           // the order of reads and writes.
@@ -1031,7 +1037,7 @@ impl EarlyUpgradeSocket {
           // We also fully release our lock.
           *inner = EarlyUpgradeSocketInner::PostResponse(rx, tx);
           drop(borrow);
-          
+
           // We've updated inner and unlocked it, reads are free to go in-order.
           drop(rx_lock);
 
@@ -1040,7 +1046,7 @@ impl EarlyUpgradeSocket {
             tx_lock.write_all(&extra).await?;
           }
         }
-      },
+      }
       EarlyUpgradeSocketInner::PostResponse(_, tx) => {
         let tx = tx.clone();
         drop(borrow);
@@ -1080,9 +1086,7 @@ impl Resource for EarlyUpgradeSocket {
   }
 
   fn write_all(self: Rc<Self>, buf: BufView) -> AsyncResult<()> {
-    Box::pin(async move {
-      Self::write_all(self, buf).await
-    })
+    Box::pin(async move { Self::write_all(self, buf).await })
   }
 
   fn close(self: Rc<Self>) {

@@ -16,8 +16,8 @@ import {
 import {
   _flash,
   fromInnerRequest,
-  toInnerRequest,
   newInnerRequest,
+  toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
@@ -108,6 +108,7 @@ class HttpConn {
       throw error;
     }
     if (nextRequest == null) {
+      console.log("nextRequest is null");
       // Work-around for servers (deno_std/http in particular) that call
       // `nextRequest()` before upgrading a previous request which has a
       // `connection: upgrade` header.
@@ -473,14 +474,14 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
-function upgradeHttp2(req) {
-  return upgradeHttp2Inner(req);
+function upgradeHttp2(req, conn) {
+  return upgradeHttp2Inner(req, conn);
 }
 
-async function upgradeHttp2Inner(req) {
+async function upgradeHttp2Inner(req, conn) {
   const inner = toInnerRequest(req);
   const res = await core.opAsync("op_http_upgrade_early", inner.__rid);
-  return new TcpConn(res, null, null);
+  return new TcpConn(res, conn.remoteAddr, conn.localAddr);
 }
 
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
