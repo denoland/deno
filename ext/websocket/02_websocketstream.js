@@ -273,7 +273,7 @@ class WebSocketStream {
                 }
                 default: {
                   /* close */
-                  this[_closed].resolve(value);
+                  this[_closed].resolve(kind);
                   core.tryClose(this[_rid]);
                   break;
                 }
