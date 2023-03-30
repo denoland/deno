@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { magenta } from "std/fmt/colors.ts";
+import { pooledMap } from "std/async/pool.ts";
 import { dirname, fromFileUrl, join } from "std/path/mod.ts";
 import { fail } from "std/testing/asserts.ts";
 import {
@@ -115,11 +116,16 @@ Deno.test("Node.js compatibility", async (t) => {
   for (const path of testPaths.sequential) {
     await runTest(t, path);
   }
-  const pending = [];
-  for (const path of testPaths.parallel) {
-    pending.push(runTest(t, path));
+  const testPool = pooledMap(
+    navigator.hardwareConcurrency,
+    testPaths.parallel,
+    (path) => runTest(t, path),
+  );
+  const testCases = [];
+  for await (const testCase of testPool) {
+    testCases.push(testCase);
   }
-  await Promise.all(pending);
+  await Promise.all(testCases);
 });
 
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
