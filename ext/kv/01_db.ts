@@ -111,14 +111,15 @@ class Kv {
       [key, "set", value],
     ];
 
-    const result = await core.opAsync(
+    const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       checks,
       mutations,
       [],
     );
-    if (!result) throw new TypeError("Failed to set value");
+    if (versionstamp === null) throw new TypeError("Failed to set value");
+    return { versionstamp };
   }
 
   async delete(key: Deno.KvKey) {
@@ -255,15 +256,16 @@ class AtomicOperation {
     return this;
   }
 
-  async commit(): Promise<boolean> {
-    const result = await core.opAsync(
+  async commit(): Promise<Deno.KvCommitResult | null> {
+    const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       this.#checks,
       this.#mutations,
       [], // TODO(@losfair): enqueue
     );
-    return result;
+    if (versionstamp === null) return null;
+    return { versionstamp };
   }
 
   then() {
