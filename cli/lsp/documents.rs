@@ -49,6 +49,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
+use std::fs::ReadDir;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1238,48 +1239,6 @@ impl Documents {
   }
 
   fn refresh_dependencies(&mut self, root_urls: Vec<Url>) {
-    fn is_auto_discoverable_dir(dir_path: &Path) -> bool {
-      if let Some(dir_name) = dir_path.file_name() {
-        let dir_name = dir_name.to_string_lossy().to_lowercase();
-        !matches!(dir_name.as_str(), "node_modules" | ".git")
-      } else {
-        false
-      }
-    }
-
-    fn is_auto_discoverable_file(file_path: &Path) -> bool {
-      // Don't auto-discover minified files as they are likely to be very large
-      // and likely not to have dependencies on code outside them that would
-      // be useful in the LSP
-      if let Some(file_name) = file_path.file_name() {
-        let file_name = file_name.to_string_lossy().to_lowercase();
-        !file_name.as_str().contains(".min.")
-      } else {
-        false
-      }
-    }
-
-    fn is_diagnosable(media_type: MediaType) -> bool {
-      match media_type {
-        MediaType::JavaScript
-        | MediaType::Jsx
-        | MediaType::Mjs
-        | MediaType::Cjs
-        | MediaType::TypeScript
-        | MediaType::Mts
-        | MediaType::Cts
-        | MediaType::Dts
-        | MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Tsx => true,
-        MediaType::Json
-        | MediaType::Wasm
-        | MediaType::SourceMap
-        | MediaType::TsBuildInfo
-        | MediaType::Unknown => false,
-      }
-    }
-
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
@@ -1293,16 +1252,7 @@ impl Documents {
       fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
     let open_docs = &mut self.open_docs;
 
-    let mut handle_file_path = |file_path: &Path| {
-      let media_type = MediaType::from_path(&file_path);
-      if !is_diagnosable(media_type) || !is_auto_discoverable_file(&file_path) {
-        return;
-      }
-      let specifier = match ModuleSpecifier::from_file_path(&file_path) {
-        Ok(specifier) => specifier,
-        Err(_) => return,
-      };
-
+    for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
       // mark this document as having been found
       not_found_docs.remove(&specifier);
 
@@ -1316,44 +1266,6 @@ impl Documents {
           if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
             *doc = new_doc;
           }
-        }
-      }
-    };
-
-    let mut pending_dirs = VecDeque::new();
-    for root_url in root_urls {
-      if let Ok(path) = root_url.to_file_path() {
-        if path.is_dir() {
-          pending_dirs.push_back(path.to_path_buf());
-        } else {
-          handle_file_path(&path);
-        }
-      }
-    }
-
-    while let Some(dir_path) = pending_dirs.pop_front() {
-      if !is_auto_discoverable_dir(&dir_path) {
-        continue;
-      }
-      let read_dir = match std::fs::read_dir(&dir_path) {
-        Ok(entry) => entry,
-        Err(_) => continue,
-      };
-
-      for entry in read_dir {
-        let entry = match entry {
-          Ok(entry) => entry,
-          Err(_) => continue,
-        };
-        let file_type = match entry.file_type() {
-          Ok(file_type) => file_type,
-          Err(_) => continue,
-        };
-        let new_path = dir_path.join(entry.file_name());
-        if file_type.is_dir() {
-          pending_dirs.push_back(new_path);
-        } else if file_type.is_file() {
-          handle_file_path(&new_path);
         }
       }
     }
@@ -1595,12 +1507,150 @@ fn analyze_module(
   }
 }
 
+/// Iterator that finds documents that can be preloaded into
+/// the LSP on startup.
+struct PreloadDocumentFinder {
+  pending_dirs: Vec<PathBuf>,
+  pending_files: Vec<PathBuf>,
+  current_entries: Option<ReadDir>,
+}
+
+impl PreloadDocumentFinder {
+  pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
+    let mut finder = PreloadDocumentFinder {
+      pending_dirs: Default::default(),
+      pending_files: Default::default(),
+      current_entries: Default::default(),
+    };
+    for root_url in root_urls {
+      if let Ok(path) = root_url.to_file_path() {
+        if path.is_dir() {
+          finder.pending_dirs.push(path);
+        } else {
+          finder.pending_files.push(path);
+        }
+      }
+    }
+    finder
+  }
+
+  fn read_next_file_entry(&mut self) -> Option<ModuleSpecifier> {
+    fn is_discoverable_dir(dir_path: &Path) -> bool {
+      if let Some(dir_name) = dir_path.file_name() {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        !matches!(dir_name.as_str(), "node_modules" | ".git")
+      } else {
+        false
+      }
+    }
+
+    if let Some(mut entries) = self.current_entries.take() {
+      while let Some(entry) = entries.next() {
+        if let Ok(entry) = entry {
+          let path = entry.path();
+          if let Ok(file_type) = entry.file_type() {
+            if file_type.is_dir() && is_discoverable_dir(&path) {
+              self.pending_dirs.push(path);
+            } else if file_type.is_file() {
+              if let Some(specifier) = Self::get_valid_specifier(&path) {
+                // restore the next entries for next time
+                self.current_entries = Some(entries);
+                return Some(specifier);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    None
+  }
+
+  fn get_valid_specifier(path: &Path) -> Option<ModuleSpecifier> {
+    fn is_discoverable_file(file_path: &Path) -> bool {
+      // Don't auto-discover minified files as they are likely to be very large
+      // and likely not to have dependencies on code outside them that would
+      // be useful in the LSP
+      if let Some(file_name) = file_path.file_name() {
+        let file_name = file_name.to_string_lossy().to_lowercase();
+        !file_name.as_str().contains(".min.")
+      } else {
+        false
+      }
+    }
+
+    fn is_discoverable_media_type(media_type: MediaType) -> bool {
+      match media_type {
+        MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Tsx => true,
+        MediaType::Json // ignore because json never depends on other files
+        | MediaType::Wasm
+        | MediaType::SourceMap
+        | MediaType::TsBuildInfo
+        | MediaType::Unknown => false,
+      }
+    }
+
+    let media_type = MediaType::from_path(path);
+    if is_discoverable_media_type(media_type) && is_discoverable_file(path) {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+        return Some(specifier);
+      }
+    }
+    None
+  }
+
+  fn queue_next_file_entries(&mut self) {
+    debug_assert!(self.current_entries.is_none());
+    while let Some(dir_path) = self.pending_dirs.pop() {
+      if let Ok(entries) = fs::read_dir(&dir_path) {
+        self.current_entries = Some(entries);
+        break;
+      }
+    }
+  }
+}
+
+impl Iterator for PreloadDocumentFinder {
+  type Item = ModuleSpecifier;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    // drain the pending files
+    while let Some(path) = self.pending_files.pop() {
+      if let Some(specifier) = Self::get_valid_specifier(&path) {
+        return Some(specifier);
+      }
+    }
+
+    // then go through the current entries and directories
+    while !self.pending_dirs.is_empty() || self.current_entries.is_some() {
+      match self.read_next_file_entry() {
+        Some(entry) => return Some(entry),
+        None => {
+          self.queue_next_file_entries();
+        }
+      }
+    }
+    None
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use crate::npm::NpmResolution;
 
   use super::*;
   use import_map::ImportMap;
+  use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
@@ -1794,5 +1844,65 @@ console.log(b, "hello deno");
         Some(file3_specifier),
       );
     }
+  }
+
+  #[test]
+  pub fn test_pre_load_document_finder() {
+    let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("root1/node_modules/");
+    temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
+
+    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/.git");
+    temp_dir.create_dir_all("root1/file.ts"); // no, directory
+    temp_dir.write("root1/mod1.ts", ""); // yes
+    temp_dir.write("root1/mod2.js", ""); // yes
+    temp_dir.write("root1/mod3.tsx", ""); // yes
+    temp_dir.write("root1/mod4.d.ts", ""); // yes
+    temp_dir.write("root1/mod5.jsx", ""); // yes
+    temp_dir.write("root1/mod6.mjs", ""); // yes
+    temp_dir.write("root1/mod7.mts", ""); // yes
+    temp_dir.write("root1/mod8.d.mts", ""); // yes
+    temp_dir.write("root1/other.json", ""); // no, json
+    temp_dir.write("root1/other.txt", ""); // no, text file
+    temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
+    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+
+    temp_dir.create_dir_all("root2/folder");
+    temp_dir.write("root2/file1.ts", ""); // yes, provided
+    temp_dir.write("root2/file2.ts", ""); // no, not provided
+    temp_dir.write("root2/folder/main.ts", ""); // yes, provided
+
+    temp_dir.create_dir_all("root3/");
+    temp_dir.write("root3/mod.ts", ""); // no, not provided
+
+    let mut urls = PreloadDocumentFinder::from_root_urls(&vec![
+      temp_dir.uri().join("root1/").unwrap(),
+      temp_dir.uri().join("root2/file1.ts").unwrap(),
+      temp_dir.uri().join("root2/folder/").unwrap(),
+    ])
+    .collect::<Vec<_>>();
+
+    // order doesn't matter
+    urls.sort();
+
+    assert_eq!(
+      urls,
+      vec![
+        temp_dir.uri().join("root1/mod1.ts").unwrap(),
+        temp_dir.uri().join("root1/mod2.js").unwrap(),
+        temp_dir.uri().join("root1/mod3.tsx").unwrap(),
+        temp_dir.uri().join("root1/mod4.d.ts").unwrap(),
+        temp_dir.uri().join("root1/mod5.jsx").unwrap(),
+        temp_dir.uri().join("root1/mod6.mjs").unwrap(),
+        temp_dir.uri().join("root1/mod7.mts").unwrap(),
+        temp_dir.uri().join("root1/mod8.d.mts").unwrap(),
+        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+      ]
+    );
   }
 }
