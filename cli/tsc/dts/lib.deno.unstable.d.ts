@@ -1669,7 +1669,7 @@ declare namespace Deno {
      */
     get cursor(): string;
 
-    next(): Promise<IteratorResult<KvEntry<T>, any>>;
+    next(): Promise<IteratorResult<KvEntry<T>, undefined>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry<T>>;
   }
 
@@ -1928,11 +1928,10 @@ declare namespace Deno {
      * information on consistency levels, see the documentation for
      * {@linkcode Deno.KvConsistencyLevel}.
      */
-    getMany<T extends ReadonlyArray<unknown>>(
-      keys: { [K in keyof T]: KvKey },
+    getMany<T extends readonly unknown[]>(
+      keys: readonly [...{ [K in keyof T]: KvKey }],
       options?: { consistency?: KvConsistencyLevel },
     ): Promise<{ [K in keyof T]: KvEntryMaybe<T[K]> }>;
-
     /**
      * Set the value for the given key in the database. If a value already
      * exists for the key, it will be overwritten.
