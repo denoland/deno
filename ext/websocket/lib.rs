@@ -403,6 +403,20 @@ pub enum SendValue {
 }
 
 #[op]
+pub async fn op_ws_send_binary(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  data: ZeroCopyBuf,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<WsStreamResource>(rid)?;
+  resource.send(Message::Binary(data.to_vec())).await?;
+  Ok(())
+}
+
+#[op]
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -504,6 +518,7 @@ deno_core::extension!(deno_websocket,
     op_ws_send,
     op_ws_close,
     op_ws_next_event,
+    op_ws_send_binary,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
