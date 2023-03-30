@@ -2714,28 +2714,31 @@ itest!(byte_order_mark {
 
 #[test]
 fn issue9750() {
-  util::with_pty(&["run", "--prompt", "run/issue9750.js"], |mut console| {
-    console.expect("Enter 'yy':");
-    console.write_line_raw("yy");
-    console.expect(concat!(
-      "┌ ⚠️  Deno requests env access.\r\n",
-      "├ Requested by `Deno.permissions.query()` API.\r\n",
-      "├ Run again with --allow-env to bypass this prompt.\r\n",
-      "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
-    ));
-    console.write_line_raw("n");
-    console.expect("Denied env access.");
-    console.expect(concat!(
-      "┌ ⚠️  Deno requests env access to \"SECRET\".\r\n",
-      "├ Run again with --allow-env to bypass this prompt.\r\n",
-      "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
-    ));
-    console.write_line_raw("n");
-    console.expect_all(&[
-      "Denied env access to \"SECRET\".",
-      "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
-    ]);
-  });
+  TestContext::default()
+    .new_command()
+    .args_vec(&["run", "--prompt", "run/issue9750.js"])
+    .with_pty(|mut console| {
+      console.expect("Enter 'yy':");
+      console.write_line_raw("yy");
+      console.expect(concat!(
+        "┌ ⚠️  Deno requests env access.\r\n",
+        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Run again with --allow-env to bypass this prompt.\r\n",
+        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+      ));
+      console.write_line_raw("n");
+      console.expect("Denied env access.");
+      console.expect(concat!(
+        "┌ ⚠️  Deno requests env access to \"SECRET\".\r\n",
+        "├ Run again with --allow-env to bypass this prompt.\r\n",
+        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
+      ));
+      console.write_line_raw("n");
+      console.expect_all(&[
+        "Denied env access to \"SECRET\".",
+        "PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag",
+      ]);
+    });
 }
 
 // Regression test for https://github.com/denoland/deno/issues/11451.
