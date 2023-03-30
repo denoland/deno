@@ -929,11 +929,11 @@ fn lsp_inlay_hints_not_enabled() {
 #[test]
 fn lsp_workspace_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
-    let context = TestContextBuilder::new().build();
-    // we aren't actually writing anything to the tempdir in this test, but we
-    // just need a legitimate file path on the host system so that logic that
-    // tries to convert to and from the fs paths works on all env
+    let context = TestContextBuilder::new().use_temp_cwd().build();
     let temp_dir = context.temp_dir();
+    temp_dir.create_dir_all("worker");
+    temp_dir.write("worker/shared.ts", "export const a = 1");
+    temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
 
     let root_specifier = temp_dir.uri();
 
@@ -985,7 +985,11 @@ fn lsp_workspace_enable_paths() {
         "uri": root_specifier.join("./worker/file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
-        "text": "console.log(Date.now());\n"
+        "text": concat!(
+          "console.log(Date.now());\n",
+          "import { a } from './shared.ts';\n",
+          "a;\n",
+        ),
       }
     }));
 
@@ -1070,6 +1074,56 @@ fn lsp_workspace_enable_paths() {
           "end": { "line": 0, "character": 20, }
         }
       })
+    );
+
+    // check that the file system documents were auto-discovered
+    // via the enabled paths
+    let res = client.write_request(
+      "textDocument/references",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        },
+        "position": { "line": 2, "character": 0 },
+        "context": {
+          "includeDeclaration": true
+        }
+      }),
+    );
+
+    assert_eq!(
+      res,
+      json!([{
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "range": {
+          "start": { "line": 1, "character": 9 },
+          "end": { "line": 1, "character": 10 }
+        }
+      }, {
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "range": {
+          "start": { "line": 2, "character": 0 },
+          "end": { "line": 2, "character": 1 }
+        }
+      }, {
+        "uri": root_specifier.join("./worker/shared.ts").unwrap(),
+        "range": {
+          "start": { "line": 0, "character": 13 },
+          "end": { "line": 0, "character": 14 }
+        }
+      }, {
+        "uri": root_specifier.join("./worker/other.ts").unwrap(),
+        "range": {
+          "start": { "line": 0, "character": 9 },
+          "end": { "line": 0, "character": 10 }
+        }
+      }, {
+        "uri": root_specifier.join("./worker/other.ts").unwrap(),
+        "range": {
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 1 }
+        }
+      }])
     );
 
     client.shutdown();
