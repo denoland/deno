@@ -2367,16 +2367,32 @@ fn lsp_semantic_tokens() {
 fn lsp_code_lens() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  client.did_open(
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "class A {\n  a = \"a\";\n\n  b() {\n    console.log(this.a);\n  }\n\n  c() {\n    this.a = \"c\";\n  }\n}\n\nconst a = new A();\na.b();\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "class A {\n",
+        "  a = \"a\";\n",
+        "\n",
+        "  b() {\n",
+        "    console.log(this.a);\n",
+        "  }\n",
+        "\n",
+        "  c() {\n",
+        "    this.a = \"c\";\n",
+        "  }\n",
+        "}\n",
+        "\n",
+        "const a = new A();\n",
+        "a.b();\n",
+        "const b = 2;\n",
+        "const c = 3;\n",
+        "c; c;",
+      ),
+    }
+  }));
   let res = client.write_request(
     "textDocument/codeLens",
     json!({
@@ -2428,18 +2444,12 @@ fn lsp_code_lens() {
         "end": { "line": 0, "character": 7 }
       },
       "command": {
-        "title": "2 references",
+        "title": "1 reference",
         "command": "deno.showReferences",
         "arguments": [
           "file:///a/file.ts",
           { "line": 0, "character": 6 },
           [{
-            "uri": "file:///a/file.ts",
-            "range": {
-              "start": { "line": 0, "character": 6 },
-              "end": { "line": 0, "character": 7 }
-            }
-          }, {
             "uri": "file:///a/file.ts",
             "range": {
               "start": { "line": 12, "character": 14 },
@@ -2450,6 +2460,80 @@ fn lsp_code_lens() {
       }
     })
   );
+
+  // 0 references
+  let res = client.write_request(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 14, "character": 6 },
+        "end": { "line": 14, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "range": {
+        "start": { "line": 14, "character": 6 },
+        "end": { "line": 14, "character": 7 }
+      },
+      "command": {
+        "title": "0 references",
+        "command": "",
+      }
+    })
+  );
+
+  // 2 references
+  let res = client.write_request(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 15, "character": 6 },
+        "end": { "line": 15, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "range": {
+        "start": { "line": 15, "character": 6 },
+        "end": { "line": 15, "character": 7 }
+      },
+      "command": {
+        "title": "2 references",
+        "command": "deno.showReferences",
+        "arguments": [
+          "file:///a/file.ts",
+          { "line": 15, "character": 6 },
+          [{
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 16, "character": 0 },
+              "end": { "line": 16, "character": 1 }
+            }
+          },{
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 16, "character": 3 },
+              "end": { "line": 16, "character": 4 }
+            }
+          }]
+        ]
+      }
+    })
+  );
+
   client.shutdown();
 }
 
@@ -3088,6 +3172,114 @@ fn lsp_nav_tree_updates() {
       }
     }])
   );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_find_references() {
+  let mut client = LspClientBuilder::new().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/mod.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export const a = 1;\nconst b = 2;"#
+    }
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/mod.test.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import { a } from './mod.ts'; console.log(a);"#
+    }
+  }));
+
+  // test without including the declaration
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/mod.ts",
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 9 },
+        "end": { "line": 0, "character": 10 }
+      }
+    }, {
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 42 },
+        "end": { "line": 0, "character": 43 }
+      }
+    }])
+  );
+
+  // test with including the declaration
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/mod.ts",
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": true
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": "file:///a/mod.ts",
+      "range": {
+        "start": { "line": 0, "character": 13 },
+        "end": { "line": 0, "character": 14 }
+      }
+    }, {
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 9 },
+        "end": { "line": 0, "character": 10 }
+      }
+    }, {
+      "uri": "file:///a/mod.test.ts",
+      "range": {
+        "start": { "line": 0, "character": 42 },
+        "end": { "line": 0, "character": 43 }
+      }
+    }])
+  );
+
+  // test 0 references
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/mod.ts",
+      },
+      "position": { "line": 1, "character": 6 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  assert_eq!(res, json!(null)); // seems it always returns null for this, which is ok
+
   client.shutdown();
 }
 
@@ -4402,40 +4594,40 @@ fn lsp_completions_auto_import() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  if !list.items.iter().any(|item| item.label == "foo") {
+  let item = list.items.iter().find(|item| item.label == "foo");
+  if item.is_none() {
     panic!("completions items missing 'foo' symbol");
   }
 
-  // the request here is one of the items in `list`
-  let res = client.write_request(
-    "completionItem/resolve",
-    json!({
-      "label": "foo",
-      "kind": 6,
-      "sortText": "￿16",
-      "commitCharacters": [
-        ".",
-        ",",
-        ";",
-        "("
-      ],
-      "data": {
-        "tsc": {
-          "specifier": "file:///a/file.ts",
-          "position": 12,
-          "name": "foo",
-          "source": "./b.ts",
-          "data": {
-            "exportName": "foo",
-            "exportMapKey": "foo|6843|file:///a/b",
-            "moduleSpecifier": "./b.ts",
-            "fileName": "file:///a/b.ts"
-          },
-          "useCodeSnippet": false
-        }
+  let req = json!({
+    "label": "foo",
+    "kind": 6,
+    "sortText": "￿16",
+    "commitCharacters": [
+      ".",
+      ",",
+      ";",
+      "("
+    ],
+    "data": {
+      "tsc": {
+        "specifier": "file:///a/file.ts",
+        "position": 12,
+        "name": "foo",
+        "source": "./b.ts",
+        "data": {
+          "exportName": "foo",
+          "exportMapKey": "foo|6843|file:///a/b",
+          "moduleSpecifier": "./b.ts",
+          "fileName": "file:///a/b.ts"
+        },
+        "useCodeSnippet": false
       }
-    }),
-  );
+    }
+  });
+  assert_eq!(serde_json::to_value(item.unwrap()).unwrap(), req);
+
+  let res = client.write_request("completionItem/resolve", req);
   assert_eq!(
     res,
     json!({

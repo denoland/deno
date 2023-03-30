@@ -418,6 +418,20 @@ pub async fn op_ws_send_binary(
 }
 
 #[op]
+pub async fn op_ws_send_text(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  data: String,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<WsStreamResource>(rid)?;
+  resource.send(Message::Text(data)).await?;
+  Ok(())
+}
+
+#[op]
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -534,6 +548,7 @@ deno_core::extension!(deno_websocket,
     op_ws_close,
     op_ws_next_event,
     op_ws_send_binary,
+    op_ws_send_text,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {

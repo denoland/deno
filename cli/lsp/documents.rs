@@ -800,6 +800,17 @@ fn get_document_path(
   }
 }
 
+/// Specify the documents to include on a `documents.documents(...)` call.
+#[derive(Debug, Clone, Copy)]
+pub enum DocumentsFilter {
+  /// Includes all the documents (diagnosable & non-diagnosable, open & file system).
+  All,
+  /// Includes all the diagnosable documents (open & file system).
+  AllDiagnosable,
+  /// Includes only the diagnosable documents that are open.
+  OpenDiagnosable,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
@@ -823,8 +834,6 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: CliGraphResolver,
-  /// The npm package requirements found in a package.json file.
-  npm_package_json_reqs: Arc<Vec<NpmPackageReq>>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -845,7 +854,6 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
-      npm_package_json_reqs: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -983,15 +991,9 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Vec<NpmPackageReq> {
+  pub fn npm_package_reqs(&mut self) -> Arc<Vec<NpmPackageReq>> {
     self.calculate_dependents_if_dirty();
-    let mut reqs = Vec::with_capacity(
-      self.npm_package_json_reqs.len() + self.npm_specifier_reqs.len(),
-    );
-    // resolve the package.json reqs first, then the npm specifiers
-    reqs.extend(self.npm_package_json_reqs.iter().cloned());
-    reqs.extend(self.npm_specifier_reqs.iter().cloned());
-    reqs
+    self.npm_specifier_reqs.clone()
   }
 
   /// Returns if a @types/node package was injected into the npm
@@ -1011,47 +1013,44 @@ impl Documents {
     }
   }
 
-  /// Return a vector of documents that are contained in the document store,
-  /// where `open_only` flag would provide only those documents currently open
-  /// in the editor and `diagnosable_only` would provide only those documents
-  /// that the language server can provide diagnostics for.
-  pub fn documents(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<Document> {
-    if open_only {
-      self
+  /// Return a collection of documents that are contained in the document store
+  /// based on the provided filter.
+  pub fn documents(&self, filter: DocumentsFilter) -> Vec<Document> {
+    match filter {
+      DocumentsFilter::OpenDiagnosable => self
         .open_docs
         .values()
         .filter_map(|doc| {
-          if !diagnosable_only || doc.is_diagnosable() {
+          if doc.is_diagnosable() {
             Some(doc.clone())
           } else {
             None
           }
         })
-        .collect()
-    } else {
-      // it is technically possible for a Document to end up in both the open
-      // and closed documents so we need to ensure we don't return duplicates
-      let mut seen_documents = HashSet::new();
-      let file_system_docs = self.file_system_docs.lock();
-      self
-        .open_docs
-        .values()
-        .chain(file_system_docs.docs.values())
-        .filter_map(|doc| {
-          // this prefers the open documents
-          if seen_documents.insert(doc.specifier().clone())
-            && (!diagnosable_only || doc.is_diagnosable())
-          {
-            Some(doc.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
+        .collect(),
+      DocumentsFilter::AllDiagnosable | DocumentsFilter::All => {
+        let diagnosable_only =
+          matches!(filter, DocumentsFilter::AllDiagnosable);
+        // it is technically possible for a Document to end up in both the open
+        // and closed documents so we need to ensure we don't return duplicates
+        let mut seen_documents = HashSet::new();
+        let file_system_docs = self.file_system_docs.lock();
+        self
+          .open_docs
+          .values()
+          .chain(file_system_docs.docs.values())
+          .filter_map(|doc| {
+            // this prefers the open documents
+            if seen_documents.insert(doc.specifier().clone())
+              && (!diagnosable_only || doc.is_diagnosable())
+            {
+              Some(doc.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      }
     }
   }
 
@@ -1198,20 +1197,6 @@ impl Documents {
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
     );
-    self.npm_package_json_reqs = Arc::new({
-      match &maybe_package_json_deps {
-        Some(deps) => {
-          let mut reqs = deps
-            .values()
-            .filter_map(|r| r.as_ref().ok())
-            .cloned()
-            .collect::<Vec<_>>();
-          reqs.sort();
-          reqs
-        }
-        None => Vec::new(),
-      }
-    });
     let deps_installer = PackageJsonDepsInstaller::new(
       npm_registry_api.clone(),
       npm_resolution.clone(),
@@ -1592,7 +1577,7 @@ console.log(b, "hello deno");
 
     // At this point the document will be in both documents and the shared file system documents.
     // Now make sure that the original documents doesn't return both copies
-    assert_eq!(documents.documents(false, false).len(), 1);
+    assert_eq!(documents.documents(DocumentsFilter::All).len(), 1);
   }
 
   #[test]
