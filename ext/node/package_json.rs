@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::NodeFs;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 
@@ -61,16 +62,16 @@ impl PackageJson {
     }
   }
 
-  pub fn load(
+  pub fn load<Fs: NodeFs>(
     resolver: &dyn RequireNpmResolver,
     permissions: &mut dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;
-    Self::load_skip_read_permission(path)
+    Self::load_skip_read_permission::<Fs>(path)
   }
 
-  pub fn load_skip_read_permission(
+  pub fn load_skip_read_permission<Fs: NodeFs>(
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     assert!(path.is_absolute());
@@ -79,7 +80,7 @@ impl PackageJson {
       return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
     }
 
-    let source = match std::fs::read_to_string(&path) {
+    let source = match Fs::read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
         return Ok(PackageJson::empty(path));

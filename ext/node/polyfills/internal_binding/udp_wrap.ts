@@ -20,6 +20,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+const core = globalThis.Deno.core;
+const ops = core.ops;
 import {
   AsyncWrap,
   providerType,
@@ -32,12 +34,13 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
-
+import * as net from "ext:deno_net/01_net.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
 
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoListenDatagram = Deno[Deno.internal]?.nodeUnstable?.listenDatagram ||
-  Deno.listenDatagram;
+const DenoListenDatagram = net.createListenDatagram(
+  ops.op_node_unstable_net_listen_udp,
+  ops.op_node_unstable_net_listen_unixpacket,
+);
 
 type MessageType = string | Uint8Array | Buffer | DataView;
 

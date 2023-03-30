@@ -3,6 +3,7 @@
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
+use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -19,6 +20,7 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
+use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
@@ -42,7 +44,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
-use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -113,7 +114,7 @@ impl TsServer {
           }
           let value = request(&mut ts_runtime, state_snapshot, req, token);
           if tx.send(value).is_err() {
-            warn!("Unable to send result to client.");
+            lsp_warn!("Unable to send result to client.");
           }
         }
       })
@@ -2760,7 +2761,7 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
-  let open_docs = documents.documents(true, true);
+  let open_docs = documents.documents(DocumentsFilter::OpenDiagnosable);
   let mut result = Vec::new();
   let mut seen = HashSet::new();
 
