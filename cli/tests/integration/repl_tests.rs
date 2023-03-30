@@ -905,7 +905,7 @@ fn package_json_uncached_no_error() {
   );
   test_context.new_command().with_pty(|mut console| {
     console.write_line("console.log(123 + 456);");
-    console.expect("579");
+    console.expect_all(&["579", "undefined"]);
     assert_not_contains!(
       console.all_output(),
       "Could not set npm package requirements",
@@ -914,7 +914,7 @@ fn package_json_uncached_no_error() {
     // should support getting the package now though
     console
       .write_line("import { getValue, setValue } from '@denotest/esm-basic';");
-    console.expect("undefined");
+    console.expect_all(&["undefined", "Initialize"]);
     console.write_line("setValue(12 + 30);");
     console.expect("undefined");
     console.write_line("getValue()");
