@@ -222,6 +222,7 @@ mod startup_snapshot {
 
   impl deno_node::NodeEnv for SnapshotNodeEnv {
     type P = Permissions;
+    type Fs = deno_node::RealFs;
   }
 
   deno_core::extension!(runtime,
