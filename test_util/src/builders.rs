@@ -228,8 +228,11 @@ impl TestCommandBuilder {
     self
   }
 
-  pub fn args_vec(&mut self, args: Vec<String>) -> &mut Self {
-    self.args_vec = args;
+  pub fn args_vec<T: AsRef<str>, I: IntoIterator<Item = T>>(
+    &mut self,
+    args: I,
+  ) -> &mut Self {
+    self.args_vec = args.into_iter().map(|a| a.as_ref().to_string()).collect();
     self
   }
 

@@ -2803,9 +2803,9 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
-  let open_docs = documents.documents(DocumentsFilter::OpenDiagnosable);
-  let mut result = Vec::new();
+  let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
+  let mut result = Vec::new();
 
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
@@ -2822,23 +2822,17 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // finally include the documents and all their dependencies
-  for doc in &open_docs {
-    let specifier = doc.specifier();
-    if seen.insert(specifier.as_str()) {
-      result.push(specifier.to_string());
-    }
-  }
-
-  // and then all their dependencies (do this after to avoid exists calls)
-  for doc in &open_docs {
-    for dep in doc.dependencies().values() {
-      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
-        if seen.insert(specifier.as_str()) {
-          // only include dependencies we know to exist otherwise typescript will error
-          if documents.exists(specifier) {
-            result.push(specifier.to_string());
-          }
-        }
+  for doc in &all_docs {
+    let specifiers = std::iter::once(doc.specifier()).chain(
+      doc
+        .dependencies()
+        .values()
+        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
+    );
+    for specifier in specifiers {
+      if seen.insert(specifier.as_str()) && documents.exists(specifier) {
+        // only include dependencies we know to exist otherwise typescript will error
+        result.push(specifier.to_string());
       }
     }
   }
