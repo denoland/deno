@@ -114,7 +114,7 @@ regex = "^1.7.0"
 reqwest = { version = "0.11.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
 ring = "=0.16.20"
 rusqlite = { version = "=0.28.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.20.5"
+rustls = "0.21.0"
 rustls-pemfile = "1.0.0"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
