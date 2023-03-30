@@ -19,9 +19,9 @@ fn parse_response(header_bytes: &[u8]) -> Result<Response<Body>, AnyError> {
   let mut headers = [httparse::EMPTY_HEADER; 16];
   let status = httparse::parse_headers(header_bytes, &mut headers)?;
   match status {
-    Status::Complete((_, headers)) => {
+    Status::Complete((_, parsed)) => {
       let mut resp = Response::builder().status(101).body(Body::empty())?;
-      for header in headers.into_iter() {
+      for header in parsed.into_iter() {
         resp.headers_mut().append(
           HeaderName::from_bytes(header.name.as_bytes())?,
           HeaderValue::from_str(std::str::from_utf8(header.value)?)?,
@@ -43,6 +43,7 @@ fn find_newline(slice: &[u8]) -> Option<usize> {
   None
 }
 
+/// WebSocket upgrade state machine states.
 #[derive(Default)]
 enum WebSocketUpgradeState {
   #[default]
@@ -62,6 +63,8 @@ pub struct WebSocketUpgrade {
 }
 
 impl WebSocketUpgrade {
+  /// Ensures that the status line starts with "HTTP/1.1 101 " which matches all of the node.js
+  /// WebSocket libraries that are known. We don't care about the trailing status text.
   fn validate_status(&self, status: &[u8]) -> Result<(), AnyError> {
     if status.starts_with(b"HTTP/1.1 101 ") {
       Ok(())
@@ -170,7 +173,7 @@ mod tests {
       ),
       Err(e) => assert_eq!(
         e,
-        format!("{:?}", result.err().unwrap()),
+        result.err().map(|e| format!("{e:?}")).unwrap_or_default(),
         "Expected error, was {formatted}",
       ),
     }
@@ -282,5 +285,17 @@ mod tests {
     validate_upgrade("HTTP/1.1 200 OK\nConnection: Upgrade\n\n", || {
       Err("invalid HTTP status line")
     });
+  }
+
+  #[test]
+  fn upgrade_too_many_headers() {
+    let headers = (0..20)
+      .map(|i| format!("h{i}: {i}"))
+      .collect::<Vec<_>>()
+      .join("\n");
+    validate_upgrade(
+      &format!("HTTP/1.1 101 Switching Protocols\n{headers}\n\n"),
+      || Err("too many headers"),
+    );
   }
 }
