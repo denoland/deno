@@ -545,4 +545,266 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
+async function serve(arg1, arg2) {
+  let options = undefined;
+  let handler = undefined;
+  if (typeof arg1 === "function") {
+    handler = arg1;
+    options = arg2;
+  } else if (typeof arg2 === "function") {
+    handler = arg2;
+    options = arg1;
+  } else {
+    options = arg1;
+  }
+  if (handler === undefined) {
+    if (options === undefined) {
+      throw new TypeError(
+        "No handler was provided, so an options bag is mandatory.",
+      );
+    }
+    handler = options.handler;
+  }
+  if (typeof handler !== "function") {
+    throw new TypeError("A handler function must be provided.");
+  }
+  if (options === undefined) {
+    options = {};
+  }
+
+  const signal = options.signal;
+
+  const onError = options.onError ?? function (error) {
+    console.error(error);
+    return new Response("Internal Server Error", { status: 500 });
+  };
+
+  const onListen = options.onListen ?? function ({ port }) {
+    console.log(
+      `Listening on http://${hostnameForDisplay(listenOpts.hostname)}:${port}/`,
+    );
+  };
+
+  const listenOpts = {
+    hostname: options.hostname ?? "127.0.0.1",
+    port: options.port ?? 9000,
+    reuseport: options.reusePort ?? false,
+  };
+  if (options.cert || options.key) {
+    if (!options.cert || !options.key) {
+      throw new TypeError(
+        "Both cert and key must be provided to enable HTTPS.",
+      );
+    }
+    listenOpts.cert = options.cert;
+    listenOpts.key = options.key;
+  }
+
+  // TODO(bartlomieju): use API directly
+  const listener = Deno.listen({
+    hostname: listenOpts.hostname,
+    port: listenOpts.port,
+  });
+
+  const serverPromise = deferred();
+  onListen({ hostname: listenOpts.hostname, port });
+
+  const server = {
+    id: serverId,
+    transport: listenOpts.cert && listenOpts.key ? "https" : "http",
+    hostname: listenOpts.hostname,
+    port: listenOpts.port,
+    closed: false,
+    finished: finishedPromise,
+    async close() {
+      if (server.closed) {
+        return;
+      }
+      server.closed = true;
+      await core.opAsync("op_flash_close_server", serverId);
+      await server.finished;
+    },
+    async serve() {
+      let offset = 0;
+      while (true) {
+        if (server.closed) {
+          break;
+        }
+
+        let tokens = nextRequestSync();
+        if (tokens === 0) {
+          tokens = await core.opAsync("op_flash_next_async", serverId);
+          if (server.closed) {
+            break;
+          }
+        }
+
+        for (let i = offset; i < offset + tokens; i++) {
+          let body = null;
+          // There might be a body, but we don't expose it for GET/HEAD requests.
+          // It will be closed automatically once the request has been handled and
+          // the response has been sent.
+          const method = getMethodSync(i);
+          let hasBody = method > 2; // Not GET/HEAD/CONNECT
+          if (hasBody) {
+            body = createRequestBodyStream(serverId, i);
+            if (body === null) {
+              hasBody = false;
+            }
+          }
+
+          const req = fromFlashRequest(
+            serverId,
+            /* streamRid */
+            i,
+            body,
+            /* methodCb */
+            () => methods[method],
+            /* urlCb */
+            () => {
+              const path = ops.op_flash_path(serverId, i);
+              return `${server.transport}://${server.hostname}:${server.port}${path}`;
+            },
+            /* headersCb */
+            () => ops.op_flash_headers(serverId, i),
+          );
+
+          let resp;
+          let remoteAddr;
+          try {
+            resp = handler(req, {
+              get remoteAddr() {
+                if (!remoteAddr) {
+                  const { 0: hostname, 1: port } = core.ops.op_flash_addr(
+                    serverId,
+                    i,
+                  );
+                  remoteAddr = { hostname, port };
+                }
+                return remoteAddr;
+              },
+            });
+            if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
+              PromisePrototypeCatch(
+                PromisePrototypeThen(
+                  resp,
+                  (resp) =>
+                    handleResponse(
+                      req,
+                      resp,
+                      body,
+                      hasBody,
+                      method,
+                      serverId,
+                      i,
+                      respondFast,
+                      respondChunked,
+                      tryRespondChunked,
+                    ),
+                ),
+                onError,
+              );
+            } else if (typeof resp?.then === "function") {
+              resp.then((resp) =>
+                handleResponse(
+                  req,
+                  resp,
+                  body,
+                  hasBody,
+                  method,
+                  serverId,
+                  i,
+                  respondFast,
+                  respondChunked,
+                  tryRespondChunked,
+                )
+              ).catch(onError);
+            } else {
+              handleResponse(
+                req,
+                resp,
+                body,
+                hasBody,
+                method,
+                serverId,
+                i,
+                respondFast,
+                respondChunked,
+                tryRespondChunked,
+              ).catch(onError);
+            }
+          } catch (e) {
+            resp = await onError(e);
+          }
+        }
+
+        offset += tokens;
+      }
+      await server.finished;
+    },
+  };
+
+  return;
+
+  signal?.addEventListener("abort", () => {
+    clearInterval(dateInterval);
+    PromisePrototypeThen(server.close(), () => {}, () => {});
+  }, {
+    once: true,
+  });
+
+  function tryRespondChunked(token, chunk, shutdown) {
+    const nwritten = ops.op_try_flash_respond_chunked(
+      serverId,
+      token,
+      chunk ?? new Uint8Array(),
+      shutdown,
+    );
+    if (nwritten > 0) {
+      return core.opAsync(
+        "op_flash_respond_chunked",
+        serverId,
+        token,
+        chunk,
+        shutdown,
+        nwritten,
+      );
+    }
+  }
+
+  function respondChunked(token, chunk, shutdown) {
+    return core.opAsync(
+      "op_flash_respond_chunked",
+      serverId,
+      token,
+      chunk,
+      shutdown,
+    );
+  }
+
+  const fastOp = prepareFastCalls();
+  let nextRequestSync = () => fastOp.nextRequest();
+  let getMethodSync = (token) => fastOp.getMethod(token);
+  let respondFast = (token, response, shutdown) =>
+    fastOp.respond(token, response, shutdown);
+  if (serverId > 0) {
+    nextRequestSync = () => ops.op_flash_next_server(serverId);
+    getMethodSync = (token) => ops.op_flash_method(serverId, token);
+    respondFast = (token, response, shutdown) =>
+      ops.op_flash_respond(serverId, token, response, null, shutdown);
+  }
+
+  if (!dateInterval) {
+    date = new Date().toUTCString();
+    dateInterval = setInterval(() => {
+      date = new Date().toUTCString();
+    }, 1000);
+  }
+
+  await SafePromiseAll([
+    PromisePrototypeCatch(server.serve(), console.error),
+    serverPromise,
+  ]);
+}
+
 export { _ws, HttpConn, upgradeHttp, upgradeWebSocket };
