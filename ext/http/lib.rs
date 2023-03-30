@@ -979,7 +979,6 @@ impl Resource for EarlyUpgradeSocket {
     self: Rc<Self>,
     buf: BufView,
   ) -> AsyncResult<deno_core::WriteOutcome> {
-    println!("write {:?}", buf.to_vec());
     let self_clone = self.clone();
     Box::pin(async move {
       let mut borrow = self_clone.0.borrow_mut().await;
@@ -1009,18 +1008,17 @@ impl Resource for EarlyUpgradeSocket {
             let mut old_rd =
               RcRef::map(stream.clone(), |r| &r.rd).borrow_mut().await;
             let new_rd = HttpRequestReader::Closed;
-            let upgraded = match replace(&mut *old_rd, new_rd) {
+            let mut upgraded = match replace(&mut *old_rd, new_rd) {
               HttpRequestReader::Headers(request) => {
-                println!("Got upgrade");
                 hyper::upgrade::on(request).await?
               }
               _ => {
                 return Err(http_error("response already started"));
               }
             };
-            println!("Upgraded");
 
-            // TODO(mmastrac): Write the rest of the stream, or return a partial write outcome
+            // If we had extra data after the response, write that to the upgraded connection
+            upgraded.write_all(&extra).await?;
             *inner = EarlyUpgradeSocketInner::PostResponse(upgraded);
           }
           Ok(WriteOutcome::Full {
