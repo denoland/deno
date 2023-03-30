@@ -2294,6 +2294,10 @@ declare namespace Deno {
    * const { columns, rows } = Deno.consoleSize();
    * ```
    *
+   * This returns the size of the console window as reported by the operating
+   * system. It's not a reflection of how many characters will fit within the
+   * console window, but can be used as part of that calculation.
+   *
    * @category I/O
    */
   export function consoleSize(): {

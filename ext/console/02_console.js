@@ -204,7 +204,7 @@ function isFullWidthCodePoint(code) {
   );
 }
 
-export function getStringWidth(str) {
+function getStringWidth(str) {
   str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
   let width = 0;
 
@@ -1339,16 +1339,6 @@ function inspectObject(value, inspectOptions, proxyDetails) {
   ) {
     return String(value[customInspect](inspect, inspectOptions));
   }
-  if (
-    ReflectHas(value, nodeCustomInspect) &&
-    typeof value[nodeCustomInspect] === "function"
-  ) {
-    // TODO(kt3k): The last inspect needs to be util.inspect of Node.js.
-    // We need to move the implementation of util.inspect to this file.
-    return String(
-      value[nodeCustomInspect](inspectOptions.depth, inspectOptions, inspect),
-    );
-  }
   // This non-unique symbol is used to support op_crates, ie.
   // in extensions/web we don't want to depend on public
   // Symbol.for("Deno.customInspect") symbol defined in the public API.
@@ -2325,7 +2315,6 @@ class Console {
 }
 
 const customInspect = SymbolFor("Deno.customInspect");
-const nodeCustomInspect = SymbolFor("nodejs.util.inspect.custom");
 
 function inspect(
   value,
