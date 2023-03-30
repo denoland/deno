@@ -1661,7 +1661,7 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export class KvListIterator implements AsyncIterableIterator<KvEntry> {
+  export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
      * Returns the cursor of the current position in the iteration. This cursor
      * can be used to resume the iteration from the current position in the
@@ -1669,8 +1669,8 @@ declare namespace Deno {
      */
     get cursor(): string;
 
-    next(): Promise<IteratorResult<KvEntry, any>>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry>;
+    next(): Promise<IteratorResult<KvEntry<T>, any>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry<T>>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1680,16 +1680,26 @@ declare namespace Deno {
    * The `versionstamp` is a string that represents the current version of the
    * key-value pair. It can be used to perform atomic operations on the KV store
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
-   * A `null` versionstamp indicates that no value exists for the given key in
-   * the KV store.
    *
    * @category KV
    */
-  export interface KvEntry {
+  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An optional versioned pair of key and value in a {@linkcode Deno.Kv}.
+   *
+   * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
+   * fields may be `null` if no value exists for the given key in the KV store.
+   *
+   * @category KV
+   */
+  export type KvEntryMaybe<T> = KvEntry<T> | {
     key: KvKey;
-    value: unknown;
-    versionstamp: string | null;
-  }
+    value: null;
+    versionstamp: null;
+  };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1872,8 +1882,8 @@ declare namespace Deno {
   export class Kv {
     /**
      * Retrieve the value and versionstamp for the given key from the database
-     * in the form of a {@linkcode Deno.KvEntry}. If no value exists for the key,
-     * the returned entry will have a `null` value and versionstamp.
+     * in the form of a {@linkcode Deno.KvEntryMaybe}. If no value exists for
+     * the key, the returned entry will have a `null` value and versionstamp.
      *
      * ```ts
      * const db = await Deno.openKv();
@@ -1889,17 +1899,17 @@ declare namespace Deno {
      * information on consistency levels, see the documentation for
      * {@linkcode Deno.KvConsistencyLevel}.
      */
-    get(
+    get<T = unknown>(
       key: KvKey,
       options?: { consistency?: KvConsistencyLevel },
-    ): Promise<KvEntry>;
+    ): Promise<KvEntryMaybe<T>>;
 
     /**
      * Retrieve multiple values and versionstamps from the database in the form
-     * of an array of {@linkcode Deno.KvEntry} objects. The returned array will
-     * have the same length as the `keys` array, and the entries will be in the
-     * same order as the keys. If no value exists for a given key, the returned
-     * entry will have a `null` value and versionstamp.
+     * of an array of {@linkcode Deno.KvEntryMaybe} objects. The returned array
+     * will have the same length as the `keys` array, and the entries will be in
+     * the same order as the keys. If no value exists for a given key, the
+     * returned entry will have a `null` value and versionstamp.
      *
      * ```ts
      * const db = await Deno.openKv();
@@ -1918,10 +1928,10 @@ declare namespace Deno {
      * information on consistency levels, see the documentation for
      * {@linkcode Deno.KvConsistencyLevel}.
      */
-    getMany(
-      keys: KvKey[],
+    getMany<T extends ReadonlyArray<unknown>>(
+      keys: { [K in keyof T]: KvKey },
       options?: { consistency?: KvConsistencyLevel },
-    ): Promise<KvEntry[]>;
+    ): Promise<{ [K in keyof T]: KvEntryMaybe<T[K]> }>;
 
     /**
      * Set the value for the given key in the database. If a value already
@@ -1984,7 +1994,10 @@ declare namespace Deno {
      * list operation. See the documentation for {@linkcode Deno.KvListOptions}
      * for more information.
      */
-    list(selector: KvListSelector, options?: KvListOptions): KvListIterator;
+    list<T = unknown>(
+      selector: KvListSelector,
+      options?: KvListOptions,
+    ): KvListIterator<T>;
 
     /**
      * Create a new {@linkcode Deno.AtomicOperation} object which can be used to
