@@ -31,7 +31,10 @@ pub trait Database {
     options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError>;
 
-  async fn atomic_write(&self, write: AtomicWrite) -> Result<bool, AnyError>;
+  async fn atomic_write(
+    &self,
+    write: AtomicWrite,
+  ) -> Result<Option<CommitResult>, AnyError>;
 }
 
 /// Options for a snapshot read.
@@ -303,4 +306,10 @@ impl MutationKind {
       MutationKind::Delete => None,
     }
   }
+}
+
+/// The result of a successful commit of an atomic write operation.
+pub struct CommitResult {
+  /// The new versionstamp of the data that was committed.
+  pub versionstamp: Versionstamp,
 }
