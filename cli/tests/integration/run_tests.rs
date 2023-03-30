@@ -14,6 +14,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::TestContext;
 use util::TestContextBuilder;
 
 itest!(stdout_write_all {
@@ -571,9 +572,10 @@ itest!(_089_run_allow_list {
 
 #[test]
 fn _090_run_permissions_request() {
-  util::with_pty(
-    &["run", "--quiet", "run/090_run_permissions_request.ts"],
-    |mut console| {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/090_run_permissions_request.ts"])
+    .with_pty(|mut console| {
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
         "├ Requested by `Deno.permissions.query()` API.\r\n",
@@ -592,15 +594,15 @@ fn _090_run_permissions_request() {
       console.expect("Denied run access to \"cat\".");
       console.expect("granted");
       console.expect("denied");
-    },
-  );
+    });
 }
 
 #[test]
 fn _090_run_permissions_request_sync() {
-  util::with_pty(
-    &["run", "--quiet", "run/090_run_permissions_request_sync.ts"],
-    |mut console| {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/090_run_permissions_request_sync.ts"])
+    .with_pty(|mut console| {
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
         "├ Requested by `Deno.permissions.query()` API.\r\n",
@@ -619,15 +621,15 @@ fn _090_run_permissions_request_sync() {
       console.expect("Denied run access to \"cat\".");
       console.expect("granted");
       console.expect("denied");
-    },
-  );
+    });
 }
 
 #[test]
 fn permissions_prompt_allow_all() {
-  util::with_pty(
-    &["run", "--quiet", "run/permissions_prompt_allow_all.ts"],
-    |mut console| {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_allow_all.ts"])
+    .with_pty(|mut console| {
       // "run" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
@@ -697,9 +699,10 @@ fn permissions_prompt_allow_all() {
 
 #[test]
 fn permissions_prompt_allow_all_2() {
-  util::with_pty(
-    &["run", "--quiet", "run/permissions_prompt_allow_all_2.ts"],
-    |mut console| {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_allow_all_2.ts"])
+    .with_pty(|mut console| {
       // "env" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests env access to \"FOO\".\r\n",
@@ -728,15 +731,15 @@ fn permissions_prompt_allow_all_2() {
       ));
       console.write_line_raw("A");
       console.expect("✅ Granted all read access.");
-    },
-  );
+    });
 }
 
 #[test]
 fn permissions_prompt_allow_all_lowercase_a() {
-  util::with_pty(
-    &["run", "--quiet", "run/permissions_prompt_allow_all.ts"],
-    |mut console| {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_allow_all.ts"])
+    .with_pty(|mut console| {
       // "run" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
@@ -746,8 +749,7 @@ fn permissions_prompt_allow_all_lowercase_a() {
       ));
       console.write_line_raw("a");
       console.expect("Unrecognized option.");
-    },
-  );
+    });
 }
 
 itest!(_091_use_define_for_class_fields {
@@ -2141,6 +2143,7 @@ fn dont_cache_on_check_fail() {
 
 mod permissions {
   use test_util as util;
+  use util::TestContext;
 
   // TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
   #[test]
@@ -2503,9 +2506,10 @@ mod permissions {
 
   #[test]
   fn _061_permissions_request() {
-    util::with_pty(
-      &["run", "--quiet", "run/061_permissions_request.ts"],
-      |mut console| {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/061_permissions_request.ts"])
+      .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
           "├ Requested by `Deno.permissions.query()` API.\r\n",
@@ -2523,15 +2527,15 @@ mod permissions {
         console.expect("granted");
         console.expect("prompt");
         console.expect("denied");
-      },
-    );
+      });
   }
 
   #[test]
   fn _061_permissions_request_sync() {
-    util::with_pty(
-      &["run", "--quiet", "run/061_permissions_request_sync.ts"],
-      |mut console| {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/061_permissions_request_sync.ts"])
+      .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
           "├ Requested by `Deno.permissions.query()` API.\r\n",
@@ -2549,15 +2553,15 @@ mod permissions {
         console.expect("granted");
         console.expect("prompt");
         console.expect("denied");
-      },
-    );
+      });
   }
 
   #[test]
   fn _062_permissions_request_global() {
-    util::with_pty(
-      &["run", "--quiet", "run/062_permissions_request_global.ts"],
-      |mut console| {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/062_permissions_request_global.ts"])
+      .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access.\r\n",
           "├ Requested by `Deno.permissions.query()` API.\r\n",
@@ -2571,19 +2575,15 @@ mod permissions {
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
         console
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
-      },
-    );
+      });
   }
 
   #[test]
   fn _062_permissions_request_global_sync() {
-    util::with_pty(
-      &[
-        "run",
-        "--quiet",
-        "run/062_permissions_request_global_sync.ts",
-      ],
-      |mut console| {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/062_permissions_request_global_sync.ts"])
+      .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access.\r\n",
           "├ Requested by `Deno.permissions.query()` API.\r\n",
@@ -2597,8 +2597,7 @@ mod permissions {
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
         console
           .expect("PermissionStatus { state: \"granted\", onchange: null }");
-      },
-    );
+      });
   }
 
   itest!(_063_permissions_revoke {
@@ -2623,9 +2622,10 @@ mod permissions {
 
   #[test]
   fn _066_prompt() {
-    util::with_pty(
-      &["run", "--quiet", "--unstable", "run/066_prompt.ts"],
-      |mut console| {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "--unstable", "run/066_prompt.ts"])
+      .with_pty(|mut console| {
         console.expect("What is your name? [Jane Doe] ");
         console.write_line_raw("John Doe");
         console.expect("Your name is John Doe.");
@@ -2658,8 +2658,7 @@ mod permissions {
         console.expect("What is EOF? ");
         console.write_line("");
         console.expect("Your answer is null");
-      },
-    );
+      });
   }
 
   itest!(dynamic_import_permissions_remote_remote {

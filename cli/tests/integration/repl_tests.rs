@@ -131,24 +131,43 @@ fn pty_complete_expression() {
 
 #[test]
 fn pty_complete_imports() {
-  util::with_pty(&["repl", "-A"], |mut console| {
-    // single quotes
-    console.write_line_raw("import './run/001_hel\t'");
-    console.expect("Hello World");
-    // double quotes
-    console.write_line_raw("import { output } from \"./run/045_out\t\"");
-    console.expect("\"./run/045_output.ts\"");
-    console.write_line_raw("output('testing output');");
-    console.expect("testing output");
-  });
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("subdir");
+  temp_dir.write("./subdir/my_file.ts", "");
+  temp_dir.create_dir_all("run");
+  temp_dir.write("./run/hello.ts", "console.log('Hello World');");
+  temp_dir.write(
+    "./run/output.ts",
+    r#"export function output(text: string) {
+  console.log(text);
+}
+"#,
+  );
+  context
+    .new_command()
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      // single quotes
+      console.write_line_raw("import './run/hel\t'");
+      console.expect("Hello World");
+      // double quotes
+      console.write_line_raw("import { output } from \"./run/out\t\"");
+      console.expect("\"./run/output.ts\"");
+      console.write_line_raw("output('testing output');");
+      console.expect("testing output");
+    });
 
   // ensure when the directory changes that the suggestions come from the cwd
-  util::with_pty(&["repl", "-A"], |mut console| {
-    console.write_line("Deno.chdir('./subdir');");
-    console.expect("undefined");
-    console.write_line_raw("import '../run/001_hel\t'");
-    console.expect("Hello World");
-  });
+  context
+    .new_command()
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line("Deno.chdir('./subdir');");
+      console.expect("undefined");
+      console.write_line_raw("import '../run/he\t'");
+      console.expect("Hello World");
+    });
 }
 
 #[test]
@@ -283,10 +302,15 @@ fn let_redeclaration() {
 
 #[test]
 fn repl_cwd() {
-  util::with_pty(&["repl", "-A"], |mut console| {
-    console.write_line("Deno.cwd()");
-    console.expect("testdata");
-  });
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  context
+    .new_command()
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line("Deno.cwd()");
+      console.expect(temp_dir.path().file_name().unwrap().to_str().unwrap());
+    });
 }
 
 #[test]
@@ -384,18 +408,30 @@ fn multiline() {
 
 #[test]
 fn import() {
-  util::with_pty(&["repl", "-A"], |mut console| {
-    console.write_line("import('./subdir/auto_print_hello.ts')");
-    console.expect("hello!");
-  });
+  let context = TestContextBuilder::default()
+    .use_copy_temp_dir("./subdir")
+    .build();
+  context
+    .new_command()
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line("import('./subdir/auto_print_hello.ts')");
+      console.expect("hello!");
+    });
 }
 
 #[test]
 fn import_declarations() {
-  util::with_pty(&["repl", "-A"], |mut console| {
-    console.write_line("import './subdir/auto_print_hello.ts'");
-    console.expect("hello!");
-  });
+  let context = TestContextBuilder::default()
+    .use_copy_temp_dir("./subdir")
+    .build();
+  context
+    .new_command()
+    .args_vec(["repl", "-A"])
+    .with_pty(|mut console| {
+      console.write_line("import './subdir/auto_print_hello.ts'");
+      console.expect("hello!");
+    });
 }
 
 #[test]
