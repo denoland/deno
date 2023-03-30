@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Read;
@@ -35,7 +36,7 @@ impl Pty {
       read_bytes: Vec::new(),
       last_index: 0,
     };
-    if args[0] == "repl" && !args.contains(&"--quiet") {
+    if args.is_empty() || args[0] == "repl" && !args.contains(&"--quiet") {
       // wait for the repl to start up before writing to it
       pty.expect("exit using ctrl+d, ctrl+c, or close()");
     }
@@ -149,6 +150,10 @@ impl Pty {
       let data = String::from_utf8_lossy(&pty.read_bytes);
       data.contains(text.as_ref())
     });
+  }
+
+  pub fn all_output(&self) -> Cow<str> {
+    String::from_utf8_lossy(&self.read_bytes)
   }
 
   #[track_caller]
