@@ -301,10 +301,7 @@ class WebSocket extends EventTarget {
     const sendTypedArray = (ta) => {
       this[_bufferedAmount] += ta.byteLength;
       PromisePrototypeThen(
-        core.opAsync("op_ws_send", this[_rid], {
-          kind: "binary",
-          value: ta,
-        }),
+        core.opAsync("op_ws_send_binary", this[_rid], ta),
         () => {
           this[_bufferedAmount] -= ta.byteLength;
         },
