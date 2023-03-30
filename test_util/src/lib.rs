@@ -2093,8 +2093,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder.args(self.args);
     }
     if !self.args_vec.is_empty() {
-      command_builder
-        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+      command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
       command_builder.stdin(input);
@@ -2167,11 +2166,8 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
 }
 
 pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
-  let context = TestContextBuilder::default().build();
-  context
-    .new_command()
-    .args_vec(deno_args.iter().map(ToString::to_string).collect())
-    .with_pty(action);
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.new_command().args_vec(deno_args).with_pty(action);
 }
 
 pub struct WrkOutput {
