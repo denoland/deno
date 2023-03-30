@@ -986,7 +986,6 @@ impl Resource for EarlyUpgradeSocket {
       match inner {
         EarlyUpgradeSocketInner::PreResponse(stream, upgrade) => {
           if let Some((resp, extra)) = upgrade.write(&buf)? {
-            println!("{:?}", resp);
             let new_wr = HttpResponseWriter::Closed;
             let mut old_wr =
               RcRef::map(stream.clone(), |r| &r.wr).borrow_mut().await;
@@ -1021,15 +1020,14 @@ impl Resource for EarlyUpgradeSocket {
             upgraded.write_all(&extra).await?;
             *inner = EarlyUpgradeSocketInner::PostResponse(upgraded);
           }
-          Ok(WriteOutcome::Full {
-            nwritten: buf.len(),
-          })
         }
         EarlyUpgradeSocketInner::PostResponse(upgraded) => {
-          let write = upgraded.write(&buf).await?;
-          Ok(WriteOutcome::Full { nwritten: write })
+          upgraded.write_all(&buf).await?;
         }
       }
+      Ok(WriteOutcome::Full {
+        nwritten: buf.len(),
+      })
     })
   }
 }
@@ -1048,7 +1046,6 @@ async fn op_http_upgrade_early(
     EarlyUpgradeSocketInner::PreResponse(stream, WebSocketUpgrade::default());
   let rid =
     resources.add(EarlyUpgradeSocket(Rc::new(AsyncRefCell::new(socket))));
-  println!("rid = {}", rid);
   Ok(rid)
 }
 
