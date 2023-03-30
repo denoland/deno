@@ -106,7 +106,7 @@ pub fn result_to_evaluation_output(
   match r {
     Ok(value) => value,
     Err(err) => {
-      EvaluationOutput::Error(format!("{} {}", colors::red("error:"), err))
+      EvaluationOutput::Error(format!("{} {:#}", colors::red("error:"), err))
     }
   }
 }

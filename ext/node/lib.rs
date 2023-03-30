@@ -6,6 +6,7 @@ use deno_core::op;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -41,18 +42,36 @@ pub use resolution::DEFAULT_CONDITIONS;
 
 pub trait NodeEnv {
   type P: NodePermissions;
-  // TODO(bartlomieju):
-  // type Fs: NodeFs;
+  type Fs: NodeFs;
 }
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
-// TODO(bartlomieju):
-// pub trait NodeFs {
-//   fn current_dir() -> Result<PathBuf, AnyError>;
-// }
+pub trait NodeFs {
+  fn current_dir() -> io::Result<PathBuf>;
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata>;
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
+}
+
+pub struct RealFs;
+impl NodeFs for RealFs {
+  fn current_dir() -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::env::current_dir()
+  }
+
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path)
+  }
+
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::read_to_string(path)
+  }
+}
 
 pub trait RequireNpmResolver {
   fn resolve_package_folder_from_package(

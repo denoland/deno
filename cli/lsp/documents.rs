@@ -823,8 +823,6 @@ pub struct Documents {
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: CliGraphResolver,
-  /// The npm package requirements found in a package.json file.
-  npm_package_json_reqs: Arc<Vec<NpmPackageReq>>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -845,7 +843,6 @@ impl Documents {
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
-      npm_package_json_reqs: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -983,15 +980,9 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Vec<NpmPackageReq> {
+  pub fn npm_package_reqs(&mut self) -> Arc<Vec<NpmPackageReq>> {
     self.calculate_dependents_if_dirty();
-    let mut reqs = Vec::with_capacity(
-      self.npm_package_json_reqs.len() + self.npm_specifier_reqs.len(),
-    );
-    // resolve the package.json reqs first, then the npm specifiers
-    reqs.extend(self.npm_package_json_reqs.iter().cloned());
-    reqs.extend(self.npm_specifier_reqs.iter().cloned());
-    reqs
+    self.npm_specifier_reqs.clone()
   }
 
   /// Returns if a @types/node package was injected into the npm
@@ -1204,20 +1195,6 @@ impl Documents {
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
     );
-    self.npm_package_json_reqs = Arc::new({
-      match &maybe_package_json_deps {
-        Some(deps) => {
-          let mut reqs = deps
-            .values()
-            .filter_map(|r| r.as_ref().ok())
-            .cloned()
-            .collect::<Vec<_>>();
-          reqs.sort();
-          reqs
-        }
-        None => Vec::new(),
-      }
-    });
     let deps_installer = PackageJsonDepsInstaller::new(
       npm_registry_api.clone(),
       npm_resolution.clone(),
