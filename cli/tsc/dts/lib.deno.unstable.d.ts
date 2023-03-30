@@ -1748,6 +1748,11 @@ declare namespace Deno {
     batchSize?: number;
   }
 
+  export interface KvCommitResult {
+    /** The versionstamp of the value committed to KV. */
+    versionstamp: string;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * A check to perform as part of a {@linkcode Deno.AtomicOperation}. The check
@@ -1787,11 +1792,13 @@ declare namespace Deno {
    * performed and the operation will fail. One can then retry the read-modify-
    * write operation in a loop until it succeeds.
    *
-   * The `commit` method of an atomic operation returns a boolean indicating
+   * The `commit` method of an atomic operation returns a value indicating
    * whether checks passed and mutations were performed. If the operation failed
-   * because of a failed check, the return value will be `false`. If the
+   * because of a failed check, the return value will be `null`. If the
    * operation failed for any other reason (storage error, invalid value, etc.),
-   * an exception will be thrown.
+   * an exception will be thrown. If the operation succeeded, the return value
+   * will be a {@linkcode Deno.KvCommitResult} object containing the
+   * versionstamp of the value committed to KV.
    *
    * @category KV
    */
@@ -1821,17 +1828,19 @@ declare namespace Deno {
      */
     delete(key: KvKey): this;
     /**
-     * Commit the operation to the KV store. Returns a boolean indicating
-     * whether checks passed and mutations were performed. If the operation
-     * failed because of a failed check, the return value will be `false`. If
-     * the operation failed for any other reason (storage error, invalid value,
-     * etc.), an exception will be thrown.
+     * Commit the operation to the KV store. Returns a value indicating whether
+     * checks passed and mutations were performed. If the operation failed
+     * because of a failed check, the return value will be `null`. If the
+     * operation failed for any other reason (storage error, invalid value,
+     * etc.), an exception will be thrown. If the operation succeeded, the
+     * return value will be a {@linkcode Deno.KvCommitResult} object containing
+     * the versionstamp of the value committed to KV.
      *
-     * If the commit returns `false`, one may create a new atomic operation with
+     * If the commit returns `null`, one may create a new atomic operation with
      * updated checks and mutations and attempt to commit it again. See the note
      * on optimistic locking in the documentation for {@linkcode Deno.AtomicOperation}.
      */
-    commit(): Promise<boolean>;
+    commit(): Promise<KvCommitResult | null>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1932,7 +1941,7 @@ declare namespace Deno {
      * await db.set(["foo"], "bar");
      * ```
      */
-    set(key: KvKey, value: unknown): Promise<void>;
+    set(key: KvKey, value: unknown): Promise<KvCommitResult>;
 
     /**
      * Delete the value for the given key from the database. If no value exists
