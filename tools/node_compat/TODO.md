@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2927
+Total: 2924
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -449,7 +449,6 @@ Total: 2927
 - [parallel/test-console-not-call-toString.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-console-not-call-toString.js)
 - [parallel/test-console-self-assign.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-console-self-assign.js)
 - [parallel/test-console-stdio-setters.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-console-stdio-setters.js)
-- [parallel/test-console-tty-colors.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-console-tty-colors.js)
 - [parallel/test-console.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-console.js)
 - [parallel/test-constants.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-constants.js)
 - [parallel/test-corepack-version.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-corepack-version.js)
@@ -1889,7 +1888,6 @@ Total: 2927
 - [parallel/test-readline-csi.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-csi.js)
 - [parallel/test-readline-input-onerror.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-input-onerror.js)
 - [parallel/test-readline-interface.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-interface.js)
-- [parallel/test-readline-position.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-position.js)
 - [parallel/test-readline-promises-interface.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-promises-interface.js)
 - [parallel/test-readline-promises-tab-complete.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-promises-tab-complete.js)
 - [parallel/test-readline-tab-complete.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-readline-tab-complete.js)
@@ -2100,7 +2098,6 @@ Total: 2927
 - [parallel/test-stream-writable-samecb-singletick.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-stream-writable-samecb-singletick.js)
 - [parallel/test-stream2-finish-pipe-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-stream2-finish-pipe-error.js)
 - [parallel/test-stream2-httpclient-response-end.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-stream2-httpclient-response-end.js)
-- [parallel/test-stream2-readable-from-list.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-stream2-readable-from-list.js)
 - [parallel/test-string-decoder-end.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-string-decoder-end.js)
 - [parallel/test-string-decoder-fuzz.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-string-decoder-fuzz.js)
 - [parallel/test-string-decoder.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-string-decoder.js)
