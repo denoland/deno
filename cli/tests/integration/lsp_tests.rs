@@ -2367,16 +2367,32 @@ fn lsp_semantic_tokens() {
 fn lsp_code_lens() {
   let mut client = LspClientBuilder::new().build();
   client.initialize_default();
-  client.did_open(
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "class A {\n  a = \"a\";\n\n  b() {\n    console.log(this.a);\n  }\n\n  c() {\n    this.a = \"c\";\n  }\n}\n\nconst a = new A();\na.b();\n"
-      }
-    }),
-  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "class A {\n",
+        "  a = \"a\";\n",
+        "\n",
+        "  b() {\n",
+        "    console.log(this.a);\n",
+        "  }\n",
+        "\n",
+        "  c() {\n",
+        "    this.a = \"c\";\n",
+        "  }\n",
+        "}\n",
+        "\n",
+        "const a = new A();\n",
+        "a.b();\n",
+        "const b = 2;\n",
+        "const c = 3;\n",
+        "c; c;",
+      ),
+    }
+  }));
   let res = client.write_request(
     "textDocument/codeLens",
     json!({
@@ -2444,6 +2460,80 @@ fn lsp_code_lens() {
       }
     })
   );
+
+  // 0 references
+  let res = client.write_request(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 14, "character": 6 },
+        "end": { "line": 14, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "range": {
+        "start": { "line": 14, "character": 6 },
+        "end": { "line": 14, "character": 7 }
+      },
+      "command": {
+        "title": "0 references",
+        "command": "",
+      }
+    })
+  );
+
+  // 2 references
+  let res = client.write_request(
+    "codeLens/resolve",
+    json!({
+      "range": {
+        "start": { "line": 15, "character": 6 },
+        "end": { "line": 15, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "range": {
+        "start": { "line": 15, "character": 6 },
+        "end": { "line": 15, "character": 7 }
+      },
+      "command": {
+        "title": "2 references",
+        "command": "deno.showReferences",
+        "arguments": [
+          "file:///a/file.ts",
+          { "line": 15, "character": 6 },
+          [{
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 16, "character": 0 },
+              "end": { "line": 16, "character": 1 }
+            }
+          },{
+            "uri": "file:///a/file.ts",
+            "range": {
+              "start": { "line": 16, "character": 3 },
+              "end": { "line": 16, "character": 4 }
+            }
+          }]
+        ]
+      }
+    })
+  );
+
   client.shutdown();
 }
 
@@ -3094,7 +3184,7 @@ fn lsp_find_references() {
       "uri": "file:///a/mod.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": r#"export const a = 5;"#
+      "text": r#"export const a = 1;\nexport const b = 2;"#
     }
   }));
   client.did_open(json!({
@@ -3173,6 +3263,22 @@ fn lsp_find_references() {
       }
     }])
   );
+
+  // test 0 references
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/mod.ts",
+      },
+      "position": { "line": 1, "character": 13 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  assert_eq!(res, json!([]));
 
   client.shutdown();
 }
