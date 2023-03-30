@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
+import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
 
 let isCI: boolean;
 try {
@@ -529,8 +530,10 @@ Deno.test("KvU64 unbox", () => {
   assertEquals(a.value, 1n);
 });
 
-async function collect(iter: Deno.KvListIterator): Promise<Deno.KvEntry[]> {
-  const entries: Deno.KvEntry[] = [];
+async function collect<T>(
+  iter: Deno.KvListIterator<T>,
+): Promise<Deno.KvEntry<T>[]> {
+  const entries: Deno.KvEntry<T>[] = [];
   for await (const entry of iter) {
     entries.push(entry);
   }
@@ -1134,3 +1137,46 @@ dbTest("operation size limit", async (db) => {
     "too many mutations (max 10)",
   );
 });
+
+// This function is never called, it is just used to check that all the types
+// are behaving as expected.
+async function _typeCheckingTests() {
+  const kv = new Deno.Kv();
+
+  const a = await kv.get(["a"]);
+  assertType<IsExact<typeof a, Deno.KvEntryMaybe<unknown>>>(true);
+
+  const b = await kv.get<string>(["b"]);
+  assertType<IsExact<typeof b, Deno.KvEntryMaybe<string>>>(true);
+
+  const c = await kv.getMany([["a"], ["b"]]);
+  assertType<
+    IsExact<typeof c, [Deno.KvEntryMaybe<unknown>, Deno.KvEntryMaybe<unknown>]>
+  >(true);
+
+  const d = await kv.getMany([["a"], ["b"]] as const);
+  assertType<
+    IsExact<typeof d, [Deno.KvEntryMaybe<unknown>, Deno.KvEntryMaybe<unknown>]>
+  >(true);
+
+  const e = await kv.getMany<[string, number]>([["a"], ["b"]]);
+  assertType<
+    IsExact<typeof e, [Deno.KvEntryMaybe<string>, Deno.KvEntryMaybe<number>]>
+  >(true);
+
+  const keys: Deno.KvKey[] = [["a"], ["b"]];
+  const f = await kv.getMany(keys);
+  assertType<IsExact<typeof f, Deno.KvEntryMaybe<unknown>[]>>(true);
+
+  const g = kv.list({ prefix: ["a"] });
+  assertType<IsExact<typeof g, Deno.KvListIterator<unknown>>>(true);
+  const h = await g.next();
+  assert(!h.done);
+  assertType<IsExact<typeof h.value, Deno.KvEntry<unknown>>>(true);
+
+  const i = kv.list<string>({ prefix: ["a"] });
+  assertType<IsExact<typeof i, Deno.KvListIterator<string>>>(true);
+  const j = await i.next();
+  assert(!j.done);
+  assertType<IsExact<typeof j.value, Deno.KvEntry<string>>>(true);
+}
