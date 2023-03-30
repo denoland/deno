@@ -963,19 +963,22 @@ impl Resource for EarlyUpgradeSocket {
     let self_clone = self.clone();
     Box::pin(async move {
       loop {
+        println!("loop");
         let mut borrow = self_clone.0.borrow_mut().await;
         let inner = &mut *borrow;
         if let EarlyUpgradeSocketInner::PreResponse(_, _, tx) = inner {
           let mut rx = tx.subscribe();
           drop(inner);
           drop(borrow);
+          println!("waiting");
           _ = rx.recv().await?;
+          println!("got");
           continue;
         }
 
-        let mut borrow = self_clone.0.borrow_mut().await;
-        let inner = &mut *borrow;
+        println!("check");
         if let EarlyUpgradeSocketInner::PostResponse(upgraded) = inner {
+          println!("got!!!");
           // TODO(mmastrac): This seems inefficient
           let mut buf = vec![0; limit];
           let read = upgraded.read(&mut buf).await?;
@@ -1031,7 +1034,9 @@ impl Resource for EarlyUpgradeSocket {
             upgraded.write_all(&extra).await?;
             let tx = tx.clone();
             *inner = EarlyUpgradeSocketInner::PostResponse(upgraded);
+            println!("send...");
             _ = tx.send(());
+            println!("sent!");
           }
         }
         EarlyUpgradeSocketInner::PostResponse(upgraded) => {
