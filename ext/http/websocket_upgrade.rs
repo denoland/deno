@@ -15,11 +15,13 @@ use once_cell::sync::OnceCell;
 use crate::http_error;
 
 /// Given a buffer that ends in `\n\n` or `\r\n\r\n`, returns a parsed [`Request<Body>`].
-fn parse_response(header_bytes: &[u8]) -> Result<Response<Body>, AnyError> {
+fn parse_response(
+  header_bytes: &[u8],
+) -> Result<(usize, Response<Body>), AnyError> {
   let mut headers = [httparse::EMPTY_HEADER; 16];
   let status = httparse::parse_headers(header_bytes, &mut headers)?;
   match status {
-    Status::Complete((_, parsed)) => {
+    Status::Complete((index, parsed)) => {
       let mut resp = Response::builder().status(101).body(Body::empty())?;
       for header in parsed.into_iter() {
         resp.headers_mut().append(
@@ -27,7 +29,7 @@ fn parse_response(header_bytes: &[u8]) -> Result<Response<Body>, AnyError> {
           HeaderValue::from_str(std::str::from_utf8(header.value)?)?,
         );
       }
-      Ok(resp.into())
+      Ok((index, resp.into()))
     }
     _ => Err(http_error("invalid headers")),
   }
@@ -84,10 +86,23 @@ impl WebSocketUpgrade {
     match self.state {
       Initial => {
         if let Some(index) = find_newline(bytes) {
-          let (status, rest) = bytes.split_at(index);
+          let (status, rest) = bytes.split_at(index + 1);
           self.validate_status(status)?;
+
+          // Fast path for the most common node.js WebSocket libraries that use \r\n as the
+          // separator between header lines and send the whole response in one packet.
+          if rest.ends_with(b"\r\n\r\n") {
+            let (index, response) = parse_response(rest)?;
+            if index == rest.len() {
+              return Ok(Some((response, Bytes::default())));
+            } else {
+              let bytes = Bytes::copy_from_slice(&rest[index..]);
+              return Ok(Some((response, bytes)));
+            }
+          }
+
           self.state = Headers;
-          self.write(&rest[1..])
+          self.write(rest)
         } else {
           self.state = StatusLine;
           self.buf.extend_from_slice(bytes);
@@ -96,13 +111,13 @@ impl WebSocketUpgrade {
       }
       StatusLine => {
         if let Some(index) = find_newline(bytes) {
-          let (status, rest) = bytes.split_at(index);
+          let (status, rest) = bytes.split_at(index + 1);
           self.buf.extend_from_slice(status);
           self.validate_status(&self.buf)?;
           self.buf.clear();
           // Recursively process this write
           self.state = Headers;
-          self.write(&rest[1..])
+          self.write(rest)
         } else {
           self.buf.extend_from_slice(bytes);
           Ok(None)
@@ -114,16 +129,16 @@ impl WebSocketUpgrade {
           HEADER_SEARCHER.get_or_init(|| TwoWaySearcher::new(b"\r\n\r\n"));
         let header_searcher2 =
           HEADER_SEARCHER2.get_or_init(|| TwoWaySearcher::new(b"\n\n"));
-        if let Some(index) = header_searcher.search_in(&self.buf) {
-          let response = parse_response(&self.buf[..index + 4])?;
+        if let Some(..) = header_searcher.search_in(&self.buf) {
+          let (index, response) = parse_response(&self.buf)?;
           let mut buf = std::mem::take(&mut self.buf);
           self.state = Complete;
-          Ok(Some((response, buf.split_off(index + 4).freeze())))
-        } else if let Some(index) = header_searcher2.search_in(&self.buf) {
-          let response = parse_response(&self.buf[..index + 2])?;
+          Ok(Some((response, buf.split_off(index).freeze())))
+        } else if let Some(..) = header_searcher2.search_in(&self.buf) {
+          let (index, response) = parse_response(&self.buf)?;
           let mut buf = std::mem::take(&mut self.buf);
           self.state = Complete;
-          Ok(Some((response, buf.split_off(index + 2).freeze())))
+          Ok(Some((response, buf.split_off(index).freeze())))
         } else {
           Ok(None)
         }
@@ -219,7 +234,9 @@ mod tests {
     validate_upgrade_chunks(s, 2, expected());
     validate_upgrade_chunks(s, 10, expected());
 
-    let s = s.replace("\n", "\r\n");
+    // Replace \n with \r\n, but only in headers
+    let (headers, trailing) = s.split_once("\n\n").unwrap();
+    let s = headers.replace("\n", "\r\n") + "\r\n\r\n" + trailing;
     let s = s.as_ref();
 
     validate_upgrade_all_at_once(s, expected());
@@ -256,6 +273,22 @@ mod tests {
           HeaderValue::from_static("Upgrade"),
         );
         Ok(Some((expected, b"trailing data")))
+      },
+    );
+  }
+
+  #[test]
+  fn upgrade_trailing_with_newlines() {
+    validate_upgrade(
+      "HTTP/1.1 101 Switching Protocols\nConnection: Upgrade\n\ntrailing data\r\n\r\n",
+      || {
+        let mut expected =
+          Response::builder().status(101).body(Body::empty()).unwrap();
+        expected.headers_mut().append(
+          HeaderName::from_static("connection"),
+          HeaderValue::from_static("Upgrade"),
+        );
+        Ok(Some((expected, b"trailing data\r\n\r\n")))
       },
     );
   }
