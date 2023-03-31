@@ -271,9 +271,18 @@ class WebSocketStream {
                   /* pong */
                   break;
                 }
+                case 6: {
+                  /* closed */
+                  this[_closed].resolve(undefined);
+                  core.tryClose(this[_rid]);
+                  break;
+                }
                 default: {
                   /* close */
-                  this[_closed].resolve(kind);
+                  this[_closed].resolve({
+                    code: kind,
+                    reason: value,
+                  });
                   core.tryClose(this[_rid]);
                   break;
                 }
