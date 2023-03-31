@@ -92,7 +92,7 @@ export function checkPrime(
     );
   }
 
-  core.opAsync(op, candidate, checks).then(
+  core.opAsync2(op, candidate, checks).then(
     (result) => {
       callback?.(null, result);
     },

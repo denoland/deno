@@ -793,8 +793,8 @@ impl JsRuntime {
         true => op,
         false => OpDecl {
           v8_fn_ptr: match op.is_async {
-            true => op_void_async::v8_fn_ptr(),
-            false => op_void_sync::v8_fn_ptr(),
+            true => op_void_async::v8_fn_ptr as _,
+            false => op_void_sync::v8_fn_ptr as _,
           },
           ..op
         },
@@ -2918,7 +2918,7 @@ pub mod tests {
         r#"
         
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.opAsync("op_test", null, zero_copy_a);
+        Deno.core.opAsync2("op_test", null, zero_copy_a);
         "#,
       )
       .unwrap();

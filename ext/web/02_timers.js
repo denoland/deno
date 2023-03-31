@@ -215,7 +215,7 @@ const scheduledTimers = { head: null, tail: null };
  */
 function runAfterTimeout(cb, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
-  const sleepPromise = core.opAsync("op_sleep", millis, cancelRid);
+  const sleepPromise = core.opAsync2("op_sleep", millis, cancelRid);
   timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
   if (!timerInfo.isRef) {
     core.unrefOp(timerInfo.promiseId);
