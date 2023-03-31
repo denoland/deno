@@ -2779,13 +2779,13 @@ fn op_resolve(
           .collect(),
       )
     }
-    None => Err(custom_error(
-      "NotFound",
-      format!(
+    None => {
+      lsp_warn!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
-      ),
-    )),
+      );
+      Ok(vec![None; args.specifiers.len()])
+    }
   };
 
   state.performance.measure(mark);
