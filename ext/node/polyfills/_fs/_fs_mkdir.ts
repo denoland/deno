@@ -4,6 +4,7 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateBoolean } from "ext:deno_node/internal/validators.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 /**
  * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
@@ -36,7 +37,7 @@ export function mkdir(
   }
   validateBoolean(recursive, "options.recursive");
 
-  Deno.mkdir(path, { recursive, mode })
+  denoFs.mkdir(path, { recursive, mode })
     .then(() => {
       if (typeof callback === "function") {
         callback(null);
@@ -70,7 +71,7 @@ export function mkdirSync(path: string | URL, options?: MkdirOptions) {
   validateBoolean(recursive, "options.recursive");
 
   try {
-    Deno.mkdirSync(path, { recursive, mode });
+    denoFs.mkdirSync(path, { recursive, mode });
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "mkdir", path });
   }

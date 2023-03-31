@@ -9,6 +9,7 @@ import {
   validateBuffer,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 type readOptions = {
   buffer: Buffer | Uint8Array;
@@ -117,14 +118,14 @@ export function read(
     try {
       let nread: number | null;
       if (typeof position === "number" && position >= 0) {
-        const currentPosition = await Deno.seek(fd, 0, Deno.SeekMode.Current);
+        const currentPosition = await denoFs.seek(fd, 0, Deno.SeekMode.Current);
         // We use sync calls below to avoid being affected by others during
         // these calls.
-        Deno.seekSync(fd, position, Deno.SeekMode.Start);
-        nread = Deno.readSync(fd, buffer);
-        Deno.seekSync(fd, currentPosition, Deno.SeekMode.Start);
+        denoFs.seekSync(fd, position, Deno.SeekMode.Start);
+        nread = denoFs.readSync(fd, buffer);
+        denoFs.seekSync(fd, currentPosition, Deno.SeekMode.Start);
       } else {
-        nread = await Deno.read(fd, buffer);
+        nread = await denoFs.read(fd, buffer);
       }
       cb(null, nread ?? 0, Buffer.from(buffer.buffer, offset, length));
     } catch (error) {
@@ -183,14 +184,14 @@ export function readSync(
 
   let currentPosition = 0;
   if (typeof position === "number" && position >= 0) {
-    currentPosition = Deno.seekSync(fd, 0, Deno.SeekMode.Current);
-    Deno.seekSync(fd, position, Deno.SeekMode.Start);
+    currentPosition = denoFs.seekSync(fd, 0, Deno.SeekMode.Current);
+    denoFs.seekSync(fd, position, Deno.SeekMode.Start);
   }
 
   const numberOfBytesRead = Deno.readSync(fd, buffer);
 
   if (typeof position === "number" && position >= 0) {
-    Deno.seekSync(fd, currentPosition, Deno.SeekMode.Start);
+    denoFs.seekSync(fd, currentPosition, Deno.SeekMode.Start);
   }
 
   return numberOfBytesRead ?? 0;

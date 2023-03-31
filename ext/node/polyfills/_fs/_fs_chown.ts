@@ -11,6 +11,7 @@ import * as pathModule from "ext:deno_node/path.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "ext:deno_node/buffer.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 /**
  * Asynchronously changes the owner and group
@@ -27,7 +28,7 @@ export function chown(
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
 
-  Deno.chown(pathModule.toNamespacedPath(path), uid, gid).then(
+  denoFs.chown(pathModule.toNamespacedPath(path), uid, gid).then(
     () => callback(null),
     callback,
   );
@@ -52,5 +53,5 @@ export function chownSync(
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
 
-  Deno.chownSync(pathModule.toNamespacedPath(path), uid, gid);
+  denoFs.chownSync(pathModule.toNamespacedPath(path), uid, gid);
 }

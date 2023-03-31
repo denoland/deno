@@ -26,6 +26,7 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 
 import { assert } from "ext:deno_node/_util/asserts.ts";
+import { seekSync } from "ext:deno_fs/30_fs.js";
 
 /**
  * Write to the given file from the given buffer synchronously.
@@ -58,7 +59,7 @@ export function writeBuffer(
   );
 
   if (position) {
-    Deno.seekSync(fd, position, Deno.SeekMode.Current);
+    seekSync(fd, position, Deno.SeekMode.Current);
   }
 
   const subarray = buffer.subarray(offset, offset + length);

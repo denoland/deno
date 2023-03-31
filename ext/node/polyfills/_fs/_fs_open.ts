@@ -13,10 +13,11 @@ import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "ext:deno_node/buffer.ts";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 function existsSync(filePath: string | URL): boolean {
   try {
-    Deno.lstatSync(filePath);
+    denoFs.lstatSync(filePath);
     return true;
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
@@ -129,7 +130,7 @@ export function open(
       }
       return;
     }
-    Deno.open(
+    denoFs.open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
     ).then(
@@ -180,7 +181,10 @@ export function openSync(
     throw new Error(`EEXIST: file already exists, open '${path}'`);
   }
 
-  return Deno.openSync(path as string, convertFlagAndModeToOptions(flags, mode))
+  return denoFs.openSync(
+    path as string,
+    convertFlagAndModeToOptions(flags, mode),
+  )
     .rid;
 }
 

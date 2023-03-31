@@ -4,6 +4,7 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 import { validateBufferArray } from "ext:deno_node/internal/fs/utils.mjs";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function writev(fd, buffers, position, callback) {
   const innerWritev = async (fd, buffers, position) => {
@@ -17,7 +18,7 @@ export function writev(fd, buffers, position, callback) {
       }
     }
     if (typeof position === "number") {
-      await Deno.seekSync(fd, position, Deno.SeekMode.Start);
+      await denoFs.seekSync(fd, position, Deno.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
@@ -58,7 +59,7 @@ export function writevSync(fd, buffers, position) {
       }
     }
     if (typeof position === "number") {
-      Deno.seekSync(fd, position, Deno.SeekMode.Start);
+      denoFs.seekSync(fd, position, Deno.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;

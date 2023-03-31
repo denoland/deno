@@ -8,6 +8,7 @@ import {
   Stats,
 } from "ext:deno_node/_fs/_fs_stat.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function lstat(path: string | URL, callback: statCallback): void;
 export function lstat(
@@ -37,7 +38,7 @@ export function lstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.lstat(path).then(
+  denoFs.lstat(path).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) => callback(err),
   );
@@ -62,6 +63,6 @@ export function lstatSync(
   path: string | URL,
   options?: statOptions,
 ): Stats | BigIntStats {
-  const origin = Deno.lstatSync(path);
+  const origin = denoFs.lstatSync(path);
   return CFISBIS(origin, options?.bigint || false);
 }

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function ftruncate(
   fd: number,
@@ -15,9 +16,9 @@ export function ftruncate(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.ftruncate(fd, len).then(() => callback(null), callback);
+  denoFs.ftruncate(fd, len).then(() => callback(null), callback);
 }
 
 export function ftruncateSync(fd: number, len?: number) {
-  Deno.ftruncateSync(fd, len);
+  denoFs.ftruncateSync(fd, len);
 }

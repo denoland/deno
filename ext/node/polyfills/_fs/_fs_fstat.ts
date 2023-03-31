@@ -7,6 +7,7 @@ import {
   statOptions,
   Stats,
 } from "ext:deno_node/_fs/_fs_stat.ts";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(
@@ -36,7 +37,7 @@ export function fstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.fstat(fd).then(
+  denoFs.fstat(fd).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) => callback(err),
   );
@@ -55,6 +56,6 @@ export function fstatSync(
   fd: number,
   options?: statOptions,
 ): Stats | BigIntStats {
-  const origin = Deno.fstatSync(fd);
+  const origin = denoFs.fstatSync(fd);
   return CFISBIS(origin, options?.bigint || false);
 }

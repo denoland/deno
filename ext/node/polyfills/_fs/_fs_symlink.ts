@@ -2,6 +2,7 @@
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 type SymlinkType = "file" | "dir";
 
@@ -24,7 +25,7 @@ export function symlink(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.symlink(target, path, { type }).then(() => callback(null), callback);
+  denoFs.symlink(target, path, { type }).then(() => callback(null), callback);
 }
 
 export const symlinkPromise = promisify(symlink) as (
@@ -42,5 +43,5 @@ export function symlinkSync(
   path = path instanceof URL ? fromFileUrl(path) : path;
   type = type || "file";
 
-  Deno.symlinkSync(target, path, { type });
+  denoFs.symlinkSync(target, path, { type });
 }

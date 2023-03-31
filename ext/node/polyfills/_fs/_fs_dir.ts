@@ -3,6 +3,7 @@ import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export default class Dir {
   #dirPath: string | Uint8Array;
@@ -27,7 +28,7 @@ export default class Dir {
   read(callback?: (...args: any[]) => void): Promise<Dirent | null> {
     return new Promise((resolve, reject) => {
       if (!this.#asyncIterator) {
-        this.#asyncIterator = Deno.readDir(this.path)[Symbol.asyncIterator]();
+        this.#asyncIterator = denoFs.readDir(this.path)[Symbol.asyncIterator]();
       }
       assert(this.#asyncIterator);
       this.#asyncIterator
@@ -53,7 +54,7 @@ export default class Dir {
 
   readSync(): Dirent | null {
     if (!this.#syncIterator) {
-      this.#syncIterator = Deno.readDirSync(this.path)![Symbol.iterator]();
+      this.#syncIterator = denoFs.readDirSync(this.path)![Symbol.iterator]();
     }
 
     const iteratorResult = this.#syncIterator.next();

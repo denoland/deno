@@ -2,6 +2,7 @@
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 /**
  * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
@@ -17,7 +18,7 @@ export function link(
     : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
-  Deno.link(existingPath, newPath).then(() => callback(null), callback);
+  denoFs.link(existingPath, newPath).then(() => callback(null), callback);
 }
 
 /**
@@ -42,5 +43,5 @@ export function linkSync(
     : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
-  Deno.linkSync(existingPath, newPath);
+  denoFs.linkSync(existingPath, newPath);
 }

@@ -8,6 +8,7 @@ import {
 } from "ext:deno_node/_utils.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,
@@ -67,7 +68,7 @@ export function readlink(
   const encoding = getEncoding(optOrCallback);
 
   intoCallbackAPIWithIntercept<string, Uint8Array | string>(
-    Deno.readLink,
+    denoFs.readLink,
     (data: string): string | Uint8Array => maybeEncode(data, encoding),
     cb,
     path,
@@ -85,5 +86,5 @@ export function readlinkSync(
 ): string | Uint8Array {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
-  return maybeEncode(Deno.readLinkSync(path), getEncoding(opt));
+  return maybeEncode(denoFs.readLinkSync(path), getEncoding(opt));
 }

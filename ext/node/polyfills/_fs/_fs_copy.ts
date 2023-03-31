@@ -9,6 +9,7 @@ import {
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function copyFile(
   src: string | Buffer | URL,
@@ -37,7 +38,7 @@ export function copyFile(
   const cb = makeCallback(callback);
 
   if ((modeNum & fs.COPYFILE_EXCL) === fs.COPYFILE_EXCL) {
-    Deno.lstat(destStr).then(() => {
+    denoFs.lstat(destStr).then(() => {
       // deno-lint-ignore no-explicit-any
       const e: any = new Error(
         `EEXIST: file already exists, copyfile '${srcStr}' -> '${destStr}'`,
@@ -48,12 +49,12 @@ export function copyFile(
       cb(e);
     }, (e) => {
       if (e instanceof Deno.errors.NotFound) {
-        Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
+        denoFs.copyFile(srcStr, destStr).then(() => cb(null), cb);
       }
       cb(e);
     });
   } else {
-    Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
+    denoFs.copyFile(srcStr, destStr).then(() => cb(null), cb);
   }
 }
 
@@ -74,15 +75,15 @@ export function copyFileSync(
 
   if ((modeNum & fs.COPYFILE_EXCL) === fs.COPYFILE_EXCL) {
     try {
-      Deno.lstatSync(destStr);
+      denoFs.lstatSync(destStr);
       throw new Error(`A file exists at the destination: ${destStr}`);
     } catch (e) {
       if (e instanceof Deno.errors.NotFound) {
-        Deno.copyFileSync(srcStr, destStr);
+        denoFs.copyFileSync(srcStr, destStr);
       }
       throw e;
     }
   } else {
-    Deno.copyFileSync(srcStr, destStr);
+    denoFs.copyFileSync(srcStr, destStr);
   }
 }

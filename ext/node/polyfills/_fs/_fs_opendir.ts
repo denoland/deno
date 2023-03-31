@@ -12,6 +12,7 @@ import {
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 /** These options aren't funcitonally used right now, as `Dir` doesn't yet support them.
  * However, these values are still validated.
@@ -46,7 +47,7 @@ export function opendir(
     validateInteger(bufferSize, "options.bufferSize", 1, 4294967295);
 
     /** Throws if path is invalid */
-    Deno.readDirSync(path);
+    denoFs.readDirSync(path);
 
     dir = new Dir(path);
   } catch (error) {
@@ -80,7 +81,7 @@ export function opendirSync(
 
   try {
     /** Throws if path is invalid */
-    Deno.readDirSync(path);
+    denoFs.readDirSync(path);
 
     return new Dir(path);
   } catch (err) {

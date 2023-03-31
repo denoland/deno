@@ -20,6 +20,7 @@ import {
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
@@ -69,13 +70,13 @@ export function writeFile(
   (async () => {
     try {
       file = isRid
-        ? new Deno.FsFile(pathOrRid as number)
-        : await Deno.open(pathOrRid as string, openOptions);
+        ? new denoFs.FsFile(pathOrRid as number)
+        : await denoFs.open(pathOrRid as string, openOptions);
 
       // ignore mode because it's not supported on windows
       // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
       if (!isRid && mode && !isWindows) {
-        await Deno.chmod(pathOrRid as string, mode);
+        await denoFs.chmod(pathOrRid as string, mode);
       }
 
       const signal: AbortSignal | undefined = isFileOptions(options)
@@ -134,13 +135,13 @@ export function writeFileSync(
   let error: Error | null = null;
   try {
     file = isRid
-      ? new Deno.FsFile(pathOrRid as number)
-      : Deno.openSync(pathOrRid as string, openOptions);
+      ? new denoFs.FsFile(pathOrRid as number)
+      : denoFs.openSync(pathOrRid as string, openOptions);
 
     // ignore mode because it's not supported on windows
     // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
     if (!isRid && mode && !isWindows) {
-      Deno.chmodSync(pathOrRid as string, mode);
+      denoFs.chmodSync(pathOrRid as string, mode);
     }
 
     // TODO(crowlKats): duplicate from runtime/js/13_buffer.js

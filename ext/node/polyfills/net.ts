@@ -102,6 +102,7 @@ import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "ext:deno_node/diagnostics_channel.ts";
+import * as denoOs from "ext:runtime/30_os.js";
 
 let debug = debuglog("net", (fn) => {
   debug = fn;
@@ -1754,7 +1755,7 @@ export function _createServerHandle(
 
     if (isWindows) {
       const instances = Number.parseInt(
-        Deno.env.get("NODE_PENDING_PIPE_INSTANCES") ?? "",
+        denoOs.env.get("NODE_PENDING_PIPE_INSTANCES") ?? "",
       );
 
       if (!Number.isNaN(instances)) {

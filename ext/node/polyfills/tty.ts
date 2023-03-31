@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+import { isatty } from "ext:runtime/40_tty.js";
 import { Socket } from "ext:deno_node/net.ts";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
@@ -8,7 +9,7 @@ function isatty(fd: number) {
     return false;
   }
   try {
-    return Deno.isatty(fd);
+    return isatty(fd);
   } catch (_) {
     return false;
   }

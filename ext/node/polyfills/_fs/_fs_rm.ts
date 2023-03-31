@@ -5,6 +5,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 type rmOptions = {
   force?: boolean;
@@ -43,7 +44,7 @@ export function rm(
       if (err) {
         return callback(err);
       }
-      Deno.remove(path, { recursive: options?.recursive })
+      denoFs.remove(path, { recursive: options?.recursive })
         .then((_) => callback(null), (err: unknown) => {
           if (options?.force && err instanceof Deno.errors.NotFound) {
             callback(null);
@@ -67,7 +68,7 @@ export const rmPromise = promisify(rm) as (
 export function rmSync(path: string | URL, options?: rmOptions) {
   options = validateRmOptionsSync(path, options, false);
   try {
-    Deno.removeSync(path, { recursive: options?.recursive });
+    denoFs.removeSync(path, { recursive: options?.recursive });
   } catch (err: unknown) {
     if (options?.force && err instanceof Deno.errors.NotFound) {
       return;

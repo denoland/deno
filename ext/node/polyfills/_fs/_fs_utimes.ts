@@ -3,6 +3,7 @@
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 function getValidTime(
   time: number | string | Date,
@@ -39,7 +40,7 @@ export function utimes(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
-  Deno.utime(path, atime, mtime).then(() => callback(null), callback);
+  denoFs.utime(path, atime, mtime).then(() => callback(null), callback);
 }
 
 export const utimesPromise = promisify(utimes) as (
@@ -57,5 +58,5 @@ export function utimesSync(
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
 
-  Deno.utimeSync(path, atime, mtime);
+  denoFs.utimeSync(path, atime, mtime);
 }

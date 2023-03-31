@@ -12,6 +12,7 @@ import { Duplex, Readable, Writable } from "ext:deno_node/stream.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
 import * as io from "ext:deno_io/12_io.js";
+import { isatty, consoleSize } from "ext:runtime/40_tty.js";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name) {
@@ -43,30 +44,30 @@ export function createWritableStdioStream(writer, name) {
       enumerable: true,
       configurable: true,
       get: () =>
-        Deno.isatty?.(writer?.rid) ? Deno.consoleSize?.().columns : undefined,
+        isatty(writer?.rid) ? consoleSize().columns : undefined,
     },
     rows: {
       enumerable: true,
       configurable: true,
       get: () =>
-        Deno.isatty?.(writer?.rid) ? Deno.consoleSize?.().rows : undefined,
+        isatty(writer?.rid) ? consoleSize().rows : undefined,
     },
     isTTY: {
       enumerable: true,
       configurable: true,
-      get: () => Deno.isatty?.(writer?.rid),
+      get: () => isatty(writer?.rid),
     },
     getWindowSize: {
       enumerable: true,
       configurable: true,
       value: () =>
-        Deno.isatty?.(writer?.rid)
-          ? Object.values(Deno.consoleSize?.())
+        isatty(writer?.rid)
+          ? Object.values(consoleSize())
           : undefined,
     },
   });
 
-  if (Deno.isatty?.(writer?.rid)) {
+  if (isatty(writer?.rid)) {
     // These belong on tty.WriteStream(), but the TTY streams currently have
     // following problems:
     // 1. Using them here introduces a circular dependency.
@@ -96,7 +97,7 @@ export function createWritableStdioStream(writer, name) {
 // https://github.com/nodejs/node/blob/v18.12.1/src/node_util.cc#L257
 function _guessStdinType(fd) {
   if (typeof fd !== "number" || fd < 0) return "UNKNOWN";
-  if (Deno.isatty?.(fd)) return "TTY";
+  if (isatty(fd)) return "TTY";
 
   try {
     const fileInfo = Deno.fstatSync?.(fd);
@@ -216,7 +217,7 @@ export const initStdin = () => {
     enumerable: true,
     configurable: true,
     get() {
-      return Deno.isatty?.(Deno.stdin.rid);
+      return isatty(Deno.stdin.rid);
     },
   });
   stdin._isRawMode = false;

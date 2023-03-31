@@ -2,6 +2,7 @@
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function truncate(
   path: string | URL,
@@ -18,7 +19,7 @@ export function truncate(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.truncate(path, len).then(() => callback(null), callback);
+  denoFs.truncate(path, len).then(() => callback(null), callback);
 }
 
 export const truncatePromise = promisify(truncate) as (
@@ -29,5 +30,5 @@ export const truncatePromise = promisify(truncate) as (
 export function truncateSync(path: string | URL, len?: number) {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
-  Deno.truncateSync(path, len);
+  denoFs.truncateSync(path, len);
 }

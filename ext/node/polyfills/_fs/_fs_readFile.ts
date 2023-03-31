@@ -13,6 +13,7 @@ import {
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(
@@ -64,7 +65,7 @@ export function readFile(
 
   const encoding = getEncoding(optOrCallback);
 
-  const p = Deno.readFile(path);
+  const p = denoFs.readFile(path);
 
   if (cb) {
     p.then((data: Uint8Array) => {
@@ -97,7 +98,7 @@ export function readFileSync(
   opt?: FileOptionsArgument,
 ): string | Buffer {
   path = path instanceof URL ? fromFileUrl(path) : path;
-  const data = Deno.readFileSync(path);
+  const data = denoFs.readFileSync(path);
   const encoding = getEncoding(opt);
   if (encoding && encoding !== "binary") {
     const text = maybeDecode(data, encoding);

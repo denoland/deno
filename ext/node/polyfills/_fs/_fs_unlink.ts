@@ -1,9 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function unlink(path: string | URL, callback: (err?: Error) => void) {
   if (!callback) throw new Error("No callback function supplied");
-  Deno.remove(path).then((_) => callback(), callback);
+  denoFs.remove(path).then((_) => callback(), callback);
 }
 
 export const unlinkPromise = promisify(unlink) as (
@@ -11,5 +12,5 @@ export const unlinkPromise = promisify(unlink) as (
 ) => Promise<void>;
 
 export function unlinkSync(path: string | URL) {
-  Deno.removeSync(path);
+  denoFs.removeSync(path);
 }

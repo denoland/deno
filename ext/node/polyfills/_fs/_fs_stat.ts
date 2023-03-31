@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export type statOptions = {
   bigint: boolean;
@@ -270,7 +271,7 @@ export function stat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.stat(path).then(
+  denoFs.stat(path).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) => callback(denoErrorToNodeError(err, { syscall: "stat" })),
   );
@@ -296,7 +297,7 @@ export function statSync(
   options: statOptions = { bigint: false, throwIfNoEntry: true },
 ): Stats | BigIntStats | undefined {
   try {
-    const origin = Deno.statSync(path);
+    const origin = denoFs.statSync(path);
     return CFISBIS(origin, options.bigint);
   } catch (err) {
     if (

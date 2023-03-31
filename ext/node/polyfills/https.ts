@@ -10,6 +10,8 @@ import {
 } from "ext:deno_node/http.ts";
 import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { readTextFileSync } from "ext:deno_fs/30_fs.js";
+import { env } from "ext:runtime/30_os.js";
 
 export class Server {
   constructor() {
@@ -83,7 +85,7 @@ class HttpsClientRequest extends ClientRequest {
     if (caCerts !== undefined) {
       return createHttpClient({ caCerts, http2: false });
     }
-    // const status = await Deno.permissions.query({
+    // const status = await permissions.query({
     //   name: "env",
     //   variable: "NODE_EXTRA_CA_CERTS",
     // });
@@ -91,12 +93,12 @@ class HttpsClientRequest extends ClientRequest {
     //   caCerts = null;
     //   return undefined;
     // }
-    const certFilename = Deno.env.get("NODE_EXTRA_CA_CERTS");
+    const certFilename = env.get("NODE_EXTRA_CA_CERTS");
     if (!certFilename) {
       caCerts = null;
       return undefined;
     }
-    const caCert = Deno.readTextFileSync(certFilename);
+    const caCert = readTextFileSync(certFilename);
     caCerts = [caCert];
     return createHttpClient({ caCerts, http2: false });
   }

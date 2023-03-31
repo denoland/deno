@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 type Options = { encoding: string };
 type Callback = (err: Error | null, path?: string) => void;
@@ -15,7 +16,7 @@ export function realpath(
   if (!callback) {
     throw new Error("No callback function supplied");
   }
-  Deno.realPath(path).then(
+  denoFs.realPath(path).then(
     (path) => callback!(null, path),
     (err) => callback!(err),
   );
@@ -29,7 +30,7 @@ export const realpathPromise = promisify(realpath) as (
 ) => Promise<string>;
 
 export function realpathSync(path: string): string {
-  return Deno.realPathSync(path);
+  return denoFs.realPathSync(path);
 }
 
 realpathSync.native = realpathSync;

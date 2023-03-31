@@ -13,6 +13,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 type rmdirOptions = {
   maxRetries?: number;
@@ -58,13 +59,13 @@ export function rmdir(
           return callback(err);
         }
 
-        Deno.remove(path, { recursive: options?.recursive })
+        denoFs.remove(path, { recursive: options?.recursive })
           .then((_) => callback(), callback);
       },
     );
   } else {
     validateRmdirOptions(options);
-    Deno.remove(path, { recursive: options?.recursive })
+    denoFs.remove(path, { recursive: options?.recursive })
       .then((_) => callback(), (err: unknown) => {
         callback(
           err instanceof Error
@@ -97,7 +98,7 @@ export function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
   }
 
   try {
-    Deno.removeSync(toNamespacedPath(path as string), {
+    denoFs.removeSync(toNamespacedPath(path as string), {
       recursive: options?.recursive,
     });
   } catch (err: unknown) {

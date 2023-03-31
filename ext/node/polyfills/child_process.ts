@@ -42,6 +42,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+import * as denoOs from "ext:runtime/30_os.js";
 
 const { core } = globalThis.__bootstrap;
 
@@ -141,7 +142,7 @@ export function fork(
     throw new ERR_CHILD_PROCESS_IPC_REQUIRED("options.stdio");
   }
 
-  options.execPath = options.execPath || Deno.execPath();
+  options.execPath = options.execPath || denoOs.execPath();
   options.shell = false;
 
   Object.assign(options.env ??= {}, {
