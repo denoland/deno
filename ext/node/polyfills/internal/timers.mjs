@@ -5,11 +5,7 @@ import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { validateFunction, validateNumber } from "ext:deno_node/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "ext:deno_node/process.ts";
-import {
-  setTimeout as setTimeout_,
-  clearTimeout as clearTimeout_,
-  setInterval as setInterval_,
-} from "ext:deno_web/02_timers.js";
+import * as denoTimers from "ext:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -36,10 +32,10 @@ Timeout.prototype[createTimer] = function () {
   const callback = this._onTimeout;
   const cb = (...args) => callback.bind(this)(...args);
   const id = this._isRepeat
-    ? setInterval_(cb, this._idleTimeout, ...this._timerArgs)
-    : setTimeout_(cb, this._idleTimeout, ...this._timerArgs);
+    ? denoTimers.setInterval(cb, this._idleTimeout, ...this._timerArgs)
+    : denoTimers.setTimeout(cb, this._idleTimeout, ...this._timerArgs);
   if (!this[kRefed]) {
-    Deno.unrefTimer(id);
+    denoTimers.unrefTimer(id);
   }
   return id;
 };
@@ -56,7 +52,7 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 };
 
 Timeout.prototype.refresh = function () {
-  clearTimeout_(this[kTimerId]);
+  denoTimers.clearTimeout(this[kTimerId]);
   this[kTimerId] = this[createTimer]();
   return this;
 };
@@ -64,7 +60,7 @@ Timeout.prototype.refresh = function () {
 Timeout.prototype.unref = function () {
   if (this[kRefed]) {
     this[kRefed] = false;
-    Deno.unrefTimer(this[kTimerId]);
+    denoTimers.unrefTimer(this[kTimerId]);
   }
   return this;
 };
@@ -72,7 +68,7 @@ Timeout.prototype.unref = function () {
 Timeout.prototype.ref = function () {
   if (!this[kRefed]) {
     this[kRefed] = true;
-    Deno.refTimer(this[kTimerId]);
+    denoTimers.refTimer(this[kTimerId]);
   }
   return this;
 };
