@@ -13,6 +13,7 @@ Deno.test(
   "should correctly return url property after websocket upgrade",
   async () => {
     const listeningPromise = deferred();
+    const closedPromise = deferred();
     const ac = new AbortController();
     let url;
 
@@ -32,16 +33,22 @@ Deno.test(
         socket.addEventListener("open", () => {
           url = request.url;
           socket.close();
+        });
+
+        socket.addEventListener("close", () => {
           ac.abort();
+          closedPromise.resolve();
         });
 
         return response;
       },
     );
 
-    new WebSocket("ws://127.0.0.1:4501/test");
+    const ws = new WebSocket("ws://127.0.0.1:4501/test");
     await listeningPromise;
     await server;
+    ws.close();
     assertEquals(url, "http://localhost:4501/test");
+    await closedPromise;
   },
 );
