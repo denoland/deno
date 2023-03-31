@@ -37,6 +37,10 @@ import {
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { Command } from "ext:runtime/40_process.js";
+import * as denoOs from "ext:runtime/30_os.js";
+import * as denoProcess from "ext:runtime/40_process.js";
+import * as denoSignals from "ext:runtime/40_signals.js";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -91,7 +95,7 @@ export const exit = (code?: number | string) => {
     process.emit("exit", process.exitCode || 0);
   }
 
-  Deno.exit(process.exitCode || 0);
+  denoOs.exit(process.exitCode || 0);
 };
 
 function addReadOnlyProcessAlias(
@@ -231,7 +235,7 @@ export function memoryUsage(): {
   arrayBuffers: number;
 } {
   return {
-    ...Deno.memoryUsage(),
+    ...denoOs.memoryUsage(),
     arrayBuffers: 0,
   };
 }
@@ -246,7 +250,7 @@ function _kill(pid: number, sig: number): number {
 
   if (sig === 0) {
     let status;
-    if (Deno.build.os === "windows") {
+    if (core.build.os === "windows") {
       status = (new Command("powershell.exe", {
         args: ["Get-Process", "-pid", pid],
       })).outputSync();
@@ -269,7 +273,7 @@ function _kill(pid: number, sig: number): number {
       errCode = uv.codeMap.get("EINVAL");
     } else {
       try {
-        Deno.kill(pid, maybeSignal[0] as Deno.Signal);
+        denoProcess.kill(pid, maybeSignal[0] as Deno.Signal);
       } catch (e) {
         if (e instanceof TypeError) {
           throw notImplemented(maybeSignal[0]);
@@ -405,12 +409,12 @@ class Process extends EventEmitter {
       warnNotImplemented(`process.on("${event}")`);
       super.on(event, listener);
     } else if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      if (event === "SIGBREAK" && core.build.os !== "windows") {
         // Ignores SIGBREAK if the platform is not windows.
-      } else if (event === "SIGTERM" && Deno.build.os === "windows") {
+      } else if (event === "SIGTERM" && core.build.os === "windows") {
         // Ignores SIGTERM on windows.
       } else {
-        Deno.addSignalListener(event as Deno.Signal, listener);
+        denoSignals.addSignalListener(event as Deno.Signal, listener);
       }
     } else {
       super.on(event, listener);
@@ -431,12 +435,12 @@ class Process extends EventEmitter {
       warnNotImplemented(`process.off("${event}")`);
       super.off(event, listener);
     } else if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      if (event === "SIGBREAK" && core.build.os !== "windows") {
         // Ignores SIGBREAK if the platform is not windows.
-      } else if (event === "SIGTERM" && Deno.build.os === "windows") {
+      } else if (event === "SIGTERM" && core.build.os === "windows") {
         // Ignores SIGTERM on windows.
       } else {
-        Deno.removeSignalListener(event as Deno.Signal, listener);
+        denoSignals.removeSignalListener(event as Deno.Signal, listener);
       }
     } else {
       super.off(event, listener);
@@ -448,10 +452,10 @@ class Process extends EventEmitter {
   // deno-lint-ignore no-explicit-any
   override emit(event: string, ...args: any[]): boolean {
     if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      if (event === "SIGBREAK" && core.build.os !== "windows") {
         // Ignores SIGBREAK if the platform is not windows.
       } else {
-        Deno.kill(Deno.pid, event as Deno.Signal);
+        denoProcess.kill(Deno.pid, event as Deno.Signal);
       }
     } else {
       return super.emit(event, ...args);
@@ -478,10 +482,10 @@ class Process extends EventEmitter {
       warnNotImplemented(`process.prependListener("${event}")`);
       super.prependListener(event, listener);
     } else if (event.startsWith("SIG")) {
-      if (event === "SIGBREAK" && Deno.build.os !== "windows") {
+      if (event === "SIGBREAK" && core.build.os !== "windows") {
         // Ignores SIGBREAK if the platform is not windows.
       } else {
-        Deno.addSignalListener(event as Deno.Signal, listener);
+        denoSignals.addSignalListener(event as Deno.Signal, listener);
       }
     } else {
       super.prependListener(event, listener);
@@ -501,7 +505,7 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#process_process_platform */
   get platform() {
     if (!platform) {
-      platform = isWindows ? "win32" : Deno.build.os;
+      platform = isWindows ? "win32" : core.build.os;
     }
     return platform;
   }
@@ -605,12 +609,12 @@ class Process extends EventEmitter {
 
   /** This method is removed on Windows */
   getgid?(): number {
-    return Deno.gid()!;
+    return denoOs.gid()!;
   }
 
   /** This method is removed on Windows */
   getuid?(): number {
-    return Deno.uid()!;
+    return denoOs.uid()!;
   }
 
   // TODO(kt3k): Implement this when we added -e option to node compat mode
@@ -621,7 +625,7 @@ class Process extends EventEmitter {
     if (execPath) {
       return execPath;
     }
-    execPath = Deno.execPath();
+    execPath = denoOs.execPath();
     return execPath;
   }
 
@@ -689,7 +693,7 @@ internals.__bootstrapNodeProcess = function (
   } else {
     Object.defineProperty(argv, "0", {
       get: () => {
-        return Deno.execPath();
+        return denoOs.execPath();
       },
     });
   }
@@ -700,7 +704,7 @@ internals.__bootstrapNodeProcess = function (
       if (Deno.mainModule.startsWith("file:")) {
         return fromFileUrl(Deno.mainModule);
       } else {
-        return join(Deno.cwd(), "$deno$node.js");
+        return join(denoFs.cwd(), "$deno$node.js");
       }
     },
   });

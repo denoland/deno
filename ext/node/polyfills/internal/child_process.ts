@@ -40,6 +40,7 @@ import {
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "ext:deno_node/process.ts";
+import * as denoOs from "ext:runtime/30_os.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -697,7 +698,7 @@ function buildCommand(
   args: string[],
   shell: string | boolean,
 ): [string, string[]] {
-  if (file === Deno.execPath()) {
+  if (file === denoOs.execPath()) {
     // The user is trying to spawn another Deno process as Node.js.
     args = toDenoArgs(args);
   }

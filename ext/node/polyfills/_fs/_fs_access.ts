@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+const core = globalThis.Deno.core;
 import {
   type CallbackWithError,
   makeCallback,
@@ -12,6 +13,8 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "ext:deno_node/buffer.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import * as denoFs from "ext:deno_fs/30_fs.js";
+import * as denoOs from "ext:runtime/30_os.js";
 
 export function access(
   path: string | Buffer | URL,
@@ -27,7 +30,7 @@ export function access(
   mode = getValidMode(mode, "access");
   const cb = makeCallback(callback);
 
-  Deno.lstat(path).then((info) => {
+  denoFs.lstat(path).then((info) => {
     if (info.mode === null) {
       // If the file mode is unavailable, we pretend it has
       // the permission
@@ -36,7 +39,7 @@ export function access(
     }
     const m = +mode || 0;
     let fileMode = +info.mode || 0;
-    if (Deno.build.os !== "windows" && info.uid === Deno.uid()) {
+    if (core.build.os !== "windows" && info.uid === denoOs.uid()) {
       // If the user is the owner of the file, then use the owner bits of
       // the file permission
       fileMode >>= 6;
@@ -82,7 +85,7 @@ export function accessSync(path: string | Buffer | URL, mode?: number) {
   path = getValidatedPath(path).toString();
   mode = getValidMode(mode, "access");
   try {
-    const info = Deno.lstatSync(path.toString());
+    const info = denoFs.lstatSync(path.toString());
     if (info.mode === null) {
       // If the file mode is unavailable, we pretend it has
       // the permission
@@ -90,7 +93,7 @@ export function accessSync(path: string | Buffer | URL, mode?: number) {
     }
     const m = +mode! || 0;
     let fileMode = +info.mode! || 0;
-    if (Deno.build.os !== "windows" && info.uid === Deno.uid()) {
+    if (core.build.os !== "windows" && info.uid === denoOs.uid()) {
       // If the user is the owner of the file, then use the owner bits of
       // the file permission
       fileMode >>= 6;

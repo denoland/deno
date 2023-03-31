@@ -48,7 +48,7 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  memoryUsage: () => ops.op_runtime_memory_usage(),
+  memoryUsage: os.memoryUsage,
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
   chdir: fs.chdir,

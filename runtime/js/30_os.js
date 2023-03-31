@@ -106,6 +106,10 @@ function execPath() {
   return ops.op_exec_path();
 }
 
+function memoryUsage() {
+  return ops.op_runtime_memory_usage();
+}
+
 export {
   env,
   execPath,
@@ -113,6 +117,7 @@ export {
   gid,
   hostname,
   loadavg,
+  memoryUsage,
   networkInterfaces,
   osRelease,
   osUptime,
