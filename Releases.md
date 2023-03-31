@@ -9,7 +9,6 @@ https://github.com/denoland/deno_install
 ### 1.32.2 / 2023.03.31
 
 - Revert "refactor(ext/node): Use Deno.inspect (#17960)" (#18491)
-  (#18458)
 - feat(core): initialize SQLite off-main-thread (#18401)
 - feat(ext/kv): return versionstamp from set/commit (#18512)
 - feat(ext/node): add `crypto.checkPrime` API (#18465)
