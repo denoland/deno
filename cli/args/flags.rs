@@ -527,7 +527,7 @@ impl Flags {
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) => std::env::current_dir().ok(),
+      | Test(_) | Bench(_) | Repl(_) => std::env::current_dir().ok(),
       _ => None,
     }
   }
@@ -2245,7 +2245,7 @@ fn lock_arg() -> Arg {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file. 
+    .help("Check the specified lock file.
 
 If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)

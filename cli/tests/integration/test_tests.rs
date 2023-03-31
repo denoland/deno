@@ -406,10 +406,9 @@ fn file_protocol() {
       .unwrap()
       .to_string();
 
-  let context = TestContext::default();
-  context
+  TestContext::default()
     .new_command()
-    .args_vec(vec!["test".to_string(), file_url])
+    .args_vec(["test", file_url.as_str()])
     .run()
     .assert_matches_file("test/file_protocol.out");
 }
