@@ -23,6 +23,7 @@ import * as signals from "ext:runtime/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "ext:runtime/40_http.js";
+import * as kv from "ext:deno_kv/01_db.ts";
 
 const denoNs = {
   metrics: core.metrics,
@@ -152,7 +153,10 @@ const denoNs = {
 };
 
 const denoNsUnstable = {
-  listenDatagram: net.listenDatagram,
+  listenDatagram: net.createListenDatagram(
+    ops.op_net_listen_udp,
+    ops.op_net_listen_unixpacket,
+  ),
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
@@ -169,6 +173,11 @@ const denoNsUnstable = {
   funlockSync: fs.funlockSync,
   upgradeHttp: http.upgradeHttp,
   upgradeHttpRaw: flash.upgradeHttpRaw,
+  serve: flash.createServe(ops.op_flash_serve),
+  openKv: kv.openKv,
+  Kv: kv.Kv,
+  KvU64: kv.KvU64,
+  KvListIterator: kv.KvListIterator,
 };
 
 export { denoNs, denoNsUnstable };

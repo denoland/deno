@@ -15,10 +15,10 @@ import type {
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
+  getKeyMaterial,
   KeyObject,
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 
 const { ops } = globalThis.__bootstrap.core;
 
@@ -73,7 +73,7 @@ export class Hash extends Transform {
 
     if (typeof algorithm === "string") {
       this.#context = ops.op_node_create_hash(
-        algorithm,
+        algorithm.toLowerCase(),
       );
       if (this.#context === 0) {
         throw new TypeError(`Unknown hash algorithm: ${algorithm}`);
@@ -170,12 +170,12 @@ class HmacImpl extends Transform {
     });
     // deno-lint-ignore no-this-alias
     const self = this;
-    if (key instanceof KeyObject) {
-      notImplemented("Hmac: KeyObject key is not implemented");
-    }
 
     validateString(hmac, "hmac");
-    const u8Key = prepareSecretKey(key, options?.encoding) as Buffer;
+
+    const u8Key = key instanceof KeyObject
+      ? getKeyMaterial(key)
+      : prepareSecretKey(key, options?.encoding) as Buffer;
 
     const alg = hmac.toLowerCase();
     this.#algorithm = alg;

@@ -21,6 +21,7 @@ use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -29,6 +30,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_io::Stdio;
+use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
@@ -252,15 +254,20 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops(),
+      deno_kv::deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(
+          options.origin_storage_dir.clone(),
+        ),
+        unstable,
+      ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node_loading::init_ops::<PermissionsContainer>(
+      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),
-      deno_node::deno_node::init_ops(),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops(
@@ -354,21 +361,20 @@ impl MainWorker {
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
     let scope = &mut self.js_runtime.handle_scope();
-    let options_v8 =
-      deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+    let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
     bootstrap_fn
-      .call(scope, undefined.into(), &[options_v8])
+      .call(scope, undefined.into(), &[args.into()])
       .unwrap();
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script(
+  pub fn execute_script<S: Into<ModuleCode>>(
     &mut self,
-    script_name: &str,
-    source_code: &str,
+    script_name: &'static str,
+    source_code: S,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
@@ -503,7 +509,7 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
   pub fn dispatch_load_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
@@ -520,7 +526,7 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
   pub fn dispatch_unload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
@@ -537,7 +543,7 @@ impl MainWorker {
   /// running.
   pub fn dispatch_beforeunload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<bool, AnyError> {
     let value = self.js_runtime.execute_script(
       script_name,

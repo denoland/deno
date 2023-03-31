@@ -4,6 +4,7 @@ use deno_core::url::Url;
 use test_util as util;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
+use util::wildcard_match;
 use util::TestContext;
 
 #[test]
@@ -443,6 +444,29 @@ itest!(parallel_output {
   output: "test/parallel_output.out",
   exit_code: 1,
 });
+
+#[test]
+// todo(#18480): re-enable
+#[ignore]
+fn sigint_with_hanging_test() {
+  util::with_pty(
+    &[
+      "test",
+      "--quiet",
+      "--no-check",
+      "test/sigint_with_hanging_test.ts",
+    ],
+    |mut console| {
+      std::thread::sleep(std::time::Duration::from_secs(1));
+      console.write_line("\x03");
+      let text = console.read_until("hanging_test.ts:10:15");
+      wildcard_match(
+        include_str!("../testdata/test/sigint_with_hanging_test.out"),
+        &text,
+      );
+    },
+  );
+}
 
 itest!(package_json_basic {
   args: "test",

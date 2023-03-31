@@ -49,7 +49,7 @@ pub fn esm_code_with_node_globals(
     let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
       specifier: specifier.to_string(),
       text_info: text_info.clone(),
-      media_type: deno_ast::MediaType::from(specifier),
+      media_type: deno_ast::MediaType::from_specifier(specifier),
       capture_tokens: true,
       scope_analysis: true,
       maybe_syntax: None,
@@ -167,7 +167,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals() {
     let r = esm_code_with_node_globals(
-      &NodeAnalysisCache::new(None),
+      &NodeAnalysisCache::new_in_memory(),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "export const x = 1;".to_string(),
     )
@@ -183,7 +183,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals_with_shebang() {
     let r = esm_code_with_node_globals(
-      &NodeAnalysisCache::new(None),
+      &NodeAnalysisCache::new_in_memory(),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "#!/usr/bin/env node\nexport const x = 1;".to_string(),
     )

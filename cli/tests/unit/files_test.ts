@@ -675,7 +675,7 @@ Deno.test({ permissions: { read: true } }, async function seekMode() {
   const file = await Deno.open(filename);
   await assertRejects(
     async () => {
-      await file.seek(1, -1);
+      await file.seek(1, -1 as unknown as Deno.SeekMode);
     },
     TypeError,
     "Invalid seek mode",

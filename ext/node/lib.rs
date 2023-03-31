@@ -6,6 +6,7 @@ use deno_core::op;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -20,6 +21,7 @@ mod polyfill;
 mod resolution;
 mod v8;
 mod winerror;
+mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -38,8 +40,37 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
 
+pub trait NodeEnv {
+  type P: NodePermissions;
+  type Fs: NodeFs;
+}
+
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+}
+
+pub trait NodeFs {
+  fn current_dir() -> io::Result<PathBuf>;
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata>;
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
+}
+
+pub struct RealFs;
+impl NodeFs for RealFs {
+  fn current_dir() -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::env::current_dir()
+  }
+
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path)
+  }
+
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::read_to_string(path)
+  }
 }
 
 pub trait RequireNpmResolver {
@@ -95,6 +126,7 @@ fn op_node_build_os() -> String {
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
+  parameters = [Env: NodeEnv],
   ops = [
     crypto::op_node_create_decipheriv,
     crypto::op_node_cipheriv_encrypt,
@@ -111,6 +143,13 @@ deno_core::extension!(deno_node,
     crypto::op_node_private_encrypt,
     crypto::op_node_private_decrypt,
     crypto::op_node_public_encrypt,
+    crypto::op_node_check_prime,
+    crypto::op_node_check_prime_async,
+    crypto::op_node_check_prime_bytes,
+    crypto::op_node_check_prime_bytes_async,
+    crypto::op_node_pbkdf2,
+    crypto::op_node_pbkdf2_async,
+    crypto::op_node_sign,
     winerror::op_node_sys_to_uv_error,
     v8::op_v8_cached_data_version_tag,
     v8::op_v8_get_heap_statistics,
@@ -118,11 +157,44 @@ deno_core::extension!(deno_node,
     idna::op_node_idna_domain_to_unicode,
     idna::op_node_idna_punycode_decode,
     idna::op_node_idna_punycode_encode,
+    zlib::op_zlib_new,
+    zlib::op_zlib_close,
+    zlib::op_zlib_close_if_pending,
+    zlib::op_zlib_write,
+    zlib::op_zlib_write_async,
+    zlib::op_zlib_init,
+    zlib::op_zlib_reset,
     op_node_build_os,
+
+    ops::op_require_init_paths,
+    ops::op_require_node_module_paths<Env>,
+    ops::op_require_proxy_path,
+    ops::op_require_is_deno_dir_package,
+    ops::op_require_resolve_deno_dir,
+    ops::op_require_is_request_relative,
+    ops::op_require_resolve_lookup_paths,
+    ops::op_require_try_self_parent_path<Env>,
+    ops::op_require_try_self<Env>,
+    ops::op_require_real_path<Env>,
+    ops::op_require_path_is_absolute,
+    ops::op_require_path_dirname,
+    ops::op_require_stat<Env>,
+    ops::op_require_path_resolve,
+    ops::op_require_path_basename,
+    ops::op_require_read_file<Env>,
+    ops::op_require_as_file_path,
+    ops::op_require_resolve_exports<Env>,
+    ops::op_require_read_closest_package_json<Env>,
+    ops::op_require_read_package_scope<Env>,
+    ops::op_require_package_imports_resolve<Env>,
+    ops::op_require_break_on_next_statement,
   ],
-  esm_entry_point = "ext:deno_node/module_all.ts",
+  esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
+    "00_globals.js",
+    "01_require.js",
+    "02_init.js",
     "_core.ts",
     "_events.mjs",
     "_fs/_fs_access.ts",
@@ -168,7 +240,6 @@ deno_core::extension!(deno_node,
     "_http_common.ts",
     "_http_outgoing.ts",
     "_next_tick.ts",
-    "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
@@ -305,7 +376,6 @@ deno_core::extension!(deno_node,
     "internal/util/inspect.mjs",
     "internal/util/types.ts",
     "internal/validators.mjs",
-    "module_all.ts",
     "net.ts",
     "os.ts",
     "path.ts",
@@ -344,35 +414,6 @@ deno_core::extension!(deno_node,
     "worker_threads.ts",
     "zlib.ts",
   ],
-);
-
-deno_core::extension!(deno_node_loading,
-  parameters = [P: NodePermissions],
-  ops = [
-    ops::op_require_init_paths,
-    ops::op_require_node_module_paths<P>,
-    ops::op_require_proxy_path,
-    ops::op_require_is_deno_dir_package,
-    ops::op_require_resolve_deno_dir,
-    ops::op_require_is_request_relative,
-    ops::op_require_resolve_lookup_paths,
-    ops::op_require_try_self_parent_path<P>,
-    ops::op_require_try_self<P>,
-    ops::op_require_real_path<P>,
-    ops::op_require_path_is_absolute,
-    ops::op_require_path_dirname,
-    ops::op_require_stat<P>,
-    ops::op_require_path_resolve,
-    ops::op_require_path_basename,
-    ops::op_require_read_file<P>,
-    ops::op_require_as_file_path,
-    ops::op_require_resolve_exports<P>,
-    ops::op_require_read_closest_package_json<P>,
-    ops::op_require_read_package_scope<P>,
-    ops::op_require_package_imports_resolve<P>,
-    ops::op_require_break_on_next_statement,
-  ],
-  esm = ["01_node.js", "02_require.js", "module_es_shim.js"],
   options = {
     maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   },
@@ -383,24 +424,30 @@ deno_core::extension!(deno_node_loading,
   },
 );
 
-pub async fn initialize_runtime(
+pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
+  maybe_binary_command_name: Option<String>,
 ) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName);
-      if (usesLocalNodeModulesDir) {{
-        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
-      }}
-    }})('{}', {});"#,
+  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
+    format!("\"{}\"", binary_command_name)
+  } else {
+    "undefined".to_string()
+  };
+  let source_code = format!(
+    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
+      Deno[Deno.internal].node.initialize(
+        nodeGlobalThisName,
+        usesLocalNodeModulesDir,
+        argv0
+      );
+    }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME.as_str(),
     uses_local_node_modules_dir,
+    argv0
   );
 
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
 }
 
@@ -414,38 +461,15 @@ pub fn load_cjs_module(
     text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
-  let source_code = &format!(
-    r#"(function loadCjsModule(module, inspectBrk) {{
-      if (inspectBrk) {{
-        Deno[Deno.internal].require.setInspectBrk();
-      }}
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}', {inspect_brk});"#,
+  let source_code = format!(
+    r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
+      Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
+    }})('{module}', {main}, {inspect_brk});"#,
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
   );
 
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
-}
-
-pub async fn initialize_binary_command(
-  js_runtime: &mut JsRuntime,
-  binary_name: &str,
-) -> Result<(), AnyError> {
-  // overwrite what's done in deno_std in order to set the binary arg name
-  let source_code = &format!(
-    r#"(async function initializeBinaryCommand(binaryName) {{
-      const process = Deno[Deno.internal].node.globalThis.process;
-      Object.defineProperty(process.argv, "0", {{
-        get: () => binaryName,
-      }});
-    }})('{binary_name}');"#,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
 }
