@@ -8,10 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 1.32.2 / 2023.03.31
 
-- Reland "refactor: remove Deno[Deno.internal].nodeUnstable namespace" (#18475)
-- Revert "fix(cli): deno upgrade file permission (#18427)" (#18467)
 - Revert "refactor(ext/node): Use Deno.inspect (#17960)" (#18491)
-- Revert "refactor: remove Deno[Deno.internal].nodeUnstable namespace (…
   (#18458)
 - feat(core): initialize SQLite off-main-thread (#18401)
 - feat(ext/kv): return versionstamp from set/commit (#18512)
@@ -20,7 +17,6 @@ https://github.com/denoland/deno_install
 - feat(test): print pending tests on sigint (#18246)
 - feat: port node:zlib to rust (#18291)
 - fix(cli): add colors to "Module not found" error frame (#18437)
-- fix(cli): deno upgrade file permission (#18427)
 - fix(cli): don't store blob and data urls in the module cache (#18261)
 - fix(cli/bench): look for clone3 syscalls for thread count (#18456)
 - fix(core): located_script_name macro was using format syntax (#18388)
