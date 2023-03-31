@@ -1121,10 +1121,10 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getReferences": {
+      case "findReferences": {
         return respond(
           id,
-          languageService.getReferencesAtPosition(
+          languageService.findReferences(
             request.specifier,
             request.position,
           ),

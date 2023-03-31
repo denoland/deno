@@ -167,12 +167,13 @@ class WebSocketStream {
                 PromisePrototypeThen(
                   (async () => {
                     while (true) {
-                      const { kind } = await core.opAsync(
+                      const { 0: kind } = await core.opAsync(
                         "op_ws_next_event",
                         create.rid,
                       );
 
-                      if (kind === "close") {
+                      if (kind > 6) {
+                        /* close */
                         break;
                       }
                     }
@@ -237,37 +238,51 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
-              const { kind, value } = await core.opAsync(
+              const { 0: kind, 1: value } = await core.opAsync(
                 "op_ws_next_event",
                 this[_rid],
               );
 
               switch (kind) {
-                case "string": {
+                case 0:
+                case 1: {
+                  /* string */
+                  /* binary */
                   controller.enqueue(value);
                   break;
                 }
-                case "binary": {
-                  controller.enqueue(value);
+                case 5: {
+                  /* error */
+                  const err = new Error(value);
+                  this[_closed].reject(err);
+                  controller.error(err);
+                  core.tryClose(this[_rid]);
                   break;
                 }
-                case "ping": {
+                case 3: {
+                  /* ping */
                   await core.opAsync("op_ws_send", this[_rid], {
                     kind: "pong",
                   });
                   await pull(controller);
                   break;
                 }
-                case "closed":
-                case "close": {
-                  this[_closed].resolve(value);
+                case 2: {
+                  /* pong */
+                  break;
+                }
+                case 6: {
+                  /* closed */
+                  this[_closed].resolve(undefined);
                   core.tryClose(this[_rid]);
                   break;
                 }
-                case "error": {
-                  const err = new Error(value);
-                  this[_closed].reject(err);
-                  controller.error(err);
+                default: {
+                  /* close */
+                  this[_closed].resolve({
+                    code: kind,
+                    reason: value,
+                  });
                   core.tryClose(this[_rid]);
                   break;
                 }

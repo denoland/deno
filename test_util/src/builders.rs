@@ -228,8 +228,11 @@ impl TestCommandBuilder {
     self
   }
 
-  pub fn args_vec(&mut self, args: Vec<String>) -> &mut Self {
-    self.args_vec = args;
+  pub fn args_vec<T: AsRef<str>, I: IntoIterator<Item = T>>(
+    &mut self,
+    args: I,
+  ) -> &mut Self {
+    self.args_vec = args.into_iter().map(|a| a.as_ref().to_string()).collect();
     self
   }
 
@@ -312,6 +315,14 @@ impl TestCommandBuilder {
     .collect::<Vec<_>>()
   }
 
+  fn build_envs(&self) -> HashMap<String, String> {
+    let mut envs = self.context.envs.clone();
+    for (key, value) in &self.envs {
+      envs.insert(key.to_string(), value.to_string());
+    }
+    envs
+  }
+
   pub fn with_pty(&self, mut action: impl FnMut(Pty)) {
     if !Pty::is_supported() {
       return;
@@ -319,11 +330,20 @@ impl TestCommandBuilder {
 
     let args = self.build_args();
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    let mut envs = self.envs.clone();
+    let mut envs = self.build_envs();
     if !envs.contains_key("NO_COLOR") {
       // set this by default for pty tests
       envs.insert("NO_COLOR".to_string(), "1".to_string());
     }
+
+    // note(dsherret): for some reason I need to inject the current
+    // environment here for the pty tests or else I get dns errors
+    if !self.env_clear {
+      for (key, value) in std::env::vars() {
+        envs.entry(key).or_insert(value);
+      }
+    }
+
     action(Pty::new(
       &self.build_command_path(),
       &args,
@@ -361,13 +381,7 @@ impl TestCommandBuilder {
       command.env_clear();
     }
     command.env("DENO_DIR", self.context.deno_dir.path());
-    command.envs({
-      let mut envs = self.context.envs.clone();
-      for (key, value) in &self.envs {
-        envs.insert(key.to_string(), value.to_string());
-      }
-      envs
-    });
+    command.envs(self.build_envs());
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
 

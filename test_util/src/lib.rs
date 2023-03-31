@@ -2093,8 +2093,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       command_builder.args(self.args);
     }
     if !self.args_vec.is_empty() {
-      command_builder
-        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+      command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
       command_builder.stdin(input);
@@ -2166,24 +2165,9 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Pty)) {
-  if !Pty::is_supported() {
-    return;
-  }
-
-  let deno_dir = new_deno_dir();
-  let mut env_vars = std::collections::HashMap::new();
-  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  env_vars.insert(
-    "DENO_DIR".to_string(),
-    deno_dir.path().to_string_lossy().to_string(),
-  );
-  action(Pty::new(
-    &deno_exe_path(),
-    deno_args,
-    &testdata_path(),
-    Some(env_vars),
-  ))
+pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.new_command().args_vec(deno_args).with_pty(action);
 }
 
 pub struct WrkOutput {
