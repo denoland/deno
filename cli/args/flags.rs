@@ -2215,11 +2215,10 @@ fn check_arg() -> Arg {
     .value_name("CHECK_TYPE")
     .help("Type-check modules")
     .long_help(
-      "Type-check modules.
-
-Enable type-checking in subcommands that do not type-check by default 
+      "Enable type-checking modules in subcommands that do not check by default 
 (cache, eval, repl, run). Alternatively, the 'deno check' subcommand can be used.
 
+Certain subcommands check local modules by default (bench, compile, test). 
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.",
     )
