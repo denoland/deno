@@ -23,7 +23,7 @@
 
 import { inspect } from "ext:deno_node/util.ts";
 import { stripColor as removeColors } from "ext:deno_node/_util/std_fmt_colors.ts";
-import { consoleSize, isatty } from "ext:runtime/js/40_tty.js";
+import { consoleSize, isatty } from "ext:runtime/40_tty.js";
 
 function getConsoleWidth(): number {
   try {
