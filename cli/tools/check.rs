@@ -92,7 +92,7 @@ pub fn check(
   let hash_data = {
     let mut hasher = FastInsecureHasher::new();
     hasher.write(&options.ts_config.as_bytes());
-    hasher.write_str(&version::deno());
+    hasher.write_str(version::deno());
     hasher.finish()
   };
 

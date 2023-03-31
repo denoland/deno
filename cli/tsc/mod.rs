@@ -244,11 +244,7 @@ fn get_maybe_hash(
   maybe_source: Option<&str>,
   hash_data: u64,
 ) -> Option<String> {
-  if let Some(source) = maybe_source {
-    Some(get_hash(source, hash_data))
-  } else {
-    None
-  }
+  maybe_source.map(|source| get_hash(source, hash_data))
 }
 
 fn get_hash(source: &str, hash_data: u64) -> String {
