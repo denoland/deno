@@ -281,6 +281,21 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [{ struct: Mixed }],
     result: "void",
   },
+  non_existent_symbol: {
+    parameters: [],
+    result: "void",
+    optional: true,
+  },
+  non_existent_nonblocking_symbol: {
+    parameters: [],
+    result: "void",
+    nonblocking: true,
+    optional: true,
+  },
+  non_existent_static: {
+    type: "u32",
+    optional: true,
+  },
 });
 const { symbols } = dylib;
 

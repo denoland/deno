@@ -418,6 +418,12 @@ class DynamicLibrary {
         continue;
       }
 
+      // Symbol was marked as optional, and not found.
+      // In that case, we set its value to null in Rust-side.
+      if (symbols[symbol] === null) {
+        continue;
+      }
+
       if (ReflectHas(symbols[symbol], "type")) {
         const type = symbols[symbol].type;
         if (type === "void") {
@@ -431,6 +437,7 @@ class DynamicLibrary {
           this.#rid,
           name,
           type,
+          symbols[symbol].optional,
         );
         ObjectDefineProperty(
           this.symbols,
