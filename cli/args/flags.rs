@@ -2217,8 +2217,8 @@ fn check_arg() -> Arg {
     .long_help(
       "Type-check modules.
 
-Deno does not type-check modules automatically from v1.23 onwards. Pass this
-flag to enable type-checking or use the 'deno check' subcommand.
+Enable type-checking in subcommands that do not type-check by default 
+(cache, eval, repl, run). Alternatively, the 'deno check' subcommand can be used.
 
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.",
