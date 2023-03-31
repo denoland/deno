@@ -765,6 +765,7 @@ fn clap_root() -> Command {
 
 fn bench_subcommand() -> Command {
   runtime_args(Command::new("bench"), true, false)
+    .arg(check_arg(true))
     .arg(
       Arg::new("json")
         .long("json")
@@ -848,6 +849,7 @@ If no output file is given, the output is written to standard output:
 
 fn cache_subcommand() -> Command {
   compile_args(Command::new("cache"))
+    .arg(check_arg(false))
     .arg(
       Arg::new("file")
         .num_args(1..)
@@ -905,6 +907,7 @@ Unless --reload is specified, this command will not re-download already cached d
 fn compile_subcommand() -> Command {
   runtime_args(Command::new("compile"), true, false)
     .arg(script_arg().required(true))
+    .arg(check_arg(true))
     .arg(
       Arg::new("include")
         .long("include")
@@ -1149,6 +1152,7 @@ To evaluate as TypeScript:
 
 This command has implicit access to all permissions (--allow-all).",
     )
+    .arg(check_arg(false))
     .arg(
       // TODO(@satyarohith): remove this argument in 2.0.
       Arg::new("ts")
@@ -1548,6 +1552,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 fn repl_subcommand() -> Command {
   runtime_args(Command::new("repl"), true, true)
     .about("Read Eval Print Loop")
+    .arg(check_arg(false))
     .arg(
       Arg::new("eval-file")
         .long("eval-file")
@@ -1567,6 +1572,7 @@ fn repl_subcommand() -> Command {
 
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
+    .arg(check_arg(false))
     .arg(
       watch_arg(true)
         .conflicts_with("inspect")
@@ -1629,6 +1635,7 @@ fn task_subcommand() -> Command {
 
 fn test_subcommand() -> Command {
   runtime_args(Command::new("test"), true, true)
+    .arg(check_arg(true))
     .arg(
       Arg::new("ignore")
         .long("ignore")
@@ -1855,7 +1862,7 @@ Remote modules and multiple modules may also be specified:
 }
 
 fn compile_args(app: Command) -> Command {
-  compile_args_without_check_args(app.arg(no_check_arg()).arg(check_arg()))
+  compile_args_without_check_args(app.arg(no_check_arg()))
 }
 
 fn compile_args_without_check_args(app: Command) -> Command {
@@ -2206,22 +2213,31 @@ diagnostic errors from remote modules will be ignored.",
     )
 }
 
-fn check_arg() -> Arg {
-  Arg::new("check")
+fn check_arg(checks_local_by_default: bool) -> Arg {
+  let arg = Arg::new("check")
     .conflicts_with("no-check")
     .long("check")
     .num_args(0..=1)
     .require_equals(true)
     .value_name("CHECK_TYPE")
-    .help("Type-check modules")
-    .long_help(
-      "Enable type-checking modules in subcommands that do not check by default 
-(cache, eval, repl, run). Alternatively, the 'deno check' subcommand can be used.
+    .help("Type-check modules");
 
-Certain subcommands check local modules by default (bench, compile, test). 
+  if checks_local_by_default {
+    arg.long_help(
+        "Enable type-checking. This subcommand type-checks local modules by default.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
-will be included.",
-    )
+will be included.
+  
+Alternatively, the 'deno check' subcommand can be used.")
+  } else {
+    arg.long_help(
+        "Enable type-checking. This subcommand does not type-check by default.
+If the value of '--check=all' is supplied, diagnostic errors from remote modules
+will be included.
+
+Alternatively, the 'deno check' subcommand can be used.",
+      )
+  }
 }
 
 fn script_arg() -> Arg {
