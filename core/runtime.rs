@@ -2918,7 +2918,7 @@ pub mod tests {
         r#"
         
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.opAsync("op_test", null, zero_copy_a);
+        Deno.core.opAsync2("op_test", null, zero_copy_a);
         "#,
       )
       .unwrap();
