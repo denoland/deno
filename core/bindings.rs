@@ -44,7 +44,7 @@ pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
     });
     if let Some(fast_fn) = &ctx.decl.fast_fn {
       references.push(v8::ExternalReference {
-        pointer: fast_fn.function() as _,
+        pointer: fast_fn.function as _,
       });
       references.push(v8::ExternalReference {
         pointer: ctx.fast_fn_c_info.unwrap().as_ptr() as _,
@@ -218,7 +218,7 @@ fn add_op_to_deno_core_ops(
   let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
     builder.build_fast(
       scope,
-      &**fast_function,
+      fast_function,
       Some(op_ctx.fast_fn_c_info.unwrap().as_ptr()),
       None,
       None,
