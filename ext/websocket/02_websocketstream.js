@@ -167,7 +167,7 @@ class WebSocketStream {
                 PromisePrototypeThen(
                   (async () => {
                     while (true) {
-                      const [kind] = await core.opAsync(
+                      const { 0: kind } = await core.opAsync(
                         "op_ws_next_event",
                         create.rid,
                       );
@@ -238,7 +238,7 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
-              const [kind, value] = await core.opAsync(
+              const { 0: kind, 1: value } = await core.opAsync(
                 "op_ws_next_event",
                 this[_rid],
               );
