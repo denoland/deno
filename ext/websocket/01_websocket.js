@@ -313,7 +313,7 @@ class WebSocket extends EventTarget {
     const sendTypedArray = (view, byteLength) => {
       this[_bufferedAmount] += byteLength;
       PromisePrototypeThen(
-        core.opAsync("op_ws_send_binary", this[_rid], ta),
+        core.opAsync("op_ws_send_binary", this[_rid], view),
         () => {
           this[_bufferedAmount] -= byteLength;
         },
