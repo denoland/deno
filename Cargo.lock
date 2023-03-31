@@ -1295,7 +1295,7 @@ dependencies = [
  "hyper",
  "serde",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.24.0",
  "tokio-tungstenite",
 ]
 
@@ -2176,7 +2176,7 @@ dependencies = [
  "hyper",
  "rustls 0.20.8",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.23.4",
 ]
 
 [[package]]
@@ -3447,7 +3447,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.23.4",
  "tokio-socks",
  "tokio-util",
  "tower-service",
@@ -4660,7 +4660,7 @@ dependencies = [
  "tar",
  "tempfile",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.24.0",
  "tokio-tungstenite",
  "url",
  "winapi",
@@ -4792,6 +4792,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-rustls"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0d409377ff5b1e3ca6437aa86c1eb7d40c134bfec254e44c830defa92669db5"
+dependencies = [
+ "rustls 0.21.0",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-socks"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4824,7 +4834,7 @@ dependencies = [
  "log",
  "rustls 0.20.8",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.23.4",
  "tungstenite",
  "webpki",
  "webpki-roots",
