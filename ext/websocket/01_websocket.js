@@ -301,7 +301,7 @@ class WebSocket extends EventTarget {
     const sendTypedArray = (ta) => {
       this[_bufferedAmount] += ta.byteLength;
       PromisePrototypeThen(
-        core.opAsync("op_ws_send_binary", this[_rid], ta),
+        core.opAsync2("op_ws_send_binary", this[_rid], ta),
         () => {
           this[_bufferedAmount] -= ta.byteLength;
         },
@@ -322,7 +322,7 @@ class WebSocket extends EventTarget {
       const d = core.encode(string);
       this[_bufferedAmount] += d.byteLength;
       PromisePrototypeThen(
-        core.opAsync("op_ws_send_text", this[_rid], string),
+        core.opAsync2("op_ws_send_text", this[_rid], string),
         () => {
           this[_bufferedAmount] -= d.byteLength;
         },
@@ -394,7 +394,7 @@ class WebSocket extends EventTarget {
 
   async [_eventLoop]() {
     while (this[_readyState] !== CLOSED) {
-      const { 0: kind, 1: value } = await core.opAsync(
+      const { 0: kind, 1: value } = await core.opAsync2(
         "op_ws_next_event",
         this[_rid],
       );
