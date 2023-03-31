@@ -545,6 +545,9 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
+// TODO: remove
+let serverId = 0;
+
 async function serve(arg1, arg2) {
   let options = undefined;
   let handler = undefined;
@@ -606,11 +609,12 @@ async function serve(arg1, arg2) {
     port: listenOpts.port,
   });
 
-  const serverPromise = deferred();
+  const serverPromise = new Deferred();
+  const finishedPromise = serverPromise.promise;
   onListen({ hostname: listenOpts.hostname, port });
 
   const server = {
-    id: serverId,
+    id: serverId++,
     transport: listenOpts.cert && listenOpts.key ? "https" : "http",
     hostname: listenOpts.hostname,
     port: listenOpts.port,
@@ -621,124 +625,32 @@ async function serve(arg1, arg2) {
         return;
       }
       server.closed = true;
-      await core.opAsync("op_flash_close_server", serverId);
+
+      // TODO: close all in-flight connections
+
       await server.finished;
     },
     async serve() {
-      let offset = 0;
-      while (true) {
-        if (server.closed) {
-          break;
+      while (!server.closed) {
+        let conn;
+
+        try {
+          conn = await listener.accept();
+        } catch (e) {
+          // handle on error
         }
 
-        let tokens = nextRequestSync();
-        if (tokens === 0) {
-          tokens = await core.opAsync("op_flash_next_async", serverId);
-          if (server.closed) {
-            break;
-          }
+        let httpConn;
+        try {
+          httpConn = serveHttp(conn);
+        } catch (e) {
+          // Connection has been closed;
+          continue;
         }
 
-        for (let i = offset; i < offset + tokens; i++) {
-          let body = null;
-          // There might be a body, but we don't expose it for GET/HEAD requests.
-          // It will be closed automatically once the request has been handled and
-          // the response has been sent.
-          const method = getMethodSync(i);
-          let hasBody = method > 2; // Not GET/HEAD/CONNECT
-          if (hasBody) {
-            body = createRequestBodyStream(serverId, i);
-            if (body === null) {
-              hasBody = false;
-            }
-          }
+        // TODO: Track HTTP connection
 
-          const req = fromFlashRequest(
-            serverId,
-            /* streamRid */
-            i,
-            body,
-            /* methodCb */
-            () => methods[method],
-            /* urlCb */
-            () => {
-              const path = ops.op_flash_path(serverId, i);
-              return `${server.transport}://${server.hostname}:${server.port}${path}`;
-            },
-            /* headersCb */
-            () => ops.op_flash_headers(serverId, i),
-          );
-
-          let resp;
-          let remoteAddr;
-          try {
-            resp = handler(req, {
-              get remoteAddr() {
-                if (!remoteAddr) {
-                  const { 0: hostname, 1: port } = core.ops.op_flash_addr(
-                    serverId,
-                    i,
-                  );
-                  remoteAddr = { hostname, port };
-                }
-                return remoteAddr;
-              },
-            });
-            if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
-              PromisePrototypeCatch(
-                PromisePrototypeThen(
-                  resp,
-                  (resp) =>
-                    handleResponse(
-                      req,
-                      resp,
-                      body,
-                      hasBody,
-                      method,
-                      serverId,
-                      i,
-                      respondFast,
-                      respondChunked,
-                      tryRespondChunked,
-                    ),
-                ),
-                onError,
-              );
-            } else if (typeof resp?.then === "function") {
-              resp.then((resp) =>
-                handleResponse(
-                  req,
-                  resp,
-                  body,
-                  hasBody,
-                  method,
-                  serverId,
-                  i,
-                  respondFast,
-                  respondChunked,
-                  tryRespondChunked,
-                )
-              ).catch(onError);
-            } else {
-              handleResponse(
-                req,
-                resp,
-                body,
-                hasBody,
-                method,
-                serverId,
-                i,
-                respondFast,
-                respondChunked,
-                tryRespondChunked,
-              ).catch(onError);
-            }
-          } catch (e) {
-            resp = await onError(e);
-          }
-        }
-
-        offset += tokens;
+        // Serve the HTTP connection
       }
       await server.finished;
     },
@@ -807,4 +719,4 @@ async function serve(arg1, arg2) {
   ]);
 }
 
-export { _ws, HttpConn, upgradeHttp, upgradeWebSocket };
+export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };
