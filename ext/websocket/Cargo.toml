@@ -19,6 +19,7 @@ deno_tls.workspace = true
 http.workspace = true
 hyper.workspace = true
 serde.workspace = true
+sockdeez = { path = "../../../socket" }
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
