@@ -2,7 +2,7 @@
 import { assertEquals, Deferred, deferred } from "./test_util.ts";
 
 function onListen<T>(
-  p: Deferred<T>
+  p: Deferred<T>,
 ): ({ hostname, port }: { hostname: string; port: number }) => void {
   return () => {
     p.resolve();
@@ -41,7 +41,7 @@ Deno.test(
         });
 
         return response;
-      }
+      },
     );
 
     const ws = new WebSocket("ws://127.0.0.1:4501/test");
@@ -49,5 +49,5 @@ Deno.test(
     ws.close();
     assertEquals(url, "http://localhost:4501/test");
     await closedPromise;
-  }
+  },
 );
