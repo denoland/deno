@@ -78,6 +78,7 @@ const Point = ["f64", "f64"];
 const Size = ["f64", "f64"];
 const Rect = ["f64", "f64", "f64", "f64"];
 const RectNested = [{ struct: Point }, { struct: Size }];
+const RectNestedCached = [{ struct: Size }, { struct: Size }];
 const Mixed = ["u8", "f32", { struct: Rect }, "usize", { struct: ["u32", "u32"] }];
 
 const dylib = Deno.dlopen(libPath, {
@@ -264,7 +265,7 @@ const dylib = Deno.dlopen(libPath, {
     result: { struct: RectNested },
   },
   print_rect: {
-    parameters: [{ struct: Rect }],
+    parameters: [{ struct: RectNestedCached }],
     result: "void",
   },
   print_rect_async: {
