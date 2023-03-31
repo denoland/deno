@@ -562,6 +562,7 @@ function createServe(opFn) {
               }
             }
 
+            const path = ops.op_flash_path(serverId, i);
             const req = fromFlashRequest(
               serverId,
               /* streamRid */
@@ -571,7 +572,6 @@ function createServe(opFn) {
               () => methods[method],
               /* urlCb */
               () => {
-                const path = ops.op_flash_path(serverId, i);
                 return `${server.transport}://${server.hostname}:${server.port}${path}`;
               },
               /* headersCb */
