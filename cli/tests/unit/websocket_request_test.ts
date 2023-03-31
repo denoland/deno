@@ -1,11 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertThrows,
-  Deferred,
-  deferred,
-  fail,
-} from "./test_util.ts";
+import { assertEquals, Deferred, deferred } from "./test_util.ts";
 
 function onListen<T>(
   p: Deferred<T>,
