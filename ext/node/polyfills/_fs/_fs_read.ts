@@ -122,10 +122,10 @@ export function read(
         // We use sync calls below to avoid being affected by others during
         // these calls.
         denoFs.seekSync(fd, position, Deno.SeekMode.Start);
-        nread = denoFs.readSync(fd, buffer);
+        nread = Deno.readSync(fd, buffer);
         denoFs.seekSync(fd, currentPosition, Deno.SeekMode.Start);
       } else {
-        nread = await denoFs.read(fd, buffer);
+        nread = await Deno.read(fd, buffer);
       }
       cb(null, nread ?? 0, Buffer.from(buffer.buffer, offset, length));
     } catch (error) {
