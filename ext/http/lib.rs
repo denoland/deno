@@ -949,9 +949,106 @@ enum EarlyUpgradeSocketInner {
   PreResponse(
     Rc<HttpStreamResource>,
     WebSocketUpgrade,
-    tokio::sync::broadcast::Sender<()>,
+    // Readers need to block in this state, so they can wait here for the broadcast.
+    tokio::sync::broadcast::Sender<Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>>,
   ),
-  PostResponse(hyper::upgrade::Upgraded),
+  PostResponse(
+    Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
+    Rc<AsyncRefCell<tokio::io::WriteHalf<hyper::upgrade::Upgraded>>>),
+}
+
+impl EarlyUpgradeSocket {
+  /// Gets a reader without holding the lock.
+  async fn get_reader(self: Rc<Self>) -> Result<Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>, AnyError> {
+    let mut borrow = self.0.borrow_mut().await;
+    let inner = &mut *borrow;
+    match inner {
+      EarlyUpgradeSocketInner::PreResponse(_, _, tx) => {
+        let mut rx = tx.subscribe();
+        // Ensure we're not borrowing self here
+        drop(borrow);
+        Ok(rx.recv().await?)
+      }
+      EarlyUpgradeSocketInner::PostResponse(rx, _) => {
+        Ok(rx.clone())
+      }
+    }
+  }
+
+  /// Write all the data provided, only holding the lock while we see if the connection needs to be
+  /// upgraded.
+  async fn write_all(self: Rc<Self>, buf: BufView) -> Result<(), AnyError> {
+    let mut borrow = self.0.borrow_mut().await;
+    let inner = &mut *borrow;
+    match inner {
+      EarlyUpgradeSocketInner::PreResponse(stream, upgrade, rx_tx) => {
+        if let Some((resp, extra)) = upgrade.write(&buf)? {
+          let new_wr = HttpResponseWriter::Closed;
+          let mut old_wr =
+            RcRef::map(stream.clone(), |r| &r.wr).borrow_mut().await;
+          let response_tx = match replace(&mut *old_wr, new_wr) {
+            HttpResponseWriter::Headers(response_tx) => response_tx,
+            _ => return Err(http_error("response headers already sent")),
+          };
+
+          match response_tx.send(resp) {
+            Err(_) => {
+              stream.conn.closed().await?;
+              return Err(http_error(
+                "connection closed while sending response",
+              ));
+            }
+            _ => {}
+          };
+
+          let mut old_rd =
+            RcRef::map(stream.clone(), |r| &r.rd).borrow_mut().await;
+          let new_rd = HttpRequestReader::Closed;
+          let upgraded = match replace(&mut *old_rd, new_rd) {
+            HttpRequestReader::Headers(request) => {
+              hyper::upgrade::on(request).await?
+            }
+            _ => {
+              return Err(http_error("response already started"));
+            }
+          };
+
+          let (rx, tx) = tokio::io::split(upgraded);
+          let rx = Rc::new(AsyncRefCell::new(rx));
+          let tx =  Rc::new(AsyncRefCell::new(tx));
+
+          // Take the tx and rx lock before we allow anything else to happen because we want to control
+          // the order of reads and writes.
+          let mut tx_lock = tx.clone().borrow_mut().await;
+          let rx_lock = rx.clone().borrow_mut().await;
+
+          // Allow all the pending readers to go now. We still have the lock on inner, so no more
+          // pending readers can show up. We intentionally ignore errors here, as there may be
+          // nobody waiting on a read.
+          _ = rx_tx.send(rx.clone());
+
+          // We swap out inner here, so once the lock is gone, readers will acquire rx directly.
+          // We also fully release our lock.
+          *inner = EarlyUpgradeSocketInner::PostResponse(rx, tx);
+          drop(borrow);
+          
+          // We've updated inner and unlocked it, reads are free to go in-order.
+          drop(rx_lock);
+
+          // If we had extra data after the response, write that to the upgraded connection
+          if !extra.is_empty() {
+            tx_lock.write_all(&extra).await?;
+          }
+        }
+      },
+      EarlyUpgradeSocketInner::PostResponse(_, tx) => {
+        let tx = tx.clone();
+        drop(borrow);
+        tx.borrow_mut().await.write_all(&buf).await?;
+      }
+    };
+    Ok(())
+  }
 }
 
 impl Resource for EarlyUpgradeSocket {
@@ -962,31 +1059,12 @@ impl Resource for EarlyUpgradeSocket {
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     let self_clone = self.clone();
     Box::pin(async move {
-      loop {
-        println!("loop");
-        let mut borrow = self_clone.0.borrow_mut().await;
-        let inner = &mut *borrow;
-        if let EarlyUpgradeSocketInner::PreResponse(_, _, tx) = inner {
-          let mut rx = tx.subscribe();
-          drop(inner);
-          drop(borrow);
-          println!("waiting");
-          _ = rx.recv().await?;
-          println!("got");
-          continue;
-        }
-
-        println!("check");
-        if let EarlyUpgradeSocketInner::PostResponse(upgraded) = inner {
-          println!("got!!!");
-          // TODO(mmastrac): This seems inefficient
-          let mut buf = vec![0; limit];
-          let read = upgraded.read(&mut buf).await?;
-          println!("got!!! {}", read);
-          buf.truncate(read);
-          return Ok(buf.into());
-        }
-      }
+      // TODO(mmastrac): This seems inefficient
+      let reader = self_clone.get_reader().await?;
+      let mut buf = vec![0; limit];
+      let read = reader.borrow_mut().await.read(&mut buf).await?;
+      buf.truncate(read);
+      return Ok(buf.into());
     })
   }
 
@@ -994,59 +1072,16 @@ impl Resource for EarlyUpgradeSocket {
     self: Rc<Self>,
     buf: BufView,
   ) -> AsyncResult<deno_core::WriteOutcome> {
-    let self_clone = self.clone();
     Box::pin(async move {
-      let mut borrow = self_clone.0.borrow_mut().await;
-      let inner = &mut *borrow;
-      match inner {
-        EarlyUpgradeSocketInner::PreResponse(stream, upgrade, tx) => {
-          if let Some((resp, extra)) = upgrade.write(&buf)? {
-            let new_wr = HttpResponseWriter::Closed;
-            let mut old_wr =
-              RcRef::map(stream.clone(), |r| &r.wr).borrow_mut().await;
-            let response_tx = match replace(&mut *old_wr, new_wr) {
-              HttpResponseWriter::Headers(response_tx) => response_tx,
-              _ => return Err(http_error("response headers already sent")),
-            };
+      let nwritten = buf.len();
+      Self::write_all(self, buf).await?;
+      Ok(WriteOutcome::Full { nwritten })
+    })
+  }
 
-            match response_tx.send(resp) {
-              Err(_) => {
-                stream.conn.closed().await?;
-                return Err(http_error(
-                  "connection closed while sending response",
-                ));
-              }
-              _ => {}
-            };
-
-            let mut old_rd =
-              RcRef::map(stream.clone(), |r| &r.rd).borrow_mut().await;
-            let new_rd = HttpRequestReader::Closed;
-            let mut upgraded = match replace(&mut *old_rd, new_rd) {
-              HttpRequestReader::Headers(request) => {
-                hyper::upgrade::on(request).await?
-              }
-              _ => {
-                return Err(http_error("response already started"));
-              }
-            };
-
-            // If we had extra data after the response, write that to the upgraded connection
-            upgraded.write_all(&extra).await?;
-            let tx = tx.clone();
-            *inner = EarlyUpgradeSocketInner::PostResponse(upgraded);
-            println!("send...");
-            _ = tx.send(());
-            println!("sent!");
-          }
-        }
-        EarlyUpgradeSocketInner::PostResponse(upgraded) => {
-          upgraded.write_all(&buf).await?;
-        }
-      }
-      Ok(WriteOutcome::Full {
-        nwritten: buf.len(),
-      })
+  fn write_all(self: Rc<Self>, buf: BufView) -> AsyncResult<()> {
+    Box::pin(async move {
+      Self::write_all(self, buf).await
     })
   }
 
