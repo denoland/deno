@@ -175,13 +175,13 @@ impl OpCtx {
     let mut fast_fn_c_info = None;
 
     if let Some(fast_fn) = &decl.fast_fn {
-      let args = CTypeInfo::new_from_slice(fast_fn.args());
-      let ret = CTypeInfo::new(fast_fn.return_type());
+      let args = CTypeInfo::new_from_slice(fast_fn.args);
+      let ret = CTypeInfo::new(fast_fn.return_type);
 
       // SAFETY: all arguments are coming from the trait and they have
       // static lifetime
       let c_fn = unsafe {
-        CFunctionInfo::new(args.as_ptr(), fast_fn.args().len(), ret.as_ptr())
+        CFunctionInfo::new(args.as_ptr(), fast_fn.args.len(), ret.as_ptr())
       };
       fast_fn_c_info = Some(c_fn);
     }
