@@ -7428,9 +7428,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
   );
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_import_map("import-map.json");
-  });
+  client.initialize_default();
 
   let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
 
