@@ -20,12 +20,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+const core = globalThis.Deno.core;
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "ext:deno_node/process.ts";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { osUptime } from "ext:runtime/30_os.js";
+import * as denoOs from "ext:runtime/30_os.js";
 export const constants = os;
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno_std/issues/1436";
@@ -152,7 +153,7 @@ export function endianness(): "BE" | "LE" {
 
 /** Return free memory amount */
 export function freemem(): number {
-  return Deno.systemMemoryInfo().free;
+  return denoOs.systemMemoryInfo().free;
 }
 
 /** Not yet implemented */
@@ -168,11 +169,11 @@ export function homedir(): string | null {
   // path. IMO, it's okay to punt on that for now.
   switch (osType) {
     case "windows":
-      return Deno.env.get("USERPROFILE") || null;
+      return denoOs.env.get("USERPROFILE") || null;
     case "linux":
     case "darwin":
     case "freebsd":
-      return Deno.env.get("HOME") || null;
+      return denoOs.env.get("HOME") || null;
     default:
       throw Error("unreachable");
   }
@@ -180,7 +181,7 @@ export function homedir(): string | null {
 
 /** Returns the host name of the operating system as a string. */
 export function hostname(): string {
-  return Deno.hostname();
+  return denoOs.hostname();
 }
 
 /** Returns an array containing the 1, 5, and 15 minute load averages */
@@ -188,7 +189,7 @@ export function loadavg(): number[] {
   if (isWindows) {
     return [0, 0, 0];
   }
-  return Deno.loadavg();
+  return denoOs.loadavg();
 }
 
 /** Returns an object containing network interfaces that have been assigned a network address.
@@ -232,14 +233,14 @@ export function platform(): string {
 
 /** Returns the operating system as a string */
 export function release(): string {
-  return Deno.osRelease();
+  return denoOs.osRelease();
 }
 
 /** Returns a string identifying the kernel version */
 export function version(): string {
   // TODO(kt3k): Temporarily uses Deno.osRelease().
   // Revisit this if this implementation is insufficient for any npm module
-  return Deno.osRelease();
+  return denoOs.osRelease();
 }
 
 /** Not yet implemented */
@@ -262,35 +263,35 @@ export function tmpdir(): string | null {
      differences:
      * On windows, if none of the environment variables are defined,
        we return null.
-     * On unix we use a plain Deno.env.get, instead of safeGetenv,
+     * On unix we use a plain denoOs.env.get, instead of safeGetenv,
        which special cases setuid binaries.
      * Node removes a single trailing / or \, we remove all.
   */
   if (isWindows) {
-    const temp = Deno.env.get("TEMP") || Deno.env.get("TMP");
+    const temp = denoOs.env.get("TEMP") || denoOs.env.get("TMP");
     if (temp) {
       return temp.replace(/(?<!:)[/\\]*$/, "");
     }
-    const base = Deno.env.get("SYSTEMROOT") || Deno.env.get("WINDIR");
+    const base = denoOs.env.get("SYSTEMROOT") || denoOs.env.get("WINDIR");
     if (base) {
       return base + "\\temp";
     }
     return null;
   } else { // !isWindows
-    const temp = Deno.env.get("TMPDIR") || Deno.env.get("TMP") ||
-      Deno.env.get("TEMP") || "/tmp";
+    const temp = denoOs.env.get("TMPDIR") || denoOs.env.get("TMP") ||
+      denoOs.env.get("TEMP") || "/tmp";
     return temp.replace(/(?<!^)\/*$/, "");
   }
 }
 
 /** Return total physical memory amount */
 export function totalmem(): number {
-  return Deno.systemMemoryInfo().total;
+  return denoOs.systemMemoryInfo().total;
 }
 
 /** Returns operating system type (i.e. 'Windows_NT', 'Linux', 'Darwin') */
 export function type(): string {
-  switch (Deno.build.os as string) {
+  switch (core.build.os as string) {
     case "windows":
       return "Windows_NT";
     case "linux":
@@ -306,7 +307,7 @@ export function type(): string {
 
 /** Returns the Operating System uptime in number of seconds. */
 export function uptime(): number {
-  return osUptime();
+  return denoOs.osUptime();
 }
 
 /** Not yet implemented */

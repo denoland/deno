@@ -23,10 +23,11 @@
 
 import { inspect } from "ext:deno_node/util.ts";
 import { stripColor as removeColors } from "ext:deno_node/_util/std_fmt_colors.ts";
+import { consoleSize, isatty } from "ext:runtime/js/40_tty.js";
 
 function getConsoleWidth(): number {
   try {
-    return Deno.consoleSize().columns;
+    return consoleSize().columns;
   } catch {
     return 80;
   }
@@ -159,7 +160,7 @@ export function createErrDiff(
       // If the stderr is a tty and the input length is lower than the current
       // columns per line, add a mismatch indicator below the output. If it is
       // not a tty, use a default value of 80 characters.
-      const maxLength = Deno.isatty(Deno.stderr.rid) ? getConsoleWidth() : 80;
+      const maxLength = isatty(Deno.stderr.rid) ? getConsoleWidth() : 80;
       if (inputLength < maxLength) {
         while (actualRaw[i] === expectedRaw[i]) {
           i++;
@@ -402,7 +403,7 @@ export class AssertionError extends Error {
     if (message != null) {
       super(String(message));
     } else {
-      if (Deno.isatty(Deno.stderr.rid)) {
+      if (isatty(Deno.stderr.rid)) {
         // Reset on each call to make sure we handle dynamically set environment
         // variables correct.
         if (Deno.noColor) {
