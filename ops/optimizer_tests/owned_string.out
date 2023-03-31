@@ -83,7 +83,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_string_length_fast {
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
         use deno_core::v8::fast_api::CType;
-        &[V8Value, SeqOneByteString]
+        &[V8Value, SeqOneByteString, CallbackOptions]
     }
     #[inline(always)]
     fn return_type(&self) -> deno_core::v8::fast_api::CType {
@@ -94,10 +94,17 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_string_length_fast {
 fn op_string_length_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     string: *const deno_core::v8::fast_api::FastApiOneByteString,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> u32 {
     use deno_core::v8;
     use deno_core::_ops;
-    let string = unsafe { &*string }.as_str().to_owned();
+    let string = match ::std::str::from_utf8(unsafe { &*string }.as_bytes()) {
+        Ok(v) => v.to_owned(),
+        Err(_) => {
+            unsafe { &mut *fast_api_callback_options }.fallback = true;
+            return Default::default();
+        }
+    };
     let result = op_string_length::call(string);
     result
 }
