@@ -188,6 +188,7 @@ impl Op {
           stringify!(#name)
         }
 
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         pub extern "C" fn v8_fn_ptr #generics (info: *const #core::v8::FunctionCallbackInfo) #where_clause {
           let info = unsafe { &*info };
           let scope = &mut unsafe { #core::v8::CallbackScope::new(info) };

@@ -9,6 +9,7 @@ impl op_string_length {
     pub const fn name() -> &'static str {
         stringify!(op_string_length)
     }
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub extern "C" fn v8_fn_ptr<'scope>(
         info: *const deno_core::v8::FunctionCallbackInfo,
     ) {

@@ -9,6 +9,7 @@ impl op_async_result {
     pub const fn name() -> &'static str {
         stringify!(op_async_result)
     }
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub extern "C" fn v8_fn_ptr<'scope>(
         info: *const deno_core::v8::FunctionCallbackInfo,
     ) {
@@ -39,6 +40,7 @@ impl op_async_result {
             is_async: true,
             is_unstable: false,
             is_v8: false,
+            force_registration: false,
         }
     }
     #[inline]
@@ -104,6 +106,7 @@ impl op_async_result {
         );
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_async_result_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     __promise_id: i32,

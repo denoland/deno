@@ -9,6 +9,7 @@ impl op_cow_str {
     pub const fn name() -> &'static str {
         stringify!(op_cow_str)
     }
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub extern "C" fn v8_fn_ptr<'scope>(
         info: *const deno_core::v8::FunctionCallbackInfo,
     ) {
@@ -70,25 +71,6 @@ impl op_cow_str {
         let result = Self::call(arg_0);
         let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
         op_state.tracker.track_sync(ctx.id);
-    }
-}
-struct op_cow_str_fast {
-    _phantom: ::std::marker::PhantomData<()>,
-}
-impl<'scope> deno_core::v8::fast_api::FastFunction for op_cow_str_fast {
-    #[inline(always)]
-    fn function(&self) -> *const ::std::ffi::c_void {
-        op_cow_str_fast_fn as *const ::std::ffi::c_void
-    }
-    #[inline(always)]
-    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
-        use deno_core::v8::fast_api::Type::*;
-        use deno_core::v8::fast_api::CType;
-        &[V8Value, SeqOneByteString]
-    }
-    #[inline(always)]
-    fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Void
     }
 }
 #[allow(clippy::too_many_arguments)]

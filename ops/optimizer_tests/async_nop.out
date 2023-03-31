@@ -9,6 +9,7 @@ impl op_void_async {
     pub const fn name() -> &'static str {
         stringify!(op_void_async)
     }
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub extern "C" fn v8_fn_ptr<'scope>(
         info: *const deno_core::v8::FunctionCallbackInfo,
     ) {
@@ -95,6 +96,7 @@ impl op_void_async {
         );
     }
 }
+#[allow(clippy::too_many_arguments)]
 fn op_void_async_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     __promise_id: i32,

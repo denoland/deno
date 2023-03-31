@@ -9,6 +9,7 @@ impl op_f64_buf {
     pub const fn name() -> &'static str {
         stringify!(op_f64_buf)
     }
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub extern "C" fn v8_fn_ptr<'scope>(
         info: *const deno_core::v8::FunctionCallbackInfo,
     ) {
@@ -88,25 +89,6 @@ impl op_f64_buf {
         let result = Self::call(arg_0);
         let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
         op_state.tracker.track_sync(ctx.id);
-    }
-}
-struct op_f64_buf_fast {
-    _phantom: ::std::marker::PhantomData<()>,
-}
-impl<'scope> deno_core::v8::fast_api::FastFunction for op_f64_buf_fast {
-    #[inline(always)]
-    fn function(&self) -> *const ::std::ffi::c_void {
-        op_f64_buf_fast_fn as *const ::std::ffi::c_void
-    }
-    #[inline(always)]
-    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
-        use deno_core::v8::fast_api::Type::*;
-        use deno_core::v8::fast_api::CType;
-        &[V8Value, TypedArray(CType::Float64), CallbackOptions]
-    }
-    #[inline(always)]
-    fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Void
     }
 }
 #[allow(clippy::too_many_arguments)]
