@@ -2231,12 +2231,12 @@ will be included.
 Alternatively, the 'deno check' subcommand can be used.")
   } else {
     arg.long_help(
-        "Enable type-checking. This subcommand does not type-check by default.
+      "Enable type-checking. This subcommand does not type-check by default.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.
 
 Alternatively, the 'deno check' subcommand can be used.",
-      )
+    )
   }
 }
 
