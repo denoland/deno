@@ -822,6 +822,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 fn bundle_subcommand() -> Command {
   compile_args(Command::new("bundle"))
     .hide(true)
+    .arg(check_arg(true))
     .arg(
       Arg::new("source_file")
         .required(true)
@@ -1351,6 +1352,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 fn install_subcommand() -> Command {
   runtime_args(Command::new("install"), true, true)
     .arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
+    .arg(check_arg(true))
     .arg(
       Arg::new("name")
         .long("name")
