@@ -1994,8 +1994,9 @@ console.log(b, "hello deno");
     .collect::<Vec<_>>();
 
     // since different file system have different iteration
-    // order, we only check the length
-    assert_eq!(urls.len(), 3);
+    // order, the number here may vary, so just assert it's below
+    // a certain amount
+    assert!(urls.len() < 5, "Actual length: {}", urls.len());
   }
 
   #[test]

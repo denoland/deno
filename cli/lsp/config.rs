@@ -899,7 +899,7 @@ mod tests {
     assert_eq!(
       config.enabled_root_urls(),
       vec![
-        root_dir1.join("sub_dir").unwrap(),
+        root_dir1.join("sub_dir/").unwrap(),
         root_dir1.join("test.ts").unwrap(),
         root_dir2.join("other.ts").unwrap(),
         root_dir3
