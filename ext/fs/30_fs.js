@@ -31,7 +31,7 @@ function chmodSync(path, mode) {
 }
 
 async function chmod(path, mode) {
-  await core.opAsync("op_chmod_async", pathFromURL(path), mode);
+  await core.opAsync2("op_chmod_async", pathFromURL(path), mode);
 }
 
 function chownSync(
@@ -121,7 +121,7 @@ async function mkdir(
   path,
   options,
 ) {
-  await core.opAsync("op_mkdir_async", mkdirArgs(path, options));
+  await core.opAsync2("op_mkdir_async", mkdirArgs(path, options));
 }
 
 function readDirSync(path) {
@@ -349,7 +349,7 @@ function ftruncateSync(rid, len) {
 }
 
 async function ftruncate(rid, len) {
-  await core.opAsync("op_ftruncate_async", rid, coerceLen(len));
+  await core.opAsync2("op_ftruncate_async", rid, coerceLen(len));
 }
 
 function truncateSync(path, len) {
@@ -357,7 +357,7 @@ function truncateSync(path, len) {
 }
 
 async function truncate(path, len) {
-  await core.opAsync("op_truncate_async", path, coerceLen(len));
+  await core.opAsync2("op_truncate_async", path, coerceLen(len));
 }
 
 function umask(mask) {
@@ -369,7 +369,7 @@ function linkSync(oldpath, newpath) {
 }
 
 async function link(oldpath, newpath) {
-  await core.opAsync("op_link_async", oldpath, newpath);
+  await core.opAsync2("op_link_async", oldpath, newpath);
 }
 
 function toUnixTimeFromEpoch(value) {
@@ -499,7 +499,7 @@ function flockSync(rid, exclusive) {
 }
 
 async function flock(rid, exclusive) {
-  await core.opAsync("op_flock_async", rid, exclusive === true);
+  await core.opAsync2("op_flock_async", rid, exclusive === true);
 }
 
 function funlockSync(rid) {

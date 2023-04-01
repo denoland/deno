@@ -7417,3 +7417,77 @@ fn lsp_closed_file_find_references() {
 
   client.shutdown();
 }
+
+#[test]
+fn lsp_data_urls_with_jsx_compiler_option() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "compilerOptions": { "jsx": "react-jsx" } }"#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = Url::from_file_path(temp_dir.path().join("main.ts")).unwrap();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import a from \"data:application/typescript,export default 5;\";\na;"
+    }
+  })).viewed();
+
+  // there will be a diagnostic about not having cached the data url
+  assert_eq!(diagnostics.len(), 1);
+  assert_eq!(
+    diagnostics[0].code,
+    Some(lsp::NumberOrString::String("no-cache-data".to_string()))
+  );
+
+  // so cache it
+  client.write_request(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": uri,
+      },
+      "uris": [],
+    }),
+  );
+
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 1, "character": 1 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": uri,
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 8 }
+      }
+    }, {
+      "uri": uri,
+      "range": {
+        "start": { "line": 1, "character": 0 },
+        "end": { "line": 1, "character": 1 }
+      }
+    }])
+  );
+
+  client.shutdown();
+}
