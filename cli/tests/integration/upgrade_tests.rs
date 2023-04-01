@@ -108,7 +108,6 @@ fn upgrade_with_canary_in_tmpdir() {
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_out_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
