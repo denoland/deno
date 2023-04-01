@@ -1176,7 +1176,7 @@ impl Documents {
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(&{
-        // ensure these are sorted so the hashing is more deterministic
+        // ensure these are sorted so the hashing is deterministic
         let mut enabled_urls = enabled_urls.to_vec();
         enabled_urls.sort_unstable();
         enabled_urls

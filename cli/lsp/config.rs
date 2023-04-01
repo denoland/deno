@@ -820,7 +820,7 @@ mod tests {
   }
 
   #[test]
-  fn config_enabled_root_urls() {
+  fn config_enabled_urls() {
     let mut config = Config::new();
     let root_dir = Url::parse("file:///example/").unwrap();
     config.root_uri = Some(root_dir.clone());
