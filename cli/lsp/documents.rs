@@ -1538,6 +1538,14 @@ struct PreloadDocumentFinder {
 }
 
 impl PreloadDocumentFinder {
+  fn is_allowed_root_dir(dir_path: &Path) -> bool {
+    if dir_path.parent().is_none() {
+      // never search the root directory of a drive
+      return false;
+    }
+    true
+  }
+
   pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
     let mut finder = PreloadDocumentFinder {
       pending_dirs: Default::default(),
@@ -1547,7 +1555,9 @@ impl PreloadDocumentFinder {
     for root_url in root_urls {
       if let Ok(path) = root_url.to_file_path() {
         if path.is_dir() {
-          finder.pending_dirs.push(path);
+          if Self::is_allowed_root_dir(&path) {
+            finder.pending_dirs.push(path);
+          }
         } else {
           finder.pending_files.push(path);
         }
@@ -1926,5 +1936,24 @@ console.log(b, "hello deno");
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
       ]
     );
+  }
+
+  #[test]
+  pub fn test_pre_load_document_finder_disallowed_dirs() {
+    if cfg!(windows) {
+      let paths =
+        PreloadDocumentFinder::from_root_urls(&vec![
+          Url::parse("file:///c:/").unwrap()
+        ])
+        .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    } else {
+      let paths =
+        PreloadDocumentFinder::from_root_urls(&vec![
+          Url::parse("file:///").unwrap()
+        ])
+        .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    }
   }
 }
