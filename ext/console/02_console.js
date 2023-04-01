@@ -1763,6 +1763,70 @@ function colorEquals(color1, color2) {
     color1?.[2] == color2?.[2];
 }
 
+let COLOR_SUPPORT_LEVEL = -1;
+let COLOR_SUPPORT_DUMB = 0;
+let COLOR_SUPPORT_256 = 1;
+let COLOR_SUPPORT_TRUE_COLOR = 2;
+
+const ANSI_FOREGROUND = "38";
+const ANSI_BACKGROUND = "48";
+
+/**
+ * Convert an RGB color to the color level that the terminal we're
+ * running in supports. We'll try to match requested color as close
+ * as possible to the colors we have available in case it lies outside
+ * the supported spectrum.
+ * @param {number} r red
+ * @param {number} g green
+ * @param {number} b blue
+ * @param {"38" | "48"} kind foreground or background color
+ * @returns {string}
+ */
+function rgbToAnsi(r, g, b, kind) {
+  // Lazily check for color support
+  if (COLOR_SUPPORT_LEVEL === -1) {
+    const COLORTERM = Deno.env.get("COLORTERM");
+    COLOR_SUPPORT_LEVEL = COLORTERM === "truecolor" || COLORTERM === "24bit"
+      ? COLOR_SUPPORT_TRUE_COLOR
+      : Deno.env.get("TERM").endsWith("-256color")
+      ? COLOR_SUPPORT_256
+      : COLOR_SUPPORT_DUMB;
+  }
+
+  if (COLOR_SUPPORT_LEVEL === COLOR_SUPPORT_TRUE_COLOR) {
+    return `\x1b[${kind};2;${r};${g};${b}m`;
+  } else if (COLOR_SUPPORT_LEVEL === COLOR_SUPPORT_256) {
+    // Lower colors into 256 color space
+    // Taken from https://github.com/Qix-/color-convert/blob/3f0e0d4e92e235796ccb17f6e85c72094a651f49/conversions.js
+    // which is MIT licensed and copyright by Heather Arthur and Josh Junon
+
+    // We use the extended greyscale palette here, with the exception of
+    // black and white. Normal palette only has 4 greyscale shades.
+    if (r === g && g === b) {
+      if (r < 8) {
+        return `\x1b[${kind};5;16`;
+      }
+
+      if (r > 248) {
+        return `\x1b[${kind};5;231`;
+      }
+
+      const value = Math.round(((r - 8) / 247) * 24) + 232;
+      return `\x1b[${kind};5;${value}`;
+    }
+
+    const value = 16 +
+      (36 * Math.round(r / 255 * 5)) +
+      (6 * Math.round(g / 255 * 5)) +
+      Math.round(b / 255 * 5);
+
+    return `\x1b[${kind};5;${value}m`;
+  } else {
+    // No colors if terminal is dumb
+    return "";
+  }
+}
+
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
@@ -1788,12 +1852,12 @@ function cssToAnsi(css, prevCss = null) {
     } else {
       if (ArrayIsArray(css.backgroundColor)) {
         const { 0: r, 1: g, 2: b } = css.backgroundColor;
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
+        ansi += rgbToAnsi(r, g, b, ANSI_BACKGROUND);
       } else {
         const parsed = parseCssColor(css.backgroundColor);
         if (parsed !== null) {
           const { 0: r, 1: g, 2: b } = parsed;
-          ansi += `\x1b[48;2;${r};${g};${b}m`;
+          ansi += rgbToAnsi(r, g, b, ANSI_BACKGROUND);
         } else {
           ansi += "\x1b[49m";
         }
@@ -1822,12 +1886,12 @@ function cssToAnsi(css, prevCss = null) {
     } else {
       if (ArrayIsArray(css.color)) {
         const { 0: r, 1: g, 2: b } = css.color;
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
+        ansi += rgbToAnsi(r, g, b, ANSI_FOREGROUND);
       } else {
         const parsed = parseCssColor(css.color);
         if (parsed !== null) {
           const { 0: r, 1: g, 2: b } = parsed;
-          ansi += `\x1b[38;2;${r};${g};${b}m`;
+          ansi += rgbToAnsi(r, g, b, ANSI_FOREGROUND);
         } else {
           ansi += "\x1b[39m";
         }
