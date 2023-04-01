@@ -46,17 +46,15 @@ impl TestContextBuilder {
   }
 
   pub fn for_npm() -> Self {
-    let mut builder = Self::new();
-    builder.use_http_server().add_npm_env_vars();
-    builder
+    Self::new().use_http_server().add_npm_env_vars()
   }
 
-  pub fn use_http_server(&mut self) -> &mut Self {
+  pub fn use_http_server(mut self) -> Self {
     self.use_http_server = true;
     self
   }
 
-  pub fn use_temp_cwd(&mut self) -> &mut Self {
+  pub fn use_temp_cwd(mut self) -> Self {
     self.use_temp_cwd = true;
     self
   }
@@ -65,7 +63,7 @@ impl TestContextBuilder {
   /// In some cases, that might cause an issue though, so calling
   /// this will use a separate directory for the deno dir and the
   /// temp directory.
-  pub fn use_separate_deno_dir(&mut self) -> &mut Self {
+  pub fn use_separate_deno_dir(mut self) -> Self {
     self.use_separate_deno_dir = true;
     self
   }
@@ -73,41 +71,36 @@ impl TestContextBuilder {
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
-  pub fn use_copy_temp_dir(&mut self, dir: impl AsRef<str>) -> &mut Self {
+  pub fn use_copy_temp_dir(mut self, dir: impl AsRef<str>) -> Self {
     self.copy_temp_dir = Some(dir.as_ref().to_string());
     self
   }
 
-  pub fn cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
+  pub fn cwd(mut self, cwd: impl AsRef<str>) -> Self {
     self.cwd = Some(cwd.as_ref().to_string());
     self
   }
 
-  pub fn env(
-    &mut self,
-    key: impl AsRef<str>,
-    value: impl AsRef<str>,
-  ) -> &mut Self {
+  pub fn env(mut self, key: impl AsRef<str>, value: impl AsRef<str>) -> Self {
     self
       .envs
       .insert(key.as_ref().to_string(), value.as_ref().to_string());
     self
   }
 
-  pub fn add_npm_env_vars(&mut self) -> &mut Self {
+  pub fn add_npm_env_vars(mut self) -> Self {
     for (key, value) in env_vars_for_npm_tests_no_sync_download() {
-      self.env(key, value);
+      self = self.env(key, value);
     }
     self
   }
 
-  pub fn use_sync_npm_download(&mut self) -> &mut Self {
+  pub fn use_sync_npm_download(self) -> Self {
     self.env(
       // make downloads determinstic
       "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
       "1",
-    );
-    self
+    )
   }
 
   pub fn build(&self) -> TestContext {
@@ -218,31 +211,31 @@ pub struct TestCommandBuilder {
 }
 
 impl TestCommandBuilder {
-  pub fn command_name(&mut self, name: impl AsRef<str>) -> &mut Self {
+  pub fn command_name(mut self, name: impl AsRef<str>) -> Self {
     self.command_name = name.as_ref().to_string();
     self
   }
 
-  pub fn args(&mut self, text: impl AsRef<str>) -> &mut Self {
+  pub fn args(mut self, text: impl AsRef<str>) -> Self {
     self.args = text.as_ref().to_string();
     self
   }
 
   pub fn args_vec<T: AsRef<str>, I: IntoIterator<Item = T>>(
-    &mut self,
+    mut self,
     args: I,
-  ) -> &mut Self {
+  ) -> Self {
     self.args_vec = args.into_iter().map(|a| a.as_ref().to_string()).collect();
     self
   }
 
-  pub fn stdin(&mut self, text: impl AsRef<str>) -> &mut Self {
+  pub fn stdin(mut self, text: impl AsRef<str>) -> Self {
     self.stdin = Some(text.as_ref().to_string());
     self
   }
 
   /// Splits the output into stdout and stderr rather than having them combined.
-  pub fn split_output(&mut self) -> &mut Self {
+  pub fn split_output(mut self) -> Self {
     // Note: it was previously attempted to capture stdout & stderr separately
     // then forward the output to a combined pipe, but this was found to be
     // too racy compared to providing the same combined pipe to both.
@@ -250,23 +243,19 @@ impl TestCommandBuilder {
     self
   }
 
-  pub fn env(
-    &mut self,
-    key: impl AsRef<str>,
-    value: impl AsRef<str>,
-  ) -> &mut Self {
+  pub fn env(mut self, key: impl AsRef<str>, value: impl AsRef<str>) -> Self {
     self
       .envs
       .insert(key.as_ref().to_string(), value.as_ref().to_string());
     self
   }
 
-  pub fn env_clear(&mut self) -> &mut Self {
+  pub fn env_clear(mut self) -> Self {
     self.env_clear = true;
     self
   }
 
-  pub fn cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
+  pub fn cwd(mut self, cwd: impl AsRef<str>) -> Self {
     self.cwd = Some(cwd.as_ref().to_string());
     self
   }

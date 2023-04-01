@@ -215,17 +215,18 @@ fn typecheck_core() {
 #[test]
 fn ts_no_recheck_on_redirect() {
   let test_context = TestContext::default();
-  let output = test_context
-    .new_command()
-    .args_vec(["run", "--check", "run/017_import_redirect.ts"])
-    .run();
+  let check_command = test_context.new_command().args_vec([
+    "run",
+    "--check",
+    "run/017_import_redirect.ts",
+  ]);
+
+  // run once
+  let output = check_command.run();
   output.assert_matches_text("[WILDCARD]Check file://[WILDCARD]");
 
   // run again
-  let output = test_context
-    .new_command()
-    .args_vec(["run", "--check", "run/017_import_redirect.ts"])
-    .run();
+  let output = check_command.run();
   output.assert_matches_text("Hello\n");
 }
 
@@ -287,27 +288,18 @@ fn check_error_in_dep_then_fix() {
   );
   temp_dir.write("greet.ts", incorrect_code);
 
-  let output = test_context
-    .new_command()
-    .args_vec(["check", "main.ts"])
-    .run();
+  let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
+
+  let output = check_command.run();
   output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
   output.assert_exit_code(1);
 
   temp_dir.write("greet.ts", correct_code);
-
-  let output = test_context
-    .new_command()
-    .args_vec(["check", "main.ts"])
-    .run();
+  let output = check_command.run();
   output.assert_matches_text("Check [WILDCARD]main.ts\n");
 
   temp_dir.write("greet.ts", incorrect_code);
-
-  let output = test_context
-    .new_command()
-    .args_vec(["check", "main.ts"])
-    .run();
+  let output = check_command.run();
   output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
   output.assert_exit_code(1);
 }
