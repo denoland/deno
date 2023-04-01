@@ -44,7 +44,6 @@ const {
   SymbolIterator,
   PromisePrototypeCatch,
   SymbolFor,
-  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
