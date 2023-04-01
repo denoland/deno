@@ -824,6 +824,23 @@ delete Object.prototype.__proto__;
           return sourceFile;
         })
       : undefined;
+
+    if (checkFiles != null) {
+      // When calling program.getSemanticDiagnostics(...) with a source file, we
+      // need to call this code first in order to get it to invalidate cached
+      // diagnostics correctly. This is what program.getSemanticDiagnostics()
+      // does internally when calling without any arguments.
+      const checkFileNames = new Set(checkFiles.map((f) => f.fileName));
+      while (
+        program.getSemanticDiagnosticsOfNextAffectedFile(
+          undefined,
+          /* ignoreSourceFile */ (s) => !checkFileNames.has(s.fileName),
+        )
+      ) {
+        // keep going until there are no more affected files
+      }
+    }
+
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
       ...(checkFiles == null
