@@ -16,6 +16,7 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::lsp::logging::lsp_warn;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -1528,89 +1529,60 @@ fn analyze_module(
   }
 }
 
+enum PendingEntry {
+  /// File specified as a root url.
+  SpecifiedRootFile(PathBuf),
+  /// Directory that is queued to read.
+  Dir(PathBuf),
+  /// The current directory being read.
+  ReadDir(Box<ReadDir>),
+}
+
 /// Iterator that finds documents that can be preloaded into
 /// the LSP on startup.
 struct PreloadDocumentFinder {
-  pending_dirs: Vec<PathBuf>,
-  pending_files: Vec<PathBuf>,
-  current_entries: Option<ReadDir>,
+  limit: u16,
+  entry_count: u16,
+  pending_entries: VecDeque<PendingEntry>,
 }
 
 impl PreloadDocumentFinder {
-  fn is_allowed_root_dir(dir_path: &Path) -> bool {
-    if dir_path.parent().is_none() {
-      // never search the root directory of a drive
-      return false;
-    }
-    true
+  pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
+    Self::from_root_urls_with_limit(root_urls, 1_000)
   }
 
-  pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
+  pub fn from_root_urls_with_limit(root_urls: &Vec<Url>, limit: u16) -> Self {
+    fn is_allowed_root_dir(dir_path: &Path) -> bool {
+      if dir_path.parent().is_none() {
+        // never search the root directory of a drive
+        return false;
+      }
+      true
+    }
+
     let mut finder = PreloadDocumentFinder {
-      pending_dirs: Default::default(),
-      pending_files: Default::default(),
-      current_entries: Default::default(),
+      limit,
+      entry_count: 0,
+      pending_entries: Default::default(),
     };
     for root_url in root_urls {
       if let Ok(path) = root_url.to_file_path() {
         if path.is_dir() {
-          if Self::is_allowed_root_dir(&path) {
-            finder.pending_dirs.push(path);
+          if is_allowed_root_dir(&path) {
+            finder.pending_entries.push_back(PendingEntry::Dir(path));
           }
         } else {
-          finder.pending_files.push(path);
+          finder
+            .pending_entries
+            .push_back(PendingEntry::SpecifiedRootFile(path));
         }
       }
     }
     finder
   }
 
-  fn read_next_file_entry(&mut self) -> Option<ModuleSpecifier> {
-    fn is_discoverable_dir(dir_path: &Path) -> bool {
-      if let Some(dir_name) = dir_path.file_name() {
-        let dir_name = dir_name.to_string_lossy().to_lowercase();
-        !matches!(dir_name.as_str(), "node_modules" | ".git")
-      } else {
-        false
-      }
-    }
-
-    if let Some(mut entries) = self.current_entries.take() {
-      while let Some(entry) = entries.next() {
-        if let Ok(entry) = entry {
-          let path = entry.path();
-          if let Ok(file_type) = entry.file_type() {
-            if file_type.is_dir() && is_discoverable_dir(&path) {
-              self.pending_dirs.push(path);
-            } else if file_type.is_file() {
-              if let Some(specifier) = Self::get_valid_specifier(&path) {
-                // restore the next entries for next time
-                self.current_entries = Some(entries);
-                return Some(specifier);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    None
-  }
-
   fn get_valid_specifier(path: &Path) -> Option<ModuleSpecifier> {
-    fn is_discoverable_file(file_path: &Path) -> bool {
-      // Don't auto-discover minified files as they are likely to be very large
-      // and likely not to have dependencies on code outside them that would
-      // be useful in the LSP
-      if let Some(file_name) = file_path.file_name() {
-        let file_name = file_name.to_string_lossy().to_lowercase();
-        !file_name.as_str().contains(".min.")
-      } else {
-        false
-      }
-    }
-
-    fn is_discoverable_media_type(media_type: MediaType) -> bool {
+    fn is_allowed_media_type(media_type: MediaType) -> bool {
       match media_type {
         MediaType::JavaScript
         | MediaType::Jsx
@@ -1632,22 +1604,12 @@ impl PreloadDocumentFinder {
     }
 
     let media_type = MediaType::from_path(path);
-    if is_discoverable_media_type(media_type) && is_discoverable_file(path) {
+    if is_allowed_media_type(media_type) {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         return Some(specifier);
       }
     }
     None
-  }
-
-  fn queue_next_file_entries(&mut self) {
-    debug_assert!(self.current_entries.is_none());
-    while let Some(dir_path) = self.pending_dirs.pop() {
-      if let Ok(entries) = fs::read_dir(&dir_path) {
-        self.current_entries = Some(entries);
-        break;
-      }
-    }
   }
 }
 
@@ -1655,22 +1617,100 @@ impl Iterator for PreloadDocumentFinder {
   type Item = ModuleSpecifier;
 
   fn next(&mut self) -> Option<Self::Item> {
-    // drain the pending files
-    while let Some(path) = self.pending_files.pop() {
-      if let Some(specifier) = Self::get_valid_specifier(&path) {
-        return Some(specifier);
+    fn is_discoverable_dir(dir_path: &Path) -> bool {
+      if let Some(dir_name) = dir_path.file_name() {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        // We ignore these directories by default because there is a
+        // high likelihood they aren't relevant. Someone can opt-into
+        // them by specifying one of them as an enabled path.
+        if matches!(dir_name.as_str(), "node_modules" | ".git") {
+          return false;
+        }
+
+        // ignore cargo target directories for anyone using Deno with Rust
+        if dir_name == "target"
+          && dir_path
+            .parent()
+            .map(|p| p.join("Cargo.toml").exists())
+            .unwrap_or(false)
+        {
+          return false;
+        }
+
+        true
+      } else {
+        false
       }
     }
 
-    // then go through the current entries and directories
-    while !self.pending_dirs.is_empty() || self.current_entries.is_some() {
-      match self.read_next_file_entry() {
-        Some(entry) => return Some(entry),
-        None => {
-          self.queue_next_file_entries();
+    fn is_discoverable_file(file_path: &Path) -> bool {
+      // Don't auto-discover minified files as they are likely to be very large
+      // and likely not to have dependencies on code outside them that would
+      // be useful in the LSP
+      if let Some(file_name) = file_path.file_name() {
+        let file_name = file_name.to_string_lossy().to_lowercase();
+        !file_name.as_str().contains(".min.")
+      } else {
+        false
+      }
+    }
+
+    while let Some(entry) = self.pending_entries.pop_front() {
+      match entry {
+        PendingEntry::SpecifiedRootFile(file) => {
+          // since it was a file that was specified as a root url, only
+          // verify that it's valid
+          if let Some(specifier) = Self::get_valid_specifier(&file) {
+            return Some(specifier);
+          }
+        }
+        PendingEntry::Dir(dir_path) => {
+          if let Ok(read_dir) = fs::read_dir(&dir_path) {
+            self
+              .pending_entries
+              .push_back(PendingEntry::ReadDir(Box::new(read_dir)));
+          }
+        }
+        PendingEntry::ReadDir(mut entries) => {
+          while let Some(entry) = entries.next() {
+            self.entry_count += 1;
+
+            if self.entry_count >= self.limit {
+              lsp_warn!(
+                concat!(
+                  "Hit the language server document preload limit of {} file system entries. ",
+                  "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
+                  "partially enable a workspace."
+                ),
+                self.limit,
+              );
+              self.pending_entries.clear(); // stop searching
+              return None;
+            }
+
+            if let Ok(entry) = entry {
+              let path = entry.path();
+              if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() && is_discoverable_dir(&path) {
+                  self
+                    .pending_entries
+                    .push_back(PendingEntry::Dir(path.to_path_buf()));
+                } else if file_type.is_file() && is_discoverable_file(&path) {
+                  if let Some(specifier) = Self::get_valid_specifier(&path) {
+                    // restore the next entries for next time
+                    self
+                      .pending_entries
+                      .push_front(PendingEntry::ReadDir(entries));
+                    return Some(specifier);
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
+
     None
   }
 }
@@ -1884,6 +1924,7 @@ console.log(b, "hello deno");
     temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
 
     temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/target");
     temp_dir.create_dir_all("root1/.git");
     temp_dir.create_dir_all("root1/file.ts"); // no, directory
     temp_dir.write("root1/mod1.ts", ""); // yes
@@ -1897,6 +1938,8 @@ console.log(b, "hello deno");
     temp_dir.write("root1/other.json", ""); // no, json
     temp_dir.write("root1/other.txt", ""); // no, text file
     temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/Cargo.toml", ""); // no
+    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
     temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
     temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
     temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
@@ -1904,24 +1947,25 @@ console.log(b, "hello deno");
     temp_dir.create_dir_all("root2/folder");
     temp_dir.write("root2/file1.ts", ""); // yes, provided
     temp_dir.write("root2/file2.ts", ""); // no, not provided
+    temp_dir.write("root2/main.min.ts", ""); // yes, provided
     temp_dir.write("root2/folder/main.ts", ""); // yes, provided
 
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
-    let mut urls = PreloadDocumentFinder::from_root_urls(&vec![
+    let urls = PreloadDocumentFinder::from_root_urls(&vec![
       temp_dir.uri().join("root1/").unwrap(),
       temp_dir.uri().join("root2/file1.ts").unwrap(),
+      temp_dir.uri().join("root2/main.min.ts").unwrap(),
       temp_dir.uri().join("root2/folder/").unwrap(),
     ])
     .collect::<Vec<_>>();
 
-    // order doesn't matter
-    urls.sort();
-
     assert_eq!(
       urls,
       vec![
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/main.min.ts").unwrap(),
         temp_dir.uri().join("root1/mod1.ts").unwrap(),
         temp_dir.uri().join("root1/mod2.js").unwrap(),
         temp_dir.uri().join("root1/mod3.tsx").unwrap(),
@@ -1930,9 +1974,24 @@ console.log(b, "hello deno");
         temp_dir.uri().join("root1/mod6.mjs").unwrap(),
         temp_dir.uri().join("root1/mod7.mts").unwrap(),
         temp_dir.uri().join("root1/mod8.d.mts").unwrap(),
-        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
-        temp_dir.uri().join("root2/file1.ts").unwrap(),
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+      ]
+    );
+
+    // now try iterating with a low limit
+    let urls = PreloadDocumentFinder::from_root_urls_with_limit(
+      &vec![temp_dir.uri()],
+      10, // entries and not results
+    )
+    .collect::<Vec<_>>();
+
+    assert_eq!(
+      urls,
+      vec![
+        temp_dir.uri().join("root1/mod1.ts").unwrap(),
+        temp_dir.uri().join("root1/mod2.js").unwrap(),
+        temp_dir.uri().join("root1/mod3.tsx").unwrap(),
       ]
     );
   }
