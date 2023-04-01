@@ -6,6 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.32.2 / 2023.03.31
+
+- Revert "refactor(ext/node): Use Deno.inspect (#17960)" (#18491)
+- feat(core): initialize SQLite off-main-thread (#18401)
+- feat(ext/kv): return versionstamp from set/commit (#18512)
+- feat(ext/node): add `crypto.checkPrime` API (#18465)
+- feat(ext/node): implement crypto.createSecretKey (#18413)
+- feat(test): print pending tests on sigint (#18246)
+- feat: port node:zlib to rust (#18291)
+- fix(cli): add colors to "Module not found" error frame (#18437)
+- fix(cli): don't store blob and data urls in the module cache (#18261)
+- fix(cli/bench): look for clone3 syscalls for thread count (#18456)
+- fix(core): located_script_name macro was using format syntax (#18388)
+- fix(core): panic at build time if extension code contains anything other than
+  7-bit ASCII (#18372)
+- fix(core): restore cache journal mode to TRUNCATE and tweak tokio test in
+  CacheDB (#18469)
+- fix(coverage): ignore files from npm registry (#18457)
+- fix(dts): improve types for the Deno.KV API (#18510)
+- fix(ext/kv): add missing `getMany` method (#18410)
+- fix(ext/node): add aes-128-ecb algorithm support (#18412)
+- fix(ext/node): add missing _preloadModules hook (#18447)
+- fix(ext/node): implement crypto.Sign (RSA/PEM/SHA{224,256,384,512}) (#18471)
+- fix(ext/node): make cipher/decipher transform stream (#18408)
+- fix(lsp): `textDocument/references` should respect `includeDeclaration`
+  (#18496)
+- fix(lsp): better handling of `data:` urls (#18527)
+- fix(lsp): include all diagnosable documents on initialize (#17979)
+- fix(ops): fallback when FastApiOneByteString is not utf8 (#18518)
+- fix(repl): improve package.json support (#18497)
+- fix(streams): add support `Float64Array` to `ReadableStreamByobReader`
+  (#18188)
+- fix: Add missing `processenv` winapi feature to deno_io (#18485)
+- fix: upgrade to TypeScript 5.0.3 (#18532)
+- perf(ext/websocket): efficient event kind serialization (#18509)
+- perf(ext/websocket): special op for sending binary data frames (#18506)
+- perf(ext/websocket): special op for sending text data frames (#18507)
+- perf(ext/websocket): use opAsync2 to avoid spread deopt (#18525)
+- perf: `const` op declaration (#18288)
+
 ### 1.32.1 / 2023.03.23
 
 - fix(core): disable resizable ArrayBuffer and growable SharedArrayBuffer

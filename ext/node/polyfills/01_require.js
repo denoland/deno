@@ -241,8 +241,10 @@ setupBuiltinModules();
 const cjsParseCache = new SafeWeakMap();
 
 function pathDirname(filepath) {
-  if (filepath == null || filepath === "") {
+  if (filepath == null) {
     throw new Error("Empty filepath.");
+  } else if (filepath === "") {
+    return ".";
   }
   return ops.op_require_path_dirname(filepath);
 }
@@ -605,10 +607,10 @@ Module._nodeModulePaths = function (fromPath) {
 Module._resolveLookupPaths = function (request, parent) {
   const paths = [];
 
-  if (ops.op_require_is_request_relative(request) && parent?.filename) {
+  if (ops.op_require_is_request_relative(request)) {
     ArrayPrototypePush(
       paths,
-      ops.op_require_path_dirname(parent.filename),
+      parent?.filename ? ops.op_require_path_dirname(parent.filename) : ".",
     );
     return paths;
   }
@@ -752,7 +754,6 @@ Module._resolveFilename = function (
         paths = options.paths;
       } else {
         const fakeParent = new Module("", null);
-
         paths = [];
 
         for (let i = 0; i < options.paths.length; i++) {
@@ -826,6 +827,25 @@ Module._resolveFilename = function (
   err.code = "MODULE_NOT_FOUND";
   err.requireStack = requireStack;
   throw err;
+};
+
+/**
+ * Internal CommonJS API to always require modules before requiring the actual
+ * one when calling `require("my-module")`. This is used by require hooks such
+ * as `ts-node/register`.
+ * @param {string[]} requests List of modules to preload
+ */
+Module._preloadModules = function (requests) {
+  if (!ArrayIsArray(requests) || requests.length === 0) {
+    return;
+  }
+
+  const parent = new Module("internal/preload", null);
+  // All requested files must be resolved against cwd
+  parent.paths = Module._nodeModulePaths(process.cwd());
+  for (let i = 0; i < requests.length; i++) {
+    parent.require(requests[i]);
+  }
 };
 
 Module.prototype.load = function (filename) {
@@ -954,7 +974,7 @@ Module._extensions[".js"] = function (module, filename) {
   const content = ops.op_require_read_file(filename);
 
   if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = ops.op_require_read_closest_package_json(filename);
+    const pkg = ops.op_require_read_package_scope(filename);
     if (pkg && pkg.exists && pkg.typ == "module") {
       let message = `Trying to import ESM module: ${filename}`;
 

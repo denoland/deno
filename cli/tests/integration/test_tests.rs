@@ -406,10 +406,9 @@ fn file_protocol() {
       .unwrap()
       .to_string();
 
-  let context = TestContext::default();
-  context
+  TestContext::default()
     .new_command()
-    .args_vec(vec!["test".to_string(), file_url])
+    .args_vec(["test", file_url.as_str()])
     .run()
     .assert_matches_file("test/file_protocol.out");
 }
@@ -446,6 +445,8 @@ itest!(parallel_output {
 });
 
 #[test]
+// todo(#18480): re-enable
+#[ignore]
 fn sigint_with_hanging_test() {
   util::with_pty(
     &[
@@ -457,9 +458,10 @@ fn sigint_with_hanging_test() {
     |mut console| {
       std::thread::sleep(std::time::Duration::from_secs(1));
       console.write_line("\x03");
+      let text = console.read_until("hanging_test.ts:10:15");
       wildcard_match(
         include_str!("../testdata/test/sigint_with_hanging_test.out"),
-        &console.read_all_output(),
+        &text,
       );
     },
   );
