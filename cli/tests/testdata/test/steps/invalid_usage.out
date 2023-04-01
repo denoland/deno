@@ -32,7 +32,7 @@ parallel steps where only inner tests have sanitizers ...
   step 2 ... FAILED (due to 1 failed step) ([WILDCARD])
 parallel steps where only inner tests have sanitizers ... FAILED (due to 1 failed step) ([WILDCARD])
 
- ERRORS 
+ ERRORS
 
 capturing => ./test/steps/invalid_usage.ts:[WILDCARD]
 error: Error: Cannot run test step after parent scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
@@ -66,7 +66,7 @@ parallel steps where only inner tests have sanitizers ... step 2 ... step inner 
 error: Started test step with sanitizers while another test step was running:
   * parallel steps where only inner tests have sanitizers ... step 1
 
- FAILURES 
+ FAILURES
 
 capturing => ./test/steps/invalid_usage.ts:3:6
 top level missing await ... step => ./test/steps/invalid_usage.ts:[WILDCARD]

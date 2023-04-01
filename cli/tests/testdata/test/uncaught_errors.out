@@ -10,7 +10,7 @@ bar 2 ... FAILED ([WILDCARD])
 bar 3 ... FAILED ([WILDCARD])
 Uncaught error from ./test/uncaught_errors_3.ts FAILED
 
- ERRORS 
+ ERRORS
 
 foo 1 => ./test/uncaught_errors_1.ts:1:6
 error: Error: foo 1 message
@@ -46,7 +46,7 @@ throw new Error("baz");
 This error was not caught from a test and caused the test runner to fail on the referenced module.
 It most likely originated from a dangling promise, event/timeout handler or top-level code.
 
- FAILURES 
+ FAILURES
 
 foo 1 => ./test/uncaught_errors_1.ts:1:6
 ./test/uncaught_errors_1.ts (uncaught error)

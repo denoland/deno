@@ -6,7 +6,7 @@ qux ... FAILED ([WILDCARD])
 quux ... FAILED ([WILDCARD])
 quuz ... FAILED ([WILDCARD])
 
- ERRORS 
+ ERRORS
 
 foo => [WILDCARD]/non_error_thrown.ts:1:6
 error: undefined
@@ -26,7 +26,7 @@ error: [ 1, 2, 3 ]
 quuz => [WILDCARD]/non_error_thrown.ts:21:6
 error: { a: "Hello, world!", b: [ 1, 2, 3 ] }
 
- FAILURES 
+ FAILURES
 
 foo => [WILDCARD]/non_error_thrown.ts:1:6
 bar => [WILDCARD]/non_error_thrown.ts:5:6
