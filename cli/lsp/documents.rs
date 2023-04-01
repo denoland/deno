@@ -1955,7 +1955,7 @@ console.log(b, "hello deno");
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
-    let urls = PreloadDocumentFinder::from_root_urls(&vec![
+    let mut urls = PreloadDocumentFinder::from_root_urls(&vec![
       temp_dir.uri().join("root1/").unwrap(),
       temp_dir.uri().join("root2/file1.ts").unwrap(),
       temp_dir.uri().join("root2/main.min.ts").unwrap(),
@@ -1963,11 +1963,14 @@ console.log(b, "hello deno");
     ])
     .collect::<Vec<_>>();
 
+    // Ideally we would test for order here, which should be BFS, but
+    // different file systems have different directory iteration
+    // so we sort the results
+    urls.sort();
+
     assert_eq!(
       urls,
       vec![
-        temp_dir.uri().join("root2/file1.ts").unwrap(),
-        temp_dir.uri().join("root2/main.min.ts").unwrap(),
         temp_dir.uri().join("root1/mod1.ts").unwrap(),
         temp_dir.uri().join("root1/mod2.js").unwrap(),
         temp_dir.uri().join("root1/mod3.tsx").unwrap(),
@@ -1976,8 +1979,10 @@ console.log(b, "hello deno");
         temp_dir.uri().join("root1/mod6.mjs").unwrap(),
         temp_dir.uri().join("root1/mod7.mts").unwrap(),
         temp_dir.uri().join("root1/mod8.d.mts").unwrap(),
-        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
         temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/main.min.ts").unwrap(),
       ]
     );
 
@@ -1988,14 +1993,9 @@ console.log(b, "hello deno");
     )
     .collect::<Vec<_>>();
 
-    assert_eq!(
-      urls,
-      vec![
-        temp_dir.uri().join("root1/mod1.ts").unwrap(),
-        temp_dir.uri().join("root1/mod2.js").unwrap(),
-        temp_dir.uri().join("root1/mod3.tsx").unwrap(),
-      ]
-    );
+    // since different file system have different iteration
+    // order, we only check the length
+    assert_eq!(urls.len(), 3);
   }
 
   #[test]

@@ -675,6 +675,7 @@ mod tests {
   use super::*;
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn test_config_specifier_enabled() {
@@ -886,8 +887,8 @@ mod tests {
       (
         root_dir1.clone(),
         vec![
-          root_dir1.join("sub_dir").unwrap(),
-          root_dir1.join("sub_dir/other").unwrap(),
+          root_dir1.join("sub_dir/").unwrap(),
+          root_dir1.join("sub_dir/other/").unwrap(),
           root_dir1.join("test.ts").unwrap(),
         ],
       ),
