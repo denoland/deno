@@ -1778,11 +1778,10 @@ const ANSI_BACKGROUND = "48";
  * @param {number} g green
  * @param {number} b blue
  * @param {"38" | "48"} kind foreground or background color
+ * @param {0 | 1 | 2 | 3} supportLevel amount of colors supported
  * @returns {string}
  */
-function rgbToAnsi(r, g, b, kind) {
-  const supportLevel = colors.getSupportLevel();
-
+function rgbToAnsi(r, g, b, kind, supportLevel) {
   if (supportLevel === COLOR_SUPPORT_TRUE_COLOR) {
     return `\x1b[${kind};2;${r};${g};${b}m`;
   } else if (supportLevel === COLOR_SUPPORT_256) {
@@ -1817,7 +1816,7 @@ function rgbToAnsi(r, g, b, kind) {
   }
 }
 
-function cssToAnsi(css, prevCss = null) {
+function cssToAnsi(css, prevCss = null, supportLevel = colors.getSupportLevel()) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
   if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
@@ -1842,12 +1841,12 @@ function cssToAnsi(css, prevCss = null) {
     } else {
       if (ArrayIsArray(css.backgroundColor)) {
         const { 0: r, 1: g, 2: b } = css.backgroundColor;
-        ansi += rgbToAnsi(r, g, b, ANSI_BACKGROUND);
+        ansi += rgbToAnsi(r, g, b, ANSI_BACKGROUND, supportLevel);
       } else {
         const parsed = parseCssColor(css.backgroundColor);
         if (parsed !== null) {
           const { 0: r, 1: g, 2: b } = parsed;
-          ansi += rgbToAnsi(r, g, b, ANSI_BACKGROUND);
+          ansi += rgbToAnsi(r, g, b, ANSI_BACKGROUND, supportLevel);
         } else {
           ansi += "\x1b[49m";
         }
@@ -1876,12 +1875,12 @@ function cssToAnsi(css, prevCss = null) {
     } else {
       if (ArrayIsArray(css.color)) {
         const { 0: r, 1: g, 2: b } = css.color;
-        ansi += rgbToAnsi(r, g, b, ANSI_FOREGROUND);
+        ansi += rgbToAnsi(r, g, b, ANSI_FOREGROUND, supportLevel);
       } else {
         const parsed = parseCssColor(css.color);
         if (parsed !== null) {
           const { 0: r, 1: g, 2: b } = parsed;
-          ansi += rgbToAnsi(r, g, b, ANSI_FOREGROUND);
+          ansi += rgbToAnsi(r, g, b, ANSI_FOREGROUND, supportLevel);
         } else {
           ansi += "\x1b[39m";
         }

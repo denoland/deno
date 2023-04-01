@@ -57,8 +57,8 @@ function parseCssColor(colorString: string): [number, number, number] | null {
 }
 
 /** ANSI-fy the CSS, replace "\x1b" with "_". */
-function cssToAnsiEsc(css: Css, prevCss: Css | null = null): string {
-  return cssToAnsi_(css, prevCss).replaceAll("\x1b", "_");
+function cssToAnsiEsc(css: Css, prevCss: Css | null = null, supportLevel = 3): string {
+  return cssToAnsi_(css, prevCss, supportLevel).replaceAll("\x1b", "_");
 }
 
 // test cases from web-platform-tests
@@ -1152,9 +1152,6 @@ Deno.test(function consoleParseCss() {
 });
 
 Deno.test(function consoleCssToAnsi() {
-  const COLORTERM = Deno.env.get("COLORTERM");
-  const TRUE_COLOR = Deno.env.get("CI") || COLORTERM === "truecolor" ||
-    COLORTERM === "24bit";
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "inherit" }),
     "_[49m",
@@ -1177,11 +1174,11 @@ Deno.test(function consoleCssToAnsi() {
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
-    TRUE_COLOR ? "_[48;2;200;201;202m" : "_[48;5;188m",
+    "_[48;2;200;201;202m",
   );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, color: [203, 204, 205] }),
-    TRUE_COLOR ? "_[38;2;203;204;205m" : "_[38;5;188m",
+    "_[38;2;203;204;205m",
   );
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }), "_[1m");
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }), "_[3m");
@@ -1203,14 +1200,25 @@ Deno.test(function consoleCssToAnsi() {
     cssToAnsiEsc(
       { ...DEFAULT_CSS, color: [203, 204, 205], fontWeight: "bold" },
     ),
-    TRUE_COLOR ? "_[38;2;203;204;205m_[1m" : "_[38;5;188m_[1m",
+    "_[38;2;203;204;205m_[1m",
   );
   assertEquals(
     cssToAnsiEsc(
       { ...DEFAULT_CSS, color: [0, 0, 0], fontWeight: "bold" },
       { ...DEFAULT_CSS, color: [203, 204, 205], fontStyle: "italic" },
     ),
-    TRUE_COLOR ? "_[38;2;0;0;0m_[1m_[23m" : "_[38;5;16_[1m_[23m",
+    "_[38;2;0;0;0m_[1m_[23m",
+  );
+});
+
+Deno.test(function consoleCssToAnsi256Lower() {
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, color: [203, 204, 205], fontWeight: "bold" },
+      null,
+      2,
+    ),
+    "_[38;5;188m_[1m",
   );
 });
 
