@@ -53,9 +53,10 @@ static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(|| {
   }
 
   if let Some(term) = std::env::var_os("TERM") {
-    let term_value = term.to_str().unwrap();
-    if term_value.ends_with("256") || term_value.ends_with("256color") {
-      return TTYColorLevel::Ansi256;
+    if let Some(term_value) = term.to_str() {
+      if term_value.ends_with("256") || term_value.ends_with("256color") {
+        return TTYColorLevel::Ansi256;
+      }
     }
 
     // CI systems commonly set TERM=dumb although they support

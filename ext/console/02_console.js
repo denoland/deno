@@ -1816,7 +1816,11 @@ function rgbToAnsi(r, g, b, kind, supportLevel) {
   }
 }
 
-function cssToAnsi(css, prevCss = null, supportLevel = colors.getSupportLevel()) {
+function cssToAnsi(
+  css,
+  prevCss = null,
+  supportLevel = colors.getSupportLevel(),
+) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
   if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {

@@ -57,7 +57,11 @@ function parseCssColor(colorString: string): [number, number, number] | null {
 }
 
 /** ANSI-fy the CSS, replace "\x1b" with "_". */
-function cssToAnsiEsc(css: Css, prevCss: Css | null = null, supportLevel = 3): string {
+function cssToAnsiEsc(
+  css: Css,
+  prevCss: Css | null = null,
+  supportLevel = 3,
+): string {
   return cssToAnsi_(css, prevCss, supportLevel).replaceAll("\x1b", "_");
 }
 
