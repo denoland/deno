@@ -8,6 +8,7 @@ use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::op;
+use deno_core::StringOrBuffer;
 
 use deno_core::url;
 use deno_core::AsyncRefCell;
@@ -475,23 +476,21 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
-pub enum NextEventResponse {
-  String(String),
-  Binary(ZeroCopyBuf),
-  Close { code: u16, reason: String },
-  Ping,
-  Pong,
-  Error(String),
-  Closed,
+#[repr(u16)]
+pub enum MessageKind {
+  Text = 0,
+  Binary = 1,
+  Pong = 2,
+  Ping = 3,
+  Error = 5,
+  Closed = 6,
 }
 
 #[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<NextEventResponse, AnyError> {
+) -> Result<(u16, StringOrBuffer), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -500,24 +499,40 @@ pub async fn op_ws_next_event(
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let val = resource.next_message(cancel).await?;
   let res = match val {
-    Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
-    Some(Ok(Message::Binary(data))) => NextEventResponse::Binary(data.into()),
-    Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
-      code: frame.code.into(),
-      reason: frame.reason.to_string(),
-    },
-    Some(Ok(Message::Close(None))) => NextEventResponse::Close {
-      code: 1005,
-      reason: String::new(),
-    },
-    Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
-    Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
-    Some(Err(e)) => NextEventResponse::Error(e.to_string()),
+    Some(Ok(Message::Text(text))) => {
+      (MessageKind::Text as u16, StringOrBuffer::String(text))
+    }
+    Some(Ok(Message::Binary(data))) => (
+      MessageKind::Binary as u16,
+      StringOrBuffer::Buffer(data.into()),
+    ),
+    Some(Ok(Message::Close(Some(frame)))) => (
+      frame.code.into(),
+      StringOrBuffer::String(frame.reason.to_string()),
+    ),
+    Some(Ok(Message::Close(None))) => {
+      (1005, StringOrBuffer::String("".to_string()))
+    }
+    Some(Ok(Message::Ping(_))) => (
+      MessageKind::Ping as u16,
+      StringOrBuffer::Buffer(vec![].into()),
+    ),
+    Some(Ok(Message::Pong(_))) => (
+      MessageKind::Pong as u16,
+      StringOrBuffer::Buffer(vec![].into()),
+    ),
+    Some(Err(e)) => (
+      MessageKind::Error as u16,
+      StringOrBuffer::String(e.to_string()),
+    ),
     None => {
       // No message was received, presumably the socket closed while we waited.
       // Try close the stream, ignoring any errors, and report closed status to JavaScript.
       let _ = state.borrow_mut().resource_table.close(rid);
-      NextEventResponse::Closed
+      (
+        MessageKind::Closed as u16,
+        StringOrBuffer::Buffer(vec![].into()),
+      )
     }
   };
   Ok(res)

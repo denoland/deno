@@ -943,7 +943,7 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   Ok(base64::encode(digest))
 }
 
-struct EarlyUpgradeSocket(Rc<AsyncRefCell<EarlyUpgradeSocketInner>>);
+struct EarlyUpgradeSocket(AsyncRefCell<EarlyUpgradeSocketInner>, CancelHandle);
 
 enum EarlyUpgradeSocketInner {
   PreResponse(
@@ -968,23 +968,43 @@ impl EarlyUpgradeSocket {
     Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
     AnyError,
   > {
-    let mut borrow = self.0.borrow_mut().await;
+    let mut borrow = RcRef::map(self.clone(), |x| &x.0).borrow_mut().await;
+    let cancel = RcRef::map(self, |x| &x.1);
     let inner = &mut *borrow;
     match inner {
       EarlyUpgradeSocketInner::PreResponse(_, _, tx) => {
         let mut rx = tx.subscribe();
         // Ensure we're not borrowing self here
         drop(borrow);
-        Ok(rx.recv().await?)
+        Ok(
+          rx.recv()
+            .map_err(|e| AnyError::from(e))
+            .try_or_cancel(&cancel)
+            .await?,
+        )
       }
       EarlyUpgradeSocketInner::PostResponse(rx, _) => Ok(rx.clone()),
     }
   }
 
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
+    let reader = self.clone().get_reader().await?;
+    let cancel = RcRef::map(self, |x| &x.1);
+    Ok(
+      reader
+        .borrow_mut()
+        .await
+        .read(data)
+        .try_or_cancel(&cancel)
+        .await?,
+    )
+  }
+
   /// Write all the data provided, only holding the lock while we see if the connection needs to be
   /// upgraded.
-  async fn write_all(self: Rc<Self>, buf: BufView) -> Result<(), AnyError> {
-    let mut borrow = self.0.borrow_mut().await;
+  async fn write_all(self: Rc<Self>, buf: &[u8]) -> Result<(), AnyError> {
+    let mut borrow = RcRef::map(self.clone(), |x| &x.0).borrow_mut().await;
+    let cancel = RcRef::map(self, |x| &x.1);
     let inner = &mut *borrow;
     match inner {
       EarlyUpgradeSocketInner::PreResponse(stream, upgrade, rx_tx) => {
@@ -1012,7 +1032,10 @@ impl EarlyUpgradeSocket {
           let new_rd = HttpRequestReader::Closed;
           let upgraded = match replace(&mut *old_rd, new_rd) {
             HttpRequestReader::Headers(request) => {
-              hyper::upgrade::on(request).await?
+              hyper::upgrade::on(request)
+                .map_err(|e| AnyError::from(e))
+                .try_or_cancel(&cancel)
+                .await?
             }
             _ => {
               return Err(http_error("response already started"));
@@ -1043,14 +1066,18 @@ impl EarlyUpgradeSocket {
 
           // If we had extra data after the response, write that to the upgraded connection
           if !extra.is_empty() {
-            tx_lock.write_all(&extra).await?;
+            tx_lock.write_all(&extra).try_or_cancel(&cancel).await?;
           }
         }
       }
       EarlyUpgradeSocketInner::PostResponse(_, tx) => {
         let tx = tx.clone();
         drop(borrow);
-        tx.borrow_mut().await.write_all(&buf).await?;
+        tx.borrow_mut()
+          .await
+          .write_all(&buf)
+          .try_or_cancel(&cancel)
+          .await?;
       }
     };
     Ok(())
@@ -1059,20 +1086,10 @@ impl EarlyUpgradeSocket {
 
 impl Resource for EarlyUpgradeSocket {
   fn name(&self) -> Cow<str> {
-    "early upgrade socket".into()
+    "earlyUpgradeSocket".into()
   }
 
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    let self_clone = self.clone();
-    Box::pin(async move {
-      // TODO(mmastrac): This seems inefficient
-      let reader = self_clone.get_reader().await?;
-      let mut buf = vec![0; limit];
-      let read = reader.borrow_mut().await.read(&mut buf).await?;
-      buf.truncate(read);
-      return Ok(buf.into());
-    })
-  }
+  deno_core::impl_readable_byob!();
 
   fn write(
     self: Rc<Self>,
@@ -1080,17 +1097,17 @@ impl Resource for EarlyUpgradeSocket {
   ) -> AsyncResult<deno_core::WriteOutcome> {
     Box::pin(async move {
       let nwritten = buf.len();
-      Self::write_all(self, buf).await?;
+      Self::write_all(self, &buf).await?;
       Ok(WriteOutcome::Full { nwritten })
     })
   }
 
   fn write_all(self: Rc<Self>, buf: BufView) -> AsyncResult<()> {
-    Box::pin(async move { Self::write_all(self, buf).await })
+    Box::pin(async move { Self::write_all(self, &buf).await })
   }
 
   fn close(self: Rc<Self>) {
-    println!("close!!!");
+    self.1.cancel()
   }
 }
 
@@ -1110,8 +1127,10 @@ async fn op_http_upgrade_early(
     WebSocketUpgrade::default(),
     tx,
   );
-  let rid =
-    resources.add(EarlyUpgradeSocket(Rc::new(AsyncRefCell::new(socket))));
+  let rid = resources.add(EarlyUpgradeSocket(
+    AsyncRefCell::new(socket),
+    CancelHandle::new(),
+  ));
   Ok(rid)
 }
 
