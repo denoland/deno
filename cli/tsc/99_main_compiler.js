@@ -625,7 +625,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return ops.op_create_hash({ data }).hash;
+      return ops.op_create_hash(data);
     },
 
     // LanguageServiceHost

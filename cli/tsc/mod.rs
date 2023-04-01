@@ -2,6 +2,7 @@
 
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
+use crate::cache::FastInsecureHasher;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -241,15 +242,16 @@ fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
 
 fn get_maybe_hash(
   maybe_source: Option<&str>,
-  hash_data: &[Vec<u8>],
+  hash_data: u64,
 ) -> Option<String> {
-  if let Some(source) = maybe_source {
-    let mut data = vec![source.as_bytes().to_owned()];
-    data.extend_from_slice(hash_data);
-    Some(checksum::gen(&data))
-  } else {
-    None
-  }
+  maybe_source.map(|source| get_hash(source, hash_data))
+}
+
+fn get_hash(source: &str, hash_data: u64) -> String {
+  let mut hasher = FastInsecureHasher::new();
+  hasher.write_str(source);
+  hasher.write_u64(hash_data);
+  hasher.finish().to_string()
 }
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
@@ -303,7 +305,7 @@ pub struct Request {
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
-  pub hash_data: Vec<Vec<u8>>,
+  pub hash_data: u64,
   pub maybe_npm_resolver: Option<NpmPackageResolver>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
@@ -324,7 +326,7 @@ pub struct Response {
 
 #[derive(Debug, Default)]
 struct State {
-  hash_data: Vec<Vec<u8>>,
+  hash_data: u64,
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
@@ -337,7 +339,7 @@ struct State {
 impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
-    hash_data: Vec<Vec<u8>>,
+    hash_data: u64,
     maybe_npm_resolver: Option<NpmPackageResolver>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
@@ -364,23 +366,10 @@ fn normalize_specifier(
   resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateHashArgs {
-  /// The string data to be used to generate the hash.  This will be mixed with
-  /// other state data in Deno to derive the final hash.
-  data: String,
-}
-
 #[op]
-fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
+fn op_create_hash(s: &mut OpState, text: &str) -> String {
   let state = s.borrow_mut::<State>();
-  let v: CreateHashArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_create_hash\".")?;
-  let mut data = vec![v.data.as_bytes().to_owned()];
-  data.extend_from_slice(&state.hash_data);
-  let hash = checksum::gen(&data);
-  Ok(json!({ "hash": hash }))
+  get_hash(text, state.hash_data)
 }
 
 #[derive(Debug, Deserialize)]
@@ -455,7 +444,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
   } else if let Some(name) = v.specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
-    hash = get_maybe_hash(maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source, state.hash_data);
     media_type = MediaType::from_str(&v.specifier);
     maybe_source.map(Cow::Borrowed)
   } else {
@@ -507,7 +496,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
       media_type = MediaType::Unknown;
       None
     };
-    hash = get_maybe_hash(maybe_source.as_deref(), &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     maybe_source
   };
 
@@ -902,12 +891,12 @@ mod tests {
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,
-    maybe_hash_data: Option<Vec<Vec<u8>>>,
+    maybe_hash_data: Option<u64>,
     maybe_tsbuildinfo: Option<String>,
   ) -> OpState {
     let specifier = maybe_specifier
       .unwrap_or_else(|| ModuleSpecifier::parse("file:///main.ts").unwrap());
-    let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
+    let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::default();
@@ -933,7 +922,7 @@ mod tests {
   async fn test_exec(
     specifier: &ModuleSpecifier,
   ) -> Result<Response, AnyError> {
-    let hash_data = vec![b"something".to_vec()];
+    let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let mut graph = ModuleGraph::default();
@@ -999,16 +988,9 @@ mod tests {
 
   #[tokio::test]
   async fn test_create_hash() {
-    let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
-    let actual = op_create_hash::call(
-      &mut state,
-      json!({ "data": "some sort of content" }),
-    )
-    .expect("could not invoke op");
-    assert_eq!(
-      actual,
-      json!({"hash": "ae92df8f104748768838916857a1623b6a3c593110131b0a00f81ad9dac16511"})
-    );
+    let mut state = setup(None, Some(123), None).await;
+    let actual = op_create_hash::call(&mut state, "some sort of content");
+    assert_eq!(actual, "11905938177474799758");
   }
 
   #[test]
@@ -1050,12 +1032,12 @@ mod tests {
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
     )
-    .expect("should have invoked op");
+    .unwrap();
     assert_eq!(
       actual,
       json!({
         "data": "console.log(\"hello deno\");\n",
-        "version": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
+        "version": "7821807483407828376",
         "scriptKind": 3,
       })
     );
