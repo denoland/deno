@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::client::LspClientKind;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -815,6 +816,8 @@ pub struct Documents {
   open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
+  /// Kind of the client that is using the documents.
+  lsp_client_kind: LspClientKind,
   /// Hash of the config used for resolution. When the hash changes we update
   /// dependencies.
   resolver_config_hash: u64,
@@ -834,13 +837,14 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: &Path, lsp_client_kind: LspClientKind) -> Self {
     Self {
       cache: HttpCache::new(location),
       dirty: true,
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
+      lsp_client_kind,
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
@@ -1248,33 +1252,44 @@ impl Documents {
 
     // update the file system documents
     let mut fs_docs = self.file_system_docs.lock();
-    let mut not_found_docs =
-      fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
-    let open_docs = &mut self.open_docs;
+    match self.lsp_client_kind {
+      LspClientKind::CodeEditor => {
+        let mut not_found_docs =
+          fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+        let open_docs = &mut self.open_docs;
 
-    for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
-      // mark this document as having been found
-      not_found_docs.remove(&specifier);
+        for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
+          // mark this document as having been found
+          not_found_docs.remove(&specifier);
 
-      if !open_docs.contains_key(&specifier)
-        && !fs_docs.docs.contains_key(&specifier)
-      {
-        fs_docs.refresh_document(&self.cache, resolver, &specifier);
-      } else {
-        // update the existing entry to have the new resolver
-        if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+          if !open_docs.contains_key(&specifier)
+            && !fs_docs.docs.contains_key(&specifier)
+          {
+            fs_docs.refresh_document(&self.cache, resolver, &specifier);
+          } else {
+            // update the existing entry to have the new resolver
+            if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+              if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+                *doc = new_doc;
+              }
+            }
+          }
+        }
+
+        // clean up and remove any documents that weren't found
+        for uri in not_found_docs {
+          fs_docs.docs.remove(&uri);
+        }
+      }
+      LspClientKind::Repl => {
+        // for the repl, just update to use the new resolver
+        for doc in fs_docs.docs.values_mut() {
           if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
             *doc = new_doc;
           }
         }
       }
     }
-
-    // clean up and remove any documents that weren't found
-    for uri in not_found_docs {
-      fs_docs.docs.remove(&uri);
-    }
-
     fs_docs.dirty = true;
   }
 
@@ -1655,7 +1670,7 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(&location);
+    let documents = Documents::new(&location, Default::default());
     (documents, location)
   }
 
