@@ -16,7 +16,6 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::lsp::logging::lsp_debug;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -1259,7 +1258,7 @@ impl Documents {
           fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
         let open_docs = &mut self.open_docs;
 
-        lsp_debug!("Preloading documents from root urls...");
+        log::debug!("Preloading documents from root urls...");
         for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
           // mark this document as having been found
           not_found_docs.remove(&specifier);
@@ -1287,7 +1286,7 @@ impl Documents {
         // This log statement is used in the tests to ensure preloading doesn't
         // happen, which is not useful in the repl and could be very expensive
         // if the repl is launched from a directory with a lot of descendants.
-        lsp_debug!("Skipping document preload for repl.");
+        log::debug!("Skipping document preload for repl.");
 
         // for the repl, just update to use the new resolver
         for doc in fs_docs.docs.values_mut() {
