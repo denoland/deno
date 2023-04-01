@@ -1925,6 +1925,7 @@ console.log(b, "hello deno");
 
     temp_dir.create_dir_all("root1/sub_dir");
     temp_dir.create_dir_all("root1/target");
+    temp_dir.create_dir_all("root1/node_modules");
     temp_dir.create_dir_all("root1/.git");
     temp_dir.create_dir_all("root1/file.ts"); // no, directory
     temp_dir.write("root1/mod1.ts", ""); // yes
@@ -1939,10 +1940,11 @@ console.log(b, "hello deno");
     temp_dir.write("root1/other.txt", ""); // no, text file
     temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
     temp_dir.write("root1/Cargo.toml", ""); // no
-    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
     temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
     temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
     temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+    temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
+    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
     temp_dir.write("root2/file1.ts", ""); // yes, provided
