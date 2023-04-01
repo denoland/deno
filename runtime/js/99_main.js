@@ -297,6 +297,7 @@ function runtimeStart(
   target,
   debugFlag,
   noColor,
+  colorSupportLevel,
   isTty,
   source,
 ) {
@@ -313,6 +314,7 @@ function runtimeStart(
   core.setBuildInfo(target);
   util.setLogDebug(debugFlag, source);
   colors.setNoColor(noColor || !isTty);
+  colors.setSupportLevel(colorSupportLevel);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }
@@ -429,6 +431,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     14: userAgent,
     15: inspectFlag,
     // 16: enableTestingFeaturesFlag
+    17: colorSupportLevel,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -484,6 +487,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     target,
     debugFlag,
     noColor,
+    colorSupportLevel,
     isTty,
   );
 
@@ -537,6 +541,7 @@ function bootstrapWorkerRuntime(
     // 14: userAgent,
     // 15: inspectFlag,
     16: enableTestingFeaturesFlag,
+    17: colorSupportLevel,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -593,6 +598,7 @@ function bootstrapWorkerRuntime(
     target,
     debugFlag,
     noColor,
+    colorSupportLevel,
     isTty,
     internalName ?? name,
   );

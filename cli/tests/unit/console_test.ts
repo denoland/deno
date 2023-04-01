@@ -1153,7 +1153,8 @@ Deno.test(function consoleParseCss() {
 
 Deno.test(function consoleCssToAnsi() {
   const COLORTERM = Deno.env.get("COLORTERM");
-  const TRUE_COLOR = COLORTERM === "truecolor" || COLORTERM === "24bit";
+  const TRUE_COLOR = Deno.env.get("CI") || COLORTERM === "truecolor" ||
+    COLORTERM === "24bit";
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "inherit" }),
     "_[49m",

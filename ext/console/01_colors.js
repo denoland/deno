@@ -19,6 +19,23 @@ function getNoColor() {
   return noColor;
 }
 
+/**
+ * The level of color the tty supprots.
+ * 0 = None
+ * 1 = Basic Ansi
+ * 2 = Ansi 256
+ * 3 = 24bit True Color
+ */
+let supportLevel = 0;
+
+function setSupportLevel(level) {
+  supportLevel = level;
+}
+
+function getSupportLevel() {
+  return supportLevel;
+}
+
 function code(open, close) {
   return {
     open: `\x1b[${open}m`,
@@ -95,6 +112,7 @@ export {
   bold,
   cyan,
   getNoColor,
+  getSupportLevel,
   gray,
   green,
   italic,
@@ -102,6 +120,7 @@ export {
   maybeColor,
   red,
   setNoColor,
+  setSupportLevel,
   stripColor,
   white,
   yellow,

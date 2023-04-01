@@ -1763,10 +1763,8 @@ function colorEquals(color1, color2) {
     color1?.[2] == color2?.[2];
 }
 
-let COLOR_SUPPORT_LEVEL = -1;
-let COLOR_SUPPORT_DUMB = 0;
-let COLOR_SUPPORT_256 = 1;
-let COLOR_SUPPORT_TRUE_COLOR = 2;
+const COLOR_SUPPORT_256 = 2;
+const COLOR_SUPPORT_TRUE_COLOR = 3;
 
 const ANSI_FOREGROUND = "38";
 const ANSI_BACKGROUND = "48";
@@ -1783,19 +1781,11 @@ const ANSI_BACKGROUND = "48";
  * @returns {string}
  */
 function rgbToAnsi(r, g, b, kind) {
-  // Lazily check for color support
-  if (COLOR_SUPPORT_LEVEL === -1) {
-    const COLORTERM = Deno.env.get("COLORTERM");
-    COLOR_SUPPORT_LEVEL = COLORTERM === "truecolor" || COLORTERM === "24bit"
-      ? COLOR_SUPPORT_TRUE_COLOR
-      : Deno.env.get("TERM").endsWith("-256color")
-      ? COLOR_SUPPORT_256
-      : COLOR_SUPPORT_DUMB;
-  }
+  const supportLevel = colors.getSupportLevel();
 
-  if (COLOR_SUPPORT_LEVEL === COLOR_SUPPORT_TRUE_COLOR) {
+  if (supportLevel === COLOR_SUPPORT_TRUE_COLOR) {
     return `\x1b[${kind};2;${r};${g};${b}m`;
-  } else if (COLOR_SUPPORT_LEVEL === COLOR_SUPPORT_256) {
+  } else if (supportLevel === COLOR_SUPPORT_256) {
     // Lower colors into 256 color space
     // Taken from https://github.com/Qix-/color-convert/blob/3f0e0d4e92e235796ccb17f6e85c72094a651f49/conversions.js
     // which is MIT licensed and copyright by Heather Arthur and Josh Junon

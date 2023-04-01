@@ -27,12 +27,61 @@ static NO_COLOR: Lazy<bool> =
 
 static IS_TTY: Lazy<bool> = Lazy::new(|| atty::is(atty::Stream::Stdout));
 
+#[derive(Copy, Clone)]
+pub enum TTYColorLevel {
+  None,
+  Basic,
+  Ansi256,
+  TrueColor,
+}
+
+static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(|| {
+  if *NO_COLOR {
+    return TTYColorLevel::None;
+  }
+
+  // Windows supports 24bit True Colors since Windows 10 #14931,
+  // see https://devblogs.microsoft.com/commandline/24-bit-color-in-the-windows-console/
+  if cfg!(target_os = "windows") {
+    return TTYColorLevel::TrueColor;
+  }
+
+  if let Some(color_term) = std::env::var_os("COLORTERM") {
+    if color_term == "truecolor" || color_term == "24bit" {
+      return TTYColorLevel::TrueColor;
+    }
+  }
+
+  if let Some(term) = std::env::var_os("TERM") {
+    let term_value = term.to_str().unwrap();
+    if term_value.ends_with("256") || term_value.ends_with("256color") {
+      return TTYColorLevel::Ansi256;
+    }
+
+    // CI systems commonly set TERM=dumb although they support
+    // full colors. They usually do their own mapping.
+    if std::env::var_os("CI").is_some() {
+      return TTYColorLevel::TrueColor;
+    }
+
+    if term != "dumb" {
+      return TTYColorLevel::Basic;
+    }
+  }
+
+  TTYColorLevel::None
+});
+
 pub fn is_tty() -> bool {
   *IS_TTY
 }
 
 pub fn use_color() -> bool {
   !(*NO_COLOR)
+}
+
+pub fn use_color_support_level() -> TTYColorLevel {
+  *SUPPORT_LEVEL
 }
 
 #[cfg(windows)]
