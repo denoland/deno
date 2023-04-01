@@ -497,6 +497,11 @@ const ci = {
               "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
           },
           {
+            name: "cargo package",
+            if: "matrix.job == 'lint'",
+            run: "cargo package --workspace",
+          },
+          {
             name: "Build debug",
             if: "matrix.job == 'test' && matrix.profile == 'debug'",
             run: "cargo build --locked --all-targets",
