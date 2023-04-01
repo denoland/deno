@@ -81,6 +81,7 @@ async function forwardReleaseCommitToMain() {
 
   function getPrBody() {
     let text = "";
+
     if (cherryPickResult.code !== 0) {
       text += `**THIS PR HAS GIT CONFLICTS THAT MUST BE RESOLVED**\n\n`;
     }
