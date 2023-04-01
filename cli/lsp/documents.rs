@@ -1161,7 +1161,7 @@ impl Documents {
 
   pub fn update_config(
     &mut self,
-    root_urls: Vec<Url>,
+    enabled_urls: Vec<Url>,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
@@ -1169,17 +1169,17 @@ impl Documents {
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
-      root_urls: &[Url],
+      enabled_urls: &[Url],
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(&{
-        // ensure these are sorted (they should be, but this is a safeguard)
-        let mut root_urls = root_urls.to_vec();
-        root_urls.sort_unstable();
-        root_urls
+        // ensure these are sorted so the hashing is more deterministic
+        let mut enabled_urls = enabled_urls.to_vec();
+        enabled_urls.sort_unstable();
+        enabled_urls
       });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
@@ -1196,7 +1196,7 @@ impl Documents {
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &root_urls,
+      &enabled_urls,
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
@@ -1236,14 +1236,14 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies(root_urls);
+      self.refresh_dependencies(enabled_urls);
       self.resolver_config_hash = new_resolver_config_hash;
     }
 
     self.dirty = true;
   }
 
-  fn refresh_dependencies(&mut self, root_urls: Vec<Url>) {
+  fn refresh_dependencies(&mut self, enabled_urls: Vec<Url>) {
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
@@ -1259,8 +1259,9 @@ impl Documents {
           fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
         let open_docs = &mut self.open_docs;
 
-        log::debug!("Preloading documents from root urls...");
-        for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
+        log::debug!("Preloading documents from enabled urls...");
+        for specifier in PreloadDocumentFinder::from_enabled_urls(&enabled_urls)
+        {
           // mark this document as having been found
           not_found_docs.remove(&specifier);
 
@@ -1547,11 +1548,14 @@ struct PreloadDocumentFinder {
 }
 
 impl PreloadDocumentFinder {
-  pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
-    Self::from_root_urls_with_limit(root_urls, 1_000)
+  pub fn from_enabled_urls(enabled_urls: &Vec<Url>) -> Self {
+    Self::from_enabled_urls_with_limit(enabled_urls, 1_000)
   }
 
-  pub fn from_root_urls_with_limit(root_urls: &Vec<Url>, limit: u16) -> Self {
+  pub fn from_enabled_urls_with_limit(
+    enabled_urls: &Vec<Url>,
+    limit: u16,
+  ) -> Self {
     fn is_allowed_root_dir(dir_path: &Path) -> bool {
       if dir_path.parent().is_none() {
         // never search the root directory of a drive
@@ -1565,11 +1569,12 @@ impl PreloadDocumentFinder {
       entry_count: 0,
       pending_entries: Default::default(),
     };
-    for root_url in root_urls {
-      if let Ok(path) = root_url.to_file_path() {
+    let mut dirs = Vec::with_capacity(enabled_urls.len());
+    for enabled_url in enabled_urls {
+      if let Ok(path) = enabled_url.to_file_path() {
         if path.is_dir() {
           if is_allowed_root_dir(&path) {
-            finder.pending_entries.push_back(PendingEntry::Dir(path));
+            dirs.push(path);
           }
         } else {
           finder
@@ -1577,6 +1582,9 @@ impl PreloadDocumentFinder {
             .push_back(PendingEntry::SpecifiedRootFile(path));
         }
       }
+    }
+    for dir in sort_and_remove_non_leaf_dirs(dirs) {
+      finder.pending_entries.push_back(PendingEntry::Dir(dir));
     }
     finder
   }
@@ -1713,6 +1721,25 @@ impl Iterator for PreloadDocumentFinder {
 
     None
   }
+}
+
+/// Removes any directorys that are a descendant of another directory in the collection.
+fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
+  if dirs.is_empty() {
+    return dirs;
+  }
+
+  dirs.sort();
+  if !dirs.is_empty() {
+    for i in (0..dirs.len() - 1).rev() {
+      let prev = &dirs[i + 1];
+      if prev.starts_with(&dirs[i]) {
+        dirs.remove(i + 1);
+      }
+    }
+  }
+
+  dirs
 }
 
 #[cfg(test)]
@@ -1955,7 +1982,7 @@ console.log(b, "hello deno");
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
-    let mut urls = PreloadDocumentFinder::from_root_urls(&vec![
+    let mut urls = PreloadDocumentFinder::from_enabled_urls(&vec![
       temp_dir.uri().join("root1/").unwrap(),
       temp_dir.uri().join("root2/file1.ts").unwrap(),
       temp_dir.uri().join("root2/main.min.ts").unwrap(),
@@ -1987,7 +2014,7 @@ console.log(b, "hello deno");
     );
 
     // now try iterating with a low limit
-    let urls = PreloadDocumentFinder::from_root_urls_with_limit(
+    let urls = PreloadDocumentFinder::from_enabled_urls_with_limit(
       &vec![temp_dir.uri()],
       10, // entries and not results
     )
@@ -2002,19 +2029,44 @@ console.log(b, "hello deno");
   #[test]
   pub fn test_pre_load_document_finder_disallowed_dirs() {
     if cfg!(windows) {
-      let paths =
-        PreloadDocumentFinder::from_root_urls(&vec![
-          Url::parse("file:///c:/").unwrap()
-        ])
-        .collect::<Vec<_>>();
+      let paths = PreloadDocumentFinder::from_enabled_urls(&vec![Url::parse(
+        "file:///c:/",
+      )
+      .unwrap()])
+      .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     } else {
       let paths =
-        PreloadDocumentFinder::from_root_urls(&vec![
+        PreloadDocumentFinder::from_enabled_urls(&vec![
           Url::parse("file:///").unwrap()
         ])
         .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     }
+  }
+
+  #[test]
+  fn test_sort_and_remove_non_leaf_dirs() {
+    fn run_test(paths: Vec<&str>, expected_output: Vec<&str>) {
+      let paths = sort_and_remove_non_leaf_dirs(
+        paths.into_iter().map(PathBuf::from).collect(),
+      );
+      let dirs: Vec<_> =
+        paths.iter().map(|dir| dir.to_string_lossy()).collect();
+      assert_eq!(dirs, expected_output);
+    }
+
+    run_test(
+      vec![
+        "/test/asdf/test/asdf/",
+        "/test/asdf/test/asdf/test.ts",
+        "/test/asdf/",
+        "/test/asdf/",
+        "/testing/456/893/",
+        "/testing/456/893/test/",
+      ],
+      vec!["/test/asdf/", "/testing/456/893/"],
+    );
+    run_test(vec![], vec![]);
   }
 }
