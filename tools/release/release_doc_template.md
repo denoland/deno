@@ -150,7 +150,7 @@ verify on GitHub that everything looks correct.
   And ask them to upload to these links:
 
   - https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION
-  - https://github.com/denoland/deno/releases/tag/v$VERSION
+  - https://github.com/denoland/deno/releases/
 
 - ⛔ Verify that:
   - [ ] There are 8 assets on the release draft.
