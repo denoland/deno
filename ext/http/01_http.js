@@ -316,7 +316,7 @@ function createRespondWith(
               break;
             }
             try {
-              await core.opAsync("op_http_write", streamRid, value);
+              await core.opAsync2("op_http_write", streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (

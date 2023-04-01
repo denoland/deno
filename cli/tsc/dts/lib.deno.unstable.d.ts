@@ -1661,7 +1661,7 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export class KvListIterator implements AsyncIterableIterator<KvEntry> {
+  export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
      * Returns the cursor of the current position in the iteration. This cursor
      * can be used to resume the iteration from the current position in the
@@ -1669,8 +1669,8 @@ declare namespace Deno {
      */
     get cursor(): string;
 
-    next(): Promise<IteratorResult<KvEntry, any>>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry>;
+    next(): Promise<IteratorResult<KvEntry<T>, undefined>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry<T>>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1680,16 +1680,26 @@ declare namespace Deno {
    * The `versionstamp` is a string that represents the current version of the
    * key-value pair. It can be used to perform atomic operations on the KV store
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
-   * A `null` versionstamp indicates that no value exists for the given key in
-   * the KV store.
    *
    * @category KV
    */
-  export interface KvEntry {
+  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An optional versioned pair of key and value in a {@linkcode Deno.Kv}.
+   *
+   * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
+   * fields may be `null` if no value exists for the given key in the KV store.
+   *
+   * @category KV
+   */
+  export type KvEntryMaybe<T> = KvEntry<T> | {
     key: KvKey;
-    value: unknown;
-    versionstamp: string | null;
-  }
+    value: null;
+    versionstamp: null;
+  };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1748,6 +1758,11 @@ declare namespace Deno {
     batchSize?: number;
   }
 
+  export interface KvCommitResult {
+    /** The versionstamp of the value committed to KV. */
+    versionstamp: string;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * A check to perform as part of a {@linkcode Deno.AtomicOperation}. The check
@@ -1787,11 +1802,13 @@ declare namespace Deno {
    * performed and the operation will fail. One can then retry the read-modify-
    * write operation in a loop until it succeeds.
    *
-   * The `commit` method of an atomic operation returns a boolean indicating
+   * The `commit` method of an atomic operation returns a value indicating
    * whether checks passed and mutations were performed. If the operation failed
-   * because of a failed check, the return value will be `false`. If the
+   * because of a failed check, the return value will be `null`. If the
    * operation failed for any other reason (storage error, invalid value, etc.),
-   * an exception will be thrown.
+   * an exception will be thrown. If the operation succeeded, the return value
+   * will be a {@linkcode Deno.KvCommitResult} object containing the
+   * versionstamp of the value committed to KV.
    *
    * @category KV
    */
@@ -1821,17 +1838,19 @@ declare namespace Deno {
      */
     delete(key: KvKey): this;
     /**
-     * Commit the operation to the KV store. Returns a boolean indicating
-     * whether checks passed and mutations were performed. If the operation
-     * failed because of a failed check, the return value will be `false`. If
-     * the operation failed for any other reason (storage error, invalid value,
-     * etc.), an exception will be thrown.
+     * Commit the operation to the KV store. Returns a value indicating whether
+     * checks passed and mutations were performed. If the operation failed
+     * because of a failed check, the return value will be `null`. If the
+     * operation failed for any other reason (storage error, invalid value,
+     * etc.), an exception will be thrown. If the operation succeeded, the
+     * return value will be a {@linkcode Deno.KvCommitResult} object containing
+     * the versionstamp of the value committed to KV.
      *
-     * If the commit returns `false`, one may create a new atomic operation with
+     * If the commit returns `null`, one may create a new atomic operation with
      * updated checks and mutations and attempt to commit it again. See the note
      * on optimistic locking in the documentation for {@linkcode Deno.AtomicOperation}.
      */
-    commit(): Promise<boolean>;
+    commit(): Promise<KvCommitResult | null>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1872,8 +1891,8 @@ declare namespace Deno {
   export class Kv {
     /**
      * Retrieve the value and versionstamp for the given key from the database
-     * in the form of a {@linkcode Deno.KvEntry}. If no value exists for the key,
-     * the returned entry will have a `null` value and versionstamp.
+     * in the form of a {@linkcode Deno.KvEntryMaybe}. If no value exists for
+     * the key, the returned entry will have a `null` value and versionstamp.
      *
      * ```ts
      * const db = await Deno.openKv();
@@ -1889,17 +1908,17 @@ declare namespace Deno {
      * information on consistency levels, see the documentation for
      * {@linkcode Deno.KvConsistencyLevel}.
      */
-    get(
+    get<T = unknown>(
       key: KvKey,
       options?: { consistency?: KvConsistencyLevel },
-    ): Promise<KvEntry>;
+    ): Promise<KvEntryMaybe<T>>;
 
     /**
      * Retrieve multiple values and versionstamps from the database in the form
-     * of an array of {@linkcode Deno.KvEntry} objects. The returned array will
-     * have the same length as the `keys` array, and the entries will be in the
-     * same order as the keys. If no value exists for a given key, the returned
-     * entry will have a `null` value and versionstamp.
+     * of an array of {@linkcode Deno.KvEntryMaybe} objects. The returned array
+     * will have the same length as the `keys` array, and the entries will be in
+     * the same order as the keys. If no value exists for a given key, the
+     * returned entry will have a `null` value and versionstamp.
      *
      * ```ts
      * const db = await Deno.openKv();
@@ -1918,11 +1937,10 @@ declare namespace Deno {
      * information on consistency levels, see the documentation for
      * {@linkcode Deno.KvConsistencyLevel}.
      */
-    getMany(
-      keys: KvKey[],
+    getMany<T extends readonly unknown[]>(
+      keys: readonly [...{ [K in keyof T]: KvKey }],
       options?: { consistency?: KvConsistencyLevel },
-    ): Promise<KvEntry[]>;
-
+    ): Promise<{ [K in keyof T]: KvEntryMaybe<T[K]> }>;
     /**
      * Set the value for the given key in the database. If a value already
      * exists for the key, it will be overwritten.
@@ -1932,7 +1950,7 @@ declare namespace Deno {
      * await db.set(["foo"], "bar");
      * ```
      */
-    set(key: KvKey, value: unknown): Promise<void>;
+    set(key: KvKey, value: unknown): Promise<KvCommitResult>;
 
     /**
      * Delete the value for the given key from the database. If no value exists
@@ -1984,7 +2002,10 @@ declare namespace Deno {
      * list operation. See the documentation for {@linkcode Deno.KvListOptions}
      * for more information.
      */
-    list(selector: KvListSelector, options?: KvListOptions): KvListIterator;
+    list<T = unknown>(
+      selector: KvListSelector,
+      options?: KvListOptions,
+    ): KvListIterator<T>;
 
     /**
      * Create a new {@linkcode Deno.AtomicOperation} object which can be used to

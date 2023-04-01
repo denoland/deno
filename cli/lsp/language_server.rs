@@ -13,7 +13,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
-use log::warn;
 use serde_json::from_value;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -44,8 +43,10 @@ use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
 use super::documents::Documents;
+use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
 use super::logging::lsp_log;
+use super::logging::lsp_warn;
 use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
@@ -674,7 +675,7 @@ impl Inner {
       if let Some(ignored_options) = maybe_ignored_options {
         // TODO(@kitsonk) turn these into diagnostics that can be sent to the
         // client
-        warn!("{}", ignored_options);
+        lsp_warn!("{}", ignored_options);
       }
     }
 
@@ -1137,6 +1138,7 @@ impl Inner {
 
   fn refresh_documents_config(&mut self) {
     self.documents.update_config(
+      self.config.enabled_root_urls(),
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
       self.maybe_package_json.as_ref(),
@@ -1165,9 +1167,10 @@ impl Inner {
           LanguageId::Unknown
         });
     if language_id == LanguageId::Unknown {
-      warn!(
+      lsp_warn!(
         "Unsupported language id \"{}\" received for document \"{}\".",
-        params.text_document.language_id, params.text_document.uri
+        params.text_document.language_id,
+        params.text_document.uri
       );
     }
     let document = self.documents.open(
@@ -1208,8 +1211,12 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    if let Err(err) = self.npm_resolver.set_package_reqs(package_reqs).await {
-      warn!("Could not set npm package requirements. {:#}", err);
+    if let Err(err) = self
+      .npm_resolver
+      .set_package_reqs((*package_reqs).clone())
+      .await
+    {
+      lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
   }
 
@@ -1462,7 +1469,7 @@ impl Inner {
       Ok(None) => Some(Vec::new()),
       Err(err) => {
         // TODO(lucacasonato): handle error properly
-        warn!("Format error: {:#}", err);
+        lsp_warn!("Format error: {:#}", err);
         None
       }
     };
@@ -1947,27 +1954,23 @@ impl Inner {
     let mark = self.performance.mark("references", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
-    let req = tsc::RequestMethod::GetReferences((
-      specifier.clone(),
-      line_index.offset_tsc(params.text_document_position.position)?,
-    ));
-    let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
+    let maybe_referenced_symbols = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get references from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
+      .find_references(
+        self.snapshot(),
+        &specifier,
+        line_index.offset_tsc(params.text_document_position.position)?,
+      )
+      .await?;
 
-    if let Some(references) = maybe_references {
+    if let Some(symbols) = maybe_referenced_symbols {
       let mut results = Vec::new();
-      for reference in references {
+      for reference in symbols.iter().flat_map(|s| &s.references) {
         if !params.context.include_declaration && reference.is_definition {
           continue;
         }
         let reference_specifier =
-          resolve_url(&reference.document_span.file_name).unwrap();
+          resolve_url(&reference.entry.document_span.file_name).unwrap();
         let reference_line_index = if reference_specifier == specifier {
           line_index.clone()
         } else {
@@ -1975,8 +1978,11 @@ impl Inner {
             self.get_asset_or_document(&reference_specifier)?;
           asset_or_doc.line_index()
         };
-        results
-          .push(reference.to_location(reference_line_index, &self.url_map));
+        results.push(
+          reference
+            .entry
+            .to_location(reference_line_index, &self.url_map),
+        );
       }
 
       self.performance.measure(mark);
@@ -2845,7 +2851,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .register_capability(vec![registration])
         .await
       {
-        warn!("Client errored on capabilities.\n{:#}", err);
+        lsp_warn!("Client errored on capabilities.\n{:#}", err);
       }
     }
 
@@ -3223,7 +3229,7 @@ impl Inner {
     )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
-    let open_docs = self.documents.documents(true, true);
+    let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(Some(PrepareCacheResult {
       cli_options,
       open_docs,
@@ -3341,7 +3347,7 @@ impl Inner {
       let mut contents = String::new();
       let mut documents_specifiers = self
         .documents
-        .documents(false, false)
+        .documents(DocumentsFilter::All)
         .into_iter()
         .map(|d| d.specifier().clone())
         .collect::<Vec<_>>();

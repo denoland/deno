@@ -276,7 +276,7 @@ pub async fn upgrade(
   if permissions.readonly() {
     bail!(
       "You do not have write permission to {}",
-      output_exe_path.display()
+      current_exe_path.display()
     );
   }
   #[cfg(unix)]
@@ -287,7 +287,7 @@ pub async fn upgrade(
       "You don't have write permission to {} because it's owned by root.\n",
       "Consider updating deno through your package manager if its installed from it.\n",
       "Otherwise run `deno upgrade` as root.",
-    ), output_exe_path.display());
+    ), current_exe_path.display());
   }
 
   let client = &ps.http_client;

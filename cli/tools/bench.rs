@@ -590,6 +590,10 @@ pub async fn run_benchmarks(
 
   check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
+  if bench_options.no_run {
+    return Ok(());
+  }
+
   bench_specifiers(
     &ps,
     &permissions,
@@ -741,6 +745,10 @@ pub async fn run_benchmarks_with_watch(
           .collect::<Vec<ModuleSpecifier>>();
 
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
+
+      if bench_options.no_run {
+        return Ok(());
+      }
 
       bench_specifiers(
         &ps,

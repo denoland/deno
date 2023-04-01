@@ -17,13 +17,14 @@ path = "src/test_server.rs"
 anyhow.workspace = true
 async-stream = "0.3.3"
 atty.workspace = true
-backtrace = "0.3.67"
 base64.workspace = true
+console_static_text.workspace = true
 flate2.workspace = true
 futures.workspace = true
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
 lazy_static = "1.4.0"
 lsp-types.workspace = true
+nix.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true

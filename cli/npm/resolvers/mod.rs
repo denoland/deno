@@ -74,6 +74,10 @@ impl NpmPackageResolver {
     }
   }
 
+  pub fn root_dir_url(&self) -> &Url {
+    self.fs_resolver.root_dir_url()
+  }
+
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,

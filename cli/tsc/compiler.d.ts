@@ -75,7 +75,7 @@ declare global {
     | GetNavigationTree
     | GetOutliningSpans
     | GetQuickInfoRequest
-    | GetReferencesRequest
+    | FindReferencesRequest
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
     | GetSupportedCodeFixes
@@ -212,8 +212,8 @@ declare global {
     position: number;
   }
 
-  interface GetReferencesRequest extends BaseLanguageServerRequest {
-    method: "getReferences";
+  interface FindReferencesRequest extends BaseLanguageServerRequest {
+    method: "findReferences";
     specifier: string;
     position: number;
   }

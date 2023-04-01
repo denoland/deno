@@ -519,7 +519,7 @@ async fn op_kv_atomic_write<DBH>(
   checks: Vec<V8KvCheck>,
   mutations: Vec<V8KvMutation>,
   enqueues: Vec<V8Enqueue>,
-) -> Result<bool, AnyError>
+) -> Result<Option<String>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
@@ -585,7 +585,7 @@ where
 
   let result = db.atomic_write(atomic_write).await?;
 
-  Ok(result)
+  Ok(result.map(|res| hex::encode(res.versionstamp)))
 }
 
 // (prefix, start, end)
