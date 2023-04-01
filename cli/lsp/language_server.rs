@@ -463,7 +463,7 @@ impl Inner {
       ModuleRegistry::new(&module_registries_location, http_client.clone())
         .unwrap();
     let location = dir.deps_folder_path();
-    let documents = Documents::new(&location);
+    let documents = Documents::new(&location, client.kind());
     let deps_http_cache = HttpCache::new(&location);
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());

@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::client::LspClientKind;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -815,6 +816,8 @@ pub struct Documents {
   open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
+  /// Kind of the client that is using the documents.
+  lsp_client_kind: LspClientKind,
   /// Hash of the config used for resolution. When the hash changes we update
   /// dependencies.
   resolver_config_hash: u64,
@@ -834,13 +837,14 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: &Path, lsp_client_kind: LspClientKind) -> Self {
     Self {
       cache: HttpCache::new(location),
       dirty: true,
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
+      lsp_client_kind,
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
@@ -1248,33 +1252,50 @@ impl Documents {
 
     // update the file system documents
     let mut fs_docs = self.file_system_docs.lock();
-    let mut not_found_docs =
-      fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
-    let open_docs = &mut self.open_docs;
+    match self.lsp_client_kind {
+      LspClientKind::CodeEditor => {
+        let mut not_found_docs =
+          fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+        let open_docs = &mut self.open_docs;
 
-    for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
-      // mark this document as having been found
-      not_found_docs.remove(&specifier);
+        log::debug!("Preloading documents from root urls...");
+        for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
+          // mark this document as having been found
+          not_found_docs.remove(&specifier);
 
-      if !open_docs.contains_key(&specifier)
-        && !fs_docs.docs.contains_key(&specifier)
-      {
-        fs_docs.refresh_document(&self.cache, resolver, &specifier);
-      } else {
-        // update the existing entry to have the new resolver
-        if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+          if !open_docs.contains_key(&specifier)
+            && !fs_docs.docs.contains_key(&specifier)
+          {
+            fs_docs.refresh_document(&self.cache, resolver, &specifier);
+          } else {
+            // update the existing entry to have the new resolver
+            if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+              if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+                *doc = new_doc;
+              }
+            }
+          }
+        }
+
+        // clean up and remove any documents that weren't found
+        for uri in not_found_docs {
+          fs_docs.docs.remove(&uri);
+        }
+      }
+      LspClientKind::Repl => {
+        // This log statement is used in the tests to ensure preloading doesn't
+        // happen, which is not useful in the repl and could be very expensive
+        // if the repl is launched from a directory with a lot of descendants.
+        log::debug!("Skipping document preload for repl.");
+
+        // for the repl, just update to use the new resolver
+        for doc in fs_docs.docs.values_mut() {
           if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
             *doc = new_doc;
           }
         }
       }
     }
-
-    // clean up and remove any documents that weren't found
-    for uri in not_found_docs {
-      fs_docs.docs.remove(&uri);
-    }
-
     fs_docs.dirty = true;
   }
 
@@ -1516,6 +1537,14 @@ struct PreloadDocumentFinder {
 }
 
 impl PreloadDocumentFinder {
+  fn is_allowed_root_dir(dir_path: &Path) -> bool {
+    if dir_path.parent().is_none() {
+      // never search the root directory of a drive
+      return false;
+    }
+    true
+  }
+
   pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
     let mut finder = PreloadDocumentFinder {
       pending_dirs: Default::default(),
@@ -1525,7 +1554,9 @@ impl PreloadDocumentFinder {
     for root_url in root_urls {
       if let Ok(path) = root_url.to_file_path() {
         if path.is_dir() {
-          finder.pending_dirs.push(path);
+          if Self::is_allowed_root_dir(&path) {
+            finder.pending_dirs.push(path);
+          }
         } else {
           finder.pending_files.push(path);
         }
@@ -1655,7 +1686,7 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(&location);
+    let documents = Documents::new(&location, Default::default());
     (documents, location)
   }
 
@@ -1904,5 +1935,24 @@ console.log(b, "hello deno");
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
       ]
     );
+  }
+
+  #[test]
+  pub fn test_pre_load_document_finder_disallowed_dirs() {
+    if cfg!(windows) {
+      let paths =
+        PreloadDocumentFinder::from_root_urls(&vec![
+          Url::parse("file:///c:/").unwrap()
+        ])
+        .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    } else {
+      let paths =
+        PreloadDocumentFinder::from_root_urls(&vec![
+          Url::parse("file:///").unwrap()
+        ])
+        .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    }
   }
 }
