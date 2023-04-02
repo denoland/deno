@@ -6,6 +6,16 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.32.3 / 2023.04.01
+
+- fix(check): ensure diagnostics caused by changes in other files get
+  invalidated between runs (#18541)
+- fix(ext/ffi): crash when same reference struct is used in two fields (#18531)
+- fix(lsp): add a document preload file system entry limit (#18553)
+- fix(repl): disable language server document preloading in the repl (#18543)
+- fix(test): don't swallow sanitizer errors with permissions (#18550)
+- perf(check): faster source hashing (#18534)
+
 ### 1.32.2 / 2023.03.31
 
 - Revert "refactor(ext/node): Use Deno.inspect (#17960)" (#18491)
