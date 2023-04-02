@@ -301,53 +301,6 @@ Deno.test(
   },
 );
 
-// TODO(bartlomieju): this test seems unnecessary. Since we don't do lazy
-// loading of information, we could drop it?
-Deno.test(
-  { permissions: { net: true }, ignore: true },
-  async function httpReadHeadersAfterClose() {
-    const promise = deferred();
-    const ac = new AbortController();
-    const listeningPromise = deferred();
-
-    let req: Request;
-    const server = Deno.serve({
-      handler: async (request) => {
-        await request.text();
-        req = request;
-        promise.resolve();
-        return new Response("Hello World");
-      },
-      port: 2334,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
-
-    await listeningPromise;
-    const conn = await Deno.connect({ port: 2334 });
-    // Send GET request with a body + content-length.
-    const encoder = new TextEncoder();
-    const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
-    const writeResult = await conn.write(encoder.encode(body));
-    assertEquals(body.length, writeResult);
-    await promise;
-    conn.close();
-
-    assertThrows(
-      () => {
-        req.headers;
-      },
-      TypeError,
-      "request closed",
-    );
-
-    ac.abort();
-    await server;
-  },
-);
-
 Deno.test(
   { permissions: { net: true } },
   async function httpServerGetRequestBody() {
