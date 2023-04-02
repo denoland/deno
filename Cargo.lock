@@ -1028,8 +1028,11 @@ dependencies = [
  "deno_websocket",
  "flate2",
  "fly-accept-encoding",
+ "httparse",
  "hyper",
+ "memmem",
  "mime",
+ "once_cell",
  "percent-encoding",
  "phf",
  "pin-project",
@@ -2669,6 +2672,12 @@ checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "memmem"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a64a92489e2744ce060c349162be1c5f33c6969234104dbd99ddb5feb08b8c15"
 
 [[package]]
 name = "memoffset"
