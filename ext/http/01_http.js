@@ -654,23 +654,21 @@ async function serve(arg1, arg2) {
   }
 
   const signal = options.signal;
-
   const onError = options.onError ?? function (error) {
     console.error(error);
     return new Response("Internal Server Error", { status: 500 });
   };
-
   const onListen = options.onListen ?? function ({ port }) {
     console.log(
       `Listening on http://${hostnameForDisplay(listenOpts.hostname)}:${port}/`,
     );
   };
-
   const listenOpts = {
     hostname: options.hostname ?? "127.0.0.1",
     port: options.port ?? 9000,
     reuseport: options.reusePort ?? false,
   };
+
   if (options.cert || options.key) {
     if (!options.cert || !options.key) {
       throw new TypeError(
@@ -682,7 +680,6 @@ async function serve(arg1, arg2) {
   }
 
   let listener;
-
   if (listenOpts.cert && listenOpts.key) {
     listener = listenTls({
       hostname: listenOpts.hostname,
@@ -697,9 +694,7 @@ async function serve(arg1, arg2) {
     });
   }
 
-  const serverPromise = new Deferred();
-  const finishedPromise = serverPromise.promise;
-
+  const serverDeferred = new Deferred();
   const activeHttpConnections = new SafeSet();
 
   const server = {
@@ -707,7 +702,7 @@ async function serve(arg1, arg2) {
     hostname: listenOpts.hostname,
     port: listenOpts.port,
     closed: false,
-    finished: finishedPromise,
+
     async close() {
       if (server.closed) {
         return;
@@ -728,9 +723,9 @@ async function serve(arg1, arg2) {
       }
 
       SetPrototypeClear(activeHttpConnections);
-      serverPromise.resolve();
-      await server.finished;
+      serverDeferred.resolve();
     },
+
     async serve() {
       while (!server.closed) {
         let conn;
@@ -770,7 +765,7 @@ async function serve(arg1, arg2) {
           onError,
         );
       }
-      await server.finished;
+      await serverDeferred.promise;
     },
   };
 
@@ -782,10 +777,7 @@ async function serve(arg1, arg2) {
 
   onListen(listener.addr);
 
-  await SafePromiseAll([
-    PromisePrototypeCatch(server.serve(), console.error),
-    serverPromise,
-  ]);
+  await PromisePrototypeCatch(server.serve(), console.error);
 }
 
 export { _ws, HttpConn, serve, upgradeHttp, upgradeHttpRaw, upgradeWebSocket };
