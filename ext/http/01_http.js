@@ -18,7 +18,6 @@ import {
   fromInnerRequest,
   newInnerRequest,
   toInnerRequest,
-  toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
