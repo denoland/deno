@@ -165,11 +165,7 @@ async fn test_specifier(
       &ps,
       specifier.clone(),
       PermissionsContainer::new(permissions),
-      vec![ops::testing::deno_test::init_ops(
-        sender,
-        fail_fast_tracker,
-        filter,
-      )],
+      vec![ops::testing::deno_test::init_ops(sender)],
       Stdio {
         stdin: StdioPipe::Inherit,
         stdout,
@@ -177,7 +173,9 @@ async fn test_specifier(
       },
     )
     .await?;
-    worker.run_lsp_test_specifier(mode).await?;
+    worker
+      .run_lsp_test_specifier(mode, filter, fail_fast_tracker)
+      .await?;
   }
 
   Ok(())

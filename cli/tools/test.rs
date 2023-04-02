@@ -142,6 +142,8 @@ pub struct TestLocation {
 pub struct TestDescription {
   pub id: usize,
   pub name: String,
+  pub ignore: bool,
+  pub only: bool,
   pub origin: String,
   pub location: TestLocation,
 }
@@ -911,11 +913,7 @@ async fn test_specifier(
     ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::testing::deno_test::init_ops(
-      sender,
-      fail_fast_tracker,
-      options.filter,
-    )],
+    vec![ops::testing::deno_test::init_ops(sender)],
     Stdio {
       stdin: StdioPipe::Inherit,
       stdout,
@@ -924,7 +922,9 @@ async fn test_specifier(
   )
   .await?;
 
-  worker.run_test_specifier(mode).await
+  worker
+    .run_test_specifier(mode, options.filter, fail_fast_tracker)
+    .await
 }
 
 fn extract_files_from_regex_blocks(
@@ -1352,6 +1352,8 @@ async fn test_specifiers(
                         &tests,
                         &test_steps,
                       ),
+                      ignore: false,
+                      only: false,
                       origin: description.origin.clone(),
                       location: description.location.clone(),
                     },

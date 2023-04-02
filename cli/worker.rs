@@ -3,13 +3,13 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::serde_json::json;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
@@ -26,6 +26,11 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use indexmap::IndexSet;
+use rand::prelude::SliceRandom;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::DenoSubcommand;
 use crate::errors;
@@ -34,8 +39,17 @@ use crate::node;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools;
+use crate::tools::bench::BenchEvent;
+use crate::tools::bench::BenchPlan;
+use crate::tools::bench::BenchResult;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventSender;
+use crate::tools::test::TestFilter;
 use crate::tools::test::TestMode;
+use crate::tools::test::TestPlan;
+use crate::tools::test::TestResult;
 use crate::util::checksum;
 use crate::version;
 
@@ -44,11 +58,6 @@ pub struct CliMainWorker {
   is_main_cjs: bool,
   worker: MainWorker,
   ps: ProcState,
-
-  js_run_tests_callback: Option<v8::Global<v8::Function>>,
-  js_run_benchmarks_callback: Option<v8::Global<v8::Function>>,
-  js_enable_test_callback: Option<v8::Global<v8::Function>>,
-  js_enable_bench_callback: Option<v8::Global<v8::Function>>,
 }
 
 impl CliMainWorker {
@@ -178,9 +187,9 @@ impl CliMainWorker {
   pub async fn run_test_specifier(
     &mut self,
     mode: TestMode,
+    filter: TestFilter,
+    fail_fast_tracker: FailFastTracker,
   ) -> Result<(), AnyError> {
-    self.enable_test();
-
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
     if self.ps.options.trace_ops() {
@@ -201,7 +210,9 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_tests(&self.ps.options.shuffle_tests()).await?;
+    self
+      .run_tests(&self.ps.options.shuffle_tests(), filter, fail_fast_tracker)
+      .await?;
     loop {
       if !self
         .worker
@@ -226,9 +237,9 @@ impl CliMainWorker {
   pub async fn run_lsp_test_specifier(
     &mut self,
     mode: TestMode,
+    filter: TestFilter,
+    fail_fast_tracker: FailFastTracker,
   ) -> Result<(), AnyError> {
-    self.enable_test();
-
     self.worker.execute_script(
       located_script_name!(),
       "Deno[Deno.internal].core.enableOpCallTracing();",
@@ -240,7 +251,7 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_tests(&None).await?;
+    self.run_tests(&None, filter, fail_fast_tracker).await?;
     loop {
       if !self
         .worker
@@ -254,14 +265,15 @@ impl CliMainWorker {
     Ok(())
   }
 
-  pub async fn run_bench_specifier(&mut self) -> Result<(), AnyError> {
-    self.enable_bench();
-
+  pub async fn run_bench_specifier(
+    &mut self,
+    filter: TestFilter,
+  ) -> Result<(), AnyError> {
     // We execute the module module as a side module so that import.meta.main is not set.
     self.execute_side_module_possibly_with_npm().await?;
 
     self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_benchmarks().await?;
+    self.run_benchmarks(filter).await?;
     loop {
       if !self
         .worker
@@ -348,54 +360,125 @@ impl CliMainWorker {
   pub async fn run_tests(
     &mut self,
     shuffle: &Option<u64>,
+    filter: TestFilter,
+    fail_fast_tracker: FailFastTracker,
   ) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.worker.js_runtime.handle_scope();
-      let cb = self.js_run_tests_callback.as_ref().unwrap().open(scope);
-      let this = v8::undefined(scope).into();
-      let options =
-        serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
-      let promise = cb.call(scope, this, &[options]).unwrap();
-      v8::Global::new(scope, promise)
+    let (tests, origin, mut sender) = {
+      let state_rc = self.worker.js_runtime.op_state();
+      let mut state = state_rc.borrow_mut();
+      let tests = std::mem::take(
+        &mut state.borrow_mut::<ops::testing::TestContainer>().0,
+      );
+      let origin = state.borrow::<ModuleSpecifier>().clone();
+      let sender = state.borrow::<TestEventSender>().clone();
+      (tests, origin, sender)
     };
-    self.worker.js_runtime.resolve_value(promise).await?;
+    let unfiltered = tests.len();
+    let (only, no_only): (Vec<_>, Vec<_>) =
+      tests.into_iter().partition(|(d, _)| d.only);
+    let used_only = !only.is_empty();
+    let tests = if used_only { only } else { no_only };
+    let mut tests = tests
+      .into_iter()
+      .filter(|(d, _)| filter.includes(&d.name))
+      .collect::<Vec<_>>();
+    if let Some(seed) = shuffle {
+      tests.shuffle(&mut StdRng::seed_from_u64(*seed));
+    }
+    sender.send(TestEvent::Plan(TestPlan {
+      origin: origin.to_string(),
+      total: tests.len(),
+      filtered_out: unfiltered - tests.len(),
+      used_only,
+    }))?;
+    for (desc, function) in tests {
+      if fail_fast_tracker.should_stop() {
+        break;
+      }
+      if desc.ignore {
+        sender.send(TestEvent::Result(desc.id, TestResult::Ignored, 0))?;
+        continue;
+      }
+      sender.send(TestEvent::Wait(desc.id))?;
+      let earlier = SystemTime::now();
+      let promise = {
+        let scope = &mut self.worker.js_runtime.handle_scope();
+        let cb = function.open(scope);
+        let this = v8::undefined(scope).into();
+        let promise = cb.call(scope, this, &[]).unwrap();
+        v8::Global::new(scope, promise)
+      };
+      let result = self.worker.js_runtime.resolve_value(promise).await?;
+      let scope = &mut self.worker.js_runtime.handle_scope();
+      let result = v8::Local::new(scope, result);
+      let result = serde_v8::from_v8::<TestResult>(scope, result)?;
+      if matches!(result, TestResult::Cancelled | TestResult::Failed(_)) {
+        fail_fast_tracker.add_failure();
+      }
+      let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+      sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
+    }
     Ok(())
   }
 
   /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
   /// by calling ops which are currently only implemented in the CLI crate.
-  pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.worker.js_runtime.handle_scope();
-      let cb = self
-        .js_run_benchmarks_callback
-        .as_ref()
-        .unwrap()
-        .open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
+  pub async fn run_benchmarks(
+    &mut self,
+    filter: TestFilter,
+  ) -> Result<(), AnyError> {
+    let (benchmarks, origin, sender) = {
+      let state_rc = self.worker.js_runtime.op_state();
+      let mut state = state_rc.borrow_mut();
+      let benchmarks =
+        std::mem::take(&mut state.borrow_mut::<ops::bench::BenchContainer>().0);
+      let origin = state.borrow::<ModuleSpecifier>().clone();
+      let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
+      (benchmarks, origin, sender)
     };
-    self.worker.js_runtime.resolve_value(promise).await?;
+    let (only, no_only): (Vec<_>, Vec<_>) =
+      benchmarks.into_iter().partition(|(d, _)| d.only);
+    let used_only = !only.is_empty();
+    let benchmarks = if used_only { only } else { no_only };
+    let mut benchmarks = benchmarks
+      .into_iter()
+      .filter(|(d, _)| filter.includes(&d.name) && !d.ignore)
+      .collect::<Vec<_>>();
+    let mut groups = IndexSet::<Option<String>>::new();
+    // make sure ungrouped benchmarks are placed above grouped
+    groups.insert(None);
+    for (desc, _) in &benchmarks {
+      groups.insert(desc.group.clone());
+    }
+    benchmarks.sort_by(|(d1, _), (d2, _)| {
+      groups
+        .get_index_of(&d1.group)
+        .unwrap()
+        .partial_cmp(&groups.get_index_of(&d2.group).unwrap())
+        .unwrap()
+    });
+    sender.send(BenchEvent::Plan(BenchPlan {
+      origin: origin.to_string(),
+      total: benchmarks.len(),
+      used_only,
+      names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
+    }))?;
+    for (desc, function) in benchmarks {
+      sender.send(BenchEvent::Wait(desc.id))?;
+      let promise = {
+        let scope = &mut self.worker.js_runtime.handle_scope();
+        let cb = function.open(scope);
+        let this = v8::undefined(scope).into();
+        let promise = cb.call(scope, this, &[]).unwrap();
+        v8::Global::new(scope, promise)
+      };
+      let result = self.worker.js_runtime.resolve_value(promise).await?;
+      let scope = &mut self.worker.js_runtime.handle_scope();
+      let result = v8::Local::new(scope, result);
+      let result = serde_v8::from_v8::<BenchResult>(scope, result)?;
+      sender.send(BenchEvent::Result(desc.id, result))?;
+    }
     Ok(())
-  }
-
-  /// Enable `Deno.test()`. If this isn't called before executing user code,
-  /// `Deno.test()` calls will noop.
-  pub fn enable_test(&mut self) {
-    let scope = &mut self.worker.js_runtime.handle_scope();
-    let cb = self.js_enable_test_callback.as_ref().unwrap().open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
-  }
-
-  /// Enable `Deno.bench()`. If this isn't called before executing user code,
-  /// `Deno.bench()` calls will noop.
-  pub fn enable_bench(&mut self) {
-    let scope = &mut self.worker.js_runtime.handle_scope();
-    let cb = self.js_enable_bench_callback.as_ref().unwrap().open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
   }
 }
 
@@ -410,7 +493,6 @@ pub async fn create_main_worker(
     permissions,
     vec![],
     Default::default(),
-    false,
   )
   .await
 }
@@ -428,7 +510,6 @@ pub async fn create_main_worker_for_test_or_bench(
     permissions,
     custom_extensions,
     stdio,
-    true,
   )
   .await
 }
@@ -439,7 +520,6 @@ async fn create_main_worker_internal(
   permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::deno_io::Stdio,
-  bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
     NpmPackageReqReference::from_specifier(&main_module)
@@ -551,59 +631,17 @@ async fn create_main_worker_internal(
     stdio,
   };
 
-  let mut worker = MainWorker::bootstrap_from_options(
+  let worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
     permissions,
     options,
   );
-
-  let (
-    js_run_tests_callback,
-    js_run_benchmarks_callback,
-    js_enable_test_callback,
-    js_enable_bench_callback,
-  ) = if bench_or_test {
-    let scope = &mut worker.js_runtime.handle_scope();
-    let js_run_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
-      scope,
-      "Deno[Deno.internal].testing.runTests",
-    )
-    .unwrap();
-    let js_run_benchmarks_callback =
-      deno_core::JsRuntime::eval::<v8::Function>(
-        scope,
-        "Deno[Deno.internal].testing.runBenchmarks",
-      )
-      .unwrap();
-    let js_enable_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
-      scope,
-      "Deno[Deno.internal].testing.enableTest",
-    )
-    .unwrap();
-    let js_enable_bench_callback = deno_core::JsRuntime::eval::<v8::Function>(
-      scope,
-      "Deno[Deno.internal].testing.enableBench",
-    )
-    .unwrap();
-    (
-      Some(v8::Global::new(scope, js_run_tests_callback)),
-      Some(v8::Global::new(scope, js_run_benchmarks_callback)),
-      Some(v8::Global::new(scope, js_enable_tests_callback)),
-      Some(v8::Global::new(scope, js_enable_bench_callback)),
-    )
-  } else {
-    (None, None, None, None)
-  };
 
   Ok(CliMainWorker {
     main_module,
     is_main_cjs,
     worker,
     ps: ps.clone(),
-    js_run_tests_callback,
-    js_run_benchmarks_callback,
-    js_enable_test_callback,
-    js_enable_bench_callback,
   })
 }
 

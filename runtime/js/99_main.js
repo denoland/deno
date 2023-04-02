@@ -67,6 +67,7 @@ import {
   windowOrWorkerGlobalScope,
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
+import * as testing from "ext:cli/40_testing.js";
 
 let windowIsClosing = false;
 let globalThis_;
@@ -302,6 +303,9 @@ function runtimeStart(
 ) {
   core.setMacrotaskCallback(timers.handleTimerMacrotask);
   core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
+  if (ops.op_register_test) {
+    core.setMacrotaskCallback(testing.handleOpSanitizerDelayMacrotask);
+  }
   core.setWasmStreamingCallback(fetch.handleWasmStreaming);
   core.setReportExceptionCallback(event.reportException);
   ops.op_set_format_exception_callback(formatException);

@@ -87,6 +87,8 @@ pub struct BenchDescription {
   pub origin: String,
   pub baseline: bool,
   pub group: Option<String>,
+  pub ignore: bool,
+  pub only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -436,17 +438,16 @@ async fn bench_specifier(
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let filter = options.filter;
   let mut worker = create_main_worker_for_test_or_bench(
     &ps,
     specifier,
     PermissionsContainer::new(permissions),
-    vec![ops::bench::deno_bench::init_ops(channel, filter)],
+    vec![ops::bench::deno_bench::init_ops(channel)],
     Default::default(),
   )
   .await?;
 
-  worker.run_bench_specifier().await
+  worker.run_bench_specifier(options.filter).await
 }
 
 /// Test a collection of specifiers with test modes concurrently.
