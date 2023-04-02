@@ -31,8 +31,8 @@ import {
   _serverHandleIdleTimeout,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
-import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
-import { TlsConn } from "ext:deno_net/02_tls.js";
+import { listen, TcpConn, UnixConn } from "ext:deno_net/01_net.js";
+import { listenTls, TlsConn } from "ext:deno_net/02_tls.js";
 import {
   Deferred,
   getReadableStreamResourceBacking,
@@ -566,6 +566,66 @@ function hostnameForDisplay(hostname) {
   return hostname === "0.0.0.0" ? "localhost" : hostname;
 }
 
+async function respond(handler, requestEvent, connInfo, onError) {
+  let response;
+
+  try {
+    response = await handler(requestEvent.request, connInfo);
+
+    if (response.bodyUsed && response.body !== null) {
+      throw new TypeError("Response body already consumed.");
+    }
+  } catch (e) {
+    // Invoke `onError` handler if the request handler throws.
+    response = await onError(e);
+  }
+
+  try {
+    // Send the response.
+    await requestEvent.respondWith(response);
+  } catch {
+    // `respondWith()` can throw for various reasons, including downstream and
+    // upstream connection errors, as well as errors thrown during streaming
+    // of the response content.  In order to avoid false negatives, we ignore
+    // the error here and let `serveHttp` close the connection on the
+    // following iteration if it is in fact a downstream connection error.
+  }
+}
+
+async function serveConnection(
+  server,
+  activeHttpConnections,
+  handler,
+  httpConn,
+  connInfo,
+  onError,
+) {
+  while (!server.closed) {
+    let requestEvent = null;
+
+    try {
+      // Yield the new HTTP request on the connection.
+      requestEvent = await httpConn.nextRequest();
+    } catch {
+      // Connection has been closed.
+      break;
+    }
+
+    if (requestEvent === null) {
+      break;
+    }
+
+    respond(handler, requestEvent, connInfo, onError);
+  }
+
+  SetPrototypeDelete(activeHttpConnections, httpConn);
+  try {
+    httpConn.close();
+  } catch {
+    // Connection has already been closed.
+  }
+}
+
 async function serve(arg1, arg2) {
   let options = undefined;
   let handler = undefined;
@@ -624,16 +684,14 @@ async function serve(arg1, arg2) {
   let listener;
 
   if (listenOpts.cert && listenOpts.key) {
-    // TODO(bartlomieju): use API directly
-    listener = Deno.listenTls({
+    listener = listenTls({
       hostname: listenOpts.hostname,
       port: listenOpts.port,
       cert: listenOpts.cert,
       key: listenOpts.key,
     });
   } else {
-    // TODO(bartlomieju): use API directly
-    listener = Deno.listen({
+    listener = listen({
       hostname: listenOpts.hostname,
       port: listenOpts.port,
     });
@@ -643,64 +701,6 @@ async function serve(arg1, arg2) {
   const finishedPromise = serverPromise.promise;
 
   const activeHttpConnections = new SafeSet();
-
-  async function respond(requestEvent, connInfo) {
-    let response;
-
-    try {
-      response = await handler(requestEvent.request, connInfo);
-
-      if (response.bodyUsed && response.body !== null) {
-        throw new TypeError("Response body already consumed.");
-      }
-    } catch (e) {
-      // Invoke `onError` handler if the request handler throws.
-      response = await onError(e);
-    }
-
-    try {
-      // Send the response.
-      await requestEvent.respondWith(response);
-    } catch {
-      // `respondWith()` can throw for various reasons, including downstream and
-      // upstream connection errors, as well as errors thrown during streaming
-      // of the response content.  In order to avoid false negatives, we ignore
-      // the error here and let `serveHttp` close the connection on the
-      // following iteration if it is in fact a downstream connection error.
-    }
-  }
-
-  async function serveConnection(
-    server,
-    activeHttpConnections,
-    httpConn,
-    connInfo,
-  ) {
-    while (!server.closed) {
-      let requestEvent = null;
-
-      try {
-        // Yield the new HTTP request on the connection.
-        requestEvent = await httpConn.nextRequest();
-      } catch {
-        // Connection has been closed.
-        break;
-      }
-
-      if (requestEvent === null) {
-        break;
-      }
-
-      respond(requestEvent, connInfo);
-    }
-
-    SetPrototypeDelete(activeHttpConnections, httpConn);
-    try {
-      httpConn.close();
-    } catch {
-      // Connection has already been closed.
-    }
-  }
 
   const server = {
     transport: listenOpts.cert && listenOpts.key ? "https" : "http",
@@ -764,8 +764,10 @@ async function serve(arg1, arg2) {
         serveConnection(
           server,
           activeHttpConnections,
+          handler,
           httpConn,
           connInfo,
+          onError,
         );
       }
       await server.finished;
