@@ -1502,36 +1502,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Allows "hijacking" the connection that the request is associated with. This
-   * can be used to implement protocols that build on top of HTTP (eg.
-   * {@linkcode WebSocket}).
-   *
-   * The returned promise returns the underlying connection.
-   *
-   * ```ts
-   * let { request, respondWith } = requestEvent;
-   * let upgraded = await Deno.upgradeHttp2(request);
-   * if (request.headers.get("upgrade")) {
-   *   let key = request.headers.get("sec-websocket-key");
-   *   let response_key = calculate_accept(key);
-   *   upgraded.write(new TextEncoder().encode(
-   *     `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${response_key}\r\n\r\n`,
-   *   )).await;
-   *   for await (const chunk of iterateReader(upgraded)) {
-   *     console.log(chunk);
-   *     upgraded.write(chunk);
-   *   }
-   * }
-   * ```
-   *
-   * @category HTTP Server
-   */
-  export function upgradeHttp2(
-    request: Request,
-  ): Promise<Deno.Conn>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Allows "hijacking" the connection that the request is associated with.
    * This can be used to implement protocols that build on top of HTTP (eg.
    * {@linkcode WebSocket}).
