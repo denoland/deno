@@ -17,6 +17,8 @@ const {
   MathMin,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
 } = primordials;
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
@@ -131,7 +133,10 @@ async function readAllInner(r, options) {
     const buf = new Uint8Array(READ_PER_ITER);
     const read = await r.read(buf);
     if (typeof read == "number") {
-      ArrayPrototypePush(buffers, new Uint8Array(buf.buffer, 0, read));
+      ArrayPrototypePush(
+        buffers,
+        new Uint8Array(TypedArrayPrototypeGetBuffer(buf), 0, read),
+      );
     } else {
       break;
     }
@@ -160,7 +165,7 @@ function readAllSync(r) {
 function concatBuffers(buffers) {
   let totalLen = 0;
   for (let i = 0; i < buffers.length; ++i) {
-    totalLen += buffers[i].byteLength;
+    totalLen += TypedArrayPrototypeGetByteLength(buffers[i]);
   }
 
   const contents = new Uint8Array(totalLen);
@@ -169,7 +174,7 @@ function concatBuffers(buffers) {
   for (let i = 0; i < buffers.length; ++i) {
     const buf = buffers[i];
     TypedArrayPrototypeSet(contents, buf, n);
-    n += buf.byteLength;
+    n += TypedArrayPrototypeGetByteLength(buf);
   }
 
   return contents;
