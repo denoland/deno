@@ -978,7 +978,6 @@ Deno.test(
   },
 );
 
-// TODO(bartlomieju): debug and fix
 Deno.test(
   { permissions: { net: true }, ignore: true },
   async function httpCookieConcatenation() {
@@ -989,7 +988,7 @@ Deno.test(
     const server = Deno.serve({
       handler: async (request) => {
         assertEquals(await request.text(), "");
-        assertEquals(request.headers.get("cookie"), "foo=bar, bar=foo");
+        assertEquals(request.headers.get("cookie"), "foo=bar; bar=foo");
         promise.resolve();
         return new Response("ok");
       },
@@ -1125,6 +1124,7 @@ Deno.test(
   },
 );
 
+// NOTE(bartlomieju): we want to remove `Deno.upgradeHttpRaw` API.
 Deno.test("upgradeHttpRaw tcp", { ignore: true }, async () => {
   const promise = deferred();
   const listeningPromise = deferred();
