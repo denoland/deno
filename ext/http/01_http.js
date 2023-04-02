@@ -621,11 +621,23 @@ async function serve(arg1, arg2) {
     listenOpts.key = options.key;
   }
 
-  // TODO(bartlomieju): use API directly
-  const listener = Deno.listen({
-    hostname: listenOpts.hostname,
-    port: listenOpts.port,
-  });
+  let listener;
+
+  if (listenOpts.cert && listenOpts.key) {
+    // TODO(bartlomieju): use API directly
+    listener = Deno.listenTls({
+      hostname: listenOpts.hostname,
+      port: listenOpts.port,
+      cert: listenOpts.cert,
+      key: listenOpts.key,
+    });
+  } else {
+    // TODO(bartlomieju): use API directly
+    listener = Deno.listen({
+      hostname: listenOpts.hostname,
+      port: listenOpts.port,
+    });
+  }
 
   const serverPromise = new Deferred();
   const finishedPromise = serverPromise.promise;

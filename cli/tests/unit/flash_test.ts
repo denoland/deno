@@ -1814,9 +1814,8 @@ Deno.test(
   },
 );
 
-// TODO(bartlomieju): fix this test
 Deno.test(
-  { permissions: { read: true, net: true }, ignore: true },
+  { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const ac = new AbortController();
     const listeningPromise = deferred();
