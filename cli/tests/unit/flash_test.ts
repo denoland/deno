@@ -301,6 +301,8 @@ Deno.test(
   },
 );
 
+// TODO(bartlomieju): this test seems unnecessary. Since we don't do lazy
+// loading of information, we could drop it?
 Deno.test(
   { permissions: { net: true }, ignore: true },
   async function httpReadHeadersAfterClose() {
