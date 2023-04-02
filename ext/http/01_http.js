@@ -554,6 +554,13 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
+function hostnameForDisplay(hostname) {
+  // If the hostname is "0.0.0.0", we display "localhost" in console
+  // because browsers in Windows don't resolve "0.0.0.0".
+  // See the discussion in https://github.com/denoland/deno_std/issues/1165
+  return hostname === "0.0.0.0" ? "localhost" : hostname;
+}
+
 // TODO: remove
 let serverId = 0;
 
@@ -665,8 +672,6 @@ async function serve(arg1, arg2) {
     },
   };
 
-  return;
-
   signal?.addEventListener("abort", () => {
     clearInterval(dateInterval);
     PromisePrototypeThen(server.close(), () => {}, () => {});
@@ -674,58 +679,10 @@ async function serve(arg1, arg2) {
     once: true,
   });
 
-  function tryRespondChunked(token, chunk, shutdown) {
-    const nwritten = ops.op_try_flash_respond_chunked(
-      serverId,
-      token,
-      chunk ?? new Uint8Array(),
-      shutdown,
-    );
-    if (nwritten > 0) {
-      return core.opAsync(
-        "op_flash_respond_chunked",
-        serverId,
-        token,
-        chunk,
-        shutdown,
-        nwritten,
-      );
-    }
-  }
-
-  function respondChunked(token, chunk, shutdown) {
-    return core.opAsync(
-      "op_flash_respond_chunked",
-      serverId,
-      token,
-      chunk,
-      shutdown,
-    );
-  }
-
-  const fastOp = prepareFastCalls();
-  let nextRequestSync = () => fastOp.nextRequest();
-  let getMethodSync = (token) => fastOp.getMethod(token);
-  let respondFast = (token, response, shutdown) =>
-    fastOp.respond(token, response, shutdown);
-  if (serverId > 0) {
-    nextRequestSync = () => ops.op_flash_next_server(serverId);
-    getMethodSync = (token) => ops.op_flash_method(serverId, token);
-    respondFast = (token, response, shutdown) =>
-      ops.op_flash_respond(serverId, token, response, null, shutdown);
-  }
-
-  if (!dateInterval) {
-    date = new Date().toUTCString();
-    dateInterval = setInterval(() => {
-      date = new Date().toUTCString();
-    }, 1000);
-  }
-
   await SafePromiseAll([
     PromisePrototypeCatch(server.serve(), console.error),
     serverPromise,
   ]);
 }
 
-export { _ws, HttpConn, upgradeHttp, upgradeHttpRaw, upgradeWebSocket };
+export { _ws, HttpConn, serve, upgradeHttp, upgradeHttpRaw, upgradeWebSocket };
