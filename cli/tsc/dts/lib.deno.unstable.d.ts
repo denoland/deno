@@ -1500,11 +1500,6 @@ declare namespace Deno {
     request: Request,
   ): Promise<[Deno.Conn, Uint8Array]>;
 
-  export function upgradeHttp2(
-    request: Request,
-  ): Promise<number>;
-
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Allows "hijacking" the connection that the request is associated with.

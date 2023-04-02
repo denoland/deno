@@ -670,7 +670,7 @@ class ServerImpl extends EventEmitter {
           }
           const req = new IncomingMessageForServer(reqEvent.request);
           if (req.upgrade && this.listenerCount("upgrade") > 0) {
-            const conn = await denoHttp.upgradeHttp2(
+            const conn = await denoHttp.upgradeHttpRaw(
               reqEvent.request,
               tcpConn,
             ) as Deno.Conn;
