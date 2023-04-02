@@ -1079,69 +1079,6 @@ Deno.test(
   },
 );
 
-// NOTE(bartlomieju): we want to remove `Deno.upgradeHttpRaw` API.
-Deno.test("upgradeHttpRaw tcp", { ignore: true }, async () => {
-  const promise = deferred();
-  const listeningPromise = deferred();
-  const promise2 = deferred();
-  const ac = new AbortController();
-  const signal = ac.signal;
-  let conn: Deno.Conn;
-  let _head;
-  const handler = (req: Request) => {
-    [conn, _head] = Deno.upgradeHttpRaw(req);
-
-    (async () => {
-      await conn.write(
-        new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
-      );
-
-      promise.resolve();
-
-      const buf = new Uint8Array(1024);
-      const n = await conn.read(buf);
-
-      assert(n != null);
-      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
-
-      promise2.resolve();
-    })();
-  };
-  const server = Deno.serve({
-    // NOTE: `as any` is used to bypass type checking for the return value
-    // of the handler.
-    handler: handler as any,
-    port: 4501,
-    signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
-  });
-
-  await listeningPromise;
-  const tcpConn = await Deno.connect({ port: 4501 });
-  await tcpConn.write(
-    new TextEncoder().encode(
-      "CONNECT server.example.com:80 HTTP/1.1\r\n\r\n",
-    ),
-  );
-
-  await promise;
-
-  await tcpConn.write(
-    new TextEncoder().encode(
-      "bla bla bla\nbla bla\nbla\n",
-    ),
-  );
-
-  await promise2;
-  conn!.close();
-  tcpConn.close();
-
-  ac.abort();
-  await server;
-});
-
 // Some of these tests are ported from Hyper
 // https://github.com/hyperium/hyper/blob/889fa2d87252108eb7668b8bf034ffcc30985117/src/proto/h1/role.rs
 // https://github.com/hyperium/hyper/blob/889fa2d87252108eb7668b8bf034ffcc30985117/tests/server.rs
