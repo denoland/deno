@@ -56,9 +56,7 @@ const {
   StringPrototypeToLowerCase,
   StringPrototypeSplit,
   SafeSet,
-  SafePromiseAll,
   PromisePrototypeCatch,
-  PromisePrototypeThen,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -703,7 +701,7 @@ async function serve(arg1, arg2) {
     port: listenOpts.port,
     closed: false,
 
-    async close() {
+    close() {
       if (server.closed) {
         return;
       }
@@ -769,11 +767,17 @@ async function serve(arg1, arg2) {
     },
   };
 
-  signal?.addEventListener("abort", () => {
-    PromisePrototypeThen(server.close(), () => {}, () => {});
-  }, {
-    once: true,
-  });
+  signal?.addEventListener(
+    "abort",
+    () => {
+      try {
+        server.close();
+      } catch {
+        // Pass
+      }
+    },
+    { once: true },
+  );
 
   onListen(listener.addr);
 
