@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::client::LspClientKind;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -15,6 +16,7 @@ use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::lsp::logging::lsp_warn;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
@@ -815,6 +817,8 @@ pub struct Documents {
   open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
+  /// Kind of the client that is using the documents.
+  lsp_client_kind: LspClientKind,
   /// Hash of the config used for resolution. When the hash changes we update
   /// dependencies.
   resolver_config_hash: u64,
@@ -834,13 +838,14 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: &Path, lsp_client_kind: LspClientKind) -> Self {
     Self {
       cache: HttpCache::new(location),
       dirty: true,
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
+      lsp_client_kind,
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: CliGraphResolver::default(),
@@ -1156,7 +1161,7 @@ impl Documents {
 
   pub fn update_config(
     &mut self,
-    root_urls: Vec<Url>,
+    enabled_urls: Vec<Url>,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
@@ -1164,17 +1169,17 @@ impl Documents {
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
-      root_urls: &[Url],
+      enabled_urls: &[Url],
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
       hasher.write_hashable(&{
-        // ensure these are sorted (they should be, but this is a safeguard)
-        let mut root_urls = root_urls.to_vec();
-        root_urls.sort_unstable();
-        root_urls
+        // ensure these are sorted so the hashing is deterministic
+        let mut enabled_urls = enabled_urls.to_vec();
+        enabled_urls.sort_unstable();
+        enabled_urls
       });
       if let Some(import_map) = maybe_import_map {
         hasher.write_str(&import_map.to_json());
@@ -1191,7 +1196,7 @@ impl Documents {
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &root_urls,
+      &enabled_urls,
       maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
@@ -1231,14 +1236,14 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies(root_urls);
+      self.refresh_dependencies(enabled_urls);
       self.resolver_config_hash = new_resolver_config_hash;
     }
 
     self.dirty = true;
   }
 
-  fn refresh_dependencies(&mut self, root_urls: Vec<Url>) {
+  fn refresh_dependencies(&mut self, enabled_urls: Vec<Url>) {
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
@@ -1248,33 +1253,51 @@ impl Documents {
 
     // update the file system documents
     let mut fs_docs = self.file_system_docs.lock();
-    let mut not_found_docs =
-      fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
-    let open_docs = &mut self.open_docs;
+    match self.lsp_client_kind {
+      LspClientKind::CodeEditor => {
+        let mut not_found_docs =
+          fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+        let open_docs = &mut self.open_docs;
 
-    for specifier in PreloadDocumentFinder::from_root_urls(&root_urls) {
-      // mark this document as having been found
-      not_found_docs.remove(&specifier);
+        log::debug!("Preloading documents from enabled urls...");
+        for specifier in PreloadDocumentFinder::from_enabled_urls(&enabled_urls)
+        {
+          // mark this document as having been found
+          not_found_docs.remove(&specifier);
 
-      if !open_docs.contains_key(&specifier)
-        && !fs_docs.docs.contains_key(&specifier)
-      {
-        fs_docs.refresh_document(&self.cache, resolver, &specifier);
-      } else {
-        // update the existing entry to have the new resolver
-        if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+          if !open_docs.contains_key(&specifier)
+            && !fs_docs.docs.contains_key(&specifier)
+          {
+            fs_docs.refresh_document(&self.cache, resolver, &specifier);
+          } else {
+            // update the existing entry to have the new resolver
+            if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+              if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+                *doc = new_doc;
+              }
+            }
+          }
+        }
+
+        // clean up and remove any documents that weren't found
+        for uri in not_found_docs {
+          fs_docs.docs.remove(&uri);
+        }
+      }
+      LspClientKind::Repl => {
+        // This log statement is used in the tests to ensure preloading doesn't
+        // happen, which is not useful in the repl and could be very expensive
+        // if the repl is launched from a directory with a lot of descendants.
+        log::debug!("Skipping document preload for repl.");
+
+        // for the repl, just update to use the new resolver
+        for doc in fs_docs.docs.values_mut() {
           if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
             *doc = new_doc;
           }
         }
       }
     }
-
-    // clean up and remove any documents that weren't found
-    for uri in not_found_docs {
-      fs_docs.docs.remove(&uri);
-    }
-
     fs_docs.dirty = true;
   }
 
@@ -1507,79 +1530,67 @@ fn analyze_module(
   }
 }
 
+enum PendingEntry {
+  /// File specified as a root url.
+  SpecifiedRootFile(PathBuf),
+  /// Directory that is queued to read.
+  Dir(PathBuf),
+  /// The current directory being read.
+  ReadDir(Box<ReadDir>),
+}
+
 /// Iterator that finds documents that can be preloaded into
 /// the LSP on startup.
 struct PreloadDocumentFinder {
-  pending_dirs: Vec<PathBuf>,
-  pending_files: Vec<PathBuf>,
-  current_entries: Option<ReadDir>,
+  limit: u16,
+  entry_count: u16,
+  pending_entries: VecDeque<PendingEntry>,
 }
 
 impl PreloadDocumentFinder {
-  pub fn from_root_urls(root_urls: &Vec<Url>) -> Self {
+  pub fn from_enabled_urls(enabled_urls: &Vec<Url>) -> Self {
+    Self::from_enabled_urls_with_limit(enabled_urls, 1_000)
+  }
+
+  pub fn from_enabled_urls_with_limit(
+    enabled_urls: &Vec<Url>,
+    limit: u16,
+  ) -> Self {
+    fn is_allowed_root_dir(dir_path: &Path) -> bool {
+      if dir_path.parent().is_none() {
+        // never search the root directory of a drive
+        return false;
+      }
+      true
+    }
+
     let mut finder = PreloadDocumentFinder {
-      pending_dirs: Default::default(),
-      pending_files: Default::default(),
-      current_entries: Default::default(),
+      limit,
+      entry_count: 0,
+      pending_entries: Default::default(),
     };
-    for root_url in root_urls {
-      if let Ok(path) = root_url.to_file_path() {
+    let mut dirs = Vec::with_capacity(enabled_urls.len());
+    for enabled_url in enabled_urls {
+      if let Ok(path) = enabled_url.to_file_path() {
         if path.is_dir() {
-          finder.pending_dirs.push(path);
+          if is_allowed_root_dir(&path) {
+            dirs.push(path);
+          }
         } else {
-          finder.pending_files.push(path);
+          finder
+            .pending_entries
+            .push_back(PendingEntry::SpecifiedRootFile(path));
         }
       }
+    }
+    for dir in sort_and_remove_non_leaf_dirs(dirs) {
+      finder.pending_entries.push_back(PendingEntry::Dir(dir));
     }
     finder
   }
 
-  fn read_next_file_entry(&mut self) -> Option<ModuleSpecifier> {
-    fn is_discoverable_dir(dir_path: &Path) -> bool {
-      if let Some(dir_name) = dir_path.file_name() {
-        let dir_name = dir_name.to_string_lossy().to_lowercase();
-        !matches!(dir_name.as_str(), "node_modules" | ".git")
-      } else {
-        false
-      }
-    }
-
-    if let Some(mut entries) = self.current_entries.take() {
-      while let Some(entry) = entries.next() {
-        if let Ok(entry) = entry {
-          let path = entry.path();
-          if let Ok(file_type) = entry.file_type() {
-            if file_type.is_dir() && is_discoverable_dir(&path) {
-              self.pending_dirs.push(path);
-            } else if file_type.is_file() {
-              if let Some(specifier) = Self::get_valid_specifier(&path) {
-                // restore the next entries for next time
-                self.current_entries = Some(entries);
-                return Some(specifier);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    None
-  }
-
   fn get_valid_specifier(path: &Path) -> Option<ModuleSpecifier> {
-    fn is_discoverable_file(file_path: &Path) -> bool {
-      // Don't auto-discover minified files as they are likely to be very large
-      // and likely not to have dependencies on code outside them that would
-      // be useful in the LSP
-      if let Some(file_name) = file_path.file_name() {
-        let file_name = file_name.to_string_lossy().to_lowercase();
-        !file_name.as_str().contains(".min.")
-      } else {
-        false
-      }
-    }
-
-    fn is_discoverable_media_type(media_type: MediaType) -> bool {
+    fn is_allowed_media_type(media_type: MediaType) -> bool {
       match media_type {
         MediaType::JavaScript
         | MediaType::Jsx
@@ -1601,22 +1612,12 @@ impl PreloadDocumentFinder {
     }
 
     let media_type = MediaType::from_path(path);
-    if is_discoverable_media_type(media_type) && is_discoverable_file(path) {
+    if is_allowed_media_type(media_type) {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         return Some(specifier);
       }
     }
     None
-  }
-
-  fn queue_next_file_entries(&mut self) {
-    debug_assert!(self.current_entries.is_none());
-    while let Some(dir_path) = self.pending_dirs.pop() {
-      if let Ok(entries) = fs::read_dir(&dir_path) {
-        self.current_entries = Some(entries);
-        break;
-      }
-    }
   }
 }
 
@@ -1624,24 +1625,121 @@ impl Iterator for PreloadDocumentFinder {
   type Item = ModuleSpecifier;
 
   fn next(&mut self) -> Option<Self::Item> {
-    // drain the pending files
-    while let Some(path) = self.pending_files.pop() {
-      if let Some(specifier) = Self::get_valid_specifier(&path) {
-        return Some(specifier);
+    fn is_discoverable_dir(dir_path: &Path) -> bool {
+      if let Some(dir_name) = dir_path.file_name() {
+        let dir_name = dir_name.to_string_lossy().to_lowercase();
+        // We ignore these directories by default because there is a
+        // high likelihood they aren't relevant. Someone can opt-into
+        // them by specifying one of them as an enabled path.
+        if matches!(dir_name.as_str(), "node_modules" | ".git") {
+          return false;
+        }
+
+        // ignore cargo target directories for anyone using Deno with Rust
+        if dir_name == "target"
+          && dir_path
+            .parent()
+            .map(|p| p.join("Cargo.toml").exists())
+            .unwrap_or(false)
+        {
+          return false;
+        }
+
+        true
+      } else {
+        false
       }
     }
 
-    // then go through the current entries and directories
-    while !self.pending_dirs.is_empty() || self.current_entries.is_some() {
-      match self.read_next_file_entry() {
-        Some(entry) => return Some(entry),
-        None => {
-          self.queue_next_file_entries();
+    fn is_discoverable_file(file_path: &Path) -> bool {
+      // Don't auto-discover minified files as they are likely to be very large
+      // and likely not to have dependencies on code outside them that would
+      // be useful in the LSP
+      if let Some(file_name) = file_path.file_name() {
+        let file_name = file_name.to_string_lossy().to_lowercase();
+        !file_name.as_str().contains(".min.")
+      } else {
+        false
+      }
+    }
+
+    while let Some(entry) = self.pending_entries.pop_front() {
+      match entry {
+        PendingEntry::SpecifiedRootFile(file) => {
+          // since it was a file that was specified as a root url, only
+          // verify that it's valid
+          if let Some(specifier) = Self::get_valid_specifier(&file) {
+            return Some(specifier);
+          }
+        }
+        PendingEntry::Dir(dir_path) => {
+          if let Ok(read_dir) = fs::read_dir(&dir_path) {
+            self
+              .pending_entries
+              .push_back(PendingEntry::ReadDir(Box::new(read_dir)));
+          }
+        }
+        PendingEntry::ReadDir(mut entries) => {
+          while let Some(entry) = entries.next() {
+            self.entry_count += 1;
+
+            if self.entry_count >= self.limit {
+              lsp_warn!(
+                concat!(
+                  "Hit the language server document preload limit of {} file system entries. ",
+                  "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
+                  "partially enable a workspace."
+                ),
+                self.limit,
+              );
+              self.pending_entries.clear(); // stop searching
+              return None;
+            }
+
+            if let Ok(entry) = entry {
+              let path = entry.path();
+              if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() && is_discoverable_dir(&path) {
+                  self
+                    .pending_entries
+                    .push_back(PendingEntry::Dir(path.to_path_buf()));
+                } else if file_type.is_file() && is_discoverable_file(&path) {
+                  if let Some(specifier) = Self::get_valid_specifier(&path) {
+                    // restore the next entries for next time
+                    self
+                      .pending_entries
+                      .push_front(PendingEntry::ReadDir(entries));
+                    return Some(specifier);
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
+
     None
   }
+}
+
+/// Removes any directorys that are a descendant of another directory in the collection.
+fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
+  if dirs.is_empty() {
+    return dirs;
+  }
+
+  dirs.sort();
+  if !dirs.is_empty() {
+    for i in (0..dirs.len() - 1).rev() {
+      let prev = &dirs[i + 1];
+      if prev.starts_with(&dirs[i]) {
+        dirs.remove(i + 1);
+      }
+    }
+  }
+
+  dirs
 }
 
 #[cfg(test)]
@@ -1655,7 +1753,7 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(&location);
+    let documents = Documents::new(&location, Default::default());
     (documents, location)
   }
 
@@ -1853,6 +1951,8 @@ console.log(b, "hello deno");
     temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
 
     temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/target");
+    temp_dir.create_dir_all("root1/node_modules");
     temp_dir.create_dir_all("root1/.git");
     temp_dir.create_dir_all("root1/file.ts"); // no, directory
     temp_dir.write("root1/mod1.ts", ""); // yes
@@ -1866,26 +1966,33 @@ console.log(b, "hello deno");
     temp_dir.write("root1/other.json", ""); // no, json
     temp_dir.write("root1/other.txt", ""); // no, text file
     temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
+    temp_dir.write("root1/Cargo.toml", ""); // no
     temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
     temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
     temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
+    temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
+    temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
     temp_dir.write("root2/file1.ts", ""); // yes, provided
     temp_dir.write("root2/file2.ts", ""); // no, not provided
+    temp_dir.write("root2/main.min.ts", ""); // yes, provided
     temp_dir.write("root2/folder/main.ts", ""); // yes, provided
 
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
-    let mut urls = PreloadDocumentFinder::from_root_urls(&vec![
+    let mut urls = PreloadDocumentFinder::from_enabled_urls(&vec![
       temp_dir.uri().join("root1/").unwrap(),
       temp_dir.uri().join("root2/file1.ts").unwrap(),
+      temp_dir.uri().join("root2/main.min.ts").unwrap(),
       temp_dir.uri().join("root2/folder/").unwrap(),
     ])
     .collect::<Vec<_>>();
 
-    // order doesn't matter
+    // Ideally we would test for order here, which should be BFS, but
+    // different file systems have different directory iteration
+    // so we sort the results
     urls.sort();
 
     assert_eq!(
@@ -1902,7 +2009,64 @@ console.log(b, "hello deno");
         temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
         temp_dir.uri().join("root2/file1.ts").unwrap(),
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/main.min.ts").unwrap(),
       ]
     );
+
+    // now try iterating with a low limit
+    let urls = PreloadDocumentFinder::from_enabled_urls_with_limit(
+      &vec![temp_dir.uri()],
+      10, // entries and not results
+    )
+    .collect::<Vec<_>>();
+
+    // since different file system have different iteration
+    // order, the number here may vary, so just assert it's below
+    // a certain amount
+    assert!(urls.len() < 5, "Actual length: {}", urls.len());
+  }
+
+  #[test]
+  pub fn test_pre_load_document_finder_disallowed_dirs() {
+    if cfg!(windows) {
+      let paths = PreloadDocumentFinder::from_enabled_urls(&vec![Url::parse(
+        "file:///c:/",
+      )
+      .unwrap()])
+      .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    } else {
+      let paths =
+        PreloadDocumentFinder::from_enabled_urls(&vec![
+          Url::parse("file:///").unwrap()
+        ])
+        .collect::<Vec<_>>();
+      assert_eq!(paths, vec![]);
+    }
+  }
+
+  #[test]
+  fn test_sort_and_remove_non_leaf_dirs() {
+    fn run_test(paths: Vec<&str>, expected_output: Vec<&str>) {
+      let paths = sort_and_remove_non_leaf_dirs(
+        paths.into_iter().map(PathBuf::from).collect(),
+      );
+      let dirs: Vec<_> =
+        paths.iter().map(|dir| dir.to_string_lossy()).collect();
+      assert_eq!(dirs, expected_output);
+    }
+
+    run_test(
+      vec![
+        "/test/asdf/test/asdf/",
+        "/test/asdf/test/asdf/test.ts",
+        "/test/asdf/",
+        "/test/asdf/",
+        "/testing/456/893/",
+        "/testing/456/893/test/",
+      ],
+      vec!["/test/asdf/", "/testing/456/893/"],
+    );
+    run_test(vec![], vec![]);
   }
 }
