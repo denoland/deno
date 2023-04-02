@@ -978,7 +978,7 @@ impl EarlyUpgradeSocket {
         drop(borrow);
         Ok(
           rx.recv()
-            .map_err(|e| AnyError::from(e))
+            .map_err(AnyError::from)
             .try_or_cancel(&cancel)
             .await?,
         )
@@ -1008,7 +1008,7 @@ impl EarlyUpgradeSocket {
     let inner = &mut *borrow;
     match inner {
       EarlyUpgradeSocketInner::PreResponse(stream, upgrade, rx_tx) => {
-        if let Some((resp, extra)) = upgrade.write(&buf)? {
+        if let Some((resp, extra)) = upgrade.write(buf)? {
           let new_wr = HttpResponseWriter::Closed;
           let mut old_wr =
             RcRef::map(stream.clone(), |r| &r.wr).borrow_mut().await;
@@ -1017,14 +1017,9 @@ impl EarlyUpgradeSocket {
             _ => return Err(http_error("response headers already sent")),
           };
 
-          match response_tx.send(resp) {
-            Err(_) => {
-              stream.conn.closed().await?;
-              return Err(http_error(
-                "connection closed while sending response",
-              ));
-            }
-            _ => {}
+          if response_tx.send(resp).is_err() {
+            stream.conn.closed().await?;
+            return Err(http_error("connection closed while sending response"));
           };
 
           let mut old_rd =
@@ -1033,7 +1028,7 @@ impl EarlyUpgradeSocket {
           let upgraded = match replace(&mut *old_rd, new_rd) {
             HttpRequestReader::Headers(request) => {
               hyper::upgrade::on(request)
-                .map_err(|e| AnyError::from(e))
+                .map_err(AnyError::from)
                 .try_or_cancel(&cancel)
                 .await?
             }
@@ -1075,7 +1070,7 @@ impl EarlyUpgradeSocket {
         drop(borrow);
         tx.borrow_mut()
           .await
-          .write_all(&buf)
+          .write_all(buf)
           .try_or_cancel(&cancel)
           .await?;
       }
