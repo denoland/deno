@@ -1086,7 +1086,7 @@ impl EarlyUpgradeSocket {
 
 impl Resource for EarlyUpgradeSocket {
   fn name(&self) -> Cow<str> {
-    "earlyUpgradeSocket".into()
+    "upgradedHttpConnection".into()
   }
 
   deno_core::impl_readable_byob!();
