@@ -1070,7 +1070,7 @@ Generate html reports from lcov:
     .arg(
       Arg::new("threshold")
         .long("threshold")
-        .takes_value(true)
+        .action(ArgAction::Set)
         .require_equals(true)
         .help("UNSTABLE: Set a coverage threshold. If the lines, branches or functions coverage falls below the threshold, an error will be thrown."),
     )
@@ -2491,10 +2491,11 @@ fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
-  let threshold = match matches.value_of("threshold") {
-    Some(f) => f.parse::<u64>().unwrap(),
-    None => 0,
-  };
+  let threshold = matches
+    .remove_one::<String>("threshold")
+    .unwrap_or("0".to_string());
+  let threshold = threshold.parse::<u64>().unwrap();
+
   let lcov = matches.get_flag("lcov");
   let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
