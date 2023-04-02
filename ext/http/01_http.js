@@ -50,10 +50,15 @@ const {
   Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
+  SetPrototypeClear,
   StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
   StringPrototypeToLowerCase,
   StringPrototypeSplit,
+  SafeSet,
+  SafePromiseAll,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -561,9 +566,6 @@ function hostnameForDisplay(hostname) {
   return hostname === "0.0.0.0" ? "localhost" : hostname;
 }
 
-// TODO: remove
-let serverId = 0;
-
 async function serve(arg1, arg2) {
   let options = undefined;
   let handler = undefined;
@@ -627,10 +629,68 @@ async function serve(arg1, arg2) {
 
   const serverPromise = new Deferred();
   const finishedPromise = serverPromise.promise;
-  onListen({ hostname: listenOpts.hostname, port });
+
+  const activeHttpConnections = new SafeSet();
+
+  async function respond(requestEvent, connInfo) {
+    let response;
+
+    try {
+      response = await handler(requestEvent.request, connInfo);
+
+      if (response.bodyUsed && response.body !== null) {
+        throw new TypeError("Response body already consumed.");
+      }
+    } catch (e) {
+      // Invoke `onError` handler if the request handler throws.
+      response = await onError(e);
+    }
+
+    try {
+      // Send the response.
+      await requestEvent.respondWith(response);
+    } catch {
+      // `respondWith()` can throw for various reasons, including downstream and
+      // upstream connection errors, as well as errors thrown during streaming
+      // of the response content.  In order to avoid false negatives, we ignore
+      // the error here and let `serveHttp` close the connection on the
+      // following iteration if it is in fact a downstream connection error.
+    }
+  }
+
+  async function serveConnection(
+    server,
+    activeHttpConnections,
+    httpConn,
+    connInfo,
+  ) {
+    while (!server.closed) {
+      let requestEvent = null;
+
+      try {
+        // Yield the new HTTP request on the connection.
+        requestEvent = await httpConn.nextRequest();
+      } catch {
+        // Connection has been closed.
+        break;
+      }
+
+      if (requestEvent === null) {
+        break;
+      }
+
+      respond(requestEvent, connInfo);
+    }
+
+    SetPrototypeDelete(activeHttpConnections, httpConn);
+    try {
+      httpConn.close();
+    } catch {
+      // Connection has already been closed.
+    }
+  }
 
   const server = {
-    id: serverId++,
     transport: listenOpts.cert && listenOpts.key ? "https" : "http",
     hostname: listenOpts.hostname,
     port: listenOpts.port,
@@ -641,9 +701,22 @@ async function serve(arg1, arg2) {
         return;
       }
       server.closed = true;
+      try {
+        listener.close();
+      } catch {
+        // Might have been already closed.
+      }
 
-      // TODO: close all in-flight connections
+      for (const httpConn of new SafeSetIterator(activeHttpConnections)) {
+        try {
+          httpConn.close();
+        } catch {
+          // Might have been already closed.
+        }
+      }
 
+      SetPrototypeClear(activeHttpConnections);
+      serverPromise.resolve();
       await server.finished;
     },
     async serve() {
@@ -652,32 +725,48 @@ async function serve(arg1, arg2) {
 
         try {
           conn = await listener.accept();
-        } catch (e) {
-          // handle on error
+        } catch {
+          // Listener has been closed.
+          if (!server.closed) {
+            console.log("Listener has closed unexpectedly");
+          }
+          break;
         }
 
         let httpConn;
         try {
-          httpConn = serveHttp(conn);
-        } catch (e) {
+          const rid = ops.op_http_start(conn.rid);
+          httpConn = new HttpConn(rid, conn.remoteAddr, conn.localAddr);
+        } catch {
           // Connection has been closed;
           continue;
         }
 
-        // TODO: Track HTTP connection
+        SetPrototypeAdd(activeHttpConnections, httpConn);
 
+        const connInfo = {
+          localAddr: conn.localAddr,
+          remoteAddr: conn.remoteAddr,
+        };
         // Serve the HTTP connection
+        serveConnection(
+          server,
+          activeHttpConnections,
+          httpConn,
+          connInfo,
+        );
       }
       await server.finished;
     },
   };
 
   signal?.addEventListener("abort", () => {
-    clearInterval(dateInterval);
     PromisePrototypeThen(server.close(), () => {}, () => {});
   }, {
     once: true,
   });
+
+  onListen(listener.addr);
 
   await SafePromiseAll([
     PromisePrototypeCatch(server.serve(), console.error),
