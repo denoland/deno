@@ -20,6 +20,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
   ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -67,6 +68,7 @@ const {
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeSlice,
   Uint8Array,
   Uint16Array,
   Uint32Array,
@@ -208,7 +210,12 @@ function uponPromise(promise, onFulfilled, onRejected) {
  * @returns {boolean}
  */
 function isDetachedBuffer(O) {
-  return O.byteLength === 0 && ops.op_arraybuffer_was_detached(O);
+  // deno-lint-ignore prefer-primordials
+  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+    return false;
+  }
+  return ArrayBufferPrototypeGetByteLength(O) === 0 &&
+    ops.op_arraybuffer_was_detached(O);
 }
 
 /**
@@ -238,15 +245,46 @@ function transferArrayBuffer(O) {
 }
 
 /**
+ * @param {ArrayBufferLike} O
+ * @returns {number}
+ */
+function getArrayBufferByteLength(O) {
+  // deno-lint-ignore prefer-primordials
+  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+    // TODO(petamoriken): use primordials
+    // deno-lint-ignore prefer-primordials
+    return O.byteLength;
+  } else {
+    return ArrayBufferPrototypeGetByteLength(O);
+  }
+}
+
+/**
  * @param {ArrayBufferView} O
  * @returns {Uint8Array}
  */
 function cloneAsUint8Array(O) {
   assert(typeof O === "object");
   assert(ArrayBufferIsView(O));
-  assert(!isDetachedBuffer(O.buffer));
-  const buffer = O.buffer.slice(O.byteOffset, O.byteOffset + O.byteLength);
-  return new Uint8Array(buffer);
+  if (TypedArrayPrototypeGetSymbolToStringTag(O) !== undefined) {
+    // TypedArray
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (O)),
+        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (O)),
+        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O)),
+      ),
+    );
+  } else {
+    // DataView
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        DataViewPrototypeGetBuffer(/** @type {DataView} */ (O)),
+        DataViewPrototypeGetByteOffset(/** @type {DataView} */ (O)),
+        DataViewPrototypeGetByteLength(/** @type {DataView} */ (O)),
+      ),
+    );
+  }
 }
 
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
@@ -695,7 +733,7 @@ function readableStreamForRid(rid, autoClose = true) {
         if (controller[_readAll] === true) {
           // fast path for tee'd streams consuming body
           const chunk = await core.readAll(rid);
-          if (chunk.byteLength > 0) {
+          if (TypedArrayPrototypeGetByteLength(chunk) > 0) {
             controller.enqueue(chunk);
           }
           controller.close();
@@ -870,7 +908,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     }
 
     ArrayPrototypePush(chunks, chunk);
-    totalLength += chunk.byteLength;
+    totalLength += TypedArrayPrototypeGetByteLength(chunk);
   }
 
   const finalBuffer = new Uint8Array(totalLength);
@@ -878,7 +916,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
   for (let i = 0; i < chunks.length; ++i) {
     const chunk = chunks[i];
     TypedArrayPrototypeSet(finalBuffer, chunk, offset);
-    offset += chunk.byteLength;
+    offset += TypedArrayPrototypeGetByteLength(chunk);
   }
   return finalBuffer;
 }
@@ -1092,7 +1130,25 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     return;
   }
 
-  const { buffer, byteOffset, byteLength } = chunk;
+  let buffer, byteLength, byteOffset;
+  if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+    byteLength = DataViewPrototypeGetByteLength(
+      /** @type {DataView} */ (chunk),
+    );
+    byteOffset = DataViewPrototypeGetByteOffset(
+      /** @type {DataView} */ (chunk),
+    );
+  } else {
+    buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (chunk));
+    byteLength = TypedArrayPrototypeGetByteLength(
+      /** @type {Uint8Array} */ (chunk),
+    );
+    byteOffset = TypedArrayPrototypeGetByteOffset(
+      /** @type {Uint8Array} */ (chunk),
+    );
+  }
+
   if (isDetachedBuffer(buffer)) {
     throw new TypeError(
       "chunk's buffer is detached and so cannot be enqueued",
@@ -1101,6 +1157,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   const transferredBuffer = transferArrayBuffer(buffer);
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
+    // deno-lint-ignore prefer-primordials
     if (isDetachedBuffer(firstPendingPullInto.buffer)) {
       throw new TypeError(
         "The BYOB request's buffer has been detached and so cannot be filled with an enqueued chunk",
@@ -1108,6 +1165,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
     firstPendingPullInto.buffer = transferArrayBuffer(
+      // deno-lint-ignore prefer-primordials
       firstPendingPullInto.buffer,
     );
     if (firstPendingPullInto.readerType === "none") {
@@ -1219,7 +1277,9 @@ function readableByteStreamControllerEnqueueDetachedPullIntoToQueue(
   if (pullIntoDescriptor.bytesFilled > 0) {
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.byteOffset,
       pullIntoDescriptor.bytesFilled,
     );
@@ -1238,8 +1298,11 @@ function readableByteStreamControllerGetBYOBRequest(controller) {
   ) {
     const firstDescriptor = controller[_pendingPullIntos][0];
     const view = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
       firstDescriptor.buffer,
+      // deno-lint-ignore prefer-primordials
       firstDescriptor.byteOffset + firstDescriptor.bytesFilled,
+      // deno-lint-ignore prefer-primordials
       firstDescriptor.byteLength - firstDescriptor.bytesFilled,
     );
     const byobRequest = webidl.createBranded(ReadableStreamBYOBRequest);
@@ -1753,7 +1816,7 @@ function readableByteStreamControllerPullInto(
   /** @type {PullIntoDescriptor} */
   const pullIntoDescriptor = {
     buffer,
-    bufferByteLength: buffer.byteLength,
+    bufferByteLength: getArrayBufferByteLength(buffer),
     byteOffset,
     byteLength,
     bytesFilled: 0,
@@ -1769,7 +1832,9 @@ function readableByteStreamControllerPullInto(
   }
   if (stream[_state] === "closed") {
     const emptyView = new ctor(
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.byteOffset,
       0,
     );
@@ -1828,11 +1893,13 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
     }
     if (
       (firstDescriptor.bytesFilled + bytesWritten) >
+        // deno-lint-ignore prefer-primordials
         firstDescriptor.byteLength
     ) {
       throw new RangeError("bytesWritten out of range");
     }
   }
+  // deno-lint-ignore prefer-primordials
   firstDescriptor.buffer = transferArrayBuffer(firstDescriptor.buffer);
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
 }
@@ -1850,6 +1917,7 @@ function readableByteStreamControllerRespondInReadableState(
 ) {
   assert(
     (pullIntoDescriptor.bytesFilled + bytesWritten) <=
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.byteLength,
   );
   readableByteStreamControllerFillHeadPullIntoDescriptor(
@@ -1874,10 +1942,12 @@ function readableByteStreamControllerRespondInReadableState(
   const remainderSize = pullIntoDescriptor.bytesFilled %
     pullIntoDescriptor.elementSize;
   if (remainderSize > 0) {
+    // deno-lint-ignore prefer-primordials
     const end = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
       end - remainderSize,
       remainderSize,
@@ -1903,6 +1973,7 @@ function readableByteStreamControllerRespondInternal(
   bytesWritten,
 ) {
   const firstDescriptor = controller[_pendingPullIntos][0];
+  // deno-lint-ignore prefer-primordials
   assert(canTransferArrayBuffer(firstDescriptor.buffer));
   readableByteStreamControllerInvalidateBYOBRequest(controller);
   const state = controller[_stream][_state];
@@ -1994,47 +2065,57 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
  */
 function readableByteStreamControllerRespondWithNewView(controller, view) {
   assert(controller[_pendingPullIntos].length !== 0);
-  assert(!isDetachedBuffer(view.buffer));
+
+  let buffer, byteLength, byteOffset;
+  if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+    byteLength = DataViewPrototypeGetByteLength(/** @type {DataView} */ (view));
+    byteOffset = DataViewPrototypeGetByteOffset(/** @type {DataView} */ (view));
+  } else {
+    buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (view));
+    byteLength = TypedArrayPrototypeGetByteLength(
+      /** @type {Uint8Array} */ (view),
+    );
+    byteOffset = TypedArrayPrototypeGetByteOffset(
+      /** @type {Uint8Array} */ (view),
+    );
+  }
+  assert(!isDetachedBuffer(buffer));
   const firstDescriptor = controller[_pendingPullIntos][0];
   const state = controller[_stream][_state];
   if (state === "closed") {
-    if (view.byteLength !== 0) {
+    if (byteLength !== 0) {
       throw new TypeError(
         "The view's length must be 0 when calling respondWithNewView() on a closed stream",
       );
     }
   } else {
     assert(state === "readable");
-    if (view.byteLength === 0) {
+    if (byteLength === 0) {
       throw new TypeError(
         "The view's length must be greater than 0 when calling respondWithNewView() on a readable stream",
       );
     }
   }
-  if (
-    (firstDescriptor.byteOffset + firstDescriptor.bytesFilled) !==
-      view.byteOffset
-  ) {
+  // deno-lint-ignore prefer-primordials
+  if (firstDescriptor.byteOffset + firstDescriptor.bytesFilled !== byteOffset) {
     throw new RangeError(
       "The region specified by view does not match byobRequest",
     );
   }
-  if (firstDescriptor.bufferByteLength !== view.buffer.byteLength) {
+  if (firstDescriptor.bufferByteLength !== getArrayBufferByteLength(buffer)) {
     throw new RangeError(
       "The buffer of view has different capacity than byobRequest",
     );
   }
-  if (
-    (firstDescriptor.bytesFilled + view.byteLength) >
-      firstDescriptor.byteLength
-  ) {
+  // deno-lint-ignore prefer-primordials
+  if (firstDescriptor.bytesFilled + byteLength > firstDescriptor.byteLength) {
     throw new RangeError(
       "The region specified by view is larger than byobRequest",
     );
   }
-  const viewByteLength = view.byteLength;
-  firstDescriptor.buffer = transferArrayBuffer(view.buffer);
-  readableByteStreamControllerRespondInternal(controller, viewByteLength);
+  firstDescriptor.buffer = transferArrayBuffer(buffer);
+  readableByteStreamControllerRespondInternal(controller, byteLength);
 }
 
 /**
@@ -2060,6 +2141,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
     (pullIntoDescriptor.bytesFilled % elementSize);
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
+    // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
@@ -2076,23 +2158,29 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
     const headOfQueue = queue[0];
     const bytesToCopy = MathMin(
       totalBytesToCopyRemaining,
+      // deno-lint-ignore prefer-primordials
       headOfQueue.byteLength,
     );
+    // deno-lint-ignore prefer-primordials
     const destStart = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
 
     const destBuffer = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
       destStart,
       bytesToCopy,
     );
     const srcBuffer = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
       headOfQueue.buffer,
+      // deno-lint-ignore prefer-primordials
       headOfQueue.byteOffset,
       bytesToCopy,
     );
     destBuffer.set(srcBuffer);
 
+    // deno-lint-ignore prefer-primordials
     if (headOfQueue.byteLength === bytesToCopy) {
       ArrayPrototypeShift(queue);
     } else {
@@ -2126,11 +2214,15 @@ function readableByteStreamControllerFillReadRequestFromQueue(
 ) {
   assert(controller[_queueTotalSize] > 0);
   const entry = ArrayPrototypeShift(controller[_queue]);
+  // deno-lint-ignore prefer-primordials
   controller[_queueTotalSize] -= entry.byteLength;
   readableByteStreamControllerHandleQueueDrain(controller);
   const view = new Uint8Array(
+    // deno-lint-ignore prefer-primordials
     entry.buffer,
+    // deno-lint-ignore prefer-primordials
     entry.byteOffset,
+    // deno-lint-ignore prefer-primordials
     entry.byteLength,
   );
   readRequest.chunkSteps(view);
@@ -2164,11 +2256,14 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
 ) {
   const bytesFilled = pullIntoDescriptor.bytesFilled;
   const elementSize = pullIntoDescriptor.elementSize;
+  // deno-lint-ignore prefer-primordials
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
+  // deno-lint-ignore prefer-primordials
   const buffer = transferArrayBuffer(pullIntoDescriptor.buffer);
   return new pullIntoDescriptor.viewConstructor(
     buffer,
+    // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteOffset,
     bytesFilled / elementSize,
   );
@@ -3029,7 +3124,17 @@ function readableByteStreamTee(stream) {
           readableByteStreamControllerClose(otherBranch[_controller]);
         }
         if (chunk !== undefined) {
-          assert(chunk.byteLength === 0);
+          let byteLength;
+          if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
+            byteLength = DataViewPrototypeGetByteLength(
+              /** @type {DataView} */ (chunk),
+            );
+          } else {
+            byteLength = TypedArrayPrototypeGetByteLength(
+              /** @type {Uint8Array} */ (chunk),
+            );
+          }
+          assert(byteLength === 0);
           if (!byobCanceled) {
             readableByteStreamControllerRespondWithNewView(
               byobBranch[_controller],
@@ -4644,6 +4749,7 @@ function initializeByteLengthSizeFunction(globalObject) {
   if (WeakMapPrototypeHas(byteSizeFunctionWeakMap, globalObject)) {
     return;
   }
+  // deno-lint-ignore prefer-primordials
   const size = (chunk) => chunk.byteLength;
   WeakMapPrototypeSet(byteSizeFunctionWeakMap, globalObject, size);
 }
@@ -5098,17 +5204,29 @@ class ReadableStreamBYOBReader {
       return PromiseReject(err);
     }
 
-    if (view.byteLength === 0) {
+    let buffer, byteLength;
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (view),
+      );
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (view));
+      byteLength = TypedArrayPrototypeGetByteLength(
+        /** @type {Uint8Array} */ (view),
+      );
+    }
+    if (byteLength === 0) {
       return PromiseReject(
         new TypeError("view must have non-zero byteLength"),
       );
     }
-    if (view.buffer.byteLength === 0) {
+    if (getArrayBufferByteLength(buffer) === 0) {
       return PromiseReject(
         new TypeError("view's buffer must have non-zero byteLength"),
       );
     }
-    if (isDetachedBuffer(view.buffer)) {
+    if (isDetachedBuffer(buffer)) {
       return PromiseReject(
         new TypeError("view's buffer has been detached"),
       );
@@ -5213,13 +5331,22 @@ class ReadableStreamBYOBRequest {
     if (this[_controller] === undefined) {
       throw new TypeError("This BYOB request has been invalidated");
     }
-    if (isDetachedBuffer(this[_view].buffer)) {
+
+    let buffer, byteLength;
+    if (TypedArrayPrototypeGetSymbolToStringTag(this[_view]) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(this[_view]);
+      byteLength = DataViewPrototypeGetByteLength(this[_view]);
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(this[_view]);
+      byteLength = TypedArrayPrototypeGetByteLength(this[_view]);
+    }
+    if (isDetachedBuffer(buffer)) {
       throw new TypeError(
         "The BYOB request's buffer has been detached and so cannot be used as a response",
       );
     }
-    assert(this[_view].byteLength > 0);
-    assert(this[_view].buffer.byteLength > 0);
+    assert(byteLength > 0);
+    assert(getArrayBufferByteLength(buffer) > 0);
     readableByteStreamControllerRespond(this[_controller], bytesWritten);
   }
 
@@ -5236,7 +5363,14 @@ class ReadableStreamBYOBRequest {
     if (this[_controller] === undefined) {
       throw new TypeError("This BYOB request has been invalidated");
     }
-    if (isDetachedBuffer(view.buffer)) {
+
+    let buffer;
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(view);
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(view);
+    }
+    if (isDetachedBuffer(buffer)) {
       throw new TypeError(
         "The given view's buffer has been detached and so cannot be used as a response",
       );
@@ -5320,13 +5454,25 @@ class ReadableByteStreamController {
       prefix,
       context: arg1,
     });
-    if (chunk.byteLength === 0) {
+    let buffer, byteLength;
+    if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (chunk),
+      );
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (chunk));
+      byteLength = TypedArrayPrototypeGetByteLength(
+        /** @type {Uint8Array} */ (chunk),
+      );
+    }
+    if (byteLength === 0) {
       throw webidl.makeException(TypeError, "length must be non-zero", {
         prefix,
         context: arg1,
       });
     }
-    if (chunk.buffer.byteLength === 0) {
+    if (getArrayBufferByteLength(buffer) === 0) {
       throw webidl.makeException(
         TypeError,
         "buffer length must be non-zero",
