@@ -138,7 +138,7 @@ verify on GitHub that everything looks correct.
   Send the following commands:
 
   ```
-  git fetch upstream $BRANCH_NAME && git checkout -b $BRANCH_NAME upstream/$BRANCH_NAME
+  git fetch upstream $BRANCH_NAME && git checkout -B $BRANCH_NAME upstream/$BRANCH_NAME
   cargo build --release
   cd target/release
   DENO_VERSION=$(./deno -V)
