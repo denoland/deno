@@ -23,13 +23,13 @@ fn parse_response(
   match status {
     Status::Complete((index, parsed)) => {
       let mut resp = Response::builder().status(101).body(Body::empty())?;
-      for header in parsed.into_iter() {
+      for header in parsed.iter() {
         resp.headers_mut().append(
           HeaderName::from_bytes(header.name.as_bytes())?,
           HeaderValue::from_str(std::str::from_utf8(header.value)?)?,
         );
       }
-      Ok((index, resp.into()))
+      Ok((index, resp))
     }
     _ => Err(http_error("invalid headers")),
   }
@@ -37,8 +37,8 @@ fn parse_response(
 
 /// Find a newline in a slice.
 fn find_newline(slice: &[u8]) -> Option<usize> {
-  for i in 0..slice.len() {
-    if slice[i] == b'\n' {
+  for (i, byte) in slice.iter().enumerate() {
+    if *byte == b'\n' {
       return Some(i);
     }
   }
@@ -154,9 +154,11 @@ impl WebSocketUpgrade {
 mod tests {
   use super::*;
 
+  type ExpectedResponseAndHead = Option<(Response<Body>, &'static [u8])>;
+
   fn assert_response(
     result: Result<Option<(Response<Body>, Bytes)>, AnyError>,
-    expected: Result<Option<(Response<Body>, &'static [u8])>, &'static str>,
+    expected: Result<ExpectedResponseAndHead, &'static str>,
     chunk_info: Option<(usize, usize)>,
   ) {
     let formatted = format!("{result:?}");
@@ -196,7 +198,7 @@ mod tests {
 
   fn validate_upgrade_all_at_once(
     s: &str,
-    expected: Result<Option<(Response<Body>, &'static [u8])>, &'static str>,
+    expected: Result<ExpectedResponseAndHead, &'static str>,
   ) {
     let mut upgrade = WebSocketUpgrade::default();
     let res = upgrade.write(s.as_bytes());
@@ -207,7 +209,7 @@ mod tests {
   fn validate_upgrade_chunks(
     s: &str,
     size: usize,
-    expected: Result<Option<(Response<Body>, &'static [u8])>, &'static str>,
+    expected: Result<ExpectedResponseAndHead, &'static str>,
   ) {
     let chunk_info = Some((s.as_bytes().len(), size));
     let mut upgrade = WebSocketUpgrade::default();
@@ -224,10 +226,7 @@ mod tests {
 
   fn validate_upgrade(
     s: &str,
-    expected: fn() -> Result<
-      Option<(Response<Body>, &'static [u8])>,
-      &'static str,
-    >,
+    expected: fn() -> Result<ExpectedResponseAndHead, &'static str>,
   ) {
     validate_upgrade_all_at_once(s, expected());
     validate_upgrade_chunks(s, 1, expected());
@@ -236,7 +235,7 @@ mod tests {
 
     // Replace \n with \r\n, but only in headers
     let (headers, trailing) = s.split_once("\n\n").unwrap();
-    let s = headers.replace("\n", "\r\n") + "\r\n\r\n" + trailing;
+    let s = headers.replace('\n', "\r\n") + "\r\n\r\n" + trailing;
     let s = s.as_ref();
 
     validate_upgrade_all_at_once(s, expected());

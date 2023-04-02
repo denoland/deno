@@ -475,15 +475,10 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
-function upgradeHttp2(req) {
-  return upgradeHttp2Inner(req);
-}
-
-async function upgradeHttp2Inner(req) {
+async function upgradeHttpRaw(req, tcpConn) {
   const inner = toInnerRequest(req);
   const res = await core.opAsync("op_http_upgrade_early", inner[streamRid]);
-  // TODO(mmastrac): We're missing the remote address properties here
-  return new Deno.Conn(res, null, null);
+  return new TcpConn(res, tcpConn.remoteAddr, tcpConn.localAddr);
 }
 
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
@@ -560,4 +555,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, HttpConn, upgradeHttp, upgradeHttp2, upgradeWebSocket };
+export { _ws, HttpConn, upgradeHttp, upgradeHttpRaw, upgradeWebSocket };
