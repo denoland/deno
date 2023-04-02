@@ -130,8 +130,7 @@ fn op_register_test<'a>(
     origin: origin.clone(),
     location: info.location,
   };
-  let function: v8::Local<v8::Function> =
-    info.function.v8_value.try_into().unwrap();
+  let function: v8::Local<v8::Function> = info.function.v8_value.try_into()?;
   let function = v8::Global::new(scope, function);
   state
     .borrow_mut::<TestContainer>()

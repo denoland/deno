@@ -132,8 +132,7 @@ fn op_register_bench<'a>(
     ignore: info.ignore,
     only: info.only,
   };
-  let function: v8::Local<v8::Function> =
-    info.function.v8_value.try_into().unwrap();
+  let function: v8::Local<v8::Function> = info.function.v8_value.try_into()?;
   let function = v8::Global::new(scope, function);
   state
     .borrow_mut::<BenchContainer>()
