@@ -109,7 +109,6 @@ class HttpConn {
       throw error;
     }
     if (nextRequest == null) {
-      console.log("nextRequest is null");
       // Work-around for servers (deno_std/http in particular) that call
       // `nextRequest()` before upgrading a previous request which has a
       // `connection: upgrade` header.

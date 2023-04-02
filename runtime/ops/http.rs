@@ -138,8 +138,7 @@ async fn op_http_upgrade(
     }
   };
 
-  let upgrade = hyper::upgrade::on(request);
-  let transport = upgrade.await?;
+  let transport = hyper::upgrade::on(request).await?;
   let transport = match transport.downcast::<TcpStream>() {
     Ok(Parts {
       io: tcp_stream,

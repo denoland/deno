@@ -527,6 +527,7 @@ export class ServerResponse extends NodeWritable {
         statusText: this.statusMessage,
       }),
     ).catch(() => {
+      // TODO(bartlomieju): this error should be handled somehow
       // ignore this error
     });
   }
