@@ -265,7 +265,7 @@ impl MainWorker {
       deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
       deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node::init_ops::<PermissionsContainer>(
+      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),
       // Ops from this crate
@@ -361,13 +361,12 @@ impl MainWorker {
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
     let scope = &mut self.js_runtime.handle_scope();
-    let options_v8 =
-      deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+    let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
     bootstrap_fn
-      .call(scope, undefined.into(), &[options_v8])
+      .call(scope, undefined.into(), &[args.into()])
       .unwrap();
   }
 

@@ -313,8 +313,9 @@ function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
       size += fieldSize;
     }
     size = MathCeil(size / alignment) * alignment;
-    cache.set(type, size);
-    return [size, alignment];
+    const result = [size, alignment];
+    cache.set(type, result);
+    return result;
   }
 
   switch (type) {

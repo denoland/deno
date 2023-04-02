@@ -14,6 +14,8 @@ use deno_runtime::permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+mod cache_db;
+mod caches;
 mod check;
 mod common;
 mod deno_dir;
@@ -24,6 +26,7 @@ mod incremental;
 mod node;
 mod parsed_source;
 
+pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
 pub use deno_dir::DenoDir;

@@ -12,6 +12,7 @@ use crate::args::FilesConfig;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::cache::Caches;
 use crate::colors;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
@@ -101,9 +102,10 @@ pub async fn format(
     }
   };
   let deno_dir = &cli_options.resolve_deno_dir()?;
-  let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
+  let caches = Caches::default();
+  let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async {
     let incremental_cache = Arc::new(IncrementalCache::new(
-      &deno_dir.fmt_incremental_cache_db_file_path(),
+      caches.fmt_incremental_cache_db(deno_dir),
       &fmt_options,
       &paths,
     ));
