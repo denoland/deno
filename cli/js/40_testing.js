@@ -31,6 +31,7 @@ const {
 } = primordials;
 
 const opSanitizerDelayResolveQueue = [];
+let hasSetOpSanitizerDelayMacrotask = false;
 
 // Even if every resource is closed by the end of a test, there can be a delay
 // until the pending ops have all finished. This function returns a promise
@@ -42,6 +43,10 @@ const opSanitizerDelayResolveQueue = [];
 // before that, though, in order to give time for worker message ops to finish
 // (since timeouts of 0 don't queue tasks in the timer queue immediately).
 function opSanitizerDelay() {
+  if (!hasSetOpSanitizerDelayMacrotask) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+    hasSetOpSanitizerDelayMacrotask = true;
+  }
   return new Promise((resolve) => {
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
@@ -49,7 +54,7 @@ function opSanitizerDelay() {
   });
 }
 
-export function handleOpSanitizerDelayMacrotask() {
+function handleOpSanitizerDelayMacrotask() {
   ArrayPrototypeShift(opSanitizerDelayResolveQueue)?.();
   return opSanitizerDelayResolveQueue.length === 0;
 }
