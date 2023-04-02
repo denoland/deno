@@ -981,7 +981,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true }, ignore: true },
+  { permissions: { net: true } },
   async function httpCookieConcatenation() {
     const promise = deferred();
     const listeningPromise = deferred();
