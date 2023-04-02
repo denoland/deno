@@ -17,6 +17,7 @@ import {
   _flash,
   fromInnerRequest,
   newInnerRequest,
+  toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
@@ -61,6 +62,7 @@ const {
 } = primordials;
 
 const connErrorSymbol = Symbol("connError");
+const streamRid = Symbol("streamRid");
 const _deferred = Symbol("upgradeHttpDeferred");
 
 class HttpConn {
@@ -135,6 +137,7 @@ class HttpConn {
       body !== null ? new InnerBody(body) : null,
       false,
     );
+    innerRequest[streamRid] = streamRid;
     const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
@@ -316,7 +319,7 @@ function createRespondWith(
               break;
             }
             try {
-              await core.opAsync("op_http_write", streamRid, value);
+              await core.opAsync2("op_http_write", streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -469,6 +472,12 @@ function upgradeHttp(req) {
 
   req[_deferred] = new Deferred();
   return req[_deferred].promise;
+}
+
+async function upgradeHttpRaw(req, tcpConn) {
+  const inner = toInnerRequest(req);
+  const res = await core.opAsync("op_http_upgrade_early", inner[streamRid]);
+  return new TcpConn(res, tcpConn.remoteAddr, tcpConn.localAddr);
 }
 
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
@@ -719,4 +728,4 @@ async function serve(arg1, arg2) {
   ]);
 }
 
-export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };
+export { _ws, HttpConn, upgradeHttp, upgradeHttpRaw, upgradeWebSocket };

@@ -5,6 +5,7 @@ use test_util::assert_contains;
 use test_util::assert_ends_with;
 use test_util::assert_not_contains;
 use util::TempDir;
+use util::TestContext;
 use util::TestContextBuilder;
 
 #[test]
@@ -956,4 +957,17 @@ fn package_json_uncached_no_error() {
     console.write_line("getValue()");
     console.expect("42")
   });
+}
+
+#[test]
+fn closed_file_pre_load_does_not_occur() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["repl", "-A", "--log-level=debug"])
+    .with_pty(|console| {
+      assert_contains!(
+        console.all_output(),
+        "Skipping document preload for repl.",
+      );
+    });
 }
