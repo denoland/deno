@@ -141,9 +141,9 @@ verify on GitHub that everything looks correct.
   git fetch upstream $BRANCH_NAME && git checkout -B $BRANCH_NAME upstream/$BRANCH_NAME
   cargo build --release
   cd target/release
-  DENO_VERSION=$(./deno -V)
+  set DENO_VERSION (./deno -V)
   echo "Built $DENO_VERSION"
-  test $DENO_VERSION = "deno $VERSION" || (echo "Version didn't match!!!" && exit 1)
+  test $DENO_VERSION = "deno $VERSION"; or begin; echo "Version didn't match!!!"; exit 1; end
   zip -r deno-aarch64-apple-darwin.zip deno
   ```
 
