@@ -87,7 +87,6 @@ class Conn {
   }
 
   write(p) {
-    console.log("write", this.rid);
     return write(this.rid, p);
   }
 

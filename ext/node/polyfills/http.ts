@@ -722,41 +722,11 @@ class ServerImpl extends EventEmitter {
             break;
           }
           const req = new IncomingMessageForServer(reqEvent.request);
-          console.log(
-            "req",
-            req.upgrade,
-            this.listenerCount("upgrade"),
-          );
           if (req.upgrade && this.listenerCount("upgrade") > 0) {
             const conn = await Deno.upgradeHttp2(
               reqEvent.request,
               tcpConn,
             ) as Deno.Conn;
-            console.log(
-              "conn",
-              conn,
-              conn.rid,
-              conn.remoteAddr,
-              conn.localAddr,
-            );
-            const w = conn.write;
-            const r = conn.read;
-            conn.read = function (...args) {
-              console.log("read", args);
-              return r.apply(this, args);
-            };
-            // conn.write = function (...args) {
-            //   console.log("write for conn", args);
-            //   let written;
-            //   try {
-            //     written = w.apply(this, args);
-            //   } catch (e) {
-            //     console.log("write failed", e);
-            //     throw e;
-            //   }
-            //   console.log("w", written);
-            //   return w;
-            // };
             const socket = new Socket({
               handle: new TCP(constants.SERVER, conn),
             });
