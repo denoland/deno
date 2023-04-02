@@ -211,5 +211,5 @@ script generates the symbols based on the latest tags.
 
 ## All done!
 
-- [ ] Write a message in company's #general channel:
+- [ ] Write a message in company's #cli channel:
       `:unlock: deno and deno_std are now unlocked`.
