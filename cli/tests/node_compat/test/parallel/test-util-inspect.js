@@ -110,13 +110,11 @@ assert.strictEqual(
 );
 assert.strictEqual(util.inspect(new Date('')), (new Date('')).toString());
 assert.strictEqual(util.inspect('\n\x01'), "'\\n\\x01'");
-/* TODO(kt3k): Enable this
 assert.strictEqual(
   util.inspect(`${Array(75).fill(1)}'\n\x1d\n\x03\x85\x7f\x7e\x9f\xa0`),
   // eslint-disable-next-line no-irregular-whitespace
   `"${Array(75).fill(1)}'\\n" +\n  '\\x1D\\n' +\n  '\\x03\\x85\\x7F~\\x9F '`
 );
-*/
 assert.strictEqual(util.inspect([]), '[]');
 assert.strictEqual(util.inspect(Object.create([])), 'Array {}');
 assert.strictEqual(util.inspect([1, 2]), '[ 1, 2 ]');
@@ -137,21 +135,17 @@ assert.strictEqual(util.inspect({ 'a': {} }), '{ a: {} }');
 assert.strictEqual(util.inspect({ 'a': { 'b': 2 } }), '{ a: { b: 2 } }');
 assert.strictEqual(util.inspect({ 'a': { 'b': { 'c': { 'd': 2 } } } }),
                    '{ a: { b: { c: [Object] } } }');
-/* TODO(kt3k): Enable this
 assert.strictEqual(
   util.inspect({ 'a': { 'b': { 'c': { 'd': 2 } } } }, false, null),
   '{\n  a: { b: { c: { d: 2 } } }\n}');
-*/
 // TODO(wafuwafu13): Fix
 // assert.strictEqual(util.inspect([1, 2, 3], true), '[ 1, 2, 3, [length]: 3 ]');
-/* TODO(kt3k): Enable this
 assert.strictEqual(util.inspect({ 'a': { 'b': { 'c': 2 } } }, false, 0),
                    '{ a: [Object] }');
 assert.strictEqual(util.inspect({ 'a': { 'b': { 'c': 2 } } }, false, 1),
                    '{ a: { b: [Object] } }');
 assert.strictEqual(util.inspect({ 'a': { 'b': ['c'] } }, false, 1),
                    '{ a: { b: [Array] } }');
-*/
 // TODO(wafuwafu13): Fix
 // assert.strictEqual(util.inspect(new Uint8Array(0)), 'Uint8Array(0) []');
 // assert(inspect(new Uint8Array(0), { showHidden: true }).includes('[buffer]'));
@@ -187,12 +181,10 @@ assert.match(
   util.inspect({ a: { a: { a: { a: {} } } } }, undefined, undefined, true),
   /Object/
 );
-/* TODO(kt3k): Enable this
 assert.doesNotMatch(
   util.inspect({ a: { a: { a: { a: {} } } } }, undefined, null, true),
   /Object/
 );
-*/
 
 // TODO(wafuwafu13): Fix
 // {
@@ -368,7 +360,6 @@ assert.doesNotMatch(
 //   assert.strictEqual(inspect(brokenLength), 'Float32Array(2) [ 0n, 0n ]');
 // }
 
-/* TODO(kt3k): Enable this
 assert.strictEqual(
   util.inspect(Object.create({}, {
     visible: { value: 1, enumerable: true },
@@ -392,7 +383,6 @@ assert.strictEqual(
   })),
   "[Object: null prototype] { name: 'Tim' }"
 );
-*/
 
 // Dynamic properties.
 {
@@ -404,12 +394,10 @@ assert.strictEqual(
     util.inspect({ get readwrite() { return 1; }, set readwrite(val) {} }),
     '{ readwrite: [Getter/Setter] }');
 
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     // eslint-disable-next-line accessor-pairs
     util.inspect({ set writeonly(val) {} }),
     '{ writeonly: [Setter] }');
-  */
 
   const value = {};
   value.a = value;
@@ -419,12 +407,10 @@ assert.strictEqual(
       return null;
     }
   };
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(getterFn, { getters: true }),
     '{ one: [Getter: null] }'
   );
-  */
 }
 
 // TODO(wafuwafu13): Fix
@@ -459,12 +445,10 @@ assert.strictEqual(
   CustomArray.prototype.foo = true;
   const arr = new CustomArray(50);
   arr[49] = 'I win';
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(arr),
     "CustomArray(50) [ <49 empty items>, 'I win' ]"
   );
-  */
   // TODO(wafuwafu13): Fix
   // assert.strictEqual(
   //   util.inspect(arr, { showHidden: true }),
@@ -570,19 +554,15 @@ assert.strictEqual(
 {
   const value = /123/ig;
   value.aprop = 42;
-  /* TODO(kt3k): Enable this
   assert.strictEqual(util.inspect(value), '/123/gi { aprop: 42 }');
-  */
 }
 
 // Dates with properties.
 {
   const value = new Date('Sun, 14 Feb 2010 11:48:40 GMT');
   value.aprop = 42;
-  /* TODO(kt3k): Enable this
   assert.strictEqual(util.inspect(value),
                      '2010-02-14T11:48:40.000Z { aprop: 42 }');
-  */
 }
 
 // TODO(wafuwafu13): Implement 'vm'
@@ -621,7 +601,6 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
     "[ 'foo', <1 empty item>, 'baz', 'bar', <96 empty items>, 'qux' ]"
   );
   delete a[3];
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(a, { maxArrayLength: 4 }),
     "[ 'foo', <1 empty item>, 'baz', <97 empty items>, ... 1 more item ]"
@@ -630,7 +609,6 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
   assert.strictEqual(util.inspect(a, {
     maxArrayLength: 2
   }), "[ 'foo', <1 empty item>, ... 99 more items ]");
-  */
 }
 
 // TODO(wafuwafu13): Implement `previewEntries`
@@ -680,7 +658,6 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
       set: function() {}
     }
   });
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(getter, true),
     '[Object: null prototype] { [a]: [Getter] }'
@@ -693,7 +670,6 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
     util.inspect(getterAndSetter, true),
     '[Object: null prototype] { [c]: [Getter/Setter] }'
   );
-  */
 }
 
 // Exceptions should print the error message, not '{}'.
@@ -716,10 +692,8 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
 
   const ex = util.inspect(new Error('FAIL'), true);
   assert(ex.includes('Error: FAIL'));
-  /* TODO(kt3k): Enable this
   assert(ex.includes('[stack]'));
   assert(ex.includes('[message]'));
-  */
 }
 
 {
@@ -727,9 +701,7 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
   Error.stackTraceLimit = 0;
   const err = new Error('foo');
   const err2 = new Error('foo\nbar');
-  /* TODO(kt3k): Enable this
   assert.strictEqual(util.inspect(err, { compact: true }), '[Error: foo]');
-  */
   assert(err.stack);
   delete err.stack;
   assert(!err.stack);
@@ -809,12 +781,10 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
   }
   Object.setPrototypeOf(BadCustomError.prototype, Error.prototype);
   Object.setPrototypeOf(BadCustomError, Error);
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(new BadCustomError('foo')),
     '[BadCustomError: foo]'
   );
-  */
 }
 
 // TODO(wafuwafu13): Fix
@@ -848,9 +818,7 @@ assert.strictEqual(util.inspect(-5e-324), '-5e-324');
 // });
 
 // https://github.com/nodejs/node-v0.x-archive/issues/1941
-/* TODO(kt3k): Enable this
 assert.strictEqual(util.inspect(Object.create(Date.prototype)), 'Date {}');
-*/
 
 // https://github.com/nodejs/node-v0.x-archive/issues/1944
 {
@@ -913,7 +881,6 @@ assert.strictEqual(util.inspect(Object.create(Date.prototype)), 'Date {}');
 // }
 
 // Test util.inspect.styles and util.inspect.colors.
-/* TODO(kt3k): Enable this
 {
   function testColorStyle(style, input, implicit) {
     const colorName = util.inspect.styles[style];
@@ -939,7 +906,6 @@ assert.strictEqual(util.inspect(Object.create(Date.prototype)), 'Date {}');
   testColorStyle('date', new Date());
   testColorStyle('regexp', /regexp/);
 }
-*/
 
 // An object with "hasOwnProperty" overwritten should not throw.
 util.inspect({ hasOwnProperty: null });
@@ -953,12 +919,10 @@ util.inspect({ hasOwnProperty: null });
     util.inspect(subject, { showHidden: false }).includes('hidden'),
     false
   );
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(subject, { showHidden: true }).includes('hidden'),
     true
   );
-  */
   assert.strictEqual(
     util.inspect(subject, { colors: false }).includes('\u001b[32m'),
     false
@@ -971,7 +935,6 @@ util.inspect({ hasOwnProperty: null });
     util.inspect(subject, { depth: 2 }).includes('c: [Object]'),
     true
   );
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(subject, { depth: 0 }).includes('a: [Object]'),
     true
@@ -984,14 +947,12 @@ util.inspect({ hasOwnProperty: null });
     util.inspect(subject, { depth: undefined }).includes('{ d: 0 }'),
     true
   );
-  */
 }
 
 {
   // "customInspect" option can enable/disable calling [util.inspect.custom]().
   const subject = { [util.inspect.custom]: () => 123 };
 
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     util.inspect(subject, { customInspect: true }).includes('123'),
     true
@@ -1004,7 +965,6 @@ util.inspect({ hasOwnProperty: null });
     util.inspect(subject, { customInspect: false }).includes('123'),
     false
   );
-  */
   // TODO(wafuwafu13): Fix
   // assert.strictEqual(
   //   util.inspect(subject, { customInspect: false }).includes('inspect'),
@@ -1014,7 +974,6 @@ util.inspect({ hasOwnProperty: null });
   // A custom [util.inspect.custom]() should be able to return other Objects.
   subject[util.inspect.custom] = () => ({ foo: 'bar' });
 
-  /* TODO(kt3k): Enable this
   assert.strictEqual(util.inspect(subject), "{ foo: 'bar' }");
 
   subject[util.inspect.custom] = common.mustCall((depth, opts) => {
@@ -1038,7 +997,6 @@ util.inspect({ hasOwnProperty: null });
   });
 
   util.inspect(subject);
-  */
 
   // util.inspect.custom is a shared symbol which can be accessed as
   // Symbol.for("nodejs.util.inspect.custom").
@@ -1046,9 +1004,7 @@ util.inspect({ hasOwnProperty: null });
 
   subject[inspect] = () => ({ baz: 'quux' });
 
-  /* TODO(kt3k): Enable this
   assert.strictEqual(util.inspect(subject), '{ baz: \'quux\' }');
-  */
 
   subject[inspect] = (depth, opts) => {
     assert.strictEqual(opts.customInspectOptions, true);
@@ -1059,7 +1015,6 @@ util.inspect({ hasOwnProperty: null });
   util.inspect(subject, { customInspectOptions: true, seen: null });
 }
 
-/* TODO(kt3k): Enable this
 {
   const subject = { [util.inspect.custom]: common.mustCall((depth, opts) => {
     assert.strictEqual(depth, null);
@@ -1067,7 +1022,6 @@ util.inspect({ hasOwnProperty: null });
   }) };
   util.inspect(subject, { depth: null, compact: true });
 }
-*/
 
 // TODO(wafuwafu13): Fix
 // {
@@ -1081,12 +1035,10 @@ util.inspect({ hasOwnProperty: null });
 // }
 
 // Verify that it's possible to use the stylize function to manipulate input.
-/* TODO(kt3k): Enable this
 assert.strictEqual(
   util.inspect([1, 2, 3], { stylize() { return 'x'; } }),
   '[ x, x, x ]'
 );
-*/
 
 // Using `util.inspect` with "colors" option should produce as many lines as
 // without it.
@@ -1114,13 +1066,11 @@ assert.strictEqual(
 }
 
 // Test boxed primitives output the correct values.
-/* TODO(kt3k): Enable this
 assert.strictEqual(util.inspect(new String('test')), "[String: 'test']");
 assert.strictEqual(
   util.inspect(new String('test'), { colors: true }),
   "\u001b[32m[String: 'test']\u001b[39m"
 );
-*/
 assert.strictEqual(
   util.inspect(Object(Symbol('test'))),
   '[Symbol: Symbol(test)]'
@@ -1146,7 +1096,6 @@ assert.strictEqual(util.inspect(new Number(-1.1)), '[Number: -1.1]');
 assert.strictEqual(util.inspect(new Number(13.37)), '[Number: 13.37]');
 
 // Test boxed primitives with own properties.
-/* TODO(kt3k): Enable this
 {
   const str = new String('baz');
   str.foo = 'bar';
@@ -1275,7 +1224,6 @@ if (typeof Symbol !== 'undefined') {
     '}'
   );
 }
-*/
 
 // TODO(wafuwafu13): Fix
 // // Test Promise.
@@ -1357,7 +1305,6 @@ if (typeof Symbol !== 'undefined') {
 
 // Minimal inspection should still return as much information as possible about
 // the constructor and Symbol.toStringTag.
-/* TODO(kt3k): Enable this
 {
   class Foo {
     get [Symbol.toStringTag]() {
@@ -1502,19 +1449,16 @@ if (typeof Symbol !== 'undefined') {
   });
   assert.strictEqual(util.inspect(x), '{ constructor: [Getter] }');
 }
-*/
 
 {
   const x = new function() {}; // eslint-disable-line new-parens
   assert.strictEqual(util.inspect(x), '{}');
 }
 
-/* TODO(kt3k): Enable this
 {
   const x = Object.create(null);
   assert.strictEqual(util.inspect(x), '[Object: null prototype] {}');
 }
-*/
 
 // TODO(wafuwafu13): Fix
 // {
@@ -1539,7 +1483,6 @@ if (typeof Symbol !== 'undefined') {
 //                      '[ ... 101 more items ]');
 // }
 
-/* TODO(kt3k): Enable this
 {
   const x = Array(101);
   assert.strictEqual(util.inspect(x, { maxArrayLength: 0 }),
@@ -1633,7 +1576,6 @@ if (typeof Symbol !== 'undefined') {
   }
   );
 }
-*/
 
 util.inspect(process);
 
@@ -1647,7 +1589,6 @@ util.inspect(process);
 //   );
 // }
 
-/* TODO(kt3k): Enable this
 {
   // @@toStringTag
   const obj = { [Symbol.toStringTag]: 'a' };
@@ -1822,7 +1763,6 @@ util.inspect(process);
   expect = "{\n  a: '12 45 78 01 34 67 90 23'\n}";
   assert.strictEqual(out, expect);
 }
-*/
 
 // TODO(wafuwafu13): Fix
 // // Check compact indentation.
@@ -2022,7 +1962,6 @@ util.inspect(process);
 //   assert(obj && arr);
 // }
 
-/* TODO(kt3k): Enable this
 { // Test argument objects.
   const args = (function() { return arguments; })('a');
   assert.strictEqual(util.inspect(args), "[Arguments] { '0': 'a' }");
@@ -2047,15 +1986,12 @@ util.inspect(process);
   // assert(longList.includes('[Object: Inspection interrupted ' +
   //   'prematurely. Maximum call stack size exceeded.]'));
 }
-*/
 
 // Do not escape single quotes if no double quote or backtick is present.
 assert.strictEqual(util.inspect("'"), '"\'"');
 assert.strictEqual(util.inspect('"\''), '`"\'`');
 // eslint-disable-next-line no-template-curly-in-string
-/* TODO(kt3k): Enable this
 assert.strictEqual(util.inspect('"\'${a}'), "'\"\\'${a}'");
-*/
 
 // TODO(wafuwafu13): Fix
 // // Errors should visualize as much information as possible.
@@ -2179,7 +2115,6 @@ assert.strictEqual(util.inspect('"\'${a}'), "'\"\\'${a}'");
 // });
 
 // "class" properties should not be detected as "class".
-/* TODO(kt3k): Enable this
 {
   // eslint-disable-next-line space-before-function-paren
   let obj = { class () {} };
@@ -2210,7 +2145,6 @@ assert.strictEqual(util.inspect('"\'${a}'), "'\"\\'${a}'");
     '[Function: class Foo {}]'
   );
 }
-*/
 
 // TODO(wafuwafu13): Fix
 // // Verify that throwing in valueOf and toString still produces nice results.
@@ -2344,7 +2278,6 @@ assert.strictEqual(inspect(Object(13n)), '[BigInt: 13n]');
 //   inspect(new BigUint64Array([0n])), 'BigUint64Array(1) [ 0n ]');
 
 // Verify non-enumerable keys get escaped.
-/* TODO(kt3k): Enable this
 {
   const obj = {};
   Object.defineProperty(obj, 'Non\nenumerable\tkey', { value: true });
@@ -2415,7 +2348,6 @@ assert.strictEqual(inspect(Object(13n)), '[BigInt: 13n]');
   assert.strictEqual(inspect('foobar', { colors: true }), "'foobar'");
   inspect.styles.string = stringStyle;
 }
-*/
 
 assert.strictEqual(
   inspect([1, 3, 2], { sorted: true }),
@@ -2425,7 +2357,6 @@ assert.strictEqual(
   inspect({ c: 3, a: 1, b: 2 }, { sorted: true }),
   '{ a: 1, b: 2, c: 3 }'
 );
-/* TODO(kt3k): Enable this
 assert.strictEqual(
   inspect(
     { a200: 4, a100: 1, a102: 3, a101: 2 },
@@ -2433,7 +2364,6 @@ assert.strictEqual(
   ),
   '{ a200: 4, a102: 3, a101: 2, a100: 1 }'
 );
-*/
 
 // TODO(wafuwafu13): Fix
 // // Non-indices array properties are sorted as well.
@@ -2535,8 +2465,8 @@ assert.strictEqual(
 //   );
 // }
 
+// TODO(wafuwafu13): Fix
 // Check the getter option.
-/* TODO(kt3k): Enable this
 {
   let foo = 1;
   const get = { get foo() { return foo; } };
@@ -2568,7 +2498,6 @@ assert.strictEqual(
   //   '{\n  foo: [Getter/Setter] Set(3) { [ [Object], 2, {} ], ' +
   //     "'foobar', { x: 1 } },\n  inc: [Getter: NaN]\n}");
 }
-*/
 
 // Check compact number mode.
 {
@@ -2981,12 +2910,10 @@ assert.strictEqual(
 
   const bar = new Bar();
 
-  /* TODO(kt3k): Enable this
   assert.strictEqual(
     inspect(bar),
     'Bar(0) [Map] { prop: true, prop2: true, abc: true }'
   );
-  */
   // TODO(wafuwafu13): Fix
   // assert.strictEqual(
   //   inspect(bar, { showHidden: true, getters: true, colors: false }),
@@ -3050,7 +2977,6 @@ assert.strictEqual(
 
 // Check that prototypes with a null prototype are inspectable.
 // Regression test for https://github.com/nodejs/node/issues/35730
-/* TODO(kt3k): Enable this
 {
   function Func() {}
   Func.prototype = null;
@@ -3059,7 +2985,6 @@ assert.strictEqual(
 
   assert.strictEqual(util.inspect(object), '{ constructor: [Function: Func] }');
 }
-*/
 
 // Test changing util.inspect.colors colors and aliases.
 {
@@ -3096,7 +3021,6 @@ assert.strictEqual(
 // }
 
 // Truncate output for Primitives with 1 character left
-/* TODO(kt3k): Enable this
 {
   assert.strictEqual(util.inspect('bl', { maxStringLength: 1 }),
                      "'b'... 1 more character");
@@ -3111,7 +3035,6 @@ assert.strictEqual(
   );
   assert.match(util.inspect(x, { maxStringLength: null }), /a'$/);
 }
-*/
 
 // TODO(wafuwafu13): Implement 'vm'
 // {
@@ -3197,7 +3120,6 @@ assert.strictEqual(
 //   assert(fullObjectGraph(global).has(Function.prototype));
 // }
 
-/* TODO(kt3k): Enable this
 {
   // Confirm that own constructor value displays correctly.
 
@@ -3217,7 +3139,6 @@ assert.strictEqual(
       '}'
   );
 }
-*/
 
 // TODO(wafuwafu13): Fix TypeError: main.hasOwnProperty is not a function
 // {
@@ -3271,11 +3192,9 @@ assert.strictEqual(
   );
 }
 
-/* TODO(kt3k): Enable this
 {
   assert.strictEqual(
     util.inspect({ ['__proto__']: { a: 1 } }),
     "{ ['__proto__']: { a: 1 } }"
   );
 }
-*/

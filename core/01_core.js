@@ -191,12 +191,24 @@
     return res;
   }
 
-  function rollPromiseId() {
-    return nextPromiseId++;
+  function opAsync2(name, arg0, arg1) {
+    const id = nextPromiseId++;
+    let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+    try {
+      ops[name](id, arg0, arg1);
+    } catch (err) {
+      // Cleanup the just-created promise
+      getPromise(id);
+      // Rethrow the error
+      throw err;
+    }
+    promise = handleOpCallTracing(name, id, promise);
+    promise[promiseIdSymbol] = id;
+    return promise;
   }
 
   function opAsync(name, ...args) {
-    const id = rollPromiseId();
+    const id = nextPromiseId++;
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
     try {
       ops[name](id, ...new SafeArrayIterator(args));
@@ -376,6 +388,7 @@
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
+    opAsync2,
     resources,
     metrics,
     registerErrorBuilder,
