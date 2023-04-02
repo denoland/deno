@@ -20,6 +20,8 @@ import { chunkExpression as RE_TE_CHUNKED } from "ext:deno_node/_http_common.ts"
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import * as flash from "ext:deno_flash/01_http.js";
+import * as denoHttp from "ext:deno_http/01_http.js";
+import * as httpRuntime from "ext:runtime/40_http.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -723,7 +725,7 @@ class ServerImpl extends EventEmitter {
           }
           const req = new IncomingMessageForServer(reqEvent.request);
           if (req.upgrade && this.listenerCount("upgrade") > 0) {
-            const conn = await Deno.upgradeHttp2(
+            const conn = await denoHttp.upgradeHttp2(
               reqEvent.request,
               tcpConn,
             ) as Deno.Conn;
@@ -750,7 +752,7 @@ class ServerImpl extends EventEmitter {
       for await (const conn of listener) {
         let httpConn: Deno.HttpConn;
         try {
-          httpConn = Deno.serveHttp(conn);
+          httpConn = httpRuntime.serveHttp(conn);
         } catch {
           continue; /// Connection closed.
         }
