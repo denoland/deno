@@ -129,8 +129,7 @@ verify on GitHub that everything looks correct.
       GitHub draft release.
 
   The CI pipeline will create a release draft on GitHub
-  (https://github.com/denoland/deno/releases). Update the draft with the
-  contents of `Releases.md` that you previously added.
+  (https://github.com/denoland/deno/releases).
 
 - [ ] Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release
       draft and to https://console.cloud.google.com/storage/browser/dl.deno.land
