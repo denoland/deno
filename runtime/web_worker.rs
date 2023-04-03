@@ -440,7 +440,6 @@ impl WebWorker {
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),

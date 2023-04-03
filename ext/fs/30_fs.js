@@ -137,7 +137,10 @@ function readDir(path) {
   );
   return {
     async *[SymbolAsyncIterator]() {
-      yield* await array;
+      const dir = await array;
+      for (let i = 0; i < dir.length; ++i) {
+        yield dir[i];
+      }
     },
   };
 }
