@@ -209,7 +209,7 @@ macro_rules! include_fast_string {
   };
 }
 
-/// Include a fast string in the binary from a string literal. This string is asserted at compile-time to be 
+/// Include a fast string in the binary from a string literal. This string is asserted at compile-time to be
 /// 7-bit ASCII for optimal v8 performance.
 #[macro_export]
 macro_rules! fast {
