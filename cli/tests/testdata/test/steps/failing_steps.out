@@ -14,7 +14,7 @@ failing step in failing test ...
   step 1 ... FAILED ([WILDCARD])
 failing step in failing test ... FAILED ([WILDCARD])
 
- ERRORS
+ ERRORS 
 
 nested failure ... step 1 ... inner 1 => ./test/steps/failing_steps.ts:[WILDCARD]
 error: Error: Failed.
@@ -46,7 +46,7 @@ error: Error: Fail test.
         ^
     at [WILDCARD]/failing_steps.ts:[WILDCARD]
 
- FAILURES
+ FAILURES 
 
 nested failure ... step 1 ... inner 1 => ./test/steps/failing_steps.ts:[WILDCARD]
 multiple test step failures ... step 1 => ./test/steps/failing_steps.ts:[WILDCARD]

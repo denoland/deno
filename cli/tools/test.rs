@@ -650,7 +650,7 @@ impl PrettyTestReporter {
           failures_by_origin.entry(origin.clone()).or_default();
         let _ = uncaught_error.insert(js_error.as_ref());
       }
-      println!("\n{}\n", colors::white_bold_on_red(" ERRORS"));
+      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
         for (description, failure) in failures {
           if !failure.hide_in_summary() {
@@ -678,7 +678,7 @@ impl PrettyTestReporter {
           failure_titles.push(failure_title);
         }
       }
-      println!("{}\n", colors::white_bold_on_red(" FAILURES"));
+      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
       for failure_title in failure_titles {
         println!("{failure_title}");
       }

@@ -1,6 +1,6 @@
 Uncaught error from ./test/no_check.ts FAILED
 
- ERRORS
+ ERRORS 
 
 ./test/no_check.ts (uncaught error)
 error: TypeError: Cannot read properties of undefined (reading 'fn')
@@ -10,7 +10,7 @@ Deno.test();
 This error was not caught from a test and caused the test runner to fail on the referenced module.
 It most likely originated from a dangling promise, event/timeout handler or top-level code.
 
- FAILURES
+ FAILURES 
 
 ./test/no_check.ts (uncaught error)
 
