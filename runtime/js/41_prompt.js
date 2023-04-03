@@ -1,79 +1,136 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const core = globalThis.Deno.core;
+const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 import { isatty } from "ext:runtime/40_tty.js";
 import { stdin } from "ext:deno_io/12_io.js";
-const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
-  primordials;
-const LF = StringPrototypeCharCodeAt("\n", 0);
-const CR = StringPrototypeCharCodeAt("\r", 0);
+import { bold, cyan, italic, yellow } from "ext:deno_console/01_colors.js";
+const {
+  Map,
+  Uint8Array,
+  StringPrototypeReplace,
+  ArrayPrototypeMap,
+  ArrayPrototypeJoin,
+  StringFromCodePoint,
+} = primordials;
+
+const LINE_UP = "\x1b[1A";
+const LINE_CLEAR = "\x1b[2K";
+const HIDE_CURSOR = "\x1b[?25l";
+const SHOW_CURSOR = "\x1b[?25h";
+const UP_ARROW = "\x1b[A";
+const DOWN_ARROW = "\x1b[B";
+const ESC = "\x1b";
+const CTRL_C = "\x03";
+const CTRL_D = "\x04";
+const CR = "\r";
+const LF = "\n";
+const CRLF = "\r\n";
+const NUL = "\0";
 
 function alert(message = "Alert") {
-  if (!isatty(stdin.rid)) {
-    return;
+  if (!isatty(stdin.rid)) return;
+
+  core.print(
+    `${yellow(bold(message))} [${italic("Press any key to continue")}] `,
+  );
+
+  try {
+    stdin.setRaw(true);
+    stdin.readSync(new Uint8Array(4));
+  } finally {
+    stdin.setRaw(false);
   }
 
-  core.print(`${message} [Enter] `, false);
+  core.print(LF);
+}
 
-  readLineFromStdinSync();
+function prompt(message = "Prompt", defaultValue = "") {
+  if (!isatty(stdin.rid)) return null;
+
+  return ops.op_read_line_prompt(
+    `${yellow(bold(message))} `,
+    `${defaultValue}`,
+  );
 }
 
 function confirm(message = "Confirm") {
-  if (!isatty(stdin.rid)) {
-    return false;
-  }
+  if (!isatty(stdin.rid)) return false;
 
-  core.print(`${message} [y/N] `, false);
+  const options = [{ val: true, desc: "OK" }, { val: false, desc: "Cancel" }];
+  const inputMap = new Map([
+    ["y", true],
+    ["n", false],
+    ["Y", true],
+    ["N", false],
+    [ESC, false],
+    [CTRL_C, false],
+    [CTRL_D, false],
+    [NUL, false],
+  ]);
 
-  const answer = readLineFromStdinSync();
-
-  return answer === "Y" || answer === "y";
+  core.print(`${yellow(bold(message))}\n`);
+  return select(options, inputMap);
 }
 
-function prompt(message = "Prompt", defaultValue) {
-  defaultValue ??= null;
-
-  if (!isatty(stdin.rid)) {
-    return null;
+function select(options, inputMap, selectedIdx = 0) {
+  let val = options.at(-1).val;
+  try {
+    core.print(HIDE_CURSOR);
+    stdin.setRaw(true);
+    val = _select(options, inputMap, selectedIdx);
+  } finally {
+    core.print(SHOW_CURSOR);
+    stdin.setRaw(false);
   }
 
-  if (defaultValue) {
-    message += ` [${defaultValue}]`;
-  }
-
-  message += " ";
-
-  // output in one shot to make the tests more reliable
-  core.print(message, false);
-
-  return readLineFromStdinSync() || defaultValue;
+  core.print(LF);
+  return val;
 }
 
-function readLineFromStdinSync() {
-  const c = new Uint8Array(1);
-  const buf = [];
+function _select(options, inputMap, selectedIdx = 0) {
+  core.print(fmtOptions(options, selectedIdx));
 
   while (true) {
-    const n = stdin.readSync(c);
-    if (n === null || n === 0) {
-      break;
-    }
-    if (c[0] === CR) {
-      const n = stdin.readSync(c);
-      if (c[0] === LF) {
+    const b = new Uint8Array(4);
+    stdin.readSync(b);
+    const byteString = StringPrototypeReplace(
+      StringFromCodePoint(b[0], b[1], b[2], b[3]),
+      /\0+$/,
+      "",
+    ) || "\0";
+
+    if (inputMap.has(byteString)) return inputMap.get(byteString);
+
+    switch (byteString) {
+      case UP_ARROW:
+        selectedIdx = (options.length + selectedIdx - 1) % options.length;
         break;
-      }
-      ArrayPrototypePush(buf, CR);
-      if (n === null || n === 0) {
+      case DOWN_ARROW:
+        selectedIdx = (options.length + selectedIdx + 1) % options.length;
         break;
-      }
+      case CR:
+      case LF:
+      case CRLF:
+        return options[selectedIdx].val;
     }
-    if (c[0] === LF) {
-      break;
-    }
-    ArrayPrototypePush(buf, c[0]);
+
+    core.print(
+      `${new Array(options.length).fill(LINE_CLEAR).join(LINE_UP)}${CR}${
+        fmtOptions(options, selectedIdx)
+      }`,
+    );
   }
-  return core.decode(new Uint8Array(buf));
+}
+
+function fmtOptions(options, selectedIdx) {
+  return ArrayPrototypeJoin(
+    ArrayPrototypeMap(
+      options,
+      ({ desc }, i) => selectedIdx === i ? cyan(`\u276f ${desc}`) : `  ${desc}`,
+    ),
+    "\n",
+  );
 }
 
 export { alert, confirm, prompt };

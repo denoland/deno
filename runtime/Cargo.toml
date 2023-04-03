@@ -80,6 +80,7 @@ deno_web.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 
 atty.workspace = true
 console_static_text.workspace = true

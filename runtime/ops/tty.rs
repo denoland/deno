@@ -4,6 +4,13 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
 use deno_io::StdFileResource;
+use rustyline::config::Configurer;
+use rustyline::error::ReadlineError;
+use rustyline::Cmd;
+use rustyline::Editor;
+use rustyline::KeyCode;
+use rustyline::KeyEvent;
+use rustyline::Modifiers;
 use std::io::Error;
 
 #[cfg(unix)]
@@ -34,7 +41,12 @@ fn get_windows_handle(
 
 deno_core::extension!(
   deno_tty,
-  ops = [op_stdin_set_raw, op_isatty, op_console_size],
+  ops = [
+    op_stdin_set_raw,
+    op_isatty,
+    op_console_size,
+    op_read_line_prompt
+  ],
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.force_op_registration();
   },
@@ -311,5 +323,25 @@ mod tests {
       known_off_modes[1],
       mode_raw_input_off(mode_raw_input_on(known_off_modes[1]))
     );
+  }
+}
+
+#[op(fast)]
+pub fn op_read_line_prompt(
+  prompt_text: String,
+  default_value: String,
+) -> Result<Option<String>, AnyError> {
+  let mut editor = Editor::<()>::new().expect("Failed to create editor.");
+
+  editor.set_keyseq_timeout(1);
+  editor
+    .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
+
+  let read_result =
+    editor.readline_with_initial(&prompt_text, (&default_value, ""));
+  match read_result {
+    Ok(line) => Ok(Some(line)),
+    Err(ReadlineError::Interrupted | ReadlineError::Eof) => Ok(None),
+    Err(err) => Err(err.into()),
   }
 }
