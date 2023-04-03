@@ -328,7 +328,7 @@ class ClientRequest extends NodeWritable {
     }
     const protocol = opts.protocol ?? this.defaultProtocol;
     const auth = opts.auth;
-    const host = opts.host ?? opts.hostname ?? "localhost";
+    const host = opts.hostname ?? opts.host ?? "localhost";
     const defaultPort = opts.agent?.defaultPort;
     const port = opts.port ?? defaultPort ?? 80;
     let path = opts.path ?? "/";
