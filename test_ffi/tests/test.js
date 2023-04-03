@@ -251,6 +251,7 @@ const dylib = Deno.dlopen(libPath, {
    */
   "static_char": {
     type: "pointer",
+    optional: true,
   },
   "hash": { parameters: ["buffer", "u32"], result: "u32" },
   make_rect: {
@@ -280,6 +281,7 @@ const dylib = Deno.dlopen(libPath, {
   print_mixed: {
     parameters: [{ struct: Mixed }],
     result: "void",
+    optional: true,
   },
   non_existent_symbol: {
     parameters: [],
