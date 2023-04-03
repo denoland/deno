@@ -448,10 +448,9 @@ Deno.test(
   },
 );
 
-// TODO(bartlomieju): debug and fix
 // https://github.com/denoland/deno/issues/17291
 Deno.test(
-  { permissions: { net: true }, ignore: true },
+  { permissions: { net: true } },
   async function httpServerIncorrectChunkedResponse() {
     const ac = new AbortController();
     const listeningPromise = deferred();
@@ -461,8 +460,10 @@ Deno.test(
         const body = new ReadableStream({
           start(controller) {
             // Non-encoded string is not a valid readable chunk.
+            // @ts-ignore we're testing that input is invalid
             controller.enqueue("wat");
           },
+          type: "bytes",
         });
         return new Response(body);
       },
@@ -474,21 +475,16 @@ Deno.test(
           `Internal server error: ${(err as Error).message}`,
           { status: 500 },
         );
-        ac.abort();
-        errorPromise.resolve(errResp);
+        errorPromise.resolve();
         return errResp;
       },
     });
 
     await listeningPromise;
-
     const resp = await fetch("http://127.0.0.1:4501/");
     // Incorrectly implemented reader ReadableStream should reject.
-    await assertRejects(() => resp.body!.getReader().read());
-
-    const err = await errorPromise as Response;
-    assertStringIncludes(await err.text(), "Expected ArrayBufferView");
-
+    assertStringIncludes(await resp.text(), "Failed to execute 'enqueue'");
+    await errorPromise;
     ac.abort();
     await server;
   },
