@@ -16,7 +16,7 @@ import {
   HTTP_TOKEN_CODE_POINT_RE,
 } from "ext:deno_web/00_infra.js";
 import { URL } from "ext:deno_url/00_url.js";
-import { extractBody, InnerBody, mixinBody } from "ext:deno_fetch/22_body.js";
+import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
 import { blobFromObjectUrl } from "ext:deno_web/09_file.js";
