@@ -958,25 +958,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_flash"
-version = "0.33.0"
-dependencies = [
- "deno_core",
- "deno_tls",
- "deno_websocket",
- "http",
- "httparse",
- "libc",
- "log",
- "mio",
- "rustls",
- "rustls-pemfile",
- "serde",
- "socket2",
- "tokio",
-]
-
-[[package]]
 name = "deno_fs"
 version = "0.7.0"
 dependencies = [
@@ -1181,7 +1162,6 @@ dependencies = [
  "deno_crypto",
  "deno_fetch",
  "deno_ffi",
- "deno_flash",
  "deno_fs",
  "deno_http",
  "deno_io",
