@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -33,16 +33,6 @@ pub enum FastString {
 
   // Scripts loaded from the `deno_graph` infrastructure.
   Arc(Arc<str>),
-}
-
-pub trait IsPotentiallyOwned {
-  fn maybe_into_owned_vec(self) -> Cow<'static, str>;
-}
-
-impl IsPotentiallyOwned for String {
-  fn maybe_into_owned_vec(self) -> Cow<'static, str> {
-    self.into()
-  }
 }
 
 impl FastString {
@@ -79,14 +69,8 @@ impl FastString {
     }
   }
 
-  pub fn from_ownable(s: impl IsPotentiallyOwned) -> Self {
-    let s = s.maybe_into_owned_vec();
-    match s {
-      Cow::Owned(s) => Self::Owned(s.into_boxed_str()),
-      Cow::Borrowed(s) => Self::from_static(s),
-    }
-  }
-
+  /// Creates a cheap copy of this [`FastString`], potentially transmuting it to a faster form. Note that this
+  /// is not a clone operation as it consumes the old [`FastString`].
   pub fn into_cheap_copy(self) -> (Self, Self) {
     match self {
       Self::Static(s) => (Self::Static(s), Self::Static(s)),
@@ -95,13 +79,8 @@ impl FastString {
       Self::Owned(s) => {
         let s: Arc<str> = s.into();
         (Self::Arc(s.clone()), Self::Arc(s))
-        // (Self::Owned(s.clone()), Self::Owned(s))
       }
     }
-  }
-
-  pub fn from_arc(s: Arc<str>) -> Self {
-    Self::Arc(s)
   }
 
   pub const fn try_static_ascii(&self) -> Option<&'static [u8]> {
@@ -213,6 +192,14 @@ impl From<String> for FastString {
   }
 }
 
+/// [`FastString`] can be make cheaply from [`Arc<str>`] as we know it's shared and don't need to do an
+/// ASCII check.
+impl From<Arc<str>> for FastString {
+  fn from(value: Arc<str>) -> Self {
+    FastString::Arc(value)
+  }
+}
+
 /// Include a fast string in the binary. This string is asserted at compile-time to be 7-bit ASCII for optimal
 /// v8 performance.
 #[macro_export]
@@ -244,12 +231,12 @@ mod tests {
     code.truncate(3);
     assert_eq!(s, code.as_ref());
 
-    let mut code: FastString = FastString::from_ownable("123456".to_owned());
+    let mut code: FastString = "123456".to_owned().into();
     code.truncate(3);
     assert_eq!(s, code.as_ref());
 
     let arc_str: Arc<str> = "123456".into();
-    let mut code: FastString = FastString::from_arc(arc_str);
+    let mut code: FastString = arc_str.into();
     code.truncate(3);
     assert_eq!(s, code.as_ref());
   }

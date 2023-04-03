@@ -226,7 +226,7 @@ impl ModuleSource {
     Self {
       code: ModuleCode::from_static(code),
       module_type: ModuleType::JavaScript,
-      module_url_specified: ModuleName::from_ownable(file.as_ref().to_owned()),
+      module_url_specified: file.as_ref().to_owned().into(),
       module_url_found: None,
     }
   }

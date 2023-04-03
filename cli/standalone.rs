@@ -175,7 +175,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
 
-    let module_specifier = module_specifier.clone();
     async move {
       if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource::new(

@@ -691,7 +691,7 @@ pub async fn cover_files(
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => ModuleCode::from_arc(file.source.clone()),
+      | MediaType::Json => file.source.clone().into(),
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
       MediaType::TypeScript
       | MediaType::Jsx

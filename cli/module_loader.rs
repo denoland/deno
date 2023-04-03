@@ -92,7 +92,7 @@ impl CliModuleLoader {
         specifier,
         ..
       })) => Ok(ModuleCodeSource {
-        code: ModuleCode::from_arc(source.clone()),
+        code: source.clone().into(),
         found_url: specifier.clone(),
         media_type: *media_type,
       }),
@@ -107,7 +107,7 @@ impl CliModuleLoader {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => ModuleCode::from_arc(source.clone()),
+          | MediaType::Json => source.clone().into(),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             Default::default()
           }
@@ -270,7 +270,6 @@ impl ModuleLoader for CliModuleLoader {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    let specifier = specifier.clone();
     let ps = self.ps.clone();
 
     let dynamic_permissions = self.dynamic_permissions.clone();
