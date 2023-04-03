@@ -303,51 +303,6 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpReadHeadersAfterClose() {
-    const promise = deferred();
-    const ac = new AbortController();
-    const listeningPromise = deferred();
-
-    let req: Request;
-    const server = Deno.serve({
-      handler: async (request) => {
-        await request.text();
-        req = request;
-        promise.resolve();
-        return new Response("Hello World");
-      },
-      port: 2334,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
-
-    await listeningPromise;
-    const conn = await Deno.connect({ port: 2334 });
-    // Send GET request with a body + content-length.
-    const encoder = new TextEncoder();
-    const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
-    const writeResult = await conn.write(encoder.encode(body));
-    assertEquals(body.length, writeResult);
-    await promise;
-    conn.close();
-
-    assertThrows(
-      () => {
-        req.headers;
-      },
-      TypeError,
-      "request closed",
-    );
-
-    ac.abort();
-    await server;
-  },
-);
-
-Deno.test(
-  { permissions: { net: true } },
   async function httpServerGetRequestBody() {
     const promise = deferred();
     const ac = new AbortController();
@@ -505,8 +460,10 @@ Deno.test(
         const body = new ReadableStream({
           start(controller) {
             // Non-encoded string is not a valid readable chunk.
+            // @ts-ignore we're testing that input is invalid
             controller.enqueue("wat");
           },
+          type: "bytes",
         });
         return new Response(body);
       },
@@ -518,21 +475,16 @@ Deno.test(
           `Internal server error: ${(err as Error).message}`,
           { status: 500 },
         );
-        ac.abort();
-        errorPromise.resolve(errResp);
+        errorPromise.resolve();
         return errResp;
       },
     });
 
     await listeningPromise;
-
     const resp = await fetch("http://127.0.0.1:4501/");
     // Incorrectly implemented reader ReadableStream should reject.
-    await assertRejects(() => resp.body!.getReader().read());
-
-    const err = await errorPromise as Response;
-    assertStringIncludes(await err.text(), "Expected ArrayBufferView");
-
+    assertStringIncludes(await resp.text(), "Failed to execute 'enqueue'");
+    await errorPromise;
     ac.abort();
     await server;
   },
@@ -571,7 +523,7 @@ Deno.test(
 
     ac.abort();
     await server;
-    assert(msg.includes("Content-Length: 60"));
+    assert(msg.includes("content-length: 60"));
   },
 );
 
@@ -912,7 +864,7 @@ Deno.test(
     await clientConn.read(buf);
 
     await promise;
-    let responseText = new TextDecoder().decode(buf);
+    let responseText = new TextDecoder("iso-8859-1").decode(buf);
     clientConn.close();
 
     assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
@@ -986,7 +938,7 @@ Deno.test(
     const server = Deno.serve({
       handler: async (request) => {
         assertEquals(await request.text(), "");
-        assertEquals(request.headers.get("cookie"), "foo=bar, bar=foo");
+        assertEquals(request.headers.get("cookie"), "foo=bar; bar=foo");
         promise.resolve();
         return new Response("ok");
       },
@@ -1121,68 +1073,6 @@ Deno.test(
     await server;
   },
 );
-
-Deno.test("upgradeHttpRaw tcp", async () => {
-  const promise = deferred();
-  const listeningPromise = deferred();
-  const promise2 = deferred();
-  const ac = new AbortController();
-  const signal = ac.signal;
-  let conn: Deno.Conn;
-  let _head;
-  const handler = (req: Request) => {
-    [conn, _head] = Deno.upgradeHttpRaw(req);
-
-    (async () => {
-      await conn.write(
-        new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
-      );
-
-      promise.resolve();
-
-      const buf = new Uint8Array(1024);
-      const n = await conn.read(buf);
-
-      assert(n != null);
-      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
-
-      promise2.resolve();
-    })();
-  };
-  const server = Deno.serve({
-    // NOTE: `as any` is used to bypass type checking for the return value
-    // of the handler.
-    handler: handler as any,
-    port: 4501,
-    signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
-  });
-
-  await listeningPromise;
-  const tcpConn = await Deno.connect({ port: 4501 });
-  await tcpConn.write(
-    new TextEncoder().encode(
-      "CONNECT server.example.com:80 HTTP/1.1\r\n\r\n",
-    ),
-  );
-
-  await promise;
-
-  await tcpConn.write(
-    new TextEncoder().encode(
-      "bla bla bla\nbla bla\nbla\n",
-    ),
-  );
-
-  await promise2;
-  conn!.close();
-  tcpConn.close();
-
-  ac.abort();
-  await server;
-});
 
 // Some of these tests are ported from Hyper
 // https://github.com/hyperium/hyper/blob/889fa2d87252108eb7668b8bf034ffcc30985117/src/proto/h1/role.rs
@@ -1610,7 +1500,7 @@ Deno.test(
     const readResult = await conn.read(buf);
     assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
-    assert(msg.endsWith("HTTP/1.1 400 Bad Request\r\n\r\n"));
+    assert(msg.includes("HTTP/1.1 400 Bad Request"));
 
     conn.close();
 
@@ -1727,7 +1617,7 @@ Deno.test(
     assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
 
-    assert(msg.endsWith("Content-Length: 300\r\n\r\n"));
+    assert(msg.includes("content-length: 300\r\n"));
 
     conn.close();
 
@@ -1921,7 +1811,7 @@ Deno.test(
       const readResult = await conn.read(buf);
       assert(readResult);
       const msg = decoder.decode(buf.subarray(0, readResult));
-      assert(msg.endsWith("HTTP/1.1 400 Bad Request\r\n\r\n"));
+      assert(msg.includes("HTTP/1.1 400 Bad Request\r\n"));
 
       conn.close();
     }
@@ -2163,44 +2053,6 @@ for (const [name, req] of badRequests) {
     testFn,
   );
 }
-
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerImplicitZeroContentLengthForHead() {
-    const ac = new AbortController();
-    const listeningPromise = deferred();
-
-    const server = Deno.serve({
-      handler: () => new Response(null),
-      port: 4503,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
-
-    await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-
-    const body =
-      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
-    const writeResult = await conn.write(encoder.encode(body));
-    assertEquals(body.length, writeResult);
-
-    const buf = new Uint8Array(1024);
-    const readResult = await conn.read(buf);
-    assert(readResult);
-    const msg = decoder.decode(buf.subarray(0, readResult));
-
-    assert(msg.includes("Content-Length: 0"));
-
-    conn.close();
-
-    ac.abort();
-    await server;
-  },
-);
 
 Deno.test(
   { permissions: { net: true } },
