@@ -81,7 +81,7 @@ function processUrlList(urlList, urlListProcessed) {
  */
 
 /**
- * @param {() => string} method
+ * @param {string} method
  * @param {string | () => string} url
  * @param {() => [string, string][]} headerList
  * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
@@ -94,15 +94,8 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
     blobUrlEntry = blobFromObjectUrl(url);
   }
   return {
-    methodInner: null,
+    methodInner: method,
     get method() {
-      if (this.methodInner === null) {
-        try {
-          this.methodInner = method();
-        } catch {
-          throw new TypeError("cannot read method: request closed");
-        }
-      }
       return this.methodInner;
     },
     set method(value) {
@@ -303,7 +296,7 @@ class Request {
     if (typeof input === "string") {
       const parsedURL = new URL(input, baseURL);
       request = newInnerRequest(
-        () => "GET",
+        "GET",
         parsedURL.href,
         () => [],
         null,
