@@ -216,8 +216,8 @@ impl CliModuleLoader {
         _ => ModuleType::JavaScript,
       },
       code,
-      specifier.into(),
-      code_source.found_url.into(),
+      specifier,
+      code_source.found_url,
     ))
   }
 }
