@@ -833,9 +833,8 @@ Deno.test(
   },
 );
 
-// TODO(bartlomieju): debug and fix
 Deno.test(
-  { permissions: { net: true }, ignore: true },
+  { permissions: { net: true } },
   async function httpRequestLatin1Headers() {
     const listeningPromise = deferred();
     const promise = deferred();
@@ -869,7 +868,7 @@ Deno.test(
     await clientConn.read(buf);
 
     await promise;
-    let responseText = new TextDecoder().decode(buf);
+    let responseText = new TextDecoder("iso-8859-1").decode(buf);
     clientConn.close();
 
     assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
