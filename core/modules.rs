@@ -226,13 +226,13 @@ impl ModuleSource {
   pub fn new_with_maybe_redirect(
     module_type: impl Into<ModuleType>,
     code: ModuleCode,
-    specifier: FastString,
-    specifier_found: FastString,
+    specifier: ModuleSpecifier,
+    specifier_found: ModuleSpecifier,
   ) -> Self {
     let module_url_found = if specifier == specifier_found {
       None
     } else {
-      Some(specifier_found)
+      Some(specifier_found.into())
     };
     let module_url_specified = specifier.into();
     Self {
@@ -250,6 +250,27 @@ impl ModuleSource {
       module_type: ModuleType::JavaScript,
       module_url_specified: file.as_ref().to_owned().into(),
       module_url_found: None,
+    }
+  }
+
+  #[cfg(test)]
+  pub fn for_test_with_maybe_redirect(
+    code: &'static str,
+    specified: impl AsRef<str>,
+    found: impl AsRef<str>,
+  ) -> Self {
+    let specified = specified.as_ref().to_string();
+    let found = found.as_ref().to_string();
+    let found = if found == specified {
+      None
+    } else {
+      Some(found.into())
+    };
+    Self {
+      code: ModuleCode::from_static(code),
+      module_type: ModuleType::JavaScript,
+      module_url_specified: specified.into(),
+      module_url_found: found,
     }
   }
 }
@@ -1937,12 +1958,13 @@ import "/a.js";
         return Poll::Pending;
       }
       match mock_source_code(&inner.url) {
-        Some(src) => Poll::Ready(Ok(ModuleSource::new_with_maybe_redirect(
-          ModuleType::JavaScript,
-          ModuleCode::from_static(src.0),
-          inner.url.clone().into(),
-          FastString::from_static(src.1),
-        ))),
+        Some(src) => {
+          Poll::Ready(Ok(ModuleSource::for_test_with_maybe_redirect(
+            src.0,
+            inner.url.as_str(),
+            src.1,
+          )))
+        }
         None => Poll::Ready(Err(MockError::LoadErr.into())),
       }
     }
