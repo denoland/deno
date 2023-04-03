@@ -3198,7 +3198,8 @@ pub mod tests {
       runtime
         .execute_script(
           "encode_decode_test.js",
-          include_fast_string!("encode_decode_test.js"),
+          // Note: We make this to_owned because it contains non-ASCII chars
+          include_str!("encode_decode_test.js").to_owned().into(),
         )
         .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
