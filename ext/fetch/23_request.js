@@ -49,7 +49,6 @@ const _headersCache = Symbol("headers cache");
 const _signal = Symbol("signal");
 const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
-const _flash = Symbol("flash");
 const _url = Symbol("url");
 const _method = Symbol("method");
 
@@ -158,10 +157,9 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
  * https://fetch.spec.whatwg.org/#concept-request-clone
  * @param {InnerRequest} request
  * @param {boolean} skipBody
- * @param {boolean} flash
  * @returns {InnerRequest}
  */
-function cloneInnerRequest(request, skipBody = false, flash = false) {
+function cloneInnerRequest(request, skipBody = false) {
   const headerList = ArrayPrototypeMap(
     request.headerList,
     (x) => [x[0], x[1]],
@@ -170,19 +168,6 @@ function cloneInnerRequest(request, skipBody = false, flash = false) {
   let body = null;
   if (request.body !== null && !skipBody) {
     body = request.body.clone();
-  }
-
-  if (flash) {
-    return {
-      body,
-      methodCb: request.methodCb,
-      urlCb: request.urlCb,
-      headerList: request.headerList,
-      streamRid: request.streamRid,
-      serverId: request.serverId,
-      redirectMode: "follow",
-      redirectCount: 0,
-    };
   }
 
   return {
@@ -285,11 +270,7 @@ class Request {
     return extractMimeType(values);
   }
   get [_body]() {
-    if (this[_flash]) {
-      return this[_flash].body;
-    } else {
-      return this[_request].body;
-    }
+    return this[_request].body;
   }
 
   /**
@@ -455,13 +436,8 @@ class Request {
     if (this[_method]) {
       return this[_method];
     }
-    if (this[_flash]) {
-      this[_method] = this[_flash].methodCb();
-      return this[_method];
-    } else {
-      this[_method] = this[_request].method;
-      return this[_method];
-    }
+    this[_method] = this[_request].method;
+    return this[_method];
   }
 
   get url() {
@@ -470,13 +446,8 @@ class Request {
       return this[_url];
     }
 
-    if (this[_flash]) {
-      this[_url] = this[_flash].urlCb();
-      return this[_url];
-    } else {
-      this[_url] = this[_request].url();
-      return this[_url];
-    }
+    this[_url] = this[_request].url();
+    return this[_url];
   }
 
   get headers() {
@@ -486,9 +457,6 @@ class Request {
 
   get redirect() {
     webidl.assertBranded(this, RequestPrototype);
-    if (this[_flash]) {
-      return this[_flash].redirectMode;
-    }
     return this[_request].redirectMode;
   }
 
@@ -502,32 +470,17 @@ class Request {
     if (this[_body] && this[_body].unusable()) {
       throw new TypeError("Body is unusable.");
     }
-    let newReq;
-    if (this[_flash]) {
-      newReq = cloneInnerRequest(this[_flash], false, true);
-    } else {
-      newReq = cloneInnerRequest(this[_request]);
-    }
+    const newReq = cloneInnerRequest(this[_request]);
     const newSignal = abortSignal.newSignal();
 
     if (this[_signal]) {
       abortSignal.follow(newSignal, this[_signal]);
     }
 
-    if (this[_flash]) {
-      return fromInnerRequest(
-        newReq,
-        newSignal,
-        guardFromHeaders(this[_headers]),
-        true,
-      );
-    }
-
     return fromInnerRequest(
       newReq,
       newSignal,
       guardFromHeaders(this[_headers]),
-      false,
     );
   }
 
@@ -606,58 +559,17 @@ function toInnerRequest(request) {
  * @param {InnerRequest} inner
  * @param {AbortSignal} signal
  * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
- * @param {boolean} flash
  * @returns {Request}
  */
-function fromInnerRequest(inner, signal, guard, flash) {
+function fromInnerRequest(inner, signal, guard) {
   const request = webidl.createBranded(Request);
-  if (flash) {
-    request[_flash] = inner;
-  } else {
-    request[_request] = inner;
-  }
+  request[_request] = inner;
   request[_signal] = signal;
-  request[_getHeaders] = flash
-    ? () => headersFromHeaderList(inner.headerList(), guard)
-    : () => headersFromHeaderList(inner.headerList, guard);
-  return request;
-}
-
-/**
- * @param {number} serverId
- * @param {number} streamRid
- * @param {ReadableStream} body
- * @param {() => string} methodCb
- * @param {() => string} urlCb
- * @param {() => [string, string][]} headersCb
- * @returns {Request}
- */
-function fromFlashRequest(
-  serverId,
-  streamRid,
-  body,
-  methodCb,
-  urlCb,
-  headersCb,
-) {
-  const request = webidl.createBranded(Request);
-  request[_flash] = {
-    body: body !== null ? new InnerBody(body) : null,
-    methodCb,
-    urlCb,
-    headerList: headersCb,
-    streamRid,
-    serverId,
-    redirectMode: "follow",
-    redirectCount: 0,
-  };
-  request[_getHeaders] = () => headersFromHeaderList(headersCb(), "request");
+  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
   return request;
 }
 
 export {
-  _flash,
-  fromFlashRequest,
   fromInnerRequest,
   newInnerRequest,
   processUrlList,
