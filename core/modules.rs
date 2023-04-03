@@ -201,12 +201,13 @@ impl std::fmt::Display for ModuleType {
 pub struct ModuleSource {
   pub code: ModuleCode,
   pub module_type: ModuleType,
-  pub module_url_specified: ModuleName,
+  module_url_specified: ModuleName,
   /// If the module was found somewhere other than the specified address, this will be [`Some`].
-  pub module_url_found: Option<ModuleName>,
+  module_url_found: Option<ModuleName>,
 }
 
 impl ModuleSource {
+  /// Create a [`ModuleSource`] without a redirect.
   pub fn new(
     module_type: impl Into<ModuleType>,
     code: ModuleCode,
@@ -218,6 +219,27 @@ impl ModuleSource {
       module_type: module_type.into(),
       module_url_specified,
       module_url_found: None,
+    }
+  }
+
+  /// Create a [`ModuleSource`] with a potential redirect.
+  pub fn new_with_maybe_redirect(
+    module_type: impl Into<ModuleType>,
+    code: ModuleCode,
+    specifier: FastString,
+    specifier_found: FastString,
+  ) -> Self {
+    let module_url_found = if specifier == specifier_found {
+      None
+    } else {
+      Some(specifier_found)
+    };
+    let module_url_specified = specifier.into();
+    Self {
+      code,
+      module_type: module_type.into(),
+      module_url_specified,
+      module_url_found,
     }
   }
 
@@ -778,6 +800,7 @@ impl RecursiveModuleLoad {
     let expected_asserted_module_type = module_source.module_type.into();
     let module_url_found = module_source.module_url_found;
     let module_url_specified = module_source.module_url_specified;
+
     if module_request.asserted_module_type != expected_asserted_module_type {
       return Err(ModuleError::Other(generic_error(format!(
         "Expected a \"{}\" module but loaded a \"{}\" module.",
@@ -1366,6 +1389,7 @@ impl ModuleMap {
       let symbolic_module = map.get(mod_name.as_ref())?;
       match symbolic_module {
         SymbolicModule::Alias(target) => {
+          debug_assert!(mod_name != target);
           mod_name = target;
         }
         SymbolicModule::Mod(mod_id) => return Some(*mod_id),
@@ -1587,6 +1611,7 @@ impl ModuleMap {
     asserted_module_type: AssertedModuleType,
     target: FastString,
   ) {
+    debug_assert_ne!(name, target);
     self
       .by_name_mut(asserted_module_type)
       .insert(name, SymbolicModule::Alias(target));
@@ -1912,12 +1937,12 @@ import "/a.js";
         return Poll::Pending;
       }
       match mock_source_code(&inner.url) {
-        Some(src) => Poll::Ready(Ok(ModuleSource {
-          code: ModuleCode::from_static(src.0),
-          module_type: ModuleType::JavaScript,
-          module_url_specified: inner.url.clone().into(),
-          module_url_found: Some(ModuleName::from_static(src.1)),
-        })),
+        Some(src) => Poll::Ready(Ok(ModuleSource::new_with_maybe_redirect(
+          ModuleType::JavaScript,
+          ModuleCode::from_static(src.0),
+          inner.url.clone().into(),
+          FastString::from_static(src.1),
+        ))),
         None => Poll::Ready(Err(MockError::LoadErr.into())),
       }
     }

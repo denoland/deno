@@ -210,20 +210,15 @@ impl CliModuleLoader {
       // because we don't need it
       code_without_source_map(code_source.code)
     };
-    let module_url_found = if code_source.found_url == specifier {
-      None
-    } else {
-      Some(code_source.found_url.into())
-    };
-    Ok(ModuleSource {
-      code,
-      module_url_specified: specifier.into(),
-      module_url_found,
-      module_type: match code_source.media_type {
+    Ok(ModuleSource::new_with_maybe_redirect(
+      match code_source.media_type {
         MediaType::Json => ModuleType::Json,
         _ => ModuleType::JavaScript,
       },
-    })
+      code,
+      specifier.into(),
+      code_source.found_url.into(),
+    ))
   }
 }
 
