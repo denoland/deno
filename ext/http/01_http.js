@@ -657,7 +657,7 @@ async function serve(arg1, arg2) {
   const listenOpts = {
     hostname: options.hostname ?? "127.0.0.1",
     port: options.port ?? 9000,
-    reuseport: options.reusePort ?? false,
+    reusePort: options.reusePort ?? false,
   };
 
   if (options.cert || options.key) {
@@ -677,11 +677,13 @@ async function serve(arg1, arg2) {
       port: listenOpts.port,
       cert: listenOpts.cert,
       key: listenOpts.key,
+      reusePort: listenOpts.reusePort,
     });
   } else {
     listener = listen({
       hostname: listenOpts.hostname,
       port: listenOpts.port,
+      reusePort: listenOpts.reusePort,
     });
   }
 
