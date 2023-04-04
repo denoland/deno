@@ -89,10 +89,12 @@ pub fn check(
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
   // that data here.
-  let hash_data = vec![
-    options.ts_config.as_bytes(),
-    version::deno().as_bytes().to_owned(),
-  ];
+  let hash_data = {
+    let mut hasher = FastInsecureHasher::new();
+    hasher.write(&options.ts_config.as_bytes());
+    hasher.write_str(version::deno());
+    hasher.finish()
+  };
 
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,

@@ -78,6 +78,7 @@ const Point = ["f64", "f64"];
 const Size = ["f64", "f64"];
 const Rect = ["f64", "f64", "f64", "f64"];
 const RectNested = [{ struct: Point }, { struct: Size }];
+const RectNestedCached = [{ struct: Size }, { struct: Size }];
 const Mixed = ["u8", "f32", { struct: Rect }, "usize", { struct: ["u32", "u32"] }];
 
 const dylib = Deno.dlopen(libPath, {
@@ -251,6 +252,7 @@ const dylib = Deno.dlopen(libPath, {
    */
   "static_char": {
     type: "pointer",
+    optional: true,
   },
   "hash": { parameters: ["buffer", "u32"], result: "u32" },
   make_rect: {
@@ -264,7 +266,7 @@ const dylib = Deno.dlopen(libPath, {
     result: { struct: RectNested },
   },
   print_rect: {
-    parameters: [{ struct: Rect }],
+    parameters: [{ struct: RectNestedCached }],
     result: "void",
   },
   print_rect_async: {
@@ -280,6 +282,22 @@ const dylib = Deno.dlopen(libPath, {
   print_mixed: {
     parameters: [{ struct: Mixed }],
     result: "void",
+    optional: true,
+  },
+  non_existent_symbol: {
+    parameters: [],
+    result: "void",
+    optional: true,
+  },
+  non_existent_nonblocking_symbol: {
+    parameters: [],
+    result: "void",
+    nonblocking: true,
+    optional: true,
+  },
+  non_existent_static: {
+    type: "u32",
+    optional: true,
   },
 });
 const { symbols } = dylib;

@@ -19,6 +19,7 @@ const {
   PromisePrototypeThen,
   SafeArrayIterator,
   SymbolFor,
+  TypedArrayPrototypeGetBuffer,
   TypeError,
   indirectEval,
 } = primordials;
@@ -27,7 +28,7 @@ import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
 
 const hrU8 = new Uint8Array(8);
-const hr = new Uint32Array(hrU8.buffer);
+const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
 function opNow() {
   ops.op_now(hrU8);
   return (hr[0] * 1000 + hr[1] / 1e6);
@@ -215,7 +216,7 @@ const scheduledTimers = { head: null, tail: null };
  */
 function runAfterTimeout(cb, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
-  const sleepPromise = core.opAsync("op_sleep", millis, cancelRid);
+  const sleepPromise = core.opAsync2("op_sleep", millis, cancelRid);
   timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
   if (!timerInfo.isRef) {
     core.unrefOp(timerInfo.promiseId);

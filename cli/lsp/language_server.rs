@@ -463,7 +463,7 @@ impl Inner {
       ModuleRegistry::new(&module_registries_location, http_client.clone())
         .unwrap();
     let location = dir.deps_folder_path();
-    let documents = Documents::new(&location);
+    let documents = Documents::new(&location, client.kind());
     let deps_http_cache = HttpCache::new(&location);
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -1138,7 +1138,7 @@ impl Inner {
 
   fn refresh_documents_config(&mut self) {
     self.documents.update_config(
-      self.config.enabled_root_urls(),
+      self.config.enabled_urls(),
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
       self.maybe_package_json.as_ref(),
