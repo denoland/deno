@@ -14,7 +14,6 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import {
-  _flash,
   fromInnerRequest,
   newInnerRequest,
   toInnerRequest,
@@ -134,7 +133,7 @@ class HttpConn {
     }
 
     const innerRequest = newInnerRequest(
-      () => method,
+      method,
       url,
       () => ops.op_http_headers(streamRid),
       body !== null ? new InnerBody(body) : null,
@@ -467,12 +466,6 @@ function upgradeWebSocket(request, options = {}) {
 }
 
 function upgradeHttp(req) {
-  if (req[_flash]) {
-    throw new TypeError(
-      "Flash requests can not be upgraded with `upgradeHttp`. Use `upgradeHttpRaw` instead.",
-    );
-  }
-
   req[_deferred] = new Deferred();
   return req[_deferred].promise;
 }
