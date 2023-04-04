@@ -1168,6 +1168,7 @@ create_struct_writer! {
     birthtime_set: bool,
     birthtime: u64,
     // Following are only valid under Unix.
+    is_block_device: bool,
     dev: u64,
     ino: u64,
     mode: u32,
@@ -1182,9 +1183,9 @@ create_struct_writer! {
 
 #[inline(always)]
 fn get_stat(metadata: std::fs::Metadata) -> FsStat {
-  // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
-    ($member:ident) => {{
+    // Unix stat member (number types only). 0 if not on unix.
+    ($member:ident; md) => {{
       #[cfg(unix)]
       {
         metadata.$member()
@@ -1194,8 +1195,21 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
         0
       }
     }};
+    // Unix stat FileType member (boolean types only). false if not on unix.
+    ($member:ident; ft) => {{
+      #[cfg(unix)]
+      {
+        metadata.file_type().$member()
+      }
+      #[cfg(not(unix))]
+      {
+        false
+      }
+    }};
   }
 
+  #[cfg(unix)]
+  use std::os::unix::fs::FileTypeExt;
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
   let (mtime, mtime_set) = to_msec(metadata.modified());
@@ -1215,15 +1229,16 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
     birthtime_set,
     birthtime,
     // Following are only valid under Unix.
-    dev: usm!(dev),
-    ino: usm!(ino),
-    mode: usm!(mode),
-    nlink: usm!(nlink),
-    uid: usm!(uid),
-    gid: usm!(gid),
-    rdev: usm!(rdev),
-    blksize: usm!(blksize),
-    blocks: usm!(blocks),
+    is_block_device: usm!(is_block_device; ft),
+    dev: usm!(dev; md),
+    ino: usm!(ino; md),
+    mode: usm!(mode; md),
+    nlink: usm!(nlink; md),
+    uid: usm!(uid; md),
+    gid: usm!(gid; md),
+    rdev: usm!(rdev; md),
+    blksize: usm!(blksize; md),
+    blocks: usm!(blocks; md),
   }
 }
 
@@ -1245,6 +1260,7 @@ fn get_stat2(metadata: std::fs::Metadata, dev: u64) -> FsStat {
     atime,
     birthtime_set,
     birthtime,
+    is_block_device: false,
     dev,
     ino: 0,
     mode: 0,
@@ -1260,6 +1276,8 @@ fn get_stat2(metadata: std::fs::Metadata, dev: u64) -> FsStat {
 #[cfg(not(windows))]
 #[inline(always)]
 fn get_stat2(metadata: std::fs::Metadata) -> FsStat {
+  #[cfg(unix)]
+  use std::os::unix::fs::FileTypeExt;
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
   let (mtime, mtime_set) = to_msec(metadata.modified());
@@ -1277,6 +1295,7 @@ fn get_stat2(metadata: std::fs::Metadata) -> FsStat {
     atime,
     birthtime_set,
     birthtime,
+    is_block_device: metadata.file_type().is_block_device(),
     dev: metadata.dev(),
     ino: metadata.ino(),
     mode: metadata.mode(),

@@ -213,6 +213,7 @@ async function rename(oldpath, newpath) {
 //  high u32 | low u32
 //
 // 4. ?u64 converts a zero u64 value to JS null on Windows.
+//    ?bool converts a false bool value to JS null on Windows.
 function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
@@ -241,7 +242,15 @@ function createByteStruct(types) {
       }] + view[${offset + 3}] * 2**32),`;
       offset += 2;
     } else {
-      str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      if (!optional) {
+        str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      } else {
+        str += `${name}: (unix ? !!((view[${offset}] + view[${
+          offset + 1
+        }] * 2**32)) : !!((view[${offset}] + view[${
+          offset + 1
+        }] * 2**32)) || null),`;
+      }
     }
     offset += 2;
   }
@@ -254,6 +263,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   isFile: "bool",
   isDirectory: "bool",
   isSymlink: "bool",
+  isBlockDevice: "?bool",
   size: "u64",
   mtime: "date",
   atime: "date",
@@ -275,6 +285,7 @@ function parseFileInfo(response) {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
     isSymlink: response.isSymlink,
+    isBlockDevice: unix ? response.isBlockDevice : null,
     size: response.size,
     mtime: response.mtimeSet !== null ? new Date(response.mtime) : null,
     atime: response.atimeSet !== null ? new Date(response.atime) : null,
