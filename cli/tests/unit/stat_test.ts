@@ -308,6 +308,9 @@ Deno.test(
     assert(s.blksize === null);
     assert(s.blocks === null);
     assert(s.isBlockDevice === null);
+    assert(s.isCharDevice === null);
+    assert(s.isFifo === null);
+    assert(s.isSocket === null);
   },
 );
 
@@ -336,5 +339,8 @@ Deno.test(
     assert(s.blksize !== null);
     assert(s.blocks !== null);
     assert(!s.isBlockDevice);
+    assert(!s.isCharDevice);
+    assert(!s.isFifo);
+    assert(!s.isSocket);
   },
 );
