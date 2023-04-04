@@ -9,9 +9,9 @@ use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::fast;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
@@ -573,7 +573,7 @@ impl WebWorker {
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
     // Save a reference to function that will start polling for messages
     // from a worker host; it will be called after the user code is loaded.
-    let script = fast!(
+    let script = ascii_str!(
       r#"
     const pollForMessages = globalThis.pollForMessages;
     delete globalThis.pollForMessages;

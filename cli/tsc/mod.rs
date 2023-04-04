@@ -14,7 +14,7 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::fast;
+use deno_core::ascii_str;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::resolve_url_or_path;
@@ -132,8 +132,8 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
     extensions: vec![deno_cli_tsc::init_ops()],
     ..Default::default()
   });
-  let global =
-    runtime.execute_script("get_assets.js", fast!("globalThis.getAssets()"))?;
+  let global = runtime
+    .execute_script("get_assets.js", ascii_str!("globalThis.getAssets()"))?;
   let scope = &mut runtime.handle_scope();
   let local = deno_core::v8::Local::new(scope, global);
   Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
@@ -793,7 +793,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     },
   );
 
-  let startup_source = fast!("globalThis.startup({ legacyFlag: false })");
+  let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
   let request_value = json!({
     "config": request.config,
     "debug": request.debug,

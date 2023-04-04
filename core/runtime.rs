@@ -2727,10 +2727,10 @@ pub fn queue_async_op(
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::ascii_str;
   use crate::error::custom_error;
   use crate::error::AnyError;
-  use crate::fast;
-  use crate::include_fast_string;
+  use crate::include_ascii_string;
   use crate::modules::AssertedModuleType;
   use crate::modules::ModuleInfo;
   use crate::modules::ModuleSource;
@@ -3215,7 +3215,7 @@ pub mod tests {
       runtime
         .execute_script(
           "serialize_deserialize_test.js",
-          include_fast_string!("serialize_deserialize_test.js"),
+          include_ascii_string!("serialize_deserialize_test.js"),
         )
         .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
@@ -3413,7 +3413,7 @@ pub mod tests {
     });
 
     let specifier = crate::resolve_url("file:///main.js").unwrap();
-    let source_code = fast!(
+    let source_code = ascii_str!(
       r#"
       export const a = "b";
       export default 1 + 2;
@@ -3664,7 +3664,8 @@ pub mod tests {
     });
 
     let specifier = crate::resolve_url("file:///0.js").unwrap();
-    let source_code = fast!(r#"export function f0() { return "hello world" }"#);
+    let source_code =
+      ascii_str!(r#"export function f0() { return "hello world" }"#);
     let id = futures::executor::block_on(
       runtime.load_side_module(specifier.clone(), Some(source_code)),
     )
@@ -4284,7 +4285,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     });
 
     let specifier = crate::resolve_url("file:///main.js").unwrap();
-    let source_code = fast!("Deno.core.print('hello\\n')");
+    let source_code = ascii_str!("Deno.core.print('hello\\n')");
 
     let module_id = futures::executor::block_on(
       runtime.load_main_module(specifier, Some(source_code)),

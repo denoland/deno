@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
-use deno_core::fast;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
@@ -232,7 +232,7 @@ impl CliMainWorker {
 
     self.worker.execute_script(
       located_script_name!(),
-      fast!("Deno[Deno.internal].core.enableOpCallTracing();"),
+      ascii_str!("Deno[Deno.internal].core.enableOpCallTracing();"),
     )?;
 
     if mode != TestMode::Documentation {

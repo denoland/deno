@@ -1785,7 +1785,7 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::fast;
+  use crate::ascii_str;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use crate::Snapshot;
@@ -2153,13 +2153,13 @@ import "/a.js";
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
       let mut module_map = module_map_rc.borrow_mut();
-      let specifier_a = fast!("file:///a.js");
+      let specifier_a = ascii_str!("file:///a.js");
       let mod_a = module_map
         .new_es_module(
           scope,
           true,
           specifier_a,
-          fast!(
+          ascii_str!(
             r#"
           import { b } from './b.js'
           if (b() != 'b') throw Error();
@@ -2185,8 +2185,8 @@ import "/a.js";
         .new_es_module(
           scope,
           false,
-          fast!("file:///b.js"),
-          fast!("export function b() { return 'b' }"),
+          ascii_str!("file:///b.js"),
+          ascii_str!("export function b() { return 'b' }"),
           false,
         )
         .unwrap();
@@ -2265,13 +2265,13 @@ import "/a.js";
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
       let mut module_map = module_map_rc.borrow_mut();
-      let specifier_a = fast!("file:///a.js");
+      let specifier_a = ascii_str!("file:///a.js");
       let mod_a = module_map
         .new_es_module(
           scope,
           true,
           specifier_a,
-          fast!(
+          ascii_str!(
             r#"
             import jsonData from './b.json' assert {type: "json"};
             assert(jsonData.a == "b");
@@ -2294,8 +2294,8 @@ import "/a.js";
       let mod_b = module_map
         .new_json_module(
           scope,
-          fast!("file:///b.json"),
-          fast!("{\"a\": \"b\", \"c\": {\"d\": 10}}"),
+          ascii_str!("file:///b.json"),
+          ascii_str!("{\"a\": \"b\", \"c\": {\"d\": 10}}"),
         )
         .unwrap();
       let imports = module_map.get_requested_modules(mod_b).unwrap();
@@ -2792,7 +2792,7 @@ import "/a.js";
 
   #[test]
   fn recursive_load_main_with_code() {
-    const MAIN_WITH_CODE_SRC: FastString = fast!(
+    const MAIN_WITH_CODE_SRC: FastString = ascii_str!(
       r#"
 import { b } from "/b.js";
 import { c } from "/c.js";
@@ -2952,7 +2952,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     //TODO: Once the issue with the ModuleNamespaceEntryGetter is fixed, we can maintain a reference to the module
     // and use it when loading the snapshot
     let snapshot = {
-      const MAIN_WITH_CODE_SRC: FastString = fast!(
+      const MAIN_WITH_CODE_SRC: FastString = ascii_str!(
         r#"
       await import("./b.js");
     "#
@@ -2992,7 +2992,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
   #[test]
   fn import_meta_snapshot() {
     let snapshot = {
-      const MAIN_WITH_CODE_SRC: ModuleCode = fast!(
+      const MAIN_WITH_CODE_SRC: ModuleCode = ascii_str!(
         r#"
     if (import.meta.url != 'file:///main_with_code.js') throw Error();
     globalThis.meta = import.meta;

@@ -17,7 +17,7 @@ use v8::NewStringType;
 /// ```rust
 /// # use deno_core::{fast, FastString};
 ///
-/// let code: FastString = fast!("a string");
+/// let code: FastString = ascii_str!("a string");
 /// let code: FastString = format!("a string").into();
 /// ```
 pub enum FastString {
@@ -203,7 +203,7 @@ impl From<Arc<str>> for FastString {
 /// Include a fast string in the binary. This string is asserted at compile-time to be 7-bit ASCII for optimal
 /// v8 performance.
 #[macro_export]
-macro_rules! include_fast_string {
+macro_rules! include_ascii_string {
   ($file:literal) => {
     $crate::FastString::ensure_static_ascii(include_str!($file))
   };
@@ -212,7 +212,7 @@ macro_rules! include_fast_string {
 /// Include a fast string in the binary from a string literal. This string is asserted at compile-time to be
 /// 7-bit ASCII for optimal v8 performance.
 #[macro_export]
-macro_rules! fast {
+macro_rules! ascii_str {
   ($str:literal) => {
     $crate::FastString::ensure_static_ascii($str)
   };
