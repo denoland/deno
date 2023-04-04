@@ -3667,7 +3667,7 @@ pub mod tests {
     let source_code =
       ascii_str!(r#"export function f0() { return "hello world" }"#);
     let id = futures::executor::block_on(
-      runtime.load_side_module(&specifier.clone(), Some(source_code)),
+      runtime.load_side_module(&specifier, Some(source_code)),
     )
     .unwrap();
 
