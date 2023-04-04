@@ -7,8 +7,8 @@ import {
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
-} from "internal:deno_web/06_streams.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+} from "ext:deno_web/06_streams.js";
+import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
@@ -277,6 +277,64 @@ class Datagram {
     return this.#addr;
   }
 
+  async joinMulticastV4(addr, multiInterface) {
+    await core.opAsync(
+      "op_net_join_multi_v4_udp",
+      this.rid,
+      addr,
+      multiInterface,
+    );
+
+    return {
+      leave: () =>
+        core.opAsync(
+          "op_net_leave_multi_v4_udp",
+          this.rid,
+          addr,
+          multiInterface,
+        ),
+      setLoopback: (loopback) =>
+        core.opAsync(
+          "op_net_set_multi_loopback_udp",
+          this.rid,
+          true,
+          loopback,
+        ),
+      setTTL: (ttl) =>
+        core.opAsync(
+          "op_net_set_multi_ttl_udp",
+          this.rid,
+          ttl,
+        ),
+    };
+  }
+
+  async joinMulticastV6(addr, multiInterface) {
+    await core.opAsync(
+      "op_net_join_multi_v6_udp",
+      this.rid,
+      addr,
+      multiInterface,
+    );
+
+    return {
+      leave: () =>
+        core.opAsync(
+          "op_net_leave_multi_v6_udp",
+          this.rid,
+          addr,
+          multiInterface,
+        ),
+      setLoopback: (loopback) =>
+        core.opAsync(
+          "op_net_set_multi_loopback_udp",
+          this.rid,
+          false,
+          loopback,
+        ),
+    };
+  }
+
   async receive(p) {
     const buf = p || new Uint8Array(this.bufSize);
     let nread;
@@ -383,6 +441,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
             port: args.port,
           },
           args.reuseAddress ?? false,
+          args.loopback ?? false,
         );
         addr.transport = "udp";
         return new Datagram(rid, addr);

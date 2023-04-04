@@ -6,6 +6,7 @@ use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
 use super::documents::Document;
+use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -88,6 +89,7 @@ impl DiagnosticsPublisher {
 
       self
         .client
+        .when_outside_lsp_lock()
         .publish_diagnostics(specifier, version_diagnostics.clone(), version)
         .await;
     }
@@ -453,7 +455,9 @@ async fn generate_lint_diagnostics(
   lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
-  let documents = snapshot.documents.documents(true, true);
+  let documents = snapshot
+    .documents
+    .documents(DocumentsFilter::OpenDiagnosable);
   let workspace_settings = config.settings.workspace.clone();
   let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
@@ -490,7 +494,7 @@ async fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   config: &ConfigSnapshot,
   lint_options: &LintOptions,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
   document: &Document,
 ) -> Vec<lsp::Diagnostic> {
   if !config.specifier_enabled(document.specifier()) {
@@ -529,7 +533,7 @@ async fn generate_ts_diagnostics(
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
     .documents
-    .documents(true, true)
+    .documents(DocumentsFilter::OpenDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
@@ -911,7 +915,6 @@ fn diagnose_resolution(
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           if npm_resolver
-            .resolution()
             .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
@@ -933,7 +936,6 @@ fn diagnose_resolution(
           let types_node_ref =
             NpmPackageReqReference::from_str("npm:@types/node").unwrap();
           if npm_resolver
-            .resolution()
             .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
@@ -1026,7 +1028,10 @@ async fn generate_deno_diagnostics(
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
 
-  for document in snapshot.documents.documents(true, true) {
+  for document in snapshot
+    .documents
+    .documents(DocumentsFilter::OpenDiagnosable)
+  {
     if token.is_cancelled() {
       break;
     }
@@ -1074,7 +1079,7 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location, Default::default());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -1164,7 +1169,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,
@@ -1179,14 +1184,11 @@ let c: number = "a";
       let mut disabled_config = mock_config();
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
-        (
-          specifier.clone(),
-          SpecifierSettings {
-            enable: false,
-            enable_paths: Vec::new(),
-            code_lens: Default::default(),
-          },
-        ),
+        SpecifierSettings {
+          enable: false,
+          enable_paths: Vec::new(),
+          code_lens: Default::default(),
+        },
       );
 
       let diagnostics = generate_lint_diagnostics(

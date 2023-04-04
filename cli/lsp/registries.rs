@@ -295,18 +295,20 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   }
   for registry in &config.registries {
     let (_, keys) = string_to_regex(&registry.schema, None)?;
-    let key_names: Vec<String> = keys.map_or_else(Vec::new, |keys| {
-      keys
-        .iter()
-        .filter_map(|k| {
-          if let StringOrNumber::String(s) = &k.name {
-            Some(s.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
-    });
+    let key_names: Vec<String> = keys
+      .map(|keys| {
+        keys
+          .iter()
+          .filter_map(|k| {
+            if let StringOrNumber::String(s) = &k.name {
+              Some(s.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      })
+      .unwrap_or_default();
 
     for key_name in &key_names {
       if !registry
@@ -664,18 +666,20 @@ impl ModuleRegistry {
               })
               .ok()?;
             let mut i = tokens.len();
-            let last_key_name =
-              StringOrNumber::String(tokens.iter().last().map_or_else(
-                || "".to_string(),
-                |t| {
+            let last_key_name = StringOrNumber::String(
+              tokens
+                .iter()
+                .last()
+                .map(|t| {
                   if let Token::Key(key) = t {
                     if let StringOrNumber::String(s) = &key.name {
                       return s.clone();
                     }
                   }
                   "".to_string()
-                },
-              ));
+                })
+                .unwrap_or_default(),
+            );
             loop {
               let matcher = Matcher::new(&tokens[..i], None)
                 .map_err(|e| {
@@ -988,7 +992,7 @@ impl ModuleRegistry {
       .origins
       .keys()
       .filter_map(|k| {
-        let mut origin = k.as_str().to_string();
+        let mut origin = k.to_string();
         if origin.ends_with('/') {
           origin.pop();
         }
@@ -1671,16 +1675,17 @@ mod tests {
     let module_registry =
       ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
         .unwrap();
-    let result = module_registry.check_origin("https://deno.com").await;
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err
-      .contains("https://deno.com/.well-known/deno-import-intellisense.json"));
+    assert!(err.contains(
+      "https://example.com/.well-known/deno-import-intellisense.json"
+    ));
 
     // because we are caching an empty file when we hit an error with import
     // detection when fetching the config file, we should have an error now that
     // indicates trying to parse an empty file.
-    let result = module_registry.check_origin("https://deno.com").await;
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("EOF while parsing a value at line 1 column 0"));

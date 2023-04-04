@@ -95,6 +95,7 @@ impl Serialize for IgnoredCompilerOptions {
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
 pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
+  "allowImportingTsExtensions",
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
   "assumeChangesOnlyAffectDirectDependencies",
@@ -185,10 +186,16 @@ fn parse_compiler_options(
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if IGNORED_COMPILER_OPTIONS.contains(&key) {
-      items.push(key.to_string());
-    } else {
-      filtered.insert(key.to_string(), value.to_owned());
+    // We don't pass "types" entries to typescript via the compiler
+    // options and instead provide those to tsc as "roots". This is
+    // because our "types" behavior is at odds with how TypeScript's
+    // "types" works.
+    if key != "types" {
+      if IGNORED_COMPILER_OPTIONS.contains(&key) {
+        items.push(key.to_string());
+      } else {
+        filtered.insert(key.to_string(), value.to_owned());
+      }
     }
   }
   let value = serde_json::to_value(filtered)?;
@@ -500,7 +507,7 @@ impl ConfigFile {
         Ok(Some(ConfigFile::read(&config_path)?))
       }
       ConfigFlag::Discover => {
-        if let Some(config_path_args) = flags.config_path_args() {
+        if let Some(config_path_args) = flags.config_path_args(cwd) {
           let mut checked = HashSet::new();
           for f in config_path_args {
             if let Some(cf) = Self::discover_from(&f, &mut checked)? {
@@ -894,6 +901,7 @@ pub fn get_ts_config_for_emit(
 ) -> Result<TsConfigForEmit, AnyError> {
   let mut ts_config = match config_type {
     TsConfigType::Bundle => TsConfig::new(json!({
+      "allowImportingTsExtensions": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
@@ -906,6 +914,7 @@ pub fn get_ts_config_for_emit(
     })),
     TsConfigType::Check { lib } => TsConfig::new(json!({
       "allowJs": true,
+      "allowImportingTsExtensions": true,
       "allowSyntheticDefaultImports": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
@@ -930,6 +939,7 @@ pub fn get_ts_config_for_emit(
       "useUnknownInCatchVariables": false,
     })),
     TsConfigType::Emit => TsConfig::new(json!({
+      "allowImportingTsExtensions": true,
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",

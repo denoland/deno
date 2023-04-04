@@ -138,6 +138,12 @@ itest!(filter {
   output: "bench/filter.out",
 });
 
+itest!(no_run {
+  args: "bench --no-run bench/no_run.ts",
+  output: "bench/no_run.out",
+  exit_code: 1,
+});
+
 itest!(no_prompt_by_default {
   args: "bench --quiet bench/no_prompt_by_default.ts",
   exit_code: 1,
@@ -196,7 +202,7 @@ fn recursive_permissions_pledge() {
     .run();
   output.assert_exit_code(1);
   assert_contains!(
-    output.text(),
+    output.combined_output(),
     "pledge test permissions called before restoring previous pledge"
   );
 }
@@ -223,4 +229,19 @@ itest!(package_json_basic {
   cwd: Some("package_json/basic"),
   copy_temp_dir: Some("package_json/basic"),
   exit_code: 0,
+});
+
+itest!(bench_lock {
+  args: "bench",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(bench_no_lock {
+  args: "bench --no-lock",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/bench.nolock.out",
 });

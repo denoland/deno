@@ -15,6 +15,7 @@ use deno_graph::npm::NpmPackageNvReference;
 use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
@@ -23,6 +24,7 @@ use deno_runtime::colors;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
+use crate::graph_util::graph_lock_or_exit;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolutionPackage;
@@ -33,12 +35,16 @@ use crate::util::checksum;
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier)?;
+    let specifier = resolve_url_or_path(&specifier, ps.options.initial_cwd())?;
     let mut loader = ps.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = ps
       .create_graph_with_loader(vec![specifier], &mut loader)
       .await?;
+
+    if let Some(lockfile) = &ps.lockfile {
+      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    }
 
     if info_flags.json {
       let mut json_graph = json!(graph);
@@ -472,7 +478,8 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleGraphError::Missing(_, _) = *err {
+        if let ModuleGraphError::ModuleError(ModuleError::Missing(_, _)) = *err
+        {
           writeln!(
             writer,
             "{} module could not be found",
@@ -616,27 +623,28 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::InvalidTypeAssertion { .. } => {
-        self.build_error_msg(specifier, "(invalid import assertion)")
-      }
-      ModuleGraphError::LoadingErr(_, _, _) => {
-        self.build_error_msg(specifier, "(loading error)")
-      }
-      ModuleGraphError::ParseErr(_, _) => {
-        self.build_error_msg(specifier, "(parsing error)")
-      }
+      ModuleGraphError::ModuleError(err) => match err {
+        ModuleError::InvalidTypeAssertion { .. } => {
+          self.build_error_msg(specifier, "(invalid import assertion)")
+        }
+        ModuleError::LoadingErr(_, _, _) => {
+          self.build_error_msg(specifier, "(loading error)")
+        }
+        ModuleError::ParseErr(_, _) => {
+          self.build_error_msg(specifier, "(parsing error)")
+        }
+        ModuleError::UnsupportedImportAssertionType { .. } => {
+          self.build_error_msg(specifier, "(unsupported import assertion)")
+        }
+        ModuleError::UnsupportedMediaType { .. } => {
+          self.build_error_msg(specifier, "(unsupported)")
+        }
+        ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+          self.build_error_msg(specifier, "(missing)")
+        }
+      },
       ModuleGraphError::ResolutionError(_) => {
         self.build_error_msg(specifier, "(resolution error)")
-      }
-      ModuleGraphError::UnsupportedImportAssertionType { .. } => {
-        self.build_error_msg(specifier, "(unsupported import assertion)")
-      }
-      ModuleGraphError::UnsupportedMediaType { .. } => {
-        self.build_error_msg(specifier, "(unsupported)")
-      }
-      ModuleGraphError::Missing(_, _)
-      | ModuleGraphError::MissingDynamic(_, _) => {
-        self.build_error_msg(specifier, "(missing)")
       }
     }
   }

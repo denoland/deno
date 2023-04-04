@@ -8,6 +8,7 @@ use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
@@ -24,9 +25,11 @@ use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
+use crate::npm::create_npm_fs_resolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
@@ -72,6 +75,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: DenoDir,
+  pub caches: Caches,
   pub file_fetcher: Arc<FileFetcher>,
   pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
@@ -91,8 +95,10 @@ pub struct Inner {
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
+  pub npm_api: NpmRegistryApi,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
+  pub npm_resolution: NpmResolution,
   pub package_json_deps_installer: PackageJsonDepsInstaller,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
@@ -134,6 +140,7 @@ impl ProcState {
   pub fn reset_for_file_watcher(&mut self) {
     self.0 = Arc::new(Inner {
       dir: self.dir.clone(),
+      caches: self.caches.clone(),
       options: self.options.clone(),
       emit_cache: self.emit_cache.clone(),
       emit_options_hash: self.emit_options_hash,
@@ -145,7 +152,7 @@ impl ProcState {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_inspector_server: self.maybe_inspector_server.clone(),
       root_cert_store: self.root_cert_store.clone(),
-      blob_store: Default::default(),
+      blob_store: self.blob_store.clone(),
       broadcast_channel: Default::default(),
       shared_array_buffer_store: Default::default(),
       compiled_wasm_module_store: Default::default(),
@@ -153,8 +160,10 @@ impl ProcState {
       resolver: self.resolver.clone(),
       maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
       node_analysis_cache: self.node_analysis_cache.clone(),
+      npm_api: self.npm_api.clone(),
       npm_cache: self.npm_cache.clone(),
       npm_resolver: self.npm_resolver.clone(),
+      npm_resolution: self.npm_resolution.clone(),
       package_json_deps_installer: self.package_json_deps_installer.clone(),
       cjs_resolutions: Default::default(),
       progress_bar: self.progress_bar.clone(),
@@ -185,11 +194,25 @@ impl ProcState {
     cli_options: Arc<CliOptions>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
+    let dir = cli_options.resolve_deno_dir()?;
+    let caches = Caches::default();
+    // Warm up the caches we know we'll likely need based on the CLI mode
+    match cli_options.sub_command() {
+      DenoSubcommand::Run(_) => {
+        _ = caches.dep_analysis_db(&dir);
+        _ = caches.node_analysis_db(&dir);
+      }
+      DenoSubcommand::Check(_) => {
+        _ = caches.dep_analysis_db(&dir);
+        _ = caches.node_analysis_db(&dir);
+        _ = caches.type_checking_cache_db(&dir);
+      }
+      _ => {}
+    }
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
-    let dir = cli_options.resolve_deno_dir()?;
     let deps_cache_location = dir.deps_folder_path();
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
@@ -210,31 +233,43 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let registry_url = NpmRegistryApi::default_url().to_owned();
+    let npm_registry_url = NpmRegistryApi::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let api = NpmRegistryApi::new(
-      registry_url,
+    let npm_api = NpmRegistryApi::new(
+      npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let npm_resolver = NpmPackageResolver::new_with_maybe_lockfile(
-      npm_cache.clone(),
-      api,
-      cli_options.node_modules_dir_path(),
-      cli_options.get_npm_resolution_snapshot(),
+    let npm_snapshot = cli_options
+      .resolve_npm_resolution_snapshot(&npm_api)
+      .await?;
+    let npm_resolution = NpmResolution::new(
+      npm_api.clone(),
+      npm_snapshot,
       lockfile.as_ref().cloned(),
-    )
-    .await?;
+    );
+    let npm_fs_resolver = create_npm_fs_resolver(
+      npm_cache,
+      &progress_bar,
+      npm_registry_url,
+      npm_resolution.clone(),
+      cli_options.node_modules_dir_path(),
+    );
+    let npm_resolver = NpmPackageResolver::new(
+      npm_resolution.clone(),
+      npm_fs_resolver,
+      lockfile.as_ref().cloned(),
+    );
     let package_json_deps_installer = PackageJsonDepsInstaller::new(
-      npm_resolver.api().clone(),
-      npm_resolver.resolution().clone(),
-      cli_options.maybe_package_json_deps()?,
+      npm_api.clone(),
+      npm_resolution.clone(),
+      cli_options.maybe_package_json_deps(),
     );
     let maybe_import_map = cli_options
       .resolve_import_map(&file_fetcher)
@@ -247,8 +282,8 @@ impl ProcState {
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
       cli_options.no_npm(),
-      npm_resolver.api().clone(),
-      npm_resolver.resolution().clone(),
+      npm_api.clone(),
+      npm_resolution.clone(),
       package_json_deps_installer.clone(),
     ));
 
@@ -265,7 +300,7 @@ impl ProcState {
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
-      ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
+      ParsedSourceCache::new(caches.dep_analysis_db(&dir));
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
@@ -273,11 +308,12 @@ impl ProcState {
       progress_bar.clone(),
     );
     let node_analysis_cache =
-      NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
+      NodeAnalysisCache::new(caches.node_analysis_db(&dir));
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
       dir,
+      caches,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()
@@ -299,8 +335,10 @@ impl ProcState {
       resolver,
       maybe_file_watcher_reporter,
       node_analysis_cache,
+      npm_api,
       npm_cache,
       npm_resolver,
+      npm_resolution,
       package_json_deps_installer,
       cjs_resolutions: Default::default(),
       progress_bar,
@@ -326,6 +364,7 @@ impl ProcState {
     let mut cache = cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       root_permissions,
       dynamic_permissions,
       self.options.node_modules_dir_specifier(),
@@ -408,7 +447,7 @@ impl ProcState {
           && !roots.iter().all(|r| reload_exclusions.contains(r)),
       };
       let check_cache =
-        TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
+        TypeCheckCache::new(self.caches.type_checking_cache_db(&self.dir));
       let check_result =
         check::check(graph, &check_cache, &self.npm_resolver, options)?;
       self.graph_container.set_type_checked(&roots, lib);
@@ -439,7 +478,7 @@ impl ProcState {
 
     let specifiers = files
       .iter()
-      .map(|file| resolve_url_or_path(file))
+      .map(|file| resolve_url_or_path(file, self.options.initial_cwd()))
       .collect::<Result<Vec<_>, _>>()?;
     self
       .prepare_module_load(
@@ -475,13 +514,18 @@ impl ProcState {
     referrer: &str,
     permissions: &mut PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
-      if self.npm_resolver.in_npm_package(&referrer) {
+    // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
+    // call - maybe it should be caller's responsibility to pass it as an arg?
+    let cwd = std::env::current_dir().context("Unable to get CWD")?;
+    let referrer_result = deno_core::resolve_url_or_path(referrer, &cwd);
+
+    if let Ok(referrer) = referrer_result.as_ref() {
+      if self.npm_resolver.in_npm_package(referrer) {
         // we're in an npm package, so use node resolution
         return self
           .handle_node_resolve_result(node::node_resolve(
             specifier,
-            &referrer,
+            referrer,
             NodeResolutionMode::Execution,
             &self.npm_resolver,
             permissions,
@@ -492,7 +536,7 @@ impl ProcState {
       }
 
       let graph = self.graph_container.graph();
-      let maybe_resolved = match graph.get(&referrer) {
+      let maybe_resolved = match graph.get(referrer) {
         Some(Module::Esm(module)) => {
           module.dependencies.get(specifier).map(|d| &d.maybe_code)
         }
@@ -545,9 +589,9 @@ impl ProcState {
     // but sadly that's not the case due to missing APIs in V8.
     let is_repl = matches!(self.options.sub_command(), DenoSubcommand::Repl(_));
     let referrer = if referrer.is_empty() && is_repl {
-      deno_core::resolve_url_or_path("./$deno$repl.ts")?
+      deno_core::resolve_path("./$deno$repl.ts", &cwd)?
     } else {
-      deno_core::resolve_url_or_path(referrer)?
+      referrer_result?
     };
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
@@ -564,10 +608,8 @@ impl ProcState {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          let reference = self
-            .npm_resolver
-            .resolution()
-            .pkg_req_ref_to_nv_ref(reference)?;
+          let reference =
+            self.npm_resolution.pkg_req_ref_to_nv_ref(reference)?;
           return self
             .handle_node_resolve_result(node::node_resolve_npm_reference(
               &reference,
@@ -616,6 +658,7 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
       self.options.node_modules_dir_specifier(),
@@ -641,8 +684,8 @@ impl ProcState {
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
       self.options.no_npm(),
-      self.npm_resolver.api().clone(),
-      self.npm_resolver.resolution().clone(),
+      self.npm_api.clone(),
+      self.npm_resolution.clone(),
       self.package_json_deps_installer.clone(),
     );
     let graph_resolver = cli_resolver.as_graph_resolver();

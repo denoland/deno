@@ -333,6 +333,8 @@ declare namespace Deno {
    *
    * Requires `allow-sys` permission.
    *
+   * On Windows there is no API available to retrieve this information and this method returns `[ 0, 0, 0 ]`.
+   *
    * @tags allow-sys
    * @category Observability
    */
@@ -2015,7 +2017,6 @@ declare namespace Deno {
      * for await (const chunk of file.readable) {
      *   console.log(decoder.decode(chunk));
      * }
-     * file.close();
      * ```
      */
     readonly readable: ReadableStream<Uint8Array>;
@@ -2292,6 +2293,10 @@ declare namespace Deno {
    * ```ts
    * const { columns, rows } = Deno.consoleSize();
    * ```
+   *
+   * This returns the size of the console window as reported by the operating
+   * system. It's not a reflection of how many characters will fit within the
+   * console window, but can be used as part of that calculation.
    *
    * @category I/O
    */
@@ -3076,10 +3081,8 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
-    /** ID of the device containing the file.
-     *
-     * _Linux/Mac OS only._ */
-    dev: number | null;
+    /** ID of the device containing the file. */
+    dev: number;
     /** Inode number.
      *
      * _Linux/Mac OS only._ */
@@ -3479,7 +3482,7 @@ declare namespace Deno {
    *
    * ### Truncate part of the file
    *
-   * ```
+   * ```ts
    * const file = await Deno.makeTempFile();
    * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
    * await Deno.truncate(file, 7);
@@ -4093,7 +4096,7 @@ declare namespace Deno {
     unref(): void;
   }
 
-  /** 
+  /**
    * Options which can be set when calling {@linkcode Deno.Command}.
    *
    * @category Sub Process
@@ -4157,7 +4160,7 @@ declare namespace Deno {
     windowsRawArguments?: boolean;
   }
 
-  /** 
+  /**
    * @category Sub Process
    */
   export interface CommandStatus {
@@ -4170,9 +4173,9 @@ declare namespace Deno {
     signal: Signal | null;
   }
 
-  /** 
-   * The interface returned from calling {@linkcode Command.output} or
-   * {@linkcode Command.outputSync} which represents the result of spawning the
+  /**
+   * The interface returned from calling {@linkcode Deno.Command.output} or
+   * {@linkcode Deno.Command.outputSync} which represents the result of spawning the
    * child process.
    *
    * @category Sub Process
@@ -4563,7 +4566,6 @@ declare namespace Deno {
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
-
     /** Requests the permission, and returns the state of the permission.
      *
      * If the permission is already granted, the user will not be prompted to
@@ -4675,7 +4677,15 @@ declare namespace Deno {
     arch: "x86_64" | "aarch64";
     /** The operating system that the Deno CLI was built for. `"darwin"` is
      * also known as OSX or MacOS. */
-    os: "darwin" | "linux" | "windows" | "freebsd" | "netbsd" | "aix" | "solaris" | "illumos";
+    os:
+      | "darwin"
+      | "linux"
+      | "windows"
+      | "freebsd"
+      | "netbsd"
+      | "aix"
+      | "solaris"
+      | "illumos";
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */
@@ -4718,7 +4728,7 @@ declare namespace Deno {
    *
    * Then `Deno.args` will contain:
    *
-   * ```
+   * ```ts
    * [ "/etc/passwd" ]
    * ```
    *

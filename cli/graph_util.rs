@@ -19,7 +19,10 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
+use deno_core::TaskQueue;
+use deno_core::TaskQueuePermit;
 use deno_graph::Module;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
@@ -29,8 +32,6 @@ use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
-use tokio::sync::SemaphorePermit;
 
 #[derive(Clone, Copy)]
 pub struct GraphValidOptions {
@@ -83,7 +84,9 @@ pub fn graph_valid(
     .flat_map(|error| {
       let is_root = match &error {
         ModuleGraphError::ResolutionError(_) => false,
-        _ => roots.contains(error.specifier()),
+        ModuleGraphError::ModuleError(error) => {
+          roots.contains(error.specifier())
+        }
       };
       let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
         enhanced_resolution_error_message(err)
@@ -93,13 +96,21 @@ pub fn graph_valid(
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!("\n    at {range}"));
+          message.push_str(&format!(
+            "\n    at {}:{}:{}",
+            colors::cyan(range.specifier.as_str()),
+            colors::yellow(&(range.start.line + 1).to_string()),
+            colors::yellow(&(range.start.character + 1).to_string())
+          ));
         }
       }
 
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
-        if matches!(error, ModuleGraphError::MissingDynamic(_, _)) {
+        if matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
+        ) {
           log::warn!("Ignoring: {:#}", message);
           return None;
         }
@@ -150,12 +161,13 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 }
 
 pub async fn create_graph_and_maybe_check(
-  root: ModuleSpecifier,
+  roots: Vec<ModuleSpecifier>,
   ps: &ProcState,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
     ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
+    ps.options.resolve_file_header_overrides(),
     PermissionsContainer::allow_all(),
     PermissionsContainer::allow_all(),
     ps.options.node_modules_dir_specifier(),
@@ -165,8 +177,8 @@ pub async fn create_graph_and_maybe_check(
     ps.options.to_maybe_jsx_import_source_config(),
     ps.maybe_import_map.clone(),
     ps.options.no_npm(),
-    ps.npm_resolver.api().clone(),
-    ps.npm_resolver.resolution().clone(),
+    ps.npm_api.clone(),
+    ps.npm_resolution.clone(),
     ps.package_json_deps_installer.clone(),
   );
   let graph_resolver = cli_resolver.as_graph_resolver();
@@ -176,7 +188,7 @@ pub async fn create_graph_and_maybe_check(
   build_graph_with_npm_resolution(
     &mut graph,
     &ps.npm_resolver,
-    vec![root],
+    roots,
     &mut cache,
     deno_graph::BuildOptions {
       is_dynamic: false,
@@ -212,7 +224,7 @@ pub async fn create_graph_and_maybe_check(
       log::warn!("{}", ignored_options);
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
-    let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
+    let cache = TypeCheckCache::new(ps.caches.type_checking_cache_db(&ps.dir));
     let check_result = check::check(
       graph.clone(),
       &cache,
@@ -318,19 +330,13 @@ struct GraphData {
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ModuleGraphContainer {
-  update_semaphore: Arc<Semaphore>,
+  // Allow only one request to update the graph data at a time,
+  // but allow other requests to read from it at any time even
+  // while another request is updating the data.
+  update_queue: Arc<TaskQueue>,
   graph_data: Arc<RwLock<GraphData>>,
-}
-
-impl Default for ModuleGraphContainer {
-  fn default() -> Self {
-    Self {
-      update_semaphore: Arc::new(Semaphore::new(1)),
-      graph_data: Default::default(),
-    }
-  }
 }
 
 impl ModuleGraphContainer {
@@ -338,7 +344,7 @@ impl ModuleGraphContainer {
   /// having the chance to modify it. In the meantime, other code may
   /// still read from the existing module graph.
   pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
-    let permit = self.update_semaphore.acquire().await.unwrap();
+    let permit = self.update_queue.acquire().await;
     ModuleGraphUpdatePermit {
       permit,
       graph_data: self.graph_data.clone(),
@@ -395,7 +401,7 @@ impl ModuleGraphContainer {
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
 pub struct ModuleGraphUpdatePermit<'a> {
-  permit: SemaphorePermit<'a>,
+  permit: TaskQueuePermit<'a>,
   graph_data: Arc<RwLock<GraphData>>,
   graph: ModuleGraph,
 }
@@ -442,7 +448,6 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
-          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
@@ -459,7 +464,6 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
-          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },

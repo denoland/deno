@@ -34,6 +34,12 @@ fn js_unit_tests() {
     .expect("failed to spawn script");
 
   let status = deno.wait().expect("failed to wait for the child process");
-  assert_eq!(Some(0), status.code());
+  #[cfg(unix)]
+  assert_eq!(
+    std::os::unix::process::ExitStatusExt::signal(&status),
+    None,
+    "Deno should not have died with a signal"
+  );
+  assert_eq!(Some(0), status.code(), "Deno should have exited cleanly");
   assert!(status.success());
 }

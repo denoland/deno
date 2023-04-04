@@ -1,8 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { magenta } from "std/fmt/colors.ts";
+import { pooledMap } from "std/async/pool.ts";
 import { dirname, fromFileUrl, join } from "std/path/mod.ts";
 import { fail } from "std/testing/asserts.ts";
-import { config, getPathsFromTestSuites } from "./common.ts";
+import {
+  config,
+  getPathsFromTestSuites,
+  partitionParallelTestPaths,
+} from "./common.ts";
 
 // If the test case is invoked like
 // deno test -A cli/tests/node_compat/test.ts -- <test-names>
@@ -19,7 +24,9 @@ const hasFilters = filters.length > 0;
 
 const toolsPath = dirname(fromFileUrl(import.meta.url));
 const stdRootUrl = new URL("../../", import.meta.url).href;
-const testPaths = getPathsFromTestSuites(config.tests);
+const testPaths = partitionParallelTestPaths(
+  getPathsFromTestSuites(config.tests),
+);
 const cwd = new URL(".", import.meta.url);
 const importMap = "import_map.json";
 const windowsIgnorePaths = new Set(
@@ -30,23 +37,26 @@ const darwinIgnorePaths = new Set(
 );
 
 const decoder = new TextDecoder();
+let testSerialId = 0;
 
-for await (const path of testPaths) {
+async function runTest(t: Deno.TestContext, path: string): Promise<void> {
   // If filter patterns are given and any pattern doesn't match
   // to the file path, then skip the case
   if (
     filters.length > 0 &&
     filters.every((pattern) => !path.includes(pattern))
   ) {
-    continue;
+    return;
   }
-  const isTodo = path.includes("TODO");
   const ignore =
     (Deno.build.os === "windows" && windowsIgnorePaths.has(path)) ||
-    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path)) || isTodo;
-  Deno.test({
+    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path));
+  await t.step({
     name: `Node.js compatibility "${path}"`,
     ignore,
+    sanitizeOps: false,
+    sanitizeResources: false,
+    sanitizeExit: false,
     fn: async () => {
       const testCase = join(toolsPath, "test", path);
 
@@ -74,6 +84,7 @@ for await (const path of testPaths) {
         args,
         env: {
           DENO_NODE_COMPAT_URL: stdRootUrl,
+          TEST_SERIAL_ID: String(testSerialId++),
         },
         cwd,
       });
@@ -101,9 +112,24 @@ for await (const path of testPaths) {
   });
 }
 
+Deno.test("Node.js compatibility", async (t) => {
+  for (const path of testPaths.sequential) {
+    await runTest(t, path);
+  }
+  const testPool = pooledMap(
+    navigator.hardwareConcurrency,
+    testPaths.parallel,
+    (path) => runTest(t, path),
+  );
+  const testCases = [];
+  for await (const testCase of testPool) {
+    testCases.push(testCase);
+  }
+  await Promise.all(testCases);
+});
+
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
-  for (let testFileList of testFileLists) {
-    testFileList = testFileList.filter((name) => !name.startsWith("TODO:"));
+  for (const testFileList of testFileLists) {
     const sortedTestList = JSON.parse(JSON.stringify(testFileList));
     sortedTestList.sort();
     if (JSON.stringify(testFileList) !== JSON.stringify(sortedTestList)) {

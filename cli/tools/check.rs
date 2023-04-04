@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -88,20 +89,22 @@ pub fn check(
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
   // that data here.
-  let hash_data = vec![
-    options.ts_config.as_bytes(),
-    version::deno().as_bytes().to_owned(),
-  ];
+  let hash_data = {
+    let mut hasher = FastInsecureHasher::new();
+    hasher.write(&options.ts_config.as_bytes());
+    hasher.write_str(version::deno());
+    hasher.finish()
+  };
 
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,
     debug: options.debug,
     graph: graph.clone(),
     hash_data,
-    maybe_config_specifier: options.maybe_config_specifier,
     maybe_npm_resolver: Some(npm_resolver.clone()),
     maybe_tsbuildinfo,
     root_names,
+    check_mode: options.type_check_mode,
   })?;
 
   let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
@@ -230,7 +233,41 @@ fn get_tsc_roots(
   graph: &ModuleGraph,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
-  let mut result = Vec::new();
+  fn maybe_get_check_entry(
+    module: &deno_graph::Module,
+    check_js: bool,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    match module {
+      Module::Esm(module) => match module.media_type {
+        MediaType::TypeScript
+        | MediaType::Tsx
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Jsx => Some((module.specifier.clone(), module.media_type)),
+        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+          if check_js || has_ts_check(module.media_type, &module.source) {
+            Some((module.specifier.clone(), module.media_type))
+          } else {
+            None
+          }
+        }
+        MediaType::Json
+        | MediaType::Wasm
+        | MediaType::TsBuildInfo
+        | MediaType::SourceMap
+        | MediaType::Unknown => None,
+      },
+      Module::External(_)
+      | Module::Node(_)
+      | Module::Npm(_)
+      | Module::Json(_) => None,
+    }
+  }
+
+  let mut result = Vec::with_capacity(graph.specifiers_count());
   if graph.has_node_specifier {
     // inject a specifier that will resolve node types
     result.push((
@@ -238,34 +275,47 @@ fn get_tsc_roots(
       MediaType::Dts,
     ));
   }
-  result.extend(graph.modules().filter_map(|module| match module {
-    Module::Esm(module) => match module.media_type {
-      MediaType::TypeScript
-      | MediaType::Tsx
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Jsx => Some((module.specifier.clone(), module.media_type)),
-      MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-        if check_js || has_ts_check(module.media_type, &module.source) {
-          Some((module.specifier.clone(), module.media_type))
-        } else {
-          None
+
+  let mut seen_roots =
+    HashSet::with_capacity(graph.imports.len() + graph.roots.len());
+
+  // put in the global types first so that they're resolved before anything else
+  for import in graph.imports.values() {
+    for dep in import.dependencies.values() {
+      let specifier = dep.get_type().or_else(|| dep.get_code());
+      if let Some(specifier) = &specifier {
+        if seen_roots.insert(*specifier) {
+          let maybe_entry = graph
+            .get(specifier)
+            .and_then(|m| maybe_get_check_entry(m, check_js));
+          if let Some(entry) = maybe_entry {
+            result.push(entry);
+          }
         }
       }
-      MediaType::Json
-      | MediaType::Dts
-      | MediaType::Dmts
-      | MediaType::Dcts
-      | MediaType::Wasm
-      | MediaType::TsBuildInfo
-      | MediaType::SourceMap
-      | MediaType::Unknown => None,
-    },
-    Module::External(_)
-    | Module::Node(_)
-    | Module::Npm(_)
-    | Module::Json(_) => None,
+    }
+  }
+
+  // then the roots
+  for root in &graph.roots {
+    if let Some(module) = graph.get(root) {
+      if seen_roots.insert(root) {
+        if let Some(entry) = maybe_get_check_entry(module, check_js) {
+          result.push(entry);
+        }
+      }
+    }
+  }
+
+  // now the rest
+  result.extend(graph.modules().filter_map(|module| {
+    if seen_roots.contains(module.specifier()) {
+      None
+    } else {
+      maybe_get_check_entry(module, check_js)
+    }
   }));
+
   result
 }
 

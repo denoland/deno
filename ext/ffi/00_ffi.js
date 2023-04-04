@@ -2,16 +2,21 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
+  DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   Number,
   NumberIsSafeInteger,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
   Int32Array,
@@ -26,13 +31,31 @@ const {
   SafeMap,
   SafeArrayIterator,
   SymbolFor,
+  WeakMap,
 } = primordials;
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
+/**
+ * @param {BufferSource} source
+ * @returns {number}
+ */
+function getBufferSourceByteLength(source) {
+  if (ArrayBufferIsView(source)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(source) !== undefined) {
+      // TypedArray
+      return TypedArrayPrototypeGetByteLength(source);
+    } else {
+      // DataView
+      return DataViewPrototypeGetByteLength(source);
+    }
+  }
+  return ArrayBufferPrototypeGetByteLength(source);
+}
 const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 const U32_BUFFER = new Uint32Array(2);
-const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
-const I64_BUFFER = new BigInt64Array(U32_BUFFER.buffer);
+const U64_BUFFER = new BigUint64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
+const I64_BUFFER = new BigInt64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
 class UnsafePointerView {
   pointer;
 
@@ -163,7 +186,7 @@ class UnsafePointerView {
       this.pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 
@@ -172,13 +195,16 @@ class UnsafePointerView {
       pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 }
 
 const OUT_BUFFER = new Uint32Array(2);
-const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
+const OUT_BUFFER_64 = new BigInt64Array(
+  TypedArrayPrototypeGetBuffer(OUT_BUFFER),
+);
+const POINTER_TO_BUFFER_WEAK_MAP = new WeakMap();
 class UnsafePointer {
   static create(value) {
     return ops.op_ffi_ptr_create(value);
@@ -195,7 +221,11 @@ class UnsafePointer {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       return value.pointer;
     }
-    return ops.op_ffi_ptr_of(value);
+    const pointer = ops.op_ffi_ptr_of(value);
+    if (pointer) {
+      POINTER_TO_BUFFER_WEAK_MAP.set(pointer, value);
+    }
+    return pointer;
   }
 
   static offset(value, offset) {
@@ -307,8 +337,9 @@ function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
       size += fieldSize;
     }
     size = MathCeil(size / alignment) * alignment;
-    cache.set(type, size);
-    return [size, alignment];
+    const result = [size, alignment];
+    cache.set(type, result);
+    return result;
   }
 
   switch (type) {
@@ -412,6 +443,12 @@ class DynamicLibrary {
         continue;
       }
 
+      // Symbol was marked as optional, and not found.
+      // In that case, we set its value to null in Rust-side.
+      if (symbols[symbol] === null) {
+        continue;
+      }
+
       if (ReflectHas(symbols[symbol], "type")) {
         const type = symbols[symbol].type;
         if (type === "void") {
@@ -425,6 +462,7 @@ class DynamicLibrary {
           this.#rid,
           name,
           type,
+          symbols[symbol].optional,
         );
         ObjectDefineProperty(
           this.symbols,
@@ -485,8 +523,8 @@ class DynamicLibrary {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const vi = new Int32Array(2);
-        const vui = new Uint32Array(vi.buffer);
-        const b = new BigInt64Array(vi.buffer);
+        const vui = new Uint32Array(TypedArrayPrototypeGetBuffer(vi));
+        const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
 
         const params = ArrayPrototypeJoin(
           ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
@@ -536,9 +574,6 @@ class DynamicLibrary {
 }
 
 function dlopen(path, symbols) {
-  // TODO(@crowlKats): remove me
-  // URL support is progressively enhanced by util in `runtime/js`.
-  const pathFromURL = internals.pathFromURL ?? ((p) => p);
   return new DynamicLibrary(pathFromURL(path), symbols);
 }
 

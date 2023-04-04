@@ -7,7 +7,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
@@ -41,30 +41,44 @@ const SET_SEARCH = 7;
 const SET_USERNAME = 8;
 
 // Helper functions
+/**
+ * @param {string} href
+ * @param {number} setter
+ * @param {string} value
+ * @returns {string}
+ */
 function opUrlReparse(href, setter, value) {
   const status = ops.op_url_reparse(
     href,
     setter,
     value,
-    componentsBuf.buffer,
+    componentsBuf,
   );
   return getSerialization(status, href);
 }
 
+/**
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {number}
+ */
 function opUrlParse(href, maybeBase) {
-  let status;
   if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf.buffer);
-  } else {
-    status = ops.op_url_parse_with_base(
-      href,
-      maybeBase,
-      componentsBuf.buffer,
-    );
+    return ops.op_url_parse(href, componentsBuf);
   }
-  return getSerialization(status, href, maybeBase);
+  return ops.op_url_parse_with_base(
+    href,
+    maybeBase,
+    componentsBuf,
+  );
 }
 
+/**
+ * @param {number} status
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {string}
+ */
 function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
@@ -302,6 +316,11 @@ class URLSearchParams {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     return ops.op_url_stringify_search_params(this[_list]);
   }
+
+  get size() {
+    webidl.assertBranded(this, URLSearchParamsPrototype);
+    return this[_list].length;
+  }
 }
 
 webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
@@ -321,7 +340,7 @@ function trim(s) {
   return s;
 }
 
-// Represents a "no port" value. A port in URL cannot be greater than 2^16 − 1
+// Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
 const NO_PORT = 65536;
 
 const componentsBuf = new Uint32Array(8);
@@ -348,7 +367,7 @@ class URL {
 
   /**
    * @param {string} url
-   * @param {string} base
+   * @param {string} [base]
    */
   constructor(url, base = undefined) {
     const prefix = "Failed to construct 'URL'";
@@ -360,8 +379,26 @@ class URL {
       });
     }
     this[webidl.brand] = webidl.brand;
-    this.#serialization = opUrlParse(url, base);
+    const status = opUrlParse(url, base);
+    this.#serialization = getSerialization(status, url, base);
     this.#updateComponents();
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} [base]
+   */
+  static canParse(url, base = undefined) {
+    const prefix = "Failed to call 'URL.canParse'";
+    url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, {
+        prefix,
+        context: "Argument 2",
+      });
+    }
+    const status = opUrlParse(url, base);
+    return status === 0 || status === 1;
   }
 
   #updateComponents() {
@@ -515,7 +552,8 @@ class URL {
       prefix,
       context: "Argument 1",
     });
-    this.#serialization = opUrlParse(value);
+    const status = opUrlParse(value);
+    this.#serialization = getSerialization(status, value);
     this.#updateComponents();
     this.#updateSearchParams();
   }

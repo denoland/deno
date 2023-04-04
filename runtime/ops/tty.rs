@@ -1,10 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use super::io::StdFileResource;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::OpState;
+use deno_io::StdFileResource;
 use std::io::Error;
 
 #[cfg(unix)]
@@ -33,14 +32,32 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init() -> Extension {
-  Extension::builder("deno_tty")
-    .ops(vec![
-      op_stdin_set_raw::decl(),
-      op_isatty::decl(),
-      op_console_size::decl(),
-    ])
-    .build()
+deno_core::extension!(
+  deno_tty,
+  ops = [op_stdin_set_raw, op_isatty, op_console_size],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
+
+// ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
+#[cfg(windows)]
+const COOKED_MODE: DWORD =
+  // enable line-by-line input (returns input only after CR is read)
+  wincon::ENABLE_LINE_INPUT
+  // enables real-time character echo to console display (requires ENABLE_LINE_INPUT)
+  | wincon::ENABLE_ECHO_INPUT
+  // system handles CTRL-C (with ENABLE_LINE_INPUT, also handles BS, CR, and LF) and other control keys (when using `ReadFile` or `ReadConsole`)
+  | wincon::ENABLE_PROCESSED_INPUT;
+
+#[cfg(windows)]
+fn mode_raw_input_on(original_mode: DWORD) -> DWORD {
+  original_mode & !COOKED_MODE | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+}
+
+#[cfg(windows)]
+fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
+  original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
 }
 
 #[op(fast)]
@@ -83,13 +100,10 @@ fn op_stdin_set_raw(
         return Err(Error::last_os_error().into());
       }
 
-      const RAW_MODE_MASK: DWORD = wincon::ENABLE_LINE_INPUT
-        | wincon::ENABLE_ECHO_INPUT
-        | wincon::ENABLE_PROCESSED_INPUT;
       let new_mode = if is_raw {
-        original_mode & !RAW_MODE_MASK | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+        mode_raw_input_on(original_mode)
       } else {
-        original_mode | RAW_MODE_MASK & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
+        mode_raw_input_off(original_mode)
       };
 
       // SAFETY: winapi call
@@ -269,5 +283,33 @@ pub fn console_size(
         rows: size.ws_row as u32,
       })
     }
+  }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+  #[test]
+  fn test_winos_raw_mode_transitions() {
+    use crate::ops::tty::mode_raw_input_off;
+    use crate::ops::tty::mode_raw_input_on;
+
+    let known_off_modes =
+      [0xf7 /* Win10/CMD */, 0x1f7 /* Win10/WinTerm */];
+    let known_on_modes =
+      [0x2f0 /* Win10/CMD */, 0x3f0 /* Win10/WinTerm */];
+
+    // assert known transitions
+    assert_eq!(known_on_modes[0], mode_raw_input_on(known_off_modes[0]));
+    assert_eq!(known_on_modes[1], mode_raw_input_on(known_off_modes[1]));
+
+    // assert ON-OFF round-trip is neutral
+    assert_eq!(
+      known_off_modes[0],
+      mode_raw_input_off(mode_raw_input_on(known_off_modes[0]))
+    );
+    assert_eq!(
+      known_off_modes[1],
+      mode_raw_input_off(mode_raw_input_on(known_off_modes[1]))
+    );
   }
 }

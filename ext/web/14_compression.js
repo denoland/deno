@@ -7,8 +7,12 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { TransformStream } from "internal:deno_web/06_streams.js";
+const primordials = globalThis.__bootstrap.primordials;
+const {
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { TransformStream } from "ext:deno_web/06_streams.js";
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
   "CompressionFormat",
@@ -113,7 +117,7 @@ class DecompressionStream {
 }
 
 function maybeEnqueue(controller, output) {
-  if (output && output.byteLength > 0) {
+  if (output && TypedArrayPrototypeGetByteLength(output) > 0) {
     controller.enqueue(output);
   }
 }

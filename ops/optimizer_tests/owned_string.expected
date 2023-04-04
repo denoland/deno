@@ -1,0 +1,11 @@
+=== Optimizer Dump ===
+returns_result: false
+has_ref_opstate: false
+has_rc_opstate: false
+has_fast_callback_option: false
+needs_fast_callback_option: true
+fast_result: Some(U32)
+fast_parameters: [V8Value, SeqOneByteString]
+transforms: {0: Transform { kind: SeqOneByteString(Owned), index: 0 }}
+is_async: false
+fast_compatible: true

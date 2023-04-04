@@ -4,15 +4,15 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { Deferred, writableStreamClose } from "internal:deno_web/06_streams.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
-import { add, remove } from "internal:deno_web/03_abort_signal.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
+import { add, remove } from "ext:deno_web/03_abort_signal.js";
 import {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:deno_fetch/20_headers.js";
+} from "ext:deno_fetch/20_headers.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
@@ -22,10 +22,12 @@ const {
   PromisePrototypeCatch,
   PromisePrototypeThen,
   Set,
+  SetPrototypeGetSize,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
   Symbol,
   SymbolFor,
+  TypedArrayPrototypeGetByteLength,
   TypeError,
   Uint8ArrayPrototype,
 } = primordials;
@@ -115,12 +117,14 @@ class WebSocketStream {
 
     if (
       options.protocols.length !==
-        new Set(
-          ArrayPrototypeMap(
-            options.protocols,
-            (p) => StringPrototypeToLowerCase(p),
+        SetPrototypeGetSize(
+          new Set(
+            ArrayPrototypeMap(
+              options.protocols,
+              (p) => StringPrototypeToLowerCase(p),
+            ),
           ),
-        ).size
+        )
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -167,12 +171,13 @@ class WebSocketStream {
                 PromisePrototypeThen(
                   (async () => {
                     while (true) {
-                      const { kind } = await core.opAsync(
+                      const { 0: kind } = await core.opAsync(
                         "op_ws_next_event",
                         create.rid,
                       );
 
-                      if (kind === "close") {
+                      if (kind > 6) {
+                        /* close */
                         break;
                       }
                     }
@@ -237,37 +242,51 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
-              const { kind, value } = await core.opAsync(
+              const { 0: kind, 1: value } = await core.opAsync(
                 "op_ws_next_event",
                 this[_rid],
               );
 
               switch (kind) {
-                case "string": {
+                case 0:
+                case 1: {
+                  /* string */
+                  /* binary */
                   controller.enqueue(value);
                   break;
                 }
-                case "binary": {
-                  controller.enqueue(value);
+                case 5: {
+                  /* error */
+                  const err = new Error(value);
+                  this[_closed].reject(err);
+                  controller.error(err);
+                  core.tryClose(this[_rid]);
                   break;
                 }
-                case "ping": {
+                case 3: {
+                  /* ping */
                   await core.opAsync("op_ws_send", this[_rid], {
                     kind: "pong",
                   });
                   await pull(controller);
                   break;
                 }
-                case "closed":
-                case "close": {
-                  this[_closed].resolve(value);
+                case 2: {
+                  /* pong */
+                  break;
+                }
+                case 6: {
+                  /* closed */
+                  this[_closed].resolve(undefined);
                   core.tryClose(this[_rid]);
                   break;
                 }
-                case "error": {
-                  const err = new Error(value);
-                  this[_closed].reject(err);
-                  controller.error(err);
+                default: {
+                  /* close */
+                  this[_closed].resolve({
+                    code: kind,
+                    reason: value,
+                  });
                   core.tryClose(this[_rid]);
                   break;
                 }
@@ -379,7 +398,8 @@ class WebSocketStream {
 
     const encoder = new TextEncoder();
     if (
-      closeInfo.reason && encoder.encode(closeInfo.reason).byteLength > 123
+      closeInfo.reason &&
+      TypedArrayPrototypeGetByteLength(encoder.encode(closeInfo.reason)) > 123
     ) {
       throw new DOMException(
         "The close reason may not be longer than 123 bytes.",

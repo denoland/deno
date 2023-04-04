@@ -6,12 +6,11 @@ use crate::error::range_error;
 use crate::error::type_error;
 use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
-use crate::resolve_url_or_path;
+use crate::resolve_url;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
 use crate::JsRealm;
 use crate::JsRuntime;
-use crate::OpDecl;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
@@ -20,42 +19,6 @@ use serde::Serialize;
 use std::cell::RefCell;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
-
-pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
-  vec![
-    op_ref_op::decl(),
-    op_unref_op::decl(),
-    op_set_macrotask_callback::decl(),
-    op_set_next_tick_callback::decl(),
-    op_set_promise_reject_callback::decl(),
-    op_run_microtasks::decl(),
-    op_has_tick_scheduled::decl(),
-    op_set_has_tick_scheduled::decl(),
-    op_eval_context::decl(),
-    op_queue_microtask::decl(),
-    op_create_host_object::decl(),
-    op_encode::decl(),
-    op_decode::decl(),
-    op_serialize::decl(),
-    op_deserialize::decl(),
-    op_set_promise_hooks::decl(),
-    op_get_promise_details::decl(),
-    op_get_proxy_details::decl(),
-    op_memory_usage::decl(),
-    op_set_wasm_streaming_callback::decl(),
-    op_abort_wasm_streaming::decl(),
-    op_destructure_error::decl(),
-    op_dispatch_exception::decl(),
-    op_op_names::decl(),
-    op_apply_source_map::decl(),
-    op_set_format_exception_callback::decl(),
-    op_event_loop_has_more_work::decl(),
-    op_store_pending_promise_rejection::decl(),
-    op_remove_pending_promise_rejection::decl(),
-    op_has_pending_promise_rejection::decl(),
-    op_arraybuffer_was_detached::decl(),
-  ]
-}
 
 fn to_v8_fn(
   scope: &mut v8::HandleScope,
@@ -159,15 +122,12 @@ struct EvalContextResult<'s>(
 fn op_eval_context<'a>(
   scope: &mut v8::HandleScope<'a>,
   source: serde_v8::Value<'a>,
-  specifier: Option<String>,
+  specifier: String,
 ) -> Result<EvalContextResult<'a>, Error> {
   let tc_scope = &mut v8::TryCatch::new(scope);
   let source = v8::Local::<v8::String>::try_from(source.v8_value)
     .map_err(|_| type_error("Invalid source"))?;
-  let specifier = match specifier {
-    Some(s) => resolve_url_or_path(&s)?.to_string(),
-    None => crate::DUMMY_SPECIFIER.to_string(),
-  };
+  let specifier = resolve_url(&specifier)?.to_string();
   let specifier = v8::String::new(tc_scope, &specifier).unwrap();
   let origin = script_origin(tc_scope, specifier);
 

@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04-xl]
+        os: [ubuntu-22.04-xl]
 
     env:
       CARGO_TERM_COLOR: always
@@ -29,7 +29,7 @@ jobs:
           submodules: true
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dsherret/rust-toolchain-file@v1
 
       - name: Build release
         run: cargo build --release --locked --all-targets

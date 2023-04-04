@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { BinaryLike } from "internal:deno_node/polyfills/internal/crypto/types.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 
 export class Certificate {
   static Certificate = Certificate;

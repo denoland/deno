@@ -1,19 +1,25 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import type { WritableOptions } from "internal:deno_node/polyfills/_stream.d.ts";
-import Writable from "internal:deno_node/polyfills/internal/streams/writable.mjs";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
+import Writable from "ext:deno_node/internal/streams/writable.mjs";
 import type {
   BinaryLike,
   BinaryToTextEncoding,
   Encoding,
   PrivateKeyInput,
   PublicKeyInput,
-} from "internal:deno_node/polyfills/internal/crypto/types.ts";
-import { KeyObject } from "internal:deno_node/polyfills/internal/crypto/keys.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
+import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
+import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 export type DSAEncoding = "der" | "ieee-p1363";
 
@@ -37,30 +43,62 @@ export interface VerifyKeyObjectInput extends SigningOptions {
 export type KeyLike = string | Buffer | KeyObject;
 
 export class Sign extends Writable {
+  hash: Hash;
+  #digestType: string;
+
   constructor(algorithm: string, _options?: WritableOptions) {
     validateString(algorithm, "algorithm");
 
-    super();
+    super({
+      write(chunk, enc, callback) {
+        this.update(chunk, enc);
+        callback();
+      },
+    });
 
-    notImplemented("crypto.Sign");
+    algorithm = algorithm.toLowerCase();
+
+    if (algorithm.startsWith("rsa-")) {
+      // Allows RSA-[digest_algorithm] as a valid algorithm
+      algorithm = algorithm.slice(4);
+    }
+    this.#digestType = algorithm;
+    this.hash = createHash(this.#digestType);
   }
 
-  sign(privateKey: KeyLike | SignKeyObjectInput | SignPrivateKeyInput): Buffer;
   sign(
     privateKey: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
-    outputFormat: BinaryToTextEncoding,
-  ): string;
-  sign(
-    _privateKey: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
-    _outputEncoding?: BinaryToTextEncoding,
+    encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    notImplemented("crypto.Sign.prototype.sign");
+    let keyData: Uint8Array;
+    let keyType: KeyType;
+    let keyFormat: KeyFormat;
+    if (typeof privateKey === "string" || isArrayBufferView(privateKey)) {
+      // if the key is BinaryLike, interpret it as a PEM encoded RSA key
+      keyData = privateKey;
+      keyType = "rsa";
+      keyFormat = "pem";
+    } else {
+      // TODO(kt3k): Add support for the case when privateKey is a KeyObject,
+      // CryptoKey, etc
+      notImplemented("crypto.Sign.prototype.sign with non BinaryLike input");
+    }
+    const ret = Buffer.from(ops.op_node_sign(
+      this.hash.digest(),
+      this.#digestType,
+      keyData!,
+      keyType,
+      keyFormat,
+    ));
+    return encoding ? ret.toString(encoding) : ret;
   }
 
-  update(data: BinaryLike): this;
-  update(data: string, inputEncoding: Encoding): this;
-  update(_data: BinaryLike | string, _inputEncoding?: Encoding): this {
-    notImplemented("crypto.Sign.prototype.update");
+  update(
+    data: BinaryLike | string,
+    encoding?: Encoding,
+  ): this {
+    this.hash.update(data, encoding);
+    return this;
   }
 }
 
