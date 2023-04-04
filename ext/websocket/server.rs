@@ -16,6 +16,7 @@ use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
 
+use sockdeez::CloseCode;
 use sockdeez::Frame;
 use sockdeez::OpCode;
 use sockdeez::WebSocket;
@@ -118,7 +119,17 @@ pub async fn op_server_ws_close(
   code: Option<u16>,
   reason: Option<String>,
 ) -> Result<(), AnyError> {
-  todo!();
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
+  let frame = code
+    .map(|code| Frame::close(code, reason.unwrap().as_bytes()))
+    .unwrap_or_else(|| Frame::close_raw(vec![]));
+  ws.write_frame(frame)
+    .await
+    .map_err(|err| type_error(err.to_string()))?;
   Ok(())
 }
 
@@ -151,13 +162,16 @@ pub async fn op_server_ws_next_event(
       MessageKind::Binary as u16,
       StringOrBuffer::Buffer(val.payload.into()),
     ),
-    // Some(Ok(Message::Close(Some(frame)))) => (
-    //   frame.code.into(),
-    //   StringOrBuffer::String(frame.reason.to_string()),
-    // ),
-    // Some(Ok(Message::Close(None))) => {
-    //   (1005, StringOrBuffer::String("".to_string()))
-    // }
+    OpCode::Close => {
+      if val.payload.len() < 2 {
+        return Ok((1005, StringOrBuffer::String("".to_string())));
+      }
+
+      let close_code =
+        CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
+      let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
+      (close_code.into(), StringOrBuffer::String(reason))
+    }
     OpCode::Ping => (
       MessageKind::Ping as u16,
       StringOrBuffer::Buffer(vec![].into()),
