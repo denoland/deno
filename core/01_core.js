@@ -199,7 +199,7 @@
     const id = rollPromiseId();
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
     try {
-      ops[name](id, ...args);
+      ops[name](id, ...new SafeArrayIterator(args));
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
