@@ -2226,7 +2226,8 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 
   if checks_local_by_default {
     arg.long_help(
-        "Enable type-checking. This subcommand type-checks local modules by default.
+        "Set type-checking behavior. This subcommand type-checks local modules by
+default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.
   
