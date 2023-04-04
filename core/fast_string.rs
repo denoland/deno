@@ -91,7 +91,7 @@ impl FastString {
   }
 
   pub fn as_bytes(&self) -> &[u8] {
-    // TODO(mmastrac): This can be const eventually
+    // TODO(mmastrac): This can be const eventually (waiting for Arc const deref)
     match self {
       Self::Arc(s) => s.as_bytes(),
       Self::Owned(s) => s.as_bytes(),
@@ -101,7 +101,7 @@ impl FastString {
   }
 
   pub fn as_str(&self) -> &str {
-    // TODO(mmastrac): This can be const eventually
+    // TODO(mmastrac): This can be const eventually (waiting for Arc const deref)
     match self {
       Self::Arc(s) => s,
       Self::Owned(s) => s,
@@ -125,7 +125,7 @@ impl FastString {
     }
   }
 
-  /// Truncates a `ModuleCode`] value, possibly re-allocating or memcpy'ing. May be slow.
+  /// Truncates a [`FastString`] value, possibly re-allocating or memcpy'ing. May be slow.
   pub fn truncate(&mut self, index: usize) {
     match self {
       Self::Static(b) => *self = Self::Static(&b[..index]),
@@ -175,7 +175,7 @@ impl PartialEq for FastString {
 
 impl Eq for FastString {}
 
-/// [`FastString`] can be make cheaply from [`Url`] as we know it's owned and don't need to do an
+/// [`FastString`] can be made cheaply from [`Url`] as we know it's owned and don't need to do an
 /// ASCII check.
 impl From<Url> for FastString {
   fn from(value: Url) -> Self {
@@ -184,7 +184,7 @@ impl From<Url> for FastString {
   }
 }
 
-/// [`FastString`] can be make cheaply from [`String`] as we know it's owned and don't need to do an
+/// [`FastString`] can be made cheaply from [`String`] as we know it's owned and don't need to do an
 /// ASCII check.
 impl From<String> for FastString {
   fn from(value: String) -> Self {
@@ -192,7 +192,7 @@ impl From<String> for FastString {
   }
 }
 
-/// [`FastString`] can be make cheaply from [`Arc<str>`] as we know it's shared and don't need to do an
+/// [`FastString`] can be made cheaply from [`Arc<str>`] as we know it's shared and don't need to do an
 /// ASCII check.
 impl From<Arc<str>> for FastString {
   fn from(value: Arc<str>) -> Self {

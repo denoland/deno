@@ -222,8 +222,9 @@ impl ModuleSource {
     }
   }
 
-  /// Create a [`ModuleSource`] with a potential redirect.
-  pub fn new_with_maybe_redirect(
+  /// Create a [`ModuleSource`] with a potential redirect. If the `specifier_found` parameter is the same as the
+  /// specifier, the code behaves the same was as `ModuleSource::new`.
+  pub fn new_with_redirect(
     module_type: impl Into<ModuleType>,
     code: ModuleCode,
     specifier: ModuleSpecifier,
@@ -253,8 +254,9 @@ impl ModuleSource {
     }
   }
 
+  /// If the `found` parameter is the same as the `specified` parameter, the code behaves the same was as `ModuleSource::for_test`.
   #[cfg(test)]
-  pub fn for_test_with_maybe_redirect(
+  pub fn for_test_with_redirect(
     code: &'static str,
     specified: impl AsRef<str>,
     found: impl AsRef<str>,
@@ -965,6 +967,8 @@ impl Stream for RecursiveModuleLoad {
             specifier: module_specifier.to_string(),
             asserted_module_type,
           };
+          // The code will be discarded, since this module is already in the
+          // module map.
           let module_source = ModuleSource::new(
             module_type,
             Default::default(),
@@ -1958,13 +1962,11 @@ import "/a.js";
         return Poll::Pending;
       }
       match mock_source_code(&inner.url) {
-        Some(src) => {
-          Poll::Ready(Ok(ModuleSource::for_test_with_maybe_redirect(
-            src.0,
-            inner.url.as_str(),
-            src.1,
-          )))
-        }
+        Some(src) => Poll::Ready(Ok(ModuleSource::for_test_with_redirect(
+          src.0,
+          inner.url.as_str(),
+          src.1,
+        ))),
         None => Poll::Ready(Err(MockError::LoadErr.into())),
       }
     }

@@ -210,7 +210,7 @@ impl CliModuleLoader {
       // because we don't need it
       code_without_source_map(code_source.code)
     };
-    Ok(ModuleSource::new_with_maybe_redirect(
+    Ok(ModuleSource::new_with_redirect(
       match code_source.media_type {
         MediaType::Json => ModuleType::Json,
         _ => ModuleType::JavaScript,
