@@ -54,6 +54,10 @@ use tokio_tungstenite::WebSocketStream;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
+mod server;
+
+pub use server::ws_create_server_stream;
+
 #[derive(Clone)]
 pub struct WsRootStore(pub Option<RootCertStore>);
 #[derive(Clone)]
@@ -88,24 +92,6 @@ pub enum WebSocketStreamType {
 }
 
 pub trait Upgraded: AsyncRead + AsyncWrite + Unpin {}
-
-pub async fn ws_create_server_stream(
-  state: &Rc<RefCell<OpState>>,
-  transport: Pin<Box<dyn Upgraded>>,
-) -> Result<ResourceId, AnyError> {
-  let mut ws = sockdeez::WebSocket::after_handshake(transport);
-  ws.set_writev(false);
-  ws.set_auto_close(true);
-  ws.set_auto_pong(true);
-
-  let ws_resource = ServerWebSocket {
-    ws: AsyncRefCell::new(ws),
-  };
-
-  let resource_table = &mut state.borrow_mut().resource_table;
-  let rid = resource_table.add(ws_resource);
-  Ok(rid)
-}
 
 pub struct WsStreamResource {
   pub stream: WebSocketStreamType,
@@ -383,16 +369,6 @@ where
   })
 }
 
-pub struct ServerWebSocket {
-  ws: AsyncRefCell<sockdeez::WebSocket<Pin<Box<dyn Upgraded>>>>,
-}
-
-impl Resource for ServerWebSocket {
-  fn name(&self) -> Cow<str> {
-    "serverWebSocket".into()
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum SendValue {
@@ -411,16 +387,8 @@ pub async fn op_ws_send_binary(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)?;
-  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-  ws.write_frame(sockdeez::Frame::new(
-    true,
-    sockdeez::OpCode::Binary,
-    None,
-    data.to_vec(),
-  ))
-  .await
-  .map_err(|err| type_error(err.to_string()))?;
+    .get::<WsStreamResource>(rid)?;
+  resource.send(Message::Binary(data.to_vec())).await?;
   Ok(())
 }
 
@@ -493,7 +461,7 @@ pub enum MessageKind {
   Closed = 6,
 }
 
-#[op(deferred)]
+#[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -501,54 +469,46 @@ pub async fn op_ws_next_event(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)?;
+    .get::<WsStreamResource>(rid)?;
 
-  use sockdeez::OpCode;
-
-  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-  let val = ws.read_frame().await.map_err(|err| {
-    DomExceptionNetworkError::new(&format!(
-      "failed to read WebSocket message: {err}"
-    ))
-  })?;
-  let res = match val.opcode {
-    OpCode::Text => (
-      MessageKind::Text as u16,
-      StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
-    ),
-    OpCode::Binary => (
+  let cancel = RcRef::map(&resource, |r| &r.cancel);
+  let val = resource.next_message(cancel).await?;
+  let res = match val {
+    Some(Ok(Message::Text(text))) => {
+      (MessageKind::Text as u16, StringOrBuffer::String(text))
+    }
+    Some(Ok(Message::Binary(data))) => (
       MessageKind::Binary as u16,
-      StringOrBuffer::Buffer(val.payload.into()),
+      StringOrBuffer::Buffer(data.into()),
     ),
-    _ => todo!(),
-    // Some(Ok(Message::Close(Some(frame)))) => (
-    //   frame.code.into(),
-    //   StringOrBuffer::String(frame.reason.to_string()),
-    // ),
-    // Some(Ok(Message::Close(None))) => {
-    //   (1005, StringOrBuffer::String("".to_string()))
-    // }
-    // Some(Ok(Message::Ping(_))) => (
-    //   MessageKind::Ping as u16,
-    //   StringOrBuffer::Buffer(vec![].into()),
-    // ),
-    // Some(Ok(Message::Pong(_))) => (
-    //   MessageKind::Pong as u16,
-    //   StringOrBuffer::Buffer(vec![].into()),
-    // ),
-    // Some(Err(e)) => (
-    //   MessageKind::Error as u16,
-    //   StringOrBuffer::String(e.to_string()),
-    // ),
-    // None => {
-    //   // No message was received, presumably the socket closed while we waited.
-    //   // Try close the stream, ignoring any errors, and report closed status to JavaScript.
-    //   let _ = state.borrow_mut().resource_table.close(rid);
-    //   (
-    //     MessageKind::Closed as u16,
-    //     StringOrBuffer::Buffer(vec![].into()),
-    //   )
-    // }
+    Some(Ok(Message::Close(Some(frame)))) => (
+      frame.code.into(),
+      StringOrBuffer::String(frame.reason.to_string()),
+    ),
+    Some(Ok(Message::Close(None))) => {
+      (1005, StringOrBuffer::String("".to_string()))
+    }
+    Some(Ok(Message::Ping(_))) => (
+      MessageKind::Ping as u16,
+      StringOrBuffer::Buffer(vec![].into()),
+    ),
+    Some(Ok(Message::Pong(_))) => (
+      MessageKind::Pong as u16,
+      StringOrBuffer::Buffer(vec![].into()),
+    ),
+    Some(Err(e)) => (
+      MessageKind::Error as u16,
+      StringOrBuffer::String(e.to_string()),
+    ),
+    None => {
+      // No message was received, presumably the socket closed while we waited.
+      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+      let _ = state.borrow_mut().resource_table.close(rid);
+      (
+        MessageKind::Closed as u16,
+        StringOrBuffer::Buffer(vec![].into()),
+      )
+    }
   };
   Ok(res)
 }
@@ -564,6 +524,11 @@ deno_core::extension!(deno_websocket,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    server::op_server_ws_send,
+    server::op_server_ws_close,
+    server::op_server_ws_next_event,
+    server::op_server_ws_send_binary,
+    server::op_server_ws_send_text,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
