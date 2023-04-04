@@ -28,7 +28,6 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
-use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -180,7 +179,7 @@ async fn create_standalone_binary(
       println!("{}", target);
       bail!("The `--no-terminal` flag is only available when targeting Windows")
     }
-    original_bin = set_windows_binary_to_gui(original_bin)?;
+    set_windows_binary_to_gui(&mut original_bin)?;
   }
 
   let mut eszip_archive = eszip.into_bytes();
@@ -233,55 +232,23 @@ async fn create_standalone_binary(
   Ok(final_bin)
 }
 
-// Reads a slice of bytes as if it is a slice of Ts
-// Returns the slices cannot be aligned with the size of T
-fn read_as<T>(bin: &[u8], start: i32, end: i32) -> Result<&[T], AnyError> {
-  let range = Range {
-    start: start as usize,
-    end: end as usize,
-  };
-  let slice = &bin[range];
-  let (prefix, value, suffix) = unsafe { slice.align_to::<T>() };
-  if prefix.len() != 0 || suffix.len() != 0 || value.len() == 0 {
-    bail!("Could not align bytes to a slice of Ts")
-  }
-  Ok(value)
-}
-
-// Reads a slice of bytes as if it is a slice of Ts
-// Returns an Error if the slices cannot be aligned with the size of T
-fn read_as_mut<T>(
-  bin: &mut [u8],
-  start: i32,
-  end: i32,
-) -> Result<&mut [T], AnyError> {
-  let range = Range {
-    start: start as usize,
-    end: end as usize,
-  };
-  let slice = &mut bin[range];
-  let (prefix, value, suffix) = unsafe { slice.align_to_mut::<T>() };
-  if prefix.len() != 0 || suffix.len() != 0 || value.len() == 0 {
-    bail!("Could not align bytes to a slice of Ts")
-  }
-  Ok(value)
-}
-
 /// This function sets the subsystem field in the PE header to 2 (GUI subsystem)
 /// For more information about the PE header: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
-fn set_windows_binary_to_gui(mut bin: Vec<u8>) -> Result<Vec<u8>, AnyError> {
+fn set_windows_binary_to_gui(bin: &mut Vec<u8>) -> Result<(), AnyError> {
   // Get the PE header offset located in an i32 found at offset 60
   // See: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#ms-dos-stub-image-only
-  let start_pe = read_as::<i32>(&bin, 60, 64)?[0];
+  let start_pe = u32::from_le_bytes((bin[60..64]).try_into()?);
 
   // Get image type (PE32 or PE32+) indicates whether the binary is 32 or 64 bit
   // The used offset and size values can be found here:
   // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-image-only
-  let start_32 = start_pe + 28;
-  let magic_32 = read_as::<i16>(&bin, start_32, start_32 + 2)?[0];
+  let start_32 = start_pe as usize + 28;
+  let magic_32 =
+    u16::from_le_bytes(bin[(start_32)..(start_32 + 2)].try_into()?);
 
-  let start_64 = start_pe + 24;
-  let magic_64 = read_as::<i16>(&bin, start_64, start_64 + 2)?[0];
+  let start_64 = start_pe as usize + 24;
+  let magic_64 =
+    u16::from_le_bytes(bin[(start_64)..(start_64 + 2)].try_into()?);
 
   // Take the standard fields size for the current architecture (32 or 64 bit)
   // This is the ofset for the Windows-Specific fields
@@ -296,11 +263,12 @@ fn set_windows_binary_to_gui(mut bin: Vec<u8>) -> Result<Vec<u8>, AnyError> {
   // Set the subsystem field (offset 68) to 2 (GUI subsystem)
   // For all possible options, see: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-windows-specific-fields-image-only
   let subsystem_offset = 68;
-  let subsystem_start = start_pe + standard_fields_size + subsystem_offset;
-  let subsystem =
-    read_as_mut::<i16>(&mut bin, subsystem_start, subsystem_start + 2)?;
-  subsystem[0] = 2;
-  Ok(bin)
+  let subsystem_start =
+    start_pe as usize + standard_fields_size + subsystem_offset;
+  let subsystem: u16 = 2;
+  bin[(subsystem_start)..(subsystem_start + 2)]
+    .copy_from_slice(&subsystem.to_le_bytes());
+  Ok(())
 }
 
 /// This function writes out a final binary to specified path. If output path
