@@ -16,11 +16,11 @@ use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
 
-use sockdeez::CloseCode;
-use sockdeez::Frame;
-use sockdeez::OpCode;
-use sockdeez::WebSocket;
-use sockdeez::FragmentCollector;
+use fastwebsockets::CloseCode;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::WebSocket;
 
 pub struct ServerWebSocket {
   ws: AsyncRefCell<FragmentCollector<Pin<Box<dyn Upgraded>>>>,

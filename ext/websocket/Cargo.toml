@@ -16,10 +16,10 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_tls.workspace = true
+fastwebsockets = { path = "../../../socket" }
 http.workspace = true
 hyper.workspace = true
 serde.workspace = true
-sockdeez = { path = "../../../socket" }
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }

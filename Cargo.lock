@@ -1274,10 +1274,10 @@ version = "0.102.0"
 dependencies = [
  "deno_core",
  "deno_tls",
+ "fastwebsockets",
  "http",
  "hyper",
  "serde",
- "sockdeez",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
@@ -1678,6 +1678,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51093e27b0797c359783294ca4f0a911c270184cb10f85783b118614a1501be"
 dependencies = [
  "instant",
+]
+
+[[package]]
+name = "fastwebsockets"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "simdutf8",
+ "tokio",
+ "utf-8",
 ]
 
 [[package]]
@@ -3950,16 +3960,6 @@ dependencies = [
  "autocfg",
  "static_assertions",
  "version_check",
-]
-
-[[package]]
-name = "sockdeez"
-version = "0.1.0"
-dependencies = [
- "cc",
- "simdutf8",
- "tokio",
- "utf-8",
 ]
 
 [[package]]
