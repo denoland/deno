@@ -127,8 +127,8 @@ pub async fn op_server_ws_close(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-  let frame = code
-    .map(|code| Frame::close(code, reason.unwrap().as_bytes()))
+  let frame = reason
+    .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![]));
   ws.write_frame(frame)
     .await
