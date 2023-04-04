@@ -78,7 +78,7 @@ impl CliModuleLoader {
   fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.scheme() == "node" {
       unreachable!(); // Node built-in modules should be handled internally.
@@ -92,7 +92,7 @@ impl CliModuleLoader {
         specifier,
         ..
       })) => Ok(ModuleCodeSource {
-        code: source.into(),
+        code: source.clone().into(),
         found_url: specifier.clone(),
         media_type: *media_type,
       }),
@@ -107,7 +107,7 @@ impl CliModuleLoader {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => source.into(),
+          | MediaType::Json => source.clone().into(),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             Default::default()
           }
@@ -154,7 +154,7 @@ impl CliModuleLoader {
   fn load_sync(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Result<ModuleSource, AnyError> {
     let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
@@ -210,15 +210,15 @@ impl CliModuleLoader {
       // because we don't need it
       code_without_source_map(code_source.code)
     };
-    Ok(ModuleSource {
-      code,
-      module_url_specified: specifier.to_string(),
-      module_url_found: code_source.found_url.to_string(),
-      module_type: match code_source.media_type {
+    Ok(ModuleSource::new_with_redirect(
+      match code_source.media_type {
         MediaType::Json => ModuleType::Json,
         _ => ModuleType::JavaScript,
       },
-    })
+      code,
+      specifier,
+      &code_source.found_url,
+    ))
   }
 }
 
@@ -240,7 +240,7 @@ impl ModuleLoader for CliModuleLoader {
   fn load(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     // NOTE: this block is async only because of `deno_core` interface
