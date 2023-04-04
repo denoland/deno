@@ -6,8 +6,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url::form_urlencoded;
-use deno_core::url::quirks;
-use deno_core::url::Url;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::path::PathBuf;
@@ -39,11 +37,7 @@ pub fn op_url_parse_with_base(
   base_href: &str,
   buf: &mut [u32],
 ) -> u32 {
-  let base_url = match Url::parse(base_href) {
-    Ok(url) => url,
-    Err(_) => return ParseStatus::Err as u32,
-  };
-  parse_url(state, href, Some(&base_url), buf)
+  parse_url(state, href, Some(base_href), buf)
 }
 
 #[repr(u32)]
@@ -94,24 +88,22 @@ pub fn op_url_parse(state: &mut OpState, href: &str, buf: &mut [u32]) -> u32 {
 fn parse_url(
   state: &mut OpState,
   href: &str,
-  base_href: Option<&Url>,
+  base_href: Option<&str>,
   buf: &mut [u32],
 ) -> u32 {
-  match Url::options().base_url(base_href).parse(href) {
-    Ok(url) => {
-      let inner_url = quirks::internal_components(&url);
-
-      buf[0] = inner_url.scheme_end;
+  match deno_ada_rs::parse(href, base_href) {
+    Ok((inner_url, href)) => {
+      buf[0] = inner_url.protocol_end;
       buf[1] = inner_url.username_end;
       buf[2] = inner_url.host_start;
       buf[3] = inner_url.host_end;
-      buf[4] = inner_url.port.unwrap_or(0) as u32;
-      buf[5] = inner_url.path_start;
-      buf[6] = inner_url.query_start.unwrap_or(0);
-      buf[7] = inner_url.fragment_start.unwrap_or(0);
-      let serialization: String = url.into();
-      if serialization != href {
-        state.put(UrlSerialization(serialization));
+      buf[4] = inner_url.port;
+      buf[5] = inner_url.pathname_start;
+      buf[6] = inner_url.search_start;
+      buf[7] = inner_url.hash_start;
+
+      if inner_url.same_as_input == 0 {
+        state.put(UrlSerialization(href.to_string()));
         ParseStatus::OkSerialization as u32
       } else {
         ParseStatus::Ok as u32
@@ -135,8 +127,6 @@ pub enum UrlSetter {
   Username = 8,
 }
 
-const NO_PORT: u32 = 65536;
-
 fn as_u32_slice(slice: &mut [u8]) -> &mut [u32] {
   assert_eq!(slice.len() % std::mem::size_of::<u32>(), 0);
   // SAFETY: size is multiple of 4
@@ -151,63 +141,45 @@ fn as_u32_slice(slice: &mut [u8]) -> &mut [u32] {
 #[op]
 pub fn op_url_reparse(
   state: &mut OpState,
-  href: String,
+  href: &str,
   setter: u8,
-  setter_value: String,
+  value: &str,
   buf: &mut [u8],
 ) -> u32 {
-  let mut url = match Url::options().parse(&href) {
-    Ok(url) => url,
-    Err(_) => return ParseStatus::Err as u32,
-  };
-
   if setter > 8 {
     return ParseStatus::Err as u32;
   }
   // SAFETY: checked to be less than 9.
   let setter = unsafe { std::mem::transmute::<u8, UrlSetter>(setter) };
-  let value = setter_value.as_ref();
   let e = match setter {
-    UrlSetter::Hash => {
-      quirks::set_hash(&mut url, value);
-      Ok(())
-    }
-    UrlSetter::Host => quirks::set_host(&mut url, value),
+    UrlSetter::Hash => deno_ada_rs::set_hash(href, value),
+    UrlSetter::Host => deno_ada_rs::set_host(href, value),
+    UrlSetter::Hostname => deno_ada_rs::set_hostname(href, value),
 
-    UrlSetter::Hostname => quirks::set_hostname(&mut url, value),
+    UrlSetter::Password => deno_ada_rs::set_password(href, value),
 
-    UrlSetter::Password => quirks::set_password(&mut url, value),
+    UrlSetter::Pathname => deno_ada_rs::set_pathname(href, value),
+    UrlSetter::Port => deno_ada_rs::set_port(href, value),
 
-    UrlSetter::Pathname => {
-      quirks::set_pathname(&mut url, value);
-      Ok(())
-    }
-    UrlSetter::Port => quirks::set_port(&mut url, value),
-
-    UrlSetter::Protocol => quirks::set_protocol(&mut url, value),
-    UrlSetter::Search => {
-      quirks::set_search(&mut url, value);
-      Ok(())
-    }
-    UrlSetter::Username => quirks::set_username(&mut url, value),
+    UrlSetter::Protocol => deno_ada_rs::set_protocol(href, value),
+    UrlSetter::Search => deno_ada_rs::set_search(href, value),
+    UrlSetter::Username => deno_ada_rs::set_username(href, value),
   };
 
   match e {
-    Ok(_) => {
-      let inner_url = quirks::internal_components(&url);
-
+    Ok((inner_url, href)) => {
       let buf: &mut [u32] = as_u32_slice(buf);
-      buf[0] = inner_url.scheme_end;
+      buf[0] = inner_url.protocol_end;
       buf[1] = inner_url.username_end;
       buf[2] = inner_url.host_start;
       buf[3] = inner_url.host_end;
-      buf[4] = inner_url.port.map(|p| p as u32).unwrap_or(NO_PORT);
-      buf[5] = inner_url.path_start;
-      buf[6] = inner_url.query_start.unwrap_or(0);
-      buf[7] = inner_url.fragment_start.unwrap_or(0);
-      let serialization: String = url.into();
-      if serialization != href {
-        state.put(UrlSerialization(serialization));
+      buf[4] = inner_url.port;
+      buf[5] = inner_url.pathname_start;
+      buf[6] = inner_url.search_start;
+      buf[7] = inner_url.hash_start;
+
+      if inner_url.same_as_input == 0 {
+        state.put(UrlSerialization(href));
         ParseStatus::OkSerialization as u32
       } else {
         ParseStatus::Ok as u32

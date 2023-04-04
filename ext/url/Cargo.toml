@@ -14,6 +14,7 @@ description = "URL API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
+deno_ada_rs = { path = "../../../url" }
 deno_core.workspace = true
 serde.workspace = true
 serde_repr.workspace = true

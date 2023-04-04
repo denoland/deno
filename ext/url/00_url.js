@@ -327,7 +327,7 @@ function trim(s) {
 }
 
 // Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
-const NO_PORT = 65536;
+const NO_PORT = 4294967295;
 
 const componentsBuf = new Uint32Array(8);
 class URL {
@@ -423,7 +423,7 @@ class URL {
   get hash() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L263
-    return this.#fragmentStart
+    return this.#fragmentStart !== NO_PORT
       ? trim(this.#serialization.slice(this.#fragmentStart))
       : "";
   }
@@ -452,8 +452,14 @@ class URL {
   /** @return {string} */
   get host() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L101
-    return this.#serialization.slice(this.#hostStart, this.#pathStart);
+    let startsAt = this.#hostStart;
+    if (this.#serialization[startsAt] === "@") {
+      startsAt++;
+    }
+    if (startsAt === this.#hostEnd) {
+      return "";
+    }
+    return this.#serialization.slice(startsAt, this.#pathStart);
   }
 
   /** @param {string} value */
@@ -480,8 +486,11 @@ class URL {
   /** @return {string} */
   get hostname() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L988
-    return this.#serialization.slice(this.#hostStart, this.#hostEnd);
+    let startsAt = this.#hostStart;
+    if (this.#serialization[startsAt] === "@") {
+      startsAt++;
+    }
+    return this.#serialization.slice(startsAt, this.#hostEnd);
   }
 
   /** @param {string} value */
@@ -529,7 +538,7 @@ class URL {
   get origin() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/origin.rs#L14
-    const scheme = this.#serialization.slice(0, this.#schemeEnd);
+    const scheme = this.#serialization.slice(0, this.#schemeEnd - 1);
     if (
       scheme === "http" || scheme === "https" || scheme === "ftp" ||
       scheme === "ws" || scheme === "wss"
@@ -552,15 +561,12 @@ class URL {
   /** @return {string} */
   get password() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L914
     if (
-      this.#hasAuthority() &&
-      this.#usernameEnd !== this.#serialization.length &&
-      this.#serialization[this.#usernameEnd] === ":"
+      this.#hostStart - this.#usernameEnd > 0
     ) {
       return this.#serialization.slice(
         this.#usernameEnd + 1,
-        this.#hostStart - 1,
+        this.#hostStart,
       );
     }
     return "";
@@ -590,12 +596,14 @@ class URL {
   /** @return {string} */
   get pathname() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L1203
-    if (!this.#queryStart && !this.#fragmentStart) {
-      return this.#serialization.slice(this.#pathStart);
+    let nextComponentStart = this.#queryStart;
+    if (nextComponentStart == NO_PORT) {
+      if (this.#fragmentStart == NO_PORT) {
+        return this.#serialization.slice(this.#pathStart);
+      }
+      nextComponentStart = this.#fragmentStart;
     }
 
-    const nextComponentStart = this.#queryStart || this.#fragmentStart;
     return this.#serialization.slice(this.#pathStart, nextComponentStart);
   }
 
@@ -623,15 +631,10 @@ class URL {
   /** @return {string} */
   get port() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L196
-    if (this.#port === NO_PORT) {
-      return this.#serialization.slice(this.#hostEnd, this.#pathStart);
-    } else {
-      return this.#serialization.slice(
-        this.#hostEnd + 1, /* : */
-        this.#pathStart,
-      );
+    if (this.#port !== NO_PORT) {
+      return `${this.#port}`;
     }
+    return "";
   }
 
   /** @param {string} value */
@@ -658,8 +661,7 @@ class URL {
   /** @return {string} */
   get protocol() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L56
-    return this.#serialization.slice(0, this.#schemeEnd + 1 /* : */);
+    return this.#serialization.slice(0, this.#schemeEnd);
   }
 
   /** @param {string} value */
@@ -686,11 +688,19 @@ class URL {
   /** @return {string} */
   get search() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L249
-    const afterPath = this.#queryStart || this.#fragmentStart ||
-      this.#serialization.length;
-    const afterQuery = this.#fragmentStart || this.#serialization.length;
-    return trim(this.#serialization.slice(afterPath, afterQuery));
+    if (this.#queryStart == NO_PORT) {
+      return "";
+    }
+    let end = this.#serialization.length;
+    if (this.#fragmentStart !== NO_PORT) {
+      end = this.#fragmentStart;
+    }
+    if (end - this.#queryStart <= 1) {
+      return "";
+    }
+    return trim(
+      this.#serialization.slice(this.#queryStart, end),
+    );
   }
 
   /** @param {string} value */
@@ -718,10 +728,9 @@ class URL {
   /** @return {string} */
   get username() {
     webidl.assertBranded(this, URLPrototype);
-    // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L881
-    const schemeSeperatorLen = 3; /* :// */
+    const schemeSeperatorLen = 2; /* // */
     if (
-      this.#hasAuthority() &&
+      // this.#hasAuthority() &&
       this.#usernameEnd > this.#schemeEnd + schemeSeperatorLen
     ) {
       return this.#serialization.slice(

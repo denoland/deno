@@ -459,6 +459,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "console_static_text"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -759,6 +768,15 @@ dependencies = [
  "winapi",
  "winres",
  "zstd",
+]
+
+[[package]]
+name = "deno_ada_rs"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "cmake",
+ "libc",
 ]
 
 [[package]]
@@ -1251,6 +1269,7 @@ dependencies = [
 name = "deno_url"
 version = "0.95.0"
 dependencies = [
+ "deno_ada_rs",
  "deno_bench_util",
  "deno_core",
  "deno_webidl",
