@@ -2096,7 +2096,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      let specifier = specifier.clone().into();
+      let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
       // true for main module
       module_map_rc
@@ -2151,7 +2151,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      let specifier = specifier.clone().into();
+      let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
       // false for side module (not main module)
       module_map_rc

@@ -260,12 +260,12 @@ impl ModuleLoader for CliModuleLoader {
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    let specifier = specifier.clone();
     if self.ps.npm_resolver.in_npm_package(&specifier) {
       // nothing to prepare
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
+    let specifier = specifier.clone();
     let ps = self.ps.clone();
 
     let dynamic_permissions = self.dynamic_permissions.clone();
