@@ -25,6 +25,7 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
+use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::fmt_errors::format_js_error;
@@ -165,7 +166,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    _maybe_referrer: Option<&ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let is_data_uri = get_source_from_data_url(module_specifier).ok();
@@ -173,33 +174,33 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .eszip
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
-
+    // TODO(mmastrac): This clone can probably be removed in the future if ModuleSpecifier is no longer a full-fledged URL
     let module_specifier = module_specifier.clone();
+
     async move {
       if let Some((source, _)) = is_data_uri {
-        return Ok(deno_core::ModuleSource {
-          code: source.into(),
-          module_type: deno_core::ModuleType::JavaScript,
-          module_url_specified: module_specifier.to_string(),
-          module_url_found: module_specifier.to_string(),
-        });
+        return Ok(deno_core::ModuleSource::new(
+          deno_core::ModuleType::JavaScript,
+          source.into(),
+          &module_specifier,
+        ));
       }
 
       let module = module?;
       let code = module.source().await;
       let code = std::str::from_utf8(&code)
         .map_err(|_| type_error("Module source is not utf-8"))?
-        .to_owned();
+        .to_owned()
+        .into();
 
-      Ok(deno_core::ModuleSource {
-        code: code.into(),
-        module_type: match module.kind {
-          eszip::ModuleKind::JavaScript => deno_core::ModuleType::JavaScript,
-          eszip::ModuleKind::Json => deno_core::ModuleType::Json,
+      Ok(deno_core::ModuleSource::new(
+        match module.kind {
+          eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
+          eszip::ModuleKind::Json => ModuleType::Json,
         },
-        module_url_specified: module_specifier.to_string(),
-        module_url_found: module_specifier.to_string(),
-      })
+        code,
+        &module_specifier,
+      ))
     }
     .boxed_local()
   }

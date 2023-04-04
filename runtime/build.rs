@@ -42,7 +42,7 @@ mod startup_snapshot {
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(code.take_as_string()),
+      text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
