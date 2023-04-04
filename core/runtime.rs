@@ -1205,8 +1205,6 @@ impl JsRuntime {
 
     self.pump_v8_message_loop()?;
 
-    // Ops
-    self.resolve_async_ops(cx)?;
     // Dynamic module loading - ie. modules loaded using "import()"
     {
       // Run in a loop so that dynamic imports that only depend on another
@@ -1232,6 +1230,9 @@ impl JsRuntime {
         }
       }
     }
+
+    // Ops
+    self.resolve_async_ops(cx)?;
     // Run all next tick callbacks and macrotasks callbacks and only then
     // check for any promise exceptions (`unhandledrejection` handlers are
     // run in macrotasks callbacks so we need to let them run first).
