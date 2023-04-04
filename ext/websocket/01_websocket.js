@@ -512,7 +512,7 @@ class WebSocket extends EventTarget {
           if (prevState === OPEN) {
             try {
               await core.opAsync(
-                "op_ws_close",
+                this[_role] == SERVER ? "op_server_ws_close" : "op_ws_close",
                 this[_rid],
                 code,
                 value,
@@ -540,14 +540,23 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await core.opAsync("op_ws_send", this[_rid], {
-            kind: "ping",
-          });
+          await core.opAsync(
+            this[_role] == SERVER ? "op_server_ws_send" : "op_ws_send",
+            this[_rid],
+            {
+              kind: "ping",
+            },
+          );
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
               const reason = "No response from ping frame.";
-              await core.opAsync("op_ws_close", this[_rid], 1001, reason);
+              await core.opAsync(
+                this[_role] == SERVER ? "op_server_ws_close" : "op_ws_close",
+                this[_rid],
+                1001,
+                reason,
+              );
               this[_readyState] = CLOSED;
 
               const errEvent = new ErrorEvent("error", {
@@ -617,6 +626,7 @@ export {
   _protocol,
   _readyState,
   _rid,
+  _role,
   _server,
   _serverHandleIdleTimeout,
   SERVER,
