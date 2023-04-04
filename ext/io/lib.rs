@@ -298,10 +298,10 @@ impl Resource for ChildStderrResource {
 #[derive(Clone, Copy)]
 enum StdFileResourceKind {
   File,
-  // For stdout and stderr, we sometimes instead use std::io::stdout() directly,
-  // because we get some Windows specific functionality for free by using Rust
-  // std's wrappers. So we take a bit of a complexity hit in order to not
-  // have to duplicate the functionality in Rust's std/src/sys/windows/stdio.rs
+  // We sometimes use std::io::{stdin, stdout, stderr}() directly because we
+  // get some Windows specific functionality for free by using Rust std's
+  // wrappers. So we take a bit of a complexity hit in order to not have to
+  // duplicate the functionality in Rust's std/src/sys/windows/stdio.rs
   Stdin,
   Stdout,
   Stderr,
@@ -395,8 +395,10 @@ impl StdFileResourceInner {
 impl Read for StdFileResourceInner {
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
-        self.file.read(buf)
+      StdFileResourceKind::File => self.file.read(buf),
+      StdFileResourceKind::Stdin => {
+        // bypass the file and use std::io::stdin()
+        std::io::stdin().read(buf)
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(ErrorKind::Unsupported.into())
