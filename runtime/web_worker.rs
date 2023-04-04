@@ -600,7 +600,7 @@ impl WebWorker {
   /// Loads and instantiates specified JavaScript module as "main" module.
   pub async fn preload_main_module(
     &mut self,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
@@ -611,7 +611,7 @@ impl WebWorker {
   /// Loads and instantiates specified JavaScript module as "side" module.
   pub async fn preload_side_module(
     &mut self,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
@@ -625,7 +625,7 @@ impl WebWorker {
   /// side module code.
   pub async fn execute_side_module(
     &mut self,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.preload_side_module(module_specifier).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
@@ -786,7 +786,7 @@ pub fn run_web_worker(
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      match worker.preload_main_module(specifier).await {
+      match worker.preload_main_module(&specifier).await {
         Ok(id) => {
           worker = match (pre_execute_module_cb)(worker).await {
             Ok(worker) => worker,

@@ -382,7 +382,7 @@ impl MainWorker {
   /// Loads and instantiates specified JavaScript module as "main" module.
   pub async fn preload_main_module(
     &mut self,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
@@ -393,7 +393,7 @@ impl MainWorker {
   /// Loads and instantiates specified JavaScript module as "side" module.
   pub async fn preload_side_module(
     &mut self,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
     self
       .js_runtime
@@ -429,7 +429,7 @@ impl MainWorker {
   /// Loads, instantiates and executes specified JavaScript module.
   pub async fn execute_side_module(
     &mut self,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.preload_side_module(module_specifier).await?;
     self.evaluate_module(id).await
@@ -440,7 +440,7 @@ impl MainWorker {
   /// This module will have "import.meta.main" equal to true.
   pub async fn execute_main_module(
     &mut self,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await

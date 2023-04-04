@@ -78,7 +78,7 @@ impl CliModuleLoader {
   fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.scheme() == "node" {
       unreachable!(); // Node built-in modules should be handled internally.
@@ -153,11 +153,11 @@ impl CliModuleLoader {
 
   fn load_sync(
     &self,
-    specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Result<ModuleSource, AnyError> {
-    let code_source = if self.ps.npm_resolver.in_npm_package(&specifier) {
+    let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path).with_context(|| {
         let mut msg = "Unable to load ".to_string();
@@ -169,7 +169,7 @@ impl CliModuleLoader {
         msg
       })?;
 
-      let code = if self.ps.cjs_resolutions.lock().contains(&specifier) {
+      let code = if self.ps.cjs_resolutions.lock().contains(specifier) {
         let mut permissions = if is_dynamic {
           self.dynamic_permissions.clone()
         } else {
@@ -178,7 +178,7 @@ impl CliModuleLoader {
         // translate cjs to esm if it's cjs and inject node globals
         node::translate_cjs_to_esm(
           &self.ps.file_fetcher,
-          &specifier,
+          specifier,
           code,
           MediaType::Cjs,
           &self.ps.npm_resolver,
@@ -189,17 +189,17 @@ impl CliModuleLoader {
         // only inject node globals for esm
         node::esm_code_with_node_globals(
           &self.ps.node_analysis_cache,
-          &specifier,
+          specifier,
           code,
         )?
       };
       ModuleCodeSource {
         code: code.into(),
         found_url: specifier.clone(),
-        media_type: MediaType::from_specifier(&specifier),
+        media_type: MediaType::from_specifier(specifier),
       }
     } else {
-      self.load_prepared_module(&specifier, maybe_referrer)?
+      self.load_prepared_module(specifier, maybe_referrer)?
     };
     let code = if self.ps.options.is_inspecting() {
       // we need the code with the source map in order for
@@ -217,7 +217,7 @@ impl CliModuleLoader {
       },
       code,
       specifier,
-      code_source.found_url,
+      &code_source.found_url,
     ))
   }
 }
@@ -239,8 +239,8 @@ impl ModuleLoader for CliModuleLoader {
 
   fn load(
     &self,
-    specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     // NOTE: this block is async only because of `deno_core` interface
@@ -256,10 +256,11 @@ impl ModuleLoader for CliModuleLoader {
   fn prepare_load(
     &self,
     _op_state: Rc<RefCell<OpState>>,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+    let specifier = specifier.clone();
     if self.ps.npm_resolver.in_npm_package(&specifier) {
       // nothing to prepare
       return Box::pin(deno_core::futures::future::ready(Ok(())));

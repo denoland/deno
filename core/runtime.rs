@@ -714,7 +714,7 @@ impl JsRuntime {
       futures::executor::block_on(async {
         let id = runtime
           .load_side_module(
-            ModuleSpecifier::parse(file_source.specifier)?,
+            &ModuleSpecifier::parse(file_source.specifier)?,
             None,
           )
           .await?;
@@ -2091,7 +2091,7 @@ impl JsRuntime {
   /// manually after load is finished.
   pub async fn load_main_module(
     &mut self,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
@@ -2112,7 +2112,7 @@ impl JsRuntime {
     }
 
     let mut load =
-      ModuleMap::load_main(module_map_rc.clone(), &specifier.into()).await?;
+      ModuleMap::load_main(module_map_rc.clone(), &specifier).await?;
 
     while let Some(load_result) = load.next().await {
       let (request, info) = load_result?;
@@ -2146,7 +2146,7 @@ impl JsRuntime {
   /// manually after load is finished.
   pub async fn load_side_module(
     &mut self,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
@@ -2167,7 +2167,7 @@ impl JsRuntime {
     }
 
     let mut load =
-      ModuleMap::load_side(module_map_rc.clone(), &specifier.into()).await?;
+      ModuleMap::load_side(module_map_rc.clone(), &specifier).await?;
 
     while let Some(load_result) = load.next().await {
       let (request, info) = load_result?;
@@ -3397,8 +3397,8 @@ pub mod tests {
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         async { Err(generic_error("Module loading is not supported")) }
@@ -3421,7 +3421,7 @@ pub mod tests {
     );
 
     let module_id = futures::executor::block_on(
-      runtime.load_main_module(specifier, Some(source_code)),
+      runtime.load_main_module(&specifier, Some(source_code)),
     )
     .unwrap();
 
@@ -3567,8 +3567,8 @@ pub mod tests {
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         eprintln!("load() should not be called");
@@ -3593,12 +3593,12 @@ pub mod tests {
 
       let id = if main {
         futures::executor::block_on(
-          runtime.load_main_module(specifier.clone(), Some(source_code)),
+          runtime.load_main_module(&specifier, Some(source_code)),
         )
         .unwrap()
       } else {
         futures::executor::block_on(
-          runtime.load_side_module(specifier.clone(), Some(source_code)),
+          runtime.load_side_module(&specifier, Some(source_code)),
         )
         .unwrap()
       };
@@ -3667,7 +3667,7 @@ pub mod tests {
     let source_code =
       ascii_str!(r#"export function f0() { return "hello world" }"#);
     let id = futures::executor::block_on(
-      runtime.load_side_module(specifier.clone(), Some(source_code)),
+      runtime.load_side_module(&specifier.clone(), Some(source_code)),
     )
     .unwrap();
 
@@ -4264,8 +4264,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         async move {
@@ -4288,7 +4288,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     let source_code = ascii_str!("Deno.core.print('hello\\n')");
 
     let module_id = futures::executor::block_on(
-      runtime.load_main_module(specifier, Some(source_code)),
+      runtime.load_main_module(&specifier, Some(source_code)),
     )
     .unwrap();
 
@@ -4440,8 +4440,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         let code = r#"
@@ -4463,7 +4463,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     });
 
     let id = runtime
-      .load_main_module(crate::resolve_url("file:///main.js").unwrap(), None)
+      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
       .await
       .unwrap();
     let receiver = runtime.mod_evaluate(id);
@@ -4975,8 +4975,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         let code = r#"
@@ -5006,7 +5006,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     });
 
     let err = runtime2
-      .load_main_module(crate::resolve_url("file:///main.js").unwrap(), None)
+      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
       .await
       .unwrap_err();
     assert_eq!(

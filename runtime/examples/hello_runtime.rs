@@ -67,7 +67,7 @@ async fn main() -> Result<(), AnyError> {
     permissions,
     options,
   );
-  worker.execute_main_module(main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.run_event_loop(false).await?;
   Ok(())
 }

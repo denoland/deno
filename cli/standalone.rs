@@ -165,22 +165,24 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn load(
     &self,
-    module_specifier: ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<&ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
+    let is_data_uri = get_source_from_data_url(module_specifier).ok();
     let module = self
       .eszip
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
+    // TODO(mmastrac): This clone can probably be removed in the future if ModuleSpecifier is no longer a full-fledged URL
+    let module_specifier = module_specifier.clone();
 
     async move {
       if let Some((source, _)) = is_data_uri {
         return Ok(deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
           source.into(),
-          module_specifier,
+          &module_specifier,
         ));
       }
 
@@ -197,7 +199,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           eszip::ModuleKind::Json => ModuleType::Json,
         },
         code,
-        module_specifier,
+        &module_specifier,
       ))
     }
     .boxed_local()
@@ -382,7 +384,7 @@ pub async fn run(
     permissions,
     options,
   );
-  worker.execute_main_module(main_module.clone()).await?;
+  worker.execute_main_module(main_module).await?;
   worker.dispatch_load_event(located_script_name!())?;
 
   loop {

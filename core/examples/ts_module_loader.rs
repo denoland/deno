@@ -14,6 +14,7 @@ use anyhow::Error;
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceTextInfo;
+use deno_core::error::AnyError;
 use deno_core::resolve_import;
 use deno_core::resolve_path;
 use deno_core::JsRuntime;
@@ -40,11 +41,13 @@ impl ModuleLoader for TypescriptModuleLoader {
 
   fn load(
     &self,
-    module_specifier: ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<&ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async move {
+    fn load(
+      module_specifier: &ModuleSpecifier,
+    ) -> Result<ModuleSource, AnyError> {
       let path = module_specifier
         .to_file_path()
         .map_err(|_| anyhow!("Only file:// URLs are supported."))?;
@@ -86,7 +89,8 @@ impl ModuleLoader for TypescriptModuleLoader {
         module_specifier,
       ))
     }
-    .boxed_local()
+
+    futures::future::ready(load(module_specifier)).boxed_local()
   }
 }
 
@@ -110,7 +114,7 @@ fn main() -> Result<(), Error> {
   )?;
 
   let future = async move {
-    let mod_id = js_runtime.load_main_module(main_module, None).await?;
+    let mod_id = js_runtime.load_main_module(&main_module, None).await?;
     let result = js_runtime.mod_evaluate(mod_id);
     js_runtime.run_event_loop(false).await?;
     result.await?

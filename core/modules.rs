@@ -2,6 +2,7 @@
 
 use crate::bindings;
 use crate::error::generic_error;
+use crate::error::AnyError;
 use crate::extensions::ExtensionFileSource;
 use crate::fast_string::FastString;
 use crate::module_specifier::ModuleSpecifier;
@@ -211,9 +212,9 @@ impl ModuleSource {
   pub fn new(
     module_type: impl Into<ModuleType>,
     code: ModuleCode,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Self {
-    let module_url_specified = specifier.into();
+    let module_url_specified = specifier.as_ref().to_owned().into();
     Self {
       code,
       module_type: module_type.into(),
@@ -227,15 +228,15 @@ impl ModuleSource {
   pub fn new_with_redirect(
     module_type: impl Into<ModuleType>,
     code: ModuleCode,
-    specifier: ModuleSpecifier,
-    specifier_found: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
+    specifier_found: &ModuleSpecifier,
   ) -> Self {
     let module_url_found = if specifier == specifier_found {
       None
     } else {
-      Some(specifier_found.into())
+      Some(specifier_found.as_ref().to_owned().into())
     };
-    let module_url_specified = specifier.into();
+    let module_url_specified = specifier.as_ref().to_owned().into();
     Self {
       code,
       module_type: module_type.into(),
@@ -323,8 +324,8 @@ pub trait ModuleLoader {
   /// dynamic imports altogether.
   fn load(
     &self,
-    module_specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>>;
 
@@ -339,7 +340,7 @@ pub trait ModuleLoader {
   fn prepare_load(
     &self,
     _op_state: Rc<RefCell<OpState>>,
-    _module_specifier: ModuleSpecifier,
+    _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
@@ -365,8 +366,8 @@ impl ModuleLoader for NoopModuleLoader {
 
   fn load(
     &self,
-    module_specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
     let err = generic_error(
@@ -488,8 +489,8 @@ impl ModuleLoader for ExtModuleLoader {
 
   fn load(
     &self,
-    module_specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
     if module_specifier.scheme() != "ext" {
@@ -516,21 +517,17 @@ impl ModuleLoader for ExtModuleLoader {
       let result = if let Some(load_callback) = &self.maybe_load_callback {
         load_callback(file_source)
       } else {
-        match file_source.load() {
-          Ok(code) => Ok(code),
-          Err(err) => return futures::future::err(err).boxed_local(),
-        }
+        file_source.load()
       };
 
-      return async move {
-        let code = result?;
-        Ok(ModuleSource::new(
-          ModuleType::JavaScript,
-          code,
-          module_specifier,
-        ))
+      match result {
+        Ok(code) => {
+          let res =
+            ModuleSource::new(ModuleType::JavaScript, code, module_specifier);
+          return futures::future::ok(res).boxed_local();
+        }
+        Err(err) => return futures::future::err(err).boxed_local(),
       }
-      .boxed_local();
     }
 
     async move {
@@ -544,7 +541,7 @@ impl ModuleLoader for ExtModuleLoader {
   fn prepare_load(
     &self,
     op_state: Rc<RefCell<OpState>>,
-    module_specifier: ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
     is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
@@ -580,11 +577,13 @@ impl ModuleLoader for FsModuleLoader {
 
   fn load(
     &self,
-    module_specifier: ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<&ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    async move {
+    fn load(
+      module_specifier: &ModuleSpecifier,
+    ) -> Result<ModuleSource, AnyError> {
       let path = module_specifier.to_file_path().map_err(|_| {
         generic_error(format!(
           "Provided module specifier \"{module_specifier}\" is not a file URL."
@@ -605,7 +604,8 @@ impl ModuleLoader for FsModuleLoader {
       let module = ModuleSource::new(module_type, code, module_specifier);
       Ok(module)
     }
-    .boxed_local()
+
+    futures::future::ready(load(module_specifier)).boxed_local()
   }
 }
 
@@ -797,7 +797,7 @@ impl RecursiveModuleLoad {
       .loader
       .prepare_load(
         op_state,
-        module_specifier,
+        &module_specifier,
         maybe_referrer,
         self.is_dynamic_import(),
       )
@@ -912,7 +912,7 @@ impl RecursiveModuleLoad {
             let is_dynamic_import = self.is_dynamic_import();
             let fut = async move {
               let load_result = loader
-                .load(specifier, Some(referrer.clone()), is_dynamic_import)
+                .load(&specifier, Some(&referrer), is_dynamic_import)
                 .await;
               load_result.map(|s| (request, s))
             };
@@ -972,7 +972,7 @@ impl Stream for RecursiveModuleLoad {
           let module_source = ModuleSource::new(
             module_type,
             Default::default(),
-            module_specifier,
+            &module_specifier,
           );
           futures::future::ok((module_request, module_source)).boxed()
         } else {
@@ -994,7 +994,11 @@ impl Stream for RecursiveModuleLoad {
           let is_dynamic_import = inner.is_dynamic_import();
           async move {
             let result = loader
-              .load(module_specifier, maybe_referrer, is_dynamic_import)
+              .load(
+                &module_specifier,
+                maybe_referrer.as_ref(),
+                is_dynamic_import,
+              )
               .await;
             result.map(|s| (module_request, s))
           }
@@ -1676,20 +1680,20 @@ impl ModuleMap {
 
   pub(crate) async fn load_main(
     module_map_rc: Rc<RefCell<ModuleMap>>,
-    specifier: &ModuleName,
+    specifier: impl AsRef<str>,
   ) -> Result<RecursiveModuleLoad, Error> {
     let load =
-      RecursiveModuleLoad::main(specifier.as_str(), module_map_rc.clone());
+      RecursiveModuleLoad::main(specifier.as_ref(), module_map_rc.clone());
     load.prepare().await?;
     Ok(load)
   }
 
   pub(crate) async fn load_side(
     module_map_rc: Rc<RefCell<ModuleMap>>,
-    specifier: &ModuleName,
+    specifier: impl AsRef<str>,
   ) -> Result<RecursiveModuleLoad, Error> {
     let load =
-      RecursiveModuleLoad::side(specifier.as_str(), module_map_rc.clone());
+      RecursiveModuleLoad::side(specifier.as_ref(), module_map_rc.clone());
     load.prepare().await?;
     Ok(load)
   }
@@ -1999,8 +2003,8 @@ import "/a.js";
 
     fn load(
       &self,
-      module_specifier: ModuleSpecifier,
-      _maybe_referrer: Option<ModuleSpecifier>,
+      module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleSpecifier>,
       _is_dyn_import: bool,
     ) -> Pin<Box<ModuleSourceFuture>> {
       let mut loads = self.loads.lock();
@@ -2019,7 +2023,7 @@ import "/a.js";
       ..Default::default()
     });
     let spec = resolve_url("file:///a.js").unwrap();
-    let a_id_fut = runtime.load_main_module(spec, None);
+    let a_id_fut = runtime.load_main_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
     #[allow(clippy::let_underscore_future)]
@@ -2105,8 +2109,8 @@ import "/a.js";
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()
@@ -2230,8 +2234,8 @@ import "/a.js";
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()
@@ -2336,8 +2340,8 @@ import "/a.js";
 
       fn load(
         &self,
-        _module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         async { Err(io::Error::from(io::ErrorKind::NotFound).into()) }.boxed()
@@ -2397,8 +2401,8 @@ import "/a.js";
 
     fn load(
       &self,
-      specifier: ModuleSpecifier,
-      _maybe_referrer: Option<ModuleSpecifier>,
+      specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleSpecifier>,
       _is_dyn_import: bool,
     ) -> Pin<Box<ModuleSourceFuture>> {
       self.load_count.fetch_add(1, Ordering::Relaxed);
@@ -2410,7 +2414,7 @@ import "/a.js";
     fn prepare_load(
       &self,
       _op_state: Rc<RefCell<OpState>>,
-      _module_specifier: ModuleSpecifier,
+      _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
@@ -2521,8 +2525,8 @@ import "/a.js";
 
       fn load(
         &self,
-        specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         self.load_count.fetch_add(1, Ordering::Relaxed);
@@ -2571,7 +2575,7 @@ import "/a.js";
 
     let fut = async move {
       let spec = resolve_url("file:///circular1.js").unwrap();
-      let result = runtime.load_main_module(spec, None).await;
+      let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
       #[allow(clippy::let_underscore_future)]
@@ -2652,7 +2656,7 @@ import "/a.js";
 
     let fut = async move {
       let spec = resolve_url("file:///redirect1.js").unwrap();
-      let result = runtime.load_main_module(spec, None).await;
+      let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
       #[allow(clippy::let_underscore_future)]
@@ -2733,7 +2737,7 @@ import "/a.js";
     run_in_task(move |cx| {
       let spec = resolve_url("file:///main.js").unwrap();
       let mut recursive_load =
-        runtime.load_main_module(spec, None).boxed_local();
+        runtime.load_main_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(cx);
       assert!(result.is_pending());
@@ -2777,7 +2781,7 @@ import "/a.js";
 
     run_in_task(move |cx| {
       let spec = resolve_url("file:///bad_import.js").unwrap();
-      let mut load_fut = runtime.load_main_module(spec, None).boxed_local();
+      let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -2814,7 +2818,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     // The behavior should be very similar to /a.js.
     let spec = resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = runtime
-      .load_main_module(spec, Some(MAIN_WITH_CODE_SRC))
+      .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC))
       .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
@@ -2898,8 +2902,8 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
 
       fn load(
         &self,
-        module_specifier: ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         let module_source = match module_specifier.as_str() {
@@ -2923,8 +2927,9 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       ..Default::default()
     });
 
-    let main_id_fut =
-      runtime.load_main_module(main_specifier, None).boxed_local();
+    let main_id_fut = runtime
+      .load_main_module(&main_specifier, None)
+      .boxed_local();
     let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
     #[allow(clippy::let_underscore_future)]
@@ -2933,13 +2938,14 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
 
     // Try to add another main module - it should error.
     let side_id_fut = runtime
-      .load_main_module(side_specifier.clone(), None)
+      .load_main_module(&side_specifier, None)
       .boxed_local();
     futures::executor::block_on(side_id_fut).unwrap_err();
 
     // And now try to load it as a side module
-    let side_id_fut =
-      runtime.load_side_module(side_specifier, None).boxed_local();
+    let side_id_fut = runtime
+      .load_side_module(&side_specifier, None)
+      .boxed_local();
     let side_id = futures::executor::block_on(side_id_fut).unwrap();
 
     #[allow(clippy::let_underscore_future)]
@@ -2969,7 +2975,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       // The behavior should be very similar to /a.js.
       let spec = resolve_url("file:///main_with_code.js").unwrap();
       let main_id_fut = runtime
-        .load_main_module(spec, Some(MAIN_WITH_CODE_SRC))
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC))
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
@@ -3011,7 +3017,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       // The behavior should be very similar to /a.js.
       let spec = resolve_url("file:///main_with_code.js").unwrap();
       let main_id_fut = runtime
-        .load_main_module(spec, Some(MAIN_WITH_CODE_SRC))
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC))
         .boxed_local();
       let main_id = futures::executor::block_on(main_id_fut).unwrap();
 

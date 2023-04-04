@@ -279,20 +279,14 @@ impl CliMainWorker {
   async fn execute_main_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
-    let id = self
-      .worker
-      .preload_main_module(self.main_module.clone())
-      .await?;
+    let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
 
   async fn execute_side_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
-    let id = self
-      .worker
-      .preload_side_module(self.main_module.clone())
-      .await?;
+    let id = self.worker.preload_side_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
 
@@ -783,7 +777,7 @@ mod tests {
     let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
     let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
-    let result = worker.execute_main_module(module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
       eprintln!("execute_mod err {err:?}");
     }
@@ -800,7 +794,7 @@ mod tests {
       .join("tests/circular1.js");
     let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
     let mut worker = create_test_worker();
-    let result = worker.execute_main_module(module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
       eprintln!("execute_mod err {err:?}");
     }
@@ -816,7 +810,7 @@ mod tests {
     let module_specifier =
       resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
         .unwrap();
-    let result = worker.execute_main_module(module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }
 
@@ -827,7 +821,7 @@ mod tests {
     let mut worker = create_test_worker();
     let p = test_util::testdata_path().join("run/001_hello.js");
     let module_specifier = ModuleSpecifier::from_file_path(&p).unwrap();
-    let result = worker.execute_main_module(module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
   }
 }
