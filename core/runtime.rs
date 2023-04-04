@@ -93,7 +93,7 @@ pub struct JsRuntime {
   snapshot_options: snapshot_util::SnapshotOptions,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
-  event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
+  event_loop_middlewares: Vec<OpEventLoopFn>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
 }
@@ -1242,11 +1242,10 @@ impl JsRuntime {
     // Event loop middlewares
     let mut maybe_scheduling = false;
     {
-      let op_state = self.state.borrow().op_state.clone();
+      let rc = self.state.borrow();
+      let refcell = &*rc.op_state;
       for f in &self.event_loop_middlewares {
-        if f(op_state.clone(), cx) {
-          maybe_scheduling = true;
-        }
+        maybe_scheduling |= f(refcell, cx);
       }
     }
 

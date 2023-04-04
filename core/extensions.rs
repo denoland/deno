@@ -5,7 +5,6 @@ use anyhow::Context as _;
 use anyhow::Error;
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
@@ -63,7 +62,7 @@ impl ExtensionFileSource {
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn FnOnce(&mut OpState);
-pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
+pub type OpEventLoopFn = fn(&RefCell<OpState>, &mut Context) -> bool;
 
 pub struct OpDecl {
   pub name: &'static str,
@@ -342,7 +341,7 @@ pub struct Extension {
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
-  event_loop_middleware: Option<Box<OpEventLoopFn>>,
+  event_loop_middleware: Option<OpEventLoopFn>,
   initialized: bool,
   enabled: bool,
   name: &'static str,
@@ -434,20 +433,8 @@ impl Extension {
     self.middleware_fn.take()
   }
 
-  pub fn init_event_loop_middleware(&mut self) -> Option<Box<OpEventLoopFn>> {
+  pub fn init_event_loop_middleware(&mut self) -> Option<OpEventLoopFn> {
     self.event_loop_middleware.take()
-  }
-
-  pub fn run_event_loop_middleware(
-    &self,
-    op_state_rc: Rc<RefCell<OpState>>,
-    cx: &mut Context,
-  ) -> bool {
-    self
-      .event_loop_middleware
-      .as_ref()
-      .map(|f| f(op_state_rc, cx))
-      .unwrap_or(false)
   }
 
   pub fn enabled(self, enabled: bool) -> Self {
@@ -468,7 +455,7 @@ pub struct ExtensionBuilder {
   ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
-  event_loop_middleware: Option<Box<OpEventLoopFn>>,
+  event_loop_middleware: Option<OpEventLoopFn>,
   name: &'static str,
   deps: &'static [&'static str],
   force_op_registration: bool,
@@ -511,11 +498,11 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn event_loop_middleware<F>(&mut self, middleware_fn: F) -> &mut Self
-  where
-    F: Fn(Rc<RefCell<OpState>>, &mut Context) -> bool + 'static,
-  {
-    self.event_loop_middleware = Some(Box::new(middleware_fn));
+  pub fn event_loop_middleware(
+    &mut self,
+    middleware_fn: OpEventLoopFn,
+  ) -> &mut Self {
+    self.event_loop_middleware = Some(middleware_fn);
     self
   }
 

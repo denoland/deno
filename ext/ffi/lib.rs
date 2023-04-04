@@ -131,7 +131,7 @@ deno_core::extension!(deno_ffi,
 );
 
 fn event_loop_middleware(
-  op_state_rc: Rc<RefCell<OpState>>,
+  op_state: &RefCell<OpState>,
   _cx: &mut std::task::Context,
 ) -> bool {
   // FFI callbacks coming in from other threads will call in and get queued.
@@ -140,7 +140,7 @@ fn event_loop_middleware(
   let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
 
   {
-    let mut op_state = op_state_rc.borrow_mut();
+    let mut op_state = op_state.borrow_mut();
     let ffi_state = op_state.borrow_mut::<FfiState>();
 
     while let Ok(Some(async_work_fut)) =
@@ -150,8 +150,6 @@ fn event_loop_middleware(
       work_items.push(async_work_fut);
       maybe_scheduling = true;
     }
-
-    drop(op_state);
   }
   while let Some(async_work_fut) = work_items.pop() {
     async_work_fut();
