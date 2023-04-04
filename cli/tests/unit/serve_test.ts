@@ -946,6 +946,7 @@ Deno.test(
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
+      reusePort: true,
     });
 
     await listeningPromise;
