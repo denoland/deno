@@ -15,7 +15,7 @@ use v8::NewStringType;
 /// Examples of ways to construct a [`FastString`]:
 ///
 /// ```rust
-/// # use deno_core::{fast, FastString};
+/// # use deno_core::{ascii_str, FastString};
 ///
 /// let code: FastString = ascii_str!("a string");
 /// let code: FastString = format!("a string").into();
