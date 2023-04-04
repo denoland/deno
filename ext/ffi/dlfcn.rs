@@ -76,9 +76,16 @@ pub struct ForeignFunction {
   #[serde(rename = "callback")]
   #[serde(default = "default_callback")]
   callback: bool,
+  #[serde(rename = "optional")]
+  #[serde(default = "default_optional")]
+  optional: bool,
 }
 
 fn default_callback() -> bool {
+  false
+}
+
+fn default_optional() -> bool {
   false
 }
 
@@ -156,7 +163,7 @@ where
       ForeignSymbol::ForeignStatic(_) => {
         // No-op: Statics will be handled separately and are not part of the Rust-side resource.
       }
-      ForeignSymbol::ForeignFunction(foreign_fn) => {
+      ForeignSymbol::ForeignFunction(foreign_fn) => 'register_symbol: {
         let symbol = match &foreign_fn.name {
           Some(symbol) => symbol,
           None => &symbol_key,
@@ -168,10 +175,18 @@ where
           // SAFETY: The obtained T symbol is the size of a pointer.
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
-            Err(err) => Err(generic_error(format!(
-              "Failed to register symbol {symbol}: {err}"
-            ))),
+            Err(err) => if foreign_fn.optional {
+              let null: v8::Local<v8::Value> = v8::null(scope).into();
+              let func_key = v8::String::new(scope, &symbol_key).unwrap();
+              obj.set(scope, func_key.into(), null);
+              break 'register_symbol;
+            } else {
+              Err(generic_error(format!(
+                "Failed to register symbol {symbol}: {err}"
+              )))
+            },
           }?;
+
         let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
         let cif = libffi::middle::Cif::new(
           foreign_fn

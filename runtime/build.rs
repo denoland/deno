@@ -120,16 +120,6 @@ mod startup_snapshot {
     }
   }
 
-  impl deno_flash::FlashPermissions for Permissions {
-    fn check_net<T: AsRef<str>>(
-      &mut self,
-      _host: &(T, Option<u16>),
-      _api_name: &str,
-    ) -> Result<(), deno_core::error::AnyError> {
-      unreachable!("snapshotting!")
-    }
-  }
-
   impl deno_node::NodePermissions for Permissions {
     fn check_read(
       &mut self,
@@ -244,7 +234,6 @@ mod startup_snapshot {
       deno_net,
       deno_napi,
       deno_http,
-      deno_flash,
       deno_io,
       deno_fs
     ],
@@ -322,7 +311,6 @@ mod startup_snapshot {
       deno_http::deno_http::init_ops_and_esm(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
-      deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around

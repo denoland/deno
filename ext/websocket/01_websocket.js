@@ -22,16 +22,19 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
   DataView,
+  DataViewPrototypeGetByteLength,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   RegExpPrototypeTest,
   Set,
+  SetPrototypeGetSize,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
   String,
@@ -41,6 +44,8 @@ const {
   SymbolIterator,
   PromisePrototypeCatch,
   SymbolFor,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
 webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -211,9 +216,11 @@ class WebSocket extends EventTarget {
 
     if (
       protocols.length !==
-        new Set(
-          ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
-        ).size
+        SetPrototypeGetSize(
+          new Set(
+            ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
+          ),
+        )
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -298,12 +305,16 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    const sendTypedArray = (ta) => {
-      this[_bufferedAmount] += ta.byteLength;
+    /**
+     * @param {ArrayBufferView} view
+     * @param {number} byteLength
+     */
+    const sendTypedArray = (view, byteLength) => {
+      this[_bufferedAmount] += byteLength;
       PromisePrototypeThen(
-        core.opAsync2("op_ws_send_binary", this[_rid], ta),
+        core.opAsync2("op_ws_send_binary", this[_rid], view),
         () => {
-          this[_bufferedAmount] -= ta.byteLength;
+          this[_bufferedAmount] -= byteLength;
         },
       );
     };
@@ -311,20 +322,33 @@ class WebSocket extends EventTarget {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         data.slice().arrayBuffer(),
-        (ab) => sendTypedArray(new DataView(ab)),
+        (ab) =>
+          sendTypedArray(
+            new DataView(ab),
+            ArrayBufferPrototypeGetByteLength(ab),
+          ),
       );
     } else if (ArrayBufferIsView(data)) {
-      sendTypedArray(data);
+      if (TypedArrayPrototypeGetSymbolToStringTag(data) === undefined) {
+        // DataView
+        sendTypedArray(data, DataViewPrototypeGetByteLength(data));
+      } else {
+        // TypedArray
+        sendTypedArray(data, TypedArrayPrototypeGetByteLength(data));
+      }
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      sendTypedArray(new DataView(data));
+      sendTypedArray(
+        new DataView(data),
+        ArrayBufferPrototypeGetByteLength(data),
+      );
     } else {
       const string = String(data);
       const d = core.encode(string);
-      this[_bufferedAmount] += d.byteLength;
+      this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(d);
       PromisePrototypeThen(
         core.opAsync2("op_ws_send_text", this[_rid], string),
         () => {
-          this[_bufferedAmount] -= d.byteLength;
+          this[_bufferedAmount] -= TypedArrayPrototypeGetByteLength(d);
         },
       );
     }
@@ -361,7 +385,10 @@ class WebSocket extends EventTarget {
       }
     }
 
-    if (reason !== undefined && core.encode(reason).byteLength > 123) {
+    if (
+      reason !== undefined &&
+      TypedArrayPrototypeGetByteLength(core.encode(reason)) > 123
+    ) {
       throw new DOMException(
         "The close reason may not be longer than 123 bytes.",
         "SyntaxError",

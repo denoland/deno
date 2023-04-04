@@ -18,6 +18,7 @@ const {
   BigInt,
   BigIntAsIntN,
   BigIntAsUintN,
+  DataViewPrototypeGetBuffer,
   Float32Array,
   Float64Array,
   FunctionPrototypeBind,
@@ -76,6 +77,7 @@ const {
   Symbol,
   SymbolIterator,
   SymbolToStringTag,
+  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint16Array,
@@ -476,7 +478,7 @@ converters.DataView = (V, opts = {}) => {
     throw makeException(TypeError, "is not a DataView", opts);
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(V.buffer)) {
+  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
@@ -512,7 +514,10 @@ ArrayPrototypeForEach(
           opts,
         );
       }
-      if (!opts.allowShared && isSharedArrayBuffer(V.buffer)) {
+      if (
+        !opts.allowShared &&
+        isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(V))
+      ) {
         throw makeException(
           TypeError,
           "is a view on a SharedArrayBuffer, which is not allowed",
@@ -535,8 +540,13 @@ converters.ArrayBufferView = (V, opts = {}) => {
       opts,
     );
   }
-
-  if (!opts.allowShared && isSharedArrayBuffer(V.buffer)) {
+  let buffer;
+  if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+    buffer = TypedArrayPrototypeGetBuffer(V);
+  } else {
+    buffer = DataViewPrototypeGetBuffer(V);
+  }
+  if (!opts.allowShared && isSharedArrayBuffer(buffer)) {
     throw makeException(
       TypeError,
       "is a view on a SharedArrayBuffer, which is not allowed",
@@ -549,7 +559,13 @@ converters.ArrayBufferView = (V, opts = {}) => {
 
 converters.BufferSource = (V, opts = {}) => {
   if (ArrayBufferIsView(V)) {
-    if (!opts.allowShared && isSharedArrayBuffer(V.buffer)) {
+    let buffer;
+    if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+      buffer = TypedArrayPrototypeGetBuffer(V);
+    } else {
+      buffer = DataViewPrototypeGetBuffer(V);
+    }
+    if (!opts.allowShared && isSharedArrayBuffer(buffer)) {
       throw makeException(
         TypeError,
         "is a view on a SharedArrayBuffer, which is not allowed",
