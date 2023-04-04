@@ -20,9 +20,10 @@ use sockdeez::CloseCode;
 use sockdeez::Frame;
 use sockdeez::OpCode;
 use sockdeez::WebSocket;
+use sockdeez::FragmentCollector;
 
 pub struct ServerWebSocket {
-  ws: AsyncRefCell<WebSocket<Pin<Box<dyn Upgraded>>>>,
+  ws: AsyncRefCell<FragmentCollector<Pin<Box<dyn Upgraded>>>>,
 }
 
 impl Resource for ServerWebSocket {
@@ -40,7 +41,7 @@ pub async fn ws_create_server_stream(
   ws.set_auto_pong(true);
 
   let ws_resource = ServerWebSocket {
-    ws: AsyncRefCell::new(ws),
+    ws: AsyncRefCell::new(FragmentCollector::new(ws)),
   };
 
   let resource_table = &mut state.borrow_mut().resource_table;
@@ -180,7 +181,9 @@ pub async fn op_server_ws_next_event(
       MessageKind::Pong as u16,
       StringOrBuffer::Buffer(vec![].into()),
     ),
-    _ => unreachable!(),
+    OpCode::Continuation => {
+      return Err(type_error("Unexpected continuation frame"))
+    }
   };
   Ok(res)
 }
