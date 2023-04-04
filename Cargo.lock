@@ -822,7 +822,6 @@ dependencies = [
  "atty",
  "base32",
  "base64 0.13.1",
- "byteorder",
  "cache_control",
  "chrono",
  "clap",

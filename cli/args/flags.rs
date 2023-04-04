@@ -927,7 +927,7 @@ fn compile_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("no-terminal")
         .long("no-terminal")
-        .help("Prevents terminal from opening up on windows"),
+        .help("Hide terminal on Windows"),
     )
     .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
@@ -6268,6 +6268,25 @@ mod tests {
     );
   }
 
+  #[test]
+  fn compile_with_no_terminal() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "compile", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Compile(CompileFlags {
+          source_file: "https://deno.land/std/examples/colors.ts".to_string(),
+          output: Some(PathBuf::from("colors")),
+          args: svec!["foo", "bar"],
+          target: None,
+          no_terminal: true
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
   #[test]
   fn coverage() {
     let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);

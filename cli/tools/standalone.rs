@@ -13,8 +13,6 @@ use crate::util::path::path_has_trailing_slash;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::ProcState;
-use byteorder::ByteOrder;
-use byteorder::LittleEndian;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -167,10 +165,11 @@ async fn create_standalone_binary(
     .clone()
     .unwrap_or(env::consts::OS.to_string());
 
-  if compile_flags.no_terminal
-    & (target == "x86_64-pc-windows-msvc" || target == "windows")
-  {
-    original_bin = set_windows_binary_to_gui(original_bin);
+  if compile_flags.no_terminal {
+    if target != "x86_64-pc-windows-msvc" || target != "windows" {
+      bail!("The `--no-terminal` flag is only available when targeting Windows")
+    }
+    original_bin = set_windows_binary_to_gui(original_bin)?;
   }
 
   let mut eszip_archive = eszip.into_bytes();
@@ -223,16 +222,74 @@ async fn create_standalone_binary(
   Ok(final_bin)
 }
 
-fn set_windows_binary_to_gui(mut bin: Vec<u8>) -> Vec<u8> {
-  let header_start = LittleEndian::read_i32(&bin[60..64]);
-  let subsystem_offset = 92;
-  let subsystem_start = header_start + subsystem_offset;
-  let subsystem_range = Range {
-    start: subsystem_start as usize,
-    end: (subsystem_start + 2) as usize,
+// Reads a slice of bytes as if it is a slice of Ts
+// Returns the slices cannot be aligned with the size of T
+fn read_as<T>(bin: &[u8], start: i32, end: i32) -> Result<&[T], AnyError> {
+  let range = Range {
+    start: start as usize,
+    end: end as usize,
   };
-  LittleEndian::write_i16(&mut bin[subsystem_range], 2);
-  bin
+  let slice = &bin[range];
+  let (prefix, value, suffix) = unsafe { slice.align_to::<T>() };
+  if prefix.len() != 0 || suffix.len() != 0 || value.len() == 0 {
+    bail!("Could not align bytes to a slice of Ts")
+  }
+  Ok(value)
+}
+
+// Reads a slice of bytes as if it is a slice of Ts
+// Returns an Error if the slices cannot be aligned with the size of T
+fn read_as_mut<T>(
+  bin: &mut [u8],
+  start: i32,
+  end: i32,
+) -> Result<&mut [T], AnyError> {
+  let range = Range {
+    start: start as usize,
+    end: end as usize,
+  };
+  let slice = &mut bin[range];
+  let (prefix, value, suffix) = unsafe { slice.align_to_mut::<T>() };
+  if prefix.len() != 0 || suffix.len() != 0 || value.len() == 0 {
+    bail!("Could not align bytes to a slice of Ts")
+  }
+  Ok(value)
+}
+
+/// This function sets the subsystem field in the PE header to 2 (GUI subsystem)
+/// For more information about the PE header: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+fn set_windows_binary_to_gui(mut bin: Vec<u8>) -> Result<Vec<u8>, AnyError> {
+  // Get the PE header offset located in an i32 found at offset 60
+  // See: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#ms-dos-stub-image-only
+  let start_pe = read_as::<i32>(&bin, 60, 64)?[0];
+
+  // Get image type (PE32 or PE32+) indicates whether the binary is 32 or 64 bit
+  // The used offset and size values can be found here:
+  // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-image-only
+  let start_32 = start_pe + 28;
+  let magic_32 = read_as::<i16>(&bin, start_32, start_32 + 2)?[0];
+
+  let start_64 = start_pe + 24;
+  let magic_64 = read_as::<i16>(&bin, start_64, start_64 + 2)?[0];
+
+  // Take the standard fields size for the current architecture (32 or 64 bit)
+  // This is the ofset for the Windows-Specific fields
+  let standard_fields_size = if magic_32 == 0x10b {
+    28
+  } else if magic_64 == 0x20b {
+    24
+  } else {
+    bail!("Could not find a matching magic field in the PE header")
+  };
+
+  // Set the subsystem field (offset 68) to 2 (GUI subsystem)
+  // For all possible options, see: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-windows-specific-fields-image-only
+  let subsystem_offset = 68;
+  let subsystem_start = start_pe + standard_fields_size + subsystem_offset;
+  let subsystem =
+    read_as_mut::<i16>(&mut bin, subsystem_start, subsystem_start + 2)?;
+  subsystem[0] = 2;
+  Ok(bin)
 }
 
 /// This function writes out a final binary to specified path. If output path
