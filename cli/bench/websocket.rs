@@ -49,8 +49,8 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .spawn()
       .unwrap();
 
-    // Let it run for 20 seconds. It won't complete so we have to kill it.
-    std::thread::sleep(Duration::from_secs(20));
+    // Let it run for 60 seconds. It won't complete so we have to kill it.
+    std::thread::sleep(Duration::from_secs(60));
     process.kill().unwrap();
 
     let output = process.wait_with_output().unwrap();
