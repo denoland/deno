@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { magenta } from "std/fmt/colors.ts";
-import { pooledMap } from "std/async/pool.ts";
-import { dirname, fromFileUrl, join } from "std/path/mod.ts";
-import { fail } from "std/testing/asserts.ts";
+import { magenta } from "../../../test_util/std/fmt/colors.ts";
+import { pooledMap } from "../../../test_util/std/async/pool.ts";
+import { dirname, fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
+import { fail } from "../../../test_util/std/testing/asserts.ts";
 import {
   config,
   getPathsFromTestSuites,
@@ -23,12 +23,10 @@ const hasFilters = filters.length > 0;
  */
 
 const toolsPath = dirname(fromFileUrl(import.meta.url));
-const stdRootUrl = new URL("../../", import.meta.url).href;
 const testPaths = partitionParallelTestPaths(
   getPathsFromTestSuites(config.tests),
 );
 const cwd = new URL(".", import.meta.url);
-const importMap = "import_map.json";
 const windowsIgnorePaths = new Set(
   getPathsFromTestSuites(config.windowsIgnore),
 );
@@ -74,7 +72,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         "--unstable",
         //"--unsafely-ignore-certificate-errors",
         "--v8-flags=" + v8Flags.join(),
-        testCase.endsWith(".mjs") ? "--import-map=" + importMap : "runner.ts",
+        "runner.ts",
         testCase,
       ];
 
@@ -83,7 +81,6 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
       const command = new Deno.Command(Deno.execPath(), {
         args,
         env: {
-          DENO_NODE_COMPAT_URL: stdRootUrl,
           TEST_SERIAL_ID: String(testSerialId++),
         },
         cwd,
@@ -98,7 +95,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         console.log(
           "You can repeat only this test with the command:",
           magenta(
-            `./target/debug/deno test -A --import-map cli/tests/node_compat/import_map.json cli/tests/node_compat/test.ts -- ${path}`,
+            `./target/debug/deno test -A cli/tests/node_compat/test.ts -- ${path}`,
           ),
         );
         fail(decoder.decode(stderr));
