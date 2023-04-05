@@ -60,8 +60,9 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .lines()
       .filter(|line| line.starts_with("Msg/sec:"))
       .map(|line| line.split(": ").nth(1).unwrap().parse::<f64>().unwrap())
-      .max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-    
+      .max_by(|a, b| a.partial_cmp(b).unwrap())
+      .unwrap();
+
     res.insert(file_stem.to_string(), msg_per_sec);
     server.kill().unwrap();
   }
