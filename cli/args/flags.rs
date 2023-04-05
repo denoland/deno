@@ -2226,12 +2226,13 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 
   if checks_local_by_default {
     arg.long_help(
-        "Set type-checking behavior. This subcommand type-checks local modules by
+      "Set type-checking behavior. This subcommand type-checks local modules by
 default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.
   
-Alternatively, the 'deno check' subcommand can be used.")
+Alternatively, the 'deno check' subcommand can be used.",
+    )
   } else {
     arg.long_help(
       "Enable type-checking. This subcommand does not type-check by default.
