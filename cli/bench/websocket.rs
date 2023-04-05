@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::collections::HashMap;
+use std::io::BufRead;
 use std::path::Path;
 use std::process::Command;
+use std::process::Stdio;
 use std::time::Duration;
 
 use super::Result;
@@ -30,7 +32,7 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .spawn()
       .unwrap();
 
-    std::thread::sleep(Duration::from_secs(10)); // wait for server to wake up.
+    std::thread::sleep(Duration::from_secs(5)); // wait for server to wake up.
 
     let load_test = test_util::prebuilt_tool_path("load_test");
     assert!(load_test.is_file());
@@ -41,7 +43,8 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
     // ^C⏎
     let mut cmd = Command::new(load_test);
     let mut process = cmd
-      .arg("10")
+      .stdout(Stdio::piped())
+      .arg("100")
       .arg("0.0.0.0")
       .arg(&port.to_string())
       .arg("0")
@@ -49,15 +52,18 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .spawn()
       .unwrap();
 
-    // Let it run for 10 seconds. It won't complete so we have to kill it.
-    std::thread::sleep(Duration::from_secs(10));
+    let mut lines = Vec::new();
+
+    let mut stdout =
+      std::io::BufReader::new(process.stdout.take().unwrap()).lines();
+    for _ in 0..5 {
+      let line = stdout.next().unwrap().unwrap();
+      lines.push(line);
+    }
+
     process.kill().unwrap();
-
-    let output = process.wait_with_output().unwrap();
-    let stdout = std::str::from_utf8(&output.stdout).unwrap();
-
-    let msg_per_sec = stdout
-      .lines()
+    let msg_per_sec = lines
+      .into_iter()
       .filter(|line| line.starts_with("Msg/sec:"))
       .map(|line| line.split(": ").nth(1).unwrap().parse::<f64>().unwrap())
       .max_by(|a, b| a.partial_cmp(b).unwrap())
