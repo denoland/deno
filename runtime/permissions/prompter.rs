@@ -86,10 +86,29 @@ impl PermissionPrompter for TtyPrompter {
 
     #[cfg(unix)]
     fn clear_stdin() -> Result<(), AnyError> {
-      // TODO(bartlomieju):
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
-      assert_eq!(r, 0);
+      use nix::sys::termios;
+      use nix::sys::termios::SetArg::*;
+      use nix::sys::termios::SpecialCharacterIndices::*;
+      use std::io::BufRead;
+
+      // save original termios settings
+      let original = termios::tcgetattr(0)?;
+
+      // disable canonical mode, make reads non-blocking, and flush input
+      let mut settings = original.clone();
+      settings.local_flags.remove(termios::LocalFlags::ICANON);
+      settings.control_chars[VMIN as usize] = 0;
+      settings.control_chars[VTIME as usize] = 0;
+      termios::tcsetattr(0, TCSAFLUSH, &settings)?;
+
+      // consume stdin's internal BufReader buffer
+      let mut stdin = std::io::stdin().lock();
+      let n = stdin.fill_buf()?.len();
+      stdin.consume(n);
+
+      // restore original termios settings
+      termios::tcsetattr(0, TCSAFLUSH, &original)?;
+
       Ok(())
     }
 
