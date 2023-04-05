@@ -311,3 +311,10 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
+
+[patch.crates-io]
+deno_graph = { path = '../deno_graph' }
+deno_semver = { path = '../deno_semver' }
+deno_doc = { path = '../deno_doc' }
+deno_emit = { path = '../deno_emit/rs-lib' }
+eszip = { path = '../eszip' }

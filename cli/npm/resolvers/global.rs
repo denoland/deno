@@ -9,15 +9,15 @@ use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmResolutionPackage;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;

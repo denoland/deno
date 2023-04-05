@@ -7,13 +7,13 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_graph::npm::NpmPackageNv;
+use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_semver::npm::NpmPackageNv;
 use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
 
 use super::cache::with_folder_sync_lock;
-use super::registry::NpmPackageVersionDistInfo;
 
 pub fn verify_and_extract_tarball(
   package: &NpmPackageNv,
@@ -116,7 +116,7 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 
 #[cfg(test)]
 mod test {
-  use deno_graph::semver::Version;
+  use deno_semver::Version;
 
   use super::*;
 

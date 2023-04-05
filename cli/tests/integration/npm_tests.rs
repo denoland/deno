@@ -1103,7 +1103,13 @@ fn lock_file_missing_top_level_package() {
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(
     stderr,
-    "error: failed reading lockfile 'deno.lock'\n\nCaused by:\n    the lockfile is corrupt. You can recreate it with --lock-write\n"
+    concat!(
+      "error: failed reading lockfile 'deno.lock'\n",
+      "\n",
+      "Caused by:\n",
+      "    0: The lockfile is corrupt. You can recreate it with --lock-write\n",
+      "    1: Could not find referenced package 'cowsay@1.5.0' in the list of packages.\n"
+    )
   );
 }
 

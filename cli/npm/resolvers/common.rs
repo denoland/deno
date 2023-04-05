@@ -9,13 +9,13 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::url::Url;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmResolutionPackage;
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait]
