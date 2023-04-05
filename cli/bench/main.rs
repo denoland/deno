@@ -418,6 +418,7 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
+    "websocket",
     "strace",
     "mem_usage",
   ];
@@ -483,7 +484,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"websocket") {
-    let ws = websocket::benchmark(&deno_exe)?;
+    let ws = websocket::benchmark()?;
     new_data.ws_msg_per_sec = ws;
   }
 
