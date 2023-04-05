@@ -21,12 +21,14 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
     let mut cmd = Command::new(deno_exe);
-    cmd
+    let mut server = cmd
       .arg("run")
       .arg("-A")
       .arg("--unstable")
       .arg(path)
-      .arg(&port.to_string());
+      .arg(&port.to_string())
+      .spawn()
+      .unwrap();
 
     std::thread::sleep(Duration::from_secs(5)); // wait for server to wake up.
 
@@ -47,8 +49,8 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .spawn()
       .unwrap();
 
-    // Let it run for 5 seconds. It won't complete so we have to kill it.
-    std::thread::sleep(Duration::from_secs(5));
+    // Let it run for 10 seconds. It won't complete so we have to kill it.
+    std::thread::sleep(Duration::from_secs(10));
     process.kill().unwrap();
 
     let output = process.wait_with_output().unwrap();
@@ -59,9 +61,9 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .filter(|line| line.starts_with("Msg/sec:"))
       .map(|line| line.split(": ").nth(1).unwrap().parse::<f64>().unwrap())
       .max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-
+    
     res.insert(file_stem.to_string(), msg_per_sec);
-
+    server.kill().unwrap();
   }
 
   Ok(res)
