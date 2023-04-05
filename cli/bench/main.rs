@@ -458,6 +458,11 @@ async fn main() -> Result<()> {
     ..Default::default()
   };
 
+  if benchmarks.contains(&"websocket") {
+    let ws = websocket::benchmark()?;
+    new_data.ws_msg_per_sec = ws;
+  }
+
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
     new_data.bundle_size = bundle_size;
@@ -481,11 +486,6 @@ async fn main() -> Result<()> {
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
-  }
-
-  if benchmarks.contains(&"websocket") {
-    let ws = websocket::benchmark()?;
-    new_data.ws_msg_per_sec = ws;
   }
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {

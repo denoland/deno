@@ -30,7 +30,7 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .spawn()
       .unwrap();
 
-    std::thread::sleep(Duration::from_secs(5)); // wait for server to wake up.
+    std::thread::sleep(Duration::from_secs(10)); // wait for server to wake up.
 
     let load_test = test_util::prebuilt_tool_path("load_test");
     assert!(load_test.is_file());
@@ -49,8 +49,8 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .spawn()
       .unwrap();
 
-    // Let it run for 10 seconds. It won't complete so we have to kill it.
-    std::thread::sleep(Duration::from_secs(10));
+    // Let it run for 20 seconds. It won't complete so we have to kill it.
+    std::thread::sleep(Duration::from_secs(20));
     process.kill().unwrap();
 
     let output = process.wait_with_output().unwrap();
