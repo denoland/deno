@@ -1,4 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+/**
+ * This script will run the test files specified in the configuration file.
+ *
+ * Each test file will be run independently (in a separate process as this is
+ * what Node.js is doing) and we wait until it completes. If the process reports
+ * an abnormal code, the test is reported and the test suite will fail
+ * immediately.
+ *
+ * Some tests check for presence of certain `process.exitCode`.
+ * Some tests depends on directories/files created by other tests - they must
+ * all share the same working directory.
+ */
+
 import { magenta } from "../../../test_util/std/fmt/colors.ts";
 import { pooledMap } from "../../../test_util/std/async/pool.ts";
 import { dirname, fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
@@ -11,17 +25,9 @@ import {
 
 // If the test case is invoked like
 // deno test -A cli/tests/node_compat/test.ts -- <test-names>
-// Use the test-names as filters
+// Use the <test-names> as filters
 const filters = Deno.args;
 const hasFilters = filters.length > 0;
-
-/**
- * This script will run the test files specified in the configuration file
- *
- * Each test file will be run independently and wait until completion, if an abnormal
- * code for the test is reported, the test suite will fail immediately
- */
-
 const toolsPath = dirname(fromFileUrl(import.meta.url));
 const testPaths = partitionParallelTestPaths(
   getPathsFromTestSuites(config.tests),
