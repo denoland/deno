@@ -1,0 +1,10 @@
+{
+    "name": "@denotest/quotes-in-bin",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "main.mjs",
+    "bin": {
+      "foo\"": "main.mjs"
+    }
+  }
+  

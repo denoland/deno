@@ -689,6 +689,13 @@ itest!(deno_run_bin_esm {
   http_server: true,
 });
 
+itest!(deno_run_bin_quoted {
+  args: "run -A --quiet npm:@denotest/quotes-in-bin/foo\" this is a test",
+  output: "npm/deno_run_quoted_bin.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(deno_run_bin_no_ext {
   args: "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
   output: "npm/deno_run_no_ext.out",

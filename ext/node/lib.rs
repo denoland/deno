@@ -3,8 +3,8 @@
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::JsRuntime;
 use deno_core::serde_json;
+use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::io;
