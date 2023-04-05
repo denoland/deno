@@ -3,6 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
+use deno_core::serde_json;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
@@ -430,7 +431,7 @@ pub fn initialize_runtime(
   maybe_binary_command_name: Option<String>,
 ) -> Result<(), AnyError> {
   let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    format!("\"{}\"", binary_command_name)
+    serde_json::to_string(binary_command_name.as_str())?
   } else {
     "undefined".to_string()
   };
