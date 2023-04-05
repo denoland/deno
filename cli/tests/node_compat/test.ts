@@ -90,15 +90,23 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
       if (code !== 0) {
         // If the test case failed, show the stdout, stderr, and instruction
         // for repeating the single test case.
-        if (stdout.length) console.log(decoder.decode(stdout));
-        console.log(`Error: "${path}" failed`);
-        console.log(
-          "You can repeat only this test with the command:",
-          magenta(
-            `./target/debug/deno test -A cli/tests/node_compat/test.ts -- ${path}`,
-          ),
+        if (stdout.length) {
+          console.log(decoder.decode(stdout));
+        }
+        const stderrOutput = decoder.decode(stderr);
+        const repeatCmd = magenta(
+          `./target/debug/deno test -A cli/tests/node_compat/test.ts -- ${path}`,
         );
-        fail(decoder.decode(stderr));
+        const msg = `"${magenta(path)}" failed:
+
+${stderrOutput}
+
+You can repeat only this test with the command:
+  
+  ${repeatCmd}
+`;
+        console.log(msg);
+        fail(msg);
       } else if (hasFilters) {
         // Even if the test case is successful, shows the stdout and stderr
         // when test case filtering is specified.
