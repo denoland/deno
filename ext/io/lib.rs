@@ -520,18 +520,22 @@ impl StdFileResource {
       .await
   }
 
-  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
-    let buf = data.to_owned();
+  async fn write(
+    self: Rc<Self>,
+    view: BufView,
+  ) -> Result<deno_core::WriteOutcome, AnyError> {
     self
-      .with_inner_blocking_task(move |inner| inner.write_and_maybe_flush(&buf))
+      .with_inner_blocking_task(move |inner| {
+        let nwritten = inner.write_and_maybe_flush(&view)?;
+        Ok(deno_core::WriteOutcome::Partial { nwritten, view })
+      })
       .await
   }
 
-  async fn write_all(self: Rc<Self>, data: &[u8]) -> Result<(), AnyError> {
-    let buf = data.to_owned();
+  async fn write_all(self: Rc<Self>, view: BufView) -> Result<(), AnyError> {
     self
       .with_inner_blocking_task(move |inner| {
-        inner.write_all_and_maybe_flush(&buf)
+        inner.write_all_and_maybe_flush(&view)
       })
       .await
   }
@@ -644,7 +648,15 @@ impl Resource for StdFileResource {
     Box::pin(self.read_byob(buf))
   }
 
-  deno_core::impl_writable!(with_all);
+  fn write(
+    self: Rc<Self>,
+    view: deno_core::BufView,
+  ) -> AsyncResult<deno_core::WriteOutcome> {
+    Box::pin(self.write(view))
+  }
+  fn write_all(self: Rc<Self>, view: deno_core::BufView) -> AsyncResult<()> {
+    Box::pin(self.write_all(view))
+  }
 
   #[cfg(unix)]
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
