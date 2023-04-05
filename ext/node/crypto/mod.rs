@@ -402,3 +402,8 @@ pub async fn op_node_pbkdf2_async(
   })
   .await?
 }
+
+#[op]
+pub fn op_node_generate_secret(buf: &mut [u8]) {
+  rand::thread_rng().fill(&mut buf[..]);
+}
