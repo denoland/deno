@@ -17,6 +17,7 @@ include!("../util/time.rs");
 
 mod http;
 mod lsp;
+mod websocket;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -401,6 +402,7 @@ struct BenchResult {
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
+  ws_msg_per_sec: HashMap<String, f64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
 }
@@ -478,6 +480,11 @@ async fn main() -> Result<()> {
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
+  }
+
+  if benchmarks.contains(&"websocket") {
+    let ws = websocket::benchmark(&deno_exe)?;
+    new_data.ws_msg_per_sec = ws;
   }
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
