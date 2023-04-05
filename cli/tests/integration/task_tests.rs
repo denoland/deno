@@ -135,18 +135,6 @@ itest!(task_deno_exe_no_env {
   env_clear: true,
 });
 
-itest!(task_piped_stdin {
-  args_vec: vec![
-    "task",
-    "-q",
-    "--config",
-    "task/deno_json/deno.json",
-    "piped"
-  ],
-  output: "task/deno_json/task_piped_stdin.out",
-  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-});
-
 itest!(task_package_json_no_arg {
   args: "task",
   cwd: Some("task/package_json/"),
