@@ -41,7 +41,7 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
     // ^C⏎
     let mut cmd = Command::new(load_test);
     let mut process = cmd
-      .arg("100")
+      .arg("10")
       .arg("0.0.0.0")
       .arg(&port.to_string())
       .arg("0")
@@ -49,8 +49,8 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
       .spawn()
       .unwrap();
 
-    // Let it run for 60 seconds. It won't complete so we have to kill it.
-    std::thread::sleep(Duration::from_secs(60));
+    // Let it run for 10 seconds. It won't complete so we have to kill it.
+    std::thread::sleep(Duration::from_secs(10));
     process.kill().unwrap();
 
     let output = process.wait_with_output().unwrap();

@@ -22,4 +22,4 @@ function handler(request) {
   return response;
 }
 
-serve(handler, { port: parseInt(port) });
+serve(handler, { port: parseInt(port), hostname: "0.0.0.0" });
