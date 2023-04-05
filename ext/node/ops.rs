@@ -285,7 +285,7 @@ where
 {
   let path = PathBuf::from(request);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let mut canonicalized_path = path.canonicalize()?;
+  let mut canonicalized_path = Env::Fs::canonicalize(&path)?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
       canonicalized_path

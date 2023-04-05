@@ -54,6 +54,7 @@ pub trait NodeFs {
   fn current_dir() -> io::Result<PathBuf>;
   fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata>;
   fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf>;
 }
 
 pub struct RealFs;
@@ -71,6 +72,11 @@ impl NodeFs for RealFs {
   fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
     #[allow(clippy::disallowed_methods)]
     std::fs::read_to_string(path)
+  }
+
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::path::Path::canonicalize(path.as_ref())
   }
 }
 

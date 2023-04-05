@@ -74,11 +74,13 @@ pub fn path_to_declaration_path<Fs: NodeFs>(
   if let Some(path) = probe_extensions::<Fs>(&path, referrer_kind) {
     return Some(path);
   }
-  if path.is_dir() {
-    if let Some(path) =
-      probe_extensions::<Fs>(&path.join("index"), referrer_kind)
-    {
-      return Some(path);
+  if let Ok(metadata) = Fs::metadata(&path) {
+    if metadata.is_dir() {
+      if let Some(path) =
+        probe_extensions::<Fs>(&path.join("index"), referrer_kind)
+      {
+        return Some(path);
+      }
     }
   }
   None
