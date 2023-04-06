@@ -264,8 +264,8 @@ where
 {
   let path = PathBuf::from(path);
   ensure_read_permission::<Env::P>(state, &path)?;
-  if Env::Fs::exists(&path) {
-    if Env::Fs::is_file(&path) {
+  if let Ok(metadata) = Env::Fs::metadata(&path) {
+    if metadata.is_file {
       return Ok(0);
     } else {
       return Ok(1);
