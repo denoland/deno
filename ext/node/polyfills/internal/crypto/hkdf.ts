@@ -27,7 +27,6 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
