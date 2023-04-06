@@ -243,7 +243,7 @@ function createByteStruct(types) {
       offset += 2;
     } else {
       // if (!optional) {
-        str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
       // } else {
       //   str += `${name}: (unix ? !!((view[${offset}] + view[${
       //     offset + 1

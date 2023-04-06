@@ -1194,18 +1194,17 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
       {
         0
       }
-    }};
-    // // Unix stat FileType member (boolean types only). false if not on unix.
-    // ($member:ident; ft) => {{
-    //   #[cfg(unix)]
-    //   {
-    //     metadata.file_type().$member()
-    //   }
-    //   #[cfg(not(unix))]
-    //   {
-    //     false
-    //   }
-    // }};
+    }}; // // Unix stat FileType member (boolean types only). false if not on unix.
+        // ($member:ident; ft) => {{
+        //   #[cfg(unix)]
+        //   {
+        //     metadata.file_type().$member()
+        //   }
+        //   #[cfg(not(unix))]
+        //   {
+        //     false
+        //   }
+        // }};
   }
 
   // #[cfg(unix)]
@@ -1230,15 +1229,15 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
     birthtime,
     // Following are only valid under Unix.
     // is_block_device: usm!(is_block_device; ft),
-    dev: usm!(dev/* ; md*/),
-    ino: usm!(ino/* ; md*/),
-    mode: usm!(mode/* ; md*/),
-    nlink: usm!(nlink/* ; md*/),
-    uid: usm!(uid/* ; md*/),
-    gid: usm!(gid/* ; md*/),
-    rdev: usm!(rdev/* ; md*/),
-    blksize: usm!(blksize/* ; md*/),
-    blocks: usm!(blocks/* ; md*/),
+    dev: usm!(dev /* ; md*/),
+    ino: usm!(ino /* ; md*/),
+    mode: usm!(mode /* ; md*/),
+    nlink: usm!(nlink /* ; md*/),
+    uid: usm!(uid /* ; md*/),
+    gid: usm!(gid /* ; md*/),
+    rdev: usm!(rdev /* ; md*/),
+    blksize: usm!(blksize /* ; md*/),
+    blocks: usm!(blocks /* ; md*/),
   }
 }
 
