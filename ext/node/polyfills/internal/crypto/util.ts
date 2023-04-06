@@ -135,7 +135,7 @@ export function setEngine(_engine: string, _flags: typeof constants) {
 
 const kAesKeyLengths = [128, 192, 256];
 
-export { kHandle, kKeyObject };
+export { kAesKeyLengths, kHandle, kKeyObject };
 
 export default {
   getDefaultEncoding,

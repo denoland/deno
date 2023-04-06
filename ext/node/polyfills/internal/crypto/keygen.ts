@@ -3,9 +3,14 @@
 
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";
+import {
+  SecretKeyObject,
+  setOwnedKey,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
 import {
+  validateFunction,
   validateInteger,
   validateObject,
   validateOneOf,
@@ -14,7 +19,8 @@ import {
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 function validateGenerateKey(
   type: "hmac" | "aes",
@@ -48,8 +54,10 @@ export function generateKeySync(
   validateGenerateKey(type, options);
   const { length } = options;
 
-  const key = Buffer.alloc(Math.floor(length / 8));
-  ops.op_node_generate_secret(length, key);
+  const key = new Uint8Array(Math.floor(length / 8));
+  ops.op_node_generate_secret(key);
+
+  return new SecretKeyObject(setOwnedKey(key));
 }
 
 export function generateKey(
@@ -60,9 +68,14 @@ export function generateKey(
   callback: (err: Error | null, key: KeyObject) => void,
 ) {
   validateGenerateKey(type, options);
+  validateFunction(callback, "callback");
   const { length } = options;
 
-  core.opAsync("op_node_generate_secret_async", length);
+  core.opAsync("op_node_generate_secret_async", Math.floor(length / 8)).then(
+    (key) => {
+      callback(null, new SecretKeyObject(setOwnedKey(key)));
+    },
+  );
 }
 
 export interface BasePrivateKeyEncodingOptions<T extends KeyFormat> {
