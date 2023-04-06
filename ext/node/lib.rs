@@ -50,8 +50,15 @@ pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
+#[derive(Default, Clone)]
+pub struct NodeFsMetadata {
+  pub is_file: bool,
+  pub is_dir: bool,
+}
+
 pub trait NodeFs {
   fn current_dir() -> io::Result<PathBuf>;
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata>;
   fn is_file<P: AsRef<Path>>(path: P) -> bool;
   fn is_dir<P: AsRef<Path>>(path: P) -> bool;
   fn exists<P: AsRef<Path>>(path: P) -> bool;
@@ -64,6 +71,18 @@ impl NodeFs for RealFs {
   fn current_dir() -> io::Result<PathBuf> {
     #[allow(clippy::disallowed_methods)]
     std::env::current_dir()
+  }
+
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).map(|metadata| {
+      // on most systems, calling is_file() and is_dir() is cheap
+      // and returns information already found in the metadata object
+      NodeFsMetadata {
+        is_file: metadata.is_file(),
+        is_dir: metadata.is_dir(),
+      }
+    })
   }
 
   fn exists<P: AsRef<Path>>(path: P) -> bool {
