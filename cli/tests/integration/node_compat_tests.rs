@@ -8,12 +8,6 @@ fn node_compat_tests() {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
-    .arg("--import-map")
-    .arg(
-      util::tests_path()
-        .join("node_compat")
-        .join("import_map.json"),
-    )
     .arg("-A")
     .arg(util::tests_path().join("node_compat"))
     .spawn()

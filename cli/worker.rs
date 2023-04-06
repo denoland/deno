@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
@@ -193,7 +194,7 @@ impl CliMainWorker {
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
     if self.ps.options.trace_ops() {
-      self.worker.js_runtime.execute_script(
+      self.worker.js_runtime.execute_script_static(
         located_script_name!(),
         "Deno[Deno.internal].core.enableOpCallTracing();",
       )?;
@@ -242,7 +243,7 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     self.worker.execute_script(
       located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
+      ascii_str!("Deno[Deno.internal].core.enableOpCallTracing();"),
     )?;
 
     if mode != TestMode::Documentation {

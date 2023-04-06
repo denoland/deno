@@ -345,7 +345,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
     .expect("Module not found");
 
   let url_key = v8::String::new_external_onebyte_static(scope, b"url").unwrap();
-  let url_val = v8::String::new(scope, &info.name).unwrap();
+  let url_val = info.name.v8(scope);
   meta.create_data_property(scope, url_key.into(), url_val.into());
 
   let main_key =
@@ -616,7 +616,7 @@ pub fn module_resolve_callback<'s>(
   let referrer_info = module_map
     .get_info(&referrer_global)
     .expect("ModuleInfo not found");
-  let referrer_name = referrer_info.name.to_string();
+  let referrer_name = referrer_info.name.as_str();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
@@ -628,7 +628,7 @@ pub fn module_resolve_callback<'s>(
   let maybe_module = module_map.resolve_callback(
     scope,
     &specifier_str,
-    &referrer_name,
+    referrer_name,
     assertions,
   );
   if let Some(module) = maybe_module {

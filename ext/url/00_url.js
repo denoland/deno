@@ -41,6 +41,12 @@ const SET_SEARCH = 7;
 const SET_USERNAME = 8;
 
 // Helper functions
+/**
+ * @param {string} href
+ * @param {number} setter
+ * @param {string} value
+ * @returns {string}
+ */
 function opUrlReparse(href, setter, value) {
   const status = ops.op_url_reparse(
     href,
@@ -51,20 +57,28 @@ function opUrlReparse(href, setter, value) {
   return getSerialization(status, href);
 }
 
+/**
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {number}
+ */
 function opUrlParse(href, maybeBase) {
-  let status;
   if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf);
-  } else {
-    status = ops.op_url_parse_with_base(
-      href,
-      maybeBase,
-      componentsBuf,
-    );
+    return ops.op_url_parse(href, componentsBuf);
   }
-  return getSerialization(status, href, maybeBase);
+  return ops.op_url_parse_with_base(
+    href,
+    maybeBase,
+    componentsBuf,
+  );
 }
 
+/**
+ * @param {number} status
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {string}
+ */
 function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
@@ -353,7 +367,7 @@ class URL {
 
   /**
    * @param {string} url
-   * @param {string} base
+   * @param {string} [base]
    */
   constructor(url, base = undefined) {
     const prefix = "Failed to construct 'URL'";
@@ -365,8 +379,26 @@ class URL {
       });
     }
     this[webidl.brand] = webidl.brand;
-    this.#serialization = opUrlParse(url, base);
+    const status = opUrlParse(url, base);
+    this.#serialization = getSerialization(status, url, base);
     this.#updateComponents();
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} [base]
+   */
+  static canParse(url, base = undefined) {
+    const prefix = "Failed to call 'URL.canParse'";
+    url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, {
+        prefix,
+        context: "Argument 2",
+      });
+    }
+    const status = opUrlParse(url, base);
+    return status === 0 || status === 1;
   }
 
   #updateComponents() {
@@ -520,7 +552,8 @@ class URL {
       prefix,
       context: "Argument 1",
     });
-    this.#serialization = opUrlParse(value);
+    const status = opUrlParse(value);
+    this.#serialization = getSerialization(status, value);
     this.#updateComponents();
     this.#updateSearchParams();
   }
