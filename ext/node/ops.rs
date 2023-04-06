@@ -472,7 +472,7 @@ where
   } else {
     let orignal = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
-    if Path::new(&mod_dir).is_dir() {
+    if Env::Fs::is_dir(&mod_dir) {
       mod_dir
     } else {
       orignal
