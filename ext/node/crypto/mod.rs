@@ -8,6 +8,7 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use num_bigint::BigInt;
+use rand::Rng;
 use std::future::Future;
 use std::rc::Rc;
 
@@ -401,4 +402,20 @@ pub async fn op_node_pbkdf2_async(
       .map(|_| derived_key.into())
   })
   .await?
+}
+
+#[op]
+pub fn op_node_generate_secret(buf: &mut [u8]) {
+  rand::thread_rng().fill(buf);
+}
+
+#[op]
+pub async fn op_node_generate_secret_async(len: i32) -> ZeroCopyBuf {
+  tokio::task::spawn_blocking(move || {
+    let mut buf = vec![0u8; len as usize];
+    rand::thread_rng().fill(&mut buf[..]);
+    buf.into()
+  })
+  .await
+  .unwrap()
 }
