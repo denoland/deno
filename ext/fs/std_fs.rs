@@ -359,7 +359,9 @@ fn chmod(path: impl AsRef<Path>, mode: u32) -> FsResult<()> {
 
 // TODO: implement chmod for Windows (#4357)
 #[cfg(not(unix))]
-fn chmod(_path: impl AsRef<Path>, _mode: u32) -> FsResult<()> {
+fn chmod(path: impl AsRef<Path>, _mode: u32) -> FsResult<()> {
+  // Still check file/dir exists on Windows
+  std::fs::metadata(path)?;
   Err(FsError::NotSupported)
 }
 
@@ -820,13 +822,7 @@ impl File for StdFileResource {
       })
     }
     #[cfg(not(unix))]
-    {
-      // Silence clippy
-      let _ = mode;
-      // Still check file/dir exists on Windows
-      sync(self, |file| file.metadata())?;
-      Err(FsError::NotSupported)
-    }
+    Err(FsError::NotSupported)
   }
 
   async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()> {
@@ -839,13 +835,7 @@ impl File for StdFileResource {
       .await
     }
     #[cfg(not(unix))]
-    {
-      // Silence clippy
-      let _ = mode;
-      // Still check file/dir exists on Windows
-      nonblocking(self, move |file| file.metadata()).await?;
-      Err(FsError::NotSupported)
-    }
+    Err(FsError::NotSupported)
   }
 
   fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
