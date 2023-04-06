@@ -43,7 +43,7 @@ impl ExtensionFileSource {
           self.specifier,
           Self::find_non_ascii(code)
         );
-        Ok((*code).into())
+        Ok(ModuleCode::from_static(code))
       }
       ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
         let msg = || format!("Failed to read \"{}\"", path.display());

@@ -18,7 +18,6 @@ members = [
   "ext/console",
   "ext/crypto",
   "ext/fetch",
-  "ext/flash",
   "ext/ffi",
   "ext/fs",
   "ext/http",
@@ -46,36 +45,35 @@ repository = "https://github.com/denoland/deno"
 v8 = { version = "0.68.0", default-features = false }
 deno_ast = { version = "0.25.0", features = ["transpiling"] }
 
-deno_core = { version = "0.178.0", path = "./core" }
-deno_ops = { version = "0.56.0", path = "./ops" }
-serde_v8 = { version = "0.89.0", path = "./serde_v8" }
-deno_runtime = { version = "0.104.0", path = "./runtime" }
-napi_sym = { version = "0.26.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.90.0", path = "./bench_util" }
+deno_core = { version = "0.179.0", path = "./core" }
+deno_ops = { version = "0.57.0", path = "./ops" }
+serde_v8 = { version = "0.90.0", path = "./serde_v8" }
+deno_runtime = { version = "0.105.0", path = "./runtime" }
+napi_sym = { version = "0.27.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.91.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
-deno_lockfile = { version = "0.12.0", path = "./lockfile" }
+deno_lockfile = { version = "0.13.0", path = "./lockfile" }
 
 # exts
-deno_broadcast_channel = { version = "0.90.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.28.0", path = "./ext/cache" }
-deno_console = { version = "0.96.0", path = "./ext/console" }
-deno_crypto = { version = "0.110.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.120.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.83.0", path = "./ext/ffi" }
-deno_flash = { version = "0.32.0", path = "./ext/flash" }
-deno_fs = { version = "0.6.0", path = "./ext/fs" }
-deno_http = { version = "0.91.0", path = "./ext/http" }
-deno_io = { version = "0.6.0", path = "./ext/io" }
-deno_net = { version = "0.88.0", path = "./ext/net" }
-deno_node = { version = "0.33.0", path = "./ext/node" }
-deno_kv = { version = "0.4.0", path = "./ext/kv" }
-deno_tls = { version = "0.83.0", path = "./ext/tls" }
-deno_url = { version = "0.96.0", path = "./ext/url" }
-deno_web = { version = "0.127.0", path = "./ext/web" }
-deno_webidl = { version = "0.96.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.101.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.91.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.26.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.91.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.29.0", path = "./ext/cache" }
+deno_console = { version = "0.97.0", path = "./ext/console" }
+deno_crypto = { version = "0.111.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.121.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.84.0", path = "./ext/ffi" }
+deno_fs = { version = "0.7.0", path = "./ext/fs" }
+deno_http = { version = "0.92.0", path = "./ext/http" }
+deno_io = { version = "0.7.0", path = "./ext/io" }
+deno_net = { version = "0.89.0", path = "./ext/net" }
+deno_node = { version = "0.34.0", path = "./ext/node" }
+deno_kv = { version = "0.5.0", path = "./ext/kv" }
+deno_tls = { version = "0.84.0", path = "./ext/tls" }
+deno_url = { version = "0.97.0", path = "./ext/url" }
+deno_web = { version = "0.128.0", path = "./ext/web" }
+deno_webidl = { version = "0.97.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.102.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.92.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.27.0", path = "./ext/napi" }
 
 aes = "=0.8.2"
 anyhow = "1.0.57"
@@ -96,11 +94,13 @@ fs3 = "0.5.0"
 futures = "0.3.21"
 hex = "0.4"
 http = "0.2.9"
+httparse = "1.8.0"
 hyper = "0.14.18"
 indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.17"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+memmem = "0.1.1"
 notify = "=5.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
@@ -262,8 +262,6 @@ opt-level = 3
 [profile.release.package.deno_runtime]
 opt-level = 3
 [profile.release.package.deno_http]
-opt-level = 3
-[profile.release.package.deno_flash]
 opt-level = 3
 [profile.release.package.deno_net]
 opt-level = 3

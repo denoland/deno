@@ -13,15 +13,15 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
   ArrayBufferPrototype,
+  ArrayBufferPrototypeSlice,
+  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
   ArrayPrototypeEvery,
   ArrayPrototypeFind,
   ArrayPrototypeIncludes,
-  BigInt64ArrayPrototype,
-  BigUint64ArrayPrototype,
-  Int16ArrayPrototype,
-  Int32ArrayPrototype,
-  Int8ArrayPrototype,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   JSONParse,
   JSONStringify,
   MathCeil,
@@ -37,12 +37,12 @@ const {
   SymbolFor,
   SyntaxError,
   TypedArrayPrototypeSlice,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
-  Uint16ArrayPrototype,
-  Uint32ArrayPrototype,
   Uint8Array,
-  Uint8ArrayPrototype,
-  Uint8ClampedArrayPrototype,
   WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
@@ -250,13 +250,7 @@ function normalizeAlgorithm(algorithm, op) {
     const idlValue = normalizedAlgorithm[member];
     // 3.
     if (idlType === "BufferSource" && idlValue) {
-      normalizedAlgorithm[member] = TypedArrayPrototypeSlice(
-        new Uint8Array(
-          ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue,
-          idlValue.byteOffset ?? 0,
-          idlValue.byteLength,
-        ),
-      );
+      normalizedAlgorithm[member] = copyBuffer(idlValue);
     } else if (idlType === "HashAlgorithmIdentifier") {
       normalizedAlgorithm[member] = normalizeAlgorithm(idlValue, "digest");
     } else if (idlType === "AlgorithmIdentifier") {
@@ -273,10 +267,34 @@ function normalizeAlgorithm(algorithm, op) {
  * @returns {Uint8Array}
  */
 function copyBuffer(input) {
+  if (ArrayBufferIsView(input)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
+      // TypedArray
+      return TypedArrayPrototypeSlice(
+        new Uint8Array(
+          TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
+          TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (input)),
+          TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (input)),
+        ),
+      );
+    } else {
+      // DataView
+      return TypedArrayPrototypeSlice(
+        new Uint8Array(
+          DataViewPrototypeGetBuffer(/** @type {DataView} */ (input)),
+          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+          DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+        ),
+      );
+    }
+  }
+  // ArrayBuffer
   return TypedArrayPrototypeSlice(
-    ArrayBufferIsView(input)
-      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
-      : new Uint8Array(input),
+    new Uint8Array(
+      input,
+      0,
+      ArrayBufferPrototypeGetByteLength(input),
+    ),
   );
 }
 
@@ -445,7 +463,7 @@ class SubtleCrypto {
   /**
    * @param {string} algorithm
    * @param {BufferSource} data
-   * @returns {Promise<Uint8Array>}
+   * @returns {Promise<ArrayBuffer>}
    */
   async digest(algorithm, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
@@ -470,7 +488,7 @@ class SubtleCrypto {
       data,
     );
 
-    return result.buffer;
+    return TypedArrayPrototypeGetBuffer(result);
   }
 
   /**
@@ -596,13 +614,13 @@ class SubtleCrypto {
         }, data);
 
         // 6.
-        return plainText.buffer;
+        return TypedArrayPrototypeGetBuffer(plainText);
       }
       case "AES-CBC": {
         normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
         // 1.
-        if (normalizedAlgorithm.iv.byteLength !== 16) {
+        if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv) !== 16) {
           throw new DOMException(
             "Counter must be 16 bytes",
             "OperationError",
@@ -617,13 +635,15 @@ class SubtleCrypto {
         }, data);
 
         // 6.
-        return plainText.buffer;
+        return TypedArrayPrototypeGetBuffer(plainText);
       }
       case "AES-CTR": {
         normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
 
         // 1.
-        if (normalizedAlgorithm.counter.byteLength !== 16) {
+        if (
+          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.counter) !== 16
+        ) {
           throw new DOMException(
             "Counter vector must be 16 bytes",
             "OperationError",
@@ -650,7 +670,7 @@ class SubtleCrypto {
         }, data);
 
         // 4.
-        return cipherText.buffer;
+        return TypedArrayPrototypeGetBuffer(cipherText);
       }
       case "AES-GCM": {
         normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
@@ -671,7 +691,10 @@ class SubtleCrypto {
         }
 
         // 2.
-        if (data.byteLength < normalizedAlgorithm.tagLength / 8) {
+        if (
+          TypedArrayPrototypeGetByteLength(data) <
+            normalizedAlgorithm.tagLength / 8
+        ) {
           throw new DOMException(
             "Tag length overflows ciphertext",
             "OperationError",
@@ -682,7 +705,7 @@ class SubtleCrypto {
         if (
           ArrayPrototypeIncludes(
             [12, 16],
-            normalizedAlgorithm.iv.byteLength,
+            TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv),
           ) === undefined
         ) {
           throw new DOMException(
@@ -693,12 +716,13 @@ class SubtleCrypto {
 
         // 4.
         if (normalizedAlgorithm.additionalData !== undefined) {
-          if (normalizedAlgorithm.additionalData.byteLength > (2 ** 64) - 1) {
-            throw new DOMException(
-              "Additional data too large",
-              "OperationError",
-            );
-          }
+          // NOTE: over the size of Number.MAX_SAFE_INTEGER is not available in V8
+          // if (normalizedAlgorithm.additionalData.byteLength > (2 ** 64) - 1) {
+          //   throw new DOMException(
+          //     "Additional data too large",
+          //     "OperationError",
+          //   );
+          // }
           normalizedAlgorithm.additionalData = copyBuffer(
             normalizedAlgorithm.additionalData,
           );
@@ -716,7 +740,7 @@ class SubtleCrypto {
         }, data);
 
         // 9.
-        return plaintext.buffer;
+        return TypedArrayPrototypeGetBuffer(plaintext);
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
@@ -789,7 +813,7 @@ class SubtleCrypto {
           hash: hashAlgorithm,
         }, data);
 
-        return signature.buffer;
+        return TypedArrayPrototypeGetBuffer(signature);
       }
       case "RSA-PSS": {
         // 1.
@@ -809,7 +833,7 @@ class SubtleCrypto {
           saltLength: normalizedAlgorithm.saltLength,
         }, data);
 
-        return signature.buffer;
+        return TypedArrayPrototypeGetBuffer(signature);
       }
       case "ECDSA": {
         // 1.
@@ -846,7 +870,7 @@ class SubtleCrypto {
           namedCurve,
         }, data);
 
-        return signature.buffer;
+        return TypedArrayPrototypeGetBuffer(signature);
       }
       case "HMAC": {
         const hashAlgorithm = key[_algorithm].hash.name;
@@ -857,7 +881,7 @@ class SubtleCrypto {
           hash: hashAlgorithm,
         }, data);
 
-        return signature.buffer;
+        return TypedArrayPrototypeGetBuffer(signature);
       }
       case "Ed25519": {
         // 1.
@@ -877,7 +901,7 @@ class SubtleCrypto {
             "OperationError",
           );
         }
-        return signature.buffer;
+        return TypedArrayPrototypeGetBuffer(signature);
       }
     }
 
@@ -1471,7 +1495,7 @@ class SubtleCrypto {
           }, bytes);
 
           // 4.
-          return cipherText.buffer;
+          return TypedArrayPrototypeGetBuffer(cipherText);
         }
         default: {
           throw new DOMException(
@@ -1607,7 +1631,7 @@ class SubtleCrypto {
           }, wrappedKey);
 
           // 4.
-          key = plainText.buffer;
+          key = TypedArrayPrototypeGetBuffer(plainText);
           break;
         }
         default: {
@@ -2127,7 +2151,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         hash: {
           name: normalizedAlgorithm.hash.name,
         },
-        length: keyData.byteLength * 8,
+        length: TypedArrayPrototypeGetByteLength(keyData) * 8,
       };
 
       // 5, 11-13.
@@ -2589,7 +2613,7 @@ function exportKeyAES(
       // 1.
       const data = innerKey.data;
       // 2.
-      return data.buffer;
+      return TypedArrayPrototypeGetBuffer(data);
     }
     case "jwk": {
       // 1-2.
@@ -2664,7 +2688,10 @@ function importKeyAES(
     case "raw": {
       // 2.
       if (
-        !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
+        !ArrayPrototypeIncludes(
+          [128, 192, 256],
+          TypedArrayPrototypeGetByteLength(keyData) * 8,
+        )
       ) {
         throw new DOMException("Invalid key length", "Datarror");
       }
@@ -2699,7 +2726,7 @@ function importKeyAES(
       data = rawData.data;
 
       // 5.
-      switch (data.byteLength * 8) {
+      switch (TypedArrayPrototypeGetByteLength(data) * 8) {
         case 128:
           if (
             jwk.alg !== undefined &&
@@ -2789,7 +2816,7 @@ function importKeyAES(
   // 4-7.
   const algorithm = {
     name: algorithmName,
-    length: data.byteLength * 8,
+    length: TypedArrayPrototypeGetByteLength(data) * 8,
   };
 
   const key = constructKey(
@@ -2956,7 +2983,7 @@ function importKeyHMAC(
   }
 
   // 5.
-  let length = data.byteLength * 8;
+  let length = TypedArrayPrototypeGetByteLength(data) * 8;
   // 6.
   if (length === 0) {
     throw new DOMException("Key length is zero", "DataError");
@@ -3856,11 +3883,12 @@ function exportKeyHMAC(format, key, innerKey) {
     // 3.
     case "raw": {
       const bits = innerKey.data;
-      for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
-        bits.push(0);
-      }
+      // TODO(petamoriken): Uint8Array doesn't have push method
+      // for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
+      //   bits.push(0);
+      // }
       // 4-5.
-      return bits.buffer;
+      return TypedArrayPrototypeGetBuffer(bits);
     }
     case "jwk": {
       // 1-2.
@@ -3929,7 +3957,7 @@ function exportKeyRSA(format, key, innerKey) {
       }, innerKey);
 
       // 3.
-      return data.buffer;
+      return TypedArrayPrototypeGetBuffer(data);
     }
     case "spki": {
       // 1.
@@ -3947,7 +3975,7 @@ function exportKeyRSA(format, key, innerKey) {
       }, innerKey);
 
       // 3.
-      return data.buffer;
+      return TypedArrayPrototypeGetBuffer(data);
     }
     case "jwk": {
       // 1-2.
@@ -4053,7 +4081,7 @@ function exportKeyEd25519(format, key, innerKey) {
       }
 
       // 2-3.
-      return innerKey.buffer;
+      return TypedArrayPrototypeGetBuffer(innerKey);
     }
     case "spki": {
       // 1.
@@ -4065,7 +4093,7 @@ function exportKeyEd25519(format, key, innerKey) {
       }
 
       const spkiDer = ops.op_export_spki_ed25519(innerKey);
-      return spkiDer.buffer;
+      return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
       // 1.
@@ -4080,7 +4108,7 @@ function exportKeyEd25519(format, key, innerKey) {
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
-      return pkcs8Der.buffer;
+      return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
       const x = key[_type] === "private"
@@ -4116,7 +4144,7 @@ function exportKeyX25519(format, key, innerKey) {
       }
 
       // 2-3.
-      return innerKey.buffer;
+      return TypedArrayPrototypeGetBuffer(innerKey);
     }
     case "spki": {
       // 1.
@@ -4128,7 +4156,7 @@ function exportKeyX25519(format, key, innerKey) {
       }
 
       const spkiDer = ops.op_export_spki_x25519(innerKey);
-      return spkiDer.buffer;
+      return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
       // 1.
@@ -4143,7 +4171,7 @@ function exportKeyX25519(format, key, innerKey) {
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
-      return pkcs8Der.buffer;
+      return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
       if (key[_type] === "private") {
@@ -4182,7 +4210,7 @@ function exportKeyEC(format, key, innerKey) {
         format: "raw",
       }, innerKey);
 
-      return data.buffer;
+      return TypedArrayPrototypeGetBuffer(data);
     }
     case "pkcs8": {
       // 1.
@@ -4200,7 +4228,7 @@ function exportKeyEC(format, key, innerKey) {
         format: "pkcs8",
       }, innerKey);
 
-      return data.buffer;
+      return TypedArrayPrototypeGetBuffer(data);
     }
     case "spki": {
       // 1.
@@ -4218,7 +4246,7 @@ function exportKeyEC(format, key, innerKey) {
         format: "spki",
       }, innerKey);
 
-      return data.buffer;
+      return TypedArrayPrototypeGetBuffer(data);
     }
     case "jwk": {
       if (key[_algorithm].name == "ECDSA") {
@@ -4370,7 +4398,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         length,
       }, normalizedAlgorithm.salt);
 
-      return buf.buffer;
+      return TypedArrayPrototypeGetBuffer(buf);
     }
     case "ECDH": {
       // 1.
@@ -4421,11 +4449,15 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
         // 8.
         if (length === null) {
-          return buf.buffer;
-        } else if (buf.buffer.byteLength * 8 < length) {
+          return TypedArrayPrototypeGetBuffer(buf);
+        } else if (TypedArrayPrototypeGetByteLength(buf) * 8 < length) {
           throw new DOMException("Invalid length", "OperationError");
         } else {
-          return buf.buffer.slice(0, MathCeil(length / 8));
+          return ArrayBufferPrototypeSlice(
+            TypedArrayPrototypeGetBuffer(buf),
+            0,
+            MathCeil(length / 8),
+          );
         }
       } else {
         throw new DOMException("Not implemented", "NotSupportedError");
@@ -4452,7 +4484,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         length,
       }, normalizedAlgorithm.salt);
 
-      return buf.buffer;
+      return TypedArrayPrototypeGetBuffer(buf);
     }
     case "X25519": {
       // 1.
@@ -4490,13 +4522,17 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       // 7.
       if (length === null) {
-        return secret.buffer;
+        return TypedArrayPrototypeGetBuffer(secret);
       } else if (
-        secret.buffer.byteLength * 8 < length
+        TypedArrayPrototypeGetByteLength(secret) * 8 < length
       ) {
         throw new DOMException("Invalid length", "OperationError");
       } else {
-        return secret.buffer.slice(0, MathCeil(length / 8));
+        return ArrayBufferPrototypeSlice(
+          TypedArrayPrototypeGetBuffer(secret),
+          0,
+          MathCeil(length / 8),
+        );
       }
     }
     default:
@@ -4535,13 +4571,13 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }, data);
 
       // 6.
-      return cipherText.buffer;
+      return TypedArrayPrototypeGetBuffer(cipherText);
     }
     case "AES-CBC": {
       normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
       // 1.
-      if (normalizedAlgorithm.iv.byteLength !== 16) {
+      if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv) !== 16) {
         throw new DOMException(
           "Initialization vector must be 16 bytes",
           "OperationError",
@@ -4557,13 +4593,15 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }, data);
 
       // 4.
-      return cipherText.buffer;
+      return TypedArrayPrototypeGetBuffer(cipherText);
     }
     case "AES-CTR": {
       normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
 
       // 1.
-      if (normalizedAlgorithm.counter.byteLength !== 16) {
+      if (
+        TypedArrayPrototypeGetByteLength(normalizedAlgorithm.counter) !== 16
+      ) {
         throw new DOMException(
           "Counter vector must be 16 bytes",
           "OperationError",
@@ -4590,13 +4628,13 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }, data);
 
       // 4.
-      return cipherText.buffer;
+      return TypedArrayPrototypeGetBuffer(cipherText);
     }
     case "AES-GCM": {
       normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
       // 1.
-      if (data.byteLength > (2 ** 39) - 256) {
+      if (TypedArrayPrototypeGetByteLength(data) > (2 ** 39) - 256) {
         throw new DOMException(
           "Plaintext too large",
           "OperationError",
@@ -4608,7 +4646,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       if (
         ArrayPrototypeIncludes(
           [12, 16],
-          normalizedAlgorithm.iv.byteLength,
+          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv),
         ) === undefined
       ) {
         throw new DOMException(
@@ -4618,14 +4656,15 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 3.
-      if (normalizedAlgorithm.additionalData !== undefined) {
-        if (normalizedAlgorithm.additionalData.byteLength > (2 ** 64) - 1) {
-          throw new DOMException(
-            "Additional data too large",
-            "OperationError",
-          );
-        }
-      }
+      // NOTE: over the size of Number.MAX_SAFE_INTEGER is not available in V8
+      // if (normalizedAlgorithm.additionalData !== undefined) {
+      //   if (normalizedAlgorithm.additionalData.byteLength > (2 ** 64) - 1) {
+      //     throw new DOMException(
+      //       "Additional data too large",
+      //       "OperationError",
+      //     );
+      //   }
+      // }
 
       // 4.
       if (normalizedAlgorithm.tagLength == undefined) {
@@ -4658,7 +4697,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }, data);
 
       // 8.
-      return cipherText.buffer;
+      return TypedArrayPrototypeGetBuffer(cipherText);
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
@@ -4673,50 +4712,43 @@ class Crypto {
     webidl.illegalConstructor();
   }
 
-  getRandomValues(arrayBufferView) {
+  getRandomValues(typedArray) {
     webidl.assertBranded(this, CryptoPrototype);
     const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
     webidl.requiredArguments(arguments.length, 1, { prefix });
     // Fast path for Uint8Array
-    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, arrayBufferView)) {
-      ops.op_crypto_get_random_values(arrayBufferView);
-      return arrayBufferView;
+    const tag = TypedArrayPrototypeGetSymbolToStringTag(typedArray);
+    if (tag === "Uint8Array") {
+      ops.op_crypto_get_random_values(typedArray);
+      return typedArray;
     }
-    arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView, {
+    typedArray = webidl.converters.ArrayBufferView(typedArray, {
       prefix,
       context: "Argument 1",
     });
-    if (
-      !(
-        ObjectPrototypeIsPrototypeOf(Int8ArrayPrototype, arrayBufferView) ||
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, arrayBufferView) ||
-        ObjectPrototypeIsPrototypeOf(
-          Uint8ClampedArrayPrototype,
-          arrayBufferView,
-        ) ||
-        ObjectPrototypeIsPrototypeOf(Int16ArrayPrototype, arrayBufferView) ||
-        ObjectPrototypeIsPrototypeOf(Uint16ArrayPrototype, arrayBufferView) ||
-        ObjectPrototypeIsPrototypeOf(Int32ArrayPrototype, arrayBufferView) ||
-        ObjectPrototypeIsPrototypeOf(Uint32ArrayPrototype, arrayBufferView) ||
-        ObjectPrototypeIsPrototypeOf(
-          BigInt64ArrayPrototype,
-          arrayBufferView,
-        ) ||
-        ObjectPrototypeIsPrototypeOf(BigUint64ArrayPrototype, arrayBufferView)
-      )
-    ) {
-      throw new DOMException(
-        "The provided ArrayBufferView is not an integer array type",
-        "TypeMismatchError",
-      );
+    switch (tag) {
+      case "Int8Array":
+      case "Uint8ClampedArray":
+      case "Int16Array":
+      case "Uint16Array":
+      case "Int32Array":
+      case "Uint32Array":
+      case "BigInt64Array":
+      case "BigUint64Array":
+        break;
+      default:
+        throw new DOMException(
+          "The provided ArrayBufferView is not an integer array type",
+          "TypeMismatchError",
+        );
     }
     const ui8 = new Uint8Array(
-      arrayBufferView.buffer,
-      arrayBufferView.byteOffset,
-      arrayBufferView.byteLength,
+      TypedArrayPrototypeGetBuffer(typedArray),
+      TypedArrayPrototypeGetByteOffset(typedArray),
+      TypedArrayPrototypeGetByteLength(typedArray),
     );
     ops.op_crypto_get_random_values(ui8);
-    return arrayBufferView;
+    return typedArray;
   }
 
   randomUUID() {
