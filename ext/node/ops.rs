@@ -264,8 +264,8 @@ where
 {
   let path = PathBuf::from(path);
   ensure_read_permission::<Env::P>(state, &path)?;
-  if let Ok(metadata) = Env::Fs::metadata(&path) {
-    if metadata.is_file() {
+  if Env::Fs::exists(&path) {
+    if Env::Fs::is_file(&path) {
       return Ok(0);
     } else {
       return Ok(1);
@@ -285,7 +285,7 @@ where
 {
   let path = PathBuf::from(request);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let mut canonicalized_path = path.canonicalize()?;
+  let mut canonicalized_path = Env::Fs::canonicalize(&path)?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
       canonicalized_path
