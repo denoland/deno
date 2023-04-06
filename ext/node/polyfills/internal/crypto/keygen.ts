@@ -2,18 +2,80 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";
+import {
+  SecretKeyObject,
+  setOwnedKey,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+import {
+  validateFunction,
+  validateInteger,
+  validateObject,
+  validateOneOf,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
-export function generateKey(
-  _type: "hmac" | "aes",
-  _options: {
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
+
+function validateGenerateKey(
+  type: "hmac" | "aes",
+  options: { length: number },
+) {
+  validateString(type, "type");
+  validateObject(options, "options");
+  const { length } = options;
+  switch (type) {
+    case "hmac":
+      validateInteger(length, "options.length", 8, 2 ** 31 - 1);
+      break;
+    case "aes":
+      validateOneOf(length, "options.length", kAesKeyLengths);
+      break;
+    default:
+      throw new ERR_INVALID_ARG_VALUE(
+        "type",
+        type,
+        "must be a supported key type",
+      );
+  }
+}
+
+export function generateKeySync(
+  type: "hmac" | "aes",
+  options: {
     length: number;
   },
-  _callback: (err: Error | null, key: KeyObject) => void,
+): KeyObject {
+  validateGenerateKey(type, options);
+  const { length } = options;
+
+  const key = new Uint8Array(Math.floor(length / 8));
+  ops.op_node_generate_secret(key);
+
+  return new SecretKeyObject(setOwnedKey(key));
+}
+
+export function generateKey(
+  type: "hmac" | "aes",
+  options: {
+    length: number;
+  },
+  callback: (err: Error | null, key: KeyObject) => void,
 ) {
-  notImplemented("crypto.generateKey");
+  validateGenerateKey(type, options);
+  validateFunction(callback, "callback");
+  const { length } = options;
+
+  core.opAsync("op_node_generate_secret_async", Math.floor(length / 8)).then(
+    (key) => {
+      callback(null, new SecretKeyObject(setOwnedKey(key)));
+    },
+  );
 }
 
 export interface BasePrivateKeyEncodingOptions<T extends KeyFormat> {
@@ -660,15 +722,6 @@ export function generateKeyPairSync(
   | KeyPairKeyObjectResult
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
   notImplemented("crypto.generateKeyPairSync");
-}
-
-export function generateKeySync(
-  _type: "hmac" | "aes",
-  _options: {
-    length: number;
-  },
-): KeyObject {
-  notImplemented("crypto.generateKeySync");
 }
 
 export default {
