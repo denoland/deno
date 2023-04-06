@@ -279,7 +279,7 @@ export function prepareSecretKey(
   return getArrayBufferOrView(key, "key", encoding);
 }
 
-class SecretKeyObject extends KeyObject {
+export class SecretKeyObject extends KeyObject {
   constructor(handle: unknown) {
     super("secret", handle);
   }
@@ -313,7 +313,7 @@ class SecretKeyObject extends KeyObject {
   }
 }
 
-function setOwnedKey(key: Uint8Array): unknown {
+export function setOwnedKey(key: Uint8Array): unknown {
   const handle = {};
   KEY_STORE.set(handle, key);
   return handle;
@@ -345,4 +345,6 @@ export default {
   isCryptoKey,
   KeyObject,
   prepareSecretKey,
+  setOwnedKey,
+  SecretKeyObject,
 };

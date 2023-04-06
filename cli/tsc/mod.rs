@@ -13,6 +13,7 @@ use crate::util::path::mapped_specifier_for_tsc;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
@@ -131,8 +132,8 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
     extensions: vec![deno_cli_tsc::init_ops()],
     ..Default::default()
   });
-  let global =
-    runtime.execute_script("get_assets.js", "globalThis.getAssets()")?;
+  let global = runtime
+    .execute_script("get_assets.js", ascii_str!("globalThis.getAssets()"))?;
   let scope = &mut runtime.handle_scope();
   let local = deno_core::v8::Local::new(scope, global);
   Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
@@ -792,15 +793,14 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     },
   );
 
-  let startup_source = "globalThis.startup({ legacyFlag: false })";
+  let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
   let request_value = json!({
     "config": request.config,
     "debug": request.debug,
     "rootNames": root_names,
     "localOnly": request.check_mode == TypeCheckMode::Local,
   });
-  let request_str = request_value.to_string();
-  let exec_source = format!("globalThis.exec({request_str})");
+  let exec_source = format!("globalThis.exec({request_value})").into();
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
@@ -974,7 +974,7 @@ mod tests {
       ..Default::default()
     });
     js_runtime
-      .execute_script(
+      .execute_script_static(
         "<anon>",
         r#"
       if (!(startup)) {
