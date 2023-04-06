@@ -229,6 +229,7 @@
       "test-console-table.js",
       "test-console-tty-colors.js",
       "test-crypto-hmac.js",
+      "test-crypto-hkdf.js",
       "test-crypto-prime.js",
       "test-crypto-secret-keygen.js",
       "test-dgram-close-during-bind.js",
