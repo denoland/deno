@@ -819,11 +819,14 @@ impl File for StdFileResource {
         file.set_permissions(fs::Permissions::from_mode(mode))
       })
     }
-    // Silence clippy
     #[cfg(not(unix))]
-    let _ = mode;
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
+    {
+      // Silence clippy
+      let _ = mode;
+      // Still check file/dir exists on Windows
+      let _metadata = std::fs::metadata(path).map_err(err_mapper)?;
+      Err(FsError::NotSupported)
+    }
   }
 
   async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()> {
@@ -835,11 +838,14 @@ impl File for StdFileResource {
       })
       .await
     }
-    // Silence clippy
     #[cfg(not(unix))]
-    let _ = mode;
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
+    {
+      // Silence clippy
+      let _ = mode;
+      // Still check file/dir exists on Windows
+      let _metadata = std::fs::metadata(path).map_err(err_mapper)?;
+      Err(FsError::NotSupported)
+    }
   }
 
   fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
