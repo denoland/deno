@@ -7,6 +7,7 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use hkdf::Hkdf;
 use num_bigint::BigInt;
 use rand::Rng;
 use std::future::Future;
@@ -418,4 +419,61 @@ pub async fn op_node_generate_secret_async(len: i32) -> ZeroCopyBuf {
   })
   .await
   .unwrap()
+}
+
+fn hkdf_sync(
+  hash: &str,
+  ikm: &[u8],
+  salt: &[u8],
+  info: &[u8],
+  okm: &mut [u8],
+) -> Result<(), AnyError> {
+  macro_rules! hkdf {
+    ($hash:ty) => {{
+      let hk = Hkdf::<$hash>::new(Some(salt), ikm);
+      hk.expand(info, okm)
+        .map_err(|_| type_error("HKDF-Expand failed"))?;
+    }};
+  }
+
+  match hash {
+    "md4" => hkdf!(md4::Md4),
+    "md5" => hkdf!(md5::Md5),
+    "ripemd160" => hkdf!(ripemd::Ripemd160),
+    "sha1" => hkdf!(sha1::Sha1),
+    "sha224" => hkdf!(sha2::Sha224),
+    "sha256" => hkdf!(sha2::Sha256),
+    "sha384" => hkdf!(sha2::Sha384),
+    "sha512" => hkdf!(sha2::Sha512),
+    _ => return Err(type_error("Unknown digest")),
+  }
+
+  Ok(())
+}
+
+#[op]
+pub fn op_node_hkdf(
+  hash: &str,
+  ikm: &[u8],
+  salt: &[u8],
+  info: &[u8],
+  okm: &mut [u8],
+) -> Result<(), AnyError> {
+  hkdf_sync(hash, ikm, salt, info, okm)
+}
+
+#[op]
+pub async fn op_node_hkdf_async(
+  hash: String,
+  ikm: ZeroCopyBuf,
+  salt: ZeroCopyBuf,
+  info: ZeroCopyBuf,
+  okm_len: usize,
+) -> Result<ZeroCopyBuf, AnyError> {
+  tokio::task::spawn_blocking(move || {
+    let mut okm = vec![0u8; okm_len];
+    hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
+    Ok(okm.into())
+  })
+  .await?
 }
