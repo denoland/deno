@@ -3067,10 +3067,10 @@ declare namespace Deno {
     /** True if this is info for a symlink. Mutually exclusive to
      * `FileInfo.isFile` and `FileInfo.isDirectory`. */
     isSymlink: boolean;
-    /**  True if this is info for a block device.
-     *
-     * _Linux/Mac OS only._ */
-    isBlockDevice: boolean | null;
+    // /**  True if this is info for a block device.
+    //  *
+    //  * _Linux/Mac OS only._ */
+    // isBlockDevice: boolean | null;
     /** The size of the file, in bytes. */
     size: number;
     /** The last modification time of the file. This corresponds to the `mtime`

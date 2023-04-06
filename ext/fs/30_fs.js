@@ -242,15 +242,15 @@ function createByteStruct(types) {
       }] + view[${offset + 3}] * 2**32),`;
       offset += 2;
     } else {
-      if (!optional) {
+      // if (!optional) {
         str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
-      } else {
-        str += `${name}: (unix ? !!((view[${offset}] + view[${
-          offset + 1
-        }] * 2**32)) : !!((view[${offset}] + view[${
-          offset + 1
-        }] * 2**32)) || null),`;
-      }
+      // } else {
+      //   str += `${name}: (unix ? !!((view[${offset}] + view[${
+      //     offset + 1
+      //   }] * 2**32)) : !!((view[${offset}] + view[${
+      //     offset + 1
+      //   }] * 2**32)) || null),`;
+      // }
     }
     offset += 2;
   }
@@ -263,7 +263,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   isFile: "bool",
   isDirectory: "bool",
   isSymlink: "bool",
-  isBlockDevice: "?bool",
+  // isBlockDevice: "?bool",
   size: "u64",
   mtime: "date",
   atime: "date",
@@ -285,7 +285,7 @@ function parseFileInfo(response) {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
     isSymlink: response.isSymlink,
-    isBlockDevice: unix ? response.isBlockDevice : null,
+    // isBlockDevice: unix ? response.isBlockDevice : null,
     size: response.size,
     mtime: response.mtimeSet !== null ? new Date(response.mtime) : null,
     atime: response.atimeSet !== null ? new Date(response.atime) : null,
