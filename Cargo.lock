@@ -1274,6 +1274,7 @@ version = "0.102.0"
 dependencies = [
  "deno_core",
  "deno_tls",
+ "fastwebsockets",
  "http",
  "hyper",
  "serde",
@@ -1677,6 +1678,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51093e27b0797c359783294ca4f0a911c270184cb10f85783b118614a1501be"
 dependencies = [
  "instant",
+]
+
+[[package]]
+name = "fastwebsockets"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45dfdedde2bd984f677056a9a804fe995990ab4f4594599c848c05a10ee8c05e"
+dependencies = [
+ "cc",
+ "simdutf8",
+ "tokio",
+ "utf-8",
 ]
 
 [[package]]
@@ -3912,6 +3925,12 @@ dependencies = [
  "digest 0.10.6",
  "rand_core 0.6.4",
 ]
+
+[[package]]
+name = "simdutf8"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f27f6278552951f1f2b8cf9da965d10969b2efdea95a6ec47987ab46edfe263a"
 
 [[package]]
 name = "siphasher"
