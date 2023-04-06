@@ -53,11 +53,11 @@ pub fn path_to_declaration_path<Fs: NodeFs>(
       NodeModuleKind::Cjs => with_known_extension(path, "d.cts"),
       NodeModuleKind::Esm => with_known_extension(path, "d.mts"),
     };
-    if Fs::metadata(&specific_dts_path).is_ok() {
+    if Fs::exists(&specific_dts_path) {
       return Some(specific_dts_path);
     }
     let dts_path = with_known_extension(path, "d.ts");
-    if Fs::metadata(&dts_path).is_ok() {
+    if Fs::exists(&dts_path) {
       Some(dts_path)
     } else {
       None
@@ -74,7 +74,7 @@ pub fn path_to_declaration_path<Fs: NodeFs>(
   if let Some(path) = probe_extensions::<Fs>(&path, referrer_kind) {
     return Some(path);
   }
-  if path.is_dir() {
+  if Fs::is_dir(&path) {
     if let Some(path) =
       probe_extensions::<Fs>(&path.join("index"), referrer_kind)
     {
@@ -842,7 +842,7 @@ fn get_closest_package_json_path<Fs: NodeFs>(
   let file_path = url.to_file_path().unwrap();
   let mut current_dir = file_path.parent().unwrap();
   let package_json_path = current_dir.join("package.json");
-  if Fs::metadata(&package_json_path).is_ok() {
+  if Fs::exists(&package_json_path) {
     return Ok(package_json_path);
   }
   let root_pkg_folder = npm_resolver
@@ -850,20 +850,12 @@ fn get_closest_package_json_path<Fs: NodeFs>(
   while current_dir.starts_with(&root_pkg_folder) {
     current_dir = current_dir.parent().unwrap();
     let package_json_path = current_dir.join("package.json");
-    if Fs::metadata(&package_json_path).is_ok() {
+    if Fs::exists(&package_json_path) {
       return Ok(package_json_path);
     }
   }
 
   bail!("did not find package.json in {}", root_pkg_folder.display())
-}
-
-fn file_exists<Fs: NodeFs>(path: &Path) -> bool {
-  if let Ok(stats) = Fs::metadata(path) {
-    stats.is_file()
-  } else {
-    false
-  }
 }
 
 pub fn legacy_main_resolve<Fs: NodeFs>(
@@ -894,7 +886,7 @@ pub fn legacy_main_resolve<Fs: NodeFs>(
 
   if let Some(main) = maybe_main {
     let guess = package_json.path.parent().unwrap().join(main).clean();
-    if file_exists::<Fs>(&guess) {
+    if Fs::is_file(&guess) {
       return Ok(Some(guess));
     }
 
@@ -923,7 +915,7 @@ pub fn legacy_main_resolve<Fs: NodeFs>(
         .unwrap()
         .join(format!("{main}{ending}"))
         .clean();
-      if file_exists::<Fs>(&guess) {
+      if Fs::is_file(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(Some(guess));
       }
@@ -946,7 +938,7 @@ pub fn legacy_main_resolve<Fs: NodeFs>(
       .unwrap()
       .join(index_file_name)
       .clean();
-    if file_exists::<Fs>(&guess) {
+    if Fs::is_file(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
       return Ok(Some(guess));
     }

@@ -22,10 +22,12 @@ const {
   PromisePrototypeCatch,
   PromisePrototypeThen,
   Set,
+  SetPrototypeGetSize,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
   Symbol,
   SymbolFor,
+  TypedArrayPrototypeGetByteLength,
   TypeError,
   Uint8ArrayPrototype,
 } = primordials;
@@ -115,12 +117,14 @@ class WebSocketStream {
 
     if (
       options.protocols.length !==
-        new Set(
-          ArrayPrototypeMap(
-            options.protocols,
-            (p) => StringPrototypeToLowerCase(p),
+        SetPrototypeGetSize(
+          new Set(
+            ArrayPrototypeMap(
+              options.protocols,
+              (p) => StringPrototypeToLowerCase(p),
+            ),
           ),
-        ).size
+        )
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -394,7 +398,8 @@ class WebSocketStream {
 
     const encoder = new TextEncoder();
     if (
-      closeInfo.reason && encoder.encode(closeInfo.reason).byteLength > 123
+      closeInfo.reason &&
+      TypedArrayPrototypeGetByteLength(encoder.encode(closeInfo.reason)) > 123
     ) {
       throw new DOMException(
         "The close reason may not be longer than 123 bytes.",

@@ -4713,7 +4713,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6843|file:///a/b",
+          "exportMapKey": "foo|6845|file:///a/b",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -7486,6 +7486,12 @@ fn lsp_data_urls_with_jsx_compiler_option() {
         "start": { "line": 1, "character": 0 },
         "end": { "line": 1, "character": 1 }
       }
+    }, {
+      "uri": "deno:/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8/data_url.ts",
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": {"line": 0, "character": 14 },
+      },
     }])
   );
 
