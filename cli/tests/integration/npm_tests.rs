@@ -689,6 +689,13 @@ itest!(deno_run_bin_esm {
   http_server: true,
 });
 
+itest!(deno_run_bin_special_chars {
+  args: "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
+  output: "npm/deno_run_special_chars_in_bin_name.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(deno_run_bin_no_ext {
   args: "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
   output: "npm/deno_run_no_ext.out",
@@ -722,6 +729,15 @@ itest!(node_modules_dir_require_added_node_modules_folder {
   args:
     "run --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(node_modules_dir_require_main_entry {
+  args: "run --node-modules-dir -A --quiet $TESTDATA/npm/require_main/main.js",
+  output: "npm/require_main/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 0,

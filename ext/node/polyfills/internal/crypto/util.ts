@@ -133,7 +133,9 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
-export { kHandle, kKeyObject };
+const kAesKeyLengths = [128, 192, 256];
+
+export { kAesKeyLengths, kHandle, kKeyObject };
 
 export default {
   getDefaultEncoding,
@@ -147,4 +149,5 @@ export default {
   toBuf,
   kHandle,
   kKeyObject,
+  kAesKeyLengths,
 };
