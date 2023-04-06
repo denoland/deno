@@ -504,7 +504,7 @@ fn stat(path: impl AsRef<Path>) -> FsResult<FsStat> {
 
 #[cfg(windows)]
 fn stat(path: impl AsRef<Path>) -> FsResult<FsStat> {
-  let metadata = fs::metadata(path)?;
+  let metadata = fs::metadata(path.as_ref())?;
   let mut fsstat = metadata_to_fsstat(metadata);
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   let path = path.as_ref().canonicalize()?;
@@ -520,7 +520,7 @@ fn lstat(path: impl AsRef<Path>) -> FsResult<FsStat> {
 
 #[cfg(windows)]
 fn lstat(path: impl AsRef<Path>) -> FsResult<FsStat> {
-  let metadata = fs::symlink_metadata(path)?;
+  let metadata = fs::symlink_metadata(path.as_ref())?;
   let mut fsstat = metadata_to_fsstat(metadata);
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
@@ -819,6 +819,9 @@ impl File for StdFileResource {
         file.set_permissions(fs::Permissions::from_mode(mode))
       })
     }
+    // Silence clippy
+    #[cfg(not(unix))]
+    let _ = mode;
     #[cfg(not(unix))]
     Err(FsError::NotSupported)
   }
@@ -832,6 +835,9 @@ impl File for StdFileResource {
       })
       .await
     }
+    // Silence clippy
+    #[cfg(not(unix))]
+    let _ = mode;
     #[cfg(not(unix))]
     Err(FsError::NotSupported)
   }
