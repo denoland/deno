@@ -735,6 +735,15 @@ itest!(node_modules_dir_require_added_node_modules_folder {
   temp_cwd: true,
 });
 
+itest!(node_modules_dir_require_main_entry {
+  args: "run --node-modules-dir -A --quiet $TESTDATA/npm/require_main/main.js",
+  output: "npm/require_main/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 0,
+  temp_cwd: true,
+});
+
 itest!(node_modules_dir_with_deps {
   args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_node_modules.out",
