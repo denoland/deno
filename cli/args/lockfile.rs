@@ -1,6 +1,11 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
@@ -11,9 +16,6 @@ use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
 use deno_npm::resolution::NpmResolutionSnapshotCreateOptionsPackage;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageReq;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;

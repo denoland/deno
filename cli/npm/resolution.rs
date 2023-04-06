@@ -24,7 +24,9 @@ use crate::args::Lockfile;
 
 use super::registry::NpmRegistry;
 
-/// Handles updating and storing npm resolution in memory.
+/// Handles updating and storing npm resolution in memory where the underlying
+/// snapshot can be updated concurrently. Additionally handles updating the lockfile
+/// based on changes to the resolution.
 ///
 /// This does not interact with the file system.
 #[derive(Clone)]
