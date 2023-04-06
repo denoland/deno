@@ -824,7 +824,9 @@ impl File for StdFileResource {
       // Silence clippy
       let _ = mode;
       // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(path).map_err(err_mapper)?;
+      sync(self, |file| {
+        file.metadata()?;
+      });
       Err(FsError::NotSupported)
     }
   }
@@ -843,7 +845,9 @@ impl File for StdFileResource {
       // Silence clippy
       let _ = mode;
       // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(path).map_err(err_mapper)?;
+      nonblocking(self, move |file| {
+        file.metadata()?;
+      });
       Err(FsError::NotSupported)
     }
   }
