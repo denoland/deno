@@ -52,7 +52,9 @@ pub trait NodePermissions {
 
 pub trait NodeFs {
   fn current_dir() -> io::Result<PathBuf>;
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata>;
+  fn is_file<P: AsRef<Path>>(path: P) -> bool;
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool;
+  fn exists<P: AsRef<Path>>(path: P) -> bool;
   fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
   fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf>;
 }
@@ -64,9 +66,21 @@ impl NodeFs for RealFs {
     std::env::current_dir()
   }
 
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata> {
+  fn exists<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).is_ok()
+  }
+
+  fn is_file<P: AsRef<Path>>(path: P) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path)
+      .map(|m| m.is_file())
+      .unwrap_or(false)
+  }
+
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
   }
 
   fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
