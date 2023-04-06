@@ -28,7 +28,7 @@ use crate::node::NodeResolution;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -47,7 +47,6 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::Module;
@@ -59,6 +58,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::borrow::Cow;
@@ -95,7 +95,7 @@ pub struct Inner {
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
-  pub npm_api: NpmRegistryApi,
+  pub npm_api: NpmRegistry,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub npm_resolution: NpmResolution,
@@ -233,14 +233,14 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let npm_registry_url = NpmRegistryApi::default_url().to_owned();
+    let npm_registry_url = NpmRegistry::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let npm_api = NpmRegistryApi::new(
+    let npm_api = NpmRegistry::new(
       npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
