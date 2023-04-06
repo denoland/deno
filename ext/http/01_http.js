@@ -26,8 +26,10 @@ import {
   _protocol,
   _readyState,
   _rid,
+  _role,
   _server,
   _serverHandleIdleTimeout,
+  SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 import { listen, TcpConn, UnixConn } from "ext:deno_net/01_net.js";
@@ -376,6 +378,7 @@ function createRespondWith(
         httpConn.close();
 
         ws[_readyState] = WebSocket.OPEN;
+        ws[_role] = SERVER;
         const event = new Event("open");
         ws.dispatchEvent(event);
 
