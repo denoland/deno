@@ -843,7 +843,7 @@ impl File for StdFileResource {
       // Silence clippy
       let _ = mode;
       // Still check file/dir exists on Windows
-      nonblocking(self, move |file| file.metadata())?;
+      nonblocking(self, move |file| file.metadata()).await?;
       Err(FsError::NotSupported)
     }
   }
