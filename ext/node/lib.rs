@@ -52,8 +52,11 @@ pub trait NodePermissions {
 
 pub trait NodeFs {
   fn current_dir() -> io::Result<PathBuf>;
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata>;
+  fn is_file<P: AsRef<Path>>(path: P) -> bool;
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool;
+  fn exists<P: AsRef<Path>>(path: P) -> bool;
   fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf>;
 }
 
 pub struct RealFs;
@@ -63,14 +66,31 @@ impl NodeFs for RealFs {
     std::env::current_dir()
   }
 
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<std::fs::Metadata> {
+  fn exists<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).is_ok()
+  }
+
+  fn is_file<P: AsRef<Path>>(path: P) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path)
+      .map(|m| m.is_file())
+      .unwrap_or(false)
+  }
+
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
   }
 
   fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
     #[allow(clippy::disallowed_methods)]
     std::fs::read_to_string(path)
+  }
+
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::path::Path::canonicalize(path.as_ref())
   }
 }
 
@@ -150,6 +170,8 @@ deno_core::extension!(deno_node,
     crypto::op_node_check_prime_bytes_async,
     crypto::op_node_pbkdf2,
     crypto::op_node_pbkdf2_async,
+    crypto::op_node_generate_secret,
+    crypto::op_node_generate_secret_async,
     crypto::op_node_sign,
     winerror::op_node_sys_to_uv_error,
     v8::op_v8_cached_data_version_tag,
