@@ -4,26 +4,29 @@ mod common;
 mod global;
 mod local;
 
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::npm::NpmPackageNvReference;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::npm::NpmPackageReqReference;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -33,8 +36,6 @@ use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
-use super::NpmPackageId;
-use super::NpmResolutionSnapshot;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
