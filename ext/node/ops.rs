@@ -470,7 +470,13 @@ where
   {
     modules_path
   } else {
-    path_resolve(vec![modules_path, name])
+    let orignal = modules_path.clone();
+    let mod_dir = path_resolve(vec![modules_path, name]);
+    if Env::Fs::is_dir(&mod_dir) {
+      mod_dir
+    } else {
+      orignal
+    }
   };
   let pkg = PackageJson::load::<Env::Fs>(
     &*resolver,
