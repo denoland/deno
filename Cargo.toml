@@ -138,6 +138,7 @@ zstd = "=0.11.2"
 
 # crypto
 rsa = { version = "0.7.0", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
+hkdf = "0.12.3"
 
 # macros
 proc-macro2 = "1"

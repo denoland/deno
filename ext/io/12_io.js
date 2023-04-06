@@ -93,27 +93,19 @@ function* iterSync(
 }
 
 function readSync(rid, buffer) {
-  if (buffer.length === 0) {
-    return 0;
-  }
-
-  const nread = ops.op_read_sync(rid, buffer);
-
+  if (buffer.length === 0) return 0;
+  const nread = core.readSync(rid, buffer);
   return nread === 0 ? null : nread;
 }
 
 async function read(rid, buffer) {
-  if (buffer.length === 0) {
-    return 0;
-  }
-
+  if (buffer.length === 0) return 0;
   const nread = await core.read(rid, buffer);
-
   return nread === 0 ? null : nread;
 }
 
 function writeSync(rid, data) {
-  return ops.op_write_sync(rid, data);
+  return core.writeSync(rid, data);
 }
 
 function write(rid, data) {

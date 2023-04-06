@@ -20,6 +20,7 @@ deno_core.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 ecb.workspace = true
 hex.workspace = true
+hkdf.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 libz-sys = { version = "1.1.8", features = ["static"] }

@@ -47,12 +47,15 @@ use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
+
+mod server;
+
+pub use server::ws_create_server_stream;
 
 #[derive(Clone)]
 pub struct WsRootStore(pub Option<RootCertStore>);
@@ -88,35 +91,6 @@ pub enum WebSocketStreamType {
 }
 
 pub trait Upgraded: AsyncRead + AsyncWrite + Unpin {}
-
-pub async fn ws_create_server_stream(
-  state: &Rc<RefCell<OpState>>,
-  transport: Pin<Box<dyn Upgraded>>,
-) -> Result<ResourceId, AnyError> {
-  let ws_stream = WebSocketStream::from_raw_socket(
-    transport,
-    Role::Server,
-    Some(WebSocketConfig {
-      max_message_size: Some(128 << 20),
-      max_frame_size: Some(32 << 20),
-      ..Default::default()
-    }),
-  )
-  .await;
-  let (ws_tx, ws_rx) = ws_stream.split();
-
-  let ws_resource = WsStreamResource {
-    stream: WebSocketStreamType::Server {
-      tx: AsyncRefCell::new(ws_tx),
-      rx: AsyncRefCell::new(ws_rx),
-    },
-    cancel: Default::default(),
-  };
-
-  let resource_table = &mut state.borrow_mut().resource_table;
-  let rid = resource_table.add(ws_resource);
-  Ok(rid)
-}
 
 pub struct WsStreamResource {
   pub stream: WebSocketStreamType,
@@ -549,6 +523,11 @@ deno_core::extension!(deno_websocket,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    server::op_server_ws_send,
+    server::op_server_ws_close,
+    server::op_server_ws_next_event,
+    server::op_server_ws_send_binary,
+    server::op_server_ws_send_text,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
