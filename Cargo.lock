@@ -1108,6 +1108,7 @@ dependencies = [
  "digest 0.10.6",
  "ecb",
  "hex",
+ "hkdf",
  "idna 0.3.0",
  "indexmap",
  "libz-sys",
