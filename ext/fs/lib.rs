@@ -1272,41 +1272,6 @@ fn get_stat2(metadata: std::fs::Metadata, dev: u64) -> FsStat {
   }
 }
 
-#[cfg(not(windows))]
-#[inline(always)]
-fn get_stat2(metadata: std::fs::Metadata) -> FsStat {
-  // #[cfg(unix)]
-  // use std::os::unix::fs::FileTypeExt;
-  #[cfg(unix)]
-  use std::os::unix::fs::MetadataExt;
-  let (mtime, mtime_set) = to_msec(metadata.modified());
-  let (atime, atime_set) = to_msec(metadata.accessed());
-  let (birthtime, birthtime_set) = to_msec(metadata.created());
-
-  FsStat {
-    is_file: metadata.is_file(),
-    is_directory: metadata.is_dir(),
-    is_symlink: metadata.file_type().is_symlink(),
-    size: metadata.len(),
-    mtime_set,
-    mtime,
-    atime_set,
-    atime,
-    birthtime_set,
-    birthtime,
-    // is_block_device: metadata.file_type().is_block_device(),
-    dev: metadata.dev(),
-    ino: metadata.ino(),
-    mode: metadata.mode(),
-    nlink: metadata.nlink(),
-    uid: metadata.uid(),
-    gid: metadata.gid(),
-    rdev: metadata.rdev(),
-    blksize: metadata.blksize(),
-    blocks: metadata.blocks(),
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatArgs {
@@ -1324,7 +1289,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
 
-  Ok(get_stat2(metadata))
+  Ok(get_stat(metadata))
 }
 
 #[cfg(windows)]
