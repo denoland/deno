@@ -5,6 +5,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -21,6 +23,7 @@ use deno_core::url::Url;
 use deno_core::TaskQueue;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use once_cell::sync::Lazy;
 
 use crate::args::CacheSetting;
@@ -67,6 +70,7 @@ impl NpmRegistry {
     Self(Some(Arc::new(NpmRegistryApiInner {
       base_url,
       cache,
+      force_reload: AtomicBool::new(false),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
       http_client,
@@ -96,6 +100,18 @@ impl NpmRegistry {
     &self.inner().base_url
   }
 
+  /// Marks that new requests for package information should retrieve it
+  /// from the npm registry
+  ///
+  /// Returns true if it was successfully set for the first time.
+  pub fn mark_force_reload(&self) -> bool {
+    // never force reload the registry information if reloading is disabled
+    if matches!(self.inner().cache.cache_setting(), CacheSetting::Only) {
+      return false;
+    }
+    !self.inner().force_reload.swap(true, Ordering::SeqCst)
+  }
+
   fn inner(&self) -> &Arc<NpmRegistryApiInner> {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
@@ -108,17 +124,26 @@ static SYNC_DOWNLOAD_TASK_QUEUE: Lazy<TaskQueue> =
 
 #[async_trait]
 impl NpmRegistryApi for NpmRegistry {
-  async fn maybe_package_info(
+  async fn package_info(
     &self,
     name: &str,
-  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    if should_sync_download() {
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    let result = if should_sync_download() {
       let inner = self.inner().clone();
       SYNC_DOWNLOAD_TASK_QUEUE
         .queue(async move { inner.maybe_package_info(name).await })
         .await
     } else {
       self.inner().maybe_package_info(name).await
+    };
+    match result {
+      Ok(Some(info)) => Ok(info),
+      Ok(None) => Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
+        package_name: name.to_string(),
+      }),
+      Err(err) => {
+        Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(err)))
+      }
     }
   }
 }
@@ -135,6 +160,7 @@ enum CacheItem {
 struct NpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
+  force_reload: AtomicBool,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: HttpClient,
@@ -154,10 +180,10 @@ impl NpmRegistryApiInner {
         }
         Some(CacheItem::Pending(future)) => (false, future.clone()),
         None => {
-          if self.cache.cache_setting().should_use_for_npm_package(name)
-        // if this has been previously reloaded, then try loading from the
-        // file system cache
-        || !self.previously_reloaded_packages.lock().insert(name.to_string())
+          if (self.cache.cache_setting().should_use_for_npm_package(name) && !self.force_reload())
+            // if this has been previously reloaded, then try loading from the
+            // file system cache
+            || !self.previously_reloaded_packages.lock().insert(name.to_string())
           {
             // attempt to load from the file cache
             if let Some(info) = self.load_file_cached_package_info(name) {
@@ -201,6 +227,10 @@ impl NpmRegistryApiInner {
     } else {
       Ok(future.await.map_err(|err| anyhow!("{}", err))?)
     }
+  }
+
+  fn force_reload(&self) -> bool {
+    self.force_reload.load(Ordering::SeqCst)
   }
 
   fn load_file_cached_package_info(
