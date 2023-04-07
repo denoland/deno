@@ -10,8 +10,13 @@ use deno_core::TaskQueue;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
+use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::resolution::PackageNotFoundFromReferrerError;
+use deno_npm::resolution::PackageNvNotFoundError;
+use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -70,13 +75,11 @@ impl NpmResolution {
 
     // only allow one thread in here at a time
     let _permit = inner.update_queue.acquire().await;
-    let snapshot = inner.snapshot.read().clone();
-
     let snapshot = add_package_reqs_to_snapshot(
       &inner.api,
       package_reqs,
-      snapshot,
       self.0.maybe_lockfile.clone(),
+      || inner.snapshot.read().clone(),
     )
     .await?;
 
@@ -91,24 +94,25 @@ impl NpmResolution {
     let inner = &self.0;
     // only allow one thread in here at a time
     let _permit = inner.update_queue.acquire().await;
-    let snapshot = inner.snapshot.read().clone();
 
-    let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
-    let has_removed_package = !snapshot
-      .package_reqs()
-      .keys()
-      .all(|req| reqs_set.contains(req));
-    // if any packages were removed, we need to completely recreate the npm resolution snapshot
-    let snapshot = if has_removed_package {
-      NpmResolutionSnapshot::default()
-    } else {
-      snapshot
-    };
+    let reqs_set = package_reqs.iter().cloned().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
       &inner.api,
       package_reqs,
-      snapshot,
       self.0.maybe_lockfile.clone(),
+      || {
+        let snapshot = inner.snapshot.read().clone();
+        let has_removed_package = !snapshot
+          .package_reqs()
+          .keys()
+          .all(|req| reqs_set.contains(req));
+        // if any packages were removed, we need to completely recreate the npm resolution snapshot
+        if has_removed_package {
+          NpmResolutionSnapshot::default()
+        } else {
+          snapshot
+        }
+      },
     )
     .await?;
 
@@ -121,13 +125,12 @@ impl NpmResolution {
     let inner = &self.0;
     // only allow one thread in here at a time
     let _permit = inner.update_queue.acquire().await;
-    let snapshot = inner.snapshot.read().clone();
 
     let snapshot = add_package_reqs_to_snapshot(
       &inner.api,
       Vec::new(),
-      snapshot,
       self.0.maybe_lockfile.clone(),
+      || inner.snapshot.read().clone(),
     )
     .await?;
 
@@ -139,7 +142,7 @@ impl NpmResolution {
   pub fn pkg_req_ref_to_nv_ref(
     &self,
     req_ref: NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, AnyError> {
+  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
     let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
     Ok(NpmPackageNvReference {
       nv: node_id.nv,
@@ -163,7 +166,7 @@ impl NpmResolution {
     &self,
     name: &str,
     referrer: &NpmPackageCacheFolderId,
-  ) -> Result<NpmResolutionPackage, AnyError> {
+  ) -> Result<NpmResolutionPackage, Box<PackageNotFoundFromReferrerError>> {
     self
       .0
       .snapshot
@@ -176,7 +179,7 @@ impl NpmResolution {
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, AnyError> {
+  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self
       .0
       .snapshot
@@ -188,7 +191,7 @@ impl NpmResolution {
   pub fn resolve_pkg_id_from_deno_module(
     &self,
     id: &NpmPackageNv,
-  ) -> Result<NpmPackageId, AnyError> {
+  ) -> Result<NpmPackageId, PackageNvNotFoundError> {
     self
       .0
       .snapshot
@@ -203,7 +206,7 @@ impl NpmResolution {
   pub fn resolve_package_req_as_pending(
     &self,
     pkg_req: &NpmPackageReq,
-  ) -> Result<NpmPackageNv, AnyError> {
+  ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
     // we should always have this because it should have been cached before here
     let package_info =
       self.0.api.get_cached_package_info(&pkg_req.name).unwrap();
@@ -217,7 +220,7 @@ impl NpmResolution {
     &self,
     pkg_req: &NpmPackageReq,
     package_info: &NpmPackageInfo,
-  ) -> Result<NpmPackageNv, AnyError> {
+  ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
     debug_assert_eq!(pkg_req.name, package_info.name);
     let inner = &self.0;
     let mut snapshot = inner.snapshot.write();
@@ -245,10 +248,14 @@ impl NpmResolution {
 
 async fn add_package_reqs_to_snapshot(
   api: &NpmRegistry,
+  // todo(18079): it should be possible to pass &[NpmPackageReq] in here
+  // and avoid all these clones, but the LSP complains because of its
+  // `Send` requirement
   package_reqs: Vec<NpmPackageReq>,
-  snapshot: NpmResolutionSnapshot,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
+  let snapshot = get_new_snapshot();
   if !snapshot.has_pending()
     && package_reqs
       .iter()
@@ -257,9 +264,23 @@ async fn add_package_reqs_to_snapshot(
     return Ok(snapshot); // already up to date
   }
 
-  let result = snapshot.resolve_pending(package_reqs, api).await;
+  let result = snapshot.resolve_pending(package_reqs.clone(), api).await;
   api.clear_memory_cache();
-  let snapshot = result?; // propagate the error after clearing the memory cache
+  let snapshot = match result {
+    Ok(snapshot) => snapshot,
+    Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
+      log::debug!("{err:#}");
+      log::debug!("npm resolution failed. Trying again...");
+
+      // try again
+      let snapshot = get_new_snapshot();
+      let result = snapshot.resolve_pending(package_reqs, api).await;
+      api.clear_memory_cache();
+      // now surface the result after clearing the cache
+      result?
+    }
+    Err(err) => return Err(err.into()),
+  };
 
   if let Some(lockfile_mutex) = maybe_lockfile {
     let mut lockfile = lockfile_mutex.lock();

@@ -15,6 +15,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -82,14 +83,14 @@ impl NpmPackageResolver {
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, AnyError> {
+  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
   pub fn pkg_req_ref_to_nv_ref(
     &self,
     req_ref: NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, AnyError> {
+  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
     self.resolution.pkg_req_ref_to_nv_ref(req_ref)
   }
 
@@ -225,10 +226,8 @@ impl NpmPackageResolver {
     &self,
   ) -> Result<(), AnyError> {
     // add and ensure this isn't added to the lockfile
-    self
-      .resolution
-      .add_package_reqs(vec![NpmPackageReq::from_str("@types/node").unwrap()])
-      .await?;
+    let package_reqs = vec![NpmPackageReq::from_str("@types/node").unwrap()];
+    self.resolution.add_package_reqs(package_reqs).await?;
     self.fs_resolver.cache_packages().await?;
 
     Ok(())
