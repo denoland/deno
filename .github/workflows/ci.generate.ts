@@ -219,7 +219,8 @@ const ci = {
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       needs: ["pre_build"],
-      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      if:
+        "${{ !(needs.pre_build.outputs.skip_build == 'true') || (needs.pre_build.result == 'skipped') }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
       defaults: {
