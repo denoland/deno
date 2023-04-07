@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::op;
