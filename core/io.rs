@@ -3,7 +3,8 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 
-use serde_v8::{DetachedBuffer, ZeroCopyBuf};
+use serde_v8::DetachedBuffer;
+use serde_v8::ZeroCopyBuf;
 
 /// BufView is a wrapper around an underlying contiguous chunk  of bytes. It can
 /// be created from a [ZeroCopyBuf], [bytes::Bytes], or [Vec<u8>] and implements

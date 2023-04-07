@@ -741,13 +741,14 @@ function readableStreamForRid(rid, autoClose = true) {
           return;
         }
 
+        // deno-lint-ignore prefer-primordials
         const [bytesRead, newView] = await core.readDetaching(rid, v);
         if (bytesRead === 0) {
           tryClose();
           controller.close();
         }
         controller.byobRequest.respondWithNewView(
-          new Uint8Array(newView.buffer, 0, bytesRead),
+          new Uint8Array(TypedArrayPrototypeGetBuffer(newView), 0, bytesRead),
         );
       } catch (e) {
         controller.error(e);

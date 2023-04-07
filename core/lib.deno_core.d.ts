@@ -60,7 +60,10 @@ declare namespace Deno {
      * bytes (as given by the first element of the array) are the result of the
      * read.
      */
-    function readDetaching(rid: number, buf: Uint8Array): Promise<[number, Uint8Array]>;
+    function readDetaching(
+      rid: number,
+      buf: Uint8Array,
+    ): Promise<[number, Uint8Array]>;
 
     /**
      * Write to a (stream) resource that implements write()
