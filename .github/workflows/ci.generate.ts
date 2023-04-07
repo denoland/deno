@@ -188,7 +188,7 @@ const ci = {
       "runs-on": "ubuntu-latest",
       if: "github.event.pull_request.draft == true",
       outputs: {
-        skip_build: "${{ steps.check.outputs.skip_build == 'true' }}",
+        skip_build: "${{ steps.check.outputs.skip_build }}",
       },
       steps: [
         ...cloneRepoStep,
