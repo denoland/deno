@@ -163,6 +163,17 @@ function skipJobsIfPrAndMarkedSkip(
   );
 }
 
+function onlyIfDraftPr(
+  steps: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  return steps.map((s) =>
+    withCondition(
+      s,
+      "github.event.pull_request.draft == true",
+    )
+  );
+}
+
 function withCondition(
   step: Record<string, unknown>,
   condition: string,
@@ -200,11 +211,10 @@ const ci = {
     pre_build: {
       name: "pre_build",
       "runs-on": "ubuntu-latest",
-      if: "github.event.pull_request.draft == true",
       outputs: {
         skip_build: "${{ steps.check.outputs.skip_build }}",
       },
-      steps: [
+      steps: onlyIfDraftPr([
         ...cloneRepoStep,
         {
           id: "check",
@@ -214,13 +224,12 @@ const ci = {
             "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
           ].join("\n"),
         },
-      ],
+      ]),
     },
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
       needs: ["pre_build"],
-      if:
-        "${{ !(needs.pre_build.outputs.skip_build == 'true') || (needs.pre_build.result == 'skipped') }}",
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
       "timeout-minutes": 120,
       defaults: {

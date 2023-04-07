@@ -20,7 +20,6 @@ jobs:
   pre_build:
     name: pre_build
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == true
     outputs:
       skip_build: '${{ steps.check.outputs.skip_build }}'
     steps:
@@ -28,21 +27,24 @@ jobs:
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
+        if: github.event.pull_request.draft == true
       - name: Clone repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 5
           submodules: false
+        if: github.event.pull_request.draft == true
       - id: check
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
           echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
+        if: github.event.pull_request.draft == true
   build:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}'
     needs:
       - pre_build
-    if: '${{ !(needs.pre_build.outputs.skip_build == ''true'') || (needs.pre_build.result == ''skipped'') }}'
+    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner || matrix.os }}'
     timeout-minutes: 120
     defaults:
