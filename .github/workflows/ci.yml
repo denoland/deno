@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   pre_build:
-    name: pre_build
+    name: pre-build
     runs-on: ubuntu-latest
     outputs:
       skip_build: '${{ steps.check.outputs.skip_build }}'

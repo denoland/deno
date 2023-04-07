@@ -208,8 +208,10 @@ const ci = {
     "cancel-in-progress": true,
   },
   jobs: {
+    // The pre_build step is used to skip running the CI on draft PRs and to not even
+    // start the build job. This can be overridden by adding [ci] to the commit title
     pre_build: {
-      name: "pre_build",
+      name: "pre-build",
       "runs-on": "ubuntu-latest",
       outputs: {
         skip_build: "${{ steps.check.outputs.skip_build }}",
@@ -234,7 +236,8 @@ const ci = {
       "timeout-minutes": 120,
       defaults: {
         run: {
-          // GH actions doesn't use `set -e` by default unless you specify bash
+          // GH actions does not fail fast by default on
+          // Windows, so we set bash as the default shell
           shell: "bash",
         },
       },
