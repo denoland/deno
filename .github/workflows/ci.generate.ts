@@ -149,6 +149,20 @@ const authenticateWithGoogleCloud = {
   },
 };
 
+function skipJobsIfPrAndMarkedSkip(
+  steps: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  // GitHub does not make skipping a specific matrix element easy
+  // so just apply this condition to all the steps.
+  // https://stackoverflow.com/questions/65384420/how-to-make-a-github-action-matrix-element-conditional
+  return steps.map((s) =>
+    withCondition(
+      s,
+      "!(github.event_name == 'pull_request' && matrix.skip_pr)",
+    )
+  );
+}
+
 function withCondition(
   step: Record<string, unknown>,
   condition: string,
@@ -287,7 +301,7 @@ const ci = {
         CARGO_TERM_COLOR: "always",
         RUST_BACKTRACE: "full",
       },
-      steps: [
+      steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),
@@ -832,7 +846,7 @@ const ci = {
             key: prCacheKeyPrefix + "${{ github.sha }}",
           },
         },
-      ],
+      ]),
     },
     "publish-canary": {
       name: "publish canary",
