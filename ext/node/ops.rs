@@ -265,7 +265,7 @@ where
   let path = PathBuf::from(path);
   ensure_read_permission::<Env::P>(state, &path)?;
   if let Ok(metadata) = Env::Fs::metadata(&path) {
-    if metadata.is_file() {
+    if metadata.is_file {
       return Ok(0);
     } else {
       return Ok(1);
@@ -285,7 +285,7 @@ where
 {
   let path = PathBuf::from(request);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let mut canonicalized_path = path.canonicalize()?;
+  let mut canonicalized_path = Env::Fs::canonicalize(&path)?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
       canonicalized_path
@@ -470,7 +470,13 @@ where
   {
     modules_path
   } else {
-    path_resolve(vec![modules_path, name])
+    let orignal = modules_path.clone();
+    let mod_dir = path_resolve(vec![modules_path, name]);
+    if Env::Fs::is_dir(&mod_dir) {
+      mod_dir
+    } else {
+      orignal
+    }
   };
   let pkg = PackageJson::load::<Env::Fs>(
     &*resolver,

@@ -8,19 +8,20 @@ use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::npm::NpmPackageReq;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
+use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::deno_node::is_builtin_node_module;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageReq;
 use import_map::ImportMap;
 use std::sync::Arc;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
-use crate::npm::NpmRegistryApi;
+use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 
@@ -32,7 +33,7 @@ pub struct CliGraphResolver {
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
-  npm_registry_api: NpmRegistryApi,
+  npm_registry_api: NpmRegistry,
   npm_resolution: NpmResolution,
   package_json_deps_installer: PackageJsonDepsInstaller,
   sync_download_queue: Option<Arc<TaskQueue>>,
@@ -42,7 +43,7 @@ impl Default for CliGraphResolver {
   fn default() -> Self {
     // This is not ideal, but necessary for the LSP. In the future, we should
     // refactor the LSP and force this to be initialized.
-    let npm_registry_api = NpmRegistryApi::new_uninitialized();
+    let npm_registry_api = NpmRegistry::new_uninitialized();
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
     Self {
@@ -63,7 +64,7 @@ impl CliGraphResolver {
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
     no_npm: bool,
-    npm_registry_api: NpmRegistryApi,
+    npm_registry_api: NpmRegistry,
     npm_resolution: NpmResolution,
     package_json_deps_installer: PackageJsonDepsInstaller,
   ) -> Self {
@@ -236,9 +237,15 @@ impl NpmResolver for CliGraphResolver {
     if self.no_npm {
       bail!("npm specifiers were requested; but --no-npm is specified")
     }
-    self
+    match self
       .npm_resolution
       .resolve_package_req_as_pending(package_req)
+    {
+      Ok(nv) => Ok(nv),
+      Err(err) => {
+        bail!("{:#} Try retrieving the latest npm package information by running with --reload", err)
+      }
+    }
   }
 }
 

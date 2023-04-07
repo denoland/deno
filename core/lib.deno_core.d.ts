@@ -61,6 +61,16 @@ declare namespace Deno {
     function writeAll(rid: number, buf: Uint8Array): Promise<void>;
 
     /**
+     * Synchronously read from a (stream) resource that implements readSync().
+     */
+    function readSync(rid: number, buf: Uint8Array): number;
+
+    /**
+     * Synchronously write to a (stream) resource that implements writeSync().
+     */
+    function writeSync(rid: number, buf: Uint8Array): number;
+
+    /**
      * Print a message to stdout or stderr
      */
     function print(message: string, is_err?: boolean): void;
