@@ -24,6 +24,15 @@ jobs:
     outputs:
       skip_build: '${{ steps.check.outputs.skip_build == ''true'' }}'
     steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 5
+          submodules: false
       - id: check
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})

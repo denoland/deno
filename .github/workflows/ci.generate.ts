@@ -86,6 +86,24 @@ CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
 
+const cloneRepoStep = [{
+  name: "Configure git",
+  run: [
+    "git config --global core.symlinks true",
+    "git config --global fetch.parallel 32",
+  ].join("\n"),
+}, {
+  name: "Clone repository",
+  uses: "actions/checkout@v3",
+  with: {
+    // Use depth > 1, because sometimes we need to rebuild main and if
+    // other commits have landed it will become impossible to rebuild if
+    // the checkout is too shallow.
+    "fetch-depth": 5,
+    submodules: false,
+  },
+}];
+
 const submoduleStep = (submodule: string) => ({
   name: `Clone submodule ${submodule}`,
   run: `git submodule update --init --recursive --depth=1 -- ${submodule}`,
@@ -172,14 +190,17 @@ const ci = {
       outputs: {
         skip_build: "${{ steps.check.outputs.skip_build == 'true' }}",
       },
-      steps: [{
-        id: "check",
-        run: [
-          "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
-          "echo Commit message: $GIT_MESSAGE",
-          "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
-        ].join("\n"),
-      }],
+      steps: [
+        ...cloneRepoStep,
+        {
+          id: "check",
+          run: [
+            "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
+            "echo Commit message: $GIT_MESSAGE",
+            "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
+          ].join("\n"),
+        },
+      ],
     },
     build: {
       name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
@@ -267,25 +288,7 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: [
-        {
-          name: "Configure git",
-          run: [
-            "git config --global core.symlinks true",
-            "git config --global fetch.parallel 32",
-          ].join("\n"),
-        },
-        {
-          name: "Clone repository",
-          uses: "actions/checkout@v3",
-          with: {
-            // Use depth > 1, because sometimes we need to rebuild main and if
-            // other commits have landed it will become impossible to rebuild if
-            // the checkout is too shallow.
-            "fetch-depth": 5,
-            submodules: false,
-          },
-        },
-
+        ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),
         {
