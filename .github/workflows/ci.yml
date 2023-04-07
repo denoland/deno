@@ -24,11 +24,11 @@ jobs:
     outputs:
       skip_build: '${{ steps.check.outputs.skip_build == ''true'' }}'
     steps:
-      id: check
-      run: |-
-        GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
-        echo Commit message: $GIT_MESSAGE
-        echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
+      - id: check
+        run: |-
+          GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
+          echo Commit message: $GIT_MESSAGE
+          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
   build:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}'
     needs:
