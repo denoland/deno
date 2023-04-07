@@ -42,7 +42,7 @@ jobs:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}'
     needs:
       - pre_build
-    if: '${{ needs.pre_build.outputs.skip_build == ''true'' && false || true }}'
+    if: '${{ needs.pre_build.outputs.skip_build == ''true'' ? false : true }}'
     runs-on: '${{ matrix.runner || matrix.os }}'
     timeout-minutes: 120
     defaults:
@@ -397,7 +397,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test debug (fast)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' && 
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
           !startsWith(matrix.os, 'ubuntu'))
         run: |-
           cargo test --locked --lib
