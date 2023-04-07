@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -86,7 +88,7 @@ pub fn op_node_x509_ca(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(cert.is_ca())
 }
 
@@ -99,7 +101,7 @@ pub fn op_node_x509_check_email(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
 
   let subject = cert.subject();
   if subject
@@ -140,7 +142,7 @@ pub fn op_node_x509_fingerprint(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(cert.fingerprint::<sha1::Sha1>())
 }
 
@@ -152,7 +154,7 @@ pub fn op_node_x509_fingerprint256(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(cert.fingerprint::<sha2::Sha256>())
 }
 
@@ -164,7 +166,7 @@ pub fn op_node_x509_fingerprint512(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(cert.fingerprint::<sha2::Sha512>())
 }
 
@@ -176,7 +178,7 @@ pub fn op_node_x509_get_issuer(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(x509name_to_string(cert.issuer(), oid_registry())?)
 }
 
@@ -188,7 +190,7 @@ pub fn op_node_x509_get_subject(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(x509name_to_string(cert.subject(), oid_registry())?)
 }
 
@@ -262,7 +264,7 @@ pub fn op_node_x509_get_valid_from(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(cert.validity().not_before.to_string())
 }
 
@@ -274,7 +276,7 @@ pub fn op_node_x509_get_valid_to(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   Ok(cert.validity().not_after.to_string())
 }
 
@@ -286,7 +288,7 @@ pub fn op_node_x509_get_serial_number(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
   let mut s = cert.serial.to_str_radix(16);
   s.make_ascii_uppercase();
   Ok(s)
@@ -300,7 +302,7 @@ pub fn op_node_x509_key_usage(
   let cert = state
     .resource_table
     .get::<Certificate>(rid)
-    .or_else(|_| Err(bad_resource_id()))?;
+    .map_err(|_| bad_resource_id())?;
 
   let key_usage = cert
     .extensions()
