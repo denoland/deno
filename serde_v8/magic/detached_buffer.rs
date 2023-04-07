@@ -67,3 +67,9 @@ impl FromV8 for DetachedBuffer {
     Ok(Self(V8Slice { store, range }))
   }
 }
+
+impl From<DetachedBuffer> for bytes::Bytes {
+  fn from(detached: DetachedBuffer) -> bytes::Bytes {
+    Self::from(detached.0)
+  }
+}

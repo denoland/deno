@@ -741,14 +741,14 @@ function readableStreamForRid(rid, autoClose = true) {
           return;
         }
 
-        const bytesRead = await core.read(rid, v);
+        const [bytesRead, newView] = await core.readDetaching(rid, v);
         if (bytesRead === 0) {
           tryClose();
           controller.close();
-          controller.byobRequest.respond(0);
-        } else {
-          controller.byobRequest.respond(bytesRead);
         }
+        controller.byobRequest.respondWithNewView(
+          new Uint8Array(newView.buffer, 0, bytesRead),
+        );
       } catch (e) {
         controller.error(e);
         tryClose();

@@ -6,6 +6,7 @@ use crate::io::BufView;
 use crate::ops_builtin_v8;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
+use crate::DetachedBuffer;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
@@ -31,6 +32,7 @@ crate::extension!(
     op_add,
     // TODO(@AaronO): track IO metrics for builtin streams
     op_read,
+    op_read_detaching,
     op_read_all,
     op_write,
     op_read_sync,
@@ -198,6 +200,20 @@ async fn op_read(
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufMutView::from(buf);
   resource.read_byob(view).await.map(|(n, _)| n as u32)
+}
+
+#[op]
+async fn op_read_detaching(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: DetachedBuffer,
+) -> Result<(u32, DetachedBuffer), Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  let view = BufMutView::from(buf);
+  resource
+    .read_byob(view)
+    .await
+    .map(|(n, buf)| (n as u32, buf.unwrap_detached()))
 }
 
 #[op]

@@ -410,6 +410,7 @@
     tryClose: (rid) => ops.op_try_close(rid),
     read: opAsync.bind(null, "op_read"),
     readAll: opAsync.bind(null, "op_read_all"),
+    readDetaching: opAsync.bind(null, "op_read_detaching"),
     write: opAsync.bind(null, "op_write"),
     writeAll: opAsync.bind(null, "op_write_all"),
     readSync: (rid, buffer) => ops.op_read_sync(rid, buffer),
