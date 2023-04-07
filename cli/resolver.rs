@@ -237,9 +237,15 @@ impl NpmResolver for CliGraphResolver {
     if self.no_npm {
       bail!("npm specifiers were requested; but --no-npm is specified")
     }
-    self
+    match self
       .npm_resolution
       .resolve_package_req_as_pending(package_req)
+    {
+      Ok(nv) => Ok(nv),
+      Err(err) => {
+        bail!("{:#} Try retrieving the latest npm package information by running with --reload", err)
+      }
+    }
   }
 }
 

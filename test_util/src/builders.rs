@@ -455,6 +455,7 @@ pub struct TestCommandOutput {
 }
 
 impl Drop for TestCommandOutput {
+  // assert the output and exit code was asserted
   fn drop(&mut self) {
     fn panic_unasserted_output(text: &str) {
       println!("OUTPUT\n{text}\nOUTPUT");
@@ -466,13 +467,6 @@ impl Drop for TestCommandOutput {
 
     if std::thread::panicking() {
       return;
-    }
-    // force the caller to assert these
-    if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
-      panic!(
-        "The non-zero exit code of the command was not asserted: {:?}",
-        self.exit_code,
-      )
     }
 
     // either the combined output needs to be asserted or both stdout and stderr
@@ -488,6 +482,14 @@ impl Drop for TestCommandOutput {
       if !*self.asserted_stderr.borrow() && !stderr.is_empty() {
         panic_unasserted_output(stderr);
       }
+    }
+
+    // now ensure the exit code was asserted
+    if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
+      panic!(
+        "The non-zero exit code of the command was not asserted: {:?}",
+        self.exit_code,
+      )
     }
   }
 }

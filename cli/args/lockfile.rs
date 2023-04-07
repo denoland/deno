@@ -117,10 +117,11 @@ pub async fn snapshot_from_lockfile(
   let mut version_infos =
       FuturesOrdered::from_iter(packages.iter().map(|p| p.pkg_id.nv.clone()).map(
         |nv| async move {
-          match api.package_version_info(&nv).await? {
-            Some(version_info) => Ok(version_info),
-            None => {
-              bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", nv);
+          let package_info = api.package_info(&nv.name).await?;
+          match package_info.version_info(&nv) {
+            Ok(version_info) => Ok(version_info),
+            Err(err) => {
+              bail!("Could not find '{}' specified in the lockfile. Maybe try again with --reload", err.0);
             }
           }
         },
