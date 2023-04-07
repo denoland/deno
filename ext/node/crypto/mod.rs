@@ -23,6 +23,7 @@ use rsa::RsaPublicKey;
 mod cipher;
 mod digest;
 mod primes;
+pub mod x509;
 
 #[op]
 pub fn op_node_check_prime(num: serde_v8::BigInt, checks: usize) -> bool {
