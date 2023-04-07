@@ -1661,6 +1661,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
   ));
 
   // now try running without it, it currently will error, but this should work in the future
+  // todo(https://github.com/denoland/deno/issues/16901): fix this
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_exit_code(1);
   output.assert_matches_text(concat!(
