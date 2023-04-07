@@ -101,6 +101,14 @@ pub fn op_node_x509_check_email(
     .get::<Certificate>(rid)
     .or_else(|_| Err(bad_resource_id()))?;
 
+  let subject = cert.subject();
+  if subject
+    .iter_email()
+    .any(|e| e.as_str().unwrap_or("") == email)
+  {
+    return Ok(true);
+  }
+
   let subject_alt = cert
     .extensions()
     .iter()
@@ -112,7 +120,7 @@ pub fn op_node_x509_check_email(
 
   if let Some(subject_alt) = subject_alt {
     for name in &subject_alt.general_names {
-        dbg!(name);
+      dbg!(name);
       if let extensions::GeneralName::RFC822Name(n) = name {
         if *n == email {
           return Ok(true);

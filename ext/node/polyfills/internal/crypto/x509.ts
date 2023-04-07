@@ -5,6 +5,7 @@ import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 
@@ -63,6 +64,7 @@ export class X509Certificate {
     email: string,
     _options?: Pick<X509CheckOptions, "subject">,
   ): string | undefined {
+    validateString(email, "email");
     if (ops.op_node_x509_check_email(this.#handle, email)) {
       return email;
     }

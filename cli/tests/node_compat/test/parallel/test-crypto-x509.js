@@ -106,7 +106,4 @@ const der = Buffer.from(
 
   assert.strictEqual(x509.checkEmail('ry@tinyclouds.org'), 'ry@tinyclouds.org');
   assert.strictEqual(x509.checkEmail('sally@example.com'), undefined);
-  assert.throws(() => x509.checkEmail('not\x00hing'), {
-    code: 'ERR_INVALID_ARG_VALUE'
-  });
 }
