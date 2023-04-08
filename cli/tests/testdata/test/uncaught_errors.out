@@ -3,7 +3,7 @@ foo 1 ... FAILED ([WILDCARD])
 foo 2 ... ok ([WILDCARD])
 foo 3 ...
 Uncaught error from ./test/uncaught_errors_1.ts FAILED
-foo 3 ... cancelled (0ms)
+foo 3 ... cancelled
 running 3 tests from ./test/uncaught_errors_2.ts
 bar 1 ... ok ([WILDCARD])
 bar 2 ... FAILED ([WILDCARD])

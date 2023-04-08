@@ -552,7 +552,7 @@ impl PrettyTestReporter {
       self.force_report_wait(description);
     }
 
-    let status = match result {
+    let status = match &result {
       TestResult::Ok => colors::green("ok").to_string(),
       TestResult::Ignored => colors::yellow("ignored").to_string(),
       TestResult::Failed(failure) => failure.format_label(),
@@ -564,10 +564,13 @@ impl PrettyTestReporter {
         print!(" ({})", inline_summary)
       }
     }
-    println!(
-      " {}",
-      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-    );
+    if !matches!(result, TestResult::Cancelled) {
+      print!(
+        " {}",
+        colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+      );
+    }
+    println!();
     self.in_new_line = true;
     self.scope_test_id = None;
   }
