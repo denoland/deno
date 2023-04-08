@@ -9,7 +9,7 @@ use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
 use crate::snapshot_util::SnapshottedData;
-use crate::JsRuntime;
+use crate::JsRealm;
 use crate::OpState;
 use anyhow::Error;
 use core::panic;
@@ -135,7 +135,7 @@ fn json_module_evaluation_steps<'a>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let module_map = JsRuntime::module_map(tc_scope);
+  let module_map = JsRealm::module_map_from_scope(tc_scope);
 
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let value_handle = module_map
