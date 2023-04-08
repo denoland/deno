@@ -27,7 +27,7 @@ static NO_COLOR: Lazy<bool> =
 
 static IS_TTY: Lazy<bool> = Lazy::new(|| atty::is(atty::Stream::Stdout));
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum TTYColorLevel {
   None,
   Basic,
@@ -35,7 +35,9 @@ pub enum TTYColorLevel {
   TrueColor,
 }
 
-static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(|| {
+static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(detect_color_support);
+
+fn detect_color_support() -> TTYColorLevel {
   if *NO_COLOR {
     return TTYColorLevel::None;
   }
@@ -43,11 +45,13 @@ static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(|| {
   // Windows supports 24bit True Colors since Windows 10 #14931,
   // see https://devblogs.microsoft.com/commandline/24-bit-color-in-the-windows-console/
   if cfg!(target_os = "windows") {
+    println!("DETECT WINDOWS");
     return TTYColorLevel::TrueColor;
   }
 
   if let Some(color_term) = std::env::var_os("COLORTERM") {
     if color_term == "truecolor" || color_term == "24bit" {
+      println!("DETECT colorterm");
       return TTYColorLevel::TrueColor;
     }
   }
@@ -62,6 +66,7 @@ static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(|| {
     // CI systems commonly set TERM=dumb although they support
     // full colors. They usually do their own mapping.
     if std::env::var_os("CI").is_some() {
+      println!("DETECT CI");
       return TTYColorLevel::TrueColor;
     }
 
@@ -71,7 +76,7 @@ static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(|| {
   }
 
   TTYColorLevel::None
-});
+}
 
 pub fn is_tty() -> bool {
   *IS_TTY
@@ -204,4 +209,128 @@ pub fn white_bold_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
     .set_bg(Some(Red))
     .set_fg(Some(White));
   style(s, style_spec)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::{env, ffi::OsString};
+
+  fn reset_env_var(name: &str, value: Option<OsString>) {
+    match value {
+      Some(s) => env::set_var(name, s),
+      None => env::remove_var(name),
+    }
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn supports_true_color() {
+    let ci = env::var_os("CI");
+    let color_term = env::var_os("COLORTERM");
+    let term = env::var_os("TERM");
+
+    // Clean env
+    env::remove_var("CI");
+    env::remove_var("TERM");
+
+    // Test true color
+    env::set_var("COLORTERM", "truecolor");
+    assert!(matches!(detect_color_support(), TTYColorLevel::TrueColor));
+
+    env::set_var("COLORTERM", "24bit");
+    assert!(matches!(detect_color_support(), TTYColorLevel::TrueColor));
+
+    // Reset
+    reset_env_var("COLOR_TERM", color_term);
+    reset_env_var("TERM", term);
+    reset_env_var("CI", ci);
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn supports_ansi_256() {
+    let ci = env::var_os("CI");
+    let color_term = env::var_os("COLORTERM");
+    let term = env::var_os("TERM");
+
+    // Reset env
+    env::remove_var("COLORTERM");
+    env::remove_var("CI");
+
+    println!("got {:?}", detect_color_support());
+    env::set_var("TERM", "xterm-256");
+    assert!(matches!(detect_color_support(), TTYColorLevel::Ansi256));
+
+    env::set_var("TERM", "xterm-256color");
+    assert!(matches!(detect_color_support(), TTYColorLevel::Ansi256));
+
+    // Reset env
+    reset_env_var("COLOR_TERM", color_term);
+    reset_env_var("TERM", term);
+    reset_env_var("CI", ci);
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn supports_ci_color() {
+    let ci = env::var_os("CI");
+    let color_term = env::var_os("COLORTERM");
+    let term = env::var_os("TERM");
+
+    // Reset env
+    env::remove_var("COLORTERM");
+    env::set_var("CI", "1");
+    env::set_var("TERM", "dumb");
+
+    assert!(matches!(detect_color_support(), TTYColorLevel::TrueColor));
+
+    // Reset env
+    reset_env_var("COLOR_TERM", color_term);
+    reset_env_var("TERM", term);
+    reset_env_var("CI", ci);
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn supports_basic_ansi() {
+    let ci = env::var_os("CI");
+    let color_term = env::var_os("COLORTERM");
+    let term = env::var_os("TERM");
+
+    // Reset env
+    env::remove_var("COLORTERM");
+    env::remove_var("CI");
+    env::set_var("TERM", "xterm");
+
+    println!("got {:?}", detect_color_support());
+    assert!(matches!(detect_color_support(), TTYColorLevel::Basic));
+
+    // Reset env
+    reset_env_var("COLOR_TERM", color_term);
+    reset_env_var("TERM", term);
+    reset_env_var("CI", ci);
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn supports_none() {
+    let ci = env::var_os("CI");
+    let color_term = env::var_os("COLORTERM");
+    let term = env::var_os("TERM");
+
+    // Reset env
+    env::remove_var("COLORTERM");
+    env::remove_var("CI");
+    env::set_var("TERM", "dumb");
+
+    println!("got {:?}", detect_color_support());
+
+    assert!(matches!(detect_color_support(), TTYColorLevel::None));
+
+    // Reset env
+    reset_env_var("COLOR_TERM", color_term);
+    reset_env_var("TERM", term);
+    reset_env_var("CI", ci);
+  }
 }
