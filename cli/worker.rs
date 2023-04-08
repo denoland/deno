@@ -15,7 +15,6 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::colors;
 use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
@@ -27,6 +26,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::DenoSubcommand;
 use crate::errors;
