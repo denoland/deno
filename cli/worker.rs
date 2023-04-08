@@ -8,6 +8,7 @@ use std::time::SystemTime;
 use deno_ast::ModuleSpecifier;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
@@ -392,12 +393,17 @@ impl CliMainWorker {
       filtered_out: unfiltered - tests.len(),
       used_only,
     }))?;
+    let mut had_uncaught_error = false;
     for (desc, function) in tests {
       if fail_fast_tracker.should_stop() {
         break;
       }
       if desc.ignore {
         sender.send(TestEvent::Result(desc.id, TestResult::Ignored, 0))?;
+        continue;
+      }
+      if had_uncaught_error {
+        sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
         continue;
       }
       sender.send(TestEvent::Wait(desc.id))?;
@@ -409,11 +415,31 @@ impl CliMainWorker {
         let promise = cb.call(scope, this, &[]).unwrap();
         v8::Global::new(scope, promise)
       };
-      let result = self.worker.js_runtime.resolve_value(promise).await?;
+      let result = match self.worker.js_runtime.resolve_value(promise).await {
+        Ok(r) => r,
+        Err(error) => {
+          if error.is::<JsError>() {
+            sender.send(TestEvent::UncaughtError(
+              origin.to_string(),
+              Box::new(error.downcast::<JsError>().unwrap()),
+            ))?;
+            fail_fast_tracker.add_failure();
+            sender.send(TestEvent::Result(
+              desc.id,
+              TestResult::Cancelled,
+              0,
+            ))?;
+            had_uncaught_error = true;
+            continue;
+          } else {
+            return Err(error);
+          }
+        }
+      };
       let scope = &mut self.worker.js_runtime.handle_scope();
       let result = v8::Local::new(scope, result);
       let result = serde_v8::from_v8::<TestResult>(scope, result)?;
-      if matches!(result, TestResult::Cancelled | TestResult::Failed(_)) {
+      if matches!(result, TestResult::Failed(_)) {
         fail_fast_tracker.add_failure();
       }
       let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();

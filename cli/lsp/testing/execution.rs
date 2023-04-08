@@ -298,7 +298,6 @@ impl TestRun {
       Arc::new(RwLock::new(IndexMap::new()));
     let mut test_steps = IndexMap::new();
 
-    let tests_ = tests.clone();
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
       let ps = ps.clone();
@@ -319,7 +318,6 @@ impl TestRun {
           .unwrap_or_default(),
       };
       let token = self.token.clone();
-      let tests = tests_.clone();
 
       tokio::task::spawn_blocking(move || {
         if fail_fast_tracker.should_stop() {
@@ -339,18 +337,9 @@ impl TestRun {
         if let Err(error) = file_result {
           if error.is::<JsError>() {
             sender.send(test::TestEvent::UncaughtError(
-              origin.clone(),
+              origin,
               Box::new(error.downcast::<JsError>().unwrap()),
             ))?;
-            for desc in tests.read().values() {
-              if desc.origin == origin {
-                sender.send(test::TestEvent::Result(
-                  desc.id,
-                  test::TestResult::Cancelled,
-                  0,
-                ))?
-              }
-            }
           } else {
             return Err(error);
           }

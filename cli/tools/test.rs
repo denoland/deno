@@ -1308,7 +1308,7 @@ async fn test_specifiers(
                     .push((description.clone(), failure.clone()));
                 }
                 TestResult::Cancelled => {
-                  unreachable!("should be handled in TestEvent::UncaughtError");
+                  summary.failed += 1;
                 }
               }
               reporter.report_result(description, &result, elapsed);
@@ -1319,12 +1319,6 @@ async fn test_specifiers(
             reporter.report_uncaught_error(&origin, &error);
             summary.failed += 1;
             summary.uncaught_errors.push((origin.clone(), error));
-            for desc in tests.values() {
-              if desc.origin == origin && tests_with_result.insert(desc.id) {
-                summary.failed += 1;
-                reporter.report_result(desc, &TestResult::Cancelled, 0);
-              }
-            }
           }
 
           TestEvent::StepRegister(description) => {
