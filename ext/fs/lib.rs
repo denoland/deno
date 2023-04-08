@@ -1315,7 +1315,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     CloseHandle(file_handle);
     let dev = result?;
 
-    Ok(get_stat(metadata, dev))
+    Ok(get_stat(metadata, Some(dev)))
   }
 }
 
