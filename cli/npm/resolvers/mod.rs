@@ -4,26 +4,30 @@ mod common;
 mod global;
 mod local;
 
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::npm::NpmPackageNvReference;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::npm::NpmPackageReqReference;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::resolution::PackageReqNotFoundError;
+use deno_npm::NpmPackageId;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -33,8 +37,6 @@ use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
-use super::NpmPackageId;
-use super::NpmResolutionSnapshot;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -81,14 +83,14 @@ impl NpmPackageResolver {
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, AnyError> {
+  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
   pub fn pkg_req_ref_to_nv_ref(
     &self,
     req_ref: NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, AnyError> {
+  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
     self.resolution.pkg_req_ref_to_nv_ref(req_ref)
   }
 
@@ -224,10 +226,8 @@ impl NpmPackageResolver {
     &self,
   ) -> Result<(), AnyError> {
     // add and ensure this isn't added to the lockfile
-    self
-      .resolution
-      .add_package_reqs(vec![NpmPackageReq::from_str("@types/node").unwrap()])
-      .await?;
+    let package_reqs = vec![NpmPackageReq::from_str("@types/node").unwrap()];
+    self.resolution.add_package_reqs(package_reqs).await?;
     self.fs_resolver.cache_packages().await?;
 
     Ok(())
