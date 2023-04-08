@@ -5,7 +5,7 @@ test ...
 ------- output -------
 test
 ----- output end -----
-test ... ok ([WILDCARD]ms)
+test ... ok ([WILDCARD]s)
 
 ok | 1 passed | 0 failed ([WILDCARD]s)
 

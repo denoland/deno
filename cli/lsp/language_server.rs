@@ -81,7 +81,7 @@ use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
@@ -145,7 +145,7 @@ pub struct Inner {
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// Npm's registry api.
-  npm_api: NpmRegistryApi,
+  npm_api: NpmRegistry,
   /// Npm cache
   npm_cache: NpmCache,
   /// Npm resolution that is stored in memory.
@@ -417,8 +417,8 @@ impl LanguageServer {
 fn create_lsp_structs(
   dir: &DenoDir,
   http_client: HttpClient,
-) -> (NpmRegistryApi, NpmCache, NpmPackageResolver, NpmResolution) {
-  let registry_url = NpmRegistryApi::default_url();
+) -> (NpmRegistry, NpmCache, NpmPackageResolver, NpmResolution) {
+  let registry_url = NpmRegistry::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
@@ -430,7 +430,7 @@ fn create_lsp_structs(
     http_client.clone(),
     progress_bar.clone(),
   );
-  let api = NpmRegistryApi::new(
+  let api = NpmRegistry::new(
     registry_url.clone(),
     npm_cache.clone(),
     http_client,
