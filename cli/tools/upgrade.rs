@@ -17,7 +17,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_graph::semver::Version;
+use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;

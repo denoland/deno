@@ -42,7 +42,7 @@ mod startup_snapshot {
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(code.take_as_string()),
+      text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
@@ -115,16 +115,6 @@ mod startup_snapshot {
     fn check(
       &mut self,
       _path: Option<&Path>,
-    ) -> Result<(), deno_core::error::AnyError> {
-      unreachable!("snapshotting!")
-    }
-  }
-
-  impl deno_flash::FlashPermissions for Permissions {
-    fn check_net<T: AsRef<str>>(
-      &mut self,
-      _host: &(T, Option<u16>),
-      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -244,7 +234,6 @@ mod startup_snapshot {
       deno_net,
       deno_napi,
       deno_http,
-      deno_flash,
       deno_io,
       deno_fs
     ],
@@ -322,7 +311,6 @@ mod startup_snapshot {
       deno_http::deno_http::init_ops_and_esm(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
-      deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around

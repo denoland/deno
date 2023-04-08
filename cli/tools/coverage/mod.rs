@@ -691,7 +691,7 @@ pub async fn cover_files(
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.into(),
+      | MediaType::Json => file.source.clone().into(),
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
       MediaType::TypeScript
       | MediaType::Jsx
@@ -718,7 +718,7 @@ pub async fn cover_files(
     let source_map = source_map_from_code(&transpiled_code);
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      transpiled_code.take_as_string(),
+      transpiled_code.as_str().to_owned(),
       &source_map,
       &out_mode,
     );

@@ -27,12 +27,12 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
+use deno_semver::npm::NpmPackageReqReference;
 use log::error;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1079,7 +1079,7 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location, Default::default());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

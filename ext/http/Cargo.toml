@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.91.0"
+version = "0.92.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -27,8 +27,11 @@ deno_core.workspace = true
 deno_websocket.workspace = true
 flate2.workspace = true
 fly-accept-encoding = "0.2.0"
+httparse.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+memmem.workspace = true
 mime = "0.3.16"
+once_cell.workspace = true
 percent-encoding.workspace = true
 phf = { version = "0.10", features = ["macros"] }
 pin-project.workspace = true

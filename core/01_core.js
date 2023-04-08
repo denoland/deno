@@ -412,6 +412,8 @@
     readAll: opAsync.bind(null, "op_read_all"),
     write: opAsync.bind(null, "op_write"),
     writeAll: opAsync.bind(null, "op_write_all"),
+    readSync: (rid, buffer) => ops.op_read_sync(rid, buffer),
+    writeSync: (rid, buffer) => ops.op_write_sync(rid, buffer),
     shutdown: opAsync.bind(null, "op_shutdown"),
     print: (msg, isErr) => ops.op_print(msg, isErr),
     setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
