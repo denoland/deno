@@ -254,7 +254,7 @@ pub async fn build_graph_with_npm_resolution<'a>(
   loader: &mut dyn deno_graph::source::Loader,
   options: deno_graph::BuildOptions<'a>,
 ) -> Result<(), AnyError> {
-  graph.build(roots, loader, options).await;
+  graph.build(roots.clone(), loader, options).await;
 
   // resolve the dependencies of any pending dependencies
   // that were inserted by building the graph

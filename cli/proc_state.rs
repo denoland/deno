@@ -26,9 +26,9 @@ use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::create_npm_fs_resolver;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -95,7 +95,7 @@ pub struct Inner {
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
-  pub npm_api: NpmRegistry,
+  pub npm_api: CliNpmRegistryApi,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub npm_resolution: NpmResolution,
@@ -233,14 +233,14 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let npm_registry_url = NpmRegistry::default_url().to_owned();
+    let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let npm_api = NpmRegistry::new(
+    let npm_api = CliNpmRegistryApi::new(
       npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),

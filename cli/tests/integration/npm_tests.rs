@@ -1654,18 +1654,18 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .new_command()
     .args("run --cached-only main.ts")
     .run();
-  output.assert_exit_code(1);
   output.assert_matches_text(concat!(
-    "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'. Try retrieving the latest npm package information by running with --reload\n",
+    "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
     "    at file:///[WILDCARD]/main.ts:1:8\n",
   ));
+  output.assert_exit_code(1);
 
-  // now try running without it, it currently will error, but this should work in the future
-  // todo(https://github.com/denoland/deno/issues/16901): fix this
+  // now try running without it, it should work
   let output = test_context.new_command().args("run main.ts").run();
-  output.assert_exit_code(1);
   output.assert_matches_text(concat!(
-    "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'. Try retrieving the latest npm package information by running with --reload\n",
-    "    at file:///[WILDCARD]/main.ts:1:8\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+    "Node esm importing node cjs\n[WILDCARD]",
   ));
+  output.assert_exit_code(0);
 }

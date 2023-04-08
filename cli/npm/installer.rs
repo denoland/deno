@@ -10,13 +10,13 @@ use deno_npm::registry::NpmRegistryApi;
 
 use crate::args::package_json::PackageJsonDeps;
 
-use super::NpmRegistry;
+use super::CliNpmRegistryApi;
 use super::NpmResolution;
 
 #[derive(Debug)]
 struct PackageJsonDepsInstallerInner {
   has_installed: AtomicBool,
-  npm_registry_api: NpmRegistry,
+  npm_registry_api: CliNpmRegistryApi,
   npm_resolution: NpmResolution,
   package_deps: PackageJsonDeps,
 }
@@ -27,7 +27,7 @@ pub struct PackageJsonDepsInstaller(Option<Arc<PackageJsonDepsInstallerInner>>);
 
 impl PackageJsonDepsInstaller {
   pub fn new(
-    npm_registry_api: NpmRegistry,
+    npm_registry_api: CliNpmRegistryApi,
     npm_resolution: NpmResolution,
     deps: Option<PackageJsonDeps>,
   ) -> Self {

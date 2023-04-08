@@ -1,27 +1,26 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
+use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageReq;
 use import_map::ImportMap;
 use std::sync::Arc;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
-use crate::npm::NpmRegistry;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 
@@ -33,7 +32,7 @@ pub struct CliGraphResolver {
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
-  npm_registry_api: NpmRegistry,
+  npm_registry_api: CliNpmRegistryApi,
   npm_resolution: NpmResolution,
   package_json_deps_installer: PackageJsonDepsInstaller,
   sync_download_queue: Option<Arc<TaskQueue>>,
@@ -43,7 +42,7 @@ impl Default for CliGraphResolver {
   fn default() -> Self {
     // This is not ideal, but necessary for the LSP. In the future, we should
     // refactor the LSP and force this to be initialized.
-    let npm_registry_api = NpmRegistry::new_uninitialized();
+    let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
     Self {
@@ -64,7 +63,7 @@ impl CliGraphResolver {
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
     no_npm: bool,
-    npm_registry_api: NpmRegistry,
+    npm_registry_api: CliNpmRegistryApi,
     npm_resolution: NpmResolution,
     package_json_deps_installer: PackageJsonDepsInstaller,
   ) -> Self {
@@ -187,7 +186,7 @@ impl NpmResolver for CliGraphResolver {
   fn load_and_cache_npm_package_info(
     &self,
     package_name: &str,
-  ) -> LocalBoxFuture<'static, Result<(), String>> {
+  ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
     if self.no_npm {
       // return it succeeded and error at the import site below
       return Box::pin(future::ready(Ok(())));
@@ -211,19 +210,18 @@ impl NpmResolver for CliGraphResolver {
       // specifiy matched in the package.json, but deno_graph only
       // calls this once per package name and we might resolve an
       // npm specifier first which calls this, then a bare specifier
-      // second and that would cause this not to occur.
+      // second and that would cause this not to occur. We also need
+      // to know if the bare specifier is from a package.json and not
+      // from an import map
       if deps_installer.has_package_name(&package_name) {
-        deps_installer
-          .ensure_top_level_install()
-          .await
-          .map_err(|err| format!("{err:#}"))?;
+        deps_installer.ensure_top_level_install().await?;
       }
 
       let result = api
         .package_info(&package_name)
         .await
         .map(|_| ())
-        .map_err(|err| format!("{err:#}"));
+        .map_err(|err| err.into());
       drop(permit);
       result
     }
@@ -233,17 +231,26 @@ impl NpmResolver for CliGraphResolver {
   fn resolve_npm(
     &self,
     package_req: &NpmPackageReq,
-  ) -> Result<NpmPackageNv, AnyError> {
+  ) -> NpmPackageReqResolution {
     if self.no_npm {
-      bail!("npm specifiers were requested; but --no-npm is specified")
+      return NpmPackageReqResolution::Err(anyhow!(
+        "npm specifiers were requested; but --no-npm is specified"
+      ));
     }
-    match self
+
+    let result = self
       .npm_resolution
-      .resolve_package_req_as_pending(package_req)
-    {
-      Ok(nv) => Ok(nv),
+      .resolve_package_req_as_pending(package_req);
+    match result {
+      Ok(nv) => NpmPackageReqResolution::Ok(nv),
       Err(err) => {
-        bail!("{:#} Try retrieving the latest npm package information by running with --reload", err)
+        if self.npm_registry_api.mark_force_reload() {
+          log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
+          self.npm_registry_api.clear_memory_cache();
+          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
+        } else {
+          NpmPackageReqResolution::Err(err.into())
+        }
       }
     }
   }

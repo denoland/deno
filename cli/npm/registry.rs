@@ -54,9 +54,9 @@ static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
 });
 
 #[derive(Clone, Debug)]
-pub struct NpmRegistry(Option<Arc<NpmRegistryApiInner>>);
+pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
-impl NpmRegistry {
+impl CliNpmRegistryApi {
   pub fn default_url() -> &'static Url {
     &NPM_REGISTRY_DEFAULT_URL
   }
@@ -67,7 +67,7 @@ impl NpmRegistry {
     http_client: HttpClient,
     progress_bar: ProgressBar,
   ) -> Self {
-    Self(Some(Arc::new(NpmRegistryApiInner {
+    Self(Some(Arc::new(CliNpmRegistryApiInner {
       base_url,
       cache,
       force_reload: AtomicBool::new(false),
@@ -105,14 +105,18 @@ impl NpmRegistry {
   ///
   /// Returns true if it was successfully set for the first time.
   pub fn mark_force_reload(&self) -> bool {
-    // never force reload the registry information if reloading is disabled
-    if matches!(self.inner().cache.cache_setting(), CacheSetting::Only) {
+    // never force reload the registry information if reloading
+    // is disabled or if we're already reloading
+    if matches!(
+      self.inner().cache.cache_setting(),
+      CacheSetting::Only | CacheSetting::ReloadAll
+    ) {
       return false;
     }
     !self.inner().force_reload.swap(true, Ordering::SeqCst)
   }
 
-  fn inner(&self) -> &Arc<NpmRegistryApiInner> {
+  fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
     self.0.as_ref().unwrap()
@@ -123,7 +127,7 @@ static SYNC_DOWNLOAD_TASK_QUEUE: Lazy<TaskQueue> =
   Lazy::new(TaskQueue::default);
 
 #[async_trait]
-impl NpmRegistryApi for NpmRegistry {
+impl NpmRegistryApi for CliNpmRegistryApi {
   async fn package_info(
     &self,
     name: &str,
@@ -148,16 +152,17 @@ impl NpmRegistryApi for NpmRegistry {
   }
 }
 
+type CacheItemPendingResult =
+  Result<Option<Arc<NpmPackageInfo>>, Arc<AnyError>>;
+
 #[derive(Debug)]
 enum CacheItem {
-  Pending(
-    Shared<BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, String>>>,
-  ),
+  Pending(Shared<BoxFuture<'static, CacheItemPendingResult>>),
   Resolved(Option<Arc<NpmPackageInfo>>),
 }
 
 #[derive(Debug)]
-struct NpmRegistryApiInner {
+struct CliNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
   force_reload: AtomicBool,
@@ -167,7 +172,7 @@ struct NpmRegistryApiInner {
   progress_bar: ProgressBar,
 }
 
-impl NpmRegistryApiInner {
+impl CliNpmRegistryApiInner {
   pub async fn maybe_package_info(
     self: &Arc<Self>,
     name: &str,
@@ -197,9 +202,15 @@ impl NpmRegistryApiInner {
           let future = {
             let api = self.clone();
             let name = name.to_string();
-            async move { api.load_package_info_from_registry(&name).await }
-              .boxed()
-              .shared()
+            async move {
+              api
+                .load_package_info_from_registry(&name)
+                .await
+                .map(|info| info.map(Arc::new))
+                .map_err(Arc::new)
+            }
+            .boxed()
+            .shared()
           };
           mem_cache
             .insert(name.to_string(), CacheItem::Pending(future.clone()));
@@ -304,7 +315,7 @@ impl NpmRegistryApiInner {
   async fn load_package_info_from_registry(
     &self,
     name: &str,
-  ) -> Result<Option<Arc<NpmPackageInfo>>, String> {
+  ) -> Result<Option<NpmPackageInfo>, AnyError> {
     self
       .load_package_info_from_registry_inner(name)
       .await
@@ -315,9 +326,6 @@ impl NpmRegistryApiInner {
           name
         )
       })
-      .map(|info| info.map(Arc::new))
-      // make cloneable
-      .map_err(|err| format!("{err:#}"))
   }
 
   async fn load_package_info_from_registry_inner(
