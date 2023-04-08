@@ -24,9 +24,9 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface Listener extends AsyncIterable<Conn> {
+  export interface Listener<T extends Conn = Conn> extends AsyncIterable<T> {
     /** Waits for and resolves to the next connection to the `Listener`. */
-    accept(): Promise<Conn>;
+    accept(): Promise<T>;
     /** Close closes the listener. Any pending accept promises will be rejected
      * with errors. */
     close(): void;
@@ -36,7 +36,7 @@ declare namespace Deno {
     /** Return the rid of the `Listener`. */
     readonly rid: number;
 
-    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<T>;
 
     /**
      * Make the listener block the event loop from finishing.
@@ -54,11 +54,7 @@ declare namespace Deno {
    *
    * @category Network
    */
-  export interface TlsListener extends Listener, AsyncIterable<TlsConn> {
-    /** Waits for a TLS client to connect and accepts the connection. */
-    accept(): Promise<TlsConn>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<TlsConn>;
-  }
+  export type TlsListener = Listener<TlsConn>;
 
   /** @category Network */
   export interface Conn extends Reader, Writer, Closer {
