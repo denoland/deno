@@ -518,7 +518,7 @@ fn op_fstat_sync(
   let metadata = StdFileResource::with_file(state, rid, |std_file| {
     std_file.metadata().map_err(AnyError::from)
   })?;
-  let stat = get_stat(metadata);
+  let stat = get_stat(metadata, None);
   stat.write(out_buf);
   Ok(())
 }
@@ -533,7 +533,7 @@ async fn op_fstat_async(
       std_file.metadata().map_err(AnyError::from)
     })
     .await?;
-  Ok(get_stat(metadata))
+  Ok(get_stat(metadata, None))
 }
 
 #[op]
@@ -1182,7 +1182,7 @@ create_struct_writer! {
 }
 
 #[inline(always)]
-fn get_stat(metadata: std::fs::Metadata) -> FsStat {
+fn get_stat(metadata: std::fs::Metadata, dev: Option<u64>) -> FsStat {
   macro_rules! usm {
     // Unix stat member (number types only). 0 if not on unix.
     ($member:ident) => {{
@@ -1229,46 +1229,18 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
     birthtime,
     // Following are only valid under Unix.
     // is_block_device: usm!(is_block_device; ft),
-    dev: usm!(dev /* ; md*/),
-    ino: usm!(ino /* ; md*/),
-    mode: usm!(mode /* ; md*/),
-    nlink: usm!(nlink /* ; md*/),
-    uid: usm!(uid /* ; md*/),
-    gid: usm!(gid /* ; md*/),
-    rdev: usm!(rdev /* ; md*/),
-    blksize: usm!(blksize /* ; md*/),
-    blocks: usm!(blocks /* ; md*/),
-  }
-}
-
-#[cfg(windows)]
-#[inline(always)]
-fn get_stat2(metadata: std::fs::Metadata, dev: u64) -> FsStat {
-  let (mtime, mtime_set) = to_msec(metadata.modified());
-  let (atime, atime_set) = to_msec(metadata.accessed());
-  let (birthtime, birthtime_set) = to_msec(metadata.created());
-
-  FsStat {
-    is_file: metadata.is_file(),
-    is_directory: metadata.is_dir(),
-    is_symlink: metadata.file_type().is_symlink(),
-    size: metadata.len(),
-    mtime_set,
-    mtime,
-    atime_set,
-    atime,
-    birthtime_set,
-    birthtime,
-    // is_block_device: false,
-    dev,
-    ino: 0,
-    mode: 0,
-    nlink: 0,
-    uid: 0,
-    gid: 0,
-    rdev: 0,
-    blksize: 0,
-    blocks: 0,
+    dev: match dev {
+      Some(dev) => dev,
+      None => usm!(dev),
+    },
+    ino: usm!(ino),
+    mode: usm!(mode),
+    nlink: usm!(nlink),
+    uid: usm!(uid),
+    gid: usm!(gid),
+    rdev: usm!(rdev),
+    blksize: usm!(blksize),
+    blocks: usm!(blocks),
   }
 }
 
@@ -1289,7 +1261,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
 
-  Ok(get_stat(metadata))
+  Ok(get_stat(metadata, None))
 }
 
 #[cfg(windows)]
@@ -1343,7 +1315,7 @@ fn do_stat(path: PathBuf, lstat: bool) -> Result<FsStat, AnyError> {
     CloseHandle(file_handle);
     let dev = result?;
 
-    Ok(get_stat2(metadata, dev))
+    Ok(get_stat(metadata, dev))
   }
 }
 
