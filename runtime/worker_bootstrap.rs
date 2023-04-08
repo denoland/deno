@@ -189,13 +189,13 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::Number::new(
+      let val = v8::Integer::new(
         scope,
         match self.color_support_level {
-          colors::TTYColorLevel::TrueColor => 3.0,
-          colors::TTYColorLevel::Ansi256 => 2.0,
-          colors::TTYColorLevel::Basic => 1.0,
-          colors::TTYColorLevel::None => 0.0,
+          colors::TTYColorLevel::TrueColor => 3,
+          colors::TTYColorLevel::Ansi256 => 2,
+          colors::TTYColorLevel::Basic => 1,
+          colors::TTYColorLevel::None => 0,
         },
       );
       array.set_index(scope, 17, val.into());
