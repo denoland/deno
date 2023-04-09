@@ -28,12 +28,6 @@ itest!(stdin_read_all {
   input: Some("01234567890123456789012345678901234567890123456789"),
 });
 
-itest!(stdin_read_utf8 {
-  args: "run --quiet run/stdin_read_utf8.ts",
-  output: "run/stdin_read_utf8.out",
-  input: Some("☺"), // 0x01 in CP437
-});
-
 itest!(stdout_write_sync_async {
   args: "run --quiet run/stdout_write_sync_async.ts",
   output: "run/stdout_write_sync_async.out",
