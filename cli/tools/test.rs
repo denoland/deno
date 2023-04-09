@@ -650,6 +650,7 @@ impl PrettyTestReporter {
           failures_by_origin.entry(origin.clone()).or_default();
         let _ = uncaught_error.insert(js_error.as_ref());
       }
+      // note: the trailing whitespace is intentional to get a red background
       println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
         for (description, failure) in failures {
@@ -678,6 +679,7 @@ impl PrettyTestReporter {
           failure_titles.push(failure_title);
         }
       }
+      // note: the trailing whitespace is intentional to get a red background
       println!("{}\n", colors::white_bold_on_red(" FAILURES "));
       for failure_title in failure_titles {
         println!("{failure_title}");
@@ -1000,6 +1002,7 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
+        local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
         source: file_source.into(),

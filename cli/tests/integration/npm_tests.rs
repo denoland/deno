@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
 use std::process::Stdio;
 use test_util as util;
@@ -689,6 +691,13 @@ itest!(deno_run_bin_esm {
   http_server: true,
 });
 
+itest!(deno_run_bin_special_chars {
+  args: "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
+  output: "npm/deno_run_special_chars_in_bin_name.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(deno_run_bin_no_ext {
   args: "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
   output: "npm/deno_run_no_ext.out",
@@ -722,6 +731,15 @@ itest!(node_modules_dir_require_added_node_modules_folder {
   args:
     "run --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(node_modules_dir_require_main_entry {
+  args: "run --node-modules-dir -A --quiet $TESTDATA/npm/require_main/main.js",
+  output: "npm/require_main/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 0,
@@ -1103,7 +1121,13 @@ fn lock_file_missing_top_level_package() {
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(
     stderr,
-    "error: failed reading lockfile 'deno.lock'\n\nCaused by:\n    the lockfile is corrupt. You can recreate it with --lock-write\n"
+    concat!(
+      "error: failed reading lockfile 'deno.lock'\n",
+      "\n",
+      "Caused by:\n",
+      "    0: The lockfile is corrupt. You can recreate it with --lock-write\n",
+      "    1: Could not find referenced package 'cowsay@1.5.0' in the list of packages.\n"
+    )
   );
 }
 
@@ -1524,3 +1548,124 @@ itest!(node_modules_import_check {
   copy_temp_dir: Some("npm/node_modules_import/"),
   exit_code: 1,
 });
+
+itest!(non_existent_dep {
+  args: "cache npm:@denotest/non-existent-dep",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+  output_str: Some(concat!(
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep\n",
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent\n",
+    "error: npm package '@denotest/non-existent' does not exist.\n"
+  )),
+});
+
+itest!(non_existent_dep_version {
+  args: "cache npm:@denotest/non-existent-dep-version",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+  output_str: Some(concat!(
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    // does two downloads because when failing once it max tries to
+    // get the latest version a second time
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
+  )),
+});
+
+#[test]
+fn reload_info_not_found_cache_but_exists_remote() {
+  fn remove_version(registry_json: &mut Value, version: &str) {
+    registry_json
+      .as_object_mut()
+      .unwrap()
+      .get_mut("versions")
+      .unwrap()
+      .as_object_mut()
+      .unwrap()
+      .remove(version);
+  }
+
+  // This tests that when a local machine doesn't have a version
+  // specified in a dependency that exists in the npm registry
+  let test_context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_temp_cwd()
+    .build();
+  let deno_dir = test_context.deno_dir();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    "import 'npm:@denotest/esm-import-cjs-default@1.0.0';",
+  );
+
+  // cache successfully to the deno_dir
+  let output = test_context.new_command().args("cache main.ts").run();
+  output.assert_matches_text(concat!(
+    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export/1.0.0.tgz\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
+  ));
+
+  // modify the package information in the cache to remove the latest version
+  let registry_json_path = "npm/localhost_4545/npm/registry/@denotest/cjs-default-export/registry.json";
+  let mut registry_json: Value =
+    serde_json::from_str(&deno_dir.read_to_string(registry_json_path)).unwrap();
+  remove_version(&mut registry_json, "1.0.0");
+  deno_dir.write(
+    registry_json_path,
+    serde_json::to_string(&registry_json).unwrap(),
+  );
+
+  // should error when `--cache-only` is used now because the version is not in the cache
+  let output = test_context
+    .new_command()
+    .args("run --cached-only main.ts")
+    .run();
+  output.assert_exit_code(1);
+  output.assert_matches_text("error: Could not find npm package '@denotest/cjs-default-export' matching '^1.0.0'.\n");
+
+  // now try running without it, it should download the package now
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(concat!(
+    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+    "Node esm importing node cjs\n[WILDCARD]",
+  ));
+  output.assert_exit_code(0);
+
+  // now remove the information for the top level package
+  let registry_json_path = "npm/localhost_4545/npm/registry/@denotest/esm-import-cjs-default/registry.json";
+  let mut registry_json: Value =
+    serde_json::from_str(&deno_dir.read_to_string(registry_json_path)).unwrap();
+  remove_version(&mut registry_json, "1.0.0");
+  deno_dir.write(
+    registry_json_path,
+    serde_json::to_string(&registry_json).unwrap(),
+  );
+
+  // should error again for --cached-only
+  let output = test_context
+    .new_command()
+    .args("run --cached-only main.ts")
+    .run();
+  output.assert_exit_code(1);
+  output.assert_matches_text(concat!(
+    "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'. Try retrieving the latest npm package information by running with --reload\n",
+    "    at file:///[WILDCARD]/main.ts:1:8\n",
+  ));
+
+  // now try running without it, it currently will error, but this should work in the future
+  // todo(https://github.com/denoland/deno/issues/16901): fix this
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_exit_code(1);
+  output.assert_matches_text(concat!(
+    "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'. Try retrieving the latest npm package information by running with --reload\n",
+    "    at file:///[WILDCARD]/main.ts:1:8\n",
+  ));
+}

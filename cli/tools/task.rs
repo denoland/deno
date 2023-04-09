@@ -10,7 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_graph::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
