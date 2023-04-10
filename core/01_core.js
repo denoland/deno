@@ -170,6 +170,7 @@
         const cb = macrotaskCallbacks[i];
         while (true) {
           const res = cb();
+          ops.op_run_microtasks();
           if (res === true) {
             break;
           }
