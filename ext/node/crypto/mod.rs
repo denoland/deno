@@ -9,6 +9,7 @@ use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
+use num_traits::FromPrimitive;
 use rand::Rng;
 use std::future::Future;
 use std::rc::Rc;
@@ -476,4 +477,39 @@ pub async fn op_node_hkdf_async(
     Ok(okm.into())
   })
   .await?
+}
+
+use rsa::pkcs1::EncodeRsaPrivateKey;
+use rsa::pkcs1::EncodeRsaPublicKey;
+
+// For RSA-PSS, see `generate_rsa_pss()`
+fn generate_rsa(
+  modulus_length: usize,
+  public_exponent: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let mut rng = rand::thread_rng();
+  let private_key =
+    RsaPrivateKey::new_with_exp(&mut rng, modulus_length, &rsa::BigUint::from_usize(public_exponent).unwrap())?;
+  let public_key = private_key.to_public_key();
+  let private_key_der = private_key.to_pkcs1_der()?.as_bytes().to_vec();
+  let public_key_der = public_key.to_pkcs1_der()?.to_vec();
+
+  Ok((private_key_der.into(), public_key_der.into()))
+}
+
+#[op]
+pub fn op_node_generate_rsa(
+  modulus_length: usize,
+  public_exponent: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  generate_rsa(modulus_length, public_exponent)
+}
+
+#[op]
+pub async fn op_node_generate_rsa_async(
+  modulus_length: usize,
+  public_exponent: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || generate_rsa(modulus_length, public_exponent))
+    .await?
 }

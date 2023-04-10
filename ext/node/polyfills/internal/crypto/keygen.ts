@@ -8,13 +8,20 @@ import {
   setOwnedKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
 import {
+  ERR_INCOMPATIBLE_OPTION_PAIR,
+  ERR_INVALID_ARG_VALUE,
+  ERR_MISSING_OPTION,
+} from "ext:deno_node/internal/errors.ts";
+import {
+  validateBuffer,
   validateFunction,
+  validateInt32,
   validateInteger,
   validateObject,
   validateOneOf,
   validateString,
+  validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
@@ -716,12 +723,209 @@ export function generateKeyPairSync(
   options?: X448KeyPairKeyObjectOptions,
 ): KeyPairKeyObjectResult;
 export function generateKeyPairSync(
-  _type: KeyType,
-  _options: unknown,
+  type: KeyType,
+  options: unknown,
 ):
   | KeyPairKeyObjectResult
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
-  notImplemented("crypto.generateKeyPairSync");
+  return createJob(kSync, type, options);
+}
+
+const kSync = 0;
+const kAsync = 1;
+
+function createJob(mode, type, options) {
+  validateString(type, "type");
+
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+
+  switch (type) {
+    case "rsa":
+    case "rsa-pss": {
+      validateObject(options, "options");
+      const { modulusLength } = options;
+      validateUint32(modulusLength, "options.modulusLength");
+
+      let { publicExponent } = options;
+      if (publicExponent == null) {
+        publicExponent = 0x10001;
+      } else {
+        validateUint32(publicExponent, "options.publicExponent");
+      }
+
+      if (type === "rsa") {
+        if (mode === kSync) {
+          return ops.op_node_generate_rsa(
+            modulusLength,
+            publicExponent,
+          );
+        } else {
+          return core.opAsync("op_node_generate_rsa_async", modulusLength, publicExponent);
+        }
+      }
+
+      const {
+        hash,
+        mgf1Hash,
+        hashAlgorithm,
+        mgf1HashAlgorithm,
+        saltLength,
+      } = options;
+
+      if (saltLength !== undefined) {
+        validateInt32(saltLength, "options.saltLength", 0);
+      }
+      if (hashAlgorithm !== undefined) {
+        validateString(hashAlgorithm, "options.hashAlgorithm");
+      }
+      if (mgf1HashAlgorithm !== undefined) {
+        validateString(mgf1HashAlgorithm, "options.mgf1HashAlgorithm");
+      }
+      if (hash !== undefined) {
+        process.emitWarning(
+          '"options.hash" is deprecated, ' +
+            'use "options.hashAlgorithm" instead.',
+          "DeprecationWarning",
+          "DEP0154",
+        );
+        validateString(hash, "options.hash");
+        if (hashAlgorithm && hash !== hashAlgorithm) {
+          throw new ERR_INVALID_ARG_VALUE("options.hash", hash);
+        }
+      }
+      if (mgf1Hash !== undefined) {
+        process.emitWarning(
+          '"options.mgf1Hash" is deprecated, ' +
+            'use "options.mgf1HashAlgorithm" instead.',
+          "DeprecationWarning",
+          "DEP0154",
+        );
+        validateString(mgf1Hash, "options.mgf1Hash");
+        if (mgf1HashAlgorithm && mgf1Hash !== mgf1HashAlgorithm) {
+          throw new ERR_INVALID_ARG_VALUE("options.mgf1Hash", mgf1Hash);
+        }
+      }
+
+      return new RsaKeyPairGenJob(
+        mode,
+        kKeyVariantRSA_PSS,
+        modulusLength,
+        publicExponent,
+        hashAlgorithm || hash,
+        mgf1HashAlgorithm || mgf1Hash,
+        saltLength,
+        ...encoding,
+      );
+    }
+    case "dsa": {
+      validateObject(options, "options");
+      const { modulusLength } = options;
+      validateUint32(modulusLength, "options.modulusLength");
+
+      let { divisorLength } = options;
+      if (divisorLength == null) {
+        divisorLength = -1;
+      } else {
+        validateInt32(divisorLength, "options.divisorLength", 0);
+      }
+
+      return new DsaKeyPairGenJob(
+        mode,
+        modulusLength,
+        divisorLength,
+        ...encoding,
+      );
+    }
+    case "ec": {
+      validateObject(options, "options");
+      const { namedCurve } = options;
+      validateString(namedCurve, "options.namedCurve");
+      let { paramEncoding } = options;
+      if (paramEncoding == null || paramEncoding === "named") {
+        paramEncoding = OPENSSL_EC_NAMED_CURVE;
+      } else if (paramEncoding === "explicit") {
+        paramEncoding = OPENSSL_EC_EXPLICIT_CURVE;
+      } else {
+        throw new ERR_INVALID_ARG_VALUE("options.paramEncoding", paramEncoding);
+      }
+
+      return new EcKeyPairGenJob(
+        mode,
+        namedCurve,
+        paramEncoding,
+        ...encoding,
+      );
+    }
+    case "ed25519":
+    case "ed448":
+    case "x25519":
+    case "x448": {
+      let id;
+      switch (type) {
+        case "ed25519":
+          id = EVP_PKEY_ED25519;
+          break;
+        case "ed448":
+          id = EVP_PKEY_ED448;
+          break;
+        case "x25519":
+          id = EVP_PKEY_X25519;
+          break;
+        case "x448":
+          id = EVP_PKEY_X448;
+          break;
+      }
+      return new NidKeyPairGenJob(mode, id, ...encoding);
+    }
+    case "dh": {
+      validateObject(options, "options");
+      const { group, primeLength, prime, generator } = options;
+      if (group != null) {
+        if (prime != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "prime");
+        }
+        if (primeLength != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "primeLength");
+        }
+        if (generator != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "generator");
+        }
+
+        validateString(group, "options.group");
+
+        return new DhKeyPairGenJob(mode, group, ...encoding);
+      }
+
+      if (prime != null) {
+        if (primeLength != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("prime", "primeLength");
+        }
+
+        validateBuffer(prime, "options.prime");
+      } else if (primeLength != null) {
+        validateInt32(primeLength, "options.primeLength", 0);
+      } else {
+        throw new ERR_MISSING_OPTION(
+          "At least one of the group, prime, or primeLength options",
+        );
+      }
+
+      if (generator != null) {
+        validateInt32(generator, "options.generator", 0);
+      }
+      return new DhKeyPairGenJob(
+        mode,
+        prime != null ? prime : primeLength,
+        generator == null ? 2 : generator,
+        ...encoding,
+      );
+    }
+    default:
+      // Fall through
+  }
+  throw new ERR_INVALID_ARG_VALUE("type", type, "must be a supported key type");
 }
 
 export default {
