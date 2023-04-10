@@ -158,8 +158,6 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
   known_realms: Vec<v8::Weak<v8::Context>>,
-  pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
-  pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
@@ -342,8 +340,6 @@ impl JsRuntime {
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
-      js_macrotask_cbs: vec![],
-      js_nexttick_cbs: vec![],
       has_tick_scheduled: false,
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
@@ -825,7 +821,7 @@ impl JsRuntime {
     scope.escape(v).try_into().ok()
   }
 
-  /// Grabs a reference to core.js' opresolve & syncOpsCache()
+  /// Grabs a reference to core.js' opresolve & buildCustomError
   fn init_cbs(&mut self, realm: &JsRealm) {
     let (recv_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
@@ -993,8 +989,6 @@ impl JsRuntime {
       }
 
       let mut state = self.state.borrow_mut();
-      state.js_macrotask_cbs.clear();
-      state.js_nexttick_cbs.clear();
       state.known_realms.clear();
     }
 
@@ -1218,13 +1212,11 @@ impl JsRuntime {
       }
     }
 
-    // Ops
+    // Resolve async ops, run all next tick callbacks and macrotasks callbacks
+    // and only then check for any promise exceptions (`unhandledrejection`
+    // handlers are run in macrotasks callbacks so we need to let them run
+    // first).
     self.resolve_async_ops(cx)?;
-    // Run all next tick callbacks and macrotasks callbacks and only then
-    // check for any promise exceptions (`unhandledrejection` handlers are
-    // run in macrotasks callbacks so we need to let them run first).
-    self.drain_nexttick()?;
-    self.drain_macrotasks()?;
     self.check_promise_rejections()?;
 
     // Event loop middlewares
@@ -2221,10 +2213,6 @@ impl JsRuntime {
     // Handle responses for each realm.
     let isolate = self.v8_isolate.as_mut().unwrap();
     for (realm_idx, responses) in responses_per_realm.into_iter().enumerate() {
-      if responses.is_empty() {
-        continue;
-      }
-
       let realm = {
         let context = self.state.borrow().known_realms[realm_idx]
           .to_global(isolate)
@@ -2243,10 +2231,15 @@ impl JsRuntime {
       // This batch is received in JS via the special `arguments` variable
       // and then each tuple is used to resolve or reject promises
       //
-      // This can handle 16 promises (32 / 2) futures in a single batch without heap
+      // This can handle 15 promises futures in a single batch without heap
       // allocations.
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
-        SmallVec::with_capacity(responses.len() * 2);
+        SmallVec::with_capacity(responses.len() * 2 + 2);
+      let has_tick_scheduled =
+        v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+      args.push(has_tick_scheduled.into());
+      let v8_true = v8::Boolean::new(scope, true);
+      args.push(v8_true.into());
 
       for (promise_id, mut resp) in responses {
         context_state.unrefed_ops.remove(&promise_id);
@@ -2270,6 +2263,10 @@ impl JsRuntime {
         // TODO(@andreubotella): Returning here can cause async ops in other
         // realms to never resolve.
         return exception_to_err_result(tc_scope, exception, false);
+      }
+
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Ok(());
       }
     }
 
@@ -2297,9 +2294,14 @@ impl JsRuntime {
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
     //
-    // This can handle 16 promises (32 / 2) futures in a single batch without heap
+    // This can handle 15 promises futures in a single batch without heap
     // allocations.
     let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
+    let has_tick_scheduled =
+      v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+    args.push(has_tick_scheduled.into());
+    let v8_true = v8::Boolean::new(scope, true);
+    args.push(v8_true.into());
 
     // Now handle actual ops.
     {
@@ -2328,10 +2330,6 @@ impl JsRuntime {
       }
     }
 
-    if args.is_empty() {
-      return Ok(());
-    }
-
     let js_recv_cb_handle = {
       let state = self.state.borrow_mut();
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
@@ -2343,77 +2341,12 @@ impl JsRuntime {
     let this = v8::undefined(tc_scope).into();
     js_recv_cb.call(tc_scope, this, args.as_slice());
 
-    match tc_scope.exception() {
-      None => Ok(()),
-      Some(exception) => exception_to_err_result(tc_scope, exception, false),
+    if let Some(exception) = tc_scope.exception() {
+      return exception_to_err_result(tc_scope, exception, false);
     }
-  }
 
-  fn drain_macrotasks(&mut self) -> Result<(), Error> {
-    if self.state.borrow().js_macrotask_cbs.is_empty() {
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Ok(());
-    }
-
-    let js_macrotask_cb_handles = self.state.borrow().js_macrotask_cbs.clone();
-    let scope = &mut self.handle_scope();
-
-    for js_macrotask_cb_handle in js_macrotask_cb_handles {
-      let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
-
-      // Repeatedly invoke macrotask callback until it returns true (done),
-      // such that ready microtasks would be automatically run before
-      // next macrotask is processed.
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let this = v8::undefined(tc_scope).into();
-      loop {
-        let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
-
-        if let Some(exception) = tc_scope.exception() {
-          return exception_to_err_result(tc_scope, exception, false);
-        }
-
-        if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-          return Ok(());
-        }
-
-        let is_done = is_done.unwrap();
-        if is_done.is_true() {
-          break;
-        }
-      }
-    }
-
-    Ok(())
-  }
-
-  fn drain_nexttick(&mut self) -> Result<(), Error> {
-    if self.state.borrow().js_nexttick_cbs.is_empty() {
-      return Ok(());
-    }
-
-    let state = self.state.clone();
-    if !state.borrow().has_tick_scheduled {
-      let scope = &mut self.handle_scope();
-      scope.perform_microtask_checkpoint();
-    }
-
-    // TODO(bartlomieju): Node also checks for absence of "rejection_to_warn"
-    if !state.borrow().has_tick_scheduled {
-      return Ok(());
-    }
-
-    let js_nexttick_cb_handles = state.borrow().js_nexttick_cbs.clone();
-    let scope = &mut self.handle_scope();
-
-    for js_nexttick_cb_handle in js_nexttick_cb_handles {
-      let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
-
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let this = v8::undefined(tc_scope).into();
-      js_nexttick_cb.call(tc_scope, this, &[]);
-      if let Some(exception) = tc_scope.exception() {
-        return exception_to_err_result(tc_scope, exception, false);
-      }
     }
 
     Ok(())
@@ -2473,6 +2406,8 @@ pub fn queue_async_op(
       let context_state = context_state_rc.borrow();
 
       let args = &[
+        v8::undefined(scope).into(),
+        v8::undefined(scope).into(),
         v8::Integer::new(scope, promise_id).into(),
         resp.to_v8(scope).unwrap(),
       ];
@@ -3104,7 +3039,7 @@ pub mod tests {
         .execute_script_static(
           "a.js",
           r#"
-          Deno.core.ops.op_set_macrotask_callback(() => {
+          Deno.core.setMacrotaskCallback(() => {
             return true;
           });
           Deno.core.ops.op_set_format_exception_callback(()=> {
@@ -3898,11 +3833,11 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         
         (async function () {
           const results = [];
-          Deno.core.ops.op_set_macrotask_callback(() => {
+          Deno.core.setMacrotaskCallback(() => {
             results.push("macrotask");
             return true;
           });
-          Deno.core.ops.op_set_next_tick_callback(() => {
+          Deno.core.setNextTickCallback(() => {
             results.push("nextTick");
             Deno.core.ops.op_set_has_tick_scheduled(false);
           });
@@ -3919,28 +3854,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
-  }
-
-  #[tokio::test]
-  async fn test_set_macrotask_callback_set_next_tick_callback_multiple() {
-    let mut runtime = JsRuntime::new(Default::default());
-
-    runtime
-      .execute_script_static(
-        "multiple_macrotasks_and_nextticks.js",
-        r#"
-        Deno.core.ops.op_set_macrotask_callback(() => { return true; });
-        Deno.core.ops.op_set_macrotask_callback(() => { return true; });
-        Deno.core.ops.op_set_next_tick_callback(() => {});
-        Deno.core.ops.op_set_next_tick_callback(() => {});
-        "#,
-      )
-      .unwrap();
-    let isolate = runtime.v8_isolate();
-    let state_rc = JsRuntime::state(isolate);
-    let state = state_rc.borrow();
-    assert_eq!(state.js_macrotask_cbs.len(), 2);
-    assert_eq!(state.js_nexttick_cbs.len(), 2);
   }
 
   #[test]
@@ -3972,11 +3885,11 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .execute_script_static(
         "has_tick_scheduled.js",
         r#"
-          Deno.core.ops.op_set_macrotask_callback(() => {
+          Deno.core.setMacrotaskCallback(() => {
             Deno.core.ops.op_macrotask();
             return true; // We're done.
           });
-          Deno.core.ops.op_set_next_tick_callback(() => Deno.core.ops.op_next_tick());
+          Deno.core.setNextTickCallback(() => Deno.core.ops.op_next_tick());
           Deno.core.ops.op_set_has_tick_scheduled(true);
           "#,
       )

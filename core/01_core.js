@@ -133,12 +133,48 @@
     return promiseRing[idx] != NO_PROMISE;
   }
 
+  const macrotaskCallbacks = [];
+  const nextTickCallbacks = [];
+
+  function setMacrotaskCallback(cb) {
+    ArrayPrototypePush(macrotaskCallbacks, cb);
+  }
+
+  function setNextTickCallback(cb) {
+    ArrayPrototypePush(nextTickCallbacks, cb);
+  }
+
+  // TODO(bartlomieju): rename
   function opresolve() {
-    for (let i = 0; i < arguments.length; i += 2) {
+    const hasTickScheduled = arguments[0];
+    const drainMacrotasks = arguments[1];
+    // First respond to all pending ops.
+    for (let i = 2; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
+    }
+    // Drain nextTick queue if there's a tick scheduled.
+    if (hasTickScheduled === true) {
+      for (let i = 0; i < nextTickCallbacks.length; i++) {
+        nextTickCallbacks[i]();
+      }
+    } else if (hasTickScheduled === false) {
+      // TODO(bartlomieju): why do we need it here?
+      ops.op_run_microtasks();
+    }
+    // Finally drain macrotask queue.
+    if (drainMacrotasks === true) {
+      for (let i = 0; i < macrotaskCallbacks.length; i++) {
+        const cb = macrotaskCallbacks[i];
+        while (true) {
+          const res = cb();
+          if (res === true) {
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -416,8 +452,8 @@
     writeSync: (rid, buffer) => ops.op_write_sync(rid, buffer),
     shutdown: opAsync.bind(null, "op_shutdown"),
     print: (msg, isErr) => ops.op_print(msg, isErr),
-    setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
-    setNextTickCallback: (fn) => ops.op_set_next_tick_callback(fn),
+    setMacrotaskCallback,
+    setNextTickCallback,
     runMicrotasks: () => ops.op_run_microtasks(),
     hasTickScheduled: () => ops.op_has_tick_scheduled(),
     setHasTickScheduled: (bool) => ops.op_set_has_tick_scheduled(bool),
