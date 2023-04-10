@@ -868,7 +868,6 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
-    eprintln!("replaced js_recv_cb!!!");
     state.js_recv_cb.replace(recv_cb);
     state
       .js_build_custom_error_cb
