@@ -358,12 +358,11 @@ impl CachePutResource {
     .await?;
     match maybe_body_key {
       Some(key) => {
-        // Ensure the response body key is the same as the one we
-        // inserted into the database.
         assert_eq!(key, self.response_body_key);
         Ok(())
       }
-      // This should never happen.
+      // This should never happen because we will always have
+      // body key associated with CachePutResource
       None => Err(deno_core::anyhow::anyhow!(
         "unexpected: response body key is None"
       )),
