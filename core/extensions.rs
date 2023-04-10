@@ -345,7 +345,7 @@ pub struct Extension {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
   enabled: bool,
-  name: &'static str,
+  pub(crate) name: &'static str,
   deps: Option<&'static [&'static str]>,
   force_op_registration: bool,
 }

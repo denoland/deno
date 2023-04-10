@@ -537,9 +537,6 @@ impl JsRuntime {
     js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
     js_runtime.init_extension_js(&realm).unwrap();
-    // Init callbacks (opresolve)
-    let global_realm = js_runtime.global_realm();
-    js_runtime.init_cbs(&global_realm);
 
     js_runtime
   }
@@ -641,7 +638,6 @@ impl JsRuntime {
     };
 
     self.init_extension_js(&realm)?;
-    self.init_cbs(&realm);
     Ok(realm)
   }
 
@@ -736,6 +732,10 @@ impl JsRuntime {
             )?;
           }
         }
+      }
+
+      if ext.name == "core" {
+        self.init_cbs(realm);
       }
     }
     // Restore extensions
@@ -868,6 +868,7 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
+    eprintln!("replaced js_recv_cb!!!");
     state.js_recv_cb.replace(recv_cb);
     state
       .js_build_custom_error_cb
