@@ -107,3 +107,49 @@ itest!(package_json_basic {
   copy_temp_dir: Some("package_json/basic"),
   exit_code: 0,
 });
+
+// Cache API put() regression tests.
+// See https://github.com/denoland/deno/issues/17299
+// Note: It is important that part1 runs before part2.
+itest!(cache_put_overwrite_part1 {
+  args: "run -",
+  input: Some(
+    r#"
+const req = new Request('http://localhost/abc');
+const res1 = new Response('res1');
+const res2 = new Response('res2');
+
+const cache = await caches.open('test');
+
+await cache.put(req, res1);
+await cache.put(req, res2);
+
+const res = await cache.match(req).then((res) => res?.text());
+console.log(res);
+  "#
+  ),
+  output_str: Some("res2\n"),
+  exit_code: 0,
+});
+
+itest!(cache_put_overwrite_part2 {
+  args: "run -",
+  input: Some(
+    r#"
+const req = new Request("http://localhost/abc");
+const res1 = new Response("res1");
+const res2 = new Response("res2");
+
+const cache = await caches.open("test");
+
+// Swap the order of put() calls.
+await cache.put(req, res2);
+await cache.put(req, res1);
+
+const res = await cache.match(req).then((res) => res?.text());
+console.log(res);
+    "#
+  ),
+  output_str: Some("res1\n"),
+  exit_code: 0,
+});
