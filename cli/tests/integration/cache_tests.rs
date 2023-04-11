@@ -115,9 +115,12 @@ fn cache_matching_package_json_dep_should_not_reload() {
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "package.json",
-    r#"{ "dependencies": { "@types/node": "*", "@denotest/esm-basic": "*" } }"#,
+    r#"{ "dependencies": { "@types/node": "18.8.2", "@denotest/esm-basic": "*" } }"#,
   );
-  let output = context.new_command().args("cache npm:@types/node").run();
+  let output = context
+    .new_command()
+    .args("cache npm:@types/node@18.8.2")
+    .run();
   output.assert_matches_text(concat!(
     "Download http://localhost:4545/npm/registry/@types/node\n",
     "Download http://localhost:4545/npm/registry/@types/node/node-18.8.2.tgz\n",
