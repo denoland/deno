@@ -8,7 +8,7 @@ use deno_core::futures::StreamExt;
 use deno_npm::registry::NpmRegistryApi;
 
 use crate::args::package_json::PackageJsonDeps;
-use crate::util::synchronization::AtomicFlag;
+use crate::util::sync::AtomicFlag;
 
 use super::CliNpmRegistryApi;
 use super::NpmResolution;

@@ -29,7 +29,7 @@ use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
-use crate::util::synchronization::AtomicFlag;
+use crate::util::sync::AtomicFlag;
 
 use super::cache::should_sync_download;
 use super::cache::NpmCache;
