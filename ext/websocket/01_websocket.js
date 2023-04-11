@@ -22,16 +22,19 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
   DataView,
+  DataViewPrototypeGetByteLength,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   RegExpPrototypeTest,
   Set,
+  SetPrototypeGetSize,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
   String,
@@ -41,6 +44,8 @@ const {
   SymbolIterator,
   PromisePrototypeCatch,
   SymbolFor,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
 webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -73,6 +78,11 @@ webidl.converters["WebSocketSend"] = (V, opts) => {
   return webidl.converters["USVString"](V, opts);
 };
 
+/** role */
+const SERVER = 0;
+const CLIENT = 1;
+
+/** state */
 const CONNECTING = 0;
 const OPEN = 1;
 const CLOSING = 2;
@@ -81,6 +91,7 @@ const CLOSED = 3;
 const _readyState = Symbol("[[readyState]]");
 const _url = Symbol("[[url]]");
 const _rid = Symbol("[[rid]]");
+const _role = Symbol("[[role]]");
 const _extensions = Symbol("[[extensions]]");
 const _protocol = Symbol("[[protocol]]");
 const _binaryType = Symbol("[[binaryType]]");
@@ -93,6 +104,7 @@ const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
 class WebSocket extends EventTarget {
   [_rid];
+  [_role];
 
   [_readyState] = CONNECTING;
   get readyState() {
@@ -198,6 +210,7 @@ class WebSocket extends EventTarget {
     }
 
     this[_url] = wsURL.href;
+    this[_role] = CLIENT;
 
     ops.op_ws_check_permission_and_cancel_handle(
       "WebSocket.abort()",
@@ -211,9 +224,11 @@ class WebSocket extends EventTarget {
 
     if (
       protocols.length !==
-        new Set(
-          ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
-        ).size
+        SetPrototypeGetSize(
+          new Set(
+            ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
+          ),
+        )
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -298,12 +313,22 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    const sendTypedArray = (ta) => {
-      this[_bufferedAmount] += ta.byteLength;
+    /**
+     * @param {ArrayBufferView} view
+     * @param {number} byteLength
+     */
+    const sendTypedArray = (view, byteLength) => {
+      this[_bufferedAmount] += byteLength;
       PromisePrototypeThen(
-        core.opAsync("op_ws_send_binary", this[_rid], ta),
+        core.opAsync2(
+          this[_role] === SERVER
+            ? "op_server_ws_send_binary"
+            : "op_ws_send_binary",
+          this[_rid],
+          view,
+        ),
         () => {
-          this[_bufferedAmount] -= ta.byteLength;
+          this[_bufferedAmount] -= byteLength;
         },
       );
     };
@@ -311,20 +336,37 @@ class WebSocket extends EventTarget {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         data.slice().arrayBuffer(),
-        (ab) => sendTypedArray(new DataView(ab)),
+        (ab) =>
+          sendTypedArray(
+            new DataView(ab),
+            ArrayBufferPrototypeGetByteLength(ab),
+          ),
       );
     } else if (ArrayBufferIsView(data)) {
-      sendTypedArray(data);
+      if (TypedArrayPrototypeGetSymbolToStringTag(data) === undefined) {
+        // DataView
+        sendTypedArray(data, DataViewPrototypeGetByteLength(data));
+      } else {
+        // TypedArray
+        sendTypedArray(data, TypedArrayPrototypeGetByteLength(data));
+      }
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      sendTypedArray(new DataView(data));
+      sendTypedArray(
+        new DataView(data),
+        ArrayBufferPrototypeGetByteLength(data),
+      );
     } else {
       const string = String(data);
       const d = core.encode(string);
-      this[_bufferedAmount] += d.byteLength;
+      this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(d);
       PromisePrototypeThen(
-        core.opAsync("op_ws_send_text", this[_rid], string),
+        core.opAsync2(
+          this[_role] === SERVER ? "op_server_ws_send_text" : "op_ws_send_text",
+          this[_rid],
+          string,
+        ),
         () => {
-          this[_bufferedAmount] -= d.byteLength;
+          this[_bufferedAmount] -= TypedArrayPrototypeGetByteLength(d);
         },
       );
     }
@@ -361,7 +403,10 @@ class WebSocket extends EventTarget {
       }
     }
 
-    if (reason !== undefined && core.encode(reason).byteLength > 123) {
+    if (
+      reason !== undefined &&
+      TypedArrayPrototypeGetByteLength(core.encode(reason)) > 123
+    ) {
       throw new DOMException(
         "The close reason may not be longer than 123 bytes.",
         "SyntaxError",
@@ -374,7 +419,12 @@ class WebSocket extends EventTarget {
       this[_readyState] = CLOSING;
 
       PromisePrototypeCatch(
-        core.opAsync("op_ws_close", this[_rid], code, reason),
+        core.opAsync(
+          this[_role] === SERVER ? "op_server_ws_close" : "op_ws_close",
+          this[_rid],
+          code,
+          reason,
+        ),
         (err) => {
           this[_readyState] = CLOSED;
 
@@ -394,8 +444,8 @@ class WebSocket extends EventTarget {
 
   async [_eventLoop]() {
     while (this[_readyState] !== CLOSED) {
-      const { 0: kind, 1: value } = await core.opAsync(
-        "op_ws_next_event",
+      const { 0: kind, 1: value } = await core.opAsync2(
+        this[_role] === SERVER ? "op_server_ws_next_event" : "op_ws_next_event",
         this[_rid],
       );
 
@@ -462,7 +512,7 @@ class WebSocket extends EventTarget {
           if (prevState === OPEN) {
             try {
               await core.opAsync(
-                "op_ws_close",
+                this[_role] === SERVER ? "op_server_ws_close" : "op_ws_close",
                 this[_rid],
                 code,
                 value,
@@ -490,14 +540,23 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await core.opAsync("op_ws_send", this[_rid], {
-            kind: "ping",
-          });
+          await core.opAsync(
+            this[_role] === SERVER ? "op_server_ws_send" : "op_ws_send",
+            this[_rid],
+            {
+              kind: "ping",
+            },
+          );
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
               const reason = "No response from ping frame.";
-              await core.opAsync("op_ws_close", this[_rid], 1001, reason);
+              await core.opAsync(
+                this[_role] === SERVER ? "op_server_ws_close" : "op_ws_close",
+                this[_rid],
+                1001,
+                reason,
+              );
               this[_readyState] = CLOSED;
 
               const errEvent = new ErrorEvent("error", {
@@ -567,7 +626,9 @@ export {
   _protocol,
   _readyState,
   _rid,
+  _role,
   _server,
   _serverHandleIdleTimeout,
+  SERVER,
   WebSocket,
 };

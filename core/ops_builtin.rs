@@ -33,6 +33,8 @@ crate::extension!(
     op_read,
     op_read_all,
     op_write,
+    op_read_sync,
+    op_write_sync,
     op_write_all,
     op_shutdown,
     op_metrics,
@@ -277,6 +279,27 @@ async fn op_write(
   let view = BufView::from(buf);
   let resp = resource.write(view).await?;
   Ok(resp.nwritten() as u32)
+}
+
+#[op(fast)]
+fn op_read_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  data: &mut [u8],
+) -> Result<u32, Error> {
+  let resource = state.resource_table.get_any(rid)?;
+  resource.read_byob_sync(data).map(|n| n as u32)
+}
+
+#[op]
+fn op_write_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  data: &[u8],
+) -> Result<u32, Error> {
+  let resource = state.resource_table.get_any(rid)?;
+  let nwritten = resource.write_sync(data)?;
+  Ok(nwritten as u32)
 }
 
 #[op]

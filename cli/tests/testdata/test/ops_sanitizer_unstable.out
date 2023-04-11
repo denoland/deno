@@ -10,7 +10,7 @@ error: Leaking async ops:
   - 1 async operation to sleep for a duration was started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operation was started here:
     at [WILDCARD]
     at setInterval ([WILDCARD])
-    at [WILDCARD]/testdata/test/ops_sanitizer_unstable.ts:3:3
+    at fn ([WILDCARD]/testdata/test/ops_sanitizer_unstable.ts:7:5)
     at [WILDCARD]
 
  FAILURES 

@@ -17,7 +17,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_graph::semver::Version;
+use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -265,15 +265,13 @@ pub async fn upgrade(
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   let current_exe_path = std::env::current_exe()?;
-  let output_exe_path =
-    upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
-  let metadata = fs::metadata(output_exe_path)?;
+  let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
 
   if permissions.readonly() {
     bail!(
       "You do not have write permission to {}",
-      output_exe_path.display()
+      current_exe_path.display()
     );
   }
   #[cfg(unix)]
@@ -284,7 +282,7 @@ pub async fn upgrade(
       "You don't have write permission to {} because it's owned by root.\n",
       "Consider updating deno through your package manager if its installed from it.\n",
       "Otherwise run `deno upgrade` as root.",
-    ), output_exe_path.display());
+    ), current_exe_path.display());
   }
 
   let client = &ps.http_client;

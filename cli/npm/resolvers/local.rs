@@ -19,6 +19,9 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::NpmPackageId;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -27,11 +30,8 @@ use tokio::task::JoinHandle;
 
 use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
-use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
-use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
@@ -386,12 +386,7 @@ async fn sync_resolution_with_fs(
   // node_modules/.deno/<package_id>/node_modules/<package_name>
   let mut found_names = HashSet::new();
   let mut pending_packages = VecDeque::new();
-  pending_packages.extend(
-    snapshot
-      .top_level_packages()
-      .into_iter()
-      .map(|id| (id, true)),
-  );
+  pending_packages.extend(snapshot.top_level_packages().map(|id| (id, true)));
   while let Some((id, is_top_level)) = pending_packages.pop_front() {
     let root_folder_name = if found_names.insert(id.nv.name.clone()) {
       id.nv.name.clone()
@@ -400,7 +395,7 @@ async fn sync_resolution_with_fs(
     } else {
       continue; // skip, already handled
     };
-    let package = snapshot.package_from_id(&id).unwrap();
+    let package = snapshot.package_from_id(id).unwrap();
     let local_registry_package_path = join_package_name(
       &deno_local_registry_dir
         .join(get_package_folder_id_folder_name(
@@ -415,7 +410,7 @@ async fn sync_resolution_with_fs(
       &join_package_name(root_node_modules_dir_path, &root_folder_name),
     )?;
     for id in package.dependencies.values() {
-      pending_packages.push_back((id.clone(), false));
+      pending_packages.push_back((id, false));
     }
   }
 

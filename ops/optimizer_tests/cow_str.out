@@ -31,7 +31,7 @@ impl op_cow_str {
                 use deno_core::v8::fast_api::CType;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
-                        &[V8Value, SeqOneByteString],
+                        &[V8Value, SeqOneByteString, CallbackOptions],
                         CType::Void,
                         op_cow_str_fast_fn as *const ::std::ffi::c_void,
                     ),
@@ -77,10 +77,19 @@ impl op_cow_str {
 fn op_cow_str_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     c: *const deno_core::v8::fast_api::FastApiOneByteString,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> () {
     use deno_core::v8;
     use deno_core::_ops;
-    let c = ::std::borrow::Cow::Borrowed(unsafe { &*c }.as_str());
+    let c = ::std::borrow::Cow::Borrowed(
+        match ::std::str::from_utf8(unsafe { &*c }.as_bytes()) {
+            Ok(v) => v,
+            Err(_) => {
+                unsafe { &mut *fast_api_callback_options }.fallback = true;
+                return Default::default();
+            }
+        },
+    );
     let result = op_cow_str::call(c);
     result
 }

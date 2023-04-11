@@ -271,6 +271,11 @@ declare namespace Deno {
      *
      * @default {false} */
     callback?: boolean;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -282,6 +287,11 @@ declare namespace Deno {
     name?: string;
     /** The type of the foreign static value. */
     type: Type;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -336,7 +346,9 @@ declare namespace Deno {
    * @category FFI
    */
   type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
-    [K in keyof T]: StaticForeignSymbol<T[K]>;
+    [K in keyof T]: T[K]["optional"] extends true
+      ? StaticForeignSymbol<T[K]> | null
+      : StaticForeignSymbol<T[K]>;
   };
 
   const brand: unique symbol;

@@ -411,25 +411,25 @@ function bootstrapMainRuntime(runtimeOptions) {
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  const [
-    args,
-    cpuCount,
-    debugFlag,
-    denoVersion,
-    locale,
-    location_,
-    noColor,
-    isTty,
-    tsVersion,
-    unstableFlag,
-    pid,
-    ppid,
-    target,
-    v8Version,
-    userAgent,
-    inspectFlag,
-    _,
-  ] = runtimeOptions;
+  const {
+    0: args,
+    1: cpuCount,
+    2: debugFlag,
+    3: denoVersion,
+    4: locale,
+    5: location_,
+    6: noColor,
+    7: isTty,
+    8: tsVersion,
+    9: unstableFlag,
+    10: pid,
+    11: ppid,
+    12: target,
+    13: v8Version,
+    14: userAgent,
+    15: inspectFlag,
+    // 16: enableTestingFeaturesFlag
+  } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
@@ -519,25 +519,25 @@ function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  const [
-    args,
-    cpuCount,
-    debugFlag,
-    denoVersion,
-    locale,
-    location_,
-    noColor,
-    isTty,
-    tsVersion,
-    unstableFlag,
-    pid,
-    _ppid,
-    target,
-    v8Version,
-    _userAgent,
-    _inspectFlag,
-    enableTestingFeaturesFlag,
-  ] = runtimeOptions;
+  const {
+    0: args,
+    1: cpuCount,
+    2: debugFlag,
+    3: denoVersion,
+    4: locale,
+    5: location_,
+    6: noColor,
+    7: isTty,
+    8: tsVersion,
+    9: unstableFlag,
+    10: pid,
+    // 11: ppid,
+    12: target,
+    13: v8Version,
+    // 14: userAgent,
+    // 15: inspectFlag,
+    16: enableTestingFeaturesFlag,
+  } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;

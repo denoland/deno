@@ -2779,13 +2779,13 @@ fn op_resolve(
           .collect(),
       )
     }
-    None => Err(custom_error(
-      "NotFound",
-      format!(
+    None => {
+      lsp_warn!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
-      ),
-    )),
+      );
+      Ok(vec![None; args.specifiers.len()])
+    }
   };
 
   state.performance.measure(mark);
@@ -2899,7 +2899,7 @@ fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
-  runtime.execute_script(located_script_name!(), init_src)?;
+  runtime.execute_script(located_script_name!(), init_src.into())?;
   Ok(())
 }
 
@@ -3493,7 +3493,7 @@ pub fn request(
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({request_params});");
-  runtime.execute_script(located_script_name!(), request_src)?;
+  runtime.execute_script(located_script_name!(), request_src.into())?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -3530,7 +3530,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location, Default::default());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

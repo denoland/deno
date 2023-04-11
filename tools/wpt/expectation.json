@@ -3024,8 +3024,8 @@
     ],
     "url-setters.any.worker.html?include=javascript": true,
     "url-setters.any.worker.html?include=mailto": true,
-    "url-statics-canparse.any.html": false,
-    "url-statics-canparse.any.worker.html": false,
+    "url-statics-canparse.any.html": true,
+    "url-statics-canparse.any.worker.html": true,
     "urlsearchparams-size.any.worker.html": true
   },
   "fetch": {

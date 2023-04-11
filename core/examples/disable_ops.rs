@@ -22,6 +22,6 @@ fn main() {
 
   // Deno.core.print() will now be a NOP
   runtime
-    .execute_script("<usage>", r#"Deno.core.print("I'm broken")"#)
+    .execute_script_static("<usage>", r#"Deno.core.print("I'm broken")"#)
     .unwrap();
 }

@@ -167,6 +167,7 @@ declare class URLSearchParams {
  */
 declare class URL {
   constructor(url: string | URL, base?: string | URL);
+  static canParse(url: string | URL, base?: string | URL): boolean;
   static createObjectURL(blob: Blob): string;
   static revokeObjectURL(url: string): void;
 
