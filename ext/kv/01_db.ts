@@ -2,8 +2,10 @@
 
 // @ts-ignore internal api
 const {
-  ObjectGetPrototypeOf,
   AsyncGeneratorPrototype,
+  SymbolToStringTag,
+  ObjectGetPrototypeOf,
+  SymbolFor,
 } = globalThis.__bootstrap.primordials;
 const core = Deno.core;
 const ops = core.ops;
@@ -289,7 +291,7 @@ const MIN_U64 = BigInt("0");
 const MAX_U64 = BigInt("0xffffffffffffffff");
 
 class KvU64 {
-  readonly value: bigint;
+  value: bigint;
 
   constructor(value: bigint) {
     if (typeof value !== "bigint") {
@@ -299,10 +301,27 @@ class KvU64 {
       throw new RangeError("value must be a positive bigint");
     }
     if (value > MAX_U64) {
-      throw new RangeError("value must be a 64-bit unsigned integer");
+      throw new RangeError("value must fit in a 64-bit unsigned integer");
     }
     this.value = value;
     Object.freeze(this);
+  }
+
+  valueOf() {
+    return this.value;
+  }
+
+  toString() {
+    return this.value.toString();
+  }
+
+  get [SymbolToStringTag]() {
+    return "Deno.KvU64";
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(Object(this.value), inspectOptions)
+      .replace("BigInt", "Deno.KvU64");
   }
 }
 
@@ -338,7 +357,7 @@ function serializeValue(value: unknown): RawValue {
   } else if (value instanceof KvU64) {
     return {
       kind: "u64",
-      value: value.value,
+      value: value.valueOf(),
     };
   } else {
     return {
