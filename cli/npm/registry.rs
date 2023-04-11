@@ -232,11 +232,11 @@ impl CliNpmRegistryApiInner {
         Err(err) => {
           // purge the item from the cache so it loads next time
           self.mem_cache.lock().remove(name);
-          Err(anyhow!("{}", err))
+          Err(anyhow!("{:#}", err))
         }
       }
     } else {
-      Ok(future.await.map_err(|err| anyhow!("{}", err))?)
+      Ok(future.await.map_err(|err| anyhow!("{:#}", err))?)
     }
   }
 
