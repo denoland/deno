@@ -3,17 +3,12 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::ascii_str;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::serde_v8;
-use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
@@ -28,11 +23,6 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_semver::npm::NpmPackageReqReference;
-use indexmap::IndexSet;
-use rand::prelude::SliceRandom;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
-use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::DenoSubcommand;
 use crate::errors;
@@ -41,17 +31,7 @@ use crate::node;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools;
-use crate::tools::bench::BenchEvent;
-use crate::tools::bench::BenchPlan;
-use crate::tools::bench::BenchResult;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::test::FailFastTracker;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestEventSender;
-use crate::tools::test::TestFilter;
-use crate::tools::test::TestMode;
-use crate::tools::test::TestPlan;
-use crate::tools::test::TestResult;
 use crate::util::checksum;
 use crate::version;
 
@@ -186,117 +166,14 @@ impl CliMainWorker {
     executor.execute().await
   }
 
-  pub async fn run_test_specifier(
-    &mut self,
-    mode: TestMode,
-    filter: TestFilter,
-    fail_fast_tracker: FailFastTracker,
-  ) -> Result<(), AnyError> {
-    // Enable op call tracing in core to enable better debugging of op sanitizer
-    // failures.
-    if self.ps.options.trace_ops() {
-      self.worker.js_runtime.execute_script_static(
-        located_script_name!(),
-        "Deno[Deno.internal].core.enableOpCallTracing();",
-      )?;
-    }
-
-    let mut maybe_coverage_collector =
-      self.maybe_setup_coverage_collector().await?;
-
-    // We only execute the specifier as a module if it is tagged with TestMode::Module or
-    // TestMode::Both.
-    if mode != TestMode::Documentation {
-      // We execute the module module as a side module so that import.meta.main is not set.
-      self.execute_side_module_possibly_with_npm().await?;
-    }
-
-    self.worker.dispatch_load_event(located_script_name!())?;
-    self
-      .run_tests(&self.ps.options.shuffle_tests(), filter, fail_fast_tracker)
-      .await?;
-    loop {
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
-        break;
-      }
-      self.worker.run_event_loop(false).await?;
-    }
-
-    self.worker.dispatch_unload_event(located_script_name!())?;
-
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      self
-        .worker
-        .with_event_loop(coverage_collector.stop_collecting().boxed_local())
-        .await?;
-    }
-    Ok(())
-  }
-
-  pub async fn run_lsp_test_specifier(
-    &mut self,
-    mode: TestMode,
-    filter: TestFilter,
-    fail_fast_tracker: FailFastTracker,
-  ) -> Result<(), AnyError> {
-    self.worker.execute_script(
-      located_script_name!(),
-      ascii_str!("Deno[Deno.internal].core.enableOpCallTracing();"),
-    )?;
-
-    if mode != TestMode::Documentation {
-      // We execute the module module as a side module so that import.meta.main is not set.
-      self.execute_side_module_possibly_with_npm().await?;
-    }
-
-    self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_tests(&None, filter, fail_fast_tracker).await?;
-    loop {
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
-        break;
-      }
-      self.worker.run_event_loop(false).await?;
-    }
-    self.worker.dispatch_unload_event(located_script_name!())?;
-    Ok(())
-  }
-
-  pub async fn run_bench_specifier(
-    &mut self,
-    filter: TestFilter,
-  ) -> Result<(), AnyError> {
-    // We execute the module module as a side module so that import.meta.main is not set.
-    self.execute_side_module_possibly_with_npm().await?;
-
-    self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_benchmarks(filter).await?;
-    loop {
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
-        break;
-      }
-      self.worker.run_event_loop(false).await?;
-    }
-    self.worker.dispatch_unload_event(located_script_name!())?;
-    Ok(())
-  }
-
-  async fn execute_main_module_possibly_with_npm(
+  pub async fn execute_main_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
 
-  async fn execute_side_module_possibly_with_npm(
+  pub async fn execute_side_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
@@ -338,7 +215,7 @@ impl CliMainWorker {
     Ok(())
   }
 
-  async fn maybe_setup_coverage_collector(
+  pub async fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<CoverageCollector>, AnyError> {
     if let Some(ref coverage_dir) = self.ps.options.coverage_dir() {
@@ -356,157 +233,6 @@ impl CliMainWorker {
       Ok(None)
     }
   }
-
-  /// Run tests declared with `Deno.test()`. Test events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  pub async fn run_tests(
-    &mut self,
-    shuffle: &Option<u64>,
-    filter: TestFilter,
-    fail_fast_tracker: FailFastTracker,
-  ) -> Result<(), AnyError> {
-    let (tests, origin, mut sender) = {
-      let state_rc = self.worker.js_runtime.op_state();
-      let mut state = state_rc.borrow_mut();
-      let tests = std::mem::take(
-        &mut state.borrow_mut::<ops::testing::TestContainer>().0,
-      );
-      let origin = state.borrow::<ModuleSpecifier>().clone();
-      let sender = state.borrow::<TestEventSender>().clone();
-      (tests, origin, sender)
-    };
-    let unfiltered = tests.len();
-    let (only, no_only): (Vec<_>, Vec<_>) =
-      tests.into_iter().partition(|(d, _)| d.only);
-    let used_only = !only.is_empty();
-    let tests = if used_only { only } else { no_only };
-    let mut tests = tests
-      .into_iter()
-      .filter(|(d, _)| filter.includes(&d.name))
-      .collect::<Vec<_>>();
-    if let Some(seed) = shuffle {
-      tests.shuffle(&mut StdRng::seed_from_u64(*seed));
-    }
-    sender.send(TestEvent::Plan(TestPlan {
-      origin: origin.to_string(),
-      total: tests.len(),
-      filtered_out: unfiltered - tests.len(),
-      used_only,
-    }))?;
-    let mut had_uncaught_error = false;
-    for (desc, function) in tests {
-      if fail_fast_tracker.should_stop() {
-        break;
-      }
-      if desc.ignore {
-        sender.send(TestEvent::Result(desc.id, TestResult::Ignored, 0))?;
-        continue;
-      }
-      if had_uncaught_error {
-        sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
-        continue;
-      }
-      sender.send(TestEvent::Wait(desc.id))?;
-      let earlier = SystemTime::now();
-      let promise = {
-        let scope = &mut self.worker.js_runtime.handle_scope();
-        let cb = function.open(scope);
-        let this = v8::undefined(scope).into();
-        let promise = cb.call(scope, this, &[]).unwrap();
-        v8::Global::new(scope, promise)
-      };
-      let result = match self.worker.js_runtime.resolve_value(promise).await {
-        Ok(r) => r,
-        Err(error) => {
-          if error.is::<JsError>() {
-            sender.send(TestEvent::UncaughtError(
-              origin.to_string(),
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ))?;
-            fail_fast_tracker.add_failure();
-            sender.send(TestEvent::Result(
-              desc.id,
-              TestResult::Cancelled,
-              0,
-            ))?;
-            had_uncaught_error = true;
-            continue;
-          } else {
-            return Err(error);
-          }
-        }
-      };
-      let scope = &mut self.worker.js_runtime.handle_scope();
-      let result = v8::Local::new(scope, result);
-      let result = serde_v8::from_v8::<TestResult>(scope, result)?;
-      if matches!(result, TestResult::Failed(_)) {
-        fail_fast_tracker.add_failure();
-      }
-      let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
-      sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
-    }
-    Ok(())
-  }
-
-  /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  pub async fn run_benchmarks(
-    &mut self,
-    filter: TestFilter,
-  ) -> Result<(), AnyError> {
-    let (benchmarks, origin, sender) = {
-      let state_rc = self.worker.js_runtime.op_state();
-      let mut state = state_rc.borrow_mut();
-      let benchmarks =
-        std::mem::take(&mut state.borrow_mut::<ops::bench::BenchContainer>().0);
-      let origin = state.borrow::<ModuleSpecifier>().clone();
-      let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
-      (benchmarks, origin, sender)
-    };
-    let (only, no_only): (Vec<_>, Vec<_>) =
-      benchmarks.into_iter().partition(|(d, _)| d.only);
-    let used_only = !only.is_empty();
-    let benchmarks = if used_only { only } else { no_only };
-    let mut benchmarks = benchmarks
-      .into_iter()
-      .filter(|(d, _)| filter.includes(&d.name) && !d.ignore)
-      .collect::<Vec<_>>();
-    let mut groups = IndexSet::<Option<String>>::new();
-    // make sure ungrouped benchmarks are placed above grouped
-    groups.insert(None);
-    for (desc, _) in &benchmarks {
-      groups.insert(desc.group.clone());
-    }
-    benchmarks.sort_by(|(d1, _), (d2, _)| {
-      groups
-        .get_index_of(&d1.group)
-        .unwrap()
-        .partial_cmp(&groups.get_index_of(&d2.group).unwrap())
-        .unwrap()
-    });
-    sender.send(BenchEvent::Plan(BenchPlan {
-      origin: origin.to_string(),
-      total: benchmarks.len(),
-      used_only,
-      names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
-    }))?;
-    for (desc, function) in benchmarks {
-      sender.send(BenchEvent::Wait(desc.id))?;
-      let promise = {
-        let scope = &mut self.worker.js_runtime.handle_scope();
-        let cb = function.open(scope);
-        let this = v8::undefined(scope).into();
-        let promise = cb.call(scope, this, &[]).unwrap();
-        v8::Global::new(scope, promise)
-      };
-      let result = self.worker.js_runtime.resolve_value(promise).await?;
-      let scope = &mut self.worker.js_runtime.handle_scope();
-      let result = v8::Local::new(scope, result);
-      let result = serde_v8::from_v8::<BenchResult>(scope, result)?;
-      sender.send(BenchEvent::Result(desc.id, result))?;
-    }
-    Ok(())
-  }
 }
 
 pub async fn create_main_worker(
@@ -514,34 +240,11 @@ pub async fn create_main_worker(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
 ) -> Result<CliMainWorker, AnyError> {
-  create_main_worker_internal(
-    ps,
-    main_module,
-    permissions,
-    vec![],
-    Default::default(),
-  )
-  .await
+  create_custom_worker(ps, main_module, permissions, vec![], Default::default())
+    .await
 }
 
-pub async fn create_main_worker_for_test_or_bench(
-  ps: &ProcState,
-  main_module: ModuleSpecifier,
-  permissions: PermissionsContainer,
-  custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::deno_io::Stdio,
-) -> Result<CliMainWorker, AnyError> {
-  create_main_worker_internal(
-    ps,
-    main_module,
-    permissions,
-    custom_extensions,
-    stdio,
-  )
-  .await
-}
-
-async fn create_main_worker_internal(
+pub async fn create_custom_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
