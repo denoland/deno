@@ -310,7 +310,7 @@ impl NpmRegistryApiInner {
       .await
       .with_context(||
         format!(
-          "Error getting response for package \"{name:?}\"",
+          "Error getting response for package '{name}'",
         ))
       .map(|info| info.map(Arc::new))
       // make cloneable
@@ -350,7 +350,7 @@ impl NpmRegistryApiInner {
   fn get_package_url(&self, name: &str) -> Result<Url, AnyError> {
     match self.base_url.join(name) {
       Ok(url) => Ok(url),
-      Err(_err) => Err(anyhow!(format!("Invalid npm package name {name:?}"))),
+      Err(_err) => Err(anyhow!(format!("Invalid npm package name '{name}'"))),
     }
   }
 
