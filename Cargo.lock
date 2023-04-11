@@ -1020,8 +1020,6 @@ name = "deno_graph"
 version = "0.47.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e81896f3abfe0c6410518cc0285155e6faa2aa87ca8da32fbf1670ef1254ea2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fb5531f3c2be6926e51ce5888fcffa434ca83516c53d26563882533aee871d0"
 dependencies = [
  "anyhow",
  "data-url",
@@ -5865,7 +5863,3 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_graph"
-version = "0.47.1"
