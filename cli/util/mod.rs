@@ -11,7 +11,7 @@ pub mod fs;
 pub mod logger;
 pub mod path;
 pub mod progress_bar;
-pub mod synchronization;
+pub mod sync;
 pub mod text_encoding;
 pub mod time;
 pub mod unix;

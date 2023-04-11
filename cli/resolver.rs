@@ -24,7 +24,7 @@ use crate::args::JsxImportSourceConfig;
 use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
-use crate::util::synchronization::AtomicFlag;
+use crate::util::sync::AtomicFlag;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
