@@ -110,7 +110,7 @@ itest!(package_json_basic {
 });
 
 #[test]
-fn cache_matching_package_json_dep_should_not_reload() {
+fn cache_matching_package_json_dep_should_not_install_all() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
