@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util::env_vars_for_npm_tests;
+use test_util::TestContextBuilder;
 
 itest!(_036_import_map_fetch {
   args:
@@ -107,3 +108,22 @@ itest!(package_json_basic {
   copy_temp_dir: Some("package_json/basic"),
   exit_code: 0,
 });
+
+#[test]
+fn cache_matching_package_json_dep_should_not_install_all() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "package.json",
+    r#"{ "dependencies": { "@types/node": "18.8.2", "@denotest/esm-basic": "*" } }"#,
+  );
+  let output = context
+    .new_command()
+    .args("cache npm:@types/node@18.8.2")
+    .run();
+  output.assert_matches_text(concat!(
+    "Download http://localhost:4545/npm/registry/@types/node\n",
+    "Download http://localhost:4545/npm/registry/@types/node/node-18.8.2.tgz\n",
+    "Initialize @types/node@18.8.2\n",
+  ));
+}
