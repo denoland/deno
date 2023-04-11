@@ -232,6 +232,7 @@
       "test-crypto-hmac.js",
       "test-crypto-prime.js",
       "test-crypto-secret-keygen.js",
+      "test-crypto-x509.js",
       "test-dgram-close-during-bind.js",
       "test-dgram-close-signal.js",
       "test-diagnostics-channel-has-subscribers.js",

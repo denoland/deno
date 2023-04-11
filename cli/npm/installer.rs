@@ -4,16 +4,19 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::futures::stream::FuturesOrdered;
+use deno_core::futures::StreamExt;
+use deno_npm::registry::NpmRegistryApi;
 
 use crate::args::package_json::PackageJsonDeps;
 
-use super::NpmRegistryApi;
+use super::NpmRegistry;
 use super::NpmResolution;
 
 #[derive(Debug)]
 struct PackageJsonDepsInstallerInner {
   has_installed: AtomicBool,
-  npm_registry_api: NpmRegistryApi,
+  npm_registry_api: NpmRegistry,
   npm_resolution: NpmResolution,
   package_deps: PackageJsonDeps,
 }
@@ -24,7 +27,7 @@ pub struct PackageJsonDepsInstaller(Option<Arc<PackageJsonDepsInstallerInner>>);
 
 impl PackageJsonDepsInstaller {
   pub fn new(
-    npm_registry_api: NpmRegistryApi,
+    npm_registry_api: NpmRegistry,
     npm_resolution: NpmResolution,
     deps: Option<PackageJsonDeps>,
   ) -> Self {
@@ -76,17 +79,20 @@ impl PackageJsonDepsInstaller {
       .collect::<Vec<_>>();
     package_reqs.sort(); // deterministic resolution
 
-    inner
-      .npm_registry_api
-      .cache_in_parallel(
-        package_reqs.iter().map(|req| req.name.clone()).collect(),
-      )
-      .await?;
+    let mut req_with_infos =
+      FuturesOrdered::from_iter(package_reqs.into_iter().map(|req| {
+        let api = inner.npm_registry_api.clone();
+        async move {
+          let info = api.package_info(&req.name).await?;
+          Ok::<_, AnyError>((req, info))
+        }
+      }));
 
-    for package_req in package_reqs {
+    while let Some(result) = req_with_infos.next().await {
+      let (req, info) = result?;
       inner
         .npm_resolution
-        .resolve_package_req_as_pending(package_req)?;
+        .resolve_package_req_as_pending_with_info(req, &info)?;
     }
 
     Ok(())

@@ -9,8 +9,8 @@ use std::fmt::Formatter;
 
 use anyhow::Error;
 
+use crate::realm::JsRealm;
 use crate::runtime::GetErrorClassFn;
-use crate::runtime::JsRealm;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
