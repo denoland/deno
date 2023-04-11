@@ -45,7 +45,6 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
 use rand::rngs::SmallRng;
-use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
@@ -973,7 +972,7 @@ pub async fn test_specifier(
     .filter(|(d, _)| filter.includes(&d.name))
     .collect::<Vec<_>>();
   if let Some(seed) = ps.options.shuffle_tests() {
-    tests.shuffle(&mut StdRng::seed_from_u64(seed));
+    tests.shuffle(&mut SmallRng::seed_from_u64(seed));
   }
   sender.send(TestEvent::Plan(TestPlan {
     origin: specifier.to_string(),
