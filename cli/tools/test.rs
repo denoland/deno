@@ -909,7 +909,6 @@ pub async fn test_specifier(
   ps: &ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  mode: TestMode,
   mut sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
   filter: TestFilter,
@@ -934,20 +933,18 @@ pub async fn test_specifier(
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
-  if mode != TestMode::Documentation {
-    // We execute the main module as a side module so that import.meta.main is not set.
-    match worker.execute_side_module_possibly_with_npm().await {
-      Ok(()) => {}
-      Err(error) => {
-        if error.is::<JsError>() {
-          sender.send(TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ))?;
-          return Ok(());
-        } else {
-          return Err(error);
-        }
+  // We execute the main module as a side module so that import.meta.main is not set.
+  match worker.execute_side_module_possibly_with_npm().await {
+    Ok(()) => {}
+    Err(error) => {
+      if error.is::<JsError>() {
+        sender.send(TestEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(error.downcast::<JsError>().unwrap()),
+        ))?;
+        return Ok(());
+      } else {
+        return Err(error);
       }
     }
   }
@@ -1298,18 +1295,18 @@ pub async fn check_specifiers(
 async fn test_specifiers(
   ps: &ProcState,
   permissions: &Permissions,
-  specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
+  specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let log_level = ps.options.log_level();
-  let specifiers_with_mode = if let Some(seed) = ps.options.shuffle_tests() {
+  let specifiers = if let Some(seed) = ps.options.shuffle_tests() {
     let mut rng = SmallRng::seed_from_u64(seed);
-    let mut specifiers_with_mode = specifiers_with_mode;
-    specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
-    specifiers_with_mode.shuffle(&mut rng);
-    specifiers_with_mode
+    let mut specifiers = specifiers;
+    specifiers.sort();
+    specifiers.shuffle(&mut rng);
+    specifiers
   } else {
-    specifiers_with_mode
+    specifiers
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
@@ -1322,27 +1319,23 @@ async fn test_specifiers(
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
 
-  let join_handles =
-    specifiers_with_mode
-      .into_iter()
-      .map(move |(specifier, mode)| {
-        let ps = ps.clone();
-        let permissions = permissions.clone();
-        let sender = sender.clone();
-        let options = options.clone();
-        let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
-        tokio::task::spawn_blocking(move || {
-          run_local(test_specifier(
-            &ps,
-            permissions,
-            specifier,
-            mode,
-            sender.clone(),
-            fail_fast_tracker,
-            options.filter,
-          ))
-        })
-      });
+  let join_handles = specifiers.into_iter().map(move |specifier| {
+    let ps = ps.clone();
+    let permissions = permissions.clone();
+    let sender = sender.clone();
+    let options = options.clone();
+    let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+    tokio::task::spawn_blocking(move || {
+      run_local(test_specifier(
+        &ps,
+        permissions,
+        specifier,
+        sender.clone(),
+        fail_fast_tracker,
+        options.filter,
+      ))
+    })
+  });
 
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
@@ -1658,7 +1651,13 @@ pub async fn run_tests(
   test_specifiers(
     &ps,
     &permissions,
-    specifiers_with_mode,
+    specifiers_with_mode
+      .into_iter()
+      .filter_map(|(s, m)| match m {
+        TestMode::Documentation => None,
+        _ => Some(s),
+      })
+      .collect(),
     TestSpecifierOptions {
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
@@ -1822,7 +1821,13 @@ pub async fn run_tests_with_watch(
       test_specifiers(
         &ps,
         permissions,
-        specifiers_with_mode,
+        specifiers_with_mode
+          .into_iter()
+          .filter_map(|(s, m)| match m {
+            TestMode::Documentation => None,
+            _ => Some(s),
+          })
+          .collect(),
         TestSpecifierOptions {
           concurrent_jobs: test_options.concurrent_jobs,
           fail_fast: test_options.fail_fast,

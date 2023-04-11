@@ -292,7 +292,6 @@ impl TestRun {
             &ps,
             permissions,
             specifier,
-            test::TestMode::Executable,
             sender.clone(),
             fail_fast_tracker,
             filter,
