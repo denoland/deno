@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util::env_vars_for_npm_tests;
+use test_util::TestContextBuilder;
 
 itest!(_036_import_map_fetch {
   args:
@@ -108,48 +109,56 @@ itest!(package_json_basic {
   exit_code: 0,
 });
 
-// Cache API put() regression tests.
-// See https://github.com/denoland/deno/issues/17299
-// Note: It is important that part1 runs before part2.
-itest!(cache_put_overwrite_part1 {
-  args: "run -",
-  input: Some(
-    r#"
-const req = new Request('http://localhost/abc');
-const res1 = new Response('res1');
-const res2 = new Response('res2');
+// Regression test for https://github.com/denoland/deno/issues/17299
+#[tokio::test]
+async fn cache_put_overwrite() {
+  let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
 
-const cache = await caches.open('test');
+  let part_one = r#"
+  const req = new Request('http://localhost/abc');
+  const res1 = new Response('res1');
+  const res2 = new Response('res2');
 
-await cache.put(req, res1);
-await cache.put(req, res2);
+  const cache = await caches.open('test');
 
-const res = await cache.match(req).then((res) => res?.text());
-console.log(res);
-  "#
-  ),
-  output_str: Some("res2\n"),
-  exit_code: 0,
-});
+  await cache.put(req, res1);
+  await cache.put(req, res2);
 
-itest!(cache_put_overwrite_part2 {
-  args: "run -",
-  input: Some(
-    r#"
-const req = new Request("http://localhost/abc");
-const res1 = new Response("res1");
-const res2 = new Response("res2");
+  const res = await cache.match(req).then((res) => res?.text());
+  console.log(res);
+    "#;
 
-const cache = await caches.open("test");
+  let part_two = r#"
+  const req = new Request("http://localhost/abc");
+  const res1 = new Response("res1");
+  const res2 = new Response("res2");
 
-// Swap the order of put() calls.
-await cache.put(req, res2);
-await cache.put(req, res1);
+  const cache = await caches.open("test");
 
-const res = await cache.match(req).then((res) => res?.text());
-console.log(res);
-    "#
-  ),
-  output_str: Some("res1\n"),
-  exit_code: 0,
-});
+  // Swap the order of put() calls.
+  await cache.put(req, res2);
+  await cache.put(req, res1);
+
+  const res = await cache.match(req).then((res) => res?.text());
+  console.log(res);
+      "#;
+
+  temp_dir.write("cache_put.js", part_one);
+
+  let run_command =
+    test_context.new_command().args_vec(["run", "cache_put.js"]);
+
+  let output = run_command.run();
+  output.assert_matches_text("res2\n");
+  output.assert_exit_code(0);
+
+  // The wait will surface the bug as we check last written time
+  // when we overwrite a response.
+  tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+  temp_dir.write("cache_put.js", part_two);
+  let output = run_command.run();
+  output.assert_matches_text("res1\n");
+  output.assert_exit_code(0);
+}
