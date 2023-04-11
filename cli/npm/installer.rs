@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
@@ -9,13 +8,14 @@ use deno_core::futures::StreamExt;
 use deno_npm::registry::NpmRegistryApi;
 
 use crate::args::package_json::PackageJsonDeps;
+use crate::util::sync::AtomicFlag;
 
 use super::NpmRegistry;
 use super::NpmResolution;
 
 #[derive(Debug)]
 struct PackageJsonDepsInstallerInner {
-  has_installed: AtomicBool,
+  has_installed_flag: AtomicFlag,
   npm_registry_api: NpmRegistry,
   npm_resolution: NpmResolution,
   package_deps: PackageJsonDeps,
@@ -33,7 +33,7 @@ impl PackageJsonDepsInstaller {
   ) -> Self {
     Self(deps.map(|package_deps| {
       Arc::new(PackageJsonDepsInstallerInner {
-        has_installed: AtomicBool::new(false),
+        has_installed_flag: Default::default(),
         npm_registry_api,
         npm_resolution,
         package_deps,
@@ -45,30 +45,15 @@ impl PackageJsonDepsInstaller {
     self.0.as_ref().map(|inner| &inner.package_deps)
   }
 
-  /// Gets if the package.json has the specified package name.
-  pub fn has_package_name(&self, name: &str) -> bool {
-    if let Some(package_deps) = self.package_deps() {
-      // ensure this looks at the package name and not the
-      // bare specifiers (do not look at the keys!)
-      package_deps
-        .values()
-        .filter_map(|r| r.as_ref().ok())
-        .any(|v| v.name == name)
-    } else {
-      false
-    }
-  }
-
   /// Installs the top level dependencies in the package.json file
   /// without going through and resolving the descendant dependencies yet.
   pub async fn ensure_top_level_install(&self) -> Result<(), AnyError> {
-    use std::sync::atomic::Ordering;
     let inner = match &self.0 {
       Some(inner) => inner,
       None => return Ok(()),
     };
 
-    if inner.has_installed.swap(true, Ordering::SeqCst) {
+    if !inner.has_installed_flag.raise() {
       return Ok(()); // already installed by something else
     }
 
