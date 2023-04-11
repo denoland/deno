@@ -393,6 +393,7 @@ impl ProcState {
 
     build_graph_with_npm_resolution(
       graph,
+      &self.resolver,
       &self.npm_resolver,
       roots.clone(),
       &mut cache,
@@ -695,6 +696,7 @@ impl ProcState {
     let mut graph = ModuleGraph::default();
     build_graph_with_npm_resolution(
       &mut graph,
+      &self.resolver,
       &self.npm_resolver,
       roots,
       loader,

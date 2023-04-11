@@ -187,6 +187,7 @@ pub async fn create_graph_and_maybe_check(
   let mut graph = ModuleGraph::default();
   build_graph_with_npm_resolution(
     &mut graph,
+    &cli_resolver,
     &ps.npm_resolver,
     roots,
     &mut cache,
@@ -249,12 +250,19 @@ pub async fn create_graph_and_maybe_check(
 
 pub async fn build_graph_with_npm_resolution<'a>(
   graph: &mut ModuleGraph,
+  cli_graph_resolver: &CliGraphResolver,
   npm_resolver: &NpmPackageResolver,
   roots: Vec<ModuleSpecifier>,
   loader: &mut dyn deno_graph::source::Loader,
   options: deno_graph::BuildOptions<'a>,
 ) -> Result<(), AnyError> {
   graph.build(roots, loader, options).await;
+
+  // ensure that the top level package.json is installed if a
+  // specifier was matched in the package.json
+  cli_graph_resolver
+    .top_level_package_json_install_if_necessary()
+    .await?;
 
   // resolve the dependencies of any pending dependencies
   // that were inserted by building the graph
