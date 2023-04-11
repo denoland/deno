@@ -144,6 +144,11 @@
     ArrayPrototypePush(nextTickCallbacks, cb);
   }
 
+  function opresolvefast(promiseId, res) {
+    const promise = getPromise(promiseId);
+    promise.resolve(res);
+  }
+
   // TODO(bartlomieju): rename
   function opresolve() {
     const hasTickScheduled = arguments[0];
@@ -432,6 +437,7 @@
     registerErrorClass,
     buildCustomError,
     opresolve,
+    opresolvefast,
     BadResource,
     BadResourcePrototype,
     Interrupted,

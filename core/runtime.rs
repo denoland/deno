@@ -823,7 +823,7 @@ impl JsRuntime {
 
   /// Grabs a reference to core.js' opresolve & buildCustomError
   fn init_cbs(&mut self, realm: &JsRealm) {
-    let (recv_cb, build_custom_error_cb) = {
+    let (recv_cb, recv_cb_fast, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
       let context = realm.context();
       let context_local = v8::Local::new(scope, context);
@@ -834,6 +834,9 @@ impl JsRuntime {
         v8::String::new_external_onebyte_static(scope, b"core").unwrap();
       let opresolve_str =
         v8::String::new_external_onebyte_static(scope, b"opresolve").unwrap();
+      let opresolvefast_str =
+        v8::String::new_external_onebyte_static(scope, b"opresolvefast")
+          .unwrap();
       let build_custom_error_str =
         v8::String::new_external_onebyte_static(scope, b"buildCustomError")
           .unwrap();
@@ -854,6 +857,11 @@ impl JsRuntime {
         .unwrap()
         .try_into()
         .unwrap();
+      let recv_cb_fast: v8::Local<v8::Function> = core_obj
+        .get(scope, opresolvefast_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
       let build_custom_error_cb: v8::Local<v8::Function> = core_obj
         .get(scope, build_custom_error_str.into())
         .unwrap()
@@ -861,6 +869,7 @@ impl JsRuntime {
         .unwrap();
       (
         v8::Global::new(scope, recv_cb),
+        v8::Global::new(scope, recv_cb_fast),
         v8::Global::new(scope, build_custom_error_cb),
       )
     };
@@ -869,6 +878,7 @@ impl JsRuntime {
     let state_rc = realm.state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
+    state.js_recv_cb_fast.replace(recv_cb_fast);
     state
       .js_build_custom_error_cb
       .replace(build_custom_error_cb);
@@ -2406,17 +2416,17 @@ pub fn queue_async_op(
       let context_state = context_state_rc.borrow();
 
       let args = &[
-        v8::undefined(scope).into(),
-        v8::undefined(scope).into(),
         v8::Integer::new(scope, promise_id).into(),
         resp.to_v8(scope).unwrap(),
       ];
 
       ctx.state.borrow_mut().tracker.track_async_completed(op_id);
-
       let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb =
-        context_state.js_recv_cb.as_ref().unwrap().open(tc_scope);
+      let js_recv_cb = context_state
+        .js_recv_cb_fast
+        .as_ref()
+        .unwrap()
+        .open(tc_scope);
       let this = v8::undefined(tc_scope).into();
       js_recv_cb.call(tc_scope, this, args);
     }
