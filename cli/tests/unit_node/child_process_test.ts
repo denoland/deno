@@ -185,7 +185,7 @@ Deno.test({
   },
 });
 
-/* Start of ported part */ 3;
+/* Start of ported part */
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Ported from Node 15.5.1
 
