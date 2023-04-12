@@ -79,7 +79,7 @@ jobs:
             profile: release
             use_sysroot: true
             skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
-            runner: '${{ github.event_name == ''pull_request'' && ${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'')  && ''ubuntu-22.04'' || ''${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
           - os: ubuntu-22.04
             job: test
             profile: debug

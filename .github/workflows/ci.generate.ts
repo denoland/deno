@@ -3,7 +3,6 @@
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
 const Runners = (() => {
-  const windowsRunner = "windows-2022";
   const ubuntuRunner = "ubuntu-22.04";
   const ubuntuXlRunner = "ubuntu-22.04-xl";
 
@@ -13,7 +12,7 @@ const Runners = (() => {
     ubuntu: ubuntuRunner,
     linux: ubuntuRunner,
     macos: "macos-12",
-    windows: windowsRunner,
+    windows: "windows-2022",
   };
 })();
 // bump the number at the start when you want to purge the cache
@@ -191,7 +190,11 @@ function withCondition(
 }
 
 function removeSurroundingExpression(text: string) {
-  return text.replace(/^${{/, "").replace(/}}$/, "");
+  if (text.startsWith("${{")) {
+    return text.replace(/^\${{/, "").replace(/}}$/, "").trim();
+  } else {
+    return `'${text}'`;
+  }
 }
 
 function handleMatrixItems(items: {
@@ -209,7 +212,9 @@ function handleMatrixItems(items: {
       if (typeof item.skip_pr === "string") {
         text += removeSurroundingExpression(item.skip_pr.toString()) + " && ";
       }
-      text += `'${Runners.ubuntu}' || '${item.os}' }}`;
+      text += `'${Runners.ubuntu}' || ${
+        removeSurroundingExpression(item.os)
+      } }}`;
       // deno-lint-ignore: no-explicit-any
       (item as any).runner = text;
     }
