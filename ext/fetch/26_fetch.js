@@ -413,7 +413,7 @@ function fetch(input, init = {}) {
   // 1.
   const result = new Promise((resolve, reject) => {
     const prefix = "Failed to call 'fetch'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // 2.
     const requestObject = new Request(input, init);
     // 3.

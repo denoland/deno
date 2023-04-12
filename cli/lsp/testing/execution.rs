@@ -259,7 +259,7 @@ impl TestRun {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let ps = proc_state::ProcState::build(flags).await?;
+    let ps = proc_state::ProcState::from_flags(flags).await?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.

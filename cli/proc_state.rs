@@ -112,17 +112,17 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: Flags) -> Result<Self, AnyError> {
-    Self::from_options(Arc::new(CliOptions::from_flags(flags)?)).await
-  }
-
-  pub async fn from_options(
+  pub async fn from_cli_options(
     options: Arc<CliOptions>,
   ) -> Result<Self, AnyError> {
     Self::build_with_sender(options, None).await
   }
 
-  pub async fn build_for_file_watcher(
+  pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    Self::from_cli_options(Arc::new(CliOptions::from_flags(flags)?)).await
+  }
+
+  pub async fn from_flags_for_file_watcher(
     flags: Flags,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
