@@ -812,24 +812,24 @@ impl File for StdFileResource {
     .await
   }
 
-  fn chmod_sync(self: Rc<Self>, mode: u32) -> FsResult<()> {
+  fn chmod_sync(self: Rc<Self>, _mode: u32) -> FsResult<()> {
     #[cfg(unix)]
     {
       sync(self, |file| {
         use std::os::unix::prelude::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(mode))
+        file.set_permissions(fs::Permissions::from_mode(_mode))
       })
     }
     #[cfg(not(unix))]
     Err(FsError::NotSupported)
   }
 
-  async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()> {
+  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
     #[cfg(unix)]
     {
       nonblocking(self, move |file| {
         use std::os::unix::prelude::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(mode))
+        file.set_permissions(fs::Permissions::from_mode(_mode))
       })
       .await
     }
