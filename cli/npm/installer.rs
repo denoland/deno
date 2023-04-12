@@ -104,7 +104,6 @@ impl PackageJsonDepsInstaller {
         if inner.npm_registry_api.mark_force_reload() {
           log::debug!("Failed to resolve package. Retrying. Error: {err:#}");
           // re-initialize
-          inner.npm_registry_api.clear_memory_cache();
           reqs_with_info_futures = inner.reqs_with_info_futures();
         } else {
           return Err(err.into());
