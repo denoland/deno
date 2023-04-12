@@ -31,6 +31,7 @@ pub enum Error {
   ExpectedDetachable,
   #[error("serde_v8 error: invalid type, expected: external")]
   ExpectedExternal,
+  #[error("serde_v8 error: invalid type, expected: bigint")]
   ExpectedBigInt,
 
   #[error("serde_v8 error: invalid type, expected: utf8")]
