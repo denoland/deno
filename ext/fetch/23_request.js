@@ -273,7 +273,7 @@ class Request {
    */
   constructor(input, init = {}) {
     const prefix = "Failed to construct 'Request'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters["RequestInfo_DOMString"](input, {
       prefix,
       context: "Argument 1",

@@ -271,7 +271,7 @@ class Headers {
   append(name, value) {
     webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'append' on 'Headers'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters["ByteString"](name, {
       prefix,
       context: "Argument 1",
@@ -288,7 +288,7 @@ class Headers {
    */
   delete(name) {
     const prefix = "Failed to execute 'delete' on 'Headers'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, {
       prefix,
       context: "Argument 1",
@@ -316,7 +316,7 @@ class Headers {
    */
   get(name) {
     const prefix = "Failed to execute 'get' on 'Headers'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, {
       prefix,
       context: "Argument 1",
@@ -335,7 +335,7 @@ class Headers {
    */
   has(name) {
     const prefix = "Failed to execute 'has' on 'Headers'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, {
       prefix,
       context: "Argument 1",
@@ -362,7 +362,7 @@ class Headers {
   set(name, value) {
     webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'set' on 'Headers'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters["ByteString"](name, {
       prefix,
       context: "Argument 1",
