@@ -110,8 +110,8 @@ itest!(package_json_basic {
 });
 
 // Regression test for https://github.com/denoland/deno/issues/17299
-#[tokio::test]
-async fn cache_put_overwrite() {
+#[test]
+fn cache_put_overwrite() {
   let test_context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -155,7 +155,7 @@ async fn cache_put_overwrite() {
 
   // The wait will surface the bug as we check last written time
   // when we overwrite a response.
-  tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   temp_dir.write("cache_put.js", part_two);
   let output = run_command.run();
