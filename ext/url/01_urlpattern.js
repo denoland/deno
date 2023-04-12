@@ -55,7 +55,7 @@ class URLPattern {
   constructor(input, baseURL = undefined) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters.URLPatternInput(input, {
       prefix,
       context: "Argument 1",
@@ -133,7 +133,7 @@ class URLPattern {
   test(input, baseURL = undefined) {
     webidl.assertBranded(this, URLPatternPrototype);
     const prefix = "Failed to execute 'test' on 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters.URLPatternInput(input, {
       prefix,
       context: "Argument 1",
@@ -174,7 +174,7 @@ class URLPattern {
   exec(input, baseURL = undefined) {
     webidl.assertBranded(this, URLPatternPrototype);
     const prefix = "Failed to execute 'exec' on 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters.URLPatternInput(input, {
       prefix,
       context: "Argument 1",

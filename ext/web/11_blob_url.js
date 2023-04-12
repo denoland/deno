@@ -23,7 +23,7 @@ import { URL } from "ext:deno_url/00_url.js";
  */
 function createObjectURL(blob) {
   const prefix = "Failed to execute 'createObjectURL' on 'URL'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   blob = webidl.converters["Blob"](blob, {
     context: "Argument 1",
     prefix,
@@ -38,7 +38,7 @@ function createObjectURL(blob) {
  */
 function revokeObjectURL(url) {
   const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   url = webidl.converters["DOMString"](url, {
     context: "Argument 1",
     prefix,

@@ -28,7 +28,7 @@ class CompressionStream {
 
   constructor(format) {
     const prefix = "Failed to construct 'CompressionStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     format = webidl.converters.CompressionFormat(format, {
       prefix,
       context: "Argument 1",
@@ -76,7 +76,7 @@ class DecompressionStream {
 
   constructor(format) {
     const prefix = "Failed to construct 'DecompressionStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     format = webidl.converters.CompressionFormat(format, {
       prefix,
       context: "Argument 1",
