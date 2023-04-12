@@ -7,6 +7,7 @@ use log::debug;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
+use crate::error::JsStackFrame;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::resolve_helper;
@@ -436,26 +437,26 @@ fn catch_dynamic_import_promise_error(
   if is_instance_of_error(scope, arg) {
     let e: crate::error::NativeJsError = serde_v8::from_v8(scope, arg).unwrap();
     let name = e.name.unwrap_or_else(|| "Error".to_string());
-    let message = v8::Exception::create_message(scope, arg);
-    if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
+    let msg = v8::Exception::create_message(scope, arg);
+    if msg.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
       let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
       let message_key =
         v8::String::new_external_onebyte_static(scope, b"message").unwrap();
       let message = arg.get(scope, message_key.into()).unwrap();
+      let mut message: v8::Local<v8::String> = message.try_into().unwrap();
+      if let Some(stack_frame) = JsStackFrame::from_v8_message(scope, msg) {
+        if let Some(location) = stack_frame.maybe_format_location() {
+          let str =
+            format!("{} at {location}", message.to_rust_string_lossy(scope));
+          message = v8::String::new(scope, &str).unwrap();
+        }
+      }
       let exception = match name.as_str() {
-        "RangeError" => {
-          v8::Exception::range_error(scope, message.try_into().unwrap())
-        }
-        "TypeError" => {
-          v8::Exception::type_error(scope, message.try_into().unwrap())
-        }
-        "SyntaxError" => {
-          v8::Exception::syntax_error(scope, message.try_into().unwrap())
-        }
-        "ReferenceError" => {
-          v8::Exception::reference_error(scope, message.try_into().unwrap())
-        }
-        _ => v8::Exception::error(scope, message.try_into().unwrap()),
+        "RangeError" => v8::Exception::range_error(scope, message),
+        "TypeError" => v8::Exception::type_error(scope, message),
+        "SyntaxError" => v8::Exception::syntax_error(scope, message),
+        "ReferenceError" => v8::Exception::reference_error(scope, message),
+        _ => v8::Exception::error(scope, message),
       };
       let code_key =
         v8::String::new_external_onebyte_static(scope, b"code").unwrap();
