@@ -191,12 +191,24 @@
     return res;
   }
 
-  function rollPromiseId() {
-    return nextPromiseId++;
+  function opAsync2(name, arg0, arg1) {
+    const id = nextPromiseId++;
+    let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+    try {
+      ops[name](id, arg0, arg1);
+    } catch (err) {
+      // Cleanup the just-created promise
+      getPromise(id);
+      // Rethrow the error
+      throw err;
+    }
+    promise = handleOpCallTracing(name, id, promise);
+    promise[promiseIdSymbol] = id;
+    return promise;
   }
 
   function opAsync(name, ...args) {
-    const id = rollPromiseId();
+    const id = nextPromiseId++;
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
     try {
       ops[name](id, ...new SafeArrayIterator(args));
@@ -376,6 +388,7 @@
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
+    opAsync2,
     resources,
     metrics,
     registerErrorBuilder,
@@ -399,6 +412,8 @@
     readAll: opAsync.bind(null, "op_read_all"),
     write: opAsync.bind(null, "op_write"),
     writeAll: opAsync.bind(null, "op_write_all"),
+    readSync: (rid, buffer) => ops.op_read_sync(rid, buffer),
+    writeSync: (rid, buffer) => ops.op_write_sync(rid, buffer),
     shutdown: opAsync.bind(null, "op_shutdown"),
     print: (msg, isErr) => ops.op_print(msg, isErr),
     setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),

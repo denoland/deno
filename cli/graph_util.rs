@@ -22,6 +22,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
 use deno_core::TaskQueuePermit;
 use deno_graph::Module;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
@@ -83,7 +84,9 @@ pub fn graph_valid(
     .flat_map(|error| {
       let is_root = match &error {
         ModuleGraphError::ResolutionError(_) => false,
-        _ => roots.contains(error.specifier()),
+        ModuleGraphError::ModuleError(error) => {
+          roots.contains(error.specifier())
+        }
       };
       let mut message = if let ModuleGraphError::ResolutionError(err) = &error {
         enhanced_resolution_error_message(err)
@@ -93,13 +96,21 @@ pub fn graph_valid(
 
       if let Some(range) = error.maybe_range() {
         if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str(&format!("\n    at {range}"));
+          message.push_str(&format!(
+            "\n    at {}:{}:{}",
+            colors::cyan(range.specifier.as_str()),
+            colors::yellow(&(range.start.line + 1).to_string()),
+            colors::yellow(&(range.start.character + 1).to_string())
+          ));
         }
       }
 
       if options.is_vendoring {
         // warn about failing dynamic imports when vendoring, but don't fail completely
-        if matches!(error, ModuleGraphError::MissingDynamic(_, _)) {
+        if matches!(
+          error,
+          ModuleGraphError::ModuleError(ModuleError::MissingDynamic(_, _))
+        ) {
           log::warn!("Ignoring: {:#}", message);
           return None;
         }
@@ -150,12 +161,13 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 }
 
 pub async fn create_graph_and_maybe_check(
-  root: ModuleSpecifier,
+  roots: Vec<ModuleSpecifier>,
   ps: &ProcState,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
     ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
+    ps.options.resolve_file_header_overrides(),
     PermissionsContainer::allow_all(),
     PermissionsContainer::allow_all(),
     ps.options.node_modules_dir_specifier(),
@@ -175,8 +187,9 @@ pub async fn create_graph_and_maybe_check(
   let mut graph = ModuleGraph::default();
   build_graph_with_npm_resolution(
     &mut graph,
+    &cli_resolver,
     &ps.npm_resolver,
-    vec![root],
+    roots,
     &mut cache,
     deno_graph::BuildOptions {
       is_dynamic: false,
@@ -212,7 +225,7 @@ pub async fn create_graph_and_maybe_check(
       log::warn!("{}", ignored_options);
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
-    let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
+    let cache = TypeCheckCache::new(ps.caches.type_checking_cache_db(&ps.dir));
     let check_result = check::check(
       graph.clone(),
       &cache,
@@ -237,12 +250,19 @@ pub async fn create_graph_and_maybe_check(
 
 pub async fn build_graph_with_npm_resolution<'a>(
   graph: &mut ModuleGraph,
+  cli_graph_resolver: &CliGraphResolver,
   npm_resolver: &NpmPackageResolver,
   roots: Vec<ModuleSpecifier>,
   loader: &mut dyn deno_graph::source::Loader,
   options: deno_graph::BuildOptions<'a>,
 ) -> Result<(), AnyError> {
   graph.build(roots, loader, options).await;
+
+  // ensure that the top level package.json is installed if a
+  // specifier was matched in the package.json
+  cli_graph_resolver
+    .top_level_package_json_install_if_necessary()
+    .await?;
 
   // resolve the dependencies of any pending dependencies
   // that were inserted by building the graph
@@ -436,7 +456,6 @@ mod test {
         specifier: input.to_string(),
         range: Range {
           specifier,
-          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
@@ -453,7 +472,6 @@ mod test {
       let err = ResolutionError::InvalidSpecifier {
         range: Range {
           specifier,
-          text: "".to_string(),
           start: Position::zeroed(),
           end: Position::zeroed(),
         },

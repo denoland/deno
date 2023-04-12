@@ -4,10 +4,10 @@ use std::option::Option;
 use std::os::raw::c_void;
 
 use log::debug;
-use v8::fast_api::FastFunction;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
+use crate::error::JsStackFrame;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::resolve_helper;
@@ -16,28 +16,26 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::runtime::SnapshotOptions;
+use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
 
-pub fn external_references(
-  ops: &[OpCtx],
-  snapshot_loaded: bool,
-) -> v8::ExternalReferences {
-  let mut references = vec![
-    v8::ExternalReference {
-      function: call_console.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: import_meta_resolve.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: catch_dynamic_import_promise_error.map_fn_to(),
-    },
-    v8::ExternalReference {
-      function: empty_fn.map_fn_to(),
-    },
-  ];
+pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
+  // Overallocate a bit, it's better than having to resize the vector.
+  let mut references = Vec::with_capacity(4 + ops.len() * 4);
+
+  references.push(v8::ExternalReference {
+    function: call_console.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: import_meta_resolve.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: catch_dynamic_import_promise_error.map_fn_to(),
+  });
+  references.push(v8::ExternalReference {
+    function: empty_fn.map_fn_to(),
+  });
 
   for ctx in ops {
     let ctx_ptr = ctx as *const OpCtx as _;
@@ -45,12 +43,13 @@ pub fn external_references(
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
-    if snapshot_loaded {
-      if let Some(fast_fn) = &ctx.decl.fast_fn {
-        references.push(v8::ExternalReference {
-          pointer: fast_fn.function() as _,
-        });
-      }
+    if let Some(fast_fn) = &ctx.decl.fast_fn {
+      references.push(v8::ExternalReference {
+        pointer: fast_fn.function as _,
+      });
+      references.push(v8::ExternalReference {
+        pointer: ctx.fast_fn_c_info.unwrap().as_ptr() as _,
+      });
     }
   }
 
@@ -99,13 +98,11 @@ pub fn module_origin<'a>(
   )
 }
 
-pub fn initialize_context<'s>(
+pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
   snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
-  let scope = &mut v8::EscapableHandleScope::new(scope);
-
   let context = v8::Context::new(scope);
   let global = context.global(scope);
 
@@ -117,9 +114,9 @@ pub fn initialize_context<'s>(
     v8::String::new_external_onebyte_static(scope, b"core").unwrap();
   let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
 
-  // Snapshot already registered `Deno.core.ops` but
-  // extensions may provide ops that aren't part of the snapshot.
-  if snapshot_options.loaded() {
+  let ops_obj = if snapshot_options.loaded() {
+    // Snapshot already registered `Deno.core.ops` but
+    // extensions may provide ops that aren't part of the snapshot.
     // Grab the Deno.core.ops object & init it
     let deno_obj: v8::Local<v8::Object> = global
       .get(scope, deno_str.into())
@@ -136,71 +133,64 @@ pub fn initialize_context<'s>(
       .expect("Deno.core.ops to exist")
       .try_into()
       .unwrap();
-    initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
-    return scope.escape(context);
-  }
+    ops_obj
+  } else {
+    // globalThis.Deno = { core: { } };
+    let deno_obj = v8::Object::new(scope);
+    global.set(scope, deno_str.into(), deno_obj.into());
 
-  // global.Deno = { core: { } };
-  let deno_obj = v8::Object::new(scope);
-  global.set(scope, deno_str.into(), deno_obj.into());
+    let core_obj = v8::Object::new(scope);
+    deno_obj.set(scope, core_str.into(), core_obj.into());
 
-  let core_obj = v8::Object::new(scope);
-  deno_obj.set(scope, core_str.into(), core_obj.into());
+    // Bind functions to Deno.core.*
+    set_func(scope, core_obj, "callConsole", call_console);
 
-  // Bind functions to Deno.core.*
-  set_func(scope, core_obj, "callConsole", call_console);
+    // Bind v8 console object to Deno.core.console
+    let extra_binding_obj = context.get_extras_binding_object(scope);
+    let console_str =
+      v8::String::new_external_onebyte_static(scope, b"console").unwrap();
+    let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
+    core_obj.set(scope, console_str.into(), console_obj);
 
-  // Bind v8 console object to Deno.core.console
-  let extra_binding_obj = context.get_extras_binding_object(scope);
-  let console_str =
-    v8::String::new_external_onebyte_static(scope, b"console").unwrap();
-  let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
-  core_obj.set(scope, console_str.into(), console_obj);
+    // Bind functions to Deno.core.ops.*
+    let ops_obj = v8::Object::new(scope);
+    core_obj.set(scope, ops_str.into(), ops_obj.into());
+    ops_obj
+  };
 
-  // Bind functions to Deno.core.ops.*
-  let ops_obj = v8::Object::new(scope);
-  core_obj.set(scope, ops_str.into(), ops_obj.into());
-
-  initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
-  scope.escape(context)
-}
-
-fn initialize_ops(
-  scope: &mut v8::HandleScope,
-  ops_obj: v8::Local<v8::Object>,
-  op_ctxs: &[OpCtx],
-  snapshot_options: SnapshotOptions,
-) {
-  for ctx in op_ctxs {
-    let ctx_ptr = ctx as *const OpCtx as *const c_void;
-
-    // If this is a fast op, we don't want it to be in the snapshot.
-    // Only initialize once snapshot is loaded.
-    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
-      set_func_raw(
+  if matches!(snapshot_options, SnapshotOptions::Load) {
+    // Only register ops that have `force_registration` flag set to true,
+    // the remaining ones should already be in the snapshot.
+    for op_ctx in op_ctxs
+      .iter()
+      .filter(|op_ctx| op_ctx.decl.force_registration)
+    {
+      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+    }
+  } else if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
+    // Register all ops, probing for which ones are already registered.
+    for op_ctx in op_ctxs {
+      let key = v8::String::new_external_onebyte_static(
         scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &ctx.decl.fast_fn,
-        snapshot_options,
-      );
-    } else {
-      set_func_raw(
-        scope,
-        ops_obj,
-        ctx.decl.name,
-        ctx.decl.v8_fn_ptr,
-        ctx_ptr,
-        &None,
-        snapshot_options,
-      );
+        op_ctx.decl.name.as_bytes(),
+      )
+      .unwrap();
+      if ops_obj.get(scope, key.into()).is_some() {
+        continue;
+      }
+      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+    }
+  } else {
+    // In other cases register all ops unconditionally.
+    for op_ctx in op_ctxs {
+      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
     }
   }
+
+  context
 }
 
-pub fn set_func(
+fn set_func(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   name: &'static str,
@@ -213,33 +203,27 @@ pub fn set_func(
   obj.set(scope, key.into(), val.into());
 }
 
-// Register a raw v8::FunctionCallback
-// with some external data.
-pub fn set_func_raw(
+fn add_op_to_deno_core_ops(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
-  name: &'static str,
-  callback: v8::FunctionCallback,
-  external_data: *const c_void,
-  fast_function: &Option<Box<dyn FastFunction>>,
-  snapshot_options: SnapshotOptions,
+  op_ctx: &OpCtx,
 ) {
+  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let key =
-    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
-  let external = v8::External::new(scope, external_data as *mut c_void);
-  let builder =
-    v8::FunctionTemplate::builder_raw(callback).data(external.into());
-  let templ = if let Some(fast_function) = fast_function {
-    // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    if matches!(
-      snapshot_options,
-      SnapshotOptions::Load | SnapshotOptions::None
-    ) {
-      // TODO(@littledivy): Support fast api overloads in ops.
-      builder.build_fast(scope, &**fast_function, None)
-    } else {
-      builder.build(scope)
-    }
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
+  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let builder = v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
+    .data(external.into());
+
+  let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
+    builder.build_fast(
+      scope,
+      fast_function,
+      Some(op_ctx.fast_fn_c_info.unwrap().as_ptr()),
+      None,
+      None,
+    )
   } else {
     builder.build(scope)
   };
@@ -362,7 +346,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
     .expect("Module not found");
 
   let url_key = v8::String::new_external_onebyte_static(scope, b"url").unwrap();
-  let url_val = v8::String::new(scope, &info.name).unwrap();
+  let url_val = info.name.v8(scope);
   meta.create_data_property(scope, url_key.into(), url_val.into());
 
   let main_key =
@@ -453,26 +437,26 @@ fn catch_dynamic_import_promise_error(
   if is_instance_of_error(scope, arg) {
     let e: crate::error::NativeJsError = serde_v8::from_v8(scope, arg).unwrap();
     let name = e.name.unwrap_or_else(|| "Error".to_string());
-    let message = v8::Exception::create_message(scope, arg);
-    if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
+    let msg = v8::Exception::create_message(scope, arg);
+    if msg.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
       let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
       let message_key =
         v8::String::new_external_onebyte_static(scope, b"message").unwrap();
       let message = arg.get(scope, message_key.into()).unwrap();
+      let mut message: v8::Local<v8::String> = message.try_into().unwrap();
+      if let Some(stack_frame) = JsStackFrame::from_v8_message(scope, msg) {
+        if let Some(location) = stack_frame.maybe_format_location() {
+          let str =
+            format!("{} at {location}", message.to_rust_string_lossy(scope));
+          message = v8::String::new(scope, &str).unwrap();
+        }
+      }
       let exception = match name.as_str() {
-        "RangeError" => {
-          v8::Exception::range_error(scope, message.try_into().unwrap())
-        }
-        "TypeError" => {
-          v8::Exception::type_error(scope, message.try_into().unwrap())
-        }
-        "SyntaxError" => {
-          v8::Exception::syntax_error(scope, message.try_into().unwrap())
-        }
-        "ReferenceError" => {
-          v8::Exception::reference_error(scope, message.try_into().unwrap())
-        }
-        _ => v8::Exception::error(scope, message.try_into().unwrap()),
+        "RangeError" => v8::Exception::range_error(scope, message),
+        "TypeError" => v8::Exception::type_error(scope, message),
+        "SyntaxError" => v8::Exception::syntax_error(scope, message),
+        "ReferenceError" => v8::Exception::reference_error(scope, message),
+        _ => v8::Exception::error(scope, message),
       };
       let code_key =
         v8::String::new_external_onebyte_static(scope, b"code").unwrap();
@@ -633,7 +617,7 @@ pub fn module_resolve_callback<'s>(
   let referrer_info = module_map
     .get_info(&referrer_global)
     .expect("ModuleInfo not found");
-  let referrer_name = referrer_info.name.to_string();
+  let referrer_name = referrer_info.name.as_str();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
@@ -645,7 +629,7 @@ pub fn module_resolve_callback<'s>(
   let maybe_module = module_map.resolve_callback(
     scope,
     &specifier_str,
-    &referrer_name,
+    referrer_name,
     assertions,
   );
   if let Some(module) = maybe_module {

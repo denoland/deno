@@ -19,6 +19,7 @@ import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
@@ -99,7 +100,7 @@ class MessagePort extends EventTarget {
   postMessage(message, transferOrOptions = {}) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (
@@ -249,7 +250,10 @@ function serializeJsMessageData(data, transferables) {
   for (let i = 0, j = 0; i < transferables.length; i++) {
     const ab = transferables[i];
     if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
-      if (ab.byteLength === 0 && ops.op_arraybuffer_was_detached(ab)) {
+      if (
+        ArrayBufferPrototypeGetByteLength(ab) === 0 &&
+        ops.op_arraybuffer_was_detached(ab)
+      ) {
         throw new DOMException(
           `ArrayBuffer at index ${j} is already detached`,
           "DataCloneError",
@@ -325,7 +329,7 @@ webidl.converters.StructuredSerializeOptions = webidl
 
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   options = webidl.converters.StructuredSerializeOptions(options, {
     prefix,
     context: "Argument 2",

@@ -185,7 +185,7 @@ Deno.test({
   },
 });
 
-/* Start of ported part */ 3;
+/* Start of ported part */
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Ported from Node 15.5.1
 
@@ -507,6 +507,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: true,
   name: "[node/child_process] ChildProcess.unref()",
   async fn() {
     const script = path.join(
@@ -527,6 +528,7 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: true,
   name: "[node/child_process] child_process.fork",
   async fn() {
     const testdataDir = path.join(

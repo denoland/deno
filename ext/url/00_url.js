@@ -41,6 +41,12 @@ const SET_SEARCH = 7;
 const SET_USERNAME = 8;
 
 // Helper functions
+/**
+ * @param {string} href
+ * @param {number} setter
+ * @param {string} value
+ * @returns {string}
+ */
 function opUrlReparse(href, setter, value) {
   const status = ops.op_url_reparse(
     href,
@@ -51,20 +57,28 @@ function opUrlReparse(href, setter, value) {
   return getSerialization(status, href);
 }
 
+/**
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {number}
+ */
 function opUrlParse(href, maybeBase) {
-  let status;
   if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf);
-  } else {
-    status = ops.op_url_parse_with_base(
-      href,
-      maybeBase,
-      componentsBuf,
-    );
+    return ops.op_url_parse(href, componentsBuf);
   }
-  return getSerialization(status, href, maybeBase);
+  return ops.op_url_parse_with_base(
+    href,
+    maybeBase,
+    componentsBuf,
+  );
 }
 
+/**
+ * @param {number} status
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {string}
+ */
 function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
@@ -143,7 +157,7 @@ class URLSearchParams {
   append(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -162,7 +176,7 @@ class URLSearchParams {
   delete(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -186,7 +200,7 @@ class URLSearchParams {
   getAll(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -209,7 +223,7 @@ class URLSearchParams {
   get(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'get' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -231,7 +245,7 @@ class URLSearchParams {
   has(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -246,7 +260,7 @@ class URLSearchParams {
   set(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'set' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -326,7 +340,7 @@ function trim(s) {
   return s;
 }
 
-// Represents a "no port" value. A port in URL cannot be greater than 2^16 − 1
+// Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
 const NO_PORT = 65536;
 
 const componentsBuf = new Uint32Array(8);
@@ -353,7 +367,7 @@ class URL {
 
   /**
    * @param {string} url
-   * @param {string} base
+   * @param {string} [base]
    */
   constructor(url, base = undefined) {
     const prefix = "Failed to construct 'URL'";
@@ -365,8 +379,26 @@ class URL {
       });
     }
     this[webidl.brand] = webidl.brand;
-    this.#serialization = opUrlParse(url, base);
+    const status = opUrlParse(url, base);
+    this.#serialization = getSerialization(status, url, base);
     this.#updateComponents();
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} [base]
+   */
+  static canParse(url, base = undefined) {
+    const prefix = "Failed to call 'URL.canParse'";
+    url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, {
+        prefix,
+        context: "Argument 2",
+      });
+    }
+    const status = opUrlParse(url, base);
+    return status === 0 || status === 1;
   }
 
   #updateComponents() {
@@ -432,7 +464,7 @@ class URL {
   set hash(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'hash' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -460,7 +492,7 @@ class URL {
   set host(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'host' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -488,7 +520,7 @@ class URL {
   set hostname(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'hostname' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -515,12 +547,13 @@ class URL {
   set href(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'href' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
     });
-    this.#serialization = opUrlParse(value);
+    const status = opUrlParse(value);
+    this.#serialization = getSerialization(status, value);
     this.#updateComponents();
     this.#updateSearchParams();
   }
@@ -570,7 +603,7 @@ class URL {
   set password(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'password' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -603,7 +636,7 @@ class URL {
   set pathname(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'pathname' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -638,7 +671,7 @@ class URL {
   set port(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'port' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -666,7 +699,7 @@ class URL {
   set protocol(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'protocol' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -697,7 +730,7 @@ class URL {
   set search(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'search' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -737,7 +770,7 @@ class URL {
   set username(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'username' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",

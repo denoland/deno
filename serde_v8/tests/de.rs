@@ -4,6 +4,7 @@ use serde::Deserializer;
 
 use serde_v8::utils::js_exec;
 use serde_v8::utils::v8_do;
+use serde_v8::BigInt;
 use serde_v8::ByteString;
 use serde_v8::Error;
 use serde_v8::U16String;
@@ -565,4 +566,66 @@ detest!(
   f32,
   "BigInt(-1.7976931348623157e+308)",
   f32::NEG_INFINITY
+);
+
+// BigInt to BigInt
+detest!(
+  de_bigint_var_u8,
+  BigInt,
+  "255n",
+  num_bigint::BigInt::from(255u8).into()
+);
+detest!(
+  de_bigint_var_i8,
+  BigInt,
+  "-128n",
+  num_bigint::BigInt::from(-128i8).into()
+);
+detest!(
+  de_bigint_var_u16,
+  BigInt,
+  "65535n",
+  num_bigint::BigInt::from(65535u16).into()
+);
+detest!(
+  de_bigint_var_i16,
+  BigInt,
+  "-32768n",
+  num_bigint::BigInt::from(-32768i16).into()
+);
+detest!(
+  de_bigint_var_u32,
+  BigInt,
+  "4294967295n",
+  num_bigint::BigInt::from(4294967295u32).into()
+);
+detest!(
+  de_bigint_var_i32,
+  BigInt,
+  "-2147483648n",
+  num_bigint::BigInt::from(-2147483648i32).into()
+);
+detest!(
+  de_bigint_var_u64,
+  BigInt,
+  "18446744073709551615n",
+  num_bigint::BigInt::from(18446744073709551615u64).into()
+);
+detest!(
+  de_bigint_var_i64,
+  BigInt,
+  "-9223372036854775808n",
+  num_bigint::BigInt::from(-9223372036854775808i64).into()
+);
+detest!(
+  de_bigint_var_u128,
+  BigInt,
+  "340282366920938463463374607431768211455n",
+  num_bigint::BigInt::from(340282366920938463463374607431768211455u128).into()
+);
+detest!(
+  de_bigint_var_i128,
+  BigInt,
+  "-170141183460469231731687303715884105728n",
+  num_bigint::BigInt::from(-170141183460469231731687303715884105728i128).into()
 );

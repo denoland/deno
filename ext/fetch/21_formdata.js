@@ -101,7 +101,7 @@ class FormData {
   append(name, valueOrBlobValue, filename) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'append' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
     name = webidl.converters["USVString"](name, {
       prefix,
@@ -137,7 +137,7 @@ class FormData {
   delete(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'name' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     name = webidl.converters["USVString"](name, {
       prefix,
@@ -160,7 +160,7 @@ class FormData {
   get(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'get' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     name = webidl.converters["USVString"](name, {
       prefix,
@@ -182,7 +182,7 @@ class FormData {
   getAll(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'getAll' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     name = webidl.converters["USVString"](name, {
       prefix,
@@ -205,7 +205,7 @@ class FormData {
   has(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'has' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     name = webidl.converters["USVString"](name, {
       prefix,
@@ -229,7 +229,7 @@ class FormData {
   set(name, valueOrBlobValue, filename) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'set' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
     name = webidl.converters["USVString"](name, {
       prefix,

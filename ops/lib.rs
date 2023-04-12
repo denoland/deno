@@ -145,6 +145,7 @@ impl Op {
               is_async: #is_async,
               is_unstable: #is_unstable,
               is_v8: #is_v8,
+              force_registration: false,
             }
           }
 
@@ -183,24 +184,29 @@ impl Op {
 
       #[doc(hidden)]
       impl #name {
-        pub fn name() -> &'static str {
+        pub const fn name() -> &'static str {
           stringify!(#name)
         }
 
-        pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
-          use #core::v8::MapFnTo;
-          Self::v8_func::<#type_params>.map_fn_to()
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        pub extern "C" fn v8_fn_ptr #generics (info: *const #core::v8::FunctionCallbackInfo) #where_clause {
+          let info = unsafe { &*info };
+          let scope = &mut unsafe { #core::v8::CallbackScope::new(info) };
+          let args = #core::v8::FunctionCallbackArguments::from_function_callback_info(info);
+          let rv = #core::v8::ReturnValue::from_function_callback_info(info);
+          Self::v8_func::<#type_params>(scope, args, rv);
         }
 
-        pub fn decl #generics () -> #core::OpDecl #where_clause {
+        pub const fn decl #generics () -> #core::OpDecl #where_clause {
           #core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
+            v8_fn_ptr: Self::v8_fn_ptr::<#type_params> as _,
             enabled: true,
             fast_fn: #decl,
             is_async: #is_async,
             is_unstable: #is_unstable,
             is_v8: #is_v8,
+            force_registration: false,
           }
         }
 
@@ -251,7 +257,7 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, true);
+  let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, asyncness);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {

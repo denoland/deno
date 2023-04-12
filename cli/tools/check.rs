@@ -89,10 +89,12 @@ pub fn check(
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
   // that data here.
-  let hash_data = vec![
-    options.ts_config.as_bytes(),
-    version::deno().as_bytes().to_owned(),
-  ];
+  let hash_data = {
+    let mut hasher = FastInsecureHasher::new();
+    hasher.write(&options.ts_config.as_bytes());
+    hasher.write_str(version::deno());
+    hasher.finish()
+  };
 
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,
@@ -102,6 +104,7 @@ pub fn check(
     maybe_npm_resolver: Some(npm_resolver.clone()),
     maybe_tsbuildinfo,
     root_names,
+    check_mode: options.type_check_mode,
   })?;
 
   let diagnostics = if options.type_check_mode == TypeCheckMode::Local {
@@ -264,8 +267,7 @@ fn get_tsc_roots(
     }
   }
 
-  // todo(https://github.com/denoland/deno_graph/pull/253/): pre-allocate this
-  let mut result = Vec::new();
+  let mut result = Vec::with_capacity(graph.specifiers_count());
   if graph.has_node_specifier {
     // inject a specifier that will resolve node types
     result.push((
@@ -313,6 +315,7 @@ fn get_tsc_roots(
       maybe_get_check_entry(module, check_js)
     }
   }));
+
   result
 }
 

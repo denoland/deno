@@ -11,6 +11,7 @@ use crate::args::FilesConfig;
 use crate::args::LintOptions;
 use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
+use crate::cache::Caches;
 use crate::colors;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
@@ -35,6 +36,7 @@ use serde::Serialize;
 use std::fs;
 use std::io::stdin;
 use std::io::Read;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -97,9 +99,10 @@ pub async fn lint(
 
   let has_error = Arc::new(AtomicBool::new(false));
   let deno_dir = cli_options.resolve_deno_dir()?;
+  let caches = Caches::default();
   let operation = |paths: Vec<PathBuf>| async {
     let incremental_cache = Arc::new(IncrementalCache::new(
-      &deno_dir.lint_incremental_cache_db_file_path(),
+      caches.lint_incremental_cache_db(&deno_dir),
       // use a hash of the rule names in order to bust the cache
       &{
         // ensure this is stable by sorting it
@@ -245,12 +248,12 @@ pub fn create_linter(
 }
 
 fn lint_file(
-  file_path: &PathBuf,
+  file_path: &Path,
   source_code: String,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from(file_path);
+  let media_type = MediaType::from_path(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 

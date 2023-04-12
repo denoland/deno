@@ -206,7 +206,7 @@ declare module "ext:deno_webidl/00_webidl.js" {
   function requiredArguments(
     length: number,
     required: number,
-    opts: ConverterOpts,
+    prefix: string,
   ): void;
   type Dictionary = DictionaryMember[];
   interface DictionaryMember {

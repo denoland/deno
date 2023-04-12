@@ -6,9 +6,8 @@ test 2 ... FAILED ([WILDCARD])
  ERRORS 
 
 test 1 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
-error: AssertionError: Test case is leaking async ops.
-
- - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
+error: Leaking async ops:
+  - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
     at [WILDCARD]
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/testdata/test/ops_sanitizer_multiple_timeout_tests.ts:4:3)
@@ -19,14 +18,11 @@ error: AssertionError: Test case is leaking async ops.
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/testdata/test/ops_sanitizer_multiple_timeout_tests.ts:5:3)
     at [WILDCARD]/testdata/test/ops_sanitizer_multiple_timeout_tests.ts:8:27
-    at [WILDCARD]
-
     at [WILDCARD]
 
 test 2 => ./test/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
-error: AssertionError: Test case is leaking async ops.
-
- - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
+error: Leaking async ops:
+  - 2 async operations to sleep for a duration were started in this test, but never completed. This is often caused by not cancelling a `setTimeout` or `setInterval` call. The operations were started here:
     at [WILDCARD]
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/testdata/test/ops_sanitizer_multiple_timeout_tests.ts:4:3)
@@ -37,8 +33,6 @@ error: AssertionError: Test case is leaking async ops.
     at setTimeout ([WILDCARD])
     at test ([WILDCARD]/testdata/test/ops_sanitizer_multiple_timeout_tests.ts:5:3)
     at [WILDCARD]/testdata/test/ops_sanitizer_multiple_timeout_tests.ts:10:27
-    at [WILDCARD]
-
     at [WILDCARD]
 
  FAILURES 

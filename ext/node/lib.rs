@@ -1,14 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
+use deno_core::serde_json;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -23,6 +22,7 @@ mod polyfill;
 mod resolution;
 mod v8;
 mod winerror;
+mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -41,8 +41,76 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
 
+pub trait NodeEnv {
+  type P: NodePermissions;
+  type Fs: NodeFs;
+}
+
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+}
+
+#[derive(Default, Clone)]
+pub struct NodeFsMetadata {
+  pub is_file: bool,
+  pub is_dir: bool,
+}
+
+pub trait NodeFs {
+  fn current_dir() -> io::Result<PathBuf>;
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata>;
+  fn is_file<P: AsRef<Path>>(path: P) -> bool;
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool;
+  fn exists<P: AsRef<Path>>(path: P) -> bool;
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf>;
+}
+
+pub struct RealFs;
+impl NodeFs for RealFs {
+  fn current_dir() -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::env::current_dir()
+  }
+
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).map(|metadata| {
+      // on most systems, calling is_file() and is_dir() is cheap
+      // and returns information already found in the metadata object
+      NodeFsMetadata {
+        is_file: metadata.is_file(),
+        is_dir: metadata.is_dir(),
+      }
+    })
+  }
+
+  fn exists<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).is_ok()
+  }
+
+  fn is_file<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path)
+      .map(|m| m.is_file())
+      .unwrap_or(false)
+  }
+
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
+  }
+
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::read_to_string(path)
+  }
+
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::path::Path::canonicalize(path.as_ref())
+  }
 }
 
 pub trait RequireNpmResolver {
@@ -96,42 +164,94 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
-fn ext_polyfill() -> ExtensionBuilder {
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_io", "deno_fs"])
-}
+deno_core::extension!(deno_node,
+  deps = [ deno_io, deno_fs ],
+  parameters = [Env: NodeEnv],
+  ops = [
+    crypto::op_node_create_decipheriv,
+    crypto::op_node_cipheriv_encrypt,
+    crypto::op_node_cipheriv_final,
+    crypto::op_node_create_cipheriv,
+    crypto::op_node_create_hash,
+    crypto::op_node_decipheriv_decrypt,
+    crypto::op_node_decipheriv_final,
+    crypto::op_node_hash_update,
+    crypto::op_node_hash_update_str,
+    crypto::op_node_hash_digest,
+    crypto::op_node_hash_digest_hex,
+    crypto::op_node_hash_clone,
+    crypto::op_node_private_encrypt,
+    crypto::op_node_private_decrypt,
+    crypto::op_node_public_encrypt,
+    crypto::op_node_check_prime,
+    crypto::op_node_check_prime_async,
+    crypto::op_node_check_prime_bytes,
+    crypto::op_node_check_prime_bytes_async,
+    crypto::op_node_pbkdf2,
+    crypto::op_node_pbkdf2_async,
+    crypto::op_node_hkdf,
+    crypto::op_node_hkdf_async,
+    crypto::op_node_generate_secret,
+    crypto::op_node_generate_secret_async,
+    crypto::op_node_sign,
+    crypto::op_node_random_int,
+    crypto::x509::op_node_x509_parse,
+    crypto::x509::op_node_x509_ca,
+    crypto::x509::op_node_x509_check_email,
+    crypto::x509::op_node_x509_fingerprint,
+    crypto::x509::op_node_x509_fingerprint256,
+    crypto::x509::op_node_x509_fingerprint512,
+    crypto::x509::op_node_x509_get_issuer,
+    crypto::x509::op_node_x509_get_subject,
+    crypto::x509::op_node_x509_get_valid_from,
+    crypto::x509::op_node_x509_get_valid_to,
+    crypto::x509::op_node_x509_get_serial_number,
+    crypto::x509::op_node_x509_key_usage,
+    winerror::op_node_sys_to_uv_error,
+    v8::op_v8_cached_data_version_tag,
+    v8::op_v8_get_heap_statistics,
+    idna::op_node_idna_domain_to_ascii,
+    idna::op_node_idna_domain_to_unicode,
+    idna::op_node_idna_punycode_decode,
+    idna::op_node_idna_punycode_encode,
+    zlib::op_zlib_new,
+    zlib::op_zlib_close,
+    zlib::op_zlib_close_if_pending,
+    zlib::op_zlib_write,
+    zlib::op_zlib_write_async,
+    zlib::op_zlib_init,
+    zlib::op_zlib_reset,
+    op_node_build_os,
 
-fn ops_polyfill(ext: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  ext.ops(vec![
-    crypto::op_node_cipheriv_encrypt::decl(),
-    crypto::op_node_cipheriv_final::decl(),
-    crypto::op_node_create_cipheriv::decl(),
-    crypto::op_node_create_hash::decl(),
-    crypto::op_node_hash_update::decl(),
-    crypto::op_node_hash_update_str::decl(),
-    crypto::op_node_hash_digest::decl(),
-    crypto::op_node_hash_digest_hex::decl(),
-    crypto::op_node_hash_clone::decl(),
-    crypto::op_node_private_encrypt::decl(),
-    crypto::op_node_private_decrypt::decl(),
-    crypto::op_node_public_encrypt::decl(),
-    winerror::op_node_sys_to_uv_error::decl(),
-    v8::op_v8_cached_data_version_tag::decl(),
-    v8::op_v8_get_heap_statistics::decl(),
-    idna::op_node_idna_domain_to_ascii::decl(),
-    idna::op_node_idna_domain_to_unicode::decl(),
-    idna::op_node_idna_punycode_decode::decl(),
-    idna::op_node_idna_punycode_encode::decl(),
-    op_node_build_os::decl(),
-  ])
-}
-
-pub fn init_polyfill_ops() -> Extension {
-  ops_polyfill(&mut ext_polyfill()).build()
-}
-
-pub fn init_polyfill_ops_and_esm() -> Extension {
-  let esm_files = include_js_files!(
+    ops::op_require_init_paths,
+    ops::op_require_node_module_paths<Env>,
+    ops::op_require_proxy_path,
+    ops::op_require_is_deno_dir_package,
+    ops::op_require_resolve_deno_dir,
+    ops::op_require_is_request_relative,
+    ops::op_require_resolve_lookup_paths,
+    ops::op_require_try_self_parent_path<Env>,
+    ops::op_require_try_self<Env>,
+    ops::op_require_real_path<Env>,
+    ops::op_require_path_is_absolute,
+    ops::op_require_path_dirname,
+    ops::op_require_stat<Env>,
+    ops::op_require_path_resolve,
+    ops::op_require_path_basename,
+    ops::op_require_read_file<Env>,
+    ops::op_require_as_file_path,
+    ops::op_require_resolve_exports<Env>,
+    ops::op_require_read_closest_package_json<Env>,
+    ops::op_require_read_package_scope<Env>,
+    ops::op_require_package_imports_resolve<Env>,
+    ops::op_require_break_on_next_statement,
+  ],
+  esm_entry_point = "ext:deno_node/02_init.js",
+  esm = [
     dir "polyfills",
+    "00_globals.js",
+    "01_require.js",
+    "02_init.js",
     "_core.ts",
     "_events.mjs",
     "_fs/_fs_access.ts",
@@ -177,7 +297,6 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "_http_common.ts",
     "_http_outgoing.ts",
     "_next_tick.ts",
-    "_pako.mjs",
     "_process/exiting.ts",
     "_process/process.ts",
     "_process/streams.mjs",
@@ -314,7 +433,6 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "internal/util/inspect.mjs",
     "internal/util/types.ts",
     "internal/validators.mjs",
-    "module_all.ts",
     "net.ts",
     "os.ts",
     "path.ts",
@@ -352,90 +470,41 @@ pub fn init_polyfill_ops_and_esm() -> Extension {
     "wasi.ts",
     "worker_threads.ts",
     "zlib.ts",
-  );
+  ],
+  options = {
+    maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  },
+  state = |state, options| {
+    if let Some(npm_resolver) = options.maybe_npm_resolver {
+      state.put(npm_resolver);
+    }
+  },
+);
 
-  ops_polyfill(&mut ext_polyfill())
-    .esm(esm_files)
-    .esm_entry_point("ext:deno_node/module_all.ts")
-    .build()
-}
-
-fn ext() -> ExtensionBuilder {
-  Extension::builder("deno_node_loading")
-}
-
-fn ops<P: NodePermissions + 'static>(
-  ext: &mut ExtensionBuilder,
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      ops::op_require_init_paths::decl(),
-      ops::op_require_node_module_paths::decl::<P>(),
-      ops::op_require_proxy_path::decl(),
-      ops::op_require_is_deno_dir_package::decl(),
-      ops::op_require_resolve_deno_dir::decl(),
-      ops::op_require_is_request_relative::decl(),
-      ops::op_require_resolve_lookup_paths::decl(),
-      ops::op_require_try_self_parent_path::decl::<P>(),
-      ops::op_require_try_self::decl::<P>(),
-      ops::op_require_real_path::decl::<P>(),
-      ops::op_require_path_is_absolute::decl(),
-      ops::op_require_path_dirname::decl(),
-      ops::op_require_stat::decl::<P>(),
-      ops::op_require_path_resolve::decl(),
-      ops::op_require_path_basename::decl(),
-      ops::op_require_read_file::decl::<P>(),
-      ops::op_require_as_file_path::decl(),
-      ops::op_require_resolve_exports::decl::<P>(),
-      ops::op_require_read_closest_package_json::decl::<P>(),
-      ops::op_require_read_package_scope::decl::<P>(),
-      ops::op_require_package_imports_resolve::decl::<P>(),
-      ops::op_require_break_on_next_statement::decl(),
-    ])
-    .state(move |state| {
-      if let Some(npm_resolver) = maybe_npm_resolver.clone() {
-        state.put(npm_resolver);
-      }
-    })
-}
-
-pub fn init_ops_and_esm<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  ops::<P>(&mut ext(), maybe_npm_resolver)
-    .esm(include_js_files!(
-      "01_node.js",
-      "02_require.js",
-      "module_es_shim.js",
-    ))
-    .build()
-}
-
-pub fn init_ops<P: NodePermissions + 'static>(
-  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
-) -> Extension {
-  ops::<P>(&mut ext(), maybe_npm_resolver).build()
-}
-
-pub async fn initialize_runtime(
+pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
+  maybe_binary_command_name: Option<String>,
 ) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir) {{
-      Deno[Deno.internal].node.initialize(Deno[Deno.internal].nodeModuleAll, nodeGlobalThisName);
-      if (usesLocalNodeModulesDir) {{
-        Deno[Deno.internal].require.setUsesLocalNodeModulesDir();
-      }}
-    }})('{}', {});"#,
+  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
+    serde_json::to_string(binary_command_name.as_str())?
+  } else {
+    "undefined".to_string()
+  };
+  let source_code = format!(
+    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
+      Deno[Deno.internal].node.initialize(
+        nodeGlobalThisName,
+        usesLocalNodeModulesDir,
+        argv0
+      );
+    }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME.as_str(),
     uses_local_node_modules_dir,
+    argv0
   );
 
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(located_script_name!(), source_code.into())?;
   Ok(())
 }
 
@@ -449,38 +518,16 @@ pub fn load_cjs_module(
     text.replace('\\', r"\\").replace('\'', r"\'")
   }
 
-  let source_code = &format!(
-    r#"(function loadCjsModule(module, inspectBrk) {{
-      if (inspectBrk) {{
-        Deno[Deno.internal].require.setInspectBrk();
-      }}
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}', {inspect_brk});"#,
+  let source_code = format!(
+    r#"(function loadCjsModule(moduleName, isMain, inspectBrk) {{
+      Deno[Deno.internal].node.loadCjsModule(moduleName, isMain, inspectBrk);
+    }})('{module}', {main}, {inspect_brk});"#,
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
-  );
+  )
+  .into();
 
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
-}
-
-pub async fn initialize_binary_command(
-  js_runtime: &mut JsRuntime,
-  binary_name: &str,
-) -> Result<(), AnyError> {
-  // overwrite what's done in deno_std in order to set the binary arg name
-  let source_code = &format!(
-    r#"(async function initializeBinaryCommand(binaryName) {{
-      const process = Deno[Deno.internal].node.globalThis.process;
-      Object.defineProperty(process.argv, "0", {{
-        get: () => binaryName,
-      }});
-    }})('{binary_name}');"#,
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
+  js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
 }

@@ -31,11 +31,15 @@ pub enum Error {
   ExpectedDetachable,
   #[error("serde_v8 error: invalid type, expected: external")]
   ExpectedExternal,
+  ExpectedBigInt,
 
   #[error("serde_v8 error: invalid type, expected: utf8")]
   ExpectedUtf8,
   #[error("serde_v8 error: invalid type, expected: latin1")]
   ExpectedLatin1,
+
+  #[error("serde_v8 error: unsupported type")]
+  UnsupportedType,
 
   #[error("serde_v8 error: length mismatch, got: {0}, expected: {1}")]
   LengthMismatch(usize, usize),
