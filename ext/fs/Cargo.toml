@@ -14,13 +14,14 @@ description = "Ops for interacting with the file system"
 path = "lib.rs"
 
 [dependencies]
+async-trait.workspace = true
 deno_core.workspace = true
-deno_crypto.workspace = true
 deno_io.workspace = true
 filetime = "0.2.16"
 fs3 = "0.5.0"
 libc.workspace = true
 log.workspace = true
+rand.workspace = true
 serde.workspace = true
 tokio.workspace = true
 
