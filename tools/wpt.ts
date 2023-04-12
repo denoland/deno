@@ -396,7 +396,7 @@ async function update() {
 
   saveExpectation(currentExpectation);
 
-  reportFinal(results);
+  reportFinal(results, endTime - startTime);
 
   console.log(blue("Updated expectation.json to match reality."));
 
