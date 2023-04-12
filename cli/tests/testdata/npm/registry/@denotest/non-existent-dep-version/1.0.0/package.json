@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/non-existent-dep-version",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/esm-basic": "=99.99.99"
+  }
+}

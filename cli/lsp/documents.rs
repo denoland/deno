@@ -21,7 +21,7 @@ use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -37,16 +37,17 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -1165,7 +1166,7 @@ impl Documents {
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
-    npm_registry_api: NpmRegistryApi,
+    npm_registry_api: NpmRegistry,
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
@@ -1186,7 +1187,23 @@ impl Documents {
         hasher.write_str(import_map.base_url().as_str());
       }
       hasher.write_hashable(&maybe_jsx_config);
-      hasher.write_hashable(&maybe_package_json_deps);
+      if let Some(package_json_deps) = &maybe_package_json_deps {
+        // We need to ensure the hashing is deterministic so explicitly type
+        // this in order to catch if the type of package_json_deps ever changes
+        // from a sorted/deterministic BTreeMap to something else.
+        let package_json_deps: &BTreeMap<_, _> = *package_json_deps;
+        for (key, value) in package_json_deps {
+          hasher.write_hashable(key);
+          match value {
+            Ok(value) => {
+              hasher.write_hashable(value);
+            }
+            Err(err) => {
+              hasher.write_str(&err.to_string());
+            }
+          }
+        }
+      }
       hasher.finish()
     }
 
@@ -1847,7 +1864,7 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_registry_api = NpmRegistryApi::new_uninitialized();
+    let npm_registry_api = NpmRegistry::new_uninitialized();
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
 

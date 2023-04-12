@@ -6,6 +6,7 @@ import {
   assertNotEquals,
   assertThrows,
 } from "../../../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
 const validateNonZero = (buf: Buffer) => {
   if (!buf.some((ch) => ch > 0)) throw new Error("Error");
@@ -15,14 +16,18 @@ const validateZero = (buf: Buffer) => {
   buf.forEach((val) => assertEquals(val, 0));
 };
 
-Deno.test("[node/crypto.randomFill]", () => {
+Deno.test("[node/crypto.randomFill]", async () => {
+  const promise = deferred();
   const buf = Buffer.alloc(10);
   const before = buf.toString("hex");
 
   randomFill(buf, 5, 5, (_err, bufTwo) => {
     const after = bufTwo?.toString("hex");
     assertEquals(before.slice(0, 10), after?.slice(0, 10));
+    promise.resolve(true);
   });
+
+  await promise;
 });
 
 Deno.test("[node/crypto.randomFillSync]", () => {

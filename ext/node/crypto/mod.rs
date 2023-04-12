@@ -9,6 +9,8 @@ use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
+use rand::distributions::Distribution;
+use rand::distributions::Uniform;
 use rand::Rng;
 use std::future::Future;
 use std::rc::Rc;
@@ -23,6 +25,7 @@ use rsa::RsaPublicKey;
 mod cipher;
 mod digest;
 mod primes;
+pub mod x509;
 
 #[op]
 pub fn op_node_check_prime(num: serde_v8::BigInt, checks: usize) -> bool {
@@ -476,4 +479,14 @@ pub async fn op_node_hkdf_async(
     Ok(okm.into())
   })
   .await?
+}
+
+#[op]
+pub fn op_node_random_int(min: i32, max: i32) -> Result<i32, AnyError> {
+  let mut rng = rand::thread_rng();
+  // Uniform distribution is required to avoid Modulo Bias
+  // https://en.wikipedia.org/wiki/Fisher–Yates_shuffle#Modulo_bias
+  let dist = Uniform::from(min..max);
+
+  Ok(dist.sample(&mut rng))
 }
