@@ -642,7 +642,7 @@ converters["sequence<DOMString>"] = createSequenceConverter(
   converters.DOMString,
 );
 
-function requiredArguments(length, required) {
+function requiredArguments(length, required, prefix) {
   if (length < required) {
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
