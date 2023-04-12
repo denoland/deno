@@ -830,13 +830,11 @@ function createJob(mode, type, options) {
       } else {
         validateInt32(divisorLength, "options.divisorLength", 0);
       }
-
-      return new DsaKeyPairGenJob(
-        mode,
-        modulusLength,
-        divisorLength,
-        ...encoding,
-      );
+  
+      if (mode === "sync") {
+        return ops.op_node_generate_dsa(modulusLength, divisorLength);
+      }
+      return core.opAsync("op_node_generate_dsa_async", modulusLength, divisorLength);
     }
     case "ec": {
       validateObject(options, "options");

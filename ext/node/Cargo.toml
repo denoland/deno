@@ -43,3 +43,4 @@ sha3 = "0.10.5"
 signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
+dsa = "0.6.1"

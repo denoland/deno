@@ -482,14 +482,16 @@ pub async fn op_node_hkdf_async(
 use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
 
-// For RSA-PSS, see `generate_rsa_pss()`
 fn generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
   let mut rng = rand::thread_rng();
-  let private_key =
-    RsaPrivateKey::new_with_exp(&mut rng, modulus_length, &rsa::BigUint::from_usize(public_exponent).unwrap())?;
+  let private_key = RsaPrivateKey::new_with_exp(
+    &mut rng,
+    modulus_length,
+    &rsa::BigUint::from_usize(public_exponent).unwrap(),
+  )?;
   let public_key = private_key.to_public_key();
   let private_key_der = private_key.to_pkcs1_der()?.as_bytes().to_vec();
   let public_key_der = public_key.to_pkcs1_der()?.to_vec();
@@ -510,6 +512,62 @@ pub async fn op_node_generate_rsa_async(
   modulus_length: usize,
   public_exponent: usize,
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(move || generate_rsa(modulus_length, public_exponent))
-    .await?
+  tokio::task::spawn_blocking(move || {
+    generate_rsa(modulus_length, public_exponent)
+  })
+  .await?
+}
+
+fn dsa_generate(
+  modulus_length: usize,
+  divisor_length: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let mut rng = rand::thread_rng();
+  use dsa::pkcs8::EncodePrivateKey;
+  use dsa::pkcs8::EncodePublicKey;
+  use dsa::{Components, KeySize, SigningKey};
+
+  let key_size = match (modulus_length, divisor_length) {
+    (1024, 160) => KeySize::DSA_1024_160,
+    (2048, 224) => KeySize::DSA_2048_224,
+    (2048, 256) => KeySize::DSA_2048_256,
+    (3072, 256) => KeySize::DSA_3072_256,
+    _ => return Err(type_error("Invalid modulus_length or divisor_length")),
+  };
+  let components = Components::generate(&mut rng, key_size);
+  let signing_key = SigningKey::generate(&mut rng, components);
+  let verifying_key = signing_key.verifying_key();
+
+  Ok((
+    signing_key
+      .to_pkcs8_der()
+      .map_err(|_| type_error(""))?
+      .as_bytes()
+      .to_vec()
+      .into(),
+    verifying_key
+      .to_public_key_der()
+      .map_err(|_| type_error(""))?
+      .to_vec()
+      .into(),
+  ))
+}
+
+#[op]
+pub fn op_node_dsa_generate(
+  modulus_length: usize,
+  divisor_length: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  dsa_generate(modulus_length, divisor_length)
+}
+
+#[op]
+pub async fn op_node_dsa_generate_async(
+  modulus_length: usize,
+  divisor_length: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || {
+    dsa_generate(modulus_length, divisor_length)
+  })
+  .await?
 }
