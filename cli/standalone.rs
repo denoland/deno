@@ -307,7 +307,7 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &metadata.permissions,
   )?);
