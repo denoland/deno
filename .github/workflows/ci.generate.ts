@@ -215,7 +215,8 @@ function handleMatrixItems(items: {
       text += `'${Runners.ubuntu}' || ${
         removeSurroundingExpression(item.os)
       } }}`;
-      // deno-lint-ignore: no-explicit-any
+
+      // deno-lint-ignore no-explicit-any
       (item as any).runner = text;
     }
     return item;
