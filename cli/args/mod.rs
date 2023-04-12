@@ -64,8 +64,8 @@ use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmProcessState;
-use crate::npm::NpmRegistry;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -746,7 +746,7 @@ impl CliOptions {
 
   pub async fn resolve_npm_resolution_snapshot(
     &self,
-    api: &NpmRegistry,
+    api: &CliNpmRegistryApi,
   ) -> Result<Option<NpmResolutionSnapshot>, AnyError> {
     if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone

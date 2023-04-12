@@ -20,7 +20,7 @@ use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::npm::NpmRegistry;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -264,7 +264,7 @@ async fn build_test_graph(
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
   let resolver = original_import_map.map(|m| {
-    let npm_registry_api = NpmRegistry::new_uninitialized();
+    let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
     let deps_installer = PackageJsonDepsInstaller::new(
