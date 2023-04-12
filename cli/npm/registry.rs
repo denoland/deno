@@ -5,8 +5,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -31,6 +29,7 @@ use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::sync::AtomicFlag;
 
 use super::cache::should_sync_download;
 use super::cache::NpmCache;
@@ -70,7 +69,7 @@ impl NpmRegistry {
     Self(Some(Arc::new(NpmRegistryApiInner {
       base_url,
       cache,
-      force_reload: AtomicBool::new(false),
+      force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
       http_client,
@@ -109,7 +108,7 @@ impl NpmRegistry {
     if matches!(self.inner().cache.cache_setting(), CacheSetting::Only) {
       return false;
     }
-    !self.inner().force_reload.swap(true, Ordering::SeqCst)
+    self.inner().force_reload_flag.raise()
   }
 
   fn inner(&self) -> &Arc<NpmRegistryApiInner> {
@@ -160,7 +159,7 @@ enum CacheItem {
 struct NpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
-  force_reload: AtomicBool,
+  force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: HttpClient,
@@ -230,7 +229,7 @@ impl NpmRegistryApiInner {
   }
 
   fn force_reload(&self) -> bool {
-    self.force_reload.load(Ordering::SeqCst)
+    self.force_reload_flag.is_raised()
   }
 
   fn load_file_cached_package_info(

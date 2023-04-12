@@ -24,6 +24,7 @@ use crate::args::JsxImportSourceConfig;
 use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
+use crate::util::sync::AtomicFlag;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
@@ -36,6 +37,7 @@ pub struct CliGraphResolver {
   npm_registry_api: NpmRegistry,
   npm_resolution: NpmResolution,
   package_json_deps_installer: PackageJsonDepsInstaller,
+  found_package_json_dep_flag: Arc<AtomicFlag>,
   sync_download_queue: Option<Arc<TaskQueue>>,
 }
 
@@ -54,6 +56,7 @@ impl Default for CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       package_json_deps_installer: Default::default(),
+      found_package_json_dep_flag: Default::default(),
       sync_download_queue: Self::create_sync_download_queue(),
     }
   }
@@ -79,6 +82,7 @@ impl CliGraphResolver {
       npm_registry_api,
       npm_resolution,
       package_json_deps_installer,
+      found_package_json_dep_flag: Default::default(),
       sync_download_queue: Self::create_sync_download_queue(),
     }
   }
@@ -97,6 +101,18 @@ impl CliGraphResolver {
 
   pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
     self
+  }
+
+  pub async fn top_level_package_json_install_if_necessary(
+    &self,
+  ) -> Result<(), AnyError> {
+    if self.found_package_json_dep_flag.is_raised() {
+      self
+        .package_json_deps_installer
+        .ensure_top_level_install()
+        .await?;
+    }
+    Ok(())
   }
 }
 
@@ -132,6 +148,7 @@ impl Resolver for CliGraphResolver {
     if let Some(deps) = self.package_json_deps_installer.package_deps().as_ref()
     {
       if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
+        self.found_package_json_dep_flag.raise();
         return Ok(specifier);
       }
     }
@@ -195,7 +212,6 @@ impl NpmResolver for CliGraphResolver {
     // this will internally cache the package information
     let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
-    let deps_installer = self.package_json_deps_installer.clone();
     let maybe_sync_download_queue = self.sync_download_queue.clone();
     async move {
       let permit = if let Some(task_queue) = &maybe_sync_download_queue {
@@ -203,21 +219,6 @@ impl NpmResolver for CliGraphResolver {
       } else {
         None
       };
-
-      // trigger an npm install if the package name matches
-      // a package in the package.json
-      //
-      // todo(dsherret): ideally this would only download if a bare
-      // specifiy matched in the package.json, but deno_graph only
-      // calls this once per package name and we might resolve an
-      // npm specifier first which calls this, then a bare specifier
-      // second and that would cause this not to occur.
-      if deps_installer.has_package_name(&package_name) {
-        deps_installer
-          .ensure_top_level_install()
-          .await
-          .map_err(|err| format!("{err:#}"))?;
-      }
 
       let result = api
         .package_info(&package_name)
