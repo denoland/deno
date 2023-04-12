@@ -564,7 +564,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. ${failReason}\n`,
+      }. ${failReason} (${result.duration}ms)\n`,
     );
     return;
   }
@@ -601,7 +601,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   console.log(
     `\nfile result: ${
       failedCount > 0 ? red("failed") : green("ok")
-    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount}\n`,
+    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount} (${result.duration}ms)\n`,
   );
 }
 
