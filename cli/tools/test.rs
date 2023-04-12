@@ -1531,7 +1531,7 @@ pub async fn run_tests(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1575,7 +1575,7 @@ pub async fn run_tests_with_watch(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.

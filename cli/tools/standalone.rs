@@ -38,7 +38,7 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let module_specifier = ps.options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
