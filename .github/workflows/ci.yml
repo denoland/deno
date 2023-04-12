@@ -60,11 +60,11 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+          - os: '${{ ''windows-2022'' }}'
             job: test
             profile: debug
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
-            runner: '${{ github.event_name == ''pull_request'' && ''windows-2022'' || (github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'') }}'
+          - os: '${{ ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''windows-2022'' || (''windows-2022'') }}'
             job: test
             profile: release
             skip_pr: true

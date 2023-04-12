@@ -2,8 +2,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
-const windowsRunnerCondition =
-  "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
+const windowsRunnerCondition = "'windows-2022'";
 const Runners = {
   linux:
     "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
