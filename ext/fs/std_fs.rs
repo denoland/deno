@@ -526,10 +526,9 @@ fn lstat(path: impl AsRef<Path>) -> FsResult<FsStat> {
   let mut fsstat = metadata_to_fsstat(metadata);
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
-  let path = path.as_ref()?;
   stat_extra(
     &mut fsstat,
-    &path,
+    path.as_ref(),
     FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
   )?;
   Ok(fsstat)
