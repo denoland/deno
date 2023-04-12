@@ -60,14 +60,15 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''macos-12'' }}'
+          - os: windows-2022
             job: test
             profile: debug
-          - os: '${{ ''windows-2022'' }}'
-            runner: '${{ github.event_name == ''pull_request'' && ''windows-2022'' || (''windows-2022'') }}'
+          - os: windows-2022
             job: test
             profile: release
             skip_pr: true
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''windows-2022'' }}'
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
             profile: release
@@ -78,12 +79,13 @@ jobs:
             profile: release
             use_sysroot: true
             skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'')  && ''ubuntu-22.04'' || ''${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'' }}'
+          - os: ubuntu-22.04
             job: test
             profile: debug
             use_sysroot: true
             wpt: '${{ github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+          - os: ubuntu-22.04
             job: lint
             profile: debug
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
@@ -562,7 +564,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v3
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'' || startsWith(matrix.os, ''windows''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'' || startsWith(matrix.os, ''ubuntu''))'
         with:
           path: |-
             ./target

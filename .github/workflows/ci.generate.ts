@@ -2,13 +2,20 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
-const windowsRunnerCondition = "'windows-2022'";
-const Runners = {
-  linux:
-    "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
-  macos: "macos-12",
-  windows: `\${{ ${windowsRunnerCondition} }}`,
-};
+const Runners = (() => {
+  const windowsRunner = "windows-2022";
+  const ubuntuRunner = "ubuntu-22.04";
+  const ubuntuXlRunner = "ubuntu-22.04-xl";
+
+  return {
+    ubuntuXl:
+      `\${{ github.repository == 'denoland/deno' && '${ubuntuXlRunner}' || '${ubuntuRunner}' }}`,
+    ubuntu: ubuntuRunner,
+    linux: ubuntuRunner,
+    macos: "macos-12",
+    windows: windowsRunner,
+  };
+})();
 // bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
   "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
@@ -183,6 +190,33 @@ function withCondition(
   };
 }
 
+function removeSurroundingExpression(text: string) {
+  return text.replace(/^${{/, "").replace(/}}$/, "");
+}
+
+function handleMatrixItems(items: {
+  skip_pr?: string | true;
+  os: string;
+  profile?: string;
+  job?: string;
+  use_sysroot?: boolean;
+  wpt?: string;
+}[]) {
+  return items.map((item) => {
+    // use a free "ubuntu" runner on jobs that are skipped on pull requests
+    if (item.skip_pr != null) {
+      let text = "${{ github.event_name == 'pull_request' && ";
+      if (typeof item.skip_pr === "string") {
+        text += removeSurroundingExpression(item.skip_pr.toString()) + " && ";
+      }
+      text += `'${Runners.ubuntu}' || '${item.os}' }}`;
+      // deno-lint-ignore: no-explicit-any
+      (item as any).runner = text;
+    }
+    return item;
+  });
+}
+
 const ci = {
   name: "ci",
   on: {
@@ -242,63 +276,51 @@ const ci = {
       },
       strategy: {
         matrix: {
-          include: [
-            {
-              os: Runners.macos,
-              job: "test",
-              profile: "debug",
-            },
-            {
-              os: Runners.macos,
-              job: "test",
-              profile: "release",
-              skip_pr: true,
-            },
-            {
-              os: Runners.windows,
-              job: "test",
-              profile: "debug",
-            },
-            {
-              os: Runners.windows,
-              // use a free runner on PRs since this will be skipped
-              runner:
-                `\${{ github.event_name == 'pull_request' && 'windows-2022' || (${windowsRunnerCondition}) }}`,
-              job: "test",
-              profile: "release",
-              skip_pr: true,
-            },
-            {
-              os: Runners.linux,
-              job: "test",
-              profile: "release",
-              use_sysroot: true,
-              // TODO(ry): Because CI is so slow on for OSX and Windows, we
-              // currently run the Web Platform tests only on Linux.
-              wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-            },
-            {
-              os: Runners.linux,
-              job: "bench",
-              profile: "release",
-              use_sysroot: true,
-              skip_pr:
-                "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
-            },
-            {
-              os: Runners.linux,
-              job: "test",
-              profile: "debug",
-              use_sysroot: true,
-              wpt:
-                "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
-            },
-            {
-              os: Runners.linux,
-              job: "lint",
-              profile: "debug",
-            },
-          ],
+          include: handleMatrixItems([{
+            os: Runners.macos,
+            job: "test",
+            profile: "debug",
+          }, {
+            os: Runners.macos,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
+            os: Runners.windows,
+            job: "test",
+            profile: "debug",
+          }, {
+            os: Runners.windows,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
+            os: Runners.ubuntuXl,
+            job: "test",
+            profile: "release",
+            use_sysroot: true,
+            // TODO(ry): Because CI is so slow on for OSX and Windows, we
+            // currently run the Web Platform tests only on Linux.
+            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+          }, {
+            os: Runners.ubuntuXl,
+            job: "bench",
+            profile: "release",
+            use_sysroot: true,
+            skip_pr:
+              "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+          }, {
+            os: Runners.ubuntu,
+            job: "test",
+            profile: "debug",
+            use_sysroot: true,
+            wpt:
+              "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
+          }, {
+            os: Runners.ubuntu,
+            job: "lint",
+            profile: "debug",
+          }]),
         },
         // Always run main branch builds to completion. This allows the cache to
         // stay mostly up-to-date in situations where a single job fails due to
@@ -846,7 +868,7 @@ const ci = {
           name: "Save cache build output (main)",
           uses: "actions/cache/save@v3",
           if:
-            "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main' || startsWith(matrix.os, 'windows')", // todo(dsherret): revert
+            "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main' || startsWith(matrix.os, 'ubuntu')", // todo(dsherret): revert
           with: {
             path: [
               "./target",
