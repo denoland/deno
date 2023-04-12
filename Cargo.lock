@@ -1127,6 +1127,7 @@ dependencies = [
  "pbkdf2",
  "rand",
  "regex",
+ "ring",
  "ripemd",
  "rsa",
  "serde",

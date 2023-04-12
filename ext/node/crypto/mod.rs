@@ -525,7 +525,9 @@ fn dsa_generate(
   let mut rng = rand::thread_rng();
   use dsa::pkcs8::EncodePrivateKey;
   use dsa::pkcs8::EncodePublicKey;
-  use dsa::{Components, KeySize, SigningKey};
+  use dsa::Components;
+  use dsa::KeySize;
+  use dsa::SigningKey;
 
   let key_size = match (modulus_length, divisor_length) {
     (1024, 160) => KeySize::DSA_1024_160,
@@ -570,4 +572,43 @@ pub async fn op_node_dsa_generate_async(
     dsa_generate(modulus_length, divisor_length)
   })
   .await?
+}
+
+fn ec_generate(
+  named_curve: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  use ring::signature::EcdsaKeyPair;
+  use ring::signature::KeyPair;
+
+  let curve = match named_curve {
+    "p256" => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+    "p384" => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
+    _ => return Err(type_error("Unsupported named curve")),
+  };
+
+  let rng = ring::rand::SystemRandom::new();
+
+  let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
+    .map_err(|_| type_error("Failed to generate EC key"))?;
+
+  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref())
+    .map_err(|_| type_error("Failed to generate EC key"))?
+    .public_key()
+    .as_ref()
+    .to_vec();
+  Ok((pkcs8.as_ref().to_vec().into(), public_key.into()))
+}
+
+#[op]
+pub fn op_node_ec_generate(
+  named_curve: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  ec_generate(named_curve)
+}
+
+#[op]
+pub async fn op_node_ec_generate_async(
+  named_curve: String,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || ec_generate(&named_curve)).await?
 }

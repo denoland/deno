@@ -728,7 +728,7 @@ export function generateKeyPairSync(
 ):
   | KeyPairKeyObjectResult
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
-  return createJob(kSync, type, options);
+  const [privateKey, publicKey] = createJob(kSync, type, options);
 }
 
 const kSync = 0;
@@ -762,7 +762,11 @@ function createJob(mode, type, options) {
             publicExponent,
           );
         } else {
-          return core.opAsync("op_node_generate_rsa_async", modulusLength, publicExponent);
+          return core.opAsync(
+            "op_node_generate_rsa_async",
+            modulusLength,
+            publicExponent,
+          );
         }
       }
 
@@ -830,11 +834,15 @@ function createJob(mode, type, options) {
       } else {
         validateInt32(divisorLength, "options.divisorLength", 0);
       }
-  
-      if (mode === "sync") {
+
+      if (mode === kSync) {
         return ops.op_node_generate_dsa(modulusLength, divisorLength);
       }
-      return core.opAsync("op_node_generate_dsa_async", modulusLength, divisorLength);
+      return core.opAsync(
+        "op_node_generate_dsa_async",
+        modulusLength,
+        divisorLength,
+      );
     }
     case "ec": {
       validateObject(options, "options");
@@ -842,19 +850,19 @@ function createJob(mode, type, options) {
       validateString(namedCurve, "options.namedCurve");
       let { paramEncoding } = options;
       if (paramEncoding == null || paramEncoding === "named") {
-        paramEncoding = OPENSSL_EC_NAMED_CURVE;
+        // pass.
       } else if (paramEncoding === "explicit") {
-        paramEncoding = OPENSSL_EC_EXPLICIT_CURVE;
+        // TODO(@littledivy): Explicit param encoding is very rarely used, and not supported by the ring crate.
+        throw new TypeError("Explicit encoding is not supported");
       } else {
         throw new ERR_INVALID_ARG_VALUE("options.paramEncoding", paramEncoding);
       }
 
-      return new EcKeyPairGenJob(
-        mode,
-        namedCurve,
-        paramEncoding,
-        ...encoding,
-      );
+      if (mode === kSync) {
+        return ops.op_node_generate_ec(namedCurve);
+      } else {
+        return core.opAsync("op_node_generate_ec_async", namedCurve);
+      }
     }
     case "ed25519":
     case "ed448":

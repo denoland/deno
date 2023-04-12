@@ -18,6 +18,7 @@ aes.workspace = true
 cbc.workspace = true
 deno_core.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
+dsa = "0.6.1"
 ecb.workspace = true
 hex.workspace = true
 hkdf.workspace = true
@@ -34,6 +35,7 @@ path-clean = "=0.1.0"
 pbkdf2 = "0.12.1"
 rand.workspace = true
 regex.workspace = true
+ring.workspace = true
 ripemd = "0.1.3"
 rsa.workspace = true
 serde = "1.0.149"
@@ -43,4 +45,3 @@ sha3 = "0.10.5"
 signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
-dsa = "0.6.1"
