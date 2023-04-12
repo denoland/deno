@@ -86,11 +86,9 @@ const {
   Uint8ClampedArray,
 } = primordials;
 
-function makeException(ErrorType, message, opts = {}) {
+function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(
-    `${opts.prefix ? opts.prefix + ": " : ""}${
-      opts.context ? opts.context : "Value"
-    } ${message}`,
+    `${prefix ? prefix + ": " : ""}${context ? context : "Value"} ${message}`,
   );
 }
 
@@ -199,7 +197,12 @@ function createIntegerConversion(bitLength, typeOpts) {
 
     if (opts.enforceRange) {
       if (!NumberIsFinite(x)) {
-        throw makeException(TypeError, "is not a finite number", opts);
+        throw makeException(
+          TypeError,
+          "is not a finite number",
+          opts.prefix,
+          opts.context,
+        );
       }
 
       x = integerPart(x);
@@ -208,7 +211,8 @@ function createIntegerConversion(bitLength, typeOpts) {
         throw makeException(
           TypeError,
           `is outside the accepted range of ${lowerBound} to ${upperBound}, inclusive`,
-          opts,
+          opts.prefix,
+          opts.context,
         );
       }
 
@@ -252,7 +256,12 @@ function createLongLongConversion(bitLength, { unsigned }) {
 
     if (opts.enforceRange) {
       if (!NumberIsFinite(x)) {
-        throw makeException(TypeError, "is not a finite number", opts);
+        throw makeException(
+          TypeError,
+          "is not a finite number",
+          opts.prefix,
+          opts.context,
+        );
       }
 
       x = integerPart(x);
@@ -261,7 +270,8 @@ function createLongLongConversion(bitLength, { unsigned }) {
         throw makeException(
           TypeError,
           `is outside the accepted range of ${lowerBound} to ${upperBound}, inclusive`,
-          opts,
+          opts.prefix,
+          opts.context,
         );
       }
 
@@ -317,7 +327,8 @@ converters.float = (V, opts) => {
     throw makeException(
       TypeError,
       "is not a finite floating-point value",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
 
@@ -331,7 +342,8 @@ converters.float = (V, opts) => {
     throw makeException(
       TypeError,
       "is outside the range of a single-precision floating-point value",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
 
@@ -359,7 +371,8 @@ converters.double = (V, opts) => {
     throw makeException(
       TypeError,
       "is not a finite floating-point value",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
 
@@ -381,7 +394,8 @@ converters.DOMString = function (V, opts = {}) {
     throw makeException(
       TypeError,
       "is a symbol, which cannot be converted to a string",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
 
@@ -393,7 +407,12 @@ const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
 converters.ByteString = (V, opts) => {
   const x = converters.DOMString(V, opts);
   if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
-    throw makeException(TypeError, "is not a valid ByteString", opts);
+    throw makeException(
+      TypeError,
+      "is not a valid ByteString",
+      opts.prefix,
+      opts.context,
+    );
   }
   return x;
 };
@@ -427,7 +446,12 @@ converters.USVString = (V, opts) => {
 
 converters.object = (V, opts) => {
   if (type(V) !== "Object") {
-    throw makeException(TypeError, "is not an object", opts);
+    throw makeException(
+      TypeError,
+      "is not an object",
+      opts.prefix,
+      opts.context,
+    );
   }
 
   return V;
@@ -439,7 +463,12 @@ converters.object = (V, opts) => {
 // handling for that is omitted.
 function convertCallbackFunction(V, opts) {
   if (typeof V !== "function") {
-    throw makeException(TypeError, "is not a function", opts);
+    throw makeException(
+      TypeError,
+      "is not a function",
+      opts.prefix,
+      opts.context,
+    );
   }
   return V;
 }
@@ -464,10 +493,16 @@ converters.ArrayBuffer = (V, opts = {}) => {
       throw makeException(
         TypeError,
         "is not an ArrayBuffer or SharedArrayBuffer",
-        opts,
+        opts.prefix,
+        opts.context,
       );
     }
-    throw makeException(TypeError, "is not an ArrayBuffer", opts);
+    throw makeException(
+      TypeError,
+      "is not an ArrayBuffer",
+      opts.prefix,
+      opts.context,
+    );
   }
 
   return V;
@@ -475,14 +510,20 @@ converters.ArrayBuffer = (V, opts = {}) => {
 
 converters.DataView = (V, opts = {}) => {
   if (!isDataView(V)) {
-    throw makeException(TypeError, "is not a DataView", opts);
+    throw makeException(
+      TypeError,
+      "is not a DataView",
+      opts.prefix,
+      opts.context,
+    );
   }
 
   if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
 
@@ -511,7 +552,8 @@ ArrayPrototypeForEach(
         throw makeException(
           TypeError,
           `is not ${article} ${name} object`,
-          opts,
+          opts.prefix,
+          opts.context,
         );
       }
       if (
@@ -521,7 +563,8 @@ ArrayPrototypeForEach(
         throw makeException(
           TypeError,
           "is a view on a SharedArrayBuffer, which is not allowed",
-          opts,
+          opts.prefix,
+          opts.context,
         );
       }
 
@@ -537,7 +580,8 @@ converters.ArrayBufferView = (V, opts = {}) => {
     throw makeException(
       TypeError,
       "is not a view on an ArrayBuffer or SharedArrayBuffer",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
   let buffer;
@@ -550,7 +594,8 @@ converters.ArrayBufferView = (V, opts = {}) => {
     throw makeException(
       TypeError,
       "is a view on a SharedArrayBuffer, which is not allowed",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
 
@@ -569,7 +614,8 @@ converters.BufferSource = (V, opts = {}) => {
       throw makeException(
         TypeError,
         "is a view on a SharedArrayBuffer, which is not allowed",
-        opts,
+        opts.prefix,
+        opts.context,
       );
     }
 
@@ -580,7 +626,8 @@ converters.BufferSource = (V, opts = {}) => {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
   if (
@@ -591,7 +638,8 @@ converters.BufferSource = (V, opts = {}) => {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
-      opts,
+      opts.prefix,
+      opts.context,
     );
   }
 
@@ -707,7 +755,8 @@ function createDictionaryConverter(name, ...dictionaries) {
         throw makeException(
           TypeError,
           "can not be converted to a dictionary",
-          opts,
+          opts.prefix,
+          opts.context,
         );
     }
     const esDict = V;
@@ -741,7 +790,8 @@ function createDictionaryConverter(name, ...dictionaries) {
         throw makeException(
           TypeError,
           `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-          opts,
+          opts.prefix,
+          opts.context,
         );
       }
     }
@@ -789,7 +839,8 @@ function createSequenceConverter(converter) {
       throw makeException(
         TypeError,
         "can not be converted to sequence.",
-        opts,
+        opts.prefix,
+        opts.context,
       );
     }
     const iter = V?.[SymbolIterator]?.();
@@ -797,7 +848,8 @@ function createSequenceConverter(converter) {
       throw makeException(
         TypeError,
         "can not be converted to sequence.",
-        opts,
+        opts.prefix,
+        opts.context,
       );
     }
     const array = [];
@@ -807,7 +859,8 @@ function createSequenceConverter(converter) {
         throw makeException(
           TypeError,
           "can not be converted to sequence.",
-          opts,
+          opts.prefix,
+          opts.context,
         );
       }
       if (res.done === true) break;
@@ -827,7 +880,8 @@ function createRecordConverter(keyConverter, valueConverter) {
       throw makeException(
         TypeError,
         "can not be converted to dictionary.",
-        opts,
+        opts.prefix,
+        opts.context,
       );
     }
     const result = {};
@@ -870,16 +924,17 @@ function invokeCallbackFunction(
   args,
   thisArg,
   returnValueConverter,
-  opts,
+  prefix,
+  returnsPromise,
 ) {
   try {
     const rv = ReflectApply(callable, thisArg, args);
     return returnValueConverter(rv, {
-      prefix: opts.prefix,
+      prefix,
       context: "return value",
     });
   } catch (err) {
-    if (opts.returnsPromise === true) {
+    if (returnsPromise === true) {
       return PromiseReject(err);
     }
     throw err;
@@ -891,7 +946,12 @@ const brand = Symbol("[[webidl.brand]]");
 function createInterfaceConverter(name, prototype) {
   return (V, opts) => {
     if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
-      throw makeException(TypeError, `is not of type ${name}.`, opts);
+      throw makeException(
+        TypeError,
+        `is not of type ${name}.`,
+        opts.prefix,
+        opts.context,
+      );
     }
     return V;
   };

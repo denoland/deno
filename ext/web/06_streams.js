@@ -508,7 +508,7 @@ function extractSizeAlgorithm(strategy) {
       [chunk],
       undefined,
       webidl.converters["unrestricted double"],
-      { prefix: "Failed to call `sizeAlgorithm`" },
+      "Failed to call `sizeAlgorithm`",
     );
 }
 
@@ -3315,10 +3315,7 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
-        },
+        "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
       );
   }
   if (underlyingSourceDict.pull !== undefined) {
@@ -3328,11 +3325,8 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
+        true,
       );
   }
   if (underlyingSourceDict.cancel !== undefined) {
@@ -3342,11 +3336,8 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [reason],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
+        true,
       );
   }
   const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
@@ -3437,10 +3428,7 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
-        },
+        "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
       );
   }
   if (underlyingSourceDict.pull !== undefined) {
@@ -3450,11 +3438,8 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSourceDict.cancel !== undefined) {
@@ -3464,11 +3449,8 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [reason],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
+        true,
       );
   }
   setUpReadableStreamDefaultController(
@@ -3569,11 +3551,8 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         [chunk, controller],
         transformer,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
+        true,
       );
   }
   if (transformerDict.flush !== undefined) {
@@ -3583,11 +3562,8 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         [controller],
         transformer,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
+        true,
       );
   }
   setUpTransformStreamDefaultController(
@@ -3679,10 +3655,7 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [controller],
         underlyingSink,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
-        },
+        "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
       );
   }
   if (underlyingSinkDict.write !== undefined) {
@@ -3692,11 +3665,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [chunk, controller],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSinkDict.close !== undefined) {
@@ -3706,11 +3676,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSinkDict.abort !== undefined) {
@@ -3720,11 +3687,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [reason],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   setUpWritableStreamDefaultController(
@@ -5467,16 +5431,19 @@ class ReadableByteStreamController {
       );
     }
     if (byteLength === 0) {
-      throw webidl.makeException(TypeError, "length must be non-zero", {
+      throw webidl.makeException(
+        TypeError,
+        "length must be non-zero",
         prefix,
-        context: arg1,
-      });
+        arg1,
+      );
     }
     if (getArrayBufferByteLength(buffer) === 0) {
       throw webidl.makeException(
         TypeError,
         "buffer length must be non-zero",
-        { prefix, context: arg1 },
+        prefix,
+        arg1,
       );
     }
     if (this[_closeRequested] === true) {
@@ -5790,10 +5757,7 @@ class TransformStream {
           [this[_controller]],
           transformer,
           webidl.converters.any,
-          {
-            prefix:
-              "Failed to call 'start' on 'TransformStreamDefaultController'",
-          },
+          "Failed to call 'start' on 'TransformStreamDefaultController'",
         ),
       );
     } else {
