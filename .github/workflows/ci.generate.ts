@@ -205,6 +205,18 @@ function handleMatrixItems(items: {
   use_sysroot?: boolean;
   wpt?: string;
 }[]) {
+  function getOsDisplayName(os: string) {
+    if (os.includes("ubuntu")) {
+      return "ubuntu-x86_64";
+    } else if (os.includes("windows")) {
+      return "windows-x86_64";
+    } else if (os.includes("macos")) {
+      return "macos-x86_64";
+    } else {
+      throw new Error(`Display name not found: ${os}`);
+    }
+  }
+
   return items.map((item) => {
     // use a free "ubuntu" runner on jobs that are skipped on pull requests
     if (item.skip_pr != null) {
@@ -219,7 +231,10 @@ function handleMatrixItems(items: {
       // deno-lint-ignore no-explicit-any
       (item as any).runner = text;
     }
-    return item;
+    return {
+      ...item,
+      os_display_name: getOsDisplayName(item.os),
+    };
   });
 }
 
@@ -268,7 +283,8 @@ const ci = {
       ]),
     },
     build: {
-      name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
+      name:
+        "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os_display_name }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
