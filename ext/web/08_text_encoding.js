@@ -14,6 +14,9 @@ const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   PromiseReject,
   PromiseResolve,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
@@ -21,6 +24,10 @@ const {
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   ObjectPrototypeIsPrototypeOf,
   ArrayBufferIsView,
@@ -104,13 +111,27 @@ class TextDecoder {
     }
 
     try {
+      /** @type {ArrayBufferLike} */
+      let buffer = input;
+      if (ArrayBufferIsView(input)) {
+        if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
+          // TypedArray
+          buffer = TypedArrayPrototypeGetBuffer(
+            /** @type {Uint8Array} */ (input),
+          );
+        } else {
+          // DataView
+          buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (input));
+        }
+      }
+
       // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
       // When doing so they will have to make sure that changes to input do not affect future calls to decode().
       if (
         ObjectPrototypeIsPrototypeOf(
           // deno-lint-ignore prefer-primordials
           SharedArrayBuffer.prototype,
-          input || input.buffer,
+          buffer,
         )
       ) {
         // We clone the data into a non-shared ArrayBuffer so we can pass it
@@ -118,13 +139,27 @@ class TextDecoder {
         // `input` is now a Uint8Array, and calling the TypedArray constructor
         // with a TypedArray argument copies the data.
         if (ArrayBufferIsView(input)) {
-          input = new Uint8Array(
-            input.buffer,
-            input.byteOffset,
-            input.byteLength,
-          );
+          if (TypedArrayPrototypeGetSymbolToStringTag(input) !== undefined) {
+            // TypedArray
+            input = new Uint8Array(
+              buffer,
+              TypedArrayPrototypeGetByteOffset(
+                /** @type {Uint8Array} */ (input),
+              ),
+              TypedArrayPrototypeGetByteLength(
+                /** @type {Uint8Array} */ (input),
+              ),
+            );
+          } else {
+            // DataView
+            input = new Uint8Array(
+              buffer,
+              DataViewPrototypeGetByteOffset(/** @type {DataView} */ (input)),
+              DataViewPrototypeGetByteLength(/** @type {DataView} */ (input)),
+            );
+          }
         } else {
-          input = new Uint8Array(input);
+          input = new Uint8Array(buffer);
         }
       }
 

@@ -8,14 +8,14 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
+use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
-use deno_graph::npm::NpmPackageReqReference;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
-use crate::npm::NpmRegistryApi;
-use crate::npm::NpmResolutionSnapshot;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -64,6 +64,7 @@ use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -119,6 +120,7 @@ pub struct BenchOptions {
   pub files: FilesConfig,
   pub filter: Option<String>,
   pub json: bool,
+  pub no_run: bool,
 }
 
 impl BenchOptions {
@@ -134,6 +136,7 @@ impl BenchOptions {
       ),
       filter: bench_flags.filter,
       json: bench_flags.json,
+      no_run: bench_flags.no_run,
     })
   }
 }
@@ -743,7 +746,7 @@ impl CliOptions {
 
   pub async fn resolve_npm_resolution_snapshot(
     &self,
-    api: &NpmRegistryApi,
+    api: &CliNpmRegistryApi,
   ) -> Result<Option<NpmResolutionSnapshot>, AnyError> {
     if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone
@@ -753,7 +756,7 @@ impl CliOptions {
     if let Some(lockfile) = self.maybe_lock_file() {
       if !lockfile.lock().overwrite {
         return Ok(Some(
-          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), api)
+          snapshot_from_lockfile(lockfile.clone(), api)
             .await
             .with_context(|| {
               format!(

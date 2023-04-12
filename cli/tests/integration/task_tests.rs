@@ -4,6 +4,7 @@
 // These tests are intended to only test integration.
 
 use test_util::env_vars_for_npm_tests;
+use test_util::TestContext;
 
 itest!(task_no_args {
   args: "task -q --config task/deno_json/deno.json",
@@ -53,9 +54,12 @@ itest!(task_non_existent {
 #[test]
 fn task_emoji() {
   // this bug only appears when using a pty/tty
-  let args = "task --config task/deno_json/deno.json echo_emoji";
-  use test_util::PtyData::*;
-  test_util::test_pty2(args, vec![Output("Task echo_emoji echo 🔥\r\n🔥")]);
+  TestContext::default()
+    .new_command()
+    .args_vec(["task", "--config", "task/deno_json/deno.json", "echo_emoji"])
+    .with_pty(|mut console| {
+      console.expect("Task echo_emoji echo 🔥\r\n🔥");
+    });
 }
 
 itest!(task_boolean_logic {

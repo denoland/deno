@@ -3,7 +3,7 @@
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
 
-const { ops, opAsync } = Deno.core;
+const { ops, opAsync, opAsync2 } = Deno.core;
 
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
@@ -23,7 +23,7 @@ function accept(serverRid) {
 }
 
 function read(serverRid, buf) {
-  return opAsync("op_read_socket", serverRid, buf);
+  return opAsync2("op_read_socket", serverRid, buf);
 }
 
 async function serve(rid) {

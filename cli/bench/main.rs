@@ -17,6 +17,7 @@ include!("../util/time.rs");
 
 mod http;
 mod lsp;
+mod websocket;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -401,6 +402,7 @@ struct BenchResult {
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
+  ws_msg_per_sec: HashMap<String, f64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
 }
@@ -416,6 +418,7 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
+    "websocket",
     "strace",
     "mem_usage",
   ];
@@ -454,6 +457,11 @@ async fn main() -> Result<()> {
     .to_string(),
     ..Default::default()
   };
+
+  if benchmarks.contains(&"websocket") {
+    let ws = websocket::benchmark()?;
+    new_data.ws_msg_per_sec = ws;
+  }
 
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
@@ -524,7 +532,14 @@ async fn main() -> Result<()> {
       file.as_file_mut().read_to_string(&mut output)?;
 
       let strace_result = test_util::parse_strace_output(&output);
-      let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
+      let clone =
+        strace_result
+          .get("clone")
+          .map(|d| d.calls)
+          .unwrap_or_else(|| {
+            strace_result.get("clone3").map(|d| d.calls).unwrap_or(0)
+          })
+          + 1;
       let total = strace_result.get("total").unwrap().calls;
       thread_count.insert(name.to_string(), clone as i64);
       syscall_count.insert(name.to_string(), total as i64);

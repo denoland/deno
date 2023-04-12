@@ -64,6 +64,7 @@ const {
   SymbolPrototype,
   SymbolPrototypeToString,
   SymbolPrototypeValueOf,
+  SymbolPrototypeGetDescription,
   SymbolToStringTag,
   SymbolHasInstance,
   SymbolFor,
@@ -204,7 +205,7 @@ function isFullWidthCodePoint(code) {
   );
 }
 
-export function getStringWidth(str) {
+function getStringWidth(str) {
   str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
   let width = 0;
 
@@ -662,7 +663,7 @@ function handleCircular(value, cyan) {
   } else {
     index = MapPrototypeGet(circular, value);
     if (index === undefined) {
-      index = circular.size + 1;
+      index = MapPrototypeGetSize(circular) + 1;
       MapPrototypeSet(circular, value, index);
     }
   }
@@ -809,20 +810,17 @@ const QUOTE_SYMBOL_REG = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/);
 
 // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
 function maybeQuoteSymbol(symbol, inspectOptions) {
-  if (symbol.description === undefined) {
+  const description = SymbolPrototypeGetDescription(symbol);
+
+  if (description === undefined) {
     return SymbolPrototypeToString(symbol);
   }
 
-  if (
-    RegExpPrototypeTest(
-      QUOTE_SYMBOL_REG,
-      symbol.description,
-    )
-  ) {
+  if (RegExpPrototypeTest(QUOTE_SYMBOL_REG, description)) {
     return SymbolPrototypeToString(symbol);
   }
 
-  return `Symbol(${quoteString(symbol.description, inspectOptions)})`;
+  return `Symbol(${quoteString(description, inspectOptions)})`;
 }
 
 const CTX_STACK = [];
@@ -1191,8 +1189,8 @@ function inspectRawObject(
       symbolKeys,
       (s1, s2) =>
         StringPrototypeLocaleCompare(
-          s1.description ?? "",
-          s2.description ?? "",
+          SymbolPrototypeGetDescription(s1) ?? "",
+          SymbolPrototypeGetDescription(s2) ?? "",
         ),
     );
   }
@@ -1338,16 +1336,6 @@ function inspectObject(value, inspectOptions, proxyDetails) {
     typeof value[customInspect] === "function"
   ) {
     return String(value[customInspect](inspect, inspectOptions));
-  }
-  if (
-    ReflectHas(value, nodeCustomInspect) &&
-    typeof value[nodeCustomInspect] === "function"
-  ) {
-    // TODO(kt3k): The last inspect needs to be util.inspect of Node.js.
-    // We need to move the implementation of util.inspect to this file.
-    return String(
-      value[nodeCustomInspect](inspectOptions.depth, inspectOptions, inspect),
-    );
   }
   // This non-unique symbol is used to support op_crates, ie.
   // in extensions/web we don't want to depend on public
@@ -2325,7 +2313,6 @@ class Console {
 }
 
 const customInspect = SymbolFor("Deno.customInspect");
-const nodeCustomInspect = SymbolFor("nodejs.util.inspect.custom");
 
 function inspect(
   value,

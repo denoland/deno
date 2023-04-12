@@ -259,7 +259,7 @@ impl TestRun {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let ps = proc_state::ProcState::build(flags).await?;
+    let ps = proc_state::ProcState::from_flags(flags).await?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
@@ -439,9 +439,6 @@ impl TestRun {
                 test::TestStepResult::Failed(_) => {
                   summary.failed_steps += 1;
                 }
-                test::TestStepResult::Pending(_) => {
-                  summary.pending_steps += 1;
-                }
               }
               reporter.report_step_result(
                 test_steps.get(&id).unwrap(),
@@ -449,6 +446,7 @@ impl TestRun {
                 duration,
               );
             }
+            test::TestEvent::Sigint => {}
           }
         }
 
@@ -716,11 +714,10 @@ impl LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestResult::Failed(js_error) => {
-        let err_string = test::format_test_error(js_error);
+      test::TestResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages: as_test_messages(err_string, false),
+          messages: as_test_messages(failure.to_string(), false),
           duration: Some(elapsed as u32),
         })
       }
@@ -830,22 +827,11 @@ impl LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestStepResult::Failed(js_error) => {
-        let messages = if let Some(js_error) = js_error {
-          let err_string = test::format_test_error(js_error);
-          as_test_messages(err_string, false)
-        } else {
-          vec![]
-        };
+      test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages,
+          messages: as_test_messages(failure.to_string(), false),
           duration: Some(elapsed as u32),
-        })
-      }
-      test::TestStepResult::Pending(_) => {
-        self.progress(lsp_custom::TestRunProgressMessage::Enqueued {
-          test: desc.into(),
         })
       }
     }

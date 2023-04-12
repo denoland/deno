@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
@@ -14,7 +15,6 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_runtime::colors;
 use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
@@ -26,6 +26,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::DenoSubcommand;
 use crate::errors;
@@ -184,7 +185,7 @@ impl CliMainWorker {
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
     if self.ps.options.trace_ops() {
-      self.worker.js_runtime.execute_script(
+      self.worker.js_runtime.execute_script_static(
         located_script_name!(),
         "Deno[Deno.internal].core.enableOpCallTracing();",
       )?;
@@ -231,7 +232,7 @@ impl CliMainWorker {
 
     self.worker.execute_script(
       located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
+      ascii_str!("Deno[Deno.internal].core.enableOpCallTracing();"),
     )?;
 
     if mode != TestMode::Documentation {
@@ -742,21 +743,7 @@ mod tests {
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
-      bootstrap: BootstrapOptions {
-        args: vec![],
-        cpu_count: 1,
-        debug_flag: false,
-        enable_testing_features: false,
-        locale: deno_core::v8::icu::get_language_tag(),
-        location: None,
-        no_color: true,
-        is_tty: false,
-        runtime_version: "x".to_string(),
-        ts_version: "x".to_string(),
-        unstable: false,
-        user_agent: "x".to_string(),
-        inspect: false,
-      },
+      bootstrap: BootstrapOptions::default(),
       extensions: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,

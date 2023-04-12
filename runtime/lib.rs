@@ -7,7 +7,6 @@ pub use deno_core;
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_ffi;
-pub use deno_flash;
 pub use deno_fs;
 pub use deno_http;
 pub use deno_io;
@@ -36,3 +35,9 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+
+pub struct RuntimeNodeEnv;
+impl deno_node::NodeEnv for RuntimeNodeEnv {
+  type P = permissions::PermissionsContainer;
+  type Fs = deno_node::RealFs;
+}
