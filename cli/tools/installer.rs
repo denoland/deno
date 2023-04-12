@@ -233,7 +233,7 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  ProcState::build(flags.clone())
+  ProcState::from_flags(flags.clone())
     .await?
     .load_and_type_check_files(&[install_flags.module_url.clone()])
     .await?;
