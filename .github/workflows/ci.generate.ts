@@ -874,7 +874,7 @@ const ci = {
           name: "Save cache build output (main)",
           uses: "actions/cache/save@v3",
           if:
-            "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main' || startsWith(matrix.os, 'ubuntu')", // todo(dsherret): revert
+            "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
             path: [
               "./target",
