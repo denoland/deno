@@ -266,7 +266,7 @@ async fn build_test_graph(
   let resolver = original_import_map.map(|m| {
     let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
     let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
+      NpmResolution::from_serialized(npm_registry_api.clone(), None, None);
     let deps_installer = PackageJsonDepsInstaller::new(
       npm_registry_api.clone(),
       npm_resolution.clone(),

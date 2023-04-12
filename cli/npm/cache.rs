@@ -277,7 +277,7 @@ impl ReadonlyNpmCache {
     let name = parts.join("/");
     let (version, copy_index) =
       if let Some((version, copy_count)) = version_part.split_once('_') {
-        (version, copy_count.parse::<usize>().ok()?)
+        (version, copy_count.parse::<u8>().ok()?)
       } else {
         (version_part, 0)
       };

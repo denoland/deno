@@ -46,7 +46,7 @@ impl Default for CliGraphResolver {
     // refactor the LSP and force this to be initialized.
     let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
     let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
+      NpmResolution::from_serialized(npm_registry_api.clone(), None, None);
     Self {
       maybe_import_map: Default::default(),
       maybe_default_jsx_import_source: Default::default(),
