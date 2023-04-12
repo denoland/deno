@@ -391,6 +391,7 @@ pub struct FmtOptionsConfig {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<ProseWrap>,
   pub semi_colons: Option<bool>,
+  pub prefer_single_line: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

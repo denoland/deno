@@ -114,6 +114,7 @@ pub struct FmtFlags {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
+  pub prefer_single_line: Option<bool>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1290,6 +1291,16 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .default_missing_value("true")
         .require_equals(true)
         .help("Don't use semicolons except where necessary."),
+    )
+    .arg(
+      Arg::new("prefer-single-line")
+        .long("prefer-single-line")
+        .alias("options-prefer-single-line")
+        .num_args(0..=1)
+        .value_parser(value_parser!(bool))
+        .default_missing_value("true")
+        .require_equals(true)
+        .help("If code should revert back from being on multiple lines to being on a single line when able."),
     )
 }
 
@@ -2600,6 +2611,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let single_quote = matches.remove_one::<bool>("single-quote");
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
+  let prefer_single_line = matches.remove_one::<bool>("prefer-single-line");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
@@ -2610,6 +2622,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     single_quote,
     prose_wrap,
     no_semicolons,
+    prefer_single_line,
   });
 }
 
@@ -3540,6 +3553,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -3562,6 +3576,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -3584,6 +3599,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -3606,6 +3622,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         ext: Some("ts".to_string()),
         watch: Some(vec![]),
@@ -3630,6 +3647,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         ext: Some("ts".to_string()),
         watch: Some(vec![]),
@@ -3661,6 +3679,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         ext: Some("ts".to_string()),
         watch: Some(vec![]),
@@ -3684,6 +3703,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         ext: Some("ts".to_string()),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -3714,6 +3734,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          prefer_single_line: None,
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ext: Some("ts".to_string()),
@@ -3734,6 +3755,7 @@ mod tests {
       "--prose-wrap",
       "never",
       "--no-semicolons",
+      "--prefer-single-line",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -3750,6 +3772,7 @@ mod tests {
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
+          prefer_single_line: Some(true)
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()
@@ -3763,6 +3786,7 @@ mod tests {
       "--use-tabs=false",
       "--single-quote=false",
       "--no-semicolons=false",
+      "--prefer-single-line=false",
     ]);
     assert_eq!(
       r.unwrap(),
@@ -3779,6 +3803,7 @@ mod tests {
           single_quote: Some(false),
           prose_wrap: None,
           no_semicolons: Some(false),
+          prefer_single_line: Some(false)
         }),
         ext: Some("ts".to_string()),
         ..Flags::default()

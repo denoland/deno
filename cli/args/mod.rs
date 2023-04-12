@@ -219,6 +219,10 @@ fn resolve_fmt_options(
     if let Some(no_semis) = &fmt_flags.no_semicolons {
       options.semi_colons = Some(!no_semis);
     }
+
+    if let Some(prefer_single_line) = fmt_flags.prefer_single_line {
+      options.prefer_single_line = Some(prefer_single_line);
+    }
   }
 
   options

@@ -526,6 +526,10 @@ fn get_resolved_typescript_config(
     });
   }
 
+  if let Some(prefer_single_line) = options.prefer_single_line {
+    builder.prefer_single_line(prefer_single_line);
+  }
+
   builder.build()
 }
 

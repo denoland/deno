@@ -348,6 +348,11 @@
               "description": "Whether to prefer using semicolons.",
               "type": "boolean",
               "default": true
+            },
+            "preferSingleLine": {
+              "description": "If code should revert back from being on multiple lines to being on a single line when able.",
+              "type": "boolean",
+              "default": false
             }
           }
         }
