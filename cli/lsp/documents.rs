@@ -20,8 +20,8 @@ use crate::lsp::logging::lsp_warn;
 use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -1166,7 +1166,7 @@ impl Documents {
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
-    npm_registry_api: NpmRegistry,
+    npm_registry_api: CliNpmRegistryApi,
     npm_resolution: NpmResolution,
   ) {
     fn calculate_resolver_config_hash(
@@ -1864,7 +1864,7 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_registry_api = NpmRegistry::new_uninitialized();
+    let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
     let npm_resolution =
       NpmResolution::new(npm_registry_api.clone(), None, None);
 

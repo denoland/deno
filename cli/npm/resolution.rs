@@ -27,7 +27,7 @@ use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::Lockfile;
 
-use super::registry::NpmRegistry;
+use super::registry::CliNpmRegistryApi;
 
 /// Handles updating and storing npm resolution in memory where the underlying
 /// snapshot can be updated concurrently. Additionally handles updating the lockfile
@@ -38,7 +38,7 @@ use super::registry::NpmRegistry;
 pub struct NpmResolution(Arc<NpmResolutionInner>);
 
 struct NpmResolutionInner {
-  api: NpmRegistry,
+  api: CliNpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
   update_queue: TaskQueue,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -55,7 +55,7 @@ impl std::fmt::Debug for NpmResolution {
 
 impl NpmResolution {
   pub fn new(
-    api: NpmRegistry,
+    api: CliNpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
@@ -247,7 +247,7 @@ impl NpmResolution {
 }
 
 async fn add_package_reqs_to_snapshot(
-  api: &NpmRegistry,
+  api: &CliNpmRegistryApi,
   // todo(18079): it should be possible to pass &[NpmPackageReq] in here
   // and avoid all these clones, but the LSP complains because of its
   // `Send` requirement

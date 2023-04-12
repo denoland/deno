@@ -486,7 +486,7 @@ impl<'a> GraphDisplayContext<'a> {
             colors::red("error:")
           )
         } else {
-          writeln!(writer, "{} {}", colors::red("error:"), err)
+          writeln!(writer, "{} {:#}", colors::red("error:"), err)
         }
       }
       Ok(None) => {
