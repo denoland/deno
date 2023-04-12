@@ -45,7 +45,7 @@ class AbortSignal extends EventTarget {
 
   static timeout(millis) {
     const prefix = "Failed to call 'AbortSignal.timeout'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     millis = webidl.converters["unsigned long long"](millis, {
       enforceRange: true,
     });
