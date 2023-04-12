@@ -4230,13 +4230,6 @@ itest!(config_file_lock_true {
   exit_code: 10,
 });
 
-// TODO(bartlomieju): this test is flaky on CI, reenable it after debugging
-// // Check https://github.com/denoland/deno_std/issues/2882
-// itest!(flash_shutdown {
-//   args: "run --unstable --allow-net run/flash_shutdown/main.ts",
-//   exit_code: 0,
-// });
-
 itest!(permission_args {
   args: "run run/001_hello.js --allow-net",
   output: "run/permission_args.out",
@@ -4356,6 +4349,12 @@ itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 1,
+});
+
+itest!(dynamic_import_syntax_error {
+  args: "run -A run/dynamic_import_syntax_error.js",
+  output: "run/dynamic_import_syntax_error.js.out",
   exit_code: 1,
 });
 

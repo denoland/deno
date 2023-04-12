@@ -481,7 +481,7 @@ function withPermissions(fn, permissions) {
     const token = pledgePermissions(permissions);
 
     try {
-      await fn(...new SafeArrayIterator(params));
+      return await fn(...new SafeArrayIterator(params));
     } finally {
       restorePermissions(token);
     }

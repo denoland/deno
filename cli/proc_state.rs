@@ -26,9 +26,9 @@ use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::create_npm_fs_resolver;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -47,7 +47,6 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::Module;
@@ -59,6 +58,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::borrow::Cow;
@@ -95,7 +95,7 @@ pub struct Inner {
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
-  pub npm_api: NpmRegistryApi,
+  pub npm_api: CliNpmRegistryApi,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub npm_resolution: NpmResolution,
@@ -112,17 +112,17 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: Flags) -> Result<Self, AnyError> {
-    Self::from_options(Arc::new(CliOptions::from_flags(flags)?)).await
-  }
-
-  pub async fn from_options(
+  pub async fn from_cli_options(
     options: Arc<CliOptions>,
   ) -> Result<Self, AnyError> {
     Self::build_with_sender(options, None).await
   }
 
-  pub async fn build_for_file_watcher(
+  pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    Self::from_cli_options(Arc::new(CliOptions::from_flags(flags)?)).await
+  }
+
+  pub async fn from_flags_for_file_watcher(
     flags: Flags,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
@@ -138,7 +138,6 @@ impl ProcState {
   /// Reset all runtime state to its default. This should be used on file
   /// watcher restarts.
   pub fn reset_for_file_watcher(&mut self) {
-    self.blob_store.clear();
     self.0 = Arc::new(Inner {
       dir: self.dir.clone(),
       caches: self.caches.clone(),
@@ -234,14 +233,14 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let npm_registry_url = NpmRegistryApi::default_url().to_owned();
+    let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let npm_api = NpmRegistryApi::new(
+    let npm_api = CliNpmRegistryApi::new(
       npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
@@ -394,6 +393,7 @@ impl ProcState {
 
     build_graph_with_npm_resolution(
       graph,
+      &self.resolver,
       &self.npm_resolver,
       roots.clone(),
       &mut cache,
@@ -696,6 +696,7 @@ impl ProcState {
     let mut graph = ModuleGraph::default();
     build_graph_with_npm_resolution(
       &mut graph,
+      &self.resolver,
       &self.npm_resolver,
       roots,
       loader,

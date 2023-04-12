@@ -485,8 +485,12 @@ impl Config {
       .unwrap_or_else(|| self.settings.workspace.enable)
   }
 
-  /// Gets the root directories or file paths based on the workspace config.
-  pub fn enabled_root_urls(&self) -> Vec<Url> {
+  /// Gets the directories or specifically enabled file paths based on the
+  /// workspace config.
+  ///
+  /// WARNING: This may incorrectly have some directory urls as being
+  /// represented as file urls.
+  pub fn enabled_urls(&self) -> Vec<Url> {
     let mut urls: Vec<Url> = Vec::new();
 
     if !self.settings.workspace.enable && self.enabled_paths.is_empty() {
@@ -501,12 +505,15 @@ impl Config {
         urls.push(workspace.clone());
       }
     }
+
     if urls.is_empty() {
       if let Some(root_dir) = &self.root_uri {
         urls.push(root_dir.clone())
       }
     }
-    sort_and_remove_non_leaf_urls(&mut urls);
+
+    // sort for determinism
+    urls.sort();
     urls
   }
 
@@ -646,26 +653,12 @@ impl Config {
   }
 }
 
-/// Removes any URLs that are a descendant of another URL in the collection.
-fn sort_and_remove_non_leaf_urls(dirs: &mut Vec<Url>) {
-  if dirs.is_empty() {
-    return;
-  }
-
-  dirs.sort();
-  for i in (0..dirs.len() - 1).rev() {
-    let prev = &dirs[i + 1];
-    if prev.as_str().starts_with(dirs[i].as_str()) {
-      dirs.remove(i + 1);
-    }
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn test_config_specifier_enabled() {
@@ -827,41 +820,16 @@ mod tests {
   }
 
   #[test]
-  fn test_sort_and_remove_non_leaf_urls() {
-    fn run_test(dirs: Vec<&str>, expected_output: Vec<&str>) {
-      let mut dirs = dirs
-        .into_iter()
-        .map(|dir| Url::parse(dir).unwrap())
-        .collect();
-      sort_and_remove_non_leaf_urls(&mut dirs);
-      let dirs: Vec<_> = dirs.iter().map(|dir| dir.as_str()).collect();
-      assert_eq!(dirs, expected_output);
-    }
-
-    run_test(
-      vec![
-        "file:///test/asdf/test/asdf/",
-        "file:///test/asdf/",
-        "file:///test/asdf/",
-        "file:///testing/456/893/",
-        "file:///testing/456/893/test/",
-      ],
-      vec!["file:///test/asdf/", "file:///testing/456/893/"],
-    );
-    run_test(vec![], vec![]);
-  }
-
-  #[test]
-  fn config_enabled_root_urls() {
+  fn config_enabled_urls() {
     let mut config = Config::new();
     let root_dir = Url::parse("file:///example/").unwrap();
     config.root_uri = Some(root_dir.clone());
     config.settings.workspace.enable = false;
     config.settings.workspace.enable_paths = Vec::new();
-    assert_eq!(config.enabled_root_urls(), vec![]);
+    assert_eq!(config.enabled_urls(), vec![]);
 
     config.settings.workspace.enable = true;
-    assert_eq!(config.enabled_root_urls(), vec![root_dir]);
+    assert_eq!(config.enabled_urls(), vec![root_dir]);
 
     config.settings.workspace.enable = false;
     let root_dir1 = Url::parse("file:///root1/").unwrap();
@@ -871,8 +839,8 @@ mod tests {
       (
         root_dir1.clone(),
         vec![
-          root_dir1.join("sub_dir").unwrap(),
-          root_dir1.join("sub_dir/other").unwrap(),
+          root_dir1.join("sub_dir/").unwrap(),
+          root_dir1.join("sub_dir/other/").unwrap(),
           root_dir1.join("test.ts").unwrap(),
         ],
       ),
@@ -881,9 +849,10 @@ mod tests {
     ]);
 
     assert_eq!(
-      config.enabled_root_urls(),
+      config.enabled_urls(),
       vec![
-        root_dir1.join("sub_dir").unwrap(),
+        root_dir1.join("sub_dir/").unwrap(),
+        root_dir1.join("sub_dir/other/").unwrap(),
         root_dir1.join("test.ts").unwrap(),
         root_dir2.join("other.ts").unwrap(),
         root_dir3

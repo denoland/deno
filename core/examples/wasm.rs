@@ -62,6 +62,6 @@ fn main() {
   });
 
   runtime
-    .execute_script("<usage>", include_str!("wasm.js"))
+    .execute_script("<usage>", include_ascii_string!("wasm.js"))
     .unwrap();
 }

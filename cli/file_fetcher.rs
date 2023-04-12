@@ -50,6 +50,10 @@ pub const SUPPORTED_SCHEMES: [&str; 5] =
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct File {
+  /// The path to the local version of the source file.  For local files this
+  /// will be the direct path to that file.  For remote files, it will be the
+  /// path to the file in the HTTP cache.
+  pub local: PathBuf,
   /// For remote files, if there was an `X-TypeScript-Type` header, the parsed
   /// out value of that header.
   pub maybe_types: Option<String>,
@@ -86,12 +90,13 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
-  let bytes = fs::read(local)?;
+  let bytes = fs::read(&local)?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
   let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from_specifier(specifier);
 
   Ok(File {
+    local,
     maybe_types: None,
     media_type,
     source: source.into(),
@@ -213,6 +218,13 @@ impl FileFetcher {
     bytes: Vec<u8>,
     headers: &HashMap<String, String>,
   ) -> Result<File, AnyError> {
+    let local =
+      self
+        .http_cache
+        .get_cache_filename(specifier)
+        .ok_or_else(|| {
+          generic_error("Cannot convert specifier to cached filename.")
+        })?;
     let maybe_content_type = headers.get("content-type");
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
@@ -226,6 +238,7 @@ impl FileFetcher {
     };
 
     Ok(File {
+      local,
       maybe_types,
       media_type,
       source: source.into(),
@@ -277,12 +290,39 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
+    match self.fetch_cached(specifier, 0) {
+      Ok(Some(file)) => return Ok(file),
+      Ok(None) => {}
+      Err(err) => return Err(err),
+    }
+
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotCached",
+        format!(
+          "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
+        ),
+      ));
+    }
+
     let (source, content_type) = get_source_from_data_url(specifier)?;
     let (media_type, _) = map_content_type(specifier, Some(&content_type));
+
+    let local =
+      self
+        .http_cache
+        .get_cache_filename(specifier)
+        .ok_or_else(|| {
+          generic_error("Cannot convert specifier to cached filename.")
+        })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
+      local,
       maybe_types: None,
       media_type,
       source: source.into(),
@@ -297,6 +337,21 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
+    match self.fetch_cached(specifier, 0) {
+      Ok(Some(file)) => return Ok(file),
+      Ok(None) => {}
+      Err(err) => return Err(err),
+    }
+
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotCached",
+        format!(
+          "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
+        ),
+      ));
+    }
+
     let blob = {
       let blob_store = self.blob_store.borrow();
       blob_store
@@ -315,10 +370,22 @@ impl FileFetcher {
     let (media_type, maybe_charset) =
       map_content_type(specifier, Some(&content_type));
     let source = get_source_from_bytes(bytes, maybe_charset)?;
+
+    let local =
+      self
+        .http_cache
+        .get_cache_filename(specifier)
+        .ok_or_else(|| {
+          generic_error("Cannot convert specifier to cached filename.")
+        })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
+      local,
       maybe_types: None,
       media_type,
       source: source.into(),
@@ -495,9 +562,17 @@ impl FileFetcher {
       // disk changing effecting things like workers and dynamic imports.
       fetch_local(specifier)
     } else if scheme == "data" {
-      self.fetch_data_url(specifier)
+      let result = self.fetch_data_url(specifier);
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
+      }
+      result
     } else if scheme == "blob" {
-      self.fetch_blob_url(specifier).await
+      let result = self.fetch_blob_url(specifier).await;
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
+      }
+      result
     } else if !self.allow_remote {
       Err(custom_error(
         "NoRemote",
@@ -962,6 +1037,7 @@ mod tests {
       ModuleSpecifier::from_file_path(local.as_os_str().to_str().unwrap())
         .unwrap();
     let file = File {
+      local,
       maybe_types: None,
       media_type: MediaType::TypeScript,
       source: "some source code".into(),

@@ -64,6 +64,7 @@ const {
   SymbolPrototype,
   SymbolPrototypeToString,
   SymbolPrototypeValueOf,
+  SymbolPrototypeGetDescription,
   SymbolToStringTag,
   SymbolHasInstance,
   SymbolFor,
@@ -662,7 +663,7 @@ function handleCircular(value, cyan) {
   } else {
     index = MapPrototypeGet(circular, value);
     if (index === undefined) {
-      index = circular.size + 1;
+      index = MapPrototypeGetSize(circular) + 1;
       MapPrototypeSet(circular, value, index);
     }
   }
@@ -809,20 +810,17 @@ const QUOTE_SYMBOL_REG = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/);
 
 // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
 function maybeQuoteSymbol(symbol, inspectOptions) {
-  if (symbol.description === undefined) {
+  const description = SymbolPrototypeGetDescription(symbol);
+
+  if (description === undefined) {
     return SymbolPrototypeToString(symbol);
   }
 
-  if (
-    RegExpPrototypeTest(
-      QUOTE_SYMBOL_REG,
-      symbol.description,
-    )
-  ) {
+  if (RegExpPrototypeTest(QUOTE_SYMBOL_REG, description)) {
     return SymbolPrototypeToString(symbol);
   }
 
-  return `Symbol(${quoteString(symbol.description, inspectOptions)})`;
+  return `Symbol(${quoteString(description, inspectOptions)})`;
 }
 
 const CTX_STACK = [];
@@ -1191,8 +1189,8 @@ function inspectRawObject(
       symbolKeys,
       (s1, s2) =>
         StringPrototypeLocaleCompare(
-          s1.description ?? "",
-          s2.description ?? "",
+          SymbolPrototypeGetDescription(s1) ?? "",
+          SymbolPrototypeGetDescription(s2) ?? "",
         ),
     );
   }

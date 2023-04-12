@@ -79,9 +79,9 @@ use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_npm_fs_resolver;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
@@ -145,7 +145,7 @@ pub struct Inner {
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// Npm's registry api.
-  npm_api: NpmRegistryApi,
+  npm_api: CliNpmRegistryApi,
   /// Npm cache
   npm_cache: NpmCache,
   /// Npm resolution that is stored in memory.
@@ -182,7 +182,7 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
-      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+      let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
       let mut inner_loader = ps.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
@@ -417,8 +417,13 @@ impl LanguageServer {
 fn create_lsp_structs(
   dir: &DenoDir,
   http_client: HttpClient,
-) -> (NpmRegistryApi, NpmCache, NpmPackageResolver, NpmResolution) {
-  let registry_url = NpmRegistryApi::default_url();
+) -> (
+  CliNpmRegistryApi,
+  NpmCache,
+  NpmPackageResolver,
+  NpmResolution,
+) {
+  let registry_url = CliNpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
   let npm_cache = NpmCache::from_deno_dir(
     dir,
@@ -430,7 +435,7 @@ fn create_lsp_structs(
     http_client.clone(),
     progress_bar.clone(),
   );
-  let api = NpmRegistryApi::new(
+  let api = CliNpmRegistryApi::new(
     registry_url.clone(),
     npm_cache.clone(),
     http_client,
@@ -463,7 +468,7 @@ impl Inner {
       ModuleRegistry::new(&module_registries_location, http_client.clone())
         .unwrap();
     let location = dir.deps_folder_path();
-    let documents = Documents::new(&location);
+    let documents = Documents::new(&location, client.kind());
     let deps_http_cache = HttpCache::new(&location);
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -1138,7 +1143,7 @@ impl Inner {
 
   fn refresh_documents_config(&mut self) {
     self.documents.update_config(
-      self.config.enabled_root_urls(),
+      self.config.enabled_urls(),
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
       self.maybe_package_json.as_ref(),

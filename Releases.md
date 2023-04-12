@@ -6,6 +6,39 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.32.4 / 2023.04.12
+
+- Revert "fix(cli): don't store blob and data urls in the module cache (#18261)"
+  (#18572)
+- feat(core): sync io ops in core (#18603)
+- feat(ext/http): add an op to perform raw HTTP upgrade (#18511)
+- fix(core): preserve syntax error locations in dynamic imports (#18664)
+- fix(ext/cache): cache.put overwrites previous call (#18649)
+- fix(ext/kv): keys must be arrays (#18655)
+- fix(ext/node): add X509Certificate (#18625)
+- fix(ext/node): add symmetric keygen (#18609)
+- fix(ext/node): fix unable to resolve fraction.js (#18544)
+- fix(ext/node): implement hkdf-expand (#18612)
+- fix(ext/node): json encode binary command name (#18596)
+- fix(npm): cache bust npm specifiers more aggressively (#18636)
+- fix(npm): do not "npm install" when npm specifier happens to match
+  package.json entry (#18660)
+- fix(npm): reload an npm package's dependency's information when version not
+  found (#18622)
+- perf(ext/io): remove a data copy from File write (#18601)
+- perf(ext/websocket): replace tokio_tungstenite server with fastwebsockets
+  (#18587)
+
+### 1.32.3 / 2023.04.01
+
+- fix(check): ensure diagnostics caused by changes in other files get
+  invalidated between runs (#18541)
+- fix(ext/ffi): crash when same reference struct is used in two fields (#18531)
+- fix(lsp): add a document preload file system entry limit (#18553)
+- fix(repl): disable language server document preloading in the repl (#18543)
+- fix(test): don't swallow sanitizer errors with permissions (#18550)
+- perf(check): faster source hashing (#18534)
+
 ### 1.32.2 / 2023.03.31
 
 - Revert "refactor(ext/node): Use Deno.inspect (#17960)" (#18491)

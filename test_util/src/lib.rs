@@ -2076,13 +2076,13 @@ impl<'a> CheckOutputIntegrationTest<'a> {
   pub fn output(&self) -> TestCommandOutput {
     let mut context_builder = TestContextBuilder::default();
     if self.temp_cwd {
-      context_builder.use_temp_cwd();
+      context_builder = context_builder.use_temp_cwd();
     }
     if let Some(dir) = &self.copy_temp_dir {
-      context_builder.use_copy_temp_dir(dir);
+      context_builder = context_builder.use_copy_temp_dir(dir);
     }
     if self.http_server {
-      context_builder.use_http_server();
+      context_builder = context_builder.use_http_server();
     }
 
     let context = context_builder.build();
@@ -2090,22 +2090,22 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     let mut command_builder = context.new_command();
 
     if !self.args.is_empty() {
-      command_builder.args(self.args);
+      command_builder = command_builder.args(self.args);
     }
     if !self.args_vec.is_empty() {
-      command_builder.args_vec(self.args_vec.clone());
+      command_builder = command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
-      command_builder.stdin(input);
+      command_builder = command_builder.stdin(input);
     }
     for (key, value) in &self.envs {
-      command_builder.env(key, value);
+      command_builder = command_builder.env(key, value);
     }
     if self.env_clear {
-      command_builder.env_clear();
+      command_builder = command_builder.env_clear();
     }
     if let Some(cwd) = &self.cwd {
-      command_builder.cwd(cwd);
+      command_builder = command_builder.cwd(cwd);
     }
 
     command_builder.run()

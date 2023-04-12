@@ -31,6 +31,6 @@ fn main() {
     extensions,
     ..Default::default()
   });
-  rt.execute_script("panik", "Deno.core.ops.op_panik()")
+  rt.execute_script_static("panik", "Deno.core.ops.op_panik()")
     .unwrap();
 }

@@ -10,7 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_graph::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
@@ -23,7 +23,7 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let tasks_config = ps.options.resolve_tasks_config()?;
   let maybe_package_json = ps.options.maybe_package_json();
   let package_json_scripts = maybe_package_json

@@ -588,6 +588,7 @@ declare namespace __bootstrap {
     export const MapLength: typeof Map.length;
     export const MapName: typeof Map.name;
     export const MapPrototype: typeof Map.prototype;
+    export const MapPrototypeGetSize: (map: Map) => number;
     export const MapPrototypeGet: UncurryThis<typeof Map.prototype.get>;
     export const MapPrototypeSet: UncurryThis<typeof Map.prototype.set>;
     export const MapPrototypeHas: UncurryThis<typeof Map.prototype.has>;
@@ -715,6 +716,7 @@ declare namespace __bootstrap {
     export const SetLength: typeof Set.length;
     export const SetName: typeof Set.name;
     export const SetPrototype: typeof Set.prototype;
+    export const SetPrototypeGetSize: (set: Set) => number;
     export const SetPrototypeHas: UncurryThis<typeof Set.prototype.has>;
     export const SetPrototypeAdd: UncurryThis<typeof Set.prototype.add>;
     export const SetPrototypeDelete: UncurryThis<typeof Set.prototype.delete>;
@@ -866,6 +868,7 @@ declare namespace __bootstrap {
     export const SymbolLength: typeof Symbol.length;
     export const SymbolName: typeof Symbol.name;
     export const SymbolPrototype: typeof Symbol.prototype;
+    export const SymbolPrototypeGetDescription: (symbol: symbol) => string;
     export const SymbolFor: typeof Symbol.for;
     export const SymbolKeyFor: typeof Symbol.keyFor;
     export const SymbolAsyncIterator: typeof Symbol.asyncIterator;
