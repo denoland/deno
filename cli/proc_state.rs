@@ -246,12 +246,12 @@ impl ProcState {
       http_client.clone(),
       progress_bar.clone(),
     );
-    let serilaized_npm_snapshot = cli_options
+    let npm_snapshot = cli_options
       .resolve_npm_resolution_snapshot(&npm_api)
       .await?;
     let npm_resolution = NpmResolution::from_serialized(
       npm_api.clone(),
-      serilaized_npm_snapshot,
+      npm_snapshot,
       lockfile.as_ref().cloned(),
     );
     let npm_fs_resolver = create_npm_fs_resolver(
