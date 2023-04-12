@@ -1002,14 +1002,15 @@ dependencies = [
 name = "deno_fs"
 version = "0.7.0"
 dependencies = [
+ "async-trait",
  "deno_core",
- "deno_crypto",
  "deno_io",
  "filetime",
  "fs3",
  "libc",
  "log",
  "nix",
+ "rand",
  "serde",
  "tokio",
  "winapi",
