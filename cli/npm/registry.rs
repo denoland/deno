@@ -112,7 +112,12 @@ impl CliNpmRegistryApi {
     ) {
       return false;
     }
-    self.inner().force_reload_flag.raise()
+    if self.inner().force_reload_flag.raise() {
+      self.clear_memory_cache(); // clear the memory cache to force reloading
+      true
+    } else {
+      false
+    }
   }
 
   fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
