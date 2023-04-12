@@ -4701,7 +4701,7 @@ class ByteLengthQueuingStrategy {
   /** @param {{ highWaterMark: number }} init */
   constructor(init) {
     const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, {
       prefix,
       context: "Argument 1",
@@ -4758,7 +4758,7 @@ class CountQueuingStrategy {
   /** @param {{ highWaterMark: number }} init */
   constructor(init) {
     const prefix = "Failed to construct 'CountQueuingStrategy'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, {
       prefix,
       context: "Argument 1",
@@ -4950,7 +4950,7 @@ class ReadableStream {
   pipeThrough(transform, options = {}) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     transform = webidl.converters.ReadableWritablePair(transform, {
       prefix,
       context: "Argument 1",
@@ -4988,7 +4988,7 @@ class ReadableStream {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
+      webidl.requiredArguments(arguments.length, 1, prefix);
       destination = webidl.converters.WritableStream(destination, {
         prefix,
         context: "Argument 1",
@@ -5079,7 +5079,7 @@ class ReadableStreamDefaultReader {
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, {
       prefix,
       context: "Argument 1",
@@ -5179,7 +5179,7 @@ class ReadableStreamBYOBReader {
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamBYOBReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, {
       prefix,
       context: "Argument 1",
@@ -5321,7 +5321,7 @@ class ReadableStreamBYOBRequest {
   respond(bytesWritten) {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     const prefix = "Failed to execute 'respond' on 'ReadableStreamBYOBRequest'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     bytesWritten = webidl.converters["unsigned long long"](bytesWritten, {
       enforceRange: true,
       prefix,
@@ -5354,7 +5354,7 @@ class ReadableStreamBYOBRequest {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     const prefix =
       "Failed to execute 'respondWithNewView' on 'ReadableStreamBYOBRequest'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     view = webidl.converters.ArrayBufferView(view, {
       prefix,
       context: "Argument 1",
@@ -5448,7 +5448,7 @@ class ReadableByteStreamController {
     webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
     const prefix =
       "Failed to execute 'enqueue' on 'ReadableByteStreamController'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     const arg1 = "Argument 1";
     chunk = webidl.converters.ArrayBufferView(chunk, {
       prefix,
@@ -6038,7 +6038,7 @@ class WritableStreamDefaultWriter {
    */
   constructor(stream) {
     const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.WritableStream(stream, {
       prefix,
       context: "Argument 1",
