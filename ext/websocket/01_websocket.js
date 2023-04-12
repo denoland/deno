@@ -172,9 +172,7 @@ class WebSocket extends EventTarget {
     super();
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'WebSocket'";
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix,
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, {
       prefix,
       context: "Argument 1",
@@ -301,9 +299,7 @@ class WebSocket extends EventTarget {
     webidl.assertBranded(this, WebSocketPrototype);
     const prefix = "Failed to execute 'send' on 'WebSocket'";
 
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix,
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     data = webidl.converters.WebSocketSend(data, {
       prefix,
       context: "Argument 1",

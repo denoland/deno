@@ -492,7 +492,7 @@ class File extends Blob {
    */
   constructor(fileBits, fileName, options = {}) {
     const prefix = "Failed to construct 'File'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
     fileBits = webidl.converters["sequence<BlobPart>"](fileBits, {
       context: "Argument 1",

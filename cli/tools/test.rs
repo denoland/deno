@@ -57,7 +57,9 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -1174,6 +1176,8 @@ pub async fn check_specifiers(
   Ok(())
 }
 
+static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
+
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   ps: &ProcState,
@@ -1201,6 +1205,7 @@ async fn test_specifiers(
     signal::ctrl_c().await.unwrap();
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
+  HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
 
   let join_handles =
     specifiers_with_mode
@@ -1388,6 +1393,7 @@ async fn test_specifiers(
       }
 
       sigint_handler_handle.abort();
+      HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
 
       let elapsed = Instant::now().duration_since(earlier);
       reporter.report_summary(&summary, &elapsed);
@@ -1531,7 +1537,7 @@ pub async fn run_tests(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1575,7 +1581,7 @@ pub async fn run_tests_with_watch(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1735,6 +1741,19 @@ pub async fn run_tests_with_watch(
       Ok(())
     }
   };
+
+  // On top of the sigint handlers which are added and unbound for each test
+  // run, a process-scoped basic exit handler is required due to a tokio
+  // limitation where it doesn't unbind its own handler for the entire process
+  // once a user adds one.
+  tokio::task::spawn(async move {
+    loop {
+      signal::ctrl_c().await.unwrap();
+      if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
+        std::process::exit(130);
+      }
+    }
+  });
 
   let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(

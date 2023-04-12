@@ -23,7 +23,7 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let tasks_config = ps.options.resolve_tasks_config()?;
   let maybe_package_json = ps.options.maybe_package_json();
   let package_json_scripts = maybe_package_json

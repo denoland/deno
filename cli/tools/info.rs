@@ -33,7 +33,7 @@ use crate::proc_state::ProcState;
 use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier, ps.options.initial_cwd())?;
     let mut loader = ps.create_graph_loader();
@@ -486,7 +486,7 @@ impl<'a> GraphDisplayContext<'a> {
             colors::red("error:")
           )
         } else {
-          writeln!(writer, "{} {}", colors::red("error:"), err)
+          writeln!(writer, "{} {:#}", colors::red("error:"), err)
         }
       }
       Ok(None) => {
