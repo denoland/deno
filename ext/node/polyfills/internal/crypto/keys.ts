@@ -28,6 +28,13 @@ import {
   isKeyObject as isKeyObject_,
   kKeyType,
 } from "ext:deno_node/internal/crypto/_keys.ts";
+import {
+  validateObject,
+  validateOneOf,
+} from "ext:deno_node/internal/validators.mjs";
+import {
+  forgivingBase64UrlEncode as encodeToBase64Url,
+} from "ext:deno_web/00_infra.js";
 
 const getArrayBufferOrView = hideStackFrames(
   (
@@ -130,6 +137,17 @@ export function isCryptoKey(
   return isCryptoKey_(obj);
 }
 
+function copyBuffer(input: string | Buffer | ArrayBufferView) {
+  if (typeof input === "string") return Buffer.from(input);
+  return (
+    (ArrayBuffer.isView(input)
+      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
+      : new Uint8Array(input)).slice()
+  );
+}
+
+const KEY_STORE = new WeakMap();
+
 export class KeyObject {
   [kKeyType]: KeyObjectType;
   [kHandle]: unknown;
@@ -139,18 +157,8 @@ export class KeyObject {
       throw new ERR_INVALID_ARG_VALUE("type", type);
     }
 
-    if (typeof handle !== "object") {
-      throw new ERR_INVALID_ARG_TYPE("handle", "object", handle);
-    }
-
     this[kKeyType] = type;
-
-    Object.defineProperty(this, kHandle, {
-      value: handle,
-      enumerable: false,
-      configurable: false,
-      writable: false,
-    });
+    this[kHandle] = handle;
   }
 
   get type(): KeyObjectType {
@@ -239,7 +247,7 @@ function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
 }
 
 export function prepareSecretKey(
-  key: string | ArrayBuffer | KeyObject,
+  key: string | ArrayBufferView | ArrayBuffer | KeyObject,
   encoding: string | undefined,
   bufferOnly = false,
 ) {
@@ -271,16 +279,62 @@ export function prepareSecretKey(
   return getArrayBufferOrView(key, "key", encoding);
 }
 
+export class SecretKeyObject extends KeyObject {
+  constructor(handle: unknown) {
+    super("secret", handle);
+  }
+
+  get symmetricKeySize() {
+    return KEY_STORE.get(this[kHandle]).byteLength;
+  }
+
+  get asymmetricKeyType() {
+    return undefined;
+  }
+
+  export(): Buffer;
+  export(options?: JwkKeyExportOptions): JsonWebKey {
+    const key = KEY_STORE.get(this[kHandle]);
+    if (options !== undefined) {
+      validateObject(options, "options");
+      validateOneOf(
+        options.format,
+        "options.format",
+        [undefined, "buffer", "jwk"],
+      );
+      if (options.format === "jwk") {
+        return {
+          kty: "oct",
+          k: encodeToBase64Url(key),
+        };
+      }
+    }
+    return key.slice();
+  }
+}
+
+export function setOwnedKey(key: Uint8Array): unknown {
+  const handle = {};
+  KEY_STORE.set(handle, key);
+  return handle;
+}
+
+export function getKeyMaterial(key: KeyObject): Uint8Array {
+  return KEY_STORE.get(key[kHandle]);
+}
+
 export function createSecretKey(key: ArrayBufferView): KeyObject;
 export function createSecretKey(
   key: string,
   encoding: string,
 ): KeyObject;
 export function createSecretKey(
-  _key: string | ArrayBufferView,
-  _encoding?: string,
+  key: string | ArrayBufferView,
+  encoding?: string,
 ): KeyObject {
-  notImplemented("crypto.createSecretKey");
+  key = prepareSecretKey(key, encoding, true);
+  const handle = setOwnedKey(copyBuffer(key));
+  return new SecretKeyObject(handle);
 }
 
 export default {
@@ -291,4 +345,6 @@ export default {
   isCryptoKey,
   KeyObject,
   prepareSecretKey,
+  setOwnedKey,
+  SecretKeyObject,
 };

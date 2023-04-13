@@ -18,10 +18,10 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
+use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 
 use super::cdp;
@@ -106,7 +106,7 @@ pub fn result_to_evaluation_output(
   match r {
     Ok(value) => value,
     Err(err) => {
-      EvaluationOutput::Error(format!("{} {}", colors::red("error:"), err))
+      EvaluationOutput::Error(format!("{} {:#}", colors::red("error:"), err))
     }
   }
 }
@@ -507,8 +507,8 @@ impl ReplSession {
         deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
           self.proc_state.options.has_node_modules_dir(),
-        )
-        .await?;
+          None,
+        )?;
         self.has_initialized_node_runtime = true;
       }
 

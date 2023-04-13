@@ -25,8 +25,7 @@ if (Deno.args.includes("--rs")) {
 if (!didLint) {
   await Promise.all([
     dlint(),
-    // todo(dsherret): re-enable
-    // dlintPreferPrimordials(),
+    dlintPreferPrimordials(),
     checkCopyright(),
     clippy(),
   ]);
@@ -50,6 +49,7 @@ async function dlint() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
+    ":!:cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     ":!:cli/tests/testdata/fmt/**",
     ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
@@ -95,6 +95,10 @@ async function dlintPreferPrimordials() {
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",
+    // TODO(petamoriken): enable for node polyfills
+    // "ext/node/polyfills/*.mjs",
+    // "ext/node/polyfills/*.ts",
+    // ":!:ext/node/polyfills/*.d.ts",
     "core/*.js",
     ":!:core/*_test.js",
     ":!:core/examples/**",

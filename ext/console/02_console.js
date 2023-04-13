@@ -64,6 +64,7 @@ const {
   SymbolPrototype,
   SymbolPrototypeToString,
   SymbolPrototypeValueOf,
+  SymbolPrototypeGetDescription,
   SymbolToStringTag,
   SymbolHasInstance,
   SymbolFor,
@@ -150,19 +151,19 @@ function isTypedArray(x) {
 }
 
 const tableChars = {
-  middleMiddle: "─",
-  rowMiddle: "┼",
-  topRight: "┐",
-  topLeft: "┌",
-  leftMiddle: "├",
-  topMiddle: "┬",
-  bottomRight: "┘",
-  bottomLeft: "└",
-  bottomMiddle: "┴",
-  rightMiddle: "┤",
-  left: "│ ",
-  right: " │",
-  middle: " │ ",
+  middleMiddle: "\u2500",
+  rowMiddle: "\u253c",
+  topRight: "\u2510",
+  topLeft: "\u250c",
+  leftMiddle: "\u251c",
+  topMiddle: "\u252c",
+  bottomRight: "\u2518",
+  bottomLeft: "\u2514",
+  bottomMiddle: "\u2534",
+  rightMiddle: "\u2524",
+  left: "\u2502 ",
+  right: " \u2502",
+  middle: " \u2502 ",
 };
 
 function isFullWidthCodePoint(code) {
@@ -390,7 +391,7 @@ function inspectFunction(value, inspectOptions) {
     // from MDN spec
     return cyan(`${refStr}[${cstrName}: ${value.name}]`) + suffix;
   }
-  return cyan(`${refStr}[${cstrName}]`) + suffix;
+  return cyan(`${refStr}[${cstrName} (anonymous)]`) + suffix;
 }
 
 function inspectIterable(
@@ -662,7 +663,7 @@ function handleCircular(value, cyan) {
   } else {
     index = MapPrototypeGet(circular, value);
     if (index === undefined) {
-      index = circular.size + 1;
+      index = MapPrototypeGetSize(circular) + 1;
       MapPrototypeSet(circular, value, index);
     }
   }
@@ -809,20 +810,17 @@ const QUOTE_SYMBOL_REG = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/);
 
 // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
 function maybeQuoteSymbol(symbol, inspectOptions) {
-  if (symbol.description === undefined) {
+  const description = SymbolPrototypeGetDescription(symbol);
+
+  if (description === undefined) {
     return SymbolPrototypeToString(symbol);
   }
 
-  if (
-    RegExpPrototypeTest(
-      QUOTE_SYMBOL_REG,
-      symbol.description,
-    )
-  ) {
+  if (RegExpPrototypeTest(QUOTE_SYMBOL_REG, description)) {
     return SymbolPrototypeToString(symbol);
   }
 
-  return `Symbol(${quoteString(symbol.description, inspectOptions)})`;
+  return `Symbol(${quoteString(description, inspectOptions)})`;
 }
 
 const CTX_STACK = [];
@@ -1191,8 +1189,8 @@ function inspectRawObject(
       symbolKeys,
       (s1, s2) =>
         StringPrototypeLocaleCompare(
-          s1.description ?? "",
-          s2.description ?? "",
+          SymbolPrototypeGetDescription(s1) ?? "",
+          SymbolPrototypeGetDescription(s2) ?? "",
         ),
     );
   }
@@ -1291,12 +1289,17 @@ function inspectRawObject(
   inspectOptions.indentLevel--;
 
   // Making sure color codes are ignored when calculating the total length
+  const entriesText = colors.stripColor(ArrayPrototypeJoin(entries, ""));
   const totalLength = entries.length + inspectOptions.indentLevel +
-    colors.stripColor(ArrayPrototypeJoin(entries, "")).length;
+    entriesText.length;
 
   if (entries.length === 0) {
     baseString = "{}";
-  } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
+  } else if (
+    totalLength > LINE_BREAKING_LENGTH ||
+    !inspectOptions.compact ||
+    StringPrototypeIncludes(entriesText, "\n")
+  ) {
     const entryIndent = StringPrototypeRepeat(
       DEFAULT_INDENT,
       inspectOptions.indentLevel + 1,

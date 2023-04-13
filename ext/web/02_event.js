@@ -162,9 +162,11 @@ class Event {
     this[_path] = [];
 
     if (!eventInitDict[_skipInternalInit]) {
-      webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to construct 'Event'",
-      });
+      webidl.requiredArguments(
+        arguments.length,
+        1,
+        "Failed to construct 'Event'",
+      );
       type = webidl.converters.DOMString(type, {
         prefix: "Failed to construct 'Event'",
         context: "Argument 1",
@@ -958,9 +960,7 @@ class EventTarget {
     webidl.assertBranded(self, EventTargetPrototype);
     const prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
 
-    webidl.requiredArguments(arguments.length, 2, {
-      prefix,
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
     options = webidl.converters.AddEventListenerOptions(options, {
       prefix,
@@ -996,7 +996,7 @@ class EventTarget {
         // If signal is not null and its aborted flag is set, then return.
         return;
       } else {
-        // If listener’s signal is not null, then add the following abort
+        // If listener's signal is not null, then add the following abort
         // abort steps to it: Remove an event listener.
         signal.addEventListener("abort", () => {
           self.removeEventListener(type, callback, options);
@@ -1014,9 +1014,11 @@ class EventTarget {
   ) {
     const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
-    webidl.requiredArguments(arguments.length, 2, {
-      prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      2,
+      "Failed to execute 'removeEventListener' on 'EventTarget'",
+    );
 
     const { listeners } = self[eventTargetData];
     if (callback !== null && ReflectHas(listeners, type)) {
@@ -1052,9 +1054,11 @@ class EventTarget {
     // executed.
     const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to execute 'dispatchEvent' on 'EventTarget'",
+    );
 
     // This is an optimization to avoid creating an event listener
     // on each startup.
@@ -1261,9 +1265,11 @@ class CustomEvent extends Event {
 
   constructor(type, eventInitDict = {}) {
     super(type, eventInitDict);
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix: "Failed to construct 'CustomEvent'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to construct 'CustomEvent'",
+    );
     const { detail } = eventInitDict;
     this.#detail = detail;
   }
@@ -1512,7 +1518,7 @@ function checkThis(thisArg) {
 function reportError(error) {
   checkThis(this);
   const prefix = "Failed to call 'reportError'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
 

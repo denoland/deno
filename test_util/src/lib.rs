@@ -16,6 +16,7 @@ use hyper::StatusCode;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
+use pty::Pty;
 use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
@@ -24,7 +25,6 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
 use std::io;
-use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
@@ -90,12 +90,6 @@ const WS_PING_PORT: u16 = 4245;
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
-
-// STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
-// Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
-static STRIP_ANSI_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
-  r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
-);
 
 static GUARD: Lazy<Mutex<HttpServerCount>> =
   Lazy::new(|| Mutex::new(HttpServerCount::default()));
@@ -1757,7 +1751,7 @@ pub fn http_server() -> HttpServerGuard {
 
 /// Helper function to strip ansi codes.
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
-  STRIP_ANSI_RE.replace_all(s, "")
+  console_static_text::ansi::strip_ansi_codes(s)
 }
 
 pub fn run(
@@ -1896,22 +1890,117 @@ pub fn new_deno_dir() -> TempDir {
   TempDir::new()
 }
 
+/// Because we need to keep the [`TempDir`] alive for the entire run of this command,
+/// we have to effectively reproduce the entire builder-pattern object for [`Command`].
 pub struct DenoCmd {
-  // keep the deno dir directory alive for the duration of the command
   _deno_dir: TempDir,
   cmd: Command,
 }
 
-impl Deref for DenoCmd {
-  type Target = Command;
-  fn deref(&self) -> &Command {
-    &self.cmd
+impl DenoCmd {
+  pub fn args<I, S>(&mut self, args: I) -> &mut Self
+  where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.args(args);
+    self
+  }
+
+  pub fn arg<S>(&mut self, arg: S) -> &mut Self
+  where
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.arg(arg);
+    self
+  }
+
+  pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
+  where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.envs(vars);
+    self
+  }
+
+  pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env(key, val);
+    self
+  }
+
+  pub fn env_remove<K>(&mut self, key: K) -> &mut Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env_remove(key);
+    self
+  }
+
+  pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stdin(cfg);
+    self
+  }
+
+  pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stdout(cfg);
+    self
+  }
+
+  pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stderr(cfg);
+    self
+  }
+
+  pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut Self {
+    self.cmd.current_dir(dir);
+    self
+  }
+
+  pub fn output(&mut self) -> Result<std::process::Output, std::io::Error> {
+    self.cmd.output()
+  }
+
+  pub fn status(&mut self) -> Result<std::process::ExitStatus, std::io::Error> {
+    self.cmd.status()
+  }
+
+  pub fn spawn(&mut self) -> Result<DenoChild, std::io::Error> {
+    Ok(DenoChild {
+      _deno_dir: self._deno_dir.clone(),
+      child: self.cmd.spawn()?,
+    })
   }
 }
 
-impl DerefMut for DenoCmd {
-  fn deref_mut(&mut self) -> &mut Command {
-    &mut self.cmd
+/// We need to keep the [`TempDir`] around until the child has finished executing, so
+/// this acts as a RAII guard.
+pub struct DenoChild {
+  _deno_dir: TempDir,
+  child: Child,
+}
+
+impl Deref for DenoChild {
+  type Target = Child;
+  fn deref(&self) -> &Child {
+    &self.child
+  }
+}
+
+impl DerefMut for DenoChild {
+  fn deref_mut(&mut self) -> &mut Child {
+    &mut self.child
+  }
+}
+
+impl DenoChild {
+  pub fn wait_with_output(self) -> Result<Output, std::io::Error> {
+    self.child.wait_with_output()
   }
 }
 
@@ -1985,13 +2074,13 @@ impl<'a> CheckOutputIntegrationTest<'a> {
   pub fn output(&self) -> TestCommandOutput {
     let mut context_builder = TestContextBuilder::default();
     if self.temp_cwd {
-      context_builder.use_temp_cwd();
+      context_builder = context_builder.use_temp_cwd();
     }
     if let Some(dir) = &self.copy_temp_dir {
-      context_builder.use_copy_temp_dir(dir);
+      context_builder = context_builder.use_copy_temp_dir(dir);
     }
     if self.http_server {
-      context_builder.use_http_server();
+      context_builder = context_builder.use_http_server();
     }
 
     let context = context_builder.build();
@@ -1999,23 +2088,22 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     let mut command_builder = context.new_command();
 
     if !self.args.is_empty() {
-      command_builder.args(self.args);
+      command_builder = command_builder.args(self.args);
     }
     if !self.args_vec.is_empty() {
-      command_builder
-        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+      command_builder = command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
-      command_builder.stdin(input);
+      command_builder = command_builder.stdin(input);
     }
     for (key, value) in &self.envs {
-      command_builder.env(key, value);
+      command_builder = command_builder.env(key, value);
     }
     if self.env_clear {
-      command_builder.env_clear();
+      command_builder = command_builder.env_clear();
     }
     if let Some(cwd) = &self.cwd {
-      command_builder.cwd(cwd);
+      command_builder = command_builder.cwd(cwd);
     }
 
     command_builder.run()
@@ -2075,98 +2163,9 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-pub enum PtyData {
-  Input(&'static str),
-  Output(&'static str),
-}
-
-pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use std::io::BufRead;
-
-  with_pty(&args.split_whitespace().collect::<Vec<_>>(), |console| {
-    let mut buf_reader = std::io::BufReader::new(console);
-    for d in data.iter() {
-      match d {
-        PtyData::Input(s) => {
-          println!("INPUT {}", s.escape_debug());
-          buf_reader.get_mut().write_text(s);
-
-          // Because of tty echo, we should be able to read the same string back.
-          assert!(s.ends_with('\n'));
-          let mut echo = String::new();
-          buf_reader.read_line(&mut echo).unwrap();
-          println!("ECHO: {}", echo.escape_debug());
-
-          // Windows may also echo the previous line, so only check the end
-          assert_ends_with!(normalize_text(&echo), normalize_text(s));
-        }
-        PtyData::Output(s) => {
-          let mut line = String::new();
-          if s.ends_with('\n') {
-            buf_reader.read_line(&mut line).unwrap();
-          } else {
-            // assumes the buffer won't have overlapping virtual terminal sequences
-            while normalize_text(&line).len() < normalize_text(s).len() {
-              let mut buf = [0; 64 * 1024];
-              let bytes_read = buf_reader.read(&mut buf).unwrap();
-              assert!(bytes_read > 0);
-              let buf_str = std::str::from_utf8(&buf)
-                .unwrap()
-                .trim_end_matches(char::from(0));
-              line += buf_str;
-            }
-          }
-          println!("OUTPUT {}", line.escape_debug());
-          assert_eq!(normalize_text(&line), normalize_text(s));
-        }
-      }
-    }
-  });
-
-  // This normalization function is not comprehensive
-  // and may need to updated as new scenarios emerge.
-  fn normalize_text(text: &str) -> String {
-    static MOVE_CURSOR_RIGHT_ONE_RE: Lazy<Regex> =
-      lazy_regex::lazy_regex!(r"\x1b\[1C");
-    static FOUND_SEQUENCES_RE: Lazy<Regex> =
-      lazy_regex::lazy_regex!(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*");
-    static CARRIAGE_RETURN_RE: Lazy<Regex> =
-      lazy_regex::lazy_regex!(r"[^\n]*\r([^\n])");
-
-    // any "move cursor right" sequences should just be a space
-    let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
-    // replace additional virtual terminal sequences that strip ansi codes doesn't catch
-    let text = FOUND_SEQUENCES_RE.replace_all(&text, "");
-    // strip any ansi codes, which also strips more terminal sequences
-    let text = strip_ansi_codes(&text);
-    // get rid of any text that is overwritten with only a carriage return
-    let text = CARRIAGE_RETURN_RE.replace_all(&text, "$1");
-    // finally, trim surrounding whitespace
-    text.trim().to_string()
-  }
-}
-
-pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
-  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    eprintln!("Ignoring non-tty environment.");
-    return;
-  }
-
-  let deno_dir = new_deno_dir();
-  let mut env_vars = std::collections::HashMap::new();
-  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  env_vars.insert(
-    "DENO_DIR".to_string(),
-    deno_dir.path().to_string_lossy().to_string(),
-  );
-  let pty = pty::create_pty(
-    &deno_exe_path().to_string_lossy().to_string(),
-    deno_args,
-    testdata_path(),
-    Some(env_vars),
-  );
-
-  action(pty);
+pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.new_command().args_vec(deno_args).with_pty(action);
 }
 
 pub struct WrkOutput {

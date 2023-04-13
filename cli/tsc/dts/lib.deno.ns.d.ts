@@ -2017,7 +2017,6 @@ declare namespace Deno {
      * for await (const chunk of file.readable) {
      *   console.log(decoder.decode(chunk));
      * }
-     * file.close();
      * ```
      */
     readonly readable: ReadableStream<Uint8Array>;
@@ -2294,6 +2293,10 @@ declare namespace Deno {
    * ```ts
    * const { columns, rows } = Deno.consoleSize();
    * ```
+   *
+   * This returns the size of the console window as reported by the operating
+   * system. It's not a reflection of how many characters will fit within the
+   * console window, but can be used as part of that calculation.
    *
    * @category I/O
    */
@@ -4563,7 +4566,6 @@ declare namespace Deno {
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
-
     /** Requests the permission, and returns the state of the permission.
      *
      * If the permission is already granted, the user will not be prompted to
@@ -4675,7 +4677,15 @@ declare namespace Deno {
     arch: "x86_64" | "aarch64";
     /** The operating system that the Deno CLI was built for. `"darwin"` is
      * also known as OSX or MacOS. */
-    os: "darwin" | "linux" | "windows" | "freebsd" | "netbsd" | "aix" | "solaris" | "illumos";
+    os:
+      | "darwin"
+      | "linux"
+      | "windows"
+      | "freebsd"
+      | "netbsd"
+      | "aix"
+      | "solaris"
+      | "illumos";
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */

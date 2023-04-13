@@ -8,6 +8,7 @@ use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
@@ -25,9 +26,9 @@ use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::create_npm_fs_resolver;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -46,7 +47,6 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::Module;
@@ -58,6 +58,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::borrow::Cow;
@@ -74,6 +75,7 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: DenoDir,
+  pub caches: Caches,
   pub file_fetcher: Arc<FileFetcher>,
   pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
@@ -93,7 +95,7 @@ pub struct Inner {
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
-  pub npm_api: NpmRegistryApi,
+  pub npm_api: CliNpmRegistryApi,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub npm_resolution: NpmResolution,
@@ -110,17 +112,17 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: Flags) -> Result<Self, AnyError> {
-    Self::from_options(Arc::new(CliOptions::from_flags(flags)?)).await
-  }
-
-  pub async fn from_options(
+  pub async fn from_cli_options(
     options: Arc<CliOptions>,
   ) -> Result<Self, AnyError> {
     Self::build_with_sender(options, None).await
   }
 
-  pub async fn build_for_file_watcher(
+  pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    Self::from_cli_options(Arc::new(CliOptions::from_flags(flags)?)).await
+  }
+
+  pub async fn from_flags_for_file_watcher(
     flags: Flags,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
@@ -138,6 +140,7 @@ impl ProcState {
   pub fn reset_for_file_watcher(&mut self) {
     self.0 = Arc::new(Inner {
       dir: self.dir.clone(),
+      caches: self.caches.clone(),
       options: self.options.clone(),
       emit_cache: self.emit_cache.clone(),
       emit_options_hash: self.emit_options_hash,
@@ -191,11 +194,25 @@ impl ProcState {
     cli_options: Arc<CliOptions>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
+    let dir = cli_options.resolve_deno_dir()?;
+    let caches = Caches::default();
+    // Warm up the caches we know we'll likely need based on the CLI mode
+    match cli_options.sub_command() {
+      DenoSubcommand::Run(_) => {
+        _ = caches.dep_analysis_db(&dir);
+        _ = caches.node_analysis_db(&dir);
+      }
+      DenoSubcommand::Check(_) => {
+        _ = caches.dep_analysis_db(&dir);
+        _ = caches.node_analysis_db(&dir);
+        _ = caches.type_checking_cache_db(&dir);
+      }
+      _ => {}
+    }
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
     let compiled_wasm_module_store = CompiledWasmModuleStore::default();
-    let dir = cli_options.resolve_deno_dir()?;
     let deps_cache_location = dir.deps_folder_path();
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
@@ -216,14 +233,14 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let npm_registry_url = NpmRegistryApi::default_url().to_owned();
+    let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let npm_api = NpmRegistryApi::new(
+    let npm_api = CliNpmRegistryApi::new(
       npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
@@ -283,7 +300,7 @@ impl ProcState {
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
-      ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
+      ParsedSourceCache::new(caches.dep_analysis_db(&dir));
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
@@ -291,11 +308,12 @@ impl ProcState {
       progress_bar.clone(),
     );
     let node_analysis_cache =
-      NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
+      NodeAnalysisCache::new(caches.node_analysis_db(&dir));
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
       dir,
+      caches,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()
@@ -346,6 +364,7 @@ impl ProcState {
     let mut cache = cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       root_permissions,
       dynamic_permissions,
       self.options.node_modules_dir_specifier(),
@@ -374,6 +393,7 @@ impl ProcState {
 
     build_graph_with_npm_resolution(
       graph,
+      &self.resolver,
       &self.npm_resolver,
       roots.clone(),
       &mut cache,
@@ -428,7 +448,7 @@ impl ProcState {
           && !roots.iter().all(|r| reload_exclusions.contains(r)),
       };
       let check_cache =
-        TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
+        TypeCheckCache::new(self.caches.type_checking_cache_db(&self.dir));
       let check_result =
         check::check(graph, &check_cache, &self.npm_resolver, options)?;
       self.graph_container.set_type_checked(&roots, lib);
@@ -639,6 +659,7 @@ impl ProcState {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
       PermissionsContainer::allow_all(),
       PermissionsContainer::allow_all(),
       self.options.node_modules_dir_specifier(),
@@ -675,6 +696,7 @@ impl ProcState {
     let mut graph = ModuleGraph::default();
     build_graph_with_npm_resolution(
       &mut graph,
+      &self.resolver,
       &self.npm_resolver,
       roots,
       loader,

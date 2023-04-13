@@ -13,6 +13,7 @@ use crate::magic::transl8::visit_magic;
 use crate::magic::transl8::FromV8;
 use crate::magic::transl8::MagicType;
 use crate::payload::ValueType;
+use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
@@ -135,6 +136,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
           self.deserialize_f64(visitor)
         }
       }
+      ValueType::BigInt => Err(Error::UnsupportedType),
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
@@ -172,7 +174,6 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     self.deserialize_f64(visitor)
   }
-
   fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
   where
     V: Visitor<'de>,
@@ -280,8 +281,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     if obj.is_array() {
       // If the obj is an array fail if it's length differs from the tuple length
       let array = v8::Local::<v8::Array>::try_from(self.input).unwrap();
-      if array.length() as usize != len {
-        return Err(Error::LengthMismatch);
+      let array_len = array.length() as usize;
+      if array_len != len {
+        return Err(Error::LengthMismatch(array_len, len));
       }
     }
     visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32))
@@ -355,6 +357,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       magic::Value::MAGIC_NAME => {
         visit_magic(visitor, magic::Value::from_v8(self.scope, self.input)?)
       }
+      AnyValue::MAGIC_NAME => {
+        visit_magic(visitor, AnyValue::from_v8(self.scope, self.input)?)
+      }
       _ => {
         // Regular struct
         let obj = v8::Local::<v8::Object>::try_from(self.input)
@@ -405,8 +410,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         let prop_names =
           obj.get_own_property_names(self.scope, Default::default());
         let prop_names = prop_names.ok_or(Error::ExpectedEnum)?;
-        if prop_names.length() != 1 {
-          return Err(Error::LengthMismatch);
+        let prop_names_len = prop_names.length();
+        if prop_names_len != 1 {
+          return Err(Error::LengthMismatch(prop_names_len as usize, 1));
         }
         prop_names.get_index(self.scope, 0).unwrap()
       };

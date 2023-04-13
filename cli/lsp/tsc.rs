@@ -3,6 +3,7 @@
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
+use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -14,10 +15,12 @@ use super::refactor::EXTRACT_TYPE;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
+use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
+use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
@@ -36,14 +39,12 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use lazy_regex::lazy_regex;
-use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -108,7 +109,7 @@ impl TsServer {
           }
           let value = request(&mut ts_runtime, state_snapshot, req, token);
           if tx.send(value).is_err() {
-            warn!("Unable to send result to client.");
+            lsp_warn!("Unable to send result to client.");
           }
         }
       })
@@ -143,7 +144,28 @@ impl TsServer {
     if self.0.send((req, snapshot, tx, token)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    rx.await?.map(|v| serde_json::from_value::<R>(v).unwrap())
+    let value = rx.await??;
+    Ok(serde_json::from_value::<R>(value)?)
+  }
+
+  // todo(dsherret): refactor the rest of the request methods to have
+  // methods to call on this struct, then make `RequestMethod` and
+  // friends internal
+
+  pub async fn find_references(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: &ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<Vec<ReferencedSymbol>>, LspError> {
+    let req = RequestMethod::FindReferences {
+      specifier: specifier.clone(),
+      position,
+    };
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get references from TypeScript: {}", err);
+      LspError::internal_error()
+    })
   }
 }
 
@@ -837,7 +859,7 @@ impl DocumentSpan {
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri,
+      target_uri: target_uri.into_url(),
       target_range,
       target_selection_range,
     };
@@ -859,7 +881,8 @@ impl DocumentSpan {
     let mut target = language_server
       .url_map
       .normalize_specifier(&specifier)
-      .ok()?;
+      .ok()?
+      .into_url();
     target.set_fragment(Some(&format!(
       "L{},{}",
       range.start.line + 1,
@@ -910,7 +933,10 @@ impl NavigateToItem {
       .normalize_specifier(&specifier)
       .ok()?;
     let range = self.text_span.to_range(line_index);
-    let location = lsp::Location { uri, range };
+    let location = lsp::Location {
+      uri: uri.into_url(),
+      range,
+    };
 
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
     let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
@@ -1155,9 +1181,11 @@ impl ImplementationLocation {
     let uri = language_server
       .url_map
       .normalize_specifier(&specifier)
-      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
+      .unwrap_or_else(|_| {
+        LspClientUrl::new(ModuleSpecifier::parse("deno://invalid").unwrap())
+      });
     lsp::Location {
-      uri,
+      uri: uri.into_url(),
       range: self.document_span.text_span.to_range(line_index),
     }
   }
@@ -1191,8 +1219,10 @@ impl RenameLocations {
     new_name: &str,
     language_server: &language_server::Inner,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
-    let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
-      HashMap::new();
+    let mut text_document_edit_map: HashMap<
+      LspClientUrl,
+      lsp::TextDocumentEdit,
+    > = HashMap::new();
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
@@ -1204,7 +1234,7 @@ impl RenameLocations {
           uri.clone(),
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-              uri: uri.clone(),
+              uri: uri.as_url().clone(),
               version: asset_or_doc.document_lsp_version(),
             },
             edits:
@@ -1674,10 +1704,31 @@ pub struct CombinedCodeActions {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReferenceEntry {
-  // is_write_access: bool,
+pub struct ReferencedSymbol {
+  pub definition: ReferencedSymbolDefinitionInfo,
+  pub references: Vec<ReferencedSymbolEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencedSymbolDefinitionInfo {
+  #[serde(flatten)]
+  pub definition_info: DefinitionInfo,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencedSymbolEntry {
   #[serde(default)]
   pub is_definition: bool,
+  #[serde(flatten)]
+  pub entry: ReferenceEntry,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceEntry {
+  // is_write_access: bool,
   // is_in_string: Option<bool>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
@@ -1693,9 +1744,9 @@ impl ReferenceEntry {
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = url_map
       .normalize_specifier(&specifier)
-      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
     lsp::Location {
-      uri,
+      uri: uri.into_url(),
       range: self.document_span.text_span.to_range(line_index),
     }
   }
@@ -1743,11 +1794,11 @@ impl CallHierarchyItem {
     let uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
-      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+      .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path = if uri.scheme() == "file" {
-      specifier_to_file_path(&uri).ok()
+    let maybe_file_path = if uri.as_url().scheme() == "file" {
+      specifier_to_file_path(uri.as_url()).ok()
     } else {
       None
     };
@@ -1755,7 +1806,7 @@ impl CallHierarchyItem {
       if let Some(file_path) = maybe_file_path.as_ref() {
         file_path.file_name().unwrap().to_string_lossy().to_string()
       } else {
-        uri.to_string()
+        uri.as_str().to_string()
       }
     } else {
       self.name.clone()
@@ -1791,7 +1842,7 @@ impl CallHierarchyItem {
     lsp::CallHierarchyItem {
       name,
       tags,
-      uri,
+      uri: uri.into_url(),
       detail: Some(detail),
       kind: self.kind.clone().into(),
       range: self.span.to_range(line_index.clone()),
@@ -2723,13 +2774,13 @@ fn op_resolve(
           .collect(),
       )
     }
-    None => Err(custom_error(
-      "NotFound",
-      format!(
+    None => {
+      lsp_warn!(
         "Error resolving. Referring specifier \"{}\" was not found.",
         args.base
-      ),
-    )),
+      );
+      Ok(vec![None; args.specifiers.len()])
+    }
   };
 
   state.performance.measure(mark);
@@ -2747,9 +2798,9 @@ fn op_respond(state: &mut OpState, args: Response) -> bool {
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
-  let open_docs = documents.documents(true, true);
-  let mut result = Vec::new();
+  let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
+  let mut result = Vec::new();
 
   if documents.has_injected_types_node_package() {
     // ensure this is first so it resolves the node types first
@@ -2766,23 +2817,17 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // finally include the documents and all their dependencies
-  for doc in &open_docs {
-    let specifier = doc.specifier();
-    if seen.insert(specifier.as_str()) {
-      result.push(specifier.to_string());
-    }
-  }
-
-  // and then all their dependencies (do this after to avoid exists calls)
-  for doc in &open_docs {
-    for dep in doc.dependencies().values() {
-      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
-        if seen.insert(specifier.as_str()) {
-          // only include dependencies we know to exist otherwise typescript will error
-          if documents.exists(specifier) {
-            result.push(specifier.to_string());
-          }
-        }
+  for doc in &all_docs {
+    let specifiers = std::iter::once(doc.specifier()).chain(
+      doc
+        .dependencies()
+        .values()
+        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
+    );
+    for specifier in specifiers {
+      if seen.insert(specifier.as_str()) && documents.exists(specifier) {
+        // only include dependencies we know to exist otherwise typescript will error
+        result.push(specifier.to_string());
       }
     }
   }
@@ -2849,7 +2894,7 @@ fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
-  runtime.execute_script(&located_script_name!(), &init_src)?;
+  runtime.execute_script(located_script_name!(), init_src.into())?;
   Ok(())
 }
 
@@ -3164,8 +3209,11 @@ pub enum RequestMethod {
   GetOutliningSpans(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
-  /// Get document references for a specific position.
-  GetReferences((ModuleSpecifier, u32)),
+  /// Finds the document references for a specific position.
+  FindReferences {
+    specifier: ModuleSpecifier,
+    position: u32,
+  },
   /// Get signature help items for a specific position.
   GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
   /// Get a selection range for a specific position.
@@ -3335,9 +3383,12 @@ impl RequestMethod {
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
-      RequestMethod::GetReferences((specifier, position)) => json!({
+      RequestMethod::FindReferences {
+        specifier,
+        position,
+      } => json!({
         "id": id,
-        "method": "getReferences",
+        "method": "findReferences",
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
@@ -3437,7 +3488,7 @@ pub fn request(
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({request_params});");
-  runtime.execute_script(&located_script_name!(), &request_src)?;
+  runtime.execute_script(located_script_name!(), request_src.into())?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -3474,7 +3525,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location, Default::default());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

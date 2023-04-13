@@ -17,12 +17,20 @@ use super::config::SpecifierSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
+use super::urls::LspClientUrl;
 
 #[derive(Debug)]
 pub enum TestingNotification {
   Module(testing_lsp_custom::TestModuleNotificationParams),
   DeleteModule(testing_lsp_custom::TestModuleDeleteNotificationParams),
   Progress(testing_lsp_custom::TestRunProgressParams),
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub enum LspClientKind {
+  #[default]
+  CodeEditor,
+  Repl,
 }
 
 #[derive(Clone)]
@@ -41,6 +49,10 @@ impl Client {
 
   pub fn new_for_repl() -> Self {
     Self(Arc::new(ReplClient))
+  }
+
+  pub fn kind(&self) -> LspClientKind {
+    self.0.kind()
   }
 
   /// Gets additional methods that should only be called outside
@@ -98,18 +110,23 @@ impl OutsideLockClient {
 
   pub async fn specifier_configurations(
     &self,
-    specifiers: Vec<lsp::Url>,
+    specifiers: Vec<LspClientUrl>,
   ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
-    self.0.specifier_configurations(specifiers).await
+    self
+      .0
+      .specifier_configurations(
+        specifiers.into_iter().map(|s| s.into_url()).collect(),
+      )
+      .await
   }
 
   pub async fn specifier_configuration(
     &self,
-    specifier: &lsp::Url,
+    specifier: &LspClientUrl,
   ) -> Result<SpecifierSettings, AnyError> {
     let values = self
       .0
-      .specifier_configurations(vec![specifier.clone()])
+      .specifier_configurations(vec![specifier.as_url().clone()])
       .await?;
     if let Some(value) = values.into_iter().next() {
       value.map_err(|err| {
@@ -143,6 +160,7 @@ impl OutsideLockClient {
 
 #[async_trait]
 trait ClientTrait: Send + Sync {
+  fn kind(&self) -> LspClientKind;
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -171,6 +189,10 @@ struct TowerClient(tower_lsp::Client);
 
 #[async_trait]
 impl ClientTrait for TowerClient {
+  fn kind(&self) -> LspClientKind {
+    LspClientKind::CodeEditor
+  }
+
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -290,6 +312,10 @@ struct ReplClient;
 
 #[async_trait]
 impl ClientTrait for ReplClient {
+  fn kind(&self) -> LspClientKind {
+    LspClientKind::Repl
+  }
+
   async fn publish_diagnostics(
     &self,
     _uri: lsp::Url,

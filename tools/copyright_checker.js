@@ -72,7 +72,7 @@ export async function checkCopyright() {
     // show all the errors at the same time to prevent overlap with
     // other running scripts that may be outputting
     console.error(errors.join("\n"));
-    throw new Error(`Copyright checker had ${totalCount} errors.`);
+    throw new Error(`Copyright checker had ${errors.length} errors.`);
   }
 }
 

@@ -14,6 +14,7 @@ use crate::magic::transl8::opaque_recv;
 use crate::magic::transl8::MagicType;
 use crate::magic::transl8::ToV8;
 use crate::magic::transl8::MAGIC_FIELD;
+use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
@@ -274,6 +275,7 @@ pub enum StructSerializers<'a, 'b, 'c> {
   ExternalPointer(MagicalSerializer<'a, 'b, 'c, magic::ExternalPointer>),
   Magic(MagicalSerializer<'a, 'b, 'c, magic::Value<'a>>),
   ZeroCopyBuf(MagicalSerializer<'a, 'b, 'c, ZeroCopyBuf>),
+  MagicAnyValue(MagicalSerializer<'a, 'b, 'c, AnyValue>),
   MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
   MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
@@ -295,6 +297,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::ExternalPointer(s) => s.serialize_field(key, value),
       StructSerializers::Magic(s) => s.serialize_field(key, value),
       StructSerializers::ZeroCopyBuf(s) => s.serialize_field(key, value),
+      StructSerializers::MagicAnyValue(s) => s.serialize_field(key, value),
       StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
       StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::MagicU16String(s) => s.serialize_field(key, value),
@@ -311,6 +314,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::ExternalPointer(s) => s.end(),
       StructSerializers::Magic(s) => s.end(),
       StructSerializers::ZeroCopyBuf(s) => s.end(),
+      StructSerializers::MagicAnyValue(s) => s.end(),
       StructSerializers::MagicDetached(s) => s.end(),
       StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::MagicU16String(s) => s.end(),
@@ -587,6 +591,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       ZeroCopyBuf::MAGIC_NAME => {
         let m = MagicalSerializer::<ZeroCopyBuf>::new(self.scope);
         Ok(StructSerializers::ZeroCopyBuf(m))
+      }
+      AnyValue::MAGIC_NAME => {
+        let m = MagicalSerializer::<AnyValue>::new(self.scope);
+        Ok(StructSerializers::MagicAnyValue(m))
       }
       DetachedBuffer::MAGIC_NAME => {
         let m = MagicalSerializer::<DetachedBuffer>::new(self.scope);

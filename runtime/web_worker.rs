@@ -9,6 +9,7 @@ use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -25,6 +26,7 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
+use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -32,7 +34,9 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::StdFs;
 use deno_io::Stdio;
+use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
@@ -430,15 +434,17 @@ impl WebWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_tls::deno_tls::init_ops(),
+      deno_kv::deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(None),
+        unstable,
+      ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node_loading::init_ops::<PermissionsContainer>(
+      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
+      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),
-      deno_node::deno_node::init_ops(),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::deno_web_worker::init_ops(),
       ops::runtime::deno_runtime::init_ops(main_module.clone()),
@@ -551,8 +557,7 @@ impl WebWorker {
     // WebWorkers can have empty string as name.
     {
       let scope = &mut self.js_runtime.handle_scope();
-      let options_v8 =
-        deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+      let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
       let undefined = v8::undefined(scope);
@@ -563,20 +568,22 @@ impl WebWorker {
           .unwrap()
           .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[options_v8, name_str, id_str])
+        .call(scope, undefined.into(), &[args.into(), name_str, id_str])
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
     // Save a reference to function that will start polling for messages
     // from a worker host; it will be called after the user code is loaded.
-    let script = r#"
+    let script = ascii_str!(
+      r#"
     const pollForMessages = globalThis.pollForMessages;
     delete globalThis.pollForMessages;
     pollForMessages
-    "#;
+    "#
+    );
     let poll_for_messages_fn = self
       .js_runtime
-      .execute_script(&located_script_name!(), script)
+      .execute_script(located_script_name!(), script)
       .expect("Failed to execute worker bootstrap script");
     self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
@@ -584,8 +591,8 @@ impl WebWorker {
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script(
     &mut self,
-    name: &str,
-    source_code: &str,
+    name: &'static str,
+    source_code: ModuleCode,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())
@@ -745,7 +752,7 @@ fn print_worker_error(
 pub fn run_web_worker(
   worker: WebWorker,
   specifier: ModuleSpecifier,
-  maybe_source_code: Option<String>,
+  mut maybe_source_code: Option<String>,
   preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -773,8 +780,8 @@ pub fn run_web_worker(
     };
 
     // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code {
-      let r = worker.execute_script(&located_script_name!(), &source_code);
+    let result = if let Some(source_code) = maybe_source_code.take() {
+      let r = worker.execute_script(located_script_name!(), source_code.into());
       worker.start_polling_for_messages();
       r
     } else {

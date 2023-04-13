@@ -6,6 +6,7 @@ use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
 use super::documents::Document;
+use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
@@ -26,12 +27,12 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
 use deno_runtime::tokio_util::create_basic_runtime;
+use deno_semver::npm::NpmPackageReqReference;
 use log::error;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -454,7 +455,9 @@ async fn generate_lint_diagnostics(
   lint_options: &LintOptions,
   token: CancellationToken,
 ) -> DiagnosticVec {
-  let documents = snapshot.documents.documents(true, true);
+  let documents = snapshot
+    .documents
+    .documents(DocumentsFilter::OpenDiagnosable);
   let workspace_settings = config.settings.workspace.clone();
   let lint_rules = get_configured_rules(lint_options.rules.clone());
   let mut diagnostics_vec = Vec::new();
@@ -530,7 +533,7 @@ async fn generate_ts_diagnostics(
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
     .documents
-    .documents(true, true)
+    .documents(DocumentsFilter::OpenDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone());
   let (enabled_specifiers, disabled_specifiers) = specifiers
@@ -1025,7 +1028,10 @@ async fn generate_deno_diagnostics(
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
 
-  for document in snapshot.documents.documents(true, true) {
+  for document in snapshot
+    .documents
+    .documents(DocumentsFilter::OpenDiagnosable)
+  {
     if token.is_cancelled() {
       break;
     }
@@ -1073,7 +1079,7 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location, Default::default());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -1163,7 +1169,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,
