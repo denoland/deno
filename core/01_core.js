@@ -144,6 +144,10 @@
     ArrayPrototypePush(nextTickCallbacks, cb);
   }
 
+  // This function has variable number of arguments. The last argument describes
+  // if there's a "next tick" scheduled by the Node.js compat layer. Arguments
+  // before last are alternating integers and any values that describe the
+  // responses of async ops.
   function eventLoopTick() {
     // First respond to all pending ops.
     for (let i = 0; i < arguments.length - 1; i += 2) {
@@ -158,7 +162,6 @@
         nextTickCallbacks[i]();
       }
     } else {
-      // TODO(bartlomieju): why do we need it here?
       ops.op_run_microtasks();
     }
     // Finally drain macrotask queue.
