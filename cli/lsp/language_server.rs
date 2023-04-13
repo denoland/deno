@@ -441,7 +441,7 @@ fn create_lsp_structs(
     http_client,
     progress_bar.clone(),
   );
-  let resolution = NpmResolution::new(api.clone(), None, None);
+  let resolution = NpmResolution::from_serialized(api.clone(), None, None);
   let fs_resolver = create_npm_fs_resolver(
     npm_cache.clone(),
     &progress_bar,
@@ -697,7 +697,7 @@ impl Inner {
         // create a new snapshotted npm resolution and resolver
         let resolution = NpmResolution::new(
           self.npm_api.clone(),
-          Some(self.npm_resolution.snapshot()),
+          self.npm_resolution.snapshot(),
           None,
         );
         NpmPackageResolver::new(

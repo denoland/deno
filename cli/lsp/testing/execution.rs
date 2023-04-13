@@ -10,13 +10,11 @@ use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
-use crate::ops;
 use crate::proc_state;
 use crate::tools::test;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestEventSender;
 use crate::util::checksum;
-use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -27,10 +25,7 @@ use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_io::Stdio;
-use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -145,42 +140,6 @@ impl LspTestFilter {
       .filter(|id| !self.exclude.contains_key(id))
       .collect()
   }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn test_specifier(
-  ps: proc_state::ProcState,
-  permissions: Permissions,
-  specifier: ModuleSpecifier,
-  mode: test::TestMode,
-  sender: TestEventSender,
-  fail_fast_tracker: FailFastTracker,
-  token: CancellationToken,
-  filter: test::TestFilter,
-) -> Result<(), AnyError> {
-  if !token.is_cancelled() {
-    let stdout = StdioPipe::File(sender.stdout());
-    let stderr = StdioPipe::File(sender.stderr());
-    let mut worker = create_main_worker_for_test_or_bench(
-      &ps,
-      specifier.clone(),
-      PermissionsContainer::new(permissions),
-      vec![ops::testing::deno_test::init_ops(
-        sender,
-        fail_fast_tracker,
-        filter,
-      )],
-      Stdio {
-        stdin: StdioPipe::Inherit,
-        stdout,
-        stderr,
-      },
-    )
-    .await?;
-    worker.run_lsp_test_specifier(mode).await?;
-  }
-
-  Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -300,7 +259,6 @@ impl TestRun {
       Arc::new(RwLock::new(IndexMap::new()));
     let mut test_steps = IndexMap::new();
 
-    let tests_ = tests.clone();
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
       let ps = ps.clone();
@@ -321,38 +279,30 @@ impl TestRun {
           .unwrap_or_default(),
       };
       let token = self.token.clone();
-      let tests = tests_.clone();
 
       tokio::task::spawn_blocking(move || {
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }
         let origin = specifier.to_string();
-        let file_result = run_local(test_specifier(
-          ps,
-          permissions,
-          specifier,
-          test::TestMode::Executable,
-          sender.clone(),
-          fail_fast_tracker,
-          token,
-          filter,
-        ));
+        let file_result = if token.is_cancelled() {
+          Ok(())
+        } else {
+          run_local(test::test_specifier(
+            &ps,
+            permissions,
+            specifier,
+            sender.clone(),
+            fail_fast_tracker,
+            filter,
+          ))
+        };
         if let Err(error) = file_result {
           if error.is::<JsError>() {
             sender.send(test::TestEvent::UncaughtError(
-              origin.clone(),
+              origin,
               Box::new(error.downcast::<JsError>().unwrap()),
             ))?;
-            for desc in tests.read().values() {
-              if desc.origin == origin {
-                sender.send(test::TestEvent::Result(
-                  desc.id,
-                  test::TestResult::Cancelled,
-                  0,
-                ))?
-              }
-            }
           } else {
             return Err(error);
           }
@@ -489,6 +439,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
+    args.push("--trace-ops");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }

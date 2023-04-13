@@ -16,6 +16,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -41,7 +42,7 @@ use super::NpmCache;
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NpmProcessState {
-  pub snapshot: NpmResolutionSnapshot,
+  pub snapshot: SerializedNpmResolutionSnapshot,
   pub local_node_modules_path: Option<String>,
 }
 
@@ -205,7 +206,7 @@ impl NpmPackageResolver {
   /// Gets the state of npm for the process.
   pub fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
-      snapshot: self.snapshot(),
+      snapshot: self.resolution.serialized_snapshot(),
       local_node_modules_path: self
         .fs_resolver
         .node_modules_path()
