@@ -144,36 +144,31 @@
     ArrayPrototypePush(nextTickCallbacks, cb);
   }
 
-  // TODO(bartlomieju): rename
-  function opresolve() {
-    const hasTickScheduled = arguments[0];
-    const drainMacrotasks = arguments[1];
+  function eventLoopTick() {
     // First respond to all pending ops.
-    for (let i = 2; i < arguments.length; i += 2) {
+    for (let i = 0; i < arguments.length - 1; i += 2) {
       const promiseId = arguments[i];
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
     }
     // Drain nextTick queue if there's a tick scheduled.
-    if (hasTickScheduled === true) {
+    if (arguments[arguments.length - 1]) {
       for (let i = 0; i < nextTickCallbacks.length; i++) {
         nextTickCallbacks[i]();
       }
-    } else if (hasTickScheduled === false) {
+    } else {
       // TODO(bartlomieju): why do we need it here?
       ops.op_run_microtasks();
     }
     // Finally drain macrotask queue.
-    if (drainMacrotasks === true) {
-      for (let i = 0; i < macrotaskCallbacks.length; i++) {
-        const cb = macrotaskCallbacks[i];
-        while (true) {
-          const res = cb();
-          ops.op_run_microtasks();
-          if (res === true) {
-            break;
-          }
+    for (let i = 0; i < macrotaskCallbacks.length; i++) {
+      const cb = macrotaskCallbacks[i];
+      while (true) {
+        const res = cb();
+        ops.op_run_microtasks();
+        if (res === true) {
+          break;
         }
       }
     }
@@ -443,7 +438,7 @@
     registerErrorBuilder,
     registerErrorClass,
     buildCustomError,
-    opresolve,
+    eventLoopTick,
     BadResource,
     BadResourcePrototype,
     Interrupted,

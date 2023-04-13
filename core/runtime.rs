@@ -821,9 +821,9 @@ impl JsRuntime {
     scope.escape(v).try_into().ok()
   }
 
-  /// Grabs a reference to core.js' opresolve & buildCustomError
+  /// Grabs a reference to core.js' eventLoopTick & buildCustomError
   fn init_cbs(&mut self, realm: &JsRealm) {
-    let (recv_cb, build_custom_error_cb) = {
+    let (event_loop_tick_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
       let context = realm.context();
       let context_local = v8::Local::new(scope, context);
@@ -832,8 +832,9 @@ impl JsRuntime {
         v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
       let core_str =
         v8::String::new_external_onebyte_static(scope, b"core").unwrap();
-      let opresolve_str =
-        v8::String::new_external_onebyte_static(scope, b"opresolve").unwrap();
+      let event_loop_tick_str =
+        v8::String::new_external_onebyte_static(scope, b"eventLoopTick")
+          .unwrap();
       let build_custom_error_str =
         v8::String::new_external_onebyte_static(scope, b"buildCustomError")
           .unwrap();
@@ -849,8 +850,8 @@ impl JsRuntime {
         .try_into()
         .unwrap();
 
-      let recv_cb: v8::Local<v8::Function> = core_obj
-        .get(scope, opresolve_str.into())
+      let event_loop_tick_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, event_loop_tick_str.into())
         .unwrap()
         .try_into()
         .unwrap();
@@ -860,7 +861,7 @@ impl JsRuntime {
         .try_into()
         .unwrap();
       (
-        v8::Global::new(scope, recv_cb),
+        v8::Global::new(scope, event_loop_tick_cb),
         v8::Global::new(scope, build_custom_error_cb),
       )
     };
@@ -868,7 +869,7 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
-    state.js_recv_cb.replace(recv_cb);
+    state.js_event_loop_tick_cb.replace(event_loop_tick_cb);
     state
       .js_build_custom_error_cb
       .replace(build_custom_error_cb);
@@ -979,7 +980,7 @@ impl JsRuntime {
           let realm = JsRealm::new(context.clone());
           let realm_state_rc = realm.state(v8_isolate);
           let mut realm_state = realm_state_rc.borrow_mut();
-          std::mem::take(&mut realm_state.js_recv_cb);
+          std::mem::take(&mut realm_state.js_event_loop_tick_cb);
           std::mem::take(&mut realm_state.js_build_custom_error_cb);
           std::mem::take(&mut realm_state.js_promise_reject_cb);
           std::mem::take(&mut realm_state.js_format_exception_cb);
@@ -2235,11 +2236,6 @@ impl JsRuntime {
       // allocations.
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
         SmallVec::with_capacity(responses.len() * 2 + 2);
-      let has_tick_scheduled =
-        v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
-      args.push(has_tick_scheduled.into());
-      let v8_true = v8::Boolean::new(scope, true);
-      args.push(v8_true.into());
 
       for (promise_id, mut resp) in responses {
         context_state.unrefed_ops.remove(&promise_id);
@@ -2252,12 +2248,17 @@ impl JsRuntime {
         });
       }
 
-      let js_recv_cb_handle = context_state.js_recv_cb.clone().unwrap();
+      let has_tick_scheduled =
+        v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+      args.push(has_tick_scheduled.into());
+
+      let js_event_loop_tick_cb_handle =
+        context_state.js_event_loop_tick_cb.clone().unwrap();
       let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+      let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
       drop(context_state);
-      js_recv_cb.call(tc_scope, this, args.as_slice());
+      js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
 
       if let Some(exception) = tc_scope.exception() {
         // TODO(@andreubotella): Returning here can cause async ops in other
@@ -2297,11 +2298,6 @@ impl JsRuntime {
     // This can handle 15 promises futures in a single batch without heap
     // allocations.
     let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
-    let has_tick_scheduled =
-      v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
-    args.push(has_tick_scheduled.into());
-    let v8_true = v8::Boolean::new(scope, true);
-    args.push(v8_true.into());
 
     // Now handle actual ops.
     {
@@ -2330,16 +2326,24 @@ impl JsRuntime {
       }
     }
 
-    let js_recv_cb_handle = {
+    let has_tick_scheduled =
+      v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+    args.push(has_tick_scheduled.into());
+
+    let js_event_loop_tick_cb_handle = {
       let state = self.state.borrow_mut();
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
-      let handle = realm_state_rc.borrow().js_recv_cb.clone().unwrap();
+      let handle = realm_state_rc
+        .borrow()
+        .js_event_loop_tick_cb
+        .clone()
+        .unwrap();
       handle
     };
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+    let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
-    js_recv_cb.call(tc_scope, this, args.as_slice());
+    js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
 
     if let Some(exception) = tc_scope.exception() {
       return exception_to_err_result(tc_scope, exception, false);
