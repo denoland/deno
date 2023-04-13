@@ -868,22 +868,7 @@ function createJob(mode, type, options) {
     case "ed448":
     case "x25519":
     case "x448": {
-      let id;
-      switch (type) {
-        case "ed25519":
-          id = EVP_PKEY_ED25519;
-          break;
-        case "ed448":
-          id = EVP_PKEY_ED448;
-          break;
-        case "x25519":
-          id = EVP_PKEY_X25519;
-          break;
-        case "x448":
-          id = EVP_PKEY_X448;
-          break;
-      }
-      return new NidKeyPairGenJob(mode, id, ...encoding);
+      unimplemented(type);
     }
     case "dh": {
       validateObject(options, "options");

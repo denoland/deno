@@ -612,3 +612,4 @@ pub async fn op_node_ec_generate_async(
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
   tokio::task::spawn_blocking(move || ec_generate(&named_curve)).await?
 }
+
