@@ -9,7 +9,6 @@
     ArrayPrototypePush,
     Error,
     ErrorCaptureStackTrace,
-    Map,
     MapPrototypeDelete,
     MapPrototypeGet,
     MapPrototypeHas,
@@ -22,6 +21,7 @@
     RangeError,
     ReferenceError,
     SafeArrayIterator,
+    SafeMap,
     SafePromisePrototypeFinally,
     setQueueMicrotask,
     StringPrototypeSlice,
@@ -65,7 +65,7 @@
   registerErrorClass("URIError", URIError);
 
   let nextPromiseId = 1;
-  const promiseMap = new Map();
+  const promiseMap = new SafeMap();
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
@@ -74,7 +74,7 @@
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   let opCallTracingEnabled = false;
-  const opCallTraces = new Map();
+  const opCallTraces = new SafeMap();
 
   function enableOpCallTracing() {
     opCallTracingEnabled = true;

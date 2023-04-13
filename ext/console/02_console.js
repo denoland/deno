@@ -54,6 +54,7 @@ const {
   RegExpPrototypeTest,
   RegExpPrototypeToString,
   SafeArrayIterator,
+  SafeMap,
   SafeStringIterator,
   SafeSet,
   SafeRegExp,
@@ -85,7 +86,6 @@ const {
   ArrayPrototypeFind,
   FunctionPrototypeBind,
   FunctionPrototypeToString,
-  Map,
   MapPrototype,
   MapPrototypeHas,
   MapPrototypeGet,
@@ -658,7 +658,7 @@ let circular;
 function handleCircular(value, cyan) {
   let index = 1;
   if (circular === undefined) {
-    circular = new Map();
+    circular = new SafeMap();
     MapPrototypeSet(circular, value, index);
   } else {
     index = MapPrototypeGet(circular, value);
@@ -1016,7 +1016,7 @@ function inspectError(value, cyan) {
     }
   }
 
-  const refMap = new Map();
+  const refMap = new SafeMap();
   for (let i = 0; i < causes.length; ++i) {
     const cause = causes[i];
     if (circular !== undefined) {
@@ -1405,7 +1405,7 @@ function inspectObject(value, inspectOptions, proxyDetails) {
   }
 }
 
-const colorKeywords = new Map([
+const colorKeywords = new SafeMap([
   ["black", "#000000"],
   ["silver", "#c0c0c0"],
   ["gray", "#808080"],
@@ -1990,8 +1990,8 @@ function inspectArgs(args, inspectOptions = {}) {
   return string;
 }
 
-const countMap = new Map();
-const timerMap = new Map();
+const countMap = new SafeMap();
+const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 function getConsoleInspectOptions() {

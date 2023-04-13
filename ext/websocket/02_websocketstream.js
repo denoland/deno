@@ -21,7 +21,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
-  Set,
+  SafeSet,
   SetPrototypeGetSize,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
@@ -118,7 +118,7 @@ class WebSocketStream {
     if (
       options.protocols.length !==
         SetPrototypeGetSize(
-          new Set(
+          new SafeSet(
             ArrayPrototypeMap(
               options.protocols,
               (p) => StringPrototypeToLowerCase(p),
