@@ -14,9 +14,12 @@ use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -24,6 +27,7 @@ use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
 
@@ -48,20 +52,38 @@ impl std::fmt::Debug for NpmResolution {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let snapshot = self.0.snapshot.read();
     f.debug_struct("NpmResolution")
-      .field("snapshot", &snapshot)
+      .field("snapshot", &snapshot.as_serialized())
       .finish()
   }
 }
 
 impl NpmResolution {
+  pub fn from_serialized(
+    api: CliNpmRegistryApi,
+    initial_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  ) -> Self {
+    let snapshot =
+      NpmResolutionSnapshot::new(NpmResolutionSnapshotCreateOptions {
+        api: Arc::new(api.clone()),
+        snapshot: initial_snapshot.unwrap_or_default(),
+        // WARNING: When bumping this version, check if anything needs to be
+        // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
+        types_node_version_req: Some(
+          VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
+        ),
+      });
+    Self::new(api, snapshot, maybe_lockfile)
+  }
+
   pub fn new(
     api: CliNpmRegistryApi,
-    initial_snapshot: Option<NpmResolutionSnapshot>,
+    initial_snapshot: NpmResolutionSnapshot,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     Self(Arc::new(NpmResolutionInner {
       api,
-      snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
+      snapshot: RwLock::new(initial_snapshot),
       update_queue: Default::default(),
       maybe_lockfile,
     }))
@@ -108,7 +130,7 @@ impl NpmResolution {
           .all(|req| reqs_set.contains(req));
         // if any packages were removed, we need to completely recreate the npm resolution snapshot
         if has_removed_package {
-          NpmResolutionSnapshot::default()
+          snapshot.into_empty()
         } else {
           snapshot
         }
@@ -240,6 +262,10 @@ impl NpmResolution {
     self.0.snapshot.read().clone()
   }
 
+  pub fn serialized_snapshot(&self) -> SerializedNpmResolutionSnapshot {
+    self.0.snapshot.read().as_serialized()
+  }
+
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     let snapshot = self.0.snapshot.read();
     populate_lockfile_from_snapshot(lockfile, &snapshot)
@@ -264,7 +290,7 @@ async fn add_package_reqs_to_snapshot(
     return Ok(snapshot); // already up to date
   }
 
-  let result = snapshot.resolve_pending(package_reqs.clone(), api).await;
+  let result = snapshot.resolve_pending(package_reqs.clone()).await;
   api.clear_memory_cache();
   let snapshot = match result {
     Ok(snapshot) => snapshot,
@@ -274,7 +300,7 @@ async fn add_package_reqs_to_snapshot(
 
       // try again
       let snapshot = get_new_snapshot();
-      let result = snapshot.resolve_pending(package_reqs, api).await;
+      let result = snapshot.resolve_pending(package_reqs).await;
       api.clear_memory_cache();
       // now surface the result after clearing the cache
       result?

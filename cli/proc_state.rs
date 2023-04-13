@@ -249,7 +249,7 @@ impl ProcState {
     let npm_snapshot = cli_options
       .resolve_npm_resolution_snapshot(&npm_api)
       .await?;
-    let npm_resolution = NpmResolution::new(
+    let npm_resolution = NpmResolution::from_serialized(
       npm_api.clone(),
       npm_snapshot,
       lockfile.as_ref().cloned(),
