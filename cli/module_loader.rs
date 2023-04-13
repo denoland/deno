@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::TsTypeLib;
-use crate::emit::emit_parsed_source;
 use crate::node;
 use crate::proc_state::ProcState;
 use crate::util::text_encoding::code_without_source_map;
@@ -117,14 +116,10 @@ impl CliModuleLoader {
           | MediaType::Jsx
           | MediaType::Tsx => {
             // get emit text
-            emit_parsed_source(
-              &self.ps.emit_cache,
-              &self.ps.parsed_source_cache,
+            self.ps.emitter.emit_parsed_source(
               specifier,
               *media_type,
               source,
-              &self.ps.emit_options,
-              self.ps.emit_options_hash,
             )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
