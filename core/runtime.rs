@@ -1219,7 +1219,7 @@ impl JsRuntime {
     // and only then check for any promise exceptions (`unhandledrejection`
     // handlers are run in macrotasks callbacks so we need to let them run
     // first).
-    self.resolve_async_ops(cx)?;
+    self.do_js_event_loop_tick(cx)?;
     self.check_promise_rejections()?;
 
     // Event loop middlewares
@@ -2186,13 +2186,13 @@ impl JsRuntime {
     Ok(())
   }
 
-  // Send finished responses to JS
-  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
+  // Polls pending ops and then runs `Deno.core.eventLoopTick` callback.
+  fn do_js_event_loop_tick(&mut self, cx: &mut Context) -> Result<(), Error> {
     // We have a specialized implementation of this method for the common case
     // where there is only one realm.
     let num_realms = self.state.borrow().known_realms.len();
     if num_realms == 1 {
-      return self.resolve_single_realm_async_ops(cx);
+      return self.do_single_realm_js_event_loop_tick(cx);
     }
 
     // `responses_per_realm[idx]` is a vector containing the promise ID and
@@ -2276,7 +2276,7 @@ impl JsRuntime {
     Ok(())
   }
 
-  fn resolve_single_realm_async_ops(
+  fn do_single_realm_js_event_loop_tick(
     &mut self,
     cx: &mut Context,
   ) -> Result<(), Error> {
