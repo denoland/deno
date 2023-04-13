@@ -9,7 +9,6 @@ use super::new_deno_dir;
 use super::TempDir;
 
 use anyhow::Result;
-use lazy_static::lazy_static;
 use lsp_types as lsp;
 use lsp_types::ClientCapabilities;
 use lsp_types::ClientInfo;
@@ -25,6 +24,7 @@ use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
 use lsp_types::Url;
 use lsp_types::WorkspaceClientCapabilities;
+use once_cell::sync::Lazy;
 use parking_lot::Condvar;
 use parking_lot::Mutex;
 use regex::Regex;
@@ -48,10 +48,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-lazy_static! {
-  static ref CONTENT_TYPE_REG: Regex =
-    Regex::new(r"(?i)^content-length:\s+(\d+)").unwrap();
-}
+static CONTENT_TYPE_REG: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LspResponseError {
