@@ -736,7 +736,7 @@ impl JsRuntime {
 
       // TODO(bartlomieju): this not great that we need to have this conditional
       // here, but I haven't found a better way to do it yet.
-      if ext.name == "core" {
+      if ext.is_core {
         self.init_cbs(realm);
       }
     }

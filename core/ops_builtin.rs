@@ -72,6 +72,9 @@ crate::extension!(
     ops_builtin_v8::op_arraybuffer_was_detached,
   ],
   js = ["00_primordials.js", "01_core.js", "02_error.js"],
+  customizer = |ext: &mut crate::ExtensionBuilder| {
+    ext.deno_core();
+  }
 );
 
 /// Return map of resources with id as key
