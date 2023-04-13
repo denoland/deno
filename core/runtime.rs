@@ -2437,12 +2437,12 @@ pub fn queue_fast_async_op(
 }
 
 #[inline]
-pub fn queue_async_op(
+pub fn queue_async_op<'s>(
   ctx: &OpCtx,
-  scope: &mut v8::HandleScope,
+  scope: &'s mut v8::HandleScope,
   deferred: bool,
   op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
-) {
+) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
     // atleast 1 Rc is held by the JsRuntime.
@@ -2459,31 +2459,13 @@ pub fn queue_async_op(
   );
 
   match OpCall::eager(op) {
-    // This calls promise.resolve() before the control goes back to userland JS. It works something
-    // along the lines of:
-    //
-    // function opresolve(promiseId, ...) {
-    //   getPromise(promiseId).resolve(...);
-    // }
-    // const p = setPromise();
-    // op.op_async(promiseId, ...); // Calls `opresolve`
-    // return p;
-    EagerPollResult::Ready((_, promise_id, op_id, mut resp)) if !deferred => {
-      let context_state_rc = JsRealm::state_from_scope(scope);
-      let context_state = context_state_rc.borrow();
-
-      let args = &[
-        v8::Integer::new(scope, promise_id).into(),
-        resp.to_v8(scope).unwrap(),
-      ];
-
+    // If the result is ready we'll just return it straight to the caller, so
+    // we don't have to invoke a JS callback to respond. // This works under the
+    // assumption that `()` return value is serialized as `null`.
+    EagerPollResult::Ready((_, _, op_id, mut resp)) if !deferred => {
+      let resp = resp.to_v8(scope).unwrap();
       ctx.state.borrow_mut().tracker.track_async_completed(op_id);
-
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb =
-        context_state.js_recv_cb.as_ref().unwrap().open(tc_scope);
-      let this = v8::undefined(tc_scope).into();
-      js_recv_cb.call(tc_scope, this, args);
+      return Some(resp);
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);
@@ -2497,6 +2479,8 @@ pub fn queue_async_op(
       state.have_unpolled_ops = true;
     }
   }
+
+  None
 }
 
 #[cfg(test)]
@@ -4373,7 +4357,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
             let sum = Deno.core.ops.op_sum_take(w32.subarray(0, 2));
             return false;
           } catch(e) {
-            return e.message.includes('ExpectedDetachable');
+            return e.message.includes('invalid type, expected: detachable');
           }
         });
         if (!assertWasmThrow()) {

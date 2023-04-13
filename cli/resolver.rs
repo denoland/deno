@@ -46,7 +46,7 @@ impl Default for CliGraphResolver {
     // refactor the LSP and force this to be initialized.
     let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
     let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
+      NpmResolution::from_serialized(npm_registry_api.clone(), None, None);
     Self {
       maybe_import_map: Default::default(),
       maybe_default_jsx_import_source: Default::default(),
@@ -248,7 +248,6 @@ impl NpmResolver for CliGraphResolver {
       Err(err) => {
         if self.npm_registry_api.mark_force_reload() {
           log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
-          self.npm_registry_api.clear_memory_cache();
           NpmPackageReqResolution::ReloadRegistryInfo(err.into())
         } else {
           NpmPackageReqResolution::Err(err.into())

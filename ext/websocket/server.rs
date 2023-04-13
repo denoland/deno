@@ -136,7 +136,7 @@ pub async fn op_server_ws_close(
   Ok(())
 }
 
-#[op]
+#[op(deferred)]
 pub async fn op_server_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

@@ -41,7 +41,7 @@ jobs:
           echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
         if: github.event.pull_request.draft == true
   build:
-    name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}'
+    name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os_display_name }}'
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
@@ -56,36 +56,45 @@ jobs:
           - os: macos-12
             job: test
             profile: debug
+            os_display_name: macos-x86_64
           - os: macos-12
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''macos-12'' }}'
+            os_display_name: macos-x86_64
+          - os: windows-2022
             job: test
             profile: debug
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
-            runner: '${{ github.event_name == ''pull_request'' && ''windows-2022'' || (github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'') }}'
+            os_display_name: windows-x86_64
+          - os: windows-2022
             job: test
             profile: release
             skip_pr: true
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''windows-2022'' }}'
+            os_display_name: windows-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
             profile: release
             use_sysroot: true
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
+            os_display_name: ubuntu-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
             skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            os_display_name: ubuntu-x86_64
+          - os: ubuntu-22.04
             job: test
             profile: debug
             use_sysroot: true
-            wpt: '${{ github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            os_display_name: ubuntu-x86_64
+          - os: ubuntu-22.04
             job: lint
             profile: debug
+            os_display_name: ubuntu-x86_64
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always

@@ -13,8 +13,8 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
+use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
 use pty::Pty;
 use regex::Regex;
@@ -91,10 +91,8 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
-lazy_static! {
-  static ref GUARD: Mutex<HttpServerCount> =
-    Mutex::new(HttpServerCount::default());
-}
+static GUARD: Lazy<Mutex<HttpServerCount>> =
+  Lazy::new(|| Mutex::new(HttpServerCount::default()));
 
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
@@ -2176,12 +2174,10 @@ pub struct WrkOutput {
 }
 
 pub fn parse_wrk_output(output: &str) -> WrkOutput {
-  lazy_static! {
-    static ref REQUESTS_RX: Regex =
-      Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
-    static ref LATENCY_RX: Regex =
-      Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
-  }
+  static REQUESTS_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"Requests/sec:\s+(\d+)");
+  static LATENCY_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))");
 
   let mut requests = None;
   let mut latency = None;
