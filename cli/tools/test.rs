@@ -17,7 +17,7 @@ use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
 use crate::util::path::mapped_specifier_for_tsc;
-use crate::worker::create_main_worker_for_test_or_bench;
+use crate::worker::create_custom_worker;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -29,8 +29,11 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_v8;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
@@ -63,6 +66,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+use std::time::SystemTime;
 use tokio::signal;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
@@ -144,6 +148,8 @@ pub struct TestLocation {
 pub struct TestDescription {
   pub id: usize,
   pub name: String,
+  pub ignore: bool,
+  pub only: bool,
   pub origin: String,
   pub location: TestLocation,
 }
@@ -900,26 +906,24 @@ pub fn format_test_error(js_error: &JsError) -> String {
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
-async fn test_specifier(
+pub async fn test_specifier(
   ps: &ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  mode: TestMode,
-  sender: TestEventSender,
+  mut sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
-  options: TestSpecifierOptions,
+  filter: TestFilter,
 ) -> Result<(), AnyError> {
+  if fail_fast_tracker.should_stop() {
+    return Ok(());
+  }
   let stdout = StdioPipe::File(sender.stdout());
   let stderr = StdioPipe::File(sender.stderr());
-  let mut worker = create_main_worker_for_test_or_bench(
+  let mut worker = create_custom_worker(
     ps,
-    specifier,
+    specifier.clone(),
     PermissionsContainer::new(permissions),
-    vec![ops::testing::deno_test::init_ops(
-      sender,
-      fail_fast_tracker,
-      options.filter,
-    )],
+    vec![ops::testing::deno_test::init_ops(sender.clone())],
     Stdio {
       stdin: StdioPipe::Inherit,
       stdout,
@@ -928,7 +932,119 @@ async fn test_specifier(
   )
   .await?;
 
-  worker.run_test_specifier(mode).await
+  let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
+
+  // We execute the main module as a side module so that import.meta.main is not set.
+  match worker.execute_side_module_possibly_with_npm().await {
+    Ok(()) => {}
+    Err(error) => {
+      if error.is::<JsError>() {
+        sender.send(TestEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(error.downcast::<JsError>().unwrap()),
+        ))?;
+        return Ok(());
+      } else {
+        return Err(error);
+      }
+    }
+  }
+
+  let mut worker = worker.into_main_worker();
+  if ps.options.trace_ops() {
+    worker.js_runtime.execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].core.enableOpCallTracing();",
+    )?;
+  }
+  worker.dispatch_load_event(located_script_name!())?;
+
+  let tests = {
+    let state_rc = worker.js_runtime.op_state();
+    let mut state = state_rc.borrow_mut();
+    std::mem::take(&mut state.borrow_mut::<ops::testing::TestContainer>().0)
+  };
+  let unfiltered = tests.len();
+  let (only, no_only): (Vec<_>, Vec<_>) =
+    tests.into_iter().partition(|(d, _)| d.only);
+  let used_only = !only.is_empty();
+  let tests = if used_only { only } else { no_only };
+  let mut tests = tests
+    .into_iter()
+    .filter(|(d, _)| filter.includes(&d.name))
+    .collect::<Vec<_>>();
+  if let Some(seed) = ps.options.shuffle_tests() {
+    tests.shuffle(&mut SmallRng::seed_from_u64(seed));
+  }
+  sender.send(TestEvent::Plan(TestPlan {
+    origin: specifier.to_string(),
+    total: tests.len(),
+    filtered_out: unfiltered - tests.len(),
+    used_only,
+  }))?;
+  let mut had_uncaught_error = false;
+  for (desc, function) in tests {
+    if fail_fast_tracker.should_stop() {
+      break;
+    }
+    if desc.ignore {
+      sender.send(TestEvent::Result(desc.id, TestResult::Ignored, 0))?;
+      continue;
+    }
+    if had_uncaught_error {
+      sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
+      continue;
+    }
+    sender.send(TestEvent::Wait(desc.id))?;
+    let earlier = SystemTime::now();
+    let promise = {
+      let scope = &mut worker.js_runtime.handle_scope();
+      let cb = function.open(scope);
+      let this = v8::undefined(scope).into();
+      let promise = cb.call(scope, this, &[]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    let result = match worker.js_runtime.resolve_value(promise).await {
+      Ok(r) => r,
+      Err(error) => {
+        if error.is::<JsError>() {
+          sender.send(TestEvent::UncaughtError(
+            specifier.to_string(),
+            Box::new(error.downcast::<JsError>().unwrap()),
+          ))?;
+          fail_fast_tracker.add_failure();
+          sender.send(TestEvent::Result(desc.id, TestResult::Cancelled, 0))?;
+          had_uncaught_error = true;
+          continue;
+        } else {
+          return Err(error);
+        }
+      }
+    };
+    let scope = &mut worker.js_runtime.handle_scope();
+    let result = v8::Local::new(scope, result);
+    let result = serde_v8::from_v8::<TestResult>(scope, result)?;
+    if matches!(result, TestResult::Failed(_)) {
+      fail_fast_tracker.add_failure();
+    }
+    let elapsed = SystemTime::now().duration_since(earlier)?.as_millis();
+    sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
+  }
+
+  loop {
+    if !worker.dispatch_beforeunload_event(located_script_name!())? {
+      break;
+    }
+    worker.run_event_loop(false).await?;
+  }
+  worker.dispatch_unload_event(located_script_name!())?;
+
+  if let Some(coverage_collector) = coverage_collector.as_mut() {
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
+  }
+  Ok(())
 }
 
 fn extract_files_from_regex_blocks(
@@ -1182,18 +1298,18 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 async fn test_specifiers(
   ps: &ProcState,
   permissions: &Permissions,
-  specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
+  specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let log_level = ps.options.log_level();
-  let specifiers_with_mode = if let Some(seed) = ps.options.shuffle_tests() {
+  let specifiers = if let Some(seed) = ps.options.shuffle_tests() {
     let mut rng = SmallRng::seed_from_u64(seed);
-    let mut specifiers_with_mode = specifiers_with_mode;
-    specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
-    specifiers_with_mode.shuffle(&mut rng);
-    specifiers_with_mode
+    let mut specifiers = specifiers;
+    specifiers.sort();
+    specifiers.shuffle(&mut rng);
+    specifiers
   } else {
-    specifiers_with_mode
+    specifiers
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
@@ -1207,44 +1323,23 @@ async fn test_specifiers(
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
 
-  let join_handles =
-    specifiers_with_mode
-      .into_iter()
-      .map(move |(specifier, mode)| {
-        let ps = ps.clone();
-        let permissions = permissions.clone();
-        let mut sender = sender.clone();
-        let options = options.clone();
-        let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
-
-        tokio::task::spawn_blocking(move || {
-          if fail_fast_tracker.should_stop() {
-            return Ok(());
-          }
-
-          let origin = specifier.to_string();
-          let file_result = run_local(test_specifier(
-            &ps,
-            permissions,
-            specifier,
-            mode,
-            sender.clone(),
-            fail_fast_tracker,
-            options,
-          ));
-          if let Err(error) = file_result {
-            if error.is::<JsError>() {
-              sender.send(TestEvent::UncaughtError(
-                origin,
-                Box::new(error.downcast::<JsError>().unwrap()),
-              ))?;
-            } else {
-              return Err(error);
-            }
-          }
-          Ok(())
-        })
-      });
+  let join_handles = specifiers.into_iter().map(move |specifier| {
+    let ps = ps.clone();
+    let permissions = permissions.clone();
+    let sender = sender.clone();
+    let options = options.clone();
+    let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+    tokio::task::spawn_blocking(move || {
+      run_local(test_specifier(
+        &ps,
+        permissions,
+        specifier,
+        sender.clone(),
+        fail_fast_tracker,
+        options.filter,
+      ))
+    })
+  });
 
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
@@ -1310,7 +1405,7 @@ async fn test_specifiers(
                     .push((description.clone(), failure.clone()));
                 }
                 TestResult::Cancelled => {
-                  unreachable!("should be handled in TestEvent::UncaughtError");
+                  summary.failed += 1;
                 }
               }
               reporter.report_result(description, &result, elapsed);
@@ -1321,12 +1416,6 @@ async fn test_specifiers(
             reporter.report_uncaught_error(&origin, &error);
             summary.failed += 1;
             summary.uncaught_errors.push((origin.clone(), error));
-            for desc in tests.values() {
-              if desc.origin == origin && tests_with_result.insert(desc.id) {
-                summary.failed += 1;
-                reporter.report_result(desc, &TestResult::Cancelled, 0);
-              }
-            }
           }
 
           TestEvent::StepRegister(description) => {
@@ -1360,6 +1449,8 @@ async fn test_specifiers(
                         &tests,
                         &test_steps,
                       ),
+                      ignore: false,
+                      only: false,
                       origin: description.origin.clone(),
                       location: description.location.clone(),
                     },
@@ -1565,7 +1656,13 @@ pub async fn run_tests(
   test_specifiers(
     &ps,
     &permissions,
-    specifiers_with_mode,
+    specifiers_with_mode
+      .into_iter()
+      .filter_map(|(s, m)| match m {
+        TestMode::Documentation => None,
+        _ => Some(s),
+      })
+      .collect(),
     TestSpecifierOptions {
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
@@ -1729,7 +1826,13 @@ pub async fn run_tests_with_watch(
       test_specifiers(
         &ps,
         permissions,
-        specifiers_with_mode,
+        specifiers_with_mode
+          .into_iter()
+          .filter_map(|(s, m)| match m {
+            TestMode::Documentation => None,
+            _ => Some(s),
+          })
+          .collect(),
         TestSpecifierOptions {
           concurrent_jobs: test_options.concurrent_jobs,
           fail_fast: test_options.fail_fast,
