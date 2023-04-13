@@ -35,7 +35,7 @@ static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z][\w-]*$")
     .case_insensitive(true)
     .build()
-    .unwrap()
+    .expect("invalid regex")
 });
 
 fn validate_name(exec_name: &str) -> Result<(), AnyError> {
@@ -233,7 +233,7 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  ProcState::build(flags.clone())
+  ProcState::from_flags(flags.clone())
     .await?
     .load_and_type_check_files(&[install_flags.module_url.clone()])
     .await?;

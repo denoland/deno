@@ -180,7 +180,7 @@ macro_rules! extension {
     $(, deps = [ $( $dep:ident ),* ] )?
     $(, parameters = [ $( $param:ident : $type:ident ),+ ] )?
     $(, ops_fn = $ops_symbol:ident $( < $ops_param:ident > )? )?
-    $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ] )?
+    $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $( $op_param:ident ),* > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
     $(, esm_setup_script = $esm_setup_script:expr )?
@@ -235,7 +235,7 @@ macro_rules! extension {
           ext.ops(vec![
             $(
               $( #[ $m ] )*
-              $( $op )::+ :: decl $( :: <$op_param> )? ()
+              $( $op )::+ :: decl $( :: < $($op_param),* > )? ()
             ),+
           ]);
         )?
@@ -267,11 +267,11 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_js_only $( <  $( $param : $type + 'static ),+ > )? () -> $crate::Extension {
+      pub fn init_js_only $( <  $( $param : $type + 'static ),* > )? () -> $crate::Extension {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
-        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_customizer(&mut ext);
         ext.take()
       }
@@ -281,8 +281,8 @@ macro_rules! extension {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
-        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
+        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
+        Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
         ext.take()
       }
@@ -290,8 +290,8 @@ macro_rules! extension {
       #[allow(dead_code)]
       pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
         let mut ext = Self::ext();
-        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
+        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
+        Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
         ext.take()
       }

@@ -236,8 +236,9 @@
   function opAsync2(name, arg0, arg1) {
     const id = nextPromiseId++;
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+    let maybeResult;
     try {
-      ops[name](id, arg0, arg1);
+      maybeResult = ops[name](id, arg0, arg1);
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
@@ -246,14 +247,20 @@
     }
     promise = handleOpCallTracing(name, id, promise);
     promise[promiseIdSymbol] = id;
+    if (typeof maybeResult !== "undefined") {
+      const promise = getPromise(id);
+      promise.resolve(maybeResult);
+    }
+
     return promise;
   }
 
   function opAsync(name, ...args) {
     const id = nextPromiseId++;
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+    let maybeResult;
     try {
-      ops[name](id, ...new SafeArrayIterator(args));
+      maybeResult = ops[name](id, ...new SafeArrayIterator(args));
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
@@ -262,6 +269,11 @@
     }
     promise = handleOpCallTracing(name, id, promise);
     promise[promiseIdSymbol] = id;
+    if (typeof maybeResult !== "undefined") {
+      const promise = getPromise(id);
+      promise.resolve(maybeResult);
+    }
+
     return promise;
   }
 

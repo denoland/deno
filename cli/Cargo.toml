@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.32.3"
+version = "1.32.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -29,7 +29,7 @@ path = "./bench/lsp_bench_standalone.rs"
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["snapshot_from_snapshot", "include_js_files_for_snapshotting"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-regex.workspace = true
+lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true
@@ -42,9 +42,9 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = "0.60.0"
-deno_emit = "0.18.0"
-deno_graph = "=0.46.0"
+deno_doc = "0.61.0"
+deno_emit = "0.19.0"
+deno_graph = "=0.47.1"
 deno_lint = { version = "0.43.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "0.2.0"
@@ -70,7 +70,7 @@ dprint-plugin-markdown = "=0.15.2"
 dprint-plugin-typescript = "=0.84.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.39.0"
+eszip = "=0.40.0"
 fancy-regex = "=0.10.0"
 flate2.workspace = true
 fs3.workspace = true
@@ -78,6 +78,7 @@ http.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
+lazy-regex.workspace = true
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true

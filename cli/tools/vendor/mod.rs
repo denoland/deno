@@ -42,7 +42,7 @@ pub async fn vendor(
   let output_dir = resolve_from_cwd(&raw_output_dir)?;
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
   let graph = create_graph(&ps, &vendor_flags).await?;
   let vendored_count = build::build(
     graph,

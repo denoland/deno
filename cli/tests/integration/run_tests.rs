@@ -4352,6 +4352,12 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
+itest!(dynamic_import_syntax_error {
+  args: "run -A run/dynamic_import_syntax_error.js",
+  output: "run/dynamic_import_syntax_error.js.out",
+  exit_code: 1,
+});
+
 itest!(extension_import {
   args: "run run/extension_import.ts",
   output: "run/extension_import.ts.out",
