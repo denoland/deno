@@ -10,6 +10,7 @@ use deno_core::ZeroCopyBuf;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive;
+use rand::thread_rng;
 use rand::Rng;
 use std::future::Future;
 use std::rc::Rc;
@@ -530,6 +531,7 @@ fn dsa_generate(
   use dsa::SigningKey;
 
   let key_size = match (modulus_length, divisor_length) {
+    #[allow(deprecated)]
     (1024, 160) => KeySize::DSA_1024_160,
     (2048, 224) => KeySize::DSA_2048_224,
     (2048, 256) => KeySize::DSA_2048_256,
@@ -543,13 +545,13 @@ fn dsa_generate(
   Ok((
     signing_key
       .to_pkcs8_der()
-      .map_err(|_| type_error(""))?
+      .map_err(|_| type_error("Not valid pkcs8"))?
       .as_bytes()
       .to_vec()
       .into(),
     verifying_key
       .to_public_key_der()
-      .map_err(|_| type_error(""))?
+      .map_err(|_| type_error("Not valid spki"))?
       .to_vec()
       .into(),
   ))
@@ -613,3 +615,64 @@ pub async fn op_node_ec_generate_async(
   tokio::task::spawn_blocking(move || ec_generate(&named_curve)).await?
 }
 
+fn ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  use ring::signature::Ed25519KeyPair;
+  use ring::signature::KeyPair;
+
+  let mut rng = thread_rng();
+  let mut seed = vec![0u8; 32];
+  rng.fill(seed.as_mut_slice());
+
+  let pair = Ed25519KeyPair::from_seed_unchecked(&seed)
+    .map_err(|_| type_error("Failed to generate Ed25519 key"))?;
+
+  let public_key = pair.public_key().as_ref().to_vec();
+  Ok((seed.into(), public_key.into()))
+}
+
+#[op]
+pub fn op_node_ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
+{
+  ed25519_generate()
+}
+
+#[op]
+pub async fn op_node_ed25519_generate_async(
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(ed25519_generate).await?
+}
+
+fn x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  // u-coordinate of the base point.
+  const X25519_BASEPOINT_BYTES: [u8; 32] = [
+    9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0,
+  ];
+
+  let mut pkey = [0; 32];
+
+  let mut rng = thread_rng();
+  rng.fill(pkey.as_mut_slice());
+
+  let pkey_copy = pkey.to_vec();
+  // https://www.rfc-editor.org/rfc/rfc7748#section-6.1
+  // pubkey = x25519(a, 9) which is constant-time Montgomery ladder.
+  //   https://eprint.iacr.org/2014/140.pdf page 4
+  //   https://eprint.iacr.org/2017/212.pdf algorithm 8
+  // pubkey is in LE order.
+  let pubkey = x25519_dalek::x25519(pkey, X25519_BASEPOINT_BYTES);
+
+  Ok((pkey_copy.into(), pubkey.to_vec().into()))
+}
+
+#[op]
+pub fn op_node_x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
+{
+  x25519_generate()
+}
+
+#[op]
+pub async fn op_node_x25519_generate_async(
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(x25519_generate).await?
+}

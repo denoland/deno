@@ -1137,6 +1137,7 @@ dependencies = [
  "signature 1.6.4",
  "tokio",
  "typenum",
+ "x25519-dalek",
 ]
 
 [[package]]

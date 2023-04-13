@@ -728,7 +728,24 @@ export function generateKeyPairSync(
 ):
   | KeyPairKeyObjectResult
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
-  const [privateKey, publicKey] = createJob(kSync, type, options);
+  let [privateKey, publicKey] = createJob(kSync, type, options);
+
+  privateKey = new KeyObject("private", setOwnedKey(privateKey));
+  publicKey = new KeyObject("public", setOwnedKey(publicKey));
+
+  if (typeof options === "object" && options !== null) {
+    const { publicKeyEncoding, privateKeyEncoding } = options as any;
+
+    if (publicKeyEncoding) {
+      publicKey = publicKey.export(publicKeyEncoding);
+    }
+
+    if (privateKeyEncoding) {
+      privateKey = privateKey.export(privateKeyEncoding);
+    }
+  }
+
+  return { publicKey, privateKey };
 }
 
 const kSync = 0;
@@ -836,10 +853,10 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return ops.op_node_generate_dsa(modulusLength, divisorLength);
+        return ops.op_node_dsa_generate(modulusLength, divisorLength);
       }
       return core.opAsync(
-        "op_node_generate_dsa_async",
+        "op_node_dsa_generate_async",
         modulusLength,
         divisorLength,
       );
@@ -859,16 +876,26 @@ function createJob(mode, type, options) {
       }
 
       if (mode === kSync) {
-        return ops.op_node_generate_ec(namedCurve);
+        return ops.op_node_ec_generate(namedCurve);
       } else {
-        return core.opAsync("op_node_generate_ec_async", namedCurve);
+        return core.opAsync("op_node_ec_generate_async", namedCurve);
       }
     }
-    case "ed25519":
+    case "ed25519": {
+      if (mode === kSync) {
+        return ops.op_node_ed25519_generate();
+      }
+      return core.opAsync("op_node_ed25519_generate_async");
+    }
+    case "x25519": {
+      if (mode === kSync) {
+        return ops.op_node_x25519_generate();
+      }
+      return core.opAsync("op_node_x25519_generate_async");
+    }
     case "ed448":
-    case "x25519":
     case "x448": {
-      unimplemented(type);
+      notImplemented(type);
     }
     case "dh": {
       validateObject(options, "options");
@@ -886,7 +913,7 @@ function createJob(mode, type, options) {
 
         validateString(group, "options.group");
 
-        return new DhKeyPairGenJob(mode, group, ...encoding);
+        notImplemented("DH");
       }
 
       if (prime != null) {
@@ -906,12 +933,7 @@ function createJob(mode, type, options) {
       if (generator != null) {
         validateInt32(generator, "options.generator", 0);
       }
-      return new DhKeyPairGenJob(
-        mode,
-        prime != null ? prime : primeLength,
-        generator == null ? 2 : generator,
-        ...encoding,
-      );
+      notImplemented("DH");
     }
     default:
       // Fall through
