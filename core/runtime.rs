@@ -2236,23 +2236,23 @@ impl JsRuntime {
       //
       // This can handle 15 promises futures in a single batch without heap
       // allocations.
-      let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
-        SmallVec::with_capacity(responses.len() * 2 + 2);
+      let mut op_responses: SmallVec<[v8::Local<v8::Value>; 32]> =
+        SmallVec::with_capacity(responses.len() * 2);
 
       for (promise_id, mut resp) in responses {
         context_state.unrefed_ops.remove(&promise_id);
-        args.push(v8::Integer::new(scope, promise_id).into());
-        args.push(match resp.to_v8(scope) {
+        op_responses.push(v8::Integer::new(scope, promise_id).into());
+        op_responses.push(match resp.to_v8(scope) {
           Ok(v) => v,
           Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
             .to_v8(scope)
             .unwrap(),
         });
       }
+      let op_responses = v8::Array::new_with_elements(scope, &op_responses);
 
       let has_tick_scheduled =
         v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
-      args.push(has_tick_scheduled.into());
 
       let js_event_loop_tick_cb_handle =
         context_state.js_event_loop_tick_cb.clone().unwrap();
@@ -2260,7 +2260,11 @@ impl JsRuntime {
       let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
       drop(context_state);
-      js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
+      js_event_loop_tick_cb.call(
+        tc_scope,
+        this,
+        &[op_responses.into(), has_tick_scheduled.into()],
+      );
 
       if let Some(exception) = tc_scope.exception() {
         // TODO(@andreubotella): Returning here can cause async ops in other
@@ -2299,7 +2303,8 @@ impl JsRuntime {
     //
     // This can handle 15 promises futures in a single batch without heap
     // allocations.
-    let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
+    let mut op_responses: SmallVec<[v8::Local<v8::Value>; 32]> =
+      SmallVec::new();
 
     // Now handle actual ops.
     {
@@ -2318,8 +2323,8 @@ impl JsRuntime {
         );
         realm_state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id).into());
-        args.push(match resp.to_v8(scope) {
+        op_responses.push(v8::Integer::new(scope, promise_id).into());
+        op_responses.push(match resp.to_v8(scope) {
           Ok(v) => v,
           Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
             .to_v8(scope)
@@ -2328,9 +2333,9 @@ impl JsRuntime {
       }
     }
 
+    let op_responses = v8::Array::new_with_elements(scope, &op_responses);
     let has_tick_scheduled =
       v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
-    args.push(has_tick_scheduled.into());
 
     let js_event_loop_tick_cb_handle = {
       let state = self.state.borrow_mut();
@@ -2345,7 +2350,11 @@ impl JsRuntime {
     let tc_scope = &mut v8::TryCatch::new(scope);
     let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
-    js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
+    js_event_loop_tick_cb.call(
+      tc_scope,
+      this,
+      &[op_responses.into(), has_tick_scheduled.into()],
+    );
 
     if let Some(exception) = tc_scope.exception() {
       return exception_to_err_result(tc_scope, exception, false);

@@ -148,16 +148,16 @@
   // if there's a "next tick" scheduled by the Node.js compat layer. Arguments
   // before last are alternating integers and any values that describe the
   // responses of async ops.
-  function eventLoopTick() {
+  function eventLoopTick(opResponses, drainNextTick) {
     // First respond to all pending ops.
-    for (let i = 0; i < arguments.length - 1; i += 2) {
-      const promiseId = arguments[i];
-      const res = arguments[i + 1];
+    for (let i = 0; i < opResponses.length - 1; i += 2) {
+      const promiseId = opResponses[i];
+      const res = opResponses[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
     }
     // Drain nextTick queue if there's a tick scheduled.
-    if (arguments[arguments.length - 1]) {
+    if (drainNextTick) {
       for (let i = 0; i < nextTickCallbacks.length; i++) {
         nextTickCallbacks[i]();
       }
