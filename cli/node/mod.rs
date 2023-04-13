@@ -36,7 +36,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
 use once_cell::sync::Lazy;
-use regex::Regex;
 
 use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::FileFetcher;
@@ -500,8 +499,7 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // todo(dsherret): cache
-  let encoded_sep_re = Regex::new(r"%2F|%2C").unwrap();
+  let encoded_sep_re = lazy_regex::regex!(r"%2F|%2C");
 
   if encoded_sep_re.is_match(resolved.path()) {
     return Err(errors::err_invalid_module_specifier(

@@ -321,7 +321,7 @@ fn get_tsc_roots(
 
 /// Matches the `@ts-check` pragma.
 static TS_CHECK_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
+  lazy_regex::lazy_regex!(r#"(?i)^\s*@ts-check(?:\s+|$)"#);
 
 fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
   match &media_type {

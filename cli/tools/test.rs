@@ -60,7 +60,9 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -1145,8 +1147,8 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
-  let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
+  let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let lines_regex = lazy_regex::regex!(r"(?:\* ?)(?:\# ?)?(.*)");
 
   let files = comments
     .iter()
@@ -1163,8 +1165,8 @@ fn extract_files_from_source_comments(
         &comment.text,
         media_type,
         parsed_source.text_info().line_index(comment.start()),
-        &blocks_regex,
-        &lines_regex,
+        blocks_regex,
+        lines_regex,
       )
     })
     .flatten()
@@ -1183,16 +1185,16 @@ fn extract_files_from_fenced_blocks(
   // check can be done to see if a block is inside a comment (and skip typechecking)
   // or not by checking for the presence of capturing groups in the matches.
   let blocks_regex =
-    Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
-  let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
+    lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let lines_regex = lazy_regex::regex!(r"(?:\# ?)?(.*)");
 
   extract_files_from_regex_blocks(
     specifier,
     source,
     media_type,
     /* file line index */ 0,
-    &blocks_regex,
-    &lines_regex,
+    blocks_regex,
+    lines_regex,
   )
 }
 
@@ -1290,6 +1292,8 @@ pub async fn check_specifiers(
   Ok(())
 }
 
+static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
+
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   ps: &ProcState,
@@ -1317,6 +1321,7 @@ async fn test_specifiers(
     signal::ctrl_c().await.unwrap();
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
+  HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let ps = ps.clone();
@@ -1479,6 +1484,7 @@ async fn test_specifiers(
       }
 
       sigint_handler_handle.abort();
+      HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
 
       let elapsed = Instant::now().duration_since(earlier);
       reporter.report_summary(&summary, &elapsed);
@@ -1622,7 +1628,7 @@ pub async fn run_tests(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1672,7 +1678,7 @@ pub async fn run_tests_with_watch(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1838,6 +1844,19 @@ pub async fn run_tests_with_watch(
       Ok(())
     }
   };
+
+  // On top of the sigint handlers which are added and unbound for each test
+  // run, a process-scoped basic exit handler is required due to a tokio
+  // limitation where it doesn't unbind its own handler for the entire process
+  // once a user adds one.
+  tokio::task::spawn(async move {
+    loop {
+      signal::ctrl_c().await.unwrap();
+      if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
+        std::process::exit(130);
+      }
+    }
+  });
 
   let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(
