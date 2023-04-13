@@ -115,13 +115,13 @@ defail!(
   de_tuple_wrong_len_short,
   (u64, bool, ()),
   "[123, true]",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(2, 3))
 );
 defail!(
   de_tuple_wrong_len_long,
   (u64, bool, ()),
   "[123, true, null, 'extra']",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(4, 3))
 );
 detest!(
   de_mathop,
