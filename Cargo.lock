@@ -761,6 +761,7 @@ dependencies = [
  "indexmap",
  "jsonc-parser",
  "junction",
+ "lazy-regex",
  "libc",
  "log",
  "lsp-types",
@@ -1156,6 +1157,7 @@ dependencies = [
  "hkdf",
  "idna 0.3.0",
  "indexmap",
+ "lazy-regex",
  "libz-sys",
  "md-5",
  "md4",
@@ -1201,6 +1203,7 @@ dependencies = [
 name = "deno_ops"
 version = "0.58.0"
 dependencies = [
+ "lazy-regex",
  "once_cell",
  "pmutil",
  "prettyplease",
@@ -2521,6 +2524,29 @@ checksum = "8367585489f01bc55dd27404dcf56b95e6da061a256a666ab23be9ba96a2e587"
 dependencies = [
  "bitflags",
  "libc",
+]
+
+[[package]]
+name = "lazy-regex"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff63c423c68ea6814b7da9e88ce585f793c87ddd9e78f646970891769c8235d4"
+dependencies = [
+ "lazy-regex-proc_macros",
+ "once_cell",
+ "regex",
+]
+
+[[package]]
+name = "lazy-regex-proc_macros"
+version = "2.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8edfc11b8f56ce85e207e62ea21557cfa09bb24a8f6b04ae181b086ff8611c22"
+dependencies = [
+ "proc-macro2 1.0.56",
+ "quote 1.0.26",
+ "regex",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -3978,6 +4004,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "smallvec",
+ "thiserror",
  "v8",
 ]
 
@@ -4764,7 +4791,7 @@ dependencies = [
  "flate2",
  "futures",
  "hyper",
- "lazy_static",
+ "lazy-regex",
  "lsp-types",
  "nix",
  "once_cell",
