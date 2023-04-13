@@ -1866,7 +1866,7 @@ console.log(b, "hello deno");
   fn test_documents_refresh_dependencies_config_change() {
     let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
     let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
+      NpmResolution::from_serialized(npm_registry_api.clone(), None, None);
 
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
