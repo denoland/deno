@@ -6,32 +6,17 @@ const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  AggregateErrorPrototype,
-  ArrayPrototypeUnshift,
-  isNaN,
-  DatePrototype,
   DateNow,
-  DatePrototypeGetTime,
-  DatePrototypeToISOString,
   Boolean,
-  BooleanPrototype,
-  BooleanPrototypeToString,
   ObjectKeys,
   ObjectAssign,
   ObjectCreate,
   ObjectFreeze,
-  ObjectIs,
   ObjectValues,
   ObjectFromEntries,
-  ObjectGetPrototypeOf,
-  ObjectGetOwnPropertyDescriptor,
-  ObjectGetOwnPropertySymbols,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
-  ObjectPrototypePropertyIsEnumerable,
-  PromisePrototype,
   String,
-  StringPrototype,
   StringPrototypeRepeat,
   StringPrototypeReplace,
   StringPrototypeReplaceAll,
@@ -42,29 +27,20 @@ const {
   StringPrototypeNormalize,
   StringPrototypeMatch,
   StringPrototypePadStart,
-  StringPrototypeLocaleCompare,
-  StringPrototypeToString,
   StringPrototypeTrim,
   StringPrototypeIncludes,
-  StringPrototypeStartsWith,
-  TypeError,
   NumberIsInteger,
   NumberParseInt,
-  RegExpPrototype,
-  RegExpPrototypeTest,
-  RegExpPrototypeToString,
   SafeArrayIterator,
+  ArrayPrototypeShift,
+  AggregateErrorPrototype,
+  RegExpPrototypeTest,
+  ArrayPrototypeUnshift,
   SafeStringIterator,
   SafeSet,
   SafeRegExp,
   SetPrototype,
-  SetPrototypeEntries,
-  SetPrototypeGetSize,
   Symbol,
-  SymbolPrototype,
-  SymbolPrototypeToString,
-  SymbolPrototypeValueOf,
-  SymbolPrototypeGetDescription,
   SymbolToStringTag,
   SymbolHasInstance,
   SymbolFor,
@@ -73,18 +49,13 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeReduce,
-  ArrayPrototypeEntries,
   ArrayPrototypePush,
   ArrayPrototypePop,
-  ArrayPrototypeSort,
-  ArrayPrototypeSlice,
-  ArrayPrototypeShift,
   ArrayPrototypeIncludes,
   ArrayPrototypeFill,
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   FunctionPrototypeBind,
-  FunctionPrototypeToString,
   Map,
   MapPrototype,
   MapPrototypeHas,
@@ -100,30 +71,2471 @@ const {
   MathAbs,
   MathMax,
   MathMin,
-  MathSqrt,
   MathRound,
-  MathFloor,
   Number,
-  NumberPrototype,
   NumberPrototypeToString,
-  NumberPrototypeValueOf,
-  BigIntPrototype,
-  BigIntPrototypeToString,
   Proxy,
   ReflectGet,
   ReflectGetOwnPropertyDescriptor,
   ReflectGetPrototypeOf,
   ReflectHas,
-  TypedArrayPrototypeGetLength,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  WeakMapPrototype,
-  WeakSetPrototype,
+  ObjectGetPrototypeOf,
+  FunctionPrototypeToString,
+  StringPrototypeStartsWith,
 } = primordials;
 import * as colors from "ext:deno_console/01_colors.js";
 
-function isInvalidDate(x) {
-  return isNaN(DatePrototypeGetTime(x));
+
+// region node
+
+// https://tc39.es/ecma262/#sec-object.prototype.tostring
+const _toString = Object.prototype.toString;
+
+// https://tc39.es/ecma262/#sec-bigint.prototype.valueof
+const _bigIntValueOf = BigInt.prototype.valueOf;
+
+// https://tc39.es/ecma262/#sec-boolean.prototype.valueof
+const _booleanValueOf = Boolean.prototype.valueOf;
+
+// https://tc39.es/ecma262/#sec-date.prototype.valueof
+const _dateValueOf = Date.prototype.valueOf;
+
+// https://tc39.es/ecma262/#sec-number.prototype.valueof
+const _numberValueOf = Number.prototype.valueOf;
+
+// https://tc39.es/ecma262/#sec-string.prototype.valueof
+const _stringValueOf = String.prototype.valueOf;
+
+// https://tc39.es/ecma262/#sec-symbol.prototype.valueof
+const _symbolValueOf = Symbol.prototype.valueOf;
+
+// https://tc39.es/ecma262/#sec-weakmap.prototype.has
+const _weakMapHas = WeakMap.prototype.has;
+
+// https://tc39.es/ecma262/#sec-weakset.prototype.has
+const _weakSetHas = WeakSet.prototype.has;
+
+// https://tc39.es/ecma262/#sec-get-arraybuffer.prototype.bytelength
+const _getArrayBufferByteLength = Object.getOwnPropertyDescriptor(
+  ArrayBuffer.prototype,
+  "byteLength",
+).get;
+
+// https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
+let _getSharedArrayBufferByteLength;
+
+// https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
+const _getTypedArrayToStringTag = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array).prototype,
+  Symbol.toStringTag,
+).get;
+
+// https://tc39.es/ecma262/#sec-get-set.prototype.size
+const _getSetSize = Object.getOwnPropertyDescriptor(
+  Set.prototype,
+  "size",
+).get;
+
+// https://tc39.es/ecma262/#sec-get-map.prototype.size
+const _getMapSize = Object.getOwnPropertyDescriptor(
+  Map.prototype,
+  "size",
+).get;
+
+function isObjectLike(value) {
+  return value !== null && typeof value === "object";
 }
+
+export function isAnyArrayBuffer(value) {
+  return isArrayBuffer(value) || isSharedArrayBuffer(value);
+}
+
+export function isArgumentsObject(value) {
+  return (
+    isObjectLike(value) &&
+    value[Symbol.toStringTag] === undefined &&
+    _toString.call(value) === "[object Arguments]"
+  );
+}
+
+export function isArrayBuffer(value) {
+  try {
+    _getArrayBufferByteLength.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isAsyncFunction(value) {
+  return (
+  typeof value === "function" &&
+    // @ts-ignore: function is a kind of object
+    value[Symbol.toStringTag] === "AsyncFunction"
+);
+}
+
+// deno-lint-ignore ban-types
+export function isBooleanObject(value) {
+  if (!isObjectLike(value)) {
+    return false;
+  }
+
+  try {
+    _booleanValueOf.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isBoxedPrimitive(
+  value,
+  // deno-lint-ignore ban-types
+) {
+  return (
+    isBooleanObject(value) ||
+    isStringObject(value) ||
+    isNumberObject(value) ||
+    isSymbolObject(value) ||
+    isBigIntObject(value)
+  );
+}
+
+export function isDataView(value) {
+  return (
+    ArrayBuffer.isView(value) &&
+    _getTypedArrayToStringTag.call(value) === undefined
+  );
+}
+
+
+export function isTypedArray(value) {
+  return _getTypedArrayToStringTag.call(value) !== undefined;
+}
+
+export function isDate(value) {
+  try {
+    _dateValueOf.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isGeneratorFunction(
+  value,
+) {
+  return (
+    typeof value === "function" &&
+    // @ts-ignore: function is a kind of object
+    value[Symbol.toStringTag] === "GeneratorFunction"
+  );
+}
+
+export function isGeneratorObject(value) {
+  return (
+    isObjectLike(value) &&
+    value[Symbol.toStringTag] === "Generator"
+  );
+}
+
+export function isMap(value) {
+  try {
+    _getMapSize.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isMapIterator(
+  value,
+) {
+  return (
+    isObjectLike(value) &&
+value[Symbol.toStringTag] === "Map Iterator"
+);
+}
+
+export function isModuleNamespaceObject(
+  value,
+) {
+  return (
+    isObjectLike(value) &&
+value[Symbol.toStringTag] === "Module"
+);
+}
+
+export function isNativeError(value) {
+  return (
+    isObjectLike(value) &&
+    value[Symbol.toStringTag] === undefined &&
+    _toString.call(value) === "[object Error]"
+  );
+}
+
+// deno-lint-ignore ban-types
+export function isNumberObject(value) {
+  if (!isObjectLike(value)) {
+    return false;
+  }
+
+  try {
+    _numberValueOf.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isBigIntObject(value) {
+  if (!isObjectLike(value)) {
+    return false;
+  }
+
+  try {
+    _bigIntValueOf.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isPromise(value) {
+  return (
+    isObjectLike(value) &&
+  value[Symbol.toStringTag] === "Promise"
+  );
+}
+export function isRegExp(value) {
+  return (
+    isObjectLike(value) &&
+    value[Symbol.toStringTag] === undefined &&
+    _toString.call(value) === "[object RegExp]"
+  );
+}
+
+export function isSet(value) {
+  try {
+    _getSetSize.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isSetIterator(
+  value,
+) {
+  return (
+    isObjectLike(value) &&
+value[Symbol.toStringTag] === "Set Iterator"
+);
+}
+
+export function isSharedArrayBuffer(
+  value,
+) {
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= Object.getOwnPropertyDescriptor(
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  ).get;
+
+  try {
+    _getSharedArrayBufferByteLength.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// deno-lint-ignore ban-types
+export function isStringObject(value) {
+  if (!isObjectLike(value)) {
+    return false;
+  }
+
+  try {
+    _stringValueOf.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// deno-lint-ignore ban-types
+export function isSymbolObject(value) {
+  if (!isObjectLike(value)) {
+    return false;
+  }
+
+  try {
+    _symbolValueOf.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isWeakMap(
+  value,
+) {
+  try {
+    // deno-lint-ignore no-explicit-any
+    _weakMapHas.call(value, null);
+return true;
+} catch {
+  return false;
+}
+}
+
+export function isWeakSet(
+  value,
+) {
+  try {
+    // deno-lint-ignore no-explicit-any
+    _weakSetHas.call(value, null);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
+export const ALL_PROPERTIES = 0;
+export const ONLY_WRITABLE = 1;
+export const ONLY_ENUMERABLE = 2;
+export const ONLY_CONFIGURABLE = 4;
+export const ONLY_ENUM_WRITABLE = 6;
+export const SKIP_STRINGS = 8;
+export const SKIP_SYMBOLS = 16;
+
+/**
+ * Efficiently determine whether the provided property key is numeric
+ * (and thus could be an array indexer) or not.
+ *
+ * Always returns true for values of type `'number'`.
+ *
+ * Otherwise, only returns true for strings that consist only of positive integers.
+ *
+ * Results are cached.
+ */
+const isNumericLookup = {};
+export function isArrayIndex(value) {
+  switch (typeof value) {
+    case "number":
+      return value >= 0 && (value | 0) === value;
+    case "string": {
+      const result = isNumericLookup[value];
+      if (result !== void 0) {
+        return result;
+      }
+      const length = value.length;
+      if (length === 0) {
+        return isNumericLookup[value] = false;
+      }
+      let ch = 0;
+      let i = 0;
+      for (; i < length; ++i) {
+        ch = value.charCodeAt(i);
+        if (
+          i === 0 && ch === 0x30 && length > 1 /* must not start with 0 */ ||
+          ch < 0x30 /* 0 */ || ch > 0x39 /* 9 */
+        ) {
+          return isNumericLookup[value] = false;
+        }
+      }
+      return isNumericLookup[value] = true;
+    }
+    default:
+      return false;
+  }
+}
+
+export function getOwnNonIndexProperties(
+  // deno-lint-ignore ban-types
+  obj,
+  filter,
+) {
+  let allProperties = [
+    ...Object.getOwnPropertyNames(obj),
+    ...Object.getOwnPropertySymbols(obj),
+  ];
+
+  if (Array.isArray(obj)) {
+    allProperties = allProperties.filter((k) => !isArrayIndex(k));
+  }
+
+  if (filter === ALL_PROPERTIES) {
+    return allProperties;
+  }
+
+  const result = [];
+  for (const key of allProperties) {
+    const desc = Object.getOwnPropertyDescriptor(obj, key);
+    if (desc === undefined) {
+      continue;
+    }
+    if (filter & ONLY_WRITABLE && !desc.writable) {
+      continue;
+    }
+    if (filter & ONLY_ENUMERABLE && !desc.enumerable) {
+      continue;
+    }
+    if (filter & ONLY_CONFIGURABLE && !desc.configurable) {
+      continue;
+    }
+    if (filter & SKIP_STRINGS && typeof key === "string") {
+      continue;
+    }
+    if (filter & SKIP_SYMBOLS && typeof key === "symbol") {
+      continue;
+    }
+    result.push(key);
+  }
+  return result;
+}
+
+
+const kObjectType = 0;
+const kArrayType = 1;
+const kArrayExtrasType = 2;
+
+const kMinLineLength = 16;
+
+// Constants to map the iterator state.
+const kWeak = 0;
+const kIterator = 1;
+const kMapEntries = 2;
+
+const kPending = 0;
+const kRejected = 2;
+
+// Escaped control characters (plus the single quote and the backslash). Use
+// empty strings to fill up unused entries.
+// deno-fmt-ignore
+const meta = [
+  '\\x00', '\\x01', '\\x02', '\\x03', '\\x04', '\\x05', '\\x06', '\\x07', // x07
+  '\\b', '\\t', '\\n', '\\x0B', '\\f', '\\r', '\\x0E', '\\x0F',           // x0F
+  '\\x10', '\\x11', '\\x12', '\\x13', '\\x14', '\\x15', '\\x16', '\\x17', // x17
+  '\\x18', '\\x19', '\\x1A', '\\x1B', '\\x1C', '\\x1D', '\\x1E', '\\x1F', // x1F
+  '', '', '', '', '', '', '', "\\'", '', '', '', '', '', '', '', '',      // x2F
+  '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',         // x3F
+  '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',         // x4F
+  '', '', '', '', '', '', '', '', '', '', '', '', '\\\\', '', '', '',     // x5F
+  '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',         // x6F
+  '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '\\x7F',    // x7F
+  '\\x80', '\\x81', '\\x82', '\\x83', '\\x84', '\\x85', '\\x86', '\\x87', // x87
+  '\\x88', '\\x89', '\\x8A', '\\x8B', '\\x8C', '\\x8D', '\\x8E', '\\x8F', // x8F
+  '\\x90', '\\x91', '\\x92', '\\x93', '\\x94', '\\x95', '\\x96', '\\x97', // x97
+  '\\x98', '\\x99', '\\x9A', '\\x9B', '\\x9C', '\\x9D', '\\x9E', '\\x9F', // x9F
+];
+
+// https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
+const isUndetectableObject = (v) => typeof v === "undefined" && v !== undefined;
+
+// deno-lint-ignore no-control-regex
+const strEscapeSequencesRegExp = /[\x00-\x1f\x27\x5c\x7f-\x9f]/;
+// deno-lint-ignore no-control-regex
+const strEscapeSequencesReplacer = /[\x00-\x1f\x27\x5c\x7f-\x9f]/g;
+// deno-lint-ignore no-control-regex
+const strEscapeSequencesRegExpSingle = /[\x00-\x1f\x5c\x7f-\x9f]/;
+// deno-lint-ignore no-control-regex
+const strEscapeSequencesReplacerSingle = /[\x00-\x1f\x5c\x7f-\x9f]/g;
+
+const keyStrRegExp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
+const numberRegExp = /^(0|[1-9][0-9]*)$/;
+const nodeModulesRegExp = /[/\\]node_modules[/\\](.+?)(?=[/\\])/g;
+
+const classRegExp = /^(\s+[^(]*?)\s*{/;
+// eslint-disable-next-line node-core/no-unescaped-regexp-dot
+const stripCommentsRegExp = /(\/\/.*?\n)|(\/\*(.|\n)*?\*\/)/g;
+
+const inspectDefaultOptions = {
+  showHidden: false,
+  depth: 2,
+  colors: false,
+  customInspect: true,
+  showProxy: false,
+  maxArrayLength: 100,
+  maxStringLength: 10000,
+  breakLength: 80,
+  compact: 3,
+  sorted: false,
+  getters: false,
+};
+
+function getUserOptions(ctx, isCrossContext) {
+  const ret = {
+    stylize: ctx.stylize,
+    showHidden: ctx.showHidden,
+    depth: ctx.depth,
+    colors: ctx.colors,
+    customInspect: ctx.customInspect,
+    showProxy: ctx.showProxy,
+    maxArrayLength: ctx.maxArrayLength,
+    maxStringLength: ctx.maxStringLength,
+    breakLength: ctx.breakLength,
+    compact: ctx.compact,
+    sorted: ctx.sorted,
+    getters: ctx.getters,
+    ...ctx.userOptions,
+  };
+
+  // Typically, the target value will be an instance of `Object`. If that is
+  // *not* the case, the object may come from another vm.Context, and we want
+  // to avoid passing it objects from this Context in that case, so we remove
+  // the prototype from the returned object itself + the `stylize()` function,
+  // and remove all other non-primitives, including non-primitive user options.
+  if (isCrossContext) {
+    Object.setPrototypeOf(ret, null);
+    for (const key of Object.keys(ret)) {
+      if (
+        (typeof ret[key] === "object" || typeof ret[key] === "function") &&
+        ret[key] !== null
+      ) {
+        delete ret[key];
+      }
+    }
+    ret.stylize = Object.setPrototypeOf((value, flavour) => {
+      let stylized;
+      try {
+        stylized = `${ctx.stylize(value, flavour)}`;
+      } catch {
+        // noop
+      }
+
+      if (typeof stylized !== "string") return value;
+      // `stylized` is a string as it should be, which is safe to pass along.
+      return stylized;
+    }, null);
+  }
+
+  return ret;
+}
+
+function addQuotes(str, quotes) {
+  if (quotes === -1) {
+    return `"${str}"`;
+  }
+  if (quotes === -2) {
+    return `\`${str}\``;
+  }
+  return `'${str}'`;
+}
+
+
+// TODO(wafuwafu13): Figure out
+const escapeFn = (str) => meta[str.charCodeAt(0)];
+
+// Escape control characters, single quotes and the backslash.
+// This is similar to JSON stringify escaping.
+function strEscape(str) {
+  let escapeTest = strEscapeSequencesRegExp;
+  let escapeReplace = strEscapeSequencesReplacer;
+  let singleQuote = 39;
+
+  // Check for double quotes. If not present, do not escape single quotes and
+  // instead wrap the text in double quotes. If double quotes exist, check for
+  // backticks. If they do not exist, use those as fallback instead of the
+  // double quotes.
+  if (str.includes("'")) {
+    // This invalidates the charCode and therefore can not be matched for
+    // anymore.
+    if (!str.includes('"')) {
+      singleQuote = -1;
+    } else if (
+      !str.includes("`") &&
+      !str.includes("${")
+    ) {
+      singleQuote = -2;
+    }
+    if (singleQuote !== 39) {
+      escapeTest = strEscapeSequencesRegExpSingle;
+      escapeReplace = strEscapeSequencesReplacerSingle;
+    }
+  }
+
+  // Some magic numbers that worked out fine while benchmarking with v8 6.0
+  if (str.length < 5000 && !escapeTest.test(str)) {
+    return addQuotes(str, singleQuote);
+  }
+  if (str.length > 100) {
+    str = str.replace(escapeReplace, escapeFn);
+    return addQuotes(str, singleQuote);
+  }
+
+  let result = "";
+  let last = 0;
+  const lastIndex = str.length;
+  for (let i = 0; i < lastIndex; i++) {
+    const point = str.charCodeAt(i);
+    if (
+      point === singleQuote ||
+      point === 92 ||
+      point < 32 ||
+      (point > 126 && point < 160)
+    ) {
+      if (last === i) {
+        result += meta[point];
+      } else {
+        result += `${str.slice(last, i)}${meta[point]}`;
+      }
+      last = i + 1;
+    }
+  }
+
+  if (last !== lastIndex) {
+    result += str.slice(last);
+  }
+  return addQuotes(result, singleQuote);
+}
+
+function stylizeNoColor(str) {
+  return str;
+}
+
+// Note: using `formatValue` directly requires the indentation level to be
+// corrected by setting `ctx.indentationLvL += diff` and then to decrease the
+// value afterwards again.
+function formatValue(
+  ctx,
+  value,
+  recurseTimes,
+  typedArray,
+) {
+  // Primitive types cannot have properties.
+  if (
+    typeof value !== "object" &&
+    typeof value !== "function" &&
+    !isUndetectableObject(value)
+  ) {
+    return formatPrimitive(ctx.stylize, value, ctx);
+  }
+  if (value === null) {
+    return ctx.stylize("null", "null");
+  }
+
+  // Memorize the context for custom inspection on proxies.
+  const context = value;
+  // Always check for proxies to prevent side effects and to prevent triggering
+  // any proxy handlers.
+  // TODO(wafuwafu13): Set Proxy
+  const proxy = undefined;
+  // const proxy = getProxyDetails(value, !!ctx.showProxy);
+  // if (proxy !== undefined) {
+  //   if (ctx.showProxy) {
+  //     return formatProxy(ctx, proxy, recurseTimes);
+  //   }
+  //   value = proxy;
+  // }
+
+  // Provide a hook for user-specified inspect functions.
+  // Check that value is an object with an inspect function on it.
+  if (ctx.customInspect) {
+    const maybeCustom = value[customInspect];
+    if (
+      typeof maybeCustom === "function" &&
+      // Filter out the util module, its inspect function is special.
+      maybeCustom !== inspect &&
+      // Also filter out any prototype objects using the circular check.
+      !(value.constructor && value.constructor.prototype === value)
+    ) {
+      // This makes sure the recurseTimes are reported as before while using
+      // a counter internally.
+      const depth = ctx.depth === null ? null : ctx.depth - recurseTimes;
+      const isCrossContext = proxy !== undefined ||
+        !(context instanceof Object);
+      const ret = maybeCustom.call(
+        context,
+        depth,
+        getUserOptions(ctx, isCrossContext),
+      );
+      // If the custom inspection method returned `this`, don't go into
+      // infinite recursion.
+      if (ret !== context) {
+        if (typeof ret !== "string") {
+          return formatValue(ctx, ret, recurseTimes);
+        }
+        return ret.replace(/\n/g, `\n${" ".repeat(ctx.indentationLvl)}`);
+      }
+    }
+  }
+
+  // Using an array here is actually better for the average case than using
+  // a Set. `seen` will only check for the depth and will never grow too large.
+  /* TODO: if (ctx.seen.includes(value)) {
+    let index = 1;
+    if (ctx.circular === undefined) {
+      ctx.circular = new Map();
+      ctx.circular.set(value, index);
+    } else {
+      index = ctx.circular.get(value);
+      if (index === undefined) {
+        index = ctx.circular.size + 1;
+        ctx.circular.set(value, index);
+      }
+    }
+    return ctx.stylize(`[Circular *${index}]`, "special");
+  }*/
+
+  return formatRaw(ctx, value, recurseTimes, typedArray);
+}
+
+function formatRaw(ctx, value, recurseTimes, typedArray) {
+  let keys;
+  let protoProps;
+  if (ctx.showHidden && (recurseTimes <= ctx.depth || ctx.depth === null)) {
+    protoProps = [];
+  }
+
+  const constructor = getConstructorName(value, ctx, recurseTimes, protoProps);
+  // Reset the variable to check for this later on.
+  if (protoProps !== undefined && protoProps.length === 0) {
+    protoProps = undefined;
+  }
+
+  let tag = value[Symbol.toStringTag];
+  // Only list the tag in case it's non-enumerable / not an own property.
+  // Otherwise we'd print this twice.
+  if (
+    typeof tag !== "string"
+    // TODO(wafuwafu13): Implement
+    // (tag !== "" &&
+    //   (ctx.showHidden
+    //     ? Object.prototype.hasOwnProperty
+    //     : Object.prototype.propertyIsEnumerable)(
+    //       value,
+    //       Symbol.toStringTag,
+    //     ))
+  ) {
+    tag = "";
+  }
+  let base = "";
+  let formatter = getEmptyFormatArray;
+  let braces;
+  let noIterator = true;
+  let i = 0;
+  const filter = ctx.showHidden ? 0 : 2;
+
+  let extrasType = kObjectType;
+
+  // Iterators and the rest are split to reduce checks.
+  // We have to check all values in case the constructor is set to null.
+  // Otherwise it would not possible to identify all types properly.
+  if (value[Symbol.iterator] || constructor === null) {
+    noIterator = false;
+    if (Array.isArray(value)) {
+      // Only set the constructor for non ordinary ("Array [...]") arrays.
+      const prefix = (constructor !== "Array" || tag !== "")
+        ? getPrefix(constructor, tag, "Array", `(${value.length})`)
+        : "";
+      keys = getOwnNonIndexProperties(value, filter);
+      braces = [`${prefix}[`, "]"];
+      if (value.length === 0 && keys.length === 0 && protoProps === undefined) {
+        return `${braces[0]}]`;
+      }
+      extrasType = kArrayExtrasType;
+      formatter = formatArray;
+    } else if (isSet(value)) {
+      const size = value.size;
+      const prefix = getPrefix(constructor, tag, "Set", `(${size})`);
+      keys = getKeys(value, ctx.showHidden);
+      formatter = constructor !== null
+        ? formatSet.bind(null, value)
+        : formatSet.bind(null, value.values());
+      if (size === 0 && keys.length === 0 && protoProps === undefined) {
+        return `${prefix}{}`;
+      }
+      braces = [`${prefix}{`, "}"];
+    } else if (isMap(value)) {
+      const size = value.size;
+      const prefix = getPrefix(constructor, tag, "Map", `(${size})`);
+      keys = getKeys(value, ctx.showHidden);
+      formatter = constructor !== null
+        ? formatMap.bind(null, value)
+        : formatMap.bind(null, value.entries());
+      if (size === 0 && keys.length === 0 && protoProps === undefined) {
+        return `${prefix}{}`;
+      }
+      braces = [`${prefix}{`, "}"];
+    } else if (isTypedArray(value)) {
+      keys = getOwnNonIndexProperties(value, filter);
+      const bound = value;
+      const fallback = "";
+      if (constructor === null) {
+        // TODO(wafuwafu13): Implement
+        // fallback = TypedArrayPrototypeGetSymbolToStringTag(value);
+        // // Reconstruct the array information.
+        // bound = new primordials[fallback](value);
+      }
+      const size = value.length;
+      const prefix = getPrefix(constructor, tag, fallback, `(${size})`);
+      braces = [`${prefix}[`, "]"];
+      if (value.length === 0 && keys.length === 0 && !ctx.showHidden) {
+        return `${braces[0]}]`;
+      }
+      // Special handle the value. The original value is required below. The
+      // bound function is required to reconstruct missing information.
+      (formatter) = formatTypedArray.bind(null, bound, size);
+      extrasType = kArrayExtrasType;
+    } else if (isMapIterator(value)) {
+      keys = getKeys(value, ctx.showHidden);
+      braces = getIteratorBraces("Map", tag);
+      // Add braces to the formatter parameters.
+      (formatter) = formatIterator.bind(null, braces);
+    } else if (isSetIterator(value)) {
+      keys = getKeys(value, ctx.showHidden);
+      braces = getIteratorBraces("Set", tag);
+      // Add braces to the formatter parameters.
+      (formatter) = formatIterator.bind(null, braces);
+    } else {
+      noIterator = true;
+    }
+  }
+  if (noIterator) {
+    keys = getKeys(value, ctx.showHidden);
+    braces = ["{", "}"];
+    if (constructor === "Object") {
+      if (isArgumentsObject(value)) {
+        braces[0] = "[Arguments] {";
+      } else if (tag !== "") {
+        braces[0] = `${getPrefix(constructor, tag, "Object")}{`;
+      }
+      if (keys.length === 0 && protoProps === undefined) {
+        return `${braces[0]}}`;
+      }
+    } else if (typeof value === "function") {
+      base = inspectFunction(value, ctx);
+      if (keys.length === 0 && protoProps === undefined) {
+        return ctx.stylize(base, "special");
+      }
+    } else if (isRegExp(value)) {
+      // Make RegExps say that they are RegExps
+      base = RegExp(constructor !== null ? value : new RegExp(value))
+        .toString();
+      const prefix = getPrefix(constructor, tag, "RegExp");
+      if (prefix !== "RegExp ") {
+        base = `${prefix}${base}`;
+      }
+      if (
+        (keys.length === 0 && protoProps === undefined) ||
+        (recurseTimes > ctx.depth && ctx.depth !== null)
+      ) {
+        return ctx.stylize(base, "regexp");
+      }
+    } else if (isDate(value)) {
+      // Make dates with properties first say the date
+      base = Number.isNaN(value.getTime())
+        ? value.toString()
+        : value.toISOString();
+      const prefix = getPrefix(constructor, tag, "Date");
+      if (prefix !== "Date ") {
+        base = `${prefix}${base}`;
+      }
+      if (keys.length === 0 && protoProps === undefined) {
+        return ctx.stylize(base, "date");
+      }
+    } else if (value instanceof Error) {
+      base = inspectError(value, ctx);
+      if (keys.length === 0 && protoProps === undefined) {
+        return base;
+      }
+    } else if (isAnyArrayBuffer(value)) {
+      // Fast path for ArrayBuffer and SharedArrayBuffer.
+      // Can't do the same for DataView because it has a non-primitive
+      // .buffer property that we need to recurse for.
+      const arrayType = isArrayBuffer(value)
+        ? "ArrayBuffer"
+        : "SharedArrayBuffer";
+      const prefix = getPrefix(constructor, tag, arrayType);
+      if (typedArray === undefined) {
+        (formatter) = formatArrayBuffer;
+      } else if (keys.length === 0 && protoProps === undefined) {
+        return prefix +
+          `{ byteLength: ${formatNumber(ctx.stylize, value.byteLength)} }`;
+      }
+      braces[0] = `${prefix}{`;
+      Array.prototype.unshift.call(keys, "byteLength");
+    } else if (isDataView(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "DataView")}{`;
+      // .buffer goes last, it's not a primitive like the others.
+      Array.prototype.unshift.call(keys, "byteLength", "byteOffset", "buffer");
+    } else if (isPromise(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "Promise")}{`;
+      (formatter) = formatPromise;
+    } else if (isWeakSet(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "WeakSet")}{`;
+      (formatter) = ctx.showHidden ? formatWeakSet : formatWeakCollection;
+    } else if (isWeakMap(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "WeakMap")}{`;
+      (formatter) = ctx.showHidden ? formatWeakMap : formatWeakCollection;
+    } else if (isModuleNamespaceObject(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "Module")}{`;
+      // Special handle keys for namespace objects.
+      (formatter) = formatNamespaceObject.bind(null, keys);
+    } else if (isBoxedPrimitive(value)) {
+      base = getBoxedBase(value, ctx, keys, constructor, tag);
+      if (keys.length === 0 && protoProps === undefined) {
+        return base;
+      }
+    } else {
+      if (keys.length === 0 && protoProps === undefined) {
+        // TODO(wafuwafu13): Implement
+        // if (isExternal(value)) {
+        //   const address = getExternalValue(value).toString(16);
+        //   return ctx.stylize(`[External: ${address}]`, 'special');
+        // }
+        return `${getCtxStyle(value, constructor, tag)}{}`;
+      }
+      braces[0] = `${getCtxStyle(value, constructor, tag)}{`;
+    }
+  }
+
+  if (recurseTimes > ctx.depth && ctx.depth !== null) {
+    let constructorName = getCtxStyle(value, constructor, tag).slice(0, -1);
+    if (constructor !== null) {
+      constructorName = `[${constructorName}]`;
+    }
+    return ctx.stylize(constructorName, "special");
+  }
+  recurseTimes += 1;
+
+  ctx.seen.push(value);
+  ctx.currentDepth = recurseTimes;
+  let output;
+  const indentationLvl = ctx.indentationLvl;
+  try {
+    output = formatter(ctx, value, recurseTimes);
+    for (i = 0; i < keys.length; i++) {
+      output.push(
+        formatProperty(ctx, value, recurseTimes, keys[i], extrasType),
+      );
+    }
+    if (protoProps !== undefined) {
+      output.push(...protoProps);
+    }
+  } catch (err) {
+    const constructorName = getCtxStyle(value, constructor, tag).slice(0, -1);
+    return handleMaxCallStackSize(ctx, err, constructorName, indentationLvl);
+  }
+  /*TODO if (ctx.circular !== undefined) {
+    const index = ctx.circular.get(value);
+    if (index !== undefined) {
+      const reference = ctx.stylize(`<ref *${index}>`, "special");
+      // Add reference always to the very beginning of the output.
+      if (ctx.compact !== true) {
+        base = base === "" ? reference : `${reference} ${base}`;
+      } else {
+        braces[0] = `${reference} ${braces[0]}`;
+      }
+    }
+  }*/
+  ctx.seen.pop();
+
+  if (ctx.sorted) {
+    const comparator = ctx.sorted === true ? undefined : ctx.sorted;
+    if (extrasType === kObjectType) {
+      output = output.sort(comparator);
+    } else if (keys.length > 1) {
+      const sorted = output.slice(output.length - keys.length).sort(comparator);
+      output.splice(output.length - keys.length, keys.length, ...sorted);
+    }
+  }
+
+  const res = reduceToSingleString(
+    ctx,
+    output,
+    base,
+    braces,
+    extrasType,
+    recurseTimes,
+    value,
+  );
+  const budget = ctx.budget[ctx.indentationLvl] || 0;
+  const newLength = budget + res.length;
+  ctx.budget[ctx.indentationLvl] = newLength;
+  // If any indentationLvl exceeds this limit, limit further inspecting to the
+  // minimum. Otherwise the recursive algorithm might continue inspecting the
+  // object even though the maximum string size (~2 ** 28 on 32 bit systems and
+  // ~2 ** 30 on 64 bit systems) exceeded. The actual output is not limited at
+  // exactly 2 ** 27 but a bit higher. This depends on the object shape.
+  // This limit also makes sure that huge objects don't block the event loop
+  // significantly.
+  if (newLength > 2 ** 27) {
+    ctx.depth = -1;
+  }
+  return res;
+}
+
+const builtInObjects = new Set(
+  Object.getOwnPropertyNames(globalThis).filter((e) =>
+    /^[A-Z][a-zA-Z0-9]+$/.test(e)
+  ),
+);
+
+function addPrototypeProperties(
+  ctx,
+  main,
+  obj,
+  recurseTimes,
+  output,
+) {
+  let depth = 0;
+  let keys;
+  let keySet;
+  do {
+    if (depth !== 0 || main === obj) {
+      obj = Object.getPrototypeOf(obj);
+      // Stop as soon as a null prototype is encountered.
+      if (obj === null) {
+        return;
+      }
+      // Stop as soon as a built-in object type is detected.
+      const descriptor = Object.getOwnPropertyDescriptor(obj, "constructor");
+      if (
+        descriptor !== undefined &&
+        typeof descriptor.value === "function" &&
+        builtInObjects.has(descriptor.value.name)
+      ) {
+        return;
+      }
+    }
+
+    if (depth === 0) {
+      keySet = new Set();
+    } else {
+      Array.prototype.forEach.call(keys, (key) => keySet.add(key));
+    }
+    // Get all own property names and symbols.
+    keys = Reflect.ownKeys(obj);
+    Array.prototype.push.call(ctx.seen, main);
+    for (const key of keys) {
+      // Ignore the `constructor` property and keys that exist on layers above.
+      if (
+        key === "constructor" ||
+        // deno-lint-ignore no-prototype-builtins
+        main.hasOwnProperty(key) ||
+        (depth !== 0 && keySet.has(key))
+      ) {
+        continue;
+      }
+      const desc = Object.getOwnPropertyDescriptor(obj, key);
+      if (typeof desc.value === "function") {
+        continue;
+      }
+      const value = formatProperty(
+        ctx,
+        obj,
+        recurseTimes,
+        key,
+        kObjectType,
+        desc,
+        main,
+      );
+      if (ctx.colors) {
+        // Faint!
+        Array.prototype.push.call(output, `\u001b[2m${value}\u001b[22m`);
+      } else {
+        Array.prototype.push.call(output, value);
+      }
+    }
+    Array.prototype.pop.call(ctx.seen);
+    // Limit the inspection to up to three prototype layers. Using `recurseTimes`
+    // is not a good choice here, because it's as if the properties are declared
+    // on the current object from the users perspective.
+  } while (++depth !== 3);
+}
+
+function getConstructorName(
+  obj,
+  ctx,
+  recurseTimes,
+  protoProps,
+) {
+  let firstProto;
+  const tmp = obj;
+  while (obj || isUndetectableObject(obj)) {
+    const descriptor = Object.getOwnPropertyDescriptor(obj, "constructor");
+    if (
+      descriptor !== undefined &&
+      typeof descriptor.value === "function" &&
+      descriptor.value.name !== "" &&
+      isInstanceof(tmp, descriptor.value)
+    ) {
+      if (
+        protoProps !== undefined &&
+        (firstProto !== obj ||
+          !builtInObjects.has(descriptor.value.name))
+      ) {
+        addPrototypeProperties(
+          ctx,
+          tmp,
+          firstProto || tmp,
+          recurseTimes,
+          protoProps,
+        );
+      }
+      return descriptor.value.name;
+    }
+
+    obj = Object.getPrototypeOf(obj);
+    if (firstProto === undefined) {
+      firstProto = obj;
+    }
+  }
+
+  if (firstProto === null) {
+    return null;
+  }
+
+  // TODO(wafuwafu13): Implement
+  // const res = internalGetConstructorName(tmp);
+  const res = undefined;
+
+  if (recurseTimes > ctx.depth && ctx.depth !== null) {
+    return `${res} <Complex prototype>`;
+  }
+
+  const protoConstr = getConstructorName(
+    firstProto,
+    ctx,
+    recurseTimes + 1,
+    protoProps,
+  );
+
+  if (protoConstr === null) {
+    return `${res} <${
+      inspect(firstProto, {
+        ...ctx,
+        customInspect: false,
+        depth: -1,
+      })
+    }>`;
+  }
+
+  return `${res} <${protoConstr}>`;
+}
+
+function formatPrimitive(fn, value, ctx) {
+  if (typeof value === "string") {
+    let trailer = "";
+    if (value.length > ctx.maxStringLength) {
+      const remaining = value.length - ctx.maxStringLength;
+      value = value.slice(0, ctx.maxStringLength);
+      trailer = `... ${remaining} more character${remaining > 1 ? "s" : ""}`;
+    }
+    if (
+      ctx.compact !== true &&
+      // TODO(BridgeAR): Add unicode support. Use the readline getStringWidth
+      // function.
+      value.length > kMinLineLength &&
+      value.length > ctx.breakLength - ctx.indentationLvl - 4
+    ) {
+      return value
+        .split(/(?<=\n)/)
+        .map((line) => fn(quoteString(line, ctx), "string"))
+        .join(` +\n${" ".repeat(ctx.indentationLvl + 2)}`) + trailer;
+    }
+    return fn(quoteString(value, ctx), "string") + trailer;
+  }
+  if (typeof value === "number") {
+    return formatNumber(fn, value);
+  }
+  if (typeof value === "bigint") {
+    return formatBigInt(fn, value);
+  }
+  if (typeof value === "boolean") {
+    return fn(`${value}`, "boolean");
+  }
+  if (typeof value === "undefined") {
+    return fn("undefined", "undefined");
+  }
+  // es6 symbol primitive
+  if (typeof value === "symbol" && value.description !== undefined) {
+    return fn(`Symbol(${quoteString(value.description, ctx)})`, "symbol");
+  }
+  return fn(value.toString(), "symbol");
+}
+
+// Return a new empty array to push in the results of the default formatter.
+function getEmptyFormatArray() {
+  return [];
+}
+
+function isInstanceof(object, proto) {
+  try {
+    return object instanceof proto;
+  } catch {
+    return false;
+  }
+}
+
+function getPrefix(constructor, tag, fallback, size = "") {
+  if (constructor === null) {
+    if (tag !== "" && fallback !== tag) {
+      return `[${fallback}${size}: null prototype] [${tag}] `;
+    }
+    return `[${fallback}${size}: null prototype] `;
+  }
+
+  if (tag !== "" && constructor !== tag) {
+    return `${constructor}${size} [${tag}] `;
+  }
+  return `${constructor}${size} `;
+}
+
+function formatArray(ctx, value, recurseTimes) {
+  const valLen = value.length;
+  const len = Math.min(Math.max(0, ctx.maxArrayLength), valLen);
+
+  const remaining = valLen - len;
+  const output = [];
+  for (let i = 0; i < len; i++) {
+    // Special handle sparse arrays.
+    // deno-lint-ignore no-prototype-builtins
+    if (!value.hasOwnProperty(i)) {
+      return formatSpecialArray(ctx, value, recurseTimes, len, output, i);
+    }
+    output.push(formatProperty(ctx, value, recurseTimes, i, kArrayType));
+  }
+  if (remaining > 0) {
+    output.push(`... ${remaining} more item${remaining > 1 ? "s" : ""}`);
+  }
+  return output;
+}
+
+function getCtxStyle(_value, constructor, tag) {
+  let fallback = "";
+  if (constructor === null) {
+    // TODO(wafuwafu13): Implement
+    // fallback = internalGetConstructorName(value);
+    if (fallback === tag) {
+      fallback = "Object";
+    }
+  }
+  return getPrefix(constructor, tag, fallback);
+}
+
+// Look up the keys of the object.
+function getKeys(value, showHidden) {
+  let keys;
+  const symbols = Object.getOwnPropertySymbols(value);
+  if (showHidden) {
+    keys = Object.getOwnPropertyNames(value);
+    if (symbols.length !== 0) {
+      Array.prototype.push.apply(keys, symbols);
+    }
+  } else {
+    // This might throw if `value` is a Module Namespace Object from an
+    // unevaluated module, but we don't want to perform the actual type
+    // check because it's expensive.
+    // TODO(devsnek): track https://github.com/tc39/ecma262/issues/1209
+    // and modify this logic as needed.
+    try {
+      keys = Object.keys(value);
+    } catch (_err) {
+      // TODO(wafuwafu13): Implement
+      // assert(isNativeError(err) && err.name === 'ReferenceError' &&
+      //        isModuleNamespaceObject(value));
+      keys = Object.getOwnPropertyNames(value);
+    }
+    if (symbols.length !== 0) {
+      // TODO(wafuwafu13): Implement
+      // const filter = (key: any) =>
+      //
+      //   Object.prototype.propertyIsEnumerable(value, key);
+      // Array.prototype.push.apply(
+      //   keys,
+      //   symbols.filter(filter),
+      // );
+    }
+  }
+  return keys;
+}
+
+function formatSet(value, ctx, _ignored, recurseTimes) {
+  const output = [];
+  ctx.indentationLvl += 2;
+  for (const v of value) {
+    Array.prototype.push.call(output, formatValue(ctx, v, recurseTimes));
+  }
+  ctx.indentationLvl -= 2;
+  return output;
+}
+
+function formatMap(value, ctx, _gnored, recurseTimes) {
+  const output = [];
+  ctx.indentationLvl += 2;
+  for (const { 0: k, 1: v } of value) {
+    output.push(
+      `${formatValue(ctx, k, recurseTimes)} => ${
+        formatValue(ctx, v, recurseTimes)
+      }`,
+    );
+  }
+  ctx.indentationLvl -= 2;
+  return output;
+}
+
+function formatTypedArray(
+  value,
+  length,
+  ctx,
+  _ignored,
+  recurseTimes,
+) {
+  const maxLength = Math.min(Math.max(0, ctx.maxArrayLength), length);
+  const remaining = value.length - maxLength;
+  const output = new Array(maxLength);
+  const elementFormatter = value.length > 0 && typeof value[0] === "number"
+    ? formatNumber
+    : formatBigInt;
+  for (let i = 0; i < maxLength; ++i) {
+    output[i] = elementFormatter(ctx.stylize, value[i]);
+  }
+  if (remaining > 0) {
+    output[maxLength] = `... ${remaining} more item${remaining > 1 ? "s" : ""}`;
+  }
+  if (ctx.showHidden) {
+    // .buffer goes last, it's not a primitive like the others.
+    // All besides `BYTES_PER_ELEMENT` are actually getters.
+    ctx.indentationLvl += 2;
+    for (
+      const key of [
+      "BYTES_PER_ELEMENT",
+      "length",
+      "byteLength",
+      "byteOffset",
+      "buffer",
+    ]
+      ) {
+      const str = formatValue(ctx, value[key], recurseTimes, true);
+      Array.prototype.push.call(output, `[${key}]: ${str}`);
+    }
+    ctx.indentationLvl -= 2;
+  }
+  return output;
+}
+
+function getIteratorBraces(type, tag) {
+  if (tag !== `${type} Iterator`) {
+    if (tag !== "") {
+      tag += "] [";
+    }
+    tag += `${type} Iterator`;
+  }
+  return [`[${tag}] {`, "}"];
+}
+
+function formatIterator(braces, ctx, value, recurseTimes) {
+  // TODO(wafuwafu13): Implement
+  // const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
+  const { 0: entries, 1: isKeyValue } = value;
+  if (isKeyValue) {
+    // Mark entry iterators as such.
+    braces[0] = braces[0].replace(/ Iterator] {$/, " Entries] {");
+    return formatMapIterInner(ctx, recurseTimes, entries, kMapEntries);
+  }
+
+  return formatSetIterInner(ctx, recurseTimes, entries, kIterator);
+}
+
+
+
+
+
+
+function inspectFunction(value, ctx) {
+  if (
+    ReflectHas(value, customInspect) &&
+    typeof value[customInspect] === "function"
+  ) {
+    return String(value[customInspect](inspect, ctx));
+  }
+  // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
+  let cstrName = ObjectGetPrototypeOf(value)?.constructor?.name;
+  if (!cstrName) {
+    // If prototype is removed or broken,
+    // use generic 'Function' instead.
+    cstrName = "Function";
+  }
+  const stringValue = FunctionPrototypeToString(value);
+  // Might be Class
+  if (StringPrototypeStartsWith(stringValue, "class")) {
+    cstrName = "Class";
+  }
+
+  if (value.name && value.name !== "anonymous") {
+    // from MDN spec
+    return `[${cstrName}: ${value.name}]`;
+  }
+  return `[${cstrName} (anonymous)]`;
+}
+
+
+
+
+
+function getFunctionBase(value, constructor, tag) {
+  const stringified = Function.prototype.toString.call(value);
+  if (stringified.slice(0, 5) === "class" && stringified.endsWith("}")) {
+    const slice = stringified.slice(5, -1);
+    const bracketIndex = slice.indexOf("{");
+    if (
+      bracketIndex !== -1 &&
+      (!slice.slice(0, bracketIndex).includes("(") ||
+        // Slow path to guarantee that it's indeed a class.
+        classRegExp.test(slice.replace(stripCommentsRegExp)))
+    ) {
+      return getClassBase(value, constructor, tag);
+    }
+  }
+  let type = "Function";
+  if (isGeneratorFunction(value)) {
+    type = `Generator${type}`;
+  }
+  if (isAsyncFunction(value)) {
+    type = `Async${type}`;
+  }
+  let base = `[${type}`;
+  if (constructor === null) {
+    base += " (null prototype)";
+  }
+  if (value.name === "") {
+    base += " (anonymous)";
+  } else {
+    base += `: ${value.name}`;
+  }
+  base += "]";
+
+  console.log(base);
+  if (constructor !== type && constructor !== null) {
+    base += ` ${constructor}`;
+  }
+  if (tag !== "" && constructor !== tag) {
+    base += ` [${tag}]`;
+  }
+  return base;
+}
+
+function handleCircular(value, ctx) {
+  let index = 1;
+  if (ctx.circular === undefined) {
+    ctx.circular = new Map();
+    MapPrototypeSet(ctx.circular, value, index);
+  } else {
+    index = MapPrototypeGet(ctx.circular, value);
+    if (index === undefined) {
+      index = MapPrototypeGetSize(ctx.circular) + 1;
+      MapPrototypeSet(ctx.circular, value, index);
+    }
+  }
+  // Circular string is cyan
+  return ctx.stylize(`[Circular *${index}]`, "special");
+}
+
+const AGGREGATE_ERROR_HAS_AT_PATTERN = new SafeRegExp(/\s+at/);
+const AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN = new SafeRegExp(/^(?!\s*$)/gm);
+
+function inspectError(value, ctx) {
+  const causes = [value];
+
+  let err = value;
+  while (err.cause) {
+    if (ArrayPrototypeIncludes(causes, err.cause)) {
+      ArrayPrototypePush(causes, handleCircular(err.cause, ctx));
+      break;
+    } else {
+      ArrayPrototypePush(causes, err.cause);
+      err = err.cause;
+    }
+  }
+
+  const refMap = new Map();
+  for (let i = 0; i < causes.length; ++i) {
+    const cause = causes[i];
+    if (ctx.circular !== undefined) {
+      const index = MapPrototypeGet(ctx.circular, cause);
+      if (index !== undefined) {
+        MapPrototypeSet(refMap, cause, ctx.stylize(`<ref *${index}> `, "special"));
+      }
+    }
+  }
+  ArrayPrototypeShift(causes);
+
+  let finalMessage = MapPrototypeGet(refMap, value) ?? "";
+
+  if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
+    const stackLines = StringPrototypeSplit(value.stack, "\n");
+    while (true) {
+      const line = ArrayPrototypeShift(stackLines);
+      if (RegExpPrototypeTest(AGGREGATE_ERROR_HAS_AT_PATTERN, line)) {
+        ArrayPrototypeUnshift(stackLines, line);
+        break;
+      } else if (typeof line === "undefined") {
+        break;
+      }
+
+      finalMessage += line;
+      finalMessage += "\n";
+    }
+    const aggregateMessage = ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        value.errors,
+        (error) =>
+          StringPrototypeReplace(
+            inspectArgs([error]),
+            AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN,
+            StringPrototypeRepeat(" ", 4),
+          ),
+      ),
+      "\n",
+    );
+    finalMessage += aggregateMessage;
+    finalMessage += "\n";
+    finalMessage += ArrayPrototypeJoin(stackLines, "\n");
+  } else {
+    finalMessage += value.stack;
+  }
+
+  finalMessage += ArrayPrototypeJoin(
+    ArrayPrototypeMap(
+      causes,
+      (cause) =>
+        "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
+        (cause?.stack ?? cause),
+    ),
+    "",
+  );
+
+  return finalMessage;
+}
+
+let hexSlice;
+
+function formatArrayBuffer(ctx, value) {
+  let buffer;
+  try {
+    buffer = new Uint8Array(value);
+  } catch {
+    return [ctx.stylize("(detached)", "special")];
+  }
+  // TODO(wafuwafu13): Implement
+  // if (hexSlice === undefined)
+  //   hexSlice = uncurryThis(require('buffer').Buffer.prototype.hexSlice);
+  let str = hexSlice(buffer, 0, Math.min(ctx.maxArrayLength, buffer.length))
+    .replace(/(.{2})/g, "$1 ").trim();
+
+  const remaining = buffer.length - ctx.maxArrayLength;
+  if (remaining > 0) {
+    str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
+  }
+  return [`${ctx.stylize("[Uint8Contents]", "special")}: <${str}>`];
+}
+
+function formatNumber(fn, value) {
+  // Format -0 as '-0'. Checking `value === -0` won't distinguish 0 from -0.
+  return fn(Object.is(value, -0) ? "-0" : `${value}`, "number");
+}
+
+
+function inspectPromise(
+  value,
+  inspectOptions,
+) {
+  const cyan = maybeColor(colors.cyan, inspectOptions);
+  const red = maybeColor(colors.red, inspectOptions);
+
+  const { 0: state, 1: result } = core.getPromiseDetails(value);
+
+  if (state === PromiseState.Pending) {
+    return `Promise { ${cyan("<pending>")} }`;
+  }
+
+  const prefix = state === PromiseState.Fulfilled
+    ? ""
+    : `${red("<rejected>")} `;
+
+  inspectOptions.indentLevel++;
+  const str = `${prefix}${inspectValueWithQuotes(result, inspectOptions)}`;
+  inspectOptions.indentLevel--;
+
+  if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
+    return `Promise {\n${
+      StringPrototypeRepeat(DEFAULT_INDENT, inspectOptions.indentLevel + 1)
+    }${str}\n}`;
+  }
+
+  return `Promise { ${str} }`;
+}
+
+function formatPromise(ctx, value, recurseTimes) {
+  let output;
+  // TODO(wafuwafu13): Implement
+  const { 0: state, 1: result } = core.getPromiseDetails(value);
+  if (state === kPending) {
+    output = [ctx.stylize("<pending>", "special")];
+  } else {
+    ctx.indentationLvl += 2;
+    const str = formatValue(ctx, result, recurseTimes);
+    ctx.indentationLvl -= 2;
+    output = [
+      state === kRejected
+        ? `${ctx.stylize("<rejected>", "special")} ${str}`
+        : str,
+    ];
+  }
+  return output;
+}
+
+function formatWeakCollection(ctx) {
+  return [ctx.stylize("<items unknown>", "special")];
+}
+
+function formatWeakSet(ctx, value, recurseTimes) {
+  // TODO(wafuwafu13): Implement
+  // const entries = previewEntries(value);
+  const entries = value;
+  return formatSetIterInner(ctx, recurseTimes, entries, kWeak);
+}
+
+function formatWeakMap(ctx, value, recurseTimes) {
+  // TODO(wafuwafu13): Implement
+  // const entries = previewEntries(value);
+  const entries = value;
+  return formatMapIterInner(ctx, recurseTimes, entries, kWeak);
+}
+
+function formatProperty(
+  ctx,
+  value,
+  recurseTimes,
+  key,
+  type,
+  desc,
+  original = value,
+) {
+  let name, str;
+  let extra = " ";
+  desc = desc || Object.getOwnPropertyDescriptor(value, key) ||
+    { value: value[key], enumerable: true };
+  if (desc.value !== undefined) {
+    const diff = (ctx.compact !== true || type !== kObjectType) ? 2 : 3;
+    ctx.indentationLvl += diff;
+    str = formatValue(ctx, desc.value, recurseTimes);
+    if (diff === 3 && ctx.breakLength < getStringWidth(str, ctx.colors)) {
+      extra = `\n${" ".repeat(ctx.indentationLvl)}`;
+    }
+    ctx.indentationLvl -= diff;
+  } else if (desc.get !== undefined) {
+    const label = desc.set !== undefined ? "Getter/Setter" : "Getter";
+    const s = ctx.stylize;
+    const sp = "special";
+    if (
+      ctx.getters && (ctx.getters === true ||
+        (ctx.getters === "get" && desc.set === undefined) ||
+        (ctx.getters === "set" && desc.set !== undefined))
+    ) {
+      try {
+        const tmp = desc.get.call(original);
+        ctx.indentationLvl += 2;
+        if (tmp === null) {
+          str = `${s(`[${label}:`, sp)} ${s("null", "null")}${s("]", sp)}`;
+        } else if (typeof tmp === "object") {
+          str = `${s(`[${label}]`, sp)} ${formatValue(ctx, tmp, recurseTimes)}`;
+        } else {
+          const primitive = formatPrimitive(s, tmp, ctx);
+          str = `${s(`[${label}:`, sp)} ${primitive}${s("]", sp)}`;
+        }
+        ctx.indentationLvl -= 2;
+      } catch (err) {
+        const message = `<Inspection threw (${err.message})>`;
+        str = `${s(`[${label}:`, sp)} ${message}${s("]", sp)}`;
+      }
+    } else {
+      str = ctx.stylize(`[${label}]`, sp);
+    }
+  } else if (desc.set !== undefined) {
+    str = ctx.stylize("[Setter]", "special");
+  } else {
+    str = ctx.stylize("undefined", "undefined");
+  }
+  if (type === kArrayType) {
+    return str;
+  }
+  if (typeof key === "symbol") {
+    const tmp = key.toString().replace(strEscapeSequencesReplacer, escapeFn);
+
+    name = `[${ctx.stylize(tmp, "symbol")}]`;
+  } else if (key === "__proto__") {
+    name = "['__proto__']";
+  } else if (desc.enumerable === false) {
+    const tmp = key.replace(strEscapeSequencesReplacer, escapeFn);
+
+    name = `[${tmp}]`;
+  } else if (keyStrRegExp.test(key)) {
+    name = ctx.stylize(key, "name");
+  } else {
+    name = ctx.stylize(quoteString(key, ctx), "string");
+  }
+  return `${name}:${extra}${str}`;
+}
+
+function handleMaxCallStackSize(
+  _ctx,
+  _err,
+  _constructorName,
+  _indentationLvl,
+) {
+  // TODO(wafuwafu13): Implement
+  // if (isStackOverflowError(err)) {
+  //   ctx.seen.pop();
+  //   ctx.indentationLvl = indentationLvl;
+  //   return ctx.stylize(
+  //     `[${constructorName}: Inspection interrupted ` +
+  //       'prematurely. Maximum call stack size exceeded.]',
+  //     'special'
+  //   );
+  // }
+  // /* c8 ignore next */
+  // assert.fail(err.stack);
+}
+
+// deno-lint-ignore no-control-regex
+const colorRegExp = /\u001b\[\d\d?m/g;
+function removeColors(str) {
+  return str.replace(colorRegExp, "");
+}
+
+function isBelowBreakLength(ctx, output, start, base) {
+  // Each entry is separated by at least a comma. Thus, we start with a total
+  // length of at least `output.length`. In addition, some cases have a
+  // whitespace in-between each other that is added to the total as well.
+  // TODO(BridgeAR): Add unicode support. Use the readline getStringWidth
+  // function. Check the performance overhead and make it an opt-in in case it's
+  // significant.
+  let totalLength = output.length + start;
+  if (totalLength + output.length > ctx.breakLength) {
+    return false;
+  }
+  for (let i = 0; i < output.length; i++) {
+    if (ctx.colors) {
+      totalLength += removeColors(output[i]).length;
+    } else {
+      totalLength += output[i].length;
+    }
+    if (totalLength > ctx.breakLength) {
+      return false;
+    }
+  }
+  // Do not line up properties on the same line if `base` contains line breaks.
+  return base === "" || !base.includes("\n");
+}
+
+function formatBigInt(fn, value) {
+  return fn(`${value}n`, "bigint");
+}
+
+function formatNamespaceObject(
+  keys,
+  ctx,
+  value,
+  recurseTimes,
+) {
+  const output = new Array(keys.length);
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      output[i] = formatProperty(
+        ctx,
+        value,
+        recurseTimes,
+        keys[i],
+        kObjectType,
+      );
+    } catch (_err) {
+      // TODO(wafuwfu13): Implement
+      // assert(isNativeError(err) && err.name === 'ReferenceError');
+      // Use the existing functionality. This makes sure the indentation and
+      // line breaks are always correct. Otherwise it is very difficult to keep
+      // this aligned, even though this is a hacky way of dealing with this.
+      const tmp = { [keys[i]]: "" };
+      output[i] = formatProperty(ctx, tmp, recurseTimes, keys[i], kObjectType);
+      const pos = output[i].lastIndexOf(" ");
+      // We have to find the last whitespace and have to replace that value as
+      // it will be visualized as a regular string.
+      output[i] = output[i].slice(0, pos + 1) +
+        ctx.stylize("<uninitialized>", "special");
+    }
+  }
+  // Reset the keys to an empty array. This prevents duplicated inspection.
+  keys.length = 0;
+  return output;
+}
+
+// The array is sparse and/or has extra keys
+function formatSpecialArray(
+  ctx,
+  value,
+  recurseTimes,
+  maxLength,
+  output,
+  i,
+) {
+  const keys = Object.keys(value);
+  let index = i;
+  for (; i < keys.length && output.length < maxLength; i++) {
+    const key = keys[i];
+    const tmp = +key;
+    // Arrays can only have up to 2^32 - 1 entries
+    if (tmp > 2 ** 32 - 2) {
+      break;
+    }
+    if (`${index}` !== key) {
+      if (!numberRegExp.test(key)) {
+        break;
+      }
+      const emptyItems = tmp - index;
+      const ending = emptyItems > 1 ? "s" : "";
+      const message = `<${emptyItems} empty item${ending}>`;
+      output.push(ctx.stylize(message, "undefined"));
+      index = tmp;
+      if (output.length === maxLength) {
+        break;
+      }
+    }
+    output.push(formatProperty(ctx, value, recurseTimes, key, kArrayType));
+    index++;
+  }
+  const remaining = value.length - index;
+  if (output.length !== maxLength) {
+    if (remaining > 0) {
+      const ending = remaining > 1 ? "s" : "";
+      const message = `<${remaining} empty item${ending}>`;
+      output.push(ctx.stylize(message, "undefined"));
+    }
+  } else if (remaining > 0) {
+    output.push(`... ${remaining} more item${remaining > 1 ? "s" : ""}`);
+  }
+  return output;
+}
+
+function getBoxedBase(
+  value,
+  ctx,
+  keys,
+  constructor,
+  tag,
+) {
+  let type;
+  if (isNumberObject(value)) {
+    type = "Number";
+  } else if (isStringObject(value)) {
+    type = "String";
+    // For boxed Strings, we have to remove the 0-n indexed entries,
+    // since they just noisy up the output and are redundant
+    // Make boxed primitive Strings look like such
+    keys.splice(0, value.length);
+  } else if (isBooleanObject(value)) {
+    type = "Boolean";
+  } else if (isBigIntObject(value)) {
+    type = "BigInt";
+  } else {
+    type = "Symbol";
+  }
+  let base = `[${type}`;
+  if (type !== constructor) {
+    if (constructor === null) {
+      base += " (null prototype)";
+    } else {
+      base += ` (${constructor})`;
+    }
+  }
+
+  base += `: ${formatPrimitive(stylizeNoColor, value.valueOf(), ctx)}]`;
+  if (tag !== "" && tag !== constructor) {
+    base += ` [${tag}]`;
+  }
+  if (keys.length !== 0 || ctx.stylize === stylizeNoColor) {
+    return base;
+  }
+  return ctx.stylize(base, type.toLowerCase());
+}
+
+function getClassBase(value, constructor, tag) {
+  // deno-lint-ignore no-prototype-builtins
+  const hasName = value.hasOwnProperty("name");
+  const name = (hasName && value.name) || "(anonymous)";
+  let base = `class ${name}`;
+  if (constructor !== "Function" && constructor !== null) {
+    base += ` [${constructor}]`;
+  }
+  if (tag !== "" && constructor !== tag) {
+    base += ` [${tag}]`;
+  }
+  if (constructor !== null) {
+    const superName = Object.getPrototypeOf(value).name;
+    if (superName) {
+      base += ` extends ${superName}`;
+    }
+  } else {
+    base += " extends [null prototype]";
+  }
+  return `[${base}]`;
+}
+
+function reduceToSingleString(
+  ctx,
+  output,
+  base,
+  braces,
+  extrasType,
+  recurseTimes,
+  value,
+) {
+  if (ctx.compact !== true) {
+    if (typeof ctx.compact === "number" && ctx.compact >= 1) {
+      // Memorize the original output length. In case the output is grouped,
+      // prevent lining up the entries on a single line.
+      const entries = output.length;
+      // Group array elements together if the array contains at least six
+      // separate entries.
+      if (extrasType === kArrayExtrasType && entries > 6) {
+        output = groupArrayElements(ctx, output, value);
+      }
+      // `ctx.currentDepth` is set to the most inner depth of the currently
+      // inspected object part while `recurseTimes` is the actual current depth
+      // that is inspected.
+      //
+      // Example:
+      //
+      // const a = { first: [ 1, 2, 3 ], second: { inner: [ 1, 2, 3 ] } }
+      //
+      // The deepest depth of `a` is 2 (a.second.inner) and `a.first` has a max
+      // depth of 1.
+      //
+      // Consolidate all entries of the local most inner depth up to
+      // `ctx.compact`, as long as the properties are smaller than
+      // `ctx.breakLength`.
+      if (
+        ctx.currentDepth - recurseTimes < ctx.compact &&
+        entries === output.length
+      ) {
+        // Line up all entries on a single line in case the entries do not
+        // exceed `breakLength`. Add 10 as constant to start next to all other
+        // factors that may reduce `breakLength`.
+        const start = output.length + ctx.indentationLvl +
+          braces[0].length + base.length + 10;
+        if (isBelowBreakLength(ctx, output, start, base)) {
+          return `${base ? `${base} ` : ""}${braces[0]} ${join(output, ", ")}` +
+            ` ${braces[1]}`;
+        }
+      }
+    }
+    // Line up each entry on an individual line.
+    const indentation = `\n${" ".repeat(ctx.indentationLvl)}`;
+    return `${base ? `${base} ` : ""}${braces[0]}${indentation}  ` +
+      `${join(output, `,${indentation}  `)}${ctx.trailingComma ? "," : ""}${indentation}${braces[1]}`;
+  }
+  // Line up all entries on a single line in case the entries do not exceed
+  // `breakLength`.
+  if (isBelowBreakLength(ctx, output, 0, base)) {
+    return `${braces[0]}${base ? ` ${base}` : ""} ${join(output, ", ")} ` +
+      braces[1];
+  }
+  const indentation = " ".repeat(ctx.indentationLvl);
+  // If the opening "brace" is too large, like in the case of "Set {",
+  // we need to force the first item to be on the next line or the
+  // items will not line up correctly.
+  const ln = base === "" && braces[0].length === 1
+    ? " "
+    : `${base ? ` ${base}` : ""}\n${indentation}  `;
+  // Line up each entry on an individual line.
+  return `${braces[0]}${ln}${join(output, `,\n${indentation}  `)} ${braces[1]}`;
+}
+
+// The built-in Array#join is slower in v8 6.0
+function join(output, separator) {
+  let str = "";
+  if (output.length !== 0) {
+    const lastIndex = output.length - 1;
+    for (let i = 0; i < lastIndex; i++) {
+      // It is faster not to use a template string here
+      str += output[i];
+      str += separator;
+    }
+    str += output[lastIndex];
+  }
+  return str;
+}
+
+function groupArrayElements(ctx, output, value) {
+  let totalLength = 0;
+  let maxLength = 0;
+  let i = 0;
+  let outputLength = output.length;
+  if (ctx.maxArrayLength < output.length) {
+    // This makes sure the "... n more items" part is not taken into account.
+    outputLength--;
+  }
+  const separatorSpace = 2; // Add 1 for the space and 1 for the separator.
+  const dataLen = new Array(outputLength);
+  // Calculate the total length of all output entries and the individual max
+  // entries length of all output entries. We have to remove colors first,
+  // otherwise the length would not be calculated properly.
+  for (; i < outputLength; i++) {
+    const len = getStringWidth(output[i], ctx.colors);
+    dataLen[i] = len;
+    totalLength += len + separatorSpace;
+    if (maxLength < len) {
+      maxLength = len;
+    }
+  }
+  // Add two to `maxLength` as we add a single whitespace character plus a comma
+  // in-between two entries.
+  const actualMax = maxLength + separatorSpace;
+  // Check if at least three entries fit next to each other and prevent grouping
+  // of arrays that contains entries of very different length (i.e., if a single
+  // entry is longer than 1/5 of all other entries combined). Otherwise the
+  // space in-between small entries would be enormous.
+  if (
+    actualMax * 3 + ctx.indentationLvl < ctx.breakLength &&
+    (totalLength / actualMax > 5 || maxLength <= 6)
+  ) {
+    const approxCharHeights = 2.5;
+    const averageBias = Math.sqrt(actualMax - totalLength / output.length);
+    const biasedMax = Math.max(actualMax - 3 - averageBias, 1);
+    // Dynamically check how many columns seem possible.
+    const columns = Math.min(
+      // Ideally a square should be drawn. We expect a character to be about 2.5
+      // times as high as wide. This is the area formula to calculate a square
+      // which contains n rectangles of size `actualMax * approxCharHeights`.
+      // Divide that by `actualMax` to receive the correct number of columns.
+      // The added bias increases the columns for short entries.
+      Math.round(
+        Math.sqrt(
+          approxCharHeights * biasedMax * outputLength,
+        ) / biasedMax,
+      ),
+      // Do not exceed the breakLength.
+      Math.floor((ctx.breakLength - ctx.indentationLvl) / actualMax),
+      // Limit array grouping for small `compact` modes as the user requested
+      // minimal grouping.
+      ctx.compact * 4,
+      // Limit the columns to a maximum of fifteen.
+      15,
+    );
+    // Return with the original output if no grouping should happen.
+    if (columns <= 1) {
+      return output;
+    }
+    const tmp = [];
+    const maxLineLength = [];
+    for (let i = 0; i < columns; i++) {
+      let lineMaxLength = 0;
+      for (let j = i; j < output.length; j += columns) {
+        if (dataLen[j] > lineMaxLength) {
+          lineMaxLength = dataLen[j];
+        }
+      }
+      lineMaxLength += separatorSpace;
+      maxLineLength[i] = lineMaxLength;
+    }
+    let order = String.prototype.padStart;
+    if (value !== undefined) {
+      for (let i = 0; i < output.length; i++) {
+        if (typeof value[i] !== "number" && typeof value[i] !== "bigint") {
+          order = String.prototype.padEnd;
+          break;
+        }
+      }
+    }
+    // Each iteration creates a single line of grouped entries.
+    for (let i = 0; i < outputLength; i += columns) {
+      // The last lines may contain less entries than columns.
+      const max = Math.min(i + columns, outputLength);
+      let str = "";
+      let j = i;
+      for (; j < max - 1; j++) {
+        // Calculate extra color padding in case it's active. This has to be
+        // done line by line as some lines might contain more colors than
+        // others.
+        const padding = maxLineLength[j - i] + output[j].length - dataLen[j];
+        str += `${output[j]}, `.padStart(padding, " ");
+      }
+      if (order === String.prototype.padStart) {
+        const padding = maxLineLength[j - i] +
+          output[j].length -
+          dataLen[j] -
+          separatorSpace;
+        str += output[j].padStart(padding, " ");
+      } else {
+        str += output[j];
+      }
+      Array.prototype.push.call(tmp, str);
+    }
+    if (ctx.maxArrayLength < output.length) {
+      Array.prototype.push.call(tmp, output[outputLength]);
+    }
+    output = tmp;
+  }
+  return output;
+}
+
+function formatMapIterInner(
+  ctx,
+  recurseTimes,
+  entries,
+  state,
+) {
+  const maxArrayLength = Math.max(ctx.maxArrayLength, 0);
+  // Entries exist as [key1, val1, key2, val2, ...]
+  const len = entries.length / 2;
+  const remaining = len - maxArrayLength;
+  const maxLength = Math.min(maxArrayLength, len);
+  let output = new Array(maxLength);
+  let i = 0;
+  ctx.indentationLvl += 2;
+  if (state === kWeak) {
+    for (; i < maxLength; i++) {
+      const pos = i * 2;
+      output[i] = `${formatValue(ctx, entries[pos], recurseTimes)} => ${
+        formatValue(ctx, entries[pos + 1], recurseTimes)
+      }`;
+    }
+    // Sort all entries to have a halfway reliable output (if more entries than
+    // retrieved ones exist, we can not reliably return the same output) if the
+    // output is not sorted anyway.
+    if (!ctx.sorted) {
+      output = output.sort();
+    }
+  } else {
+    for (; i < maxLength; i++) {
+      const pos = i * 2;
+      const res = [
+        formatValue(ctx, entries[pos], recurseTimes),
+        formatValue(ctx, entries[pos + 1], recurseTimes),
+      ];
+      output[i] = reduceToSingleString(
+        ctx,
+        res,
+        "",
+        ["[", "]"],
+        kArrayExtrasType,
+        recurseTimes,
+      );
+    }
+  }
+  ctx.indentationLvl -= 2;
+  if (remaining > 0) {
+    output.push(`... ${remaining} more item${remaining > 1 ? "s" : ""}`);
+  }
+  return output;
+}
+
+function formatSetIterInner(
+  ctx,
+  recurseTimes,
+  entries,
+  state,
+) {
+  const maxArrayLength = Math.max(ctx.maxArrayLength, 0);
+  const maxLength = Math.min(maxArrayLength, entries.length);
+  const output = new Array(maxLength);
+  ctx.indentationLvl += 2;
+  for (let i = 0; i < maxLength; i++) {
+    output[i] = formatValue(ctx, entries[i], recurseTimes);
+  }
+  ctx.indentationLvl -= 2;
+  if (state === kWeak && !ctx.sorted) {
+    // Sort all entries to have a halfway reliable output (if more entries than
+    // retrieved ones exist, we can not reliably return the same output) if the
+    // output is not sorted anyway.
+    output.sort();
+  }
+  const remaining = entries.length - maxLength;
+  if (remaining > 0) {
+    Array.prototype.push.call(
+      output,
+      `... ${remaining} more item${remaining > 1 ? "s" : ""}`,
+    );
+  }
+  return output;
+}
+
+// Regex used for ansi escape code splitting
+// Adopted from https://github.com/chalk/ansi-regex/blob/HEAD/index.js
+// License: MIT, authors: @sindresorhus, Qix-, arjunmehta and LitoMore
+// Matches all ansi escape code sequences in a string
+const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
+  "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
+const ansi = new RegExp(ansiPattern, "g");
+
+/**
+ * Returns the number of columns required to display the given string.
+ */
+export function getStringWidth(str, removeControlChars = true) {
+  let width = 0;
+
+  if (removeControlChars) {
+    str = stripVTControlCharacters(str);
+  }
+  str = str.normalize("NFC");
+  for (const char of str[Symbol.iterator]()) {
+    const code = char.codePointAt(0);
+    if (isFullWidthCodePoint(code)) {
+      width += 2;
+    } else if (!isZeroWidthCodePoint(code)) {
+      width++;
+    }
+  }
+
+  return width;
+}
+
+const isZeroWidthCodePoint = (code) => {
+  return code <= 0x1F || // C0 control codes
+    (code >= 0x7F && code <= 0x9F) || // C1 control codes
+    (code >= 0x300 && code <= 0x36F) || // Combining Diacritical Marks
+    (code >= 0x200B && code <= 0x200F) || // Modifying Invisible Characters
+    // Combining Diacritical Marks for Symbols
+    (code >= 0x20D0 && code <= 0x20FF) ||
+    (code >= 0xFE00 && code <= 0xFE0F) || // Variation Selectors
+    (code >= 0xFE20 && code <= 0xFE2F) || // Combining Half Marks
+    (code >= 0xE0100 && code <= 0xE01EF); // Variation Selectors
+};
+
+function hasBuiltInToString(value) {
+  // TODO(wafuwafu13): Implement
+  // // Prevent triggering proxy traps.
+  // const getFullProxy = false;
+  // const proxyTarget = getProxyDetails(value, getFullProxy);
+  const proxyTarget = undefined;
+  if (proxyTarget !== undefined) {
+    value = proxyTarget;
+  }
+
+  // Count objects that have no `toString` function as built-in.
+  if (typeof value.toString !== "function") {
+    return true;
+  }
+
+  // The object has a own `toString` property. Thus it's not not a built-in one.
+  if (Object.prototype.hasOwnProperty.call(value, "toString")) {
+    return false;
+  }
+
+  // Find the object that has the `toString` property as own property in the
+  // prototype chain.
+  let pointer = value;
+  do {
+    pointer = Object.getPrototypeOf(pointer);
+  } while (!Object.prototype.hasOwnProperty.call(pointer, "toString"));
+
+  // Check closer if the object is a built-in.
+  const descriptor = Object.getOwnPropertyDescriptor(pointer, "constructor");
+  return descriptor !== undefined &&
+    typeof descriptor.value === "function" &&
+    builtInObjects.has(descriptor.value.name);
+}
+
+const firstErrorLine = (error) => error.message.split("\n", 1)[0];
+let CIRCULAR_ERROR_MESSAGE;
+function tryStringify(arg) {
+  try {
+    return JSON.stringify(arg);
+  } catch (err) {
+    // Populate the circular error message lazily
+    if (!CIRCULAR_ERROR_MESSAGE) {
+      try {
+        const a = {};
+        a.a = a;
+        JSON.stringify(a);
+      } catch (circularError) {
+        CIRCULAR_ERROR_MESSAGE = firstErrorLine(circularError);
+      }
+    }
+    if (
+      err.name === "TypeError" &&
+      firstErrorLine(err) === CIRCULAR_ERROR_MESSAGE
+    ) {
+      return "[Circular]";
+    }
+    throw err;
+  }
+}
+
+export function format(...args) {
+  return formatWithOptionsInternal(undefined, args);
+}
+
+export function formatWithOptions(inspectOptions, ...args) {
+  if (typeof inspectOptions !== "object" || inspectOptions === null) {
+    throw new Error(); // todo
+  }
+  return formatWithOptionsInternal(inspectOptions, args);
+}
+
+function formatNumberNoColor(number, options) {
+  return formatNumber(
+    stylizeNoColor,
+    number,
+    options?.numericSeparator ?? inspectDefaultOptions.numericSeparator,
+  );
+}
+
+function formatBigIntNoColor(bigint, options) {
+  return formatBigInt(
+    stylizeNoColor,
+    bigint,
+    options?.numericSeparator ?? inspectDefaultOptions.numericSeparator,
+  );
+}
+
+function formatWithOptionsInternal(inspectOptions, args) {
+  const first = args[0];
+  let a = 0;
+  let str = "";
+  let join = "";
+
+  if (typeof first === "string") {
+    if (args.length === 1) {
+      return first;
+    }
+    let tempStr;
+    let lastPos = 0;
+
+    for (let i = 0; i < first.length - 1; i++) {
+      if (first.charCodeAt(i) === 37) { // '%'
+        const nextChar = first.charCodeAt(++i);
+        if (a + 1 !== args.length) {
+          switch (nextChar) {
+            // deno-lint-ignore no-case-declarations
+            case 115: // 's'
+              const tempArg = args[++a];
+              if (typeof tempArg === "number") {
+                tempStr = formatNumberNoColor(tempArg, inspectOptions);
+              } else if (typeof tempArg === "bigint") {
+                tempStr = formatBigIntNoColor(tempArg, inspectOptions);
+              } else if (
+                typeof tempArg !== "object" ||
+                tempArg === null ||
+                !hasBuiltInToString(tempArg)
+              ) {
+                tempStr = String(tempArg);
+              } else {
+                tempStr = inspect(tempArg, {
+                  ...inspectOptions,
+                  compact: 3,
+                  colors: false,
+                  depth: 0,
+                });
+              }
+              break;
+            case 106: // 'j'
+              tempStr = tryStringify(args[++a]);
+              break;
+            // deno-lint-ignore no-case-declarations
+            case 100: // 'd'
+              const tempNum = args[++a];
+              if (typeof tempNum === "bigint") {
+                tempStr = formatBigIntNoColor(tempNum, inspectOptions);
+              } else if (typeof tempNum === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = formatNumberNoColor(Number(tempNum), inspectOptions);
+              }
+              break;
+            case 79: // 'O'
+              tempStr = inspect(args[++a], inspectOptions);
+              break;
+            case 111: // 'o'
+              tempStr = inspect(args[++a], {
+                ...inspectOptions,
+                showHidden: true,
+                showProxy: true,
+                depth: 4,
+              });
+              break;
+            // deno-lint-ignore no-case-declarations
+            case 105: // 'i'
+              const tempInteger = args[++a];
+              if (typeof tempInteger === "bigint") {
+                tempStr = formatBigIntNoColor(tempInteger, inspectOptions);
+              } else if (typeof tempInteger === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = formatNumberNoColor(
+                  Number.parseInt(tempInteger),
+                  inspectOptions,
+                );
+              }
+              break;
+            // deno-lint-ignore no-case-declarations
+            case 102: // 'f'
+              const tempFloat = args[++a];
+              if (typeof tempFloat === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = formatNumberNoColor(
+                  Number.parseFloat(tempFloat),
+                  inspectOptions,
+                );
+              }
+              break;
+            case 99: // 'c'
+              a += 1;
+              tempStr = "";
+              break;
+            case 37: // '%'
+              str += first.slice(lastPos, i);
+              lastPos = i + 1;
+              continue;
+            default: // Any other character is not a correct placeholder
+              continue;
+          }
+          if (lastPos !== i - 1) {
+            str += first.slice(lastPos, i - 1);
+          }
+          str += tempStr;
+          lastPos = i + 1;
+        } else if (nextChar === 37) {
+          str += first.slice(lastPos, i);
+          lastPos = i + 1;
+        }
+      }
+    }
+    if (lastPos !== 0) {
+      a++;
+      join = " ";
+      if (lastPos < first.length) {
+        str += first.slice(lastPos);
+      }
+    }
+  }
+
+  while (a < args.length) {
+    const value = args[a];
+    str += join;
+    str += typeof value !== "string" ? inspect(value, inspectOptions) : value;
+    join = " ";
+    a++;
+  }
+  return str;
+}
+
+/**
+ * Remove all VT control characters. Use to estimate displayed string width.
+ */
+export function stripVTControlCharacters(str) {
+  return str.replace(ansi, "");
+}
+
+// endregion
 
 function hasOwnProperty(obj, v) {
   if (obj == null) {
@@ -132,23 +2544,8 @@ function hasOwnProperty(obj, v) {
   return ObjectPrototypeHasOwnProperty(obj, v);
 }
 
-function propertyIsEnumerable(obj, prop) {
-  if (
-    obj == null ||
-    typeof obj.propertyIsEnumerable !== "function"
-  ) {
-    return false;
-  }
-
-  return ObjectPrototypePropertyIsEnumerable(obj, prop);
-}
-
 // Copyright Joyent, Inc. and other Node contributors. MIT license.
 // Forked from Node's lib/internal/cli_table.js
-
-function isTypedArray(x) {
-  return TypedArrayPrototypeGetSymbolToStringTag(x) !== undefined;
-}
 
 const tableChars = {
   middleMiddle: "\u2500",
@@ -203,17 +2600,6 @@ function isFullWidthCodePoint(code) {
       // CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
       (code >= 0x20000 && code <= 0x3fffd))
   );
-}
-
-function getStringWidth(str) {
-  str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
-  let width = 0;
-
-  for (const ch of new SafeStringIterator(str)) {
-    width += isFullWidthCodePoint(StringPrototypeCodePointAt(ch, 0)) ? 2 : 1;
-  }
-
-  return width;
 }
 
 function renderRow(row, columnWidths, columnRightAlign) {
@@ -294,452 +2680,45 @@ function cliTable(head, columns) {
 // However, we prefer double quotes as the default.
 const QUOTES = ['"', "'", "`"];
 
-const DEFAULT_INSPECT_OPTIONS = {
-  depth: 4,
-  indentLevel: 0,
-  sorted: false,
-  trailingComma: false,
-  compact: true,
-  iterableLimit: 100,
-  showProxy: false,
-  colors: false,
-  getters: false,
+const DEFAULT_INSPECT_OPTIONS = {};
+
+const denoInspectDefaultOptions = {
   showHidden: false,
-  strAbbreviateSize: 100,
+  depth: 4,
+  colors: false,
+  showProxy: false,
+  breakLength: 80,
+  compact: true,
+  sorted: false,
+  getters: false,
+
+  // node only
+  maxArrayLength: 100, // iterableLimit: 100,
+  maxStringLength: 10000, // deno: strAbbreviateSize: 100
+  customInspect: true, // TODO
+
+  // deno only
   /** You can override the quotes preference in inspectString.
    * Used by util.inspect() */
   // TODO(kt3k): Consider using symbol as a key to hide this from the public
   // API.
-  quotes: QUOTES,
+  quotes: ['"', "'", "`"],
+  trailingComma: false,
+  indentLevel: 0,
 };
 
 const DEFAULT_INDENT = "  "; // Default indent string
 
-const LINE_BREAKING_LENGTH = 80;
-const MIN_GROUP_LENGTH = 6;
 const STR_ABBREVIATE_SIZE = 100;
 
-const PROMISE_STRING_BASE_LENGTH = 12;
 
 class CSI {
   static kClear = "\x1b[1;1H";
   static kClearScreenDown = "\x1b[0J";
 }
 
-function getClassInstanceName(instance) {
-  if (typeof instance != "object") {
-    return "";
-  }
-  const constructor = instance?.constructor;
-  if (typeof constructor == "function") {
-    return constructor.name ?? "";
-  }
-  return "";
-}
-
 function maybeColor(fn, inspectOptions) {
   return inspectOptions.colors ? fn : (s) => s;
-}
-
-function inspectFunction(value, inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  if (
-    ReflectHas(value, customInspect) &&
-    typeof value[customInspect] === "function"
-  ) {
-    return String(value[customInspect](inspect, inspectOptions));
-  }
-  // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
-  let cstrName = ObjectGetPrototypeOf(value)?.constructor?.name;
-  if (!cstrName) {
-    // If prototype is removed or broken,
-    // use generic 'Function' instead.
-    cstrName = "Function";
-  }
-  const stringValue = FunctionPrototypeToString(value);
-  // Might be Class
-  if (StringPrototypeStartsWith(stringValue, "class")) {
-    cstrName = "Class";
-  }
-
-  // Our function may have properties, so we want to format those
-  // as if our function was an object
-  // If we didn't find any properties, we will just append an
-  // empty suffix.
-  let suffix = ``;
-  let refStr = "";
-  if (
-    ObjectKeys(value).length > 0 ||
-    ObjectGetOwnPropertySymbols(value).length > 0
-  ) {
-    const { 0: propString, 1: refIndex } = inspectRawObject(
-      value,
-      inspectOptions,
-    );
-    refStr = refIndex;
-    // Filter out the empty string for the case we only have
-    // non-enumerable symbols.
-    if (
-      propString.length > 0 &&
-      propString !== "{}"
-    ) {
-      suffix = ` ${propString}`;
-    }
-  }
-
-  if (value.name && value.name !== "anonymous") {
-    // from MDN spec
-    return cyan(`${refStr}[${cstrName}: ${value.name}]`) + suffix;
-  }
-  return cyan(`${refStr}[${cstrName} (anonymous)]`) + suffix;
-}
-
-function inspectIterable(
-  value,
-  options,
-  inspectOptions,
-) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  if (inspectOptions.indentLevel >= inspectOptions.depth) {
-    return cyan(`[${options.typeName}]`);
-  }
-
-  const entries = [];
-  let iter;
-  let valueIsTypedArray = false;
-  let entriesLength;
-
-  switch (options.typeName) {
-    case "Map":
-      iter = MapPrototypeEntries(value);
-      entriesLength = MapPrototypeGetSize(value);
-      break;
-    case "Set":
-      iter = SetPrototypeEntries(value);
-      entriesLength = SetPrototypeGetSize(value);
-      break;
-    case "Array":
-      entriesLength = value.length;
-      break;
-    default:
-      if (isTypedArray(value)) {
-        entriesLength = TypedArrayPrototypeGetLength(value);
-        iter = ArrayPrototypeEntries(value);
-        valueIsTypedArray = true;
-      } else {
-        throw new TypeError("unreachable");
-      }
-  }
-
-  let entriesLengthWithoutEmptyItems = entriesLength;
-  if (options.typeName === "Array") {
-    for (
-      let i = 0, j = 0;
-      i < entriesLength && j < inspectOptions.iterableLimit;
-      i++, j++
-    ) {
-      inspectOptions.indentLevel++;
-      const { entry, skipTo } = options.entryHandler(
-        [i, value[i]],
-        inspectOptions,
-      );
-      ArrayPrototypePush(entries, entry);
-      inspectOptions.indentLevel--;
-
-      if (skipTo) {
-        // subtract skipped (empty) items
-        entriesLengthWithoutEmptyItems -= skipTo - i;
-        i = skipTo;
-      }
-    }
-  } else {
-    let i = 0;
-    while (true) {
-      let el;
-      try {
-        const res = iter.next();
-        if (res.done) {
-          break;
-        }
-        el = res.value;
-      } catch (err) {
-        if (valueIsTypedArray) {
-          // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
-          // is detached. We don't want to show the exception in that case, so
-          // we catch it here and pretend the ArrayBuffer has no entries (like
-          // Chrome DevTools does).
-          break;
-        }
-        throw err;
-      }
-      if (i < inspectOptions.iterableLimit) {
-        inspectOptions.indentLevel++;
-        ArrayPrototypePush(
-          entries,
-          options.entryHandler(
-            el,
-            inspectOptions,
-          ),
-        );
-        inspectOptions.indentLevel--;
-      } else {
-        break;
-      }
-      i++;
-    }
-  }
-
-  if (options.sort) {
-    ArrayPrototypeSort(entries);
-  }
-
-  if (entriesLengthWithoutEmptyItems > inspectOptions.iterableLimit) {
-    const nmore = entriesLengthWithoutEmptyItems -
-      inspectOptions.iterableLimit;
-    ArrayPrototypePush(entries, `... ${nmore} more items`);
-  }
-
-  const iPrefix = `${options.displayName ? options.displayName + " " : ""}`;
-
-  const level = inspectOptions.indentLevel;
-  const initIndentation = `\n${
-    StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
-  }`;
-  const entryIndentation = `,\n${
-    StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
-  }`;
-  const closingDelimIndentation = StringPrototypeRepeat(
-    DEFAULT_INDENT,
-    level,
-  );
-  const closingIndentation = `${
-    inspectOptions.trailingComma ? "," : ""
-  }\n${closingDelimIndentation}`;
-
-  let iContent;
-  if (entries.length === 0 && !inspectOptions.compact) {
-    iContent = `\n${closingDelimIndentation}`;
-  } else if (options.group && entries.length > MIN_GROUP_LENGTH) {
-    const groups = groupEntries(entries, level, value);
-    iContent = `${initIndentation}${
-      ArrayPrototypeJoin(groups, entryIndentation)
-    }${closingIndentation}`;
-  } else {
-    iContent = entries.length === 0
-      ? ""
-      : ` ${ArrayPrototypeJoin(entries, ", ")} `;
-    if (
-      colors.stripColor(iContent).length > LINE_BREAKING_LENGTH ||
-      !inspectOptions.compact
-    ) {
-      iContent = `${initIndentation}${
-        ArrayPrototypeJoin(entries, entryIndentation)
-      }${closingIndentation}`;
-    }
-  }
-
-  return `${iPrefix}${options.delims[0]}${iContent}${options.delims[1]}`;
-}
-
-// Ported from Node.js
-// Copyright Node.js contributors. All rights reserved.
-function groupEntries(
-  entries,
-  level,
-  value,
-  iterableLimit = 100,
-) {
-  let totalLength = 0;
-  let maxLength = 0;
-  let entriesLength = entries.length;
-  if (iterableLimit < entriesLength) {
-    // This makes sure the "... n more items" part is not taken into account.
-    entriesLength--;
-  }
-  const separatorSpace = 2; // Add 1 for the space and 1 for the separator.
-  const dataLen = new Array(entriesLength);
-  // Calculate the total length of all output entries and the individual max
-  // entries length of all output entries.
-  // IN PROGRESS: Colors are being taken into account.
-  for (let i = 0; i < entriesLength; i++) {
-    // Taking colors into account: removing the ANSI color
-    // codes from the string before measuring its length
-    const len = colors.stripColor(entries[i]).length;
-    dataLen[i] = len;
-    totalLength += len + separatorSpace;
-    if (maxLength < len) maxLength = len;
-  }
-  // Add two to `maxLength` as we add a single whitespace character plus a comma
-  // in-between two entries.
-  const actualMax = maxLength + separatorSpace;
-  // Check if at least three entries fit next to each other and prevent grouping
-  // of arrays that contains entries of very different length (i.e., if a single
-  // entry is longer than 1/5 of all other entries combined). Otherwise the
-  // space in-between small entries would be enormous.
-  if (
-    actualMax * 3 + (level + 1) < LINE_BREAKING_LENGTH &&
-    (totalLength / actualMax > 5 || maxLength <= 6)
-  ) {
-    const approxCharHeights = 2.5;
-    const averageBias = MathSqrt(actualMax - totalLength / entries.length);
-    const biasedMax = MathMax(actualMax - 3 - averageBias, 1);
-    // Dynamically check how many columns seem possible.
-    const columns = MathMin(
-      // Ideally a square should be drawn. We expect a character to be about 2.5
-      // times as high as wide. This is the area formula to calculate a square
-      // which contains n rectangles of size `actualMax * approxCharHeights`.
-      // Divide that by `actualMax` to receive the correct number of columns.
-      // The added bias increases the columns for short entries.
-      MathRound(
-        MathSqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax,
-      ),
-      // Do not exceed the breakLength.
-      MathFloor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
-      // Limit the columns to a maximum of fifteen.
-      15,
-    );
-    // Return with the original output if no grouping should happen.
-    if (columns <= 1) {
-      return entries;
-    }
-    const tmp = [];
-    const maxLineLength = [];
-    for (let i = 0; i < columns; i++) {
-      let lineMaxLength = 0;
-      for (let j = i; j < entries.length; j += columns) {
-        if (dataLen[j] > lineMaxLength) lineMaxLength = dataLen[j];
-      }
-      lineMaxLength += separatorSpace;
-      maxLineLength[i] = lineMaxLength;
-    }
-    let order = "padStart";
-    if (value !== undefined) {
-      for (let i = 0; i < entries.length; i++) {
-        if (
-          typeof value[i] !== "number" &&
-          typeof value[i] !== "bigint"
-        ) {
-          order = "padEnd";
-          break;
-        }
-      }
-    }
-    // Each iteration creates a single line of grouped entries.
-    for (let i = 0; i < entriesLength; i += columns) {
-      // The last lines may contain less entries than columns.
-      const max = MathMin(i + columns, entriesLength);
-      let str = "";
-      let j = i;
-      for (; j < max - 1; j++) {
-        const lengthOfColorCodes = entries[j].length - dataLen[j];
-        const padding = maxLineLength[j - i] + lengthOfColorCodes;
-        str += `${entries[j]}, `[order](padding, " ");
-      }
-      if (order === "padStart") {
-        const lengthOfColorCodes = entries[j].length - dataLen[j];
-        const padding = maxLineLength[j - i] +
-          lengthOfColorCodes -
-          separatorSpace;
-        str += StringPrototypePadStart(entries[j], padding, " ");
-      } else {
-        str += entries[j];
-      }
-      ArrayPrototypePush(tmp, str);
-    }
-    if (iterableLimit < entries.length) {
-      ArrayPrototypePush(tmp, entries[entriesLength]);
-    }
-    entries = tmp;
-  }
-  return entries;
-}
-
-let circular;
-function handleCircular(value, cyan) {
-  let index = 1;
-  if (circular === undefined) {
-    circular = new Map();
-    MapPrototypeSet(circular, value, index);
-  } else {
-    index = MapPrototypeGet(circular, value);
-    if (index === undefined) {
-      index = MapPrototypeGetSize(circular) + 1;
-      MapPrototypeSet(circular, value, index);
-    }
-  }
-  // Circular string is cyan
-  return cyan(`[Circular *${index}]`);
-}
-
-function _inspectValue(
-  value,
-  inspectOptions,
-) {
-  const proxyDetails = core.getProxyDetails(value);
-  if (proxyDetails != null && inspectOptions.showProxy) {
-    return inspectProxy(proxyDetails, inspectOptions);
-  }
-
-  const green = maybeColor(colors.green, inspectOptions);
-  const yellow = maybeColor(colors.yellow, inspectOptions);
-  const gray = maybeColor(colors.gray, inspectOptions);
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  const bold = maybeColor(colors.bold, inspectOptions);
-  const red = maybeColor(colors.red, inspectOptions);
-
-  switch (typeof value) {
-    case "string":
-      return green(quoteString(value, inspectOptions));
-    case "number": // Numbers are yellow
-      // Special handling of -0
-      return yellow(ObjectIs(value, -0) ? "-0" : `${value}`);
-    case "boolean": // booleans are yellow
-      return yellow(String(value));
-    case "undefined": // undefined is gray
-      return gray(String(value));
-    case "symbol": // Symbols are green
-      return green(maybeQuoteSymbol(value, inspectOptions));
-    case "bigint": // Bigints are yellow
-      return yellow(`${value}n`);
-    case "function": // Function string is cyan
-      if (ctxHas(value)) {
-        // Circular string is cyan
-        return handleCircular(value, cyan);
-      }
-
-      return inspectFunction(value, inspectOptions);
-    case "object": // null is bold
-      if (value === null) {
-        return bold("null");
-      }
-
-      if (ctxHas(value)) {
-        return handleCircular(value, cyan);
-      }
-
-      return inspectObject(
-        value,
-        inspectOptions,
-        proxyDetails,
-      );
-    default:
-      // Not implemented is red
-      return red("[Not Implemented]");
-  }
-}
-
-function inspectValue(
-  value,
-  inspectOptions,
-) {
-  ArrayPrototypePush(CTX_STACK, value);
-  let x;
-  try {
-    x = _inspectValue(value, inspectOptions);
-  } finally {
-    ArrayPrototypePop(CTX_STACK);
-  }
-  return x;
 }
 
 /** Surround the string in quotes.
@@ -750,7 +2729,7 @@ function inspectValue(
  * Insert a backslash before any occurrence of the chosen quote symbol and
  * before any backslash.
  */
-function quoteString(string, inspectOptions = DEFAULT_INSPECT_OPTIONS) {
+function quoteString(string, inspectOptions = denoInspectDefaultOptions) {
   const quotes = inspectOptions.quotes;
   const quote =
     ArrayPrototypeFind(quotes, (c) => !StringPrototypeIncludes(string, c)) ??
@@ -792,9 +2771,6 @@ function replaceEscapeSequences(string) {
       ),
   );
 }
-
-const QUOTE_STRING_PATTERN = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_0-9]*$/);
-
 // Surround a string with quotes when it is required (e.g the string not a valid identifier).
 function maybeQuoteString(string, inspectOptions) {
   if (
@@ -804,32 +2780,6 @@ function maybeQuoteString(string, inspectOptions) {
   }
 
   return quoteString(string, inspectOptions);
-}
-
-const QUOTE_SYMBOL_REG = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/);
-
-// Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
-function maybeQuoteSymbol(symbol, inspectOptions) {
-  const description = SymbolPrototypeGetDescription(symbol);
-
-  if (description === undefined) {
-    return SymbolPrototypeToString(symbol);
-  }
-
-  if (RegExpPrototypeTest(QUOTE_SYMBOL_REG, description)) {
-    return SymbolPrototypeToString(symbol);
-  }
-
-  return `Symbol(${quoteString(description, inspectOptions)})`;
-}
-
-const CTX_STACK = [];
-function ctxHas(x) {
-  // Only check parent contexts
-  return ArrayPrototypeIncludes(
-    ArrayPrototypeSlice(CTX_STACK, 0, CTX_STACK.length - 1),
-    x,
-  );
 }
 
 // Print strings when they are inside of arrays or objects with quotes
@@ -849,561 +2799,10 @@ function inspectValueWithQuotes(
       return green(quoteString(trunc, inspectOptions)); // Quoted strings are green
     }
     default:
-      return inspectValue(value, inspectOptions);
+      return formatValue(inspectOptions, value);
   }
 }
 
-function inspectArray(
-  value,
-  inspectOptions,
-) {
-  const gray = maybeColor(colors.gray, inspectOptions);
-  let lastValidIndex = 0;
-  let keys;
-  const options = {
-    typeName: "Array",
-    displayName: "",
-    delims: ["[", "]"],
-    entryHandler: (entry, inspectOptions) => {
-      const { 0: index, 1: val } = entry;
-      let i = index;
-      lastValidIndex = index;
-      if (!ObjectPrototypeHasOwnProperty(value, i)) {
-        let skipTo;
-        keys = keys || ObjectKeys(value);
-        i = value.length;
-        if (keys.length === 0) {
-          // fast path, all items are empty
-          skipTo = i;
-        } else {
-          // Not all indexes are empty or there's a non-index property
-          // Find first non-empty array index
-          while (keys.length) {
-            const key = ArrayPrototypeShift(keys);
-            // check if it's a valid array index
-            if (key > lastValidIndex && key < 2 ** 32 - 1) {
-              i = Number(key);
-              break;
-            }
-          }
-
-          skipTo = i - 1;
-        }
-        const emptyItems = i - index;
-        const ending = emptyItems > 1 ? "s" : "";
-        return {
-          entry: gray(`<${emptyItems} empty item${ending}>`),
-          skipTo,
-        };
-      } else {
-        return { entry: inspectValueWithQuotes(val, inspectOptions) };
-      }
-    },
-    group: inspectOptions.compact,
-    sort: false,
-  };
-  return inspectIterable(value, options, inspectOptions);
-}
-
-function inspectTypedArray(
-  typedArrayName,
-  value,
-  inspectOptions,
-) {
-  const valueLength = value.length;
-  const options = {
-    typeName: typedArrayName,
-    displayName: `${typedArrayName}(${valueLength})`,
-    delims: ["[", "]"],
-    entryHandler: (entry, inspectOptions) => {
-      const val = entry[1];
-      inspectOptions.indentLevel++;
-      const inspectedValue = inspectValueWithQuotes(val, inspectOptions);
-      inspectOptions.indentLevel--;
-      return inspectedValue;
-    },
-    group: inspectOptions.compact,
-    sort: false,
-  };
-  return inspectIterable(value, options, inspectOptions);
-}
-
-function inspectSet(
-  value,
-  inspectOptions,
-) {
-  const options = {
-    typeName: "Set",
-    displayName: "Set",
-    delims: ["{", "}"],
-    entryHandler: (entry, inspectOptions) => {
-      const val = entry[1];
-      inspectOptions.indentLevel++;
-      const inspectedValue = inspectValueWithQuotes(val, inspectOptions);
-      inspectOptions.indentLevel--;
-      return inspectedValue;
-    },
-    group: false,
-    sort: inspectOptions.sorted,
-  };
-  return inspectIterable(value, options, inspectOptions);
-}
-
-function inspectMap(
-  value,
-  inspectOptions,
-) {
-  const options = {
-    typeName: "Map",
-    displayName: "Map",
-    delims: ["{", "}"],
-    entryHandler: (entry, inspectOptions) => {
-      const { 0: key, 1: val } = entry;
-      inspectOptions.indentLevel++;
-      const inspectedValue = `${
-        inspectValueWithQuotes(key, inspectOptions)
-      } => ${inspectValueWithQuotes(val, inspectOptions)}`;
-      inspectOptions.indentLevel--;
-      return inspectedValue;
-    },
-    group: false,
-    sort: inspectOptions.sorted,
-  };
-  return inspectIterable(
-    value,
-    options,
-    inspectOptions,
-  );
-}
-
-function inspectWeakSet(inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  return `WeakSet { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
-}
-
-function inspectWeakMap(inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  return `WeakMap { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
-}
-
-function inspectDate(value, inspectOptions) {
-  // without quotes, ISO format, in magenta like before
-  const magenta = maybeColor(colors.magenta, inspectOptions);
-  return magenta(
-    isInvalidDate(value) ? "Invalid Date" : DatePrototypeToISOString(value),
-  );
-}
-
-function inspectRegExp(value, inspectOptions) {
-  const red = maybeColor(colors.red, inspectOptions);
-  return red(RegExpPrototypeToString(value)); // RegExps are red
-}
-
-const AGGREGATE_ERROR_HAS_AT_PATTERN = new SafeRegExp(/\s+at/);
-const AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN = new SafeRegExp(/^(?!\s*$)/gm);
-
-function inspectError(value, cyan) {
-  const causes = [value];
-
-  let err = value;
-  while (err.cause) {
-    if (ArrayPrototypeIncludes(causes, err.cause)) {
-      ArrayPrototypePush(causes, handleCircular(err.cause, cyan));
-      break;
-    } else {
-      ArrayPrototypePush(causes, err.cause);
-      err = err.cause;
-    }
-  }
-
-  const refMap = new Map();
-  for (let i = 0; i < causes.length; ++i) {
-    const cause = causes[i];
-    if (circular !== undefined) {
-      const index = MapPrototypeGet(circular, cause);
-      if (index !== undefined) {
-        MapPrototypeSet(refMap, cause, cyan(`<ref *${index}> `));
-      }
-    }
-  }
-  ArrayPrototypeShift(causes);
-
-  let finalMessage = MapPrototypeGet(refMap, value) ?? "";
-
-  if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, value)) {
-    const stackLines = StringPrototypeSplit(value.stack, "\n");
-    while (true) {
-      const line = ArrayPrototypeShift(stackLines);
-      if (RegExpPrototypeTest(AGGREGATE_ERROR_HAS_AT_PATTERN, line)) {
-        ArrayPrototypeUnshift(stackLines, line);
-        break;
-      } else if (typeof line === "undefined") {
-        break;
-      }
-
-      finalMessage += line;
-      finalMessage += "\n";
-    }
-    const aggregateMessage = ArrayPrototypeJoin(
-      ArrayPrototypeMap(
-        value.errors,
-        (error) =>
-          StringPrototypeReplace(
-            inspectArgs([error]),
-            AGGREGATE_ERROR_NOT_EMPTY_LINE_PATTERN,
-            StringPrototypeRepeat(" ", 4),
-          ),
-      ),
-      "\n",
-    );
-    finalMessage += aggregateMessage;
-    finalMessage += "\n";
-    finalMessage += ArrayPrototypeJoin(stackLines, "\n");
-  } else {
-    finalMessage += value.stack;
-  }
-
-  finalMessage += ArrayPrototypeJoin(
-    ArrayPrototypeMap(
-      causes,
-      (cause) =>
-        "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-        (cause?.stack ?? cause),
-    ),
-    "",
-  );
-
-  return finalMessage;
-}
-
-function inspectStringObject(value, inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  return cyan(`[String: "${StringPrototypeToString(value)}"]`); // wrappers are in cyan
-}
-
-function inspectBooleanObject(value, inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  return cyan(`[Boolean: ${BooleanPrototypeToString(value)}]`); // wrappers are in cyan
-}
-
-function inspectNumberObject(value, inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  // Special handling of -0
-  return cyan(
-    `[Number: ${
-      ObjectIs(NumberPrototypeValueOf(value), -0)
-        ? "-0"
-        : NumberPrototypeToString(value)
-    }]`,
-  ); // wrappers are in cyan
-}
-
-function inspectBigIntObject(value, inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  return cyan(`[BigInt: ${BigIntPrototypeToString(value)}n]`); // wrappers are in cyan
-}
-
-function inspectSymbolObject(value, inspectOptions) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  return cyan(
-    `[Symbol: ${
-      maybeQuoteSymbol(SymbolPrototypeValueOf(value), inspectOptions)
-    }]`,
-  ); // wrappers are in cyan
-}
-
-const PromiseState = {
-  Pending: 0,
-  Fulfilled: 1,
-  Rejected: 2,
-};
-
-function inspectPromise(
-  value,
-  inspectOptions,
-) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-  const red = maybeColor(colors.red, inspectOptions);
-
-  const { 0: state, 1: result } = core.getPromiseDetails(value);
-
-  if (state === PromiseState.Pending) {
-    return `Promise { ${cyan("<pending>")} }`;
-  }
-
-  const prefix = state === PromiseState.Fulfilled
-    ? ""
-    : `${red("<rejected>")} `;
-
-  inspectOptions.indentLevel++;
-  const str = `${prefix}${inspectValueWithQuotes(result, inspectOptions)}`;
-  inspectOptions.indentLevel--;
-
-  if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
-    return `Promise {\n${
-      StringPrototypeRepeat(DEFAULT_INDENT, inspectOptions.indentLevel + 1)
-    }${str}\n}`;
-  }
-
-  return `Promise { ${str} }`;
-}
-
-function inspectProxy(
-  targetAndHandler,
-  inspectOptions,
-) {
-  return `Proxy ${inspectArray(targetAndHandler, inspectOptions)}`;
-}
-
-function inspectRawObject(
-  value,
-  inspectOptions,
-) {
-  const cyan = maybeColor(colors.cyan, inspectOptions);
-
-  if (inspectOptions.indentLevel >= inspectOptions.depth) {
-    return [cyan("[Object]"), ""]; // wrappers are in cyan
-  }
-
-  let baseString;
-
-  let shouldShowDisplayName = false;
-  let displayName = value[
-    SymbolToStringTag
-  ];
-  if (!displayName) {
-    displayName = getClassInstanceName(value);
-  }
-  if (
-    displayName && displayName !== "Object" && displayName !== "anonymous"
-  ) {
-    shouldShowDisplayName = true;
-  }
-
-  const entries = [];
-  const stringKeys = ObjectKeys(value);
-  const symbolKeys = ObjectGetOwnPropertySymbols(value);
-  if (inspectOptions.sorted) {
-    ArrayPrototypeSort(stringKeys);
-    ArrayPrototypeSort(
-      symbolKeys,
-      (s1, s2) =>
-        StringPrototypeLocaleCompare(
-          SymbolPrototypeGetDescription(s1) ?? "",
-          SymbolPrototypeGetDescription(s2) ?? "",
-        ),
-    );
-  }
-
-  const red = maybeColor(colors.red, inspectOptions);
-
-  inspectOptions.indentLevel++;
-
-  for (let i = 0; i < stringKeys.length; ++i) {
-    const key = stringKeys[i];
-    if (inspectOptions.getters) {
-      let propertyValue;
-      let error = null;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
-      }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, inspectOptions)
-        : red(`[Thrown ${error.name}: ${error.message}]`);
-      ArrayPrototypePush(
-        entries,
-        `${maybeQuoteString(key, inspectOptions)}: ${inspectedValue}`,
-      );
-    } else {
-      const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
-      if (descriptor.get !== undefined && descriptor.set !== undefined) {
-        ArrayPrototypePush(
-          entries,
-          `${maybeQuoteString(key, inspectOptions)}: [Getter/Setter]`,
-        );
-      } else if (descriptor.get !== undefined) {
-        ArrayPrototypePush(
-          entries,
-          `${maybeQuoteString(key, inspectOptions)}: [Getter]`,
-        );
-      } else {
-        ArrayPrototypePush(
-          entries,
-          `${maybeQuoteString(key, inspectOptions)}: ${
-            inspectValueWithQuotes(value[key], inspectOptions)
-          }`,
-        );
-      }
-    }
-  }
-
-  for (let i = 0; i < symbolKeys.length; ++i) {
-    const key = symbolKeys[i];
-    if (
-      !inspectOptions.showHidden &&
-      !propertyIsEnumerable(value, key)
-    ) {
-      continue;
-    }
-
-    if (inspectOptions.getters) {
-      let propertyValue;
-      let error;
-      try {
-        propertyValue = value[key];
-      } catch (error_) {
-        error = error_;
-      }
-      const inspectedValue = error == null
-        ? inspectValueWithQuotes(propertyValue, inspectOptions)
-        : red(`Thrown ${error.name}: ${error.message}`);
-      ArrayPrototypePush(
-        entries,
-        `[${maybeQuoteSymbol(key, inspectOptions)}]: ${inspectedValue}`,
-      );
-    } else {
-      const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
-      if (descriptor.get !== undefined && descriptor.set !== undefined) {
-        ArrayPrototypePush(
-          entries,
-          `[${maybeQuoteSymbol(key, inspectOptions)}]: [Getter/Setter]`,
-        );
-      } else if (descriptor.get !== undefined) {
-        ArrayPrototypePush(
-          entries,
-          `[${maybeQuoteSymbol(key, inspectOptions)}]: [Getter]`,
-        );
-      } else {
-        ArrayPrototypePush(
-          entries,
-          `[${maybeQuoteSymbol(key, inspectOptions)}]: ${
-            inspectValueWithQuotes(value[key], inspectOptions)
-          }`,
-        );
-      }
-    }
-  }
-
-  inspectOptions.indentLevel--;
-
-  // Making sure color codes are ignored when calculating the total length
-  const entriesText = colors.stripColor(ArrayPrototypeJoin(entries, ""));
-  const totalLength = entries.length + inspectOptions.indentLevel +
-    entriesText.length;
-
-  if (entries.length === 0) {
-    baseString = "{}";
-  } else if (
-    totalLength > LINE_BREAKING_LENGTH ||
-    !inspectOptions.compact ||
-    StringPrototypeIncludes(entriesText, "\n")
-  ) {
-    const entryIndent = StringPrototypeRepeat(
-      DEFAULT_INDENT,
-      inspectOptions.indentLevel + 1,
-    );
-    const closingIndent = StringPrototypeRepeat(
-      DEFAULT_INDENT,
-      inspectOptions.indentLevel,
-    );
-    baseString = `{\n${entryIndent}${
-      ArrayPrototypeJoin(entries, `,\n${entryIndent}`)
-    }${inspectOptions.trailingComma ? "," : ""}\n${closingIndent}}`;
-  } else {
-    baseString = `{ ${ArrayPrototypeJoin(entries, ", ")} }`;
-  }
-
-  if (shouldShowDisplayName) {
-    baseString = `${displayName} ${baseString}`;
-  }
-
-  let refIndex = "";
-  if (circular !== undefined) {
-    const index = MapPrototypeGet(circular, value);
-    if (index !== undefined) {
-      refIndex = cyan(`<ref *${index}> `);
-    }
-  }
-
-  return [baseString, refIndex];
-}
-
-function inspectObject(value, inspectOptions, proxyDetails) {
-  if (
-    ReflectHas(value, customInspect) &&
-    typeof value[customInspect] === "function"
-  ) {
-    return String(value[customInspect](inspect, inspectOptions));
-  }
-  // This non-unique symbol is used to support op_crates, ie.
-  // in extensions/web we don't want to depend on public
-  // Symbol.for("Deno.customInspect") symbol defined in the public API.
-  // Internal only, shouldn't be used by users.
-  const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
-  if (
-    ReflectHas(value, privateCustomInspect) &&
-    typeof value[privateCustomInspect] === "function"
-  ) {
-    // TODO(nayeemrmn): `inspect` is passed as an argument because custom
-    // inspect implementations in `extensions` need it, but may not have access
-    // to the `Deno` namespace in web workers. Remove when the `Deno`
-    // namespace is always enabled.
-    return String(
-      value[privateCustomInspect](inspect, inspectOptions),
-    );
-  }
-  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
-    return inspectError(value, maybeColor(colors.cyan, inspectOptions));
-  } else if (ArrayIsArray(value)) {
-    return inspectArray(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(NumberPrototype, value)) {
-    return inspectNumberObject(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(BigIntPrototype, value)) {
-    return inspectBigIntObject(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(BooleanPrototype, value)) {
-    return inspectBooleanObject(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(StringPrototype, value)) {
-    return inspectStringObject(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(SymbolPrototype, value)) {
-    return inspectSymbolObject(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(PromisePrototype, value)) {
-    return inspectPromise(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
-    return inspectRegExp(value, inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-    return inspectDate(
-      proxyDetails ? proxyDetails[0] : value,
-      inspectOptions,
-    );
-  } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
-    return inspectSet(
-      proxyDetails ? proxyDetails[0] : value,
-      inspectOptions,
-    );
-  } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
-    return inspectMap(
-      proxyDetails ? proxyDetails[0] : value,
-      inspectOptions,
-    );
-  } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
-    return inspectWeakSet(inspectOptions);
-  } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
-    return inspectWeakMap(inspectOptions);
-  } else if (isTypedArray(value)) {
-    return inspectTypedArray(
-      ObjectGetPrototypeOf(value).constructor.name,
-      value,
-      inspectOptions,
-    );
-  } else {
-    // Otherwise, default object formatting
-    let { 0: insp, 1: refIndex } = inspectRawObject(value, inspectOptions);
-    insp = refIndex + insp;
-    return insp;
-  }
-}
 
 const colorKeywords = new Map([
   ["black", "#000000"],
@@ -1890,10 +3289,17 @@ function cssToAnsi(css, prevCss = null) {
 }
 
 function inspectArgs(args, inspectOptions = {}) {
-  circular = undefined;
+  const ctx = {
+    budget: {},
+    indentationLvl: 0,
+    seen: [],
+    currentDepth: 0,
+    stylize: stylizeNoColor,
+    ...denoInspectDefaultOptions,
+    ...inspectOptions,
+  };
 
   const noColor = colors.getNoColor();
-  const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
   const first = args[0];
   let a = 0;
   let string = "";
@@ -1933,7 +3339,7 @@ function inspectArgs(args, inspectOptions = {}) {
             }
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
-            formattedArg = inspectValue(args[a++], rInspectOptions);
+            formattedArg = formatValue(ctx, args[a++], 0);
           } else if (char == "c") {
             const value = args[a++];
             if (!noColor) {
@@ -1974,14 +3380,14 @@ function inspectArgs(args, inspectOptions = {}) {
       string += args[a];
     } else {
       // Use default maximum depth for null or undefined arguments.
-      string += inspectValue(args[a], rInspectOptions);
+      string += formatValue(ctx, args[a]);
     }
   }
 
-  if (rInspectOptions.indentLevel > 0) {
+  if (ctx.indentLevel > 0) {
     const groupIndent = StringPrototypeRepeat(
       DEFAULT_INDENT,
-      rInspectOptions.indentLevel,
+      ctx.indentLevel,
     );
     string = groupIndent +
       StringPrototypeReplaceAll(string, "\n", `\n${groupIndent}`);
@@ -2318,11 +3724,20 @@ function inspect(
   value,
   inspectOptions = {},
 ) {
-  circular = undefined;
-  return inspectValue(value, {
-    ...DEFAULT_INSPECT_OPTIONS,
+  // Default options
+  const ctx = {
+    budget: {},
+    indentationLvl: 0,
+    seen: [],
+    currentDepth: 0,
+    stylize: stylizeNoColor,
+    ...denoInspectDefaultOptions,
     ...inspectOptions,
-  });
+  };
+  if (ctx.colors) ctx.stylize = stylizeWithColor;
+  if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
+  if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
+  return formatValue(ctx, value, 0);
 }
 
 /** Creates a proxy that represents a subset of the properties

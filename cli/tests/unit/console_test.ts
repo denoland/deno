@@ -102,12 +102,7 @@ Deno.test(
       stringify(
         ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
       ),
-      `[
-  "foo\\b",   "foo\\f",
-  "foo\\n",   "foo\\r",
-  "foo\\t",   "foo\\v",
-  "foo\\x00"
-]`,
+      `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v", "foo\\x00" ]`,
     );
     assertEquals(
       stringify(
@@ -267,7 +262,7 @@ Deno.test(function consoleTestStringifyCircular() {
     stringify(new Date("2018-12-10T02:26:59.002Z")),
     "2018-12-10T02:26:59.002Z",
   );
-  assertEquals(stringify(new Set([1, 2, 3])), "Set { 1, 2, 3 }");
+  assertEquals(stringify(new Set([1, 2, 3])), "Set(3) { 1, 2, 3 }");
   assertEquals(
     stringify(
       new Map([
@@ -275,10 +270,10 @@ Deno.test(function consoleTestStringifyCircular() {
         [2, "two"],
       ]),
     ),
-    `Map { 1 => "one", 2 => "two" }`,
+    `Map(2) { 1 => "one", 2 => "two" }`,
   );
-  assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
-  assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
+  assertEquals(stringify(new WeakSet()), "WeakSet { <items unknown> }");
+  assertEquals(stringify(new WeakMap()), "WeakMap { <items unknown> }");
   assertEquals(stringify(Symbol(1)), `Symbol("1")`);
   assertEquals(stringify(Object(Symbol(1))), `[Symbol: Symbol("1")]`);
   assertEquals(stringify(null), "null");
@@ -1059,7 +1054,7 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
   assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
   assertEquals(
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
-    "{ a: { b: { c: { d: [Set] } } } }",
+    "{ a: { b: { c: { d: Set(1) { 1 } } } } }",
   );
 });
 
@@ -1797,7 +1792,7 @@ Deno.test(function inspectGetters() {
         return 0;
       },
     }, { getters: true })),
-    "{ foo: 0 }",
+    "{ foo: [Getter: 0] }",
   );
 
   assertEquals(
@@ -1806,7 +1801,7 @@ Deno.test(function inspectGetters() {
         throw new Error("bar");
       },
     }, { getters: true }),
-    "{ foo: [Thrown Error: bar] }",
+    "{ foo: [Getter: [Thrown Error: bar]] }",
   );
 });
 
@@ -1822,7 +1817,7 @@ Deno.test(function inspectSorted() {
   );
   assertEquals(
     stripColor(Deno.inspect(new Set(["b", "a"]), { sorted: true })),
-    `Set { "a", "b" }`,
+    `Set(2) { "a", "b" }`,
   );
   assertEquals(
     stripColor(Deno.inspect(
@@ -1832,7 +1827,7 @@ Deno.test(function inspectSorted() {
       ]),
       { sorted: true },
     )),
-    `Map { "a" => 1, "b" => 2 }`,
+    `Map(2) { "a" => 1, "b" => 2 }`,
   );
 });
 
@@ -2057,7 +2052,7 @@ Deno.test(function inspectEmptyArray() {
       compact: false,
       trailingComma: true,
     }),
-    "[\n]",
+    "[]",
   );
 });
 
@@ -2072,8 +2067,7 @@ Deno.test(function inspectDeepEmptyArray() {
       trailingComma: true,
     }),
     `{
-  arr: [
-  ],
+  arr: [],
 }`,
   );
 });
@@ -2086,11 +2080,11 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Map {\n}",
+    "Map(0) {}",
   );
 });
 
-Deno.test(function inspectEmptyMap() {
+Deno.test(function inspectEmptySet() {
   const set = new Set();
 
   assertEquals(
@@ -2098,11 +2092,11 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Set {\n}",
+    "Set(0) {}",
   );
 });
 
-Deno.test(function inspectEmptyMap() {
+Deno.test(function inspectEmptyUint8Array() {
   const typedArray = new Uint8Array(0);
 
   assertEquals(
@@ -2110,7 +2104,7 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Uint8Array(0) [\n]",
+    "Uint8Array(0) []",
   );
 });
 
