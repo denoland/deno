@@ -1031,8 +1031,8 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
-  let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
+  let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let lines_regex = lazy_regex::regex!(r"(?:\* ?)(?:\# ?)?(.*)");
 
   let files = comments
     .iter()
@@ -1049,8 +1049,8 @@ fn extract_files_from_source_comments(
         &comment.text,
         media_type,
         parsed_source.text_info().line_index(comment.start()),
-        &blocks_regex,
-        &lines_regex,
+        blocks_regex,
+        lines_regex,
       )
     })
     .flatten()
@@ -1069,16 +1069,16 @@ fn extract_files_from_fenced_blocks(
   // check can be done to see if a block is inside a comment (and skip typechecking)
   // or not by checking for the presence of capturing groups in the matches.
   let blocks_regex =
-    Regex::new(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```")?;
-  let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
+    lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let lines_regex = lazy_regex::regex!(r"(?:\# ?)?(.*)");
 
   extract_files_from_regex_blocks(
     specifier,
     source,
     media_type,
     /* file line index */ 0,
-    &blocks_regex,
-    &lines_regex,
+    blocks_regex,
+    lines_regex,
   )
 }
 
