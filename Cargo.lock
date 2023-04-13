@@ -1206,6 +1206,7 @@ dependencies = [
  "lazy-regex",
  "once_cell",
  "pmutil",
+ "pretty_assertions",
  "prettyplease",
  "proc-macro-crate",
  "proc-macro2 1.0.56",
