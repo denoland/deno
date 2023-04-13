@@ -336,8 +336,6 @@ const ci = {
             job: "test",
             profile: "debug",
             use_sysroot: true,
-            wpt:
-              "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
           }, {
             os: Runners.ubuntu,
             job: "lint",
