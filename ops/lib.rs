@@ -319,11 +319,15 @@ fn codegen_v8_async(
     };
 
     #pre_result
-    #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
+    let maybe_response = #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
       (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
+
+    if let Some(response) = maybe_response {
+      rv.set(response);
+    }
   }
 }
 
@@ -901,6 +905,7 @@ fn exclude_lifetime_params(
 mod tests {
   use crate::Attributes;
   use crate::Op;
+  use pretty_assertions::assert_eq;
   use std::path::PathBuf;
 
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]

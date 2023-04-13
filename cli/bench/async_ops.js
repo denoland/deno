@@ -16,5 +16,5 @@ async function bench(fun) {
   if (--total) queueMicrotask(() => bench(fun));
 }
 
-const { ops } = Deno[Deno.internal].core;
-bench(() => ops.op_void_async());
+const core = Deno[Deno.internal].core;
+bench(() => core.opAsync("op_void_async"));
