@@ -90,7 +90,6 @@ jobs:
             job: test
             profile: debug
             use_sysroot: true
-            wpt: '${{ github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'') }}'
             os_display_name: ubuntu-x86_64
           - os: ubuntu-22.04
             job: lint
