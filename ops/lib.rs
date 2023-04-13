@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use attrs::Attributes;
-use lazy_regex::regex;
 use optimizer::BailoutReason;
 use optimizer::Optimizer;
 use proc_macro::TokenStream;
@@ -858,23 +857,25 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 }
 
 fn is_resource_id(arg: impl ToTokens) -> bool {
-  let re = regex!(r#": (?:deno_core :: )?ResourceId$"#);
+  let re = lazy_regex::regex!(r#": (?:deno_core :: )?ResourceId$"#);
   re.is_match(&tokens(arg))
 }
 
 fn is_mut_ref_opstate(arg: impl ToTokens) -> bool {
-  let re = regex!(r#": & mut (?:deno_core :: )?OpState$"#);
+  let re = lazy_regex::regex!(r#": & mut (?:deno_core :: )?OpState$"#);
   re.is_match(&tokens(arg))
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
-  let re = regex!(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#);
+  let re =
+    lazy_regex::regex!(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#);
   re.is_match(&tokens(arg))
 }
 
 fn is_handle_scope(arg: &syn::FnArg) -> bool {
-  let re =
-    regex!(r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#);
+  let re = lazy_regex::regex!(
+    r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#
+  );
   re.is_match(&tokens(arg))
 }
 

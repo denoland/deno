@@ -40,7 +40,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
-use lazy_regex::regex;
 use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
@@ -1032,8 +1031,8 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = regex!(r"(?:\* ?)(?:\# ?)?(.*)");
+  let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let lines_regex = lazy_regex::regex!(r"(?:\* ?)(?:\# ?)?(.*)");
 
   let files = comments
     .iter()
@@ -1069,8 +1068,9 @@ fn extract_files_from_fenced_blocks(
   // but it stores the latter without any capturing groups. This way, a simple
   // check can be done to see if a block is inside a comment (and skip typechecking)
   // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex = regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
-  let lines_regex = regex!(r"(?:\# ?)?(.*)");
+  let blocks_regex =
+    lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let lines_regex = lazy_regex::regex!(r"(?:\# ?)?(.*)");
 
   extract_files_from_regex_blocks(
     specifier,
