@@ -348,6 +348,7 @@ pub struct Extension {
   name: &'static str,
   deps: Option<&'static [&'static str]>,
   force_op_registration: bool,
+  pub(crate) is_core: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -472,6 +473,7 @@ pub struct ExtensionBuilder {
   name: &'static str,
   deps: &'static [&'static str],
   force_op_registration: bool,
+  is_core: bool,
 }
 
 impl ExtensionBuilder {
@@ -547,6 +549,7 @@ impl ExtensionBuilder {
       name: self.name,
       force_op_registration: self.force_op_registration,
       deps,
+      is_core: self.is_core,
     }
   }
 
@@ -568,7 +571,14 @@ impl ExtensionBuilder {
       name: self.name,
       deps,
       force_op_registration: self.force_op_registration,
+      is_core: self.is_core,
     }
+  }
+
+  #[doc(hidden)]
+  pub(crate) fn deno_core(&mut self) -> &mut Self {
+    self.is_core = true;
+    self
   }
 }
 
