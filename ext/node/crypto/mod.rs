@@ -684,6 +684,10 @@ fn dh_generate_group(
   let dh = match group_name {
     "modp5" => dh::DiffieHellman::group::<dh::Modp1536>(),
     "modp14" => dh::DiffieHellman::group::<dh::Modp2048>(),
+    "modp15" => dh::DiffieHellman::group::<dh::Modp3072>(),
+    "modp16" => dh::DiffieHellman::group::<dh::Modp4096>(),
+    "modp17" => dh::DiffieHellman::group::<dh::Modp6144>(),
+    "modp18" => dh::DiffieHellman::group::<dh::Modp8192>(),
     _ => return Err(type_error("Unsupported group name")),
   };
 
@@ -706,3 +710,5 @@ pub async fn op_node_dh_generate_group_async(
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
   tokio::task::spawn_blocking(move || dh_generate_group(&group_name)).await?
 }
+
+fn dh_generate() {}

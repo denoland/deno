@@ -76,8 +76,8 @@ pub trait DiffieHellmanGroup {
   const EXPONENT_SIZE: usize;
 }
 
-// 1536-bit MODP Group
-// https://www.rfc-editor.org/rfc/rfc3526#section-2
+/// 1536-bit MODP Group
+/// https://www.rfc-editor.org/rfc/rfc3526#section-2
 pub struct Modp1536;
 impl DiffieHellmanGroup for Modp1536 {
   const GENERATOR: usize = 2;
@@ -95,8 +95,8 @@ impl DiffieHellmanGroup for Modp1536 {
   ];
 }
 
-// 2048-bit MODP Group
-// https://www.rfc-editor.org/rfc/rfc3526#section-3
+/// 2048-bit MODP Group
+/// https://www.rfc-editor.org/rfc/rfc3526#section-3
 pub struct Modp2048;
 impl DiffieHellmanGroup for Modp2048 {
   const GENERATOR: usize = 2;
@@ -117,8 +117,8 @@ impl DiffieHellmanGroup for Modp2048 {
   ];
 }
 
-// 3072-bit MODP Group
-// https://www.rfc-editor.org/rfc/rfc3526#section-4
+/// 3072-bit MODP Group
+/// https://www.rfc-editor.org/rfc/rfc3526#section-4
 pub struct Modp3072;
 impl DiffieHellmanGroup for Modp3072 {
   const GENERATOR: usize = 2;

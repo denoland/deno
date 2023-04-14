@@ -913,7 +913,11 @@ function createJob(mode, type, options) {
 
         validateString(group, "options.group");
 
-        notImplemented("DH");
+        if (mode === kSync) {
+          return ops.op_node_dh_generate_group(group);
+        } else {
+          return core.opAsync("op_node_dh_generate_group_async", group);
+        }
       }
 
       if (prime != null) {
