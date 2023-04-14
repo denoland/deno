@@ -23,6 +23,7 @@ use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 
 mod cipher;
+mod dh;
 mod digest;
 mod primes;
 
@@ -675,4 +676,33 @@ pub fn op_node_x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
 pub async fn op_node_x25519_generate_async(
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
   tokio::task::spawn_blocking(x25519_generate).await?
+}
+
+fn dh_generate_group(
+  group_name: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let dh = match group_name {
+    "modp5" => dh::DiffieHellman::group::<dh::Modp1536>(),
+    "modp14" => dh::DiffieHellman::group::<dh::Modp2048>(),
+    _ => return Err(type_error("Unsupported group name")),
+  };
+
+  Ok((
+    dh.private_key.into_vec().into(),
+    dh.public_key.into_vec().into(),
+  ))
+}
+
+#[op]
+pub fn op_node_dh_generate_group(
+  group_name: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  dh_generate_group(group_name)
+}
+
+#[op]
+pub async fn op_node_dh_generate_group_async(
+  group_name: String,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || dh_generate_group(&group_name)).await?
 }
