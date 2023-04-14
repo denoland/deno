@@ -25,6 +25,7 @@ use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -305,30 +306,33 @@ impl ProcState {
       file_fetcher.clone(),
       npm_resolver.clone(),
     ));
+    let type_checker = Arc::new(TypeChecker::new(
+      dir.clone(),
+      caches.clone(),
+      cli_options.clone(),
+      npm_resolver.clone(),
+    ));
     let module_graph_builder = Arc::new(ModuleGraphBuilder::new(
       cli_options.clone(),
       resolver.clone(),
       npm_resolver.clone(),
       parsed_source_cache.clone(),
       lockfile.clone(),
-      caches.clone(),
       emit_cache.clone(),
       file_fetcher.clone(),
-      dir.clone(),
+      type_checker.clone(),
     ));
     let graph_container: Arc<ModuleGraphContainer> = Default::default();
     let module_load_preparer = Arc::new(ModuleLoadPreparer::new(
       cli_options.clone(),
-      caches.clone(),
-      dir.clone(),
       graph_container.clone(),
       lockfile.clone(),
       maybe_file_watcher_reporter.clone(),
       module_graph_builder.clone(),
-      npm_resolver.clone(),
       parsed_source_cache.clone(),
       progress_bar.clone(),
       resolver.clone(),
+      type_checker,
     ));
 
     Ok(ProcState(Arc::new(Inner {

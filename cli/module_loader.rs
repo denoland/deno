@@ -2,13 +2,9 @@
 
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
-use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
-use crate::cache::Caches;
-use crate::cache::DenoDir;
 use crate::cache::ParsedSourceCache;
-use crate::cache::TypeCheckCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
@@ -24,6 +20,7 @@ use crate::proc_state::FileWatcherReporter;
 use crate::proc_state::ProcState;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
+use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -66,45 +63,39 @@ use std::sync::Arc;
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
-  caches: Arc<Caches>,
-  deno_dir: DenoDir,
   graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  npm_resolver: Arc<NpmPackageResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   progress_bar: ProgressBar,
   resolver: Arc<CliGraphResolver>,
+  type_checker: Arc<TypeChecker>,
 }
 
 impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
-    caches: Arc<Caches>,
-    deno_dir: DenoDir,
     graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
-    npm_resolver: Arc<NpmPackageResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     progress_bar: ProgressBar,
     resolver: Arc<CliGraphResolver>,
+    type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
-      caches,
-      deno_dir,
       graph_container,
       lockfile,
       maybe_file_watcher_reporter,
       module_graph_builder,
-      npm_resolver,
       parsed_source_cache,
       progress_bar,
       resolver,
+      type_checker,
     }
   }
 
@@ -166,23 +157,19 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    // If there is a lockfile, validate the integrity of all the modules.
+    graph_valid_with_cli_options(graph, &roots, &self.options)?;
+
+    // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {
-      graph_lock_or_exit(graph, &mut lockfile.lock());
+      let mut lockfile = lockfile.lock();
+      // validate the integrity of all the modules
+      graph_lock_or_exit(graph, &mut lockfile);
+      // update it with anything new
+      lockfile.write()?;
     }
 
-    graph_valid_with_cli_options(graph, &roots, &self.options)?;
     // save the graph and get a reference to the new graph
     let graph = graph_update_permit.commit();
-
-    if graph.has_node_specifier
-      && self.options.type_check_mode() != TypeCheckMode::None
-    {
-      self
-        .npm_resolver
-        .inject_synthetic_types_node_package()
-        .await?;
-    }
 
     drop(_pb_clear_guard);
 
@@ -190,37 +177,20 @@ impl ModuleLoadPreparer {
     if self.options.type_check_mode() != TypeCheckMode::None
       && !self.graph_container.is_type_checked(&roots, lib)
     {
-      // todo(dsherret): consolidate this with what's done in graph_util
-      log::debug!("Type checking.");
-      let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let graph = Arc::new(graph.segment(&roots));
-      let options = check::CheckOptions {
-        type_check_mode: self.options.type_check_mode(),
-        debug: self.options.log_level() == Some(log::Level::Debug),
-        maybe_config_specifier,
-        ts_config: self
-          .options
-          .resolve_ts_config_for_emit(TsConfigType::Check { lib })?
-          .ts_config,
-        log_checks: true,
-        reload: self.options.reload_flag()
-          && !roots.iter().all(|r| reload_exclusions.contains(r)),
-      };
-      let check_cache =
-        TypeCheckCache::new(self.caches.type_checking_cache_db(&self.deno_dir));
-      let check_result =
-        check::check(graph, &check_cache, self.npm_resolver.clone(), options)?;
+      self
+        .type_checker
+        .check(
+          graph,
+          check::CheckOptions {
+            lib,
+            log_ignored_options: false,
+            reload: self.options.reload_flag()
+              && !roots.iter().all(|r| reload_exclusions.contains(r)),
+          },
+        )
+        .await?;
       self.graph_container.set_type_checked(&roots, lib);
-      if !check_result.diagnostics.is_empty() {
-        return Err(anyhow!(check_result.diagnostics));
-      }
-      log::debug!("{}", check_result.stats);
-    }
-
-    // any updates to the lockfile should be updated now
-    if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock();
-      g.write()?;
     }
 
     log::debug!("Prepared module load.");

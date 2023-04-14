@@ -2,19 +2,17 @@
 
 use crate::args::CliOptions;
 use crate::args::Lockfile;
-use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache;
-use crate::cache::DenoDir;
 use crate::cache::ParsedSourceCache;
-use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
+use crate::tools::check::TypeChecker;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -170,10 +168,9 @@ pub struct ModuleGraphBuilder {
   npm_resolver: Arc<NpmPackageResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
-  caches: Arc<cache::Caches>,
   emit_cache: cache::EmitCache,
   file_fetcher: Arc<FileFetcher>,
-  deno_dir: DenoDir,
+  type_checker: Arc<TypeChecker>,
 }
 
 impl ModuleGraphBuilder {
@@ -184,10 +181,9 @@ impl ModuleGraphBuilder {
     npm_resolver: Arc<NpmPackageResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
-    caches: Arc<cache::Caches>,
     emit_cache: cache::EmitCache,
     file_fetcher: Arc<FileFetcher>,
-    deno_dir: DenoDir,
+    type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
@@ -195,10 +191,9 @@ impl ModuleGraphBuilder {
       npm_resolver,
       parsed_source_cache,
       lockfile,
-      caches,
       emit_cache,
       file_fetcher,
-      deno_dir,
+      type_checker,
     }
   }
 
@@ -270,51 +265,24 @@ impl ModuleGraphBuilder {
       )
       .await?;
 
-    graph_valid_with_cli_options(&graph, &graph.roots, &self.options)?;
     let graph = Arc::new(graph);
+    graph_valid_with_cli_options(&graph, &graph.roots, &self.options)?;
     if let Some(lockfile) = &self.lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
     if self.options.type_check_mode() != TypeCheckMode::None {
-      // node built-in specifiers use the @types/node package to determine
-      // types, so inject that now after the lockfile has been written
-      if graph.has_node_specifier {
-        self
-          .npm_resolver
-          .inject_synthetic_types_node_package()
-          .await?;
-      }
-
-      let ts_config_result =
-        self
-          .options
-          .resolve_ts_config_for_emit(TsConfigType::Check {
+      self
+        .type_checker
+        .check(
+          graph.clone(),
+          check::CheckOptions {
             lib: self.options.ts_type_lib_window(),
-          })?;
-      if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-        log::warn!("{}", ignored_options);
-      }
-      let maybe_config_specifier = self.options.maybe_config_file_specifier();
-      let cache =
-        TypeCheckCache::new(self.caches.type_checking_cache_db(&self.deno_dir));
-      let check_result = check::check(
-        graph.clone(),
-        &cache,
-        self.npm_resolver.clone(),
-        check::CheckOptions {
-          type_check_mode: self.options.type_check_mode(),
-          debug: self.options.log_level() == Some(log::Level::Debug),
-          maybe_config_specifier,
-          ts_config: ts_config_result.ts_config,
-          log_checks: true,
-          reload: self.options.reload_flag(),
-        },
-      )?;
-      log::debug!("{}", check_result.stats);
-      if !check_result.diagnostics.is_empty() {
-        return Err(check_result.diagnostics.into());
-      }
+            log_ignored_options: true,
+            reload: self.options.reload_flag(),
+          },
+        )
+        .await?;
     }
 
     Ok(graph)
