@@ -54,9 +54,7 @@ export function getPathsFromTestSuites(suites: TestSuites): string[] {
   return testPaths;
 }
 
-const PARALLEL_PATTERN = Deno.build.os == "windows"
-  ? /^parallel[/\/]/
-  : /^parallel\//;
+const PARALLEL_PATTERN = /^parallel[\/\\]/;
 
 export function partitionParallelTestPaths(
   testPaths: string[],
