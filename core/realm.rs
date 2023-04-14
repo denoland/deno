@@ -15,7 +15,7 @@ use v8::Local;
 
 #[derive(Default)]
 pub(crate) struct ContextState {
-  pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_event_loop_tick_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,

@@ -28,6 +28,23 @@ pub struct ServerWebSocket {
   ws: AsyncRefCell<FragmentCollector<Pin<Box<dyn Upgraded>>>>,
 }
 
+impl ServerWebSocket {
+  #[inline]
+  pub async fn write_frame(
+    self: Rc<Self>,
+    frame: Frame,
+  ) -> Result<(), AnyError> {
+    // SAFETY: fastwebsockets only needs a mutable reference to the WebSocket
+    // to populate the write buffer. We encounter an await point when writing
+    // to the socket after the frame has already been written to the buffer.
+    let ws = unsafe { &mut *self.ws.as_ptr() };
+    ws.write_frame(frame)
+      .await
+      .map_err(|err| type_error(err.to_string()))?;
+    Ok(())
+  }
+}
+
 impl Resource for ServerWebSocket {
   fn name(&self) -> Cow<str> {
     "serverWebSocket".into()
@@ -61,12 +78,9 @@ pub async fn op_server_ws_send_binary(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-
-  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-  ws.write_frame(Frame::new(true, OpCode::Binary, None, data.to_vec()))
+  resource
+    .write_frame(Frame::new(true, OpCode::Binary, None, data.to_vec()))
     .await
-    .map_err(|err| type_error(err.to_string()))?;
-  Ok(())
 }
 
 #[op]
@@ -79,11 +93,9 @@ pub async fn op_server_ws_send_text(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-  ws.write_frame(Frame::new(true, OpCode::Text, None, data.into_bytes()))
+  resource
+    .write_frame(Frame::new(true, OpCode::Text, None, data.into_bytes()))
     .await
-    .map_err(|err| type_error(err.to_string()))?;
-  Ok(())
 }
 
 #[op]
@@ -107,12 +119,7 @@ pub async fn op_server_ws_send(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-
-  ws.write_frame(msg)
-    .await
-    .map_err(|err| type_error(err.to_string()))?;
-  Ok(())
+  resource.write_frame(msg).await
 }
 
 #[op(deferred)]
@@ -126,14 +133,10 @@ pub async fn op_server_ws_close(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![]));
-  ws.write_frame(frame)
-    .await
-    .map_err(|err| type_error(err.to_string()))?;
-  Ok(())
+  resource.write_frame(frame).await
 }
 
 #[op(deferred)]
