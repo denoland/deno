@@ -18,6 +18,8 @@ use crate::modules::ModuleMap;
 use crate::op_void_async;
 use crate::op_void_sync;
 use crate::ops::*;
+use crate::realm::ContextState;
+use crate::realm::JsRealm;
 use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
@@ -41,7 +43,6 @@ use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::option::Option;
@@ -51,8 +52,6 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
-use v8::HandleScope;
-use v8::Local;
 use v8::OwnedIsolate;
 
 type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
@@ -154,28 +153,11 @@ pub type SharedArrayBufferStore =
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
-#[derive(Default)]
-pub(crate) struct ContextState {
-  js_recv_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) pending_promise_rejections:
-    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
-  pub(crate) unrefed_ops: HashSet<i32>,
-  // We don't explicitly re-read this prop but need the slice to live alongside
-  // the context
-  pub(crate) op_ctxs: Box<[OpCtx]>,
-}
-
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
   known_realms: Vec<v8::Weak<v8::Context>>,
-  pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
-  pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
@@ -358,8 +340,6 @@ impl JsRuntime {
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
-      js_macrotask_cbs: vec![],
-      js_nexttick_cbs: vec![],
       has_tick_scheduled: false,
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
@@ -514,7 +494,7 @@ impl JsRuntime {
 
     {
       let mut state = state_rc.borrow_mut();
-      state.global_realm = Some(JsRealm(global_context.clone()));
+      state.global_realm = Some(JsRealm::new(global_context.clone()));
       state.inspector = inspector;
       state
         .known_realms
@@ -557,9 +537,6 @@ impl JsRuntime {
     js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
     js_runtime.init_extension_js(&realm).unwrap();
-    // Init callbacks (opresolve)
-    let global_realm = js_runtime.global_realm();
-    js_runtime.init_cbs(&global_realm);
 
     js_runtime
   }
@@ -587,7 +564,9 @@ impl JsRuntime {
 
   #[inline]
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
-    self.global_realm().0
+    let state = self.state.borrow();
+    let global_realm = state.global_realm.as_ref().unwrap();
+    global_realm.context().clone()
   }
 
   #[inline]
@@ -659,7 +638,6 @@ impl JsRuntime {
     };
 
     self.init_extension_js(&realm)?;
-    self.init_cbs(&realm);
     Ok(realm)
   }
 
@@ -755,6 +733,12 @@ impl JsRuntime {
           }
         }
       }
+
+      // TODO(bartlomieju): this not great that we need to have this conditional
+      // here, but I haven't found a better way to do it yet.
+      if ext.is_core {
+        self.init_cbs(realm);
+      }
     }
     // Restore extensions
     self.extensions = extensions;
@@ -839,9 +823,9 @@ impl JsRuntime {
     scope.escape(v).try_into().ok()
   }
 
-  /// Grabs a reference to core.js' opresolve & syncOpsCache()
+  /// Grabs a reference to core.js' eventLoopTick & buildCustomError
   fn init_cbs(&mut self, realm: &JsRealm) {
-    let (recv_cb, build_custom_error_cb) = {
+    let (event_loop_tick_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
       let context = realm.context();
       let context_local = v8::Local::new(scope, context);
@@ -850,8 +834,9 @@ impl JsRuntime {
         v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
       let core_str =
         v8::String::new_external_onebyte_static(scope, b"core").unwrap();
-      let opresolve_str =
-        v8::String::new_external_onebyte_static(scope, b"opresolve").unwrap();
+      let event_loop_tick_str =
+        v8::String::new_external_onebyte_static(scope, b"eventLoopTick")
+          .unwrap();
       let build_custom_error_str =
         v8::String::new_external_onebyte_static(scope, b"buildCustomError")
           .unwrap();
@@ -867,8 +852,8 @@ impl JsRuntime {
         .try_into()
         .unwrap();
 
-      let recv_cb: v8::Local<v8::Function> = core_obj
-        .get(scope, opresolve_str.into())
+      let event_loop_tick_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, event_loop_tick_str.into())
         .unwrap()
         .try_into()
         .unwrap();
@@ -878,7 +863,7 @@ impl JsRuntime {
         .try_into()
         .unwrap();
       (
-        v8::Global::new(scope, recv_cb),
+        v8::Global::new(scope, event_loop_tick_cb),
         v8::Global::new(scope, build_custom_error_cb),
       )
     };
@@ -886,7 +871,7 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
-    state.js_recv_cb.replace(recv_cb);
+    state.js_event_loop_tick_cb.replace(event_loop_tick_cb);
     state
       .js_build_custom_error_cb
       .replace(build_custom_error_cb);
@@ -997,7 +982,7 @@ impl JsRuntime {
           let realm = JsRealm::new(context.clone());
           let realm_state_rc = realm.state(v8_isolate);
           let mut realm_state = realm_state_rc.borrow_mut();
-          std::mem::take(&mut realm_state.js_recv_cb);
+          std::mem::take(&mut realm_state.js_event_loop_tick_cb);
           std::mem::take(&mut realm_state.js_build_custom_error_cb);
           std::mem::take(&mut realm_state.js_promise_reject_cb);
           std::mem::take(&mut realm_state.js_format_exception_cb);
@@ -1007,8 +992,6 @@ impl JsRuntime {
       }
 
       let mut state = self.state.borrow_mut();
-      state.js_macrotask_cbs.clear();
-      state.js_nexttick_cbs.clear();
       state.known_realms.clear();
     }
 
@@ -1113,10 +1096,11 @@ impl JsRuntime {
       return;
     }
 
+    let global_context = self.global_context();
     let mut state = self.state.borrow_mut();
     state.inspector = Some(JsRuntimeInspector::new(
       self.v8_isolate.as_mut().unwrap(),
-      state.global_realm.clone().unwrap().0,
+      global_context,
       self.is_main,
     ));
   }
@@ -1232,13 +1216,11 @@ impl JsRuntime {
         }
       }
 
-      // Ops
-      self.resolve_async_ops(cx)?;
-      // Run all next tick callbacks and macrotasks callbacks and only then
-      // check for any promise exceptions (`unhandledrejection` handlers are
-      // run in macrotasks callbacks so we need to let them run first).
-      self.drain_nexttick()?;
-      self.drain_macrotasks()?;
+      // Resolve async ops, run all next tick callbacks and macrotasks callbacks
+      // and only then check for any promise exceptions (`unhandledrejection`
+      // handlers are run in macrotasks callbacks so we need to let them run
+      // first).
+      self.do_js_event_loop_tick(cx)?;
       self.check_promise_rejections()?;
 
       // Event loop middlewares
@@ -1447,7 +1429,7 @@ impl EventLoopPendingState {
     let mut num_unrefed_ops = 0;
     for weak_context in &state.known_realms {
       if let Some(context) = weak_context.to_global(isolate) {
-        let realm = JsRealm(context);
+        let realm = JsRealm::new(context);
         num_unrefed_ops += realm.state(isolate).borrow().unrefed_ops.len();
       }
     }
@@ -2204,19 +2186,19 @@ impl JsRuntime {
     let isolate = self.v8_isolate();
     for weak_context in known_realms {
       if let Some(context) = weak_context.to_global(isolate) {
-        JsRealm(context).check_promise_rejections(isolate)?;
+        JsRealm::new(context).check_promise_rejections(isolate)?;
       }
     }
     Ok(())
   }
 
-  // Send finished responses to JS
-  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
+  // Polls pending ops and then runs `Deno.core.eventLoopTick` callback.
+  fn do_js_event_loop_tick(&mut self, cx: &mut Context) -> Result<(), Error> {
     // We have a specialized implementation of this method for the common case
     // where there is only one realm.
     let num_realms = self.state.borrow().known_realms.len();
     if num_realms == 1 {
-      return self.resolve_single_realm_async_ops(cx);
+      return self.do_single_realm_js_event_loop_tick(cx);
     }
 
     // `responses_per_realm[idx]` is a vector containing the promise ID and
@@ -2240,15 +2222,11 @@ impl JsRuntime {
     // Handle responses for each realm.
     let isolate = self.v8_isolate.as_mut().unwrap();
     for (realm_idx, responses) in responses_per_realm.into_iter().enumerate() {
-      if responses.is_empty() {
-        continue;
-      }
-
       let realm = {
         let context = self.state.borrow().known_realms[realm_idx]
           .to_global(isolate)
           .unwrap();
-        JsRealm(context)
+        JsRealm::new(context)
       };
       let context_state_rc = realm.state(isolate);
       let mut context_state = context_state_rc.borrow_mut();
@@ -2262,10 +2240,10 @@ impl JsRuntime {
       // This batch is received in JS via the special `arguments` variable
       // and then each tuple is used to resolve or reject promises
       //
-      // This can handle 16 promises (32 / 2) futures in a single batch without heap
+      // This can handle 15 promises futures in a single batch without heap
       // allocations.
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
-        SmallVec::with_capacity(responses.len() * 2);
+        SmallVec::with_capacity(responses.len() * 2 + 2);
 
       for (promise_id, mut resp) in responses {
         context_state.unrefed_ops.remove(&promise_id);
@@ -2278,24 +2256,33 @@ impl JsRuntime {
         });
       }
 
-      let js_recv_cb_handle = context_state.js_recv_cb.clone().unwrap();
+      let has_tick_scheduled =
+        v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+      args.push(has_tick_scheduled.into());
+
+      let js_event_loop_tick_cb_handle =
+        context_state.js_event_loop_tick_cb.clone().unwrap();
       let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+      let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
       drop(context_state);
-      js_recv_cb.call(tc_scope, this, args.as_slice());
+      js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
 
       if let Some(exception) = tc_scope.exception() {
         // TODO(@andreubotella): Returning here can cause async ops in other
         // realms to never resolve.
         return exception_to_err_result(tc_scope, exception, false);
       }
+
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Ok(());
+      }
     }
 
     Ok(())
   }
 
-  fn resolve_single_realm_async_ops(
+  fn do_single_realm_js_event_loop_tick(
     &mut self,
     cx: &mut Context,
   ) -> Result<(), Error> {
@@ -2316,7 +2303,7 @@ impl JsRuntime {
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
     //
-    // This can handle 16 promises (32 / 2) futures in a single batch without heap
+    // This can handle 15 promises futures in a single batch without heap
     // allocations.
     let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
 
@@ -2347,308 +2334,34 @@ impl JsRuntime {
       }
     }
 
-    if args.is_empty() {
-      return Ok(());
-    }
+    let has_tick_scheduled =
+      v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+    args.push(has_tick_scheduled.into());
 
-    let js_recv_cb_handle = {
+    let js_event_loop_tick_cb_handle = {
       let state = self.state.borrow_mut();
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
-      let handle = realm_state_rc.borrow().js_recv_cb.clone().unwrap();
+      let handle = realm_state_rc
+        .borrow()
+        .js_event_loop_tick_cb
+        .clone()
+        .unwrap();
       handle
     };
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+    let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
-    js_recv_cb.call(tc_scope, this, args.as_slice());
+    js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
 
-    match tc_scope.exception() {
-      None => Ok(()),
-      Some(exception) => exception_to_err_result(tc_scope, exception, false),
+    if let Some(exception) = tc_scope.exception() {
+      return exception_to_err_result(tc_scope, exception, false);
     }
-  }
 
-  fn drain_macrotasks(&mut self) -> Result<(), Error> {
-    if self.state.borrow().js_macrotask_cbs.is_empty() {
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Ok(());
-    }
-
-    let js_macrotask_cb_handles = self.state.borrow().js_macrotask_cbs.clone();
-    let scope = &mut self.handle_scope();
-
-    for js_macrotask_cb_handle in js_macrotask_cb_handles {
-      let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
-
-      // Repeatedly invoke macrotask callback until it returns true (done),
-      // such that ready microtasks would be automatically run before
-      // next macrotask is processed.
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let this = v8::undefined(tc_scope).into();
-      loop {
-        let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
-
-        if let Some(exception) = tc_scope.exception() {
-          return exception_to_err_result(tc_scope, exception, false);
-        }
-
-        if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-          return Ok(());
-        }
-
-        let is_done = is_done.unwrap();
-        if is_done.is_true() {
-          break;
-        }
-      }
     }
 
     Ok(())
-  }
-
-  fn drain_nexttick(&mut self) -> Result<(), Error> {
-    if self.state.borrow().js_nexttick_cbs.is_empty() {
-      return Ok(());
-    }
-
-    let state = self.state.clone();
-    if !state.borrow().has_tick_scheduled {
-      let scope = &mut self.handle_scope();
-      scope.perform_microtask_checkpoint();
-    }
-
-    // TODO(bartlomieju): Node also checks for absence of "rejection_to_warn"
-    if !state.borrow().has_tick_scheduled {
-      return Ok(());
-    }
-
-    let js_nexttick_cb_handles = state.borrow().js_nexttick_cbs.clone();
-    let scope = &mut self.handle_scope();
-
-    for js_nexttick_cb_handle in js_nexttick_cb_handles {
-      let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
-
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let this = v8::undefined(tc_scope).into();
-      js_nexttick_cb.call(tc_scope, this, &[]);
-      if let Some(exception) = tc_scope.exception() {
-        return exception_to_err_result(tc_scope, exception, false);
-      }
-    }
-
-    Ok(())
-  }
-}
-
-/// A representation of a JavaScript realm tied to a [`JsRuntime`], that allows
-/// execution in the realm's context.
-///
-/// A [`JsRealm`] instance is a reference to an already existing realm, which
-/// does not hold ownership of it, so instances can be created and dropped as
-/// needed. As such, calling [`JsRealm::new`] doesn't create a new realm, and
-/// cloning a [`JsRealm`] only creates a new reference. See
-/// [`JsRuntime::create_realm`] to create new realms instead.
-///
-/// Despite [`JsRealm`] instances being references, multiple instances that
-/// point to the same realm won't overlap because every operation requires
-/// passing a mutable reference to the [`v8::Isolate`]. Therefore, no operation
-/// on two [`JsRealm`] instances tied to the same isolate can be run at the same
-/// time, regardless of whether they point to the same realm.
-///
-/// # Panics
-///
-/// Every method of [`JsRealm`] will panic if you call it with a reference to a
-/// [`v8::Isolate`] other than the one that corresponds to the current context.
-///
-/// In other words, the [`v8::Isolate`] parameter for all the related [`JsRealm`] methods
-/// must be extracted from the pre-existing [`JsRuntime`].
-///
-/// Example usage with the [`JsRealm::execute_script`] method:
-/// ```
-/// use deno_core::JsRuntime;
-/// use deno_core::RuntimeOptions;
-///
-/// let mut runtime = JsRuntime::new(RuntimeOptions::default());
-/// let new_realm = runtime
-///         .create_realm()
-///         .expect("Handle the error properly");
-/// let source_code = "var a = 0; a + 1";
-/// let result = new_realm
-///         .execute_script_static(runtime.v8_isolate(), "<anon>", source_code)
-///         .expect("Handle the error properly");
-/// # drop(result);
-/// ```
-///
-/// # Lifetime of the realm
-///
-/// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
-/// keep the underlying V8 context alive even if it would have otherwise been
-/// garbage collected.
-#[derive(Clone)]
-pub struct JsRealm(v8::Global<v8::Context>);
-impl JsRealm {
-  pub fn new(context: v8::Global<v8::Context>) -> Self {
-    JsRealm(context)
-  }
-
-  pub fn context(&self) -> &v8::Global<v8::Context> {
-    &self.0
-  }
-
-  fn state(&self, isolate: &mut v8::Isolate) -> Rc<RefCell<ContextState>> {
-    self
-      .context()
-      .open(isolate)
-      .get_slot::<Rc<RefCell<ContextState>>>(isolate)
-      .unwrap()
-      .clone()
-  }
-
-  pub(crate) fn state_from_scope(
-    scope: &mut v8::HandleScope,
-  ) -> Rc<RefCell<ContextState>> {
-    let context = scope.get_current_context();
-    context
-      .get_slot::<Rc<RefCell<ContextState>>>(scope)
-      .unwrap()
-      .clone()
-  }
-
-  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
-  pub fn handle_scope<'s>(
-    &self,
-    isolate: &'s mut v8::Isolate,
-  ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(isolate, &self.0)
-  }
-
-  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
-  pub fn global_object<'s>(
-    &self,
-    isolate: &'s mut v8::Isolate,
-  ) -> v8::Local<'s, v8::Object> {
-    let scope = &mut self.handle_scope(isolate);
-    self.0.open(scope).global(scope)
-  }
-
-  fn string_from_code<'a>(
-    scope: &mut HandleScope<'a>,
-    code: &ModuleCode,
-  ) -> Option<Local<'a, v8::String>> {
-    if let Some(code) = code.try_static_ascii() {
-      v8::String::new_external_onebyte_static(scope, code)
-    } else {
-      v8::String::new_from_utf8(
-        scope,
-        code.as_bytes(),
-        v8::NewStringType::Normal,
-      )
-    }
-  }
-
-  /// Executes traditional JavaScript code (traditional = not ES modules) in the
-  /// realm's context.
-  ///
-  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
-  ///
-  /// The `name` parameter can be a filepath or any other string. E.g.:
-  ///
-  ///   - "/some/file/path.js"
-  ///   - "<anon>"
-  ///   - "[native code]"
-  ///
-  /// The same `name` value can be used for multiple executions.
-  ///
-  /// `Error` can usually be downcast to `JsError`.
-  pub fn execute_script_static(
-    &self,
-    isolate: &mut v8::Isolate,
-    name: &'static str,
-    source_code: &'static str,
-  ) -> Result<v8::Global<v8::Value>, Error> {
-    self.execute_script(isolate, name, ModuleCode::from_static(source_code))
-  }
-
-  /// Executes traditional JavaScript code (traditional = not ES modules) in the
-  /// realm's context.
-  ///
-  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
-  ///
-  /// The `name` parameter can be a filepath or any other string. E.g.:
-  ///
-  ///   - "/some/file/path.js"
-  ///   - "<anon>"
-  ///   - "[native code]"
-  ///
-  /// The same `name` value can be used for multiple executions.
-  ///
-  /// `Error` can usually be downcast to `JsError`.
-  pub fn execute_script(
-    &self,
-    isolate: &mut v8::Isolate,
-    name: &'static str,
-    source_code: ModuleCode,
-  ) -> Result<v8::Global<v8::Value>, Error> {
-    let scope = &mut self.handle_scope(isolate);
-
-    let source = Self::string_from_code(scope, &source_code).unwrap();
-    debug_assert!(name.is_ascii());
-    let name =
-      v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
-    let origin = bindings::script_origin(scope, name);
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
-
-    let script = match v8::Script::compile(tc_scope, source, Some(&origin)) {
-      Some(script) => script,
-      None => {
-        let exception = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, exception, false);
-      }
-    };
-
-    match script.run(tc_scope) {
-      Some(value) => {
-        let value_handle = v8::Global::new(tc_scope, value);
-        Ok(value_handle)
-      }
-      None => {
-        assert!(tc_scope.has_caught());
-        let exception = tc_scope.exception().unwrap();
-        exception_to_err_result(tc_scope, exception, false)
-      }
-    }
-  }
-
-  // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
-
-  fn check_promise_rejections(
-    &self,
-    isolate: &mut v8::Isolate,
-  ) -> Result<(), Error> {
-    let context_state_rc = self.state(isolate);
-    let mut context_state = context_state_rc.borrow_mut();
-
-    if context_state.pending_promise_rejections.is_empty() {
-      return Ok(());
-    }
-
-    let key = {
-      context_state
-        .pending_promise_rejections
-        .keys()
-        .next()
-        .unwrap()
-        .clone()
-    };
-    let handle = context_state
-      .pending_promise_rejections
-      .remove(&key)
-      .unwrap();
-    drop(context_state);
-
-    let scope = &mut self.handle_scope(isolate);
-    let exception = v8::Local::new(scope, handle);
-    exception_to_err_result(scope, exception, true)
   }
 }
 
@@ -2669,12 +2382,12 @@ pub fn queue_fast_async_op(
 }
 
 #[inline]
-pub fn queue_async_op(
+pub fn queue_async_op<'s>(
   ctx: &OpCtx,
-  scope: &mut v8::HandleScope,
+  scope: &'s mut v8::HandleScope,
   deferred: bool,
   op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
-) {
+) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
     // atleast 1 Rc is held by the JsRuntime.
@@ -2691,31 +2404,13 @@ pub fn queue_async_op(
   );
 
   match OpCall::eager(op) {
-    // This calls promise.resolve() before the control goes back to userland JS. It works something
-    // along the lines of:
-    //
-    // function opresolve(promiseId, ...) {
-    //   getPromise(promiseId).resolve(...);
-    // }
-    // const p = setPromise();
-    // op.op_async(promiseId, ...); // Calls `opresolve`
-    // return p;
-    EagerPollResult::Ready((_, promise_id, op_id, mut resp)) if !deferred => {
-      let context_state_rc = JsRealm::state_from_scope(scope);
-      let context_state = context_state_rc.borrow();
-
-      let args = &[
-        v8::Integer::new(scope, promise_id).into(),
-        resp.to_v8(scope).unwrap(),
-      ];
-
+    // If the result is ready we'll just return it straight to the caller, so
+    // we don't have to invoke a JS callback to respond. // This works under the
+    // assumption that `()` return value is serialized as `null`.
+    EagerPollResult::Ready((_, _, op_id, mut resp)) if !deferred => {
+      let resp = resp.to_v8(scope).unwrap();
       ctx.state.borrow_mut().tracker.track_async_completed(op_id);
-
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb =
-        context_state.js_recv_cb.as_ref().unwrap().open(tc_scope);
-      let this = v8::undefined(tc_scope).into();
-      js_recv_cb.call(tc_scope, this, args);
+      return Some(resp);
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);
@@ -2729,6 +2424,8 @@ pub fn queue_async_op(
       state.have_unpolled_ops = true;
     }
   }
+
+  None
 }
 
 #[cfg(test)]
@@ -3336,7 +3033,7 @@ pub mod tests {
         .execute_script_static(
           "a.js",
           r#"
-          Deno.core.ops.op_set_macrotask_callback(() => {
+          Deno.core.setMacrotaskCallback(() => {
             return true;
           });
           Deno.core.ops.op_set_format_exception_callback(()=> {
@@ -4130,11 +3827,11 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         
         (async function () {
           const results = [];
-          Deno.core.ops.op_set_macrotask_callback(() => {
+          Deno.core.setMacrotaskCallback(() => {
             results.push("macrotask");
             return true;
           });
-          Deno.core.ops.op_set_next_tick_callback(() => {
+          Deno.core.setNextTickCallback(() => {
             results.push("nextTick");
             Deno.core.ops.op_set_has_tick_scheduled(false);
           });
@@ -4151,28 +3848,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
-  }
-
-  #[tokio::test]
-  async fn test_set_macrotask_callback_set_next_tick_callback_multiple() {
-    let mut runtime = JsRuntime::new(Default::default());
-
-    runtime
-      .execute_script_static(
-        "multiple_macrotasks_and_nextticks.js",
-        r#"
-        Deno.core.ops.op_set_macrotask_callback(() => { return true; });
-        Deno.core.ops.op_set_macrotask_callback(() => { return true; });
-        Deno.core.ops.op_set_next_tick_callback(() => {});
-        Deno.core.ops.op_set_next_tick_callback(() => {});
-        "#,
-      )
-      .unwrap();
-    let isolate = runtime.v8_isolate();
-    let state_rc = JsRuntime::state(isolate);
-    let state = state_rc.borrow();
-    assert_eq!(state.js_macrotask_cbs.len(), 2);
-    assert_eq!(state.js_nexttick_cbs.len(), 2);
   }
 
   #[test]
@@ -4204,11 +3879,11 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .execute_script_static(
         "has_tick_scheduled.js",
         r#"
-          Deno.core.ops.op_set_macrotask_callback(() => {
+          Deno.core.setMacrotaskCallback(() => {
             Deno.core.ops.op_macrotask();
             return true; // We're done.
           });
-          Deno.core.ops.op_set_next_tick_callback(() => Deno.core.ops.op_next_tick());
+          Deno.core.setNextTickCallback(() => Deno.core.ops.op_next_tick());
           Deno.core.ops.op_set_has_tick_scheduled(true);
           "#,
       )
@@ -4605,7 +4280,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
             let sum = Deno.core.ops.op_sum_take(w32.subarray(0, 2));
             return false;
           } catch(e) {
-            return e.message.includes('ExpectedDetachable');
+            return e.message.includes('invalid type, expected: detachable');
           }
         });
         if (!assertWasmThrow()) {

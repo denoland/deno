@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.34.0"
+version = "0.35.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,12 +16,15 @@ path = "lib.rs"
 [dependencies]
 aes.workspace = true
 cbc.workspace = true
+data-encoding = "2.3.3"
 deno_core.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 ecb.workspace = true
 hex.workspace = true
+hkdf.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
+lazy-regex.workspace = true
 libz-sys = { version = "1.1.8", features = ["static"] }
 md-5 = "0.10.5"
 md4 = "0.10.2"
@@ -42,3 +45,4 @@ sha3 = "0.10.5"
 signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
+x509-parser = "0.15.0"

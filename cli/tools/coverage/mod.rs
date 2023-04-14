@@ -4,7 +4,6 @@ use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
-use crate::emit::get_source_hash;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
 use crate::util::fs::FileCollector;
@@ -621,7 +620,7 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let root_dir_url = ps.npm_resolver.root_dir_url();
 
   let script_coverages = collect_coverages(coverage_flags.files)?;
@@ -698,7 +697,7 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        let source_hash = get_source_hash(&file.source, ps.emit_options_hash);
+        let source_hash = ps.emitter.get_source_hash(&file.source);
         match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
           Some(code) => code.into(),
           None => {

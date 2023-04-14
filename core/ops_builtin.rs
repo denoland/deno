@@ -43,8 +43,6 @@ crate::extension!(
     op_str_byte_length,
     ops_builtin_v8::op_ref_op,
     ops_builtin_v8::op_unref_op,
-    ops_builtin_v8::op_set_macrotask_callback,
-    ops_builtin_v8::op_set_next_tick_callback,
     ops_builtin_v8::op_set_promise_reject_callback,
     ops_builtin_v8::op_run_microtasks,
     ops_builtin_v8::op_has_tick_scheduled,
@@ -74,6 +72,9 @@ crate::extension!(
     ops_builtin_v8::op_arraybuffer_was_detached,
   ],
   js = ["00_primordials.js", "01_core.js", "02_error.js"],
+  customizer = |ext: &mut crate::ExtensionBuilder| {
+    ext.deno_core();
+  }
 );
 
 /// Return map of resources with id as key

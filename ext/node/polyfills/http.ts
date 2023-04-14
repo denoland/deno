@@ -409,11 +409,6 @@ export class ServerResponse extends NodeWritable {
   #reqEvent?: Deno.RequestEvent;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
-    // TODO(kt3k): This is a workaround for denoland/deno#17194
-    // This if-block should be removed when the above issue is resolved.
-    if (chunk.length === 0) {
-      return;
-    }
     if (typeof chunk === "string") {
       controller.enqueue(ENCODER.encode(chunk));
     } else {

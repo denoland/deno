@@ -1,23 +1,23 @@
 Check [WILDCARD]/test/parallel_output.ts
-./test/parallel_output.ts => step output ... step 1 ... ok ([WILDCARD]ms)
-./test/parallel_output.ts => step output ... step 2 ... ok ([WILDCARD]ms)
+./test/parallel_output.ts => step output ... step 1 ... ok ([WILDCARD]s)
+./test/parallel_output.ts => step output ... step 2 ... ok ([WILDCARD]s)
 ------- output -------
 Hello, world! (from step 3)
 ----- output end -----
-./test/parallel_output.ts => step output ... step 3 ... ok ([WILDCARD]ms)
+./test/parallel_output.ts => step output ... step 3 ... ok ([WILDCARD]s)
 ------- output -------
 Hello, world! (from step 4)
 ----- output end -----
-./test/parallel_output.ts => step output ... step 4 ... ok ([WILDCARD]ms)
-./test/parallel_output.ts => step output ... ok ([WILDCARD]ms)
-./test/parallel_output.ts => step failures ... step 1 ... ok ([WILDCARD]ms)
-./test/parallel_output.ts => step failures ... step 2 ... FAILED ([WILDCARD]ms)
-./test/parallel_output.ts => step failures ... step 3 ... FAILED ([WILDCARD]ms)
-./test/parallel_output.ts => step failures ... FAILED (due to 2 failed steps) ([WILDCARD]ms)
-./test/parallel_output.ts => step nested failure ... step 1 ... inner 1 ... ok ([WILDCARD]ms)
-./test/parallel_output.ts => step nested failure ... step 1 ... inner 2 ... FAILED ([WILDCARD]ms)
-./test/parallel_output.ts => step nested failure ... step 1 ... FAILED (due to 1 failed step) ([WILDCARD]ms)
-./test/parallel_output.ts => step nested failure ... FAILED (due to 1 failed step) ([WILDCARD]ms)
+./test/parallel_output.ts => step output ... step 4 ... ok ([WILDCARD]s)
+./test/parallel_output.ts => step output ... ok ([WILDCARD]s)
+./test/parallel_output.ts => step failures ... step 1 ... ok ([WILDCARD]s)
+./test/parallel_output.ts => step failures ... step 2 ... FAILED ([WILDCARD]s)
+./test/parallel_output.ts => step failures ... step 3 ... FAILED ([WILDCARD]s)
+./test/parallel_output.ts => step failures ... FAILED (due to 2 failed steps) ([WILDCARD]s)
+./test/parallel_output.ts => step nested failure ... step 1 ... inner 1 ... ok ([WILDCARD]s)
+./test/parallel_output.ts => step nested failure ... step 1 ... inner 2 ... FAILED ([WILDCARD]s)
+./test/parallel_output.ts => step nested failure ... step 1 ... FAILED (due to 1 failed step) ([WILDCARD]s)
+./test/parallel_output.ts => step nested failure ... FAILED (due to 1 failed step) ([WILDCARD]s)
 
  ERRORS 
 
@@ -51,6 +51,6 @@ step failures ... step 2 => ./test/parallel_output.ts:14:11
 step failures ... step 3 => ./test/parallel_output.ts:17:11
 step nested failure ... step 1 ... inner 2 => ./test/parallel_output.ts:23:13
 
-FAILED | 1 passed (6 steps) | 2 failed (4 steps) ([WILDCARD]ms)
+FAILED | 1 passed (6 steps) | 2 failed (4 steps) ([WILDCARD]s)
 
 error: Test failed

@@ -938,6 +938,7 @@ mod tests {
   use super::*;
   use crate::Attributes;
   use crate::Op;
+  use pretty_assertions::assert_eq;
   use std::path::PathBuf;
   use syn::parse_quote;
 

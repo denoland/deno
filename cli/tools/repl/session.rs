@@ -18,10 +18,10 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
+use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 
 use super::cdp;

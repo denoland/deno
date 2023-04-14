@@ -11,12 +11,11 @@ use crate::cache;
 use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
-use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
-use crate::emit::emit_parsed_source;
+use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::build_graph_with_npm_resolution;
 use crate::graph_util::graph_lock_or_exit;
@@ -26,9 +25,9 @@ use crate::http_util::HttpClient;
 use crate::node;
 use crate::node::NodeResolution;
 use crate::npm::create_npm_fs_resolver;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -36,7 +35,6 @@ use crate::tools::check;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
-use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -47,7 +45,6 @@ use deno_core::resolve_url_or_path;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::Module;
@@ -59,6 +56,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::borrow::Cow;
@@ -80,8 +78,7 @@ pub struct Inner {
   pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
-  pub emit_options: deno_ast::EmitOptions,
-  pub emit_options_hash: u64,
+  pub emitter: Emitter,
   graph_container: ModuleGraphContainer,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
@@ -95,7 +92,7 @@ pub struct Inner {
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
-  pub npm_api: NpmRegistryApi,
+  pub npm_api: CliNpmRegistryApi,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub npm_resolution: NpmResolution,
@@ -112,17 +109,17 @@ impl Deref for ProcState {
 }
 
 impl ProcState {
-  pub async fn build(flags: Flags) -> Result<Self, AnyError> {
-    Self::from_options(Arc::new(CliOptions::from_flags(flags)?)).await
-  }
-
-  pub async fn from_options(
+  pub async fn from_cli_options(
     options: Arc<CliOptions>,
   ) -> Result<Self, AnyError> {
     Self::build_with_sender(options, None).await
   }
 
-  pub async fn build_for_file_watcher(
+  pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    Self::from_cli_options(Arc::new(CliOptions::from_flags(flags)?)).await
+  }
+
+  pub async fn from_flags_for_file_watcher(
     flags: Flags,
     files_to_watch_sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   ) -> Result<Self, AnyError> {
@@ -143,8 +140,7 @@ impl ProcState {
       caches: self.caches.clone(),
       options: self.options.clone(),
       emit_cache: self.emit_cache.clone(),
-      emit_options_hash: self.emit_options_hash,
-      emit_options: self.emit_options.clone(),
+      emitter: self.emitter.clone(),
       file_fetcher: self.file_fetcher.clone(),
       http_client: self.http_client.clone(),
       graph_container: Default::default(),
@@ -233,14 +229,14 @@ impl ProcState {
 
     let lockfile = cli_options.maybe_lock_file();
 
-    let npm_registry_url = NpmRegistryApi::default_url().to_owned();
+    let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
     );
-    let npm_api = NpmRegistryApi::new(
+    let npm_api = CliNpmRegistryApi::new(
       npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
@@ -249,7 +245,7 @@ impl ProcState {
     let npm_snapshot = cli_options
       .resolve_npm_resolution_snapshot(&npm_api)
       .await?;
-    let npm_resolution = NpmResolution::new(
+    let npm_resolution = NpmResolution::from_serialized(
       npm_api.clone(),
       npm_snapshot,
       lockfile.as_ref().cloned(),
@@ -301,6 +297,12 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(caches.dep_analysis_db(&dir));
+    let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
+    let emitter = Emitter::new(
+      emit_cache.clone(),
+      parsed_source_cache.clone(),
+      emit_options,
+    );
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
@@ -310,16 +312,12 @@ impl ProcState {
     let node_analysis_cache =
       NodeAnalysisCache::new(caches.node_analysis_db(&dir));
 
-    let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
       dir,
       caches,
       options: cli_options,
       emit_cache,
-      emit_options_hash: FastInsecureHasher::new()
-        .write_hashable(&emit_options)
-        .finish(),
-      emit_options,
+      emitter,
       file_fetcher: Arc::new(file_fetcher),
       http_client,
       graph_container: Default::default(),
@@ -393,6 +391,7 @@ impl ProcState {
 
     build_graph_with_npm_resolution(
       graph,
+      &self.resolver,
       &self.npm_resolver,
       roots.clone(),
       &mut cache,
@@ -625,34 +624,6 @@ impl ProcState {
     resolution
   }
 
-  pub fn cache_module_emits(&self) -> Result<(), AnyError> {
-    let graph = self.graph();
-    for module in graph.modules() {
-      if let Module::Esm(module) = module {
-        let is_emittable = matches!(
-          module.media_type,
-          MediaType::TypeScript
-            | MediaType::Mts
-            | MediaType::Cts
-            | MediaType::Jsx
-            | MediaType::Tsx
-        );
-        if is_emittable {
-          emit_parsed_source(
-            &self.emit_cache,
-            &self.parsed_source_cache,
-            &module.specifier,
-            module.media_type,
-            &module.source,
-            &self.emit_options,
-            self.emit_options_hash,
-          )?;
-        }
-      }
-    }
-    Ok(())
-  }
-
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
     cache::FetchCacher::new(
@@ -695,6 +666,7 @@ impl ProcState {
     let mut graph = ModuleGraph::default();
     build_graph_with_npm_resolution(
       &mut graph,
+      &self.resolver,
       &self.npm_resolver,
       roots,
       loader,

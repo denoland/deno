@@ -187,7 +187,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
 
       let module = module?;
-      let code = module.source().await;
+      let code = module.source().await.unwrap_or_default();
       let code = std::str::from_utf8(&code)
         .map_err(|_| type_error("Module source is not utf-8"))?
         .to_owned()
@@ -307,7 +307,7 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &metadata.permissions,
   )?);

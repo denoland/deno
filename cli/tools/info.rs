@@ -10,30 +10,30 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::npm::NpmPackageNvReference;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_runtime::colors;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::graph_util::graph_lock_or_exit;
-use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmResolutionPackage;
-use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier, ps.options.initial_cwd())?;
     let mut loader = ps.create_graph_loader();
@@ -486,7 +486,7 @@ impl<'a> GraphDisplayContext<'a> {
             colors::red("error:")
           )
         } else {
-          writeln!(writer, "{} {}", colors::red("error:"), err)
+          writeln!(writer, "{} {:#}", colors::red("error:"), err)
         }
       }
       Ok(None) => {
