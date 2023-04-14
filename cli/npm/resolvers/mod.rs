@@ -47,10 +47,9 @@ pub struct NpmProcessState {
 }
 
 /// Brings together the npm resolution with the file system.
-#[derive(Clone)]
 pub struct NpmPackageResolver {
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
-  resolution: NpmResolution,
+  resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
@@ -66,7 +65,7 @@ impl std::fmt::Debug for NpmPackageResolver {
 
 impl NpmPackageResolver {
   pub fn new(
-    resolution: NpmResolution,
+    resolution: Arc<NpmResolution>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
@@ -108,9 +107,7 @@ impl NpmPackageResolver {
     &self,
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
-    let path = self
-      .fs_resolver
-      .resolve_package_folder_from_deno_module(pkg_id)?;
+    let path = self.fs_resolver.package_folder(pkg_id)?;
     let path = canonicalize_path_maybe_not_exists(&path)?;
     log::debug!(
       "Resolved package folder of {} to {}",
@@ -157,7 +154,8 @@ impl NpmPackageResolver {
     &self,
     package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
-    self.fs_resolver.package_size(package_id)
+    let package_folder = self.fs_resolver.package_folder(package_id)?;
+    Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
   /// Gets if the provided specifier is in an npm package.
@@ -239,9 +237,17 @@ impl NpmPackageResolver {
     self.fs_resolver.cache_packages().await?;
     Ok(())
   }
+
+  pub fn as_require_npm_resolver(
+    self: &Arc<Self>,
+  ) -> RequireNpmPackageResolver {
+    RequireNpmPackageResolver(self.clone())
+  }
 }
 
-impl RequireNpmResolver for NpmPackageResolver {
+pub struct RequireNpmPackageResolver(Arc<NpmPackageResolver>);
+
+impl RequireNpmResolver for RequireNpmPackageResolver {
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
@@ -249,7 +255,9 @@ impl RequireNpmResolver for NpmPackageResolver {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let referrer = path_to_specifier(referrer)?;
-    self.resolve_package_folder_from_package(specifier, &referrer, mode)
+    self
+      .0
+      .resolve_package_folder_from_package(specifier, &referrer, mode)
   }
 
   fn resolve_package_folder_from_path(
@@ -257,7 +265,7 @@ impl RequireNpmResolver for NpmPackageResolver {
     path: &Path,
   ) -> Result<PathBuf, AnyError> {
     let specifier = path_to_specifier(path)?;
-    self.resolve_package_folder_from_specifier(&specifier)
+    self.0.resolve_package_folder_from_specifier(&specifier)
   }
 
   fn in_npm_package(&self, path: &Path) -> bool {
@@ -267,6 +275,7 @@ impl RequireNpmResolver for NpmPackageResolver {
         Err(_) => return false,
       };
     self
+      .0
       .resolve_package_folder_from_specifier(&specifier)
       .is_ok()
   }
@@ -276,15 +285,15 @@ impl RequireNpmResolver for NpmPackageResolver {
     permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
-    self.fs_resolver.ensure_read_permission(permissions, path)
+    self.0.fs_resolver.ensure_read_permission(permissions, path)
   }
 }
 
 pub fn create_npm_fs_resolver(
-  cache: NpmCache,
+  cache: Arc<NpmCache>,
   progress_bar: &ProgressBar,
   registry_url: Url,
-  resolution: NpmResolution,
+  resolution: Arc<NpmResolution>,
   maybe_node_modules_path: Option<PathBuf>,
 ) -> Arc<dyn NpmPackageFsResolver> {
   match maybe_node_modules_path {

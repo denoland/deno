@@ -27,15 +27,15 @@ use crate::util::sync::AtomicFlag;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CliGraphResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
-  npm_registry_api: CliNpmRegistryApi,
-  npm_resolution: NpmResolution,
-  package_json_deps_installer: PackageJsonDepsInstaller,
+  npm_registry_api: Arc<CliNpmRegistryApi>,
+  npm_resolution: Arc<NpmResolution>,
+  package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
   sync_download_queue: Option<Arc<TaskQueue>>,
 }
@@ -44,9 +44,12 @@ impl Default for CliGraphResolver {
   fn default() -> Self {
     // This is not ideal, but necessary for the LSP. In the future, we should
     // refactor the LSP and force this to be initialized.
-    let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
-    let npm_resolution =
-      NpmResolution::from_serialized(npm_registry_api.clone(), None, None);
+    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
+      npm_registry_api.clone(),
+      None,
+      None,
+    ));
     Self {
       maybe_import_map: Default::default(),
       maybe_default_jsx_import_source: Default::default(),
@@ -66,9 +69,9 @@ impl CliGraphResolver {
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
     no_npm: bool,
-    npm_registry_api: CliNpmRegistryApi,
-    npm_resolution: NpmResolution,
-    package_json_deps_installer: PackageJsonDepsInstaller,
+    npm_registry_api: Arc<CliNpmRegistryApi>,
+    npm_resolution: Arc<NpmResolution>,
+    package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   ) -> Self {
     Self {
       maybe_import_map,
