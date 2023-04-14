@@ -3,6 +3,7 @@
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -54,7 +55,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   mut packages: Vec<NpmResolutionPackage>,
-  cache: &NpmCache,
+  cache: &Arc<NpmCache>,
   registry_url: &Url,
 ) -> Result<(), AnyError> {
   let sync_download = should_sync_download();

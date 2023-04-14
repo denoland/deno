@@ -12,10 +12,9 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use std::sync::Arc;
 
-#[derive(Clone)]
 pub struct Emitter {
   emit_cache: EmitCache,
-  parsed_source_cache: ParsedSourceCache,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   emit_options: deno_ast::EmitOptions,
   // cached hash of the emit options
   emit_options_hash: u64,
@@ -24,7 +23,7 @@ pub struct Emitter {
 impl Emitter {
   pub fn new(
     emit_cache: EmitCache,
-    parsed_source_cache: ParsedSourceCache,
+    parsed_source_cache: Arc<ParsedSourceCache>,
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
     let emit_options_hash = FastInsecureHasher::new()

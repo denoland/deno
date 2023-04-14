@@ -4,6 +4,7 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -25,18 +26,18 @@ use super::common::types_package_name;
 use super::common::NpmPackageFsResolver;
 
 /// Resolves packages from the global npm cache.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
-  cache: NpmCache,
-  resolution: NpmResolution,
+  cache: Arc<NpmCache>,
+  resolution: Arc<NpmResolution>,
   registry_url: Url,
 }
 
 impl GlobalNpmPackageResolver {
   pub fn new(
-    cache: NpmCache,
+    cache: Arc<NpmCache>,
     registry_url: Url,
-    resolution: NpmResolution,
+    resolution: Arc<NpmResolution>,
   ) -> Self {
     Self {
       cache,

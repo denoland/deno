@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
@@ -41,11 +42,11 @@ use super::common::NpmPackageFsResolver;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct LocalNpmPackageResolver {
-  cache: NpmCache,
+  cache: Arc<NpmCache>,
   progress_bar: ProgressBar,
-  resolution: NpmResolution,
+  resolution: Arc<NpmResolution>,
   registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
@@ -53,11 +54,11 @@ pub struct LocalNpmPackageResolver {
 
 impl LocalNpmPackageResolver {
   pub fn new(
-    cache: NpmCache,
+    cache: Arc<NpmCache>,
     progress_bar: ProgressBar,
     registry_url: Url,
     node_modules_folder: PathBuf,
-    resolution: NpmResolution,
+    resolution: Arc<NpmResolution>,
   ) -> Self {
     Self {
       cache,
@@ -215,7 +216,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 /// Creates a pnpm style folder structure.
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
-  cache: &NpmCache,
+  cache: &Arc<NpmCache>,
   progress_bar: &ProgressBar,
   registry_url: &Url,
   root_node_modules_dir_path: &Path,

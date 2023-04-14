@@ -164,27 +164,27 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   }
 }
 
-#[derive(Clone)]
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
   resolver: Arc<CliGraphResolver>,
-  npm_resolver: NpmPackageResolver,
-  parsed_source_cache: ParsedSourceCache,
+  npm_resolver: Arc<NpmPackageResolver>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
-  caches: cache::Caches,
+  caches: Arc<cache::Caches>,
   emit_cache: cache::EmitCache,
   file_fetcher: Arc<FileFetcher>,
   deno_dir: DenoDir,
 }
 
 impl ModuleGraphBuilder {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
     resolver: Arc<CliGraphResolver>,
-    npm_resolver: NpmPackageResolver,
-    parsed_source_cache: ParsedSourceCache,
+    npm_resolver: Arc<NpmPackageResolver>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
-    caches: cache::Caches,
+    caches: Arc<cache::Caches>,
     emit_cache: cache::EmitCache,
     file_fetcher: Arc<FileFetcher>,
     deno_dir: DenoDir,
@@ -301,7 +301,7 @@ impl ModuleGraphBuilder {
       let check_result = check::check(
         graph.clone(),
         &cache,
-        &self.npm_resolver,
+        self.npm_resolver.clone(),
         check::CheckOptions {
           type_check_mode: self.options.type_check_mode(),
           debug: self.options.log_level() == Some(log::Level::Debug),
@@ -442,7 +442,7 @@ struct GraphData {
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even

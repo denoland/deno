@@ -101,7 +101,7 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_npm_resolver: Option<NpmPackageResolver>,
+  pub maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
 }
 
 #[derive(Debug)]
@@ -145,13 +145,13 @@ pub struct Inner {
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// Npm's registry api.
-  npm_api: CliNpmRegistryApi,
+  npm_api: Arc<CliNpmRegistryApi>,
   /// Npm cache
-  npm_cache: NpmCache,
+  npm_cache: Arc<NpmCache>,
   /// Npm resolution that is stored in memory.
-  npm_resolution: NpmResolution,
+  npm_resolution: Arc<NpmResolution>,
   /// Resolver for npm packages.
-  npm_resolver: NpmPackageResolver,
+  npm_resolver: Arc<NpmPackageResolver>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -420,14 +420,14 @@ fn create_lsp_structs(
   dir: &DenoDir,
   http_client: HttpClient,
 ) -> (
-  CliNpmRegistryApi,
-  NpmCache,
-  NpmPackageResolver,
-  NpmResolution,
+  Arc<CliNpmRegistryApi>,
+  Arc<NpmCache>,
+  Arc<NpmPackageResolver>,
+  Arc<NpmResolution>,
 ) {
   let registry_url = CliNpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let npm_cache = NpmCache::from_deno_dir(
+  let npm_cache = Arc::new(NpmCache::from_deno_dir(
     dir,
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
@@ -436,14 +436,15 @@ fn create_lsp_structs(
     CacheSetting::Only,
     http_client.clone(),
     progress_bar.clone(),
-  );
-  let api = CliNpmRegistryApi::new(
+  ));
+  let api = Arc::new(CliNpmRegistryApi::new(
     registry_url.clone(),
     npm_cache.clone(),
     http_client,
     progress_bar.clone(),
-  );
-  let resolution = NpmResolution::from_serialized(api.clone(), None, None);
+  ));
+  let resolution =
+    Arc::new(NpmResolution::from_serialized(api.clone(), None, None));
   let fs_resolver = create_npm_fs_resolver(
     npm_cache.clone(),
     &progress_bar,
@@ -454,7 +455,11 @@ fn create_lsp_structs(
   (
     api,
     npm_cache,
-    NpmPackageResolver::new(resolution.clone(), fs_resolver, None),
+    Arc::new(NpmPackageResolver::new(
+      resolution.clone(),
+      fs_resolver,
+      None,
+    )),
     resolution,
   )
 }
@@ -697,12 +702,12 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_npm_resolver: Some({
         // create a new snapshotted npm resolution and resolver
-        let resolution = NpmResolution::new(
+        let resolution = Arc::new(NpmResolution::new(
           self.npm_api.clone(),
           self.npm_resolution.snapshot(),
           None,
-        );
-        NpmPackageResolver::new(
+        ));
+        Arc::new(NpmPackageResolver::new(
           resolution.clone(),
           create_npm_fs_resolver(
             self.npm_cache.clone(),
@@ -712,7 +717,7 @@ impl Inner {
             None,
           ),
           None,
-        )
+        ))
       }),
     })
   }

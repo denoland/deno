@@ -17,6 +17,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::node::NodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
@@ -52,13 +53,13 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: DenoDir,
-  pub caches: Caches,
+  pub caches: Arc<Caches>,
   pub file_fetcher: Arc<FileFetcher>,
   pub http_client: HttpClient,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
-  pub emitter: Emitter,
-  pub graph_container: ModuleGraphContainer,
+  pub emitter: Arc<Emitter>,
+  pub graph_container: Arc<ModuleGraphContainer>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -67,17 +68,17 @@ pub struct Inner {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
-  pub parsed_source_cache: ParsedSourceCache,
+  pub parsed_source_cache: Arc<ParsedSourceCache>,
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  pub module_graph_builder: ModuleGraphBuilder,
-  pub module_load_preparer: ModuleLoadPreparer,
-  pub node_analysis_cache: NodeAnalysisCache,
-  pub npm_api: CliNpmRegistryApi,
-  pub npm_cache: NpmCache,
-  pub npm_resolver: NpmPackageResolver,
-  pub npm_resolution: NpmResolution,
-  pub package_json_deps_installer: PackageJsonDepsInstaller,
+  pub module_graph_builder: Arc<ModuleGraphBuilder>,
+  pub module_load_preparer: Arc<ModuleLoadPreparer>,
+  pub node_code_translator: Arc<NodeCodeTranslator>,
+  pub npm_api: Arc<CliNpmRegistryApi>,
+  pub npm_cache: Arc<NpmCache>,
+  pub npm_resolver: Arc<NpmPackageResolver>,
+  pub npm_resolution: Arc<NpmResolution>,
+  pub package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   pub cjs_resolutions: Arc<CjsResolutionStore>,
   progress_bar: ProgressBar,
 }
@@ -142,7 +143,7 @@ impl ProcState {
       maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
       module_graph_builder: self.module_graph_builder.clone(),
       module_load_preparer: self.module_load_preparer.clone(),
-      node_analysis_cache: self.node_analysis_cache.clone(),
+      node_code_translator: self.node_code_translator.clone(),
       npm_api: self.npm_api.clone(),
       npm_cache: self.npm_cache.clone(),
       npm_resolver: self.npm_resolver.clone(),
@@ -178,7 +179,7 @@ impl ProcState {
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
     let dir = cli_options.resolve_deno_dir()?;
-    let caches = Caches::default();
+    let caches = Arc::new(Caches::default());
     // Warm up the caches we know we'll likely need based on the CLI mode
     match cli_options.sub_command() {
       DenoSubcommand::Run(_) => {
@@ -217,26 +218,26 @@ impl ProcState {
     let lockfile = cli_options.maybe_lock_file();
 
     let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
-    let npm_cache = NpmCache::from_deno_dir(
+    let npm_cache = Arc::new(NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
-    );
-    let npm_api = CliNpmRegistryApi::new(
+    ));
+    let npm_api = Arc::new(CliNpmRegistryApi::new(
       npm_registry_url.clone(),
       npm_cache.clone(),
       http_client.clone(),
       progress_bar.clone(),
-    );
+    ));
     let npm_snapshot = cli_options
       .resolve_npm_resolution_snapshot(&npm_api)
       .await?;
-    let npm_resolution = NpmResolution::from_serialized(
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
       npm_api.clone(),
       npm_snapshot,
       lockfile.as_ref().cloned(),
-    );
+    ));
     let npm_fs_resolver = create_npm_fs_resolver(
       npm_cache,
       &progress_bar,
@@ -244,16 +245,16 @@ impl ProcState {
       npm_resolution.clone(),
       cli_options.node_modules_dir_path(),
     );
-    let npm_resolver = NpmPackageResolver::new(
+    let npm_resolver = Arc::new(NpmPackageResolver::new(
       npm_resolution.clone(),
       npm_fs_resolver,
       lockfile.as_ref().cloned(),
-    );
-    let package_json_deps_installer = PackageJsonDepsInstaller::new(
+    ));
+    let package_json_deps_installer = Arc::new(PackageJsonDepsInstaller::new(
       npm_api.clone(),
       npm_resolution.clone(),
       cli_options.maybe_package_json_deps(),
-    );
+    ));
     let maybe_import_map = cli_options
       .resolve_import_map(&file_fetcher)
       .await?
@@ -283,23 +284,28 @@ impl ProcState {
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
-      ParsedSourceCache::new(caches.dep_analysis_db(&dir));
+      Arc::new(ParsedSourceCache::new(caches.dep_analysis_db(&dir)));
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
-    let emitter = Emitter::new(
+    let emitter = Arc::new(Emitter::new(
       emit_cache.clone(),
       parsed_source_cache.clone(),
       emit_options,
-    );
-    let npm_cache = NpmCache::from_deno_dir(
+    ));
+    let npm_cache = Arc::new(NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
-    );
+    ));
+    let file_fetcher = Arc::new(file_fetcher);
     let node_analysis_cache =
       NodeAnalysisCache::new(caches.node_analysis_db(&dir));
-    let file_fetcher = Arc::new(file_fetcher);
-    let module_graph_builder = ModuleGraphBuilder::new(
+    let node_code_translator = Arc::new(NodeCodeTranslator::new(
+      node_analysis_cache,
+      file_fetcher.clone(),
+      npm_resolver.clone(),
+    ));
+    let module_graph_builder = Arc::new(ModuleGraphBuilder::new(
       cli_options.clone(),
       resolver.clone(),
       npm_resolver.clone(),
@@ -309,9 +315,9 @@ impl ProcState {
       emit_cache.clone(),
       file_fetcher.clone(),
       dir.clone(),
-    );
-    let graph_container: ModuleGraphContainer = Default::default();
-    let module_load_preparer = ModuleLoadPreparer::new(
+    ));
+    let graph_container: Arc<ModuleGraphContainer> = Default::default();
+    let module_load_preparer = Arc::new(ModuleLoadPreparer::new(
       cli_options.clone(),
       caches.clone(),
       dir.clone(),
@@ -323,7 +329,7 @@ impl ProcState {
       parsed_source_cache.clone(),
       progress_bar.clone(),
       resolver.clone(),
-    );
+    ));
 
     Ok(ProcState(Arc::new(Inner {
       dir,
@@ -346,7 +352,7 @@ impl ProcState {
       resolver,
       maybe_file_watcher_reporter,
       module_graph_builder,
-      node_analysis_cache,
+      node_code_translator,
       npm_api,
       npm_cache,
       npm_resolver,

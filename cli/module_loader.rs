@@ -7,16 +7,15 @@ use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache::Caches;
 use crate::cache::DenoDir;
-use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::emit::Emitter;
-use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
+use crate::node::NodeCodeTranslator;
 use crate::node::NodeResolution;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
@@ -65,32 +64,32 @@ use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
 
-#[derive(Clone)]
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
-  caches: Caches,
+  caches: Arc<Caches>,
   deno_dir: DenoDir,
-  graph_container: ModuleGraphContainer,
+  graph_container: Arc<ModuleGraphContainer>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  module_graph_builder: ModuleGraphBuilder,
-  npm_resolver: NpmPackageResolver,
-  parsed_source_cache: ParsedSourceCache,
+  module_graph_builder: Arc<ModuleGraphBuilder>,
+  npm_resolver: Arc<NpmPackageResolver>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   progress_bar: ProgressBar,
   resolver: Arc<CliGraphResolver>,
 }
 
 impl ModuleLoadPreparer {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
-    caches: Caches,
+    caches: Arc<Caches>,
     deno_dir: DenoDir,
-    graph_container: ModuleGraphContainer,
+    graph_container: Arc<ModuleGraphContainer>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    module_graph_builder: ModuleGraphBuilder,
-    npm_resolver: NpmPackageResolver,
-    parsed_source_cache: ParsedSourceCache,
+    module_graph_builder: Arc<ModuleGraphBuilder>,
+    npm_resolver: Arc<NpmPackageResolver>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
     progress_bar: ProgressBar,
     resolver: Arc<CliGraphResolver>,
   ) -> Self {
@@ -210,7 +209,7 @@ impl ModuleLoadPreparer {
       let check_cache =
         TypeCheckCache::new(self.caches.type_checking_cache_db(&self.deno_dir));
       let check_result =
-        check::check(graph, &check_cache, &self.npm_resolver, options)?;
+        check::check(graph, &check_cache, self.npm_resolver.clone(), options)?;
       self.graph_container.set_type_checked(&roots, lib);
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
@@ -270,14 +269,13 @@ pub struct CliModuleLoader {
   dynamic_permissions: PermissionsContainer,
   cli_options: Arc<CliOptions>,
   cjs_resolutions: Arc<CjsResolutionStore>,
-  emitter: Emitter,
-  file_fetcher: Arc<FileFetcher>,
-  graph_container: ModuleGraphContainer,
-  module_load_preparer: ModuleLoadPreparer,
-  npm_resolution: NpmResolution,
-  npm_resolver: NpmPackageResolver,
-  node_analysis_cache: NodeAnalysisCache,
-  parsed_source_cache: ParsedSourceCache,
+  emitter: Arc<Emitter>,
+  graph_container: Arc<ModuleGraphContainer>,
+  module_load_preparer: Arc<ModuleLoadPreparer>,
+  node_code_translator: Arc<NodeCodeTranslator>,
+  npm_resolution: Arc<NpmResolution>,
+  npm_resolver: Arc<NpmPackageResolver>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
 }
 
@@ -294,12 +292,11 @@ impl CliModuleLoader {
       cli_options: ps.options.clone(),
       cjs_resolutions: ps.cjs_resolutions.clone(),
       emitter: ps.emitter.clone(),
-      file_fetcher: ps.file_fetcher.clone(),
       graph_container: ps.graph_container.clone(),
       module_load_preparer: ps.module_load_preparer.clone(),
+      node_code_translator: ps.node_code_translator.clone(),
       npm_resolution: ps.npm_resolution.clone(),
       npm_resolver: ps.npm_resolver.clone(),
-      node_analysis_cache: ps.node_analysis_cache.clone(),
       parsed_source_cache: ps.parsed_source_cache.clone(),
       resolver: ps.resolver.clone(),
     })
@@ -317,12 +314,11 @@ impl CliModuleLoader {
       cli_options: ps.options.clone(),
       cjs_resolutions: ps.cjs_resolutions.clone(),
       emitter: ps.emitter.clone(),
-      file_fetcher: ps.file_fetcher.clone(),
       graph_container: ps.graph_container.clone(),
       module_load_preparer: ps.module_load_preparer.clone(),
+      node_code_translator: ps.node_code_translator.clone(),
       npm_resolution: ps.npm_resolution.clone(),
       npm_resolver: ps.npm_resolver.clone(),
-      node_analysis_cache: ps.node_analysis_cache.clone(),
       parsed_source_cache: ps.parsed_source_cache.clone(),
       resolver: ps.resolver.clone(),
     })
@@ -423,22 +419,17 @@ impl CliModuleLoader {
           self.root_permissions.clone()
         };
         // translate cjs to esm if it's cjs and inject node globals
-        node::translate_cjs_to_esm(
-          &self.file_fetcher,
+        self.node_code_translator.translate_cjs_to_esm(
           specifier,
           code,
           MediaType::Cjs,
-          &self.npm_resolver,
-          &self.node_analysis_cache,
           &mut permissions,
         )?
       } else {
         // only inject node globals for esm
-        node::esm_code_with_node_globals(
-          &self.node_analysis_cache,
-          specifier,
-          code,
-        )?
+        self
+          .node_code_translator
+          .esm_code_with_node_globals(specifier, code)?
       };
       ModuleCodeSource {
         code: code.into(),
@@ -512,7 +503,7 @@ impl ModuleLoader for CliModuleLoader {
             specifier,
             referrer,
             NodeResolutionMode::Execution,
-            &self.npm_resolver,
+            &self.npm_resolver.as_require_npm_resolver(),
             &mut permissions,
           ))
           .with_context(|| {
