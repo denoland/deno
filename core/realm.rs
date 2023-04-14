@@ -86,7 +86,7 @@ pub(crate) struct ContextState {
 ///
 /// let mut runtime = JsRuntime::new(RuntimeOptions::default());
 /// let new_realm = runtime
-///         .create_realm(None)
+///         .create_realm(Default::default())
 ///         .expect("Handle the error properly");
 /// let source_code = "var a = 0; a + 1";
 /// let result = new_realm
