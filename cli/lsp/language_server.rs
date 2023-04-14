@@ -1137,7 +1137,6 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err);
     }
 
-    // self.refresh_documents_config(); // todo(THIS PR): REMOVE
     self.assets.intitialize(self.snapshot()).await;
 
     self.performance.measure(mark);
