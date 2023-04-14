@@ -1,4 +1,3 @@
 [WILDCARD]error: Uncaught (in worker "") Module not found "file:///[WILDCARD]/workers/doesnt_exist.js".
 error: Uncaught (in promise) Error: Unhandled error in child worker.
-    at Worker.#pollControl ([WILDCARD])
-    at eventLoopTick (ext:core/01_core.js:[WILDCARD])
+    at Worker.#pollControl[WILDCARD]
