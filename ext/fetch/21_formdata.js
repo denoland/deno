@@ -22,12 +22,12 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
+  SafeMap,
   SafeRegExp,
   Symbol,
   StringFromCharCode,
@@ -346,13 +346,15 @@ function formDataToBlob(formData) {
   });
 }
 
+const QUOTE_CONTENT_PATTERN = new SafeRegExp(/^"([^"]*)"$/);
+
 /**
  * @param {string} value
  * @returns {Map<string, string>}
  */
 function parseContentDisposition(value) {
   /** @type {Map<string, string>} */
-  const params = new Map();
+  const params = new SafeMap();
   // Forced to do so for some Map constructor param mismatch
   const values = ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1);
   for (let i = 0; i < values.length; i++) {
@@ -361,7 +363,7 @@ function parseContentDisposition(value) {
       MapPrototypeSet(
         params,
         entries[0],
-        StringPrototypeReplace(entries[1], /^"([^"]*)"$/, "$1"),
+        StringPrototypeReplace(entries[1], QUOTE_CONTENT_PATTERN, "$1"),
       );
     }
   }

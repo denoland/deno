@@ -30,8 +30,8 @@ const {
   MathCeil,
   SafeMap,
   SafeArrayIterator,
+  SafeWeakMap,
   SymbolFor,
-  WeakMap,
 } = primordials;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
@@ -204,7 +204,7 @@ const OUT_BUFFER = new Uint32Array(2);
 const OUT_BUFFER_64 = new BigInt64Array(
   TypedArrayPrototypeGetBuffer(OUT_BUFFER),
 );
-const POINTER_TO_BUFFER_WEAK_MAP = new WeakMap();
+const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
   static create(value) {
     return ops.op_ffi_ptr_create(value);
