@@ -24,7 +24,6 @@ const {
   DateNow,
   Error,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectCreate,
@@ -34,6 +33,7 @@ const {
   ReflectDefineProperty,
   ReflectHas,
   SafeArrayIterator,
+  SafeMap,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
@@ -1443,7 +1443,7 @@ function defineEventHandler(
       }
 
       if (!this[_eventHandlers]) {
-        this[_eventHandlers] = new Map();
+        this[_eventHandlers] = new SafeMap();
       }
       let handlerWrapper = MapPrototypeGet(this[_eventHandlers], name);
       if (handlerWrapper) {

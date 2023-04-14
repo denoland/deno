@@ -23,12 +23,12 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
   queueMicrotask,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetBuffer,
@@ -273,7 +273,7 @@ class FileReader extends EventTarget {
     webidl.assertBranded(this, FileReaderPrototype);
 
     if (!this[handlerSymbol]) {
-      this[handlerSymbol] = new Map();
+      this[handlerSymbol] = new SafeMap();
     }
     let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
     if (handlerWrapper) {

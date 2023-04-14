@@ -33,7 +33,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   RegExpPrototypeTest,
-  Set,
+  SafeSet,
   SetPrototypeGetSize,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
@@ -223,7 +223,7 @@ class WebSocket extends EventTarget {
     if (
       protocols.length !==
         SetPrototypeGetSize(
-          new Set(
+          new SafeSet(
             ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
           ),
         )
