@@ -828,7 +828,7 @@ pub struct Documents {
   imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
-  resolver: CliGraphResolver,
+  resolver: Arc<CliGraphResolver>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -849,7 +849,7 @@ impl Documents {
       lsp_client_kind,
       resolver_config_hash: 0,
       imports: Default::default(),
-      resolver: CliGraphResolver::default(),
+      resolver: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -1223,14 +1223,14 @@ impl Documents {
       npm_resolution.clone(),
       maybe_package_json_deps,
     );
-    self.resolver = CliGraphResolver::new(
+    self.resolver = Arc::new(CliGraphResolver::new(
       maybe_jsx_config,
       maybe_import_map,
       false,
       npm_registry_api,
       npm_resolution,
       deps_installer,
-    );
+    ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())

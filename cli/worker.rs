@@ -184,7 +184,8 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
+    if self.ps.npm_resolver.has_packages()
+      || self.ps.graph_container.graph().has_node_specifier
     {
       self.initialize_main_module_for_node()?;
     }

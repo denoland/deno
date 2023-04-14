@@ -108,9 +108,7 @@ impl NpmPackageResolver {
     &self,
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
-    let path = self
-      .fs_resolver
-      .resolve_package_folder_from_deno_module(pkg_id)?;
+    let path = self.fs_resolver.package_folder(pkg_id)?;
     let path = canonicalize_path_maybe_not_exists(&path)?;
     log::debug!(
       "Resolved package folder of {} to {}",
@@ -157,7 +155,8 @@ impl NpmPackageResolver {
     &self,
     package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
-    self.fs_resolver.package_size(package_id)
+    let package_folder = self.fs_resolver.package_folder(package_id)?;
+    Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
   /// Gets if the provided specifier is in an npm package.

@@ -95,11 +95,8 @@ impl ParsedSourceCache {
     }
   }
 
-  pub fn reset_for_file_watcher(&self) -> Self {
-    Self {
-      db: self.db.clone(),
-      sources: Default::default(),
-    }
+  pub fn clear(&self) {
+    self.sources.0.lock().clear();
   }
 
   pub fn get_parsed_source_from_esm_module(

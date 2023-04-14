@@ -4,7 +4,6 @@ use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::cache::DenoDir;
-use crate::graph_util::create_graph_and_maybe_check;
 use crate::graph_util::error_for_any_npm_specifier;
 use crate::http_util::HttpClient;
 use crate::standalone::Metadata;
@@ -56,9 +55,12 @@ pub async fn compile(
   )
   .await?;
 
-  let graph =
-    Arc::try_unwrap(create_graph_and_maybe_check(module_roots, &ps).await?)
-      .unwrap();
+  let graph = Arc::try_unwrap(
+    ps.module_graph_builder
+      .create_graph_and_maybe_check(module_roots)
+      .await?,
+  )
+  .unwrap();
 
   // at the moment, we don't support npm specifiers in deno_compile, so show an error
   error_for_any_npm_specifier(&graph)?;

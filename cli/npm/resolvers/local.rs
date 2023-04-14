@@ -103,11 +103,19 @@ impl LocalNpmPackageResolver {
     // it's within the directory, so use it
     specifier.to_file_path().ok()
   }
+}
 
-  fn get_package_id_folder(
-    &self,
-    id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError> {
+#[async_trait]
+impl NpmPackageFsResolver for LocalNpmPackageResolver {
+  fn root_dir_url(&self) -> &Url {
+    &self.root_node_modules_url
+  }
+
+  fn node_modules_path(&self) -> Option<PathBuf> {
+    Some(self.root_node_modules_path.clone())
+  }
+
+  fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
     match self.resolution.resolve_package_cache_folder_id_from_id(id) {
       // package is stored at:
       // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
@@ -124,24 +132,6 @@ impl LocalNpmPackageResolver {
         id.as_serialized()
       ),
     }
-  }
-}
-
-#[async_trait]
-impl NpmPackageFsResolver for LocalNpmPackageResolver {
-  fn root_dir_url(&self) -> &Url {
-    &self.root_node_modules_url
-  }
-
-  fn node_modules_path(&self) -> Option<PathBuf> {
-    Some(self.root_node_modules_path.clone())
-  }
-
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    node_id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError> {
-    self.get_package_id_folder(node_id)
   }
 
   fn resolve_package_folder_from_package(
@@ -196,12 +186,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     let local_path = self.resolve_folder_for_specifier(specifier)?;
     let package_root_path = self.resolve_package_root(&local_path);
     Ok(package_root_path)
-  }
-
-  fn package_size(&self, id: &NpmPackageId) -> Result<u64, AnyError> {
-    let package_folder_path = self.get_package_id_folder(id)?;
-
-    Ok(crate::util::fs::dir_size(&package_folder_path)?)
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {

@@ -26,11 +26,10 @@ pub trait NpmPackageFsResolver: Send + Sync {
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<PathBuf>;
 
-  fn resolve_package_folder_from_deno_module(
+  fn package_folder(
     &self,
-    id: &NpmPackageId,
+    package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError>;
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -42,8 +41,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
-
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
   async fn cache_packages(&self) -> Result<(), AnyError>;
 

@@ -182,13 +182,15 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
+      // todo(dsherret): don't use ProcState here
       let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.create_graph_loader();
+      let mut inner_loader = ps.module_graph_builder.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
       let graph = ps
+        .module_graph_builder
         .create_graph_with_loader(roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(

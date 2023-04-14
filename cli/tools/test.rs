@@ -1259,14 +1259,15 @@ pub async fn check_specifiers(
       ps.file_fetcher.insert_cached(file);
     }
 
-    ps.prepare_module_load(
-      specifiers,
-      false,
-      lib,
-      PermissionsContainer::new(Permissions::allow_all()),
-      PermissionsContainer::new(permissions.clone()),
-    )
-    .await?;
+    ps.module_load_preparer
+      .prepare_module_load(
+        specifiers,
+        false,
+        lib,
+        PermissionsContainer::new(Permissions::allow_all()),
+        PermissionsContainer::new(permissions.clone()),
+      )
+      .await?;
   }
 
   let module_specifiers = specifiers
@@ -1280,14 +1281,15 @@ pub async fn check_specifiers(
     })
     .collect();
 
-  ps.prepare_module_load(
-    module_specifiers,
-    false,
-    lib,
-    PermissionsContainer::allow_all(),
-    PermissionsContainer::new(permissions),
-  )
-  .await?;
+  ps.module_load_preparer
+    .prepare_module_load(
+      module_specifiers,
+      false,
+      lib,
+      PermissionsContainer::allow_all(),
+      PermissionsContainer::new(permissions),
+    )
+    .await?;
 
   Ok(())
 }
@@ -1708,7 +1710,10 @@ pub async fn run_tests_with_watch(
       } else {
         test_modules.clone()
       };
-      let graph = ps.create_graph(test_modules.clone()).await?;
+      let graph = ps
+        .module_graph_builder
+        .create_graph(test_modules.clone())
+        .await?;
       graph_valid_with_cli_options(&graph, &test_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.

@@ -422,14 +422,15 @@ async fn check_specifiers(
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
-  ps.prepare_module_load(
-    specifiers,
-    false,
-    lib,
-    PermissionsContainer::allow_all(),
-    PermissionsContainer::new(permissions),
-  )
-  .await?;
+  ps.module_load_preparer
+    .prepare_module_load(
+      specifiers,
+      false,
+      lib,
+      PermissionsContainer::allow_all(),
+      PermissionsContainer::new(permissions),
+    )
+    .await?;
 
   Ok(())
 }
@@ -705,7 +706,10 @@ pub async fn run_benchmarks_with_watch(
       } else {
         bench_modules.clone()
       };
-      let graph = ps.create_graph(bench_modules.clone()).await?;
+      let graph = ps
+        .module_graph_builder
+        .create_graph(bench_modules.clone())
+        .await?;
       graph_valid_with_cli_options(&graph, &bench_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.

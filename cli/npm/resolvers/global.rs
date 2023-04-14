@@ -45,16 +45,6 @@ impl GlobalNpmPackageResolver {
     }
   }
 
-  fn package_folder(&self, id: &NpmPackageId) -> PathBuf {
-    let folder_id = self
-      .resolution
-      .resolve_package_cache_folder_id_from_id(id)
-      .unwrap();
-    self
-      .cache
-      .package_folder_for_id(&folder_id, &self.registry_url)
-  }
-
   fn resolve_types_package(
     &self,
     package_name: &str,
@@ -77,11 +67,16 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     None
   }
 
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError> {
-    Ok(self.package_folder(id))
+  fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
+    let folder_id = self
+      .resolution
+      .resolve_package_cache_folder_id_from_id(id)
+      .unwrap();
+    Ok(
+      self
+        .cache
+        .package_folder_for_id(&folder_id, &self.registry_url),
+    )
   }
 
   fn resolve_package_folder_from_package(
@@ -106,7 +101,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .resolution
         .resolve_package_from_package(name, &referrer_pkg_id)?
     };
-    Ok(self.package_folder(&pkg.pkg_id))
+    self.package_folder(&pkg.pkg_id)
   }
 
   fn resolve_package_folder_from_specifier(
@@ -122,11 +117,6 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .cache
         .package_folder_for_id(&pkg_folder_id, &self.registry_url),
     )
-  }
-
-  fn package_size(&self, id: &NpmPackageId) -> Result<u64, AnyError> {
-    let package_folder = self.package_folder(id);
-    Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {

@@ -64,6 +64,15 @@ impl Emitter {
     Ok(())
   }
 
+  pub fn maybed_cached_emit(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> Option<String> {
+    let source_hash = self.get_source_hash(source);
+    self.emit_cache.get_emit_code(specifier, source_hash)
+  }
+
   pub fn emit_parsed_source(
     &self,
     specifier: &ModuleSpecifier,
@@ -97,7 +106,7 @@ impl Emitter {
   /// A hashing function that takes the source code and uses the global emit
   /// options then generates a string hash which can be stored to
   /// determine if the cached emit is valid or not.
-  pub fn get_source_hash(&self, source_text: &str) -> u64 {
+  fn get_source_hash(&self, source_text: &str) -> u64 {
     FastInsecureHasher::new()
       .write_str(source_text)
       .write_u64(self.emit_options_hash)
