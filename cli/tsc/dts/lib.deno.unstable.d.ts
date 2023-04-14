@@ -1842,7 +1842,7 @@ declare namespace Deno {
     /**
      * Shortcut for creating a sum mutation.
      */
-    add(key: KvKey, n: bigint): this;
+    sum(key: KvKey, n: bigint): this;
     /**
      * Add to the operation a mutation that sets the value of the specified key
      * to the specified value if all checks pass during the commit.

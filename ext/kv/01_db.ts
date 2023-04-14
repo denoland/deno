@@ -211,7 +211,7 @@ class AtomicOperation {
     return this;
   }
 
-  add(key: Deno.KvKey, n: bigint): this {
+  sum(key: Deno.KvKey, n: bigint): this {
     return this.mutate({
       type: "sum",
       key,
