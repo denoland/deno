@@ -13,7 +13,6 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TsConfigType;
 use crate::args::TypeCheckMode;
-use crate::graph_util::create_graph_and_maybe_check;
 use crate::graph_util::error_for_any_npm_specifier;
 use crate::proc_state::ProcState;
 use crate::util;
@@ -42,9 +41,10 @@ pub async fn bundle(
     async move {
       log::debug!(">>>>> bundle START");
       let ps = ProcState::from_cli_options(cli_options).await?;
-      let graph =
-        create_graph_and_maybe_check(vec![module_specifier.clone()], &ps)
-          .await?;
+      let graph = ps
+        .module_graph_builder
+        .create_graph_and_maybe_check(vec![module_specifier.clone()])
+        .await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()

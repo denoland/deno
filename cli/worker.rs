@@ -184,7 +184,8 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
+    if self.ps.npm_resolver.has_packages()
+      || self.ps.graph_container.graph().has_node_specifier
     {
       self.initialize_main_module_for_node()?;
     }
@@ -270,8 +271,10 @@ pub async fn create_custom_worker(
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
   } else if ps.options.is_npm_main() {
-    let node_resolution =
-      node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
+    let node_resolution = node::url_to_node_resolution(
+      main_module,
+      &ps.npm_resolver.as_require_npm_resolver(),
+    )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
@@ -350,7 +353,7 @@ pub async fn create_custom_worker(
     should_break_on_first_statement: ps.options.inspect_brk().is_some(),
     should_wait_for_inspector_session: ps.options.inspect_wait().is_some(),
     module_loader,
-    npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
+    npm_resolver: Some(Rc::new(ps.npm_resolver.as_require_npm_resolver())),
     get_error_class_fn: Some(&errors::get_error_class_name),
     cache_storage_dir,
     origin_storage_dir,
@@ -473,7 +476,7 @@ fn create_web_worker_callback(
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(module_loader.clone())),
       module_loader,
-      npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
+      npm_resolver: Some(Rc::new(ps.npm_resolver.as_require_npm_resolver())),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),

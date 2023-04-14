@@ -56,7 +56,7 @@ pub struct CheckResult {
 pub fn check(
   graph: Arc<ModuleGraph>,
   cache: &TypeCheckCache,
-  npm_resolver: &NpmPackageResolver,
+  npm_resolver: Arc<NpmPackageResolver>,
   options: CheckOptions,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();

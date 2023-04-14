@@ -12,10 +12,9 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use std::sync::Arc;
 
-#[derive(Clone)]
 pub struct Emitter {
   emit_cache: EmitCache,
-  parsed_source_cache: ParsedSourceCache,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   emit_options: deno_ast::EmitOptions,
   // cached hash of the emit options
   emit_options_hash: u64,
@@ -24,7 +23,7 @@ pub struct Emitter {
 impl Emitter {
   pub fn new(
     emit_cache: EmitCache,
-    parsed_source_cache: ParsedSourceCache,
+    parsed_source_cache: Arc<ParsedSourceCache>,
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
     let emit_options_hash = FastInsecureHasher::new()
@@ -64,6 +63,16 @@ impl Emitter {
     Ok(())
   }
 
+  /// Gets a cached emit if the source matches the hash found in the cache.
+  pub fn maybed_cached_emit(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> Option<String> {
+    let source_hash = self.get_source_hash(source);
+    self.emit_cache.get_emit_code(specifier, source_hash)
+  }
+
   pub fn emit_parsed_source(
     &self,
     specifier: &ModuleSpecifier,
@@ -97,7 +106,7 @@ impl Emitter {
   /// A hashing function that takes the source code and uses the global emit
   /// options then generates a string hash which can be stored to
   /// determine if the cached emit is valid or not.
-  pub fn get_source_hash(&self, source_text: &str) -> u64 {
+  fn get_source_hash(&self, source_text: &str) -> u64 {
     FastInsecureHasher::new()
       .write_str(source_text)
       .write_u64(self.emit_options_hash)
