@@ -26,7 +26,7 @@ class CacheStorage {
   async open(cacheName) {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'open' on 'CacheStorage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, {
       prefix,
       context: "Argument 1",
@@ -40,7 +40,7 @@ class CacheStorage {
   async has(cacheName) {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'has' on 'CacheStorage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, {
       prefix,
       context: "Argument 1",
@@ -51,7 +51,7 @@ class CacheStorage {
   async delete(cacheName) {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'delete' on 'CacheStorage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, {
       prefix,
       context: "Argument 1",
@@ -75,7 +75,7 @@ class Cache {
   async put(request, response) {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'put' on 'Cache'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     request = webidl.converters["RequestInfo_DOMString"](request, {
       prefix,
       context: "Argument 1",
@@ -165,7 +165,7 @@ class Cache {
   async match(request, options) {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'match' on 'Cache'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     request = webidl.converters["RequestInfo_DOMString"](request, {
       prefix,
       context: "Argument 1",
@@ -182,7 +182,7 @@ class Cache {
   async delete(request, _options) {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'delete' on 'Cache'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     request = webidl.converters["RequestInfo_DOMString"](request, {
       prefix,
       context: "Argument 1",

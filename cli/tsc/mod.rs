@@ -307,7 +307,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: u64,
-  pub maybe_npm_resolver: Option<NpmPackageResolver>,
+  pub maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -331,7 +331,7 @@ struct State {
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
-  maybe_npm_resolver: Option<NpmPackageResolver>,
+  maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
@@ -341,7 +341,7 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: u64,
-    maybe_npm_resolver: Option<NpmPackageResolver>,
+    maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
@@ -649,7 +649,11 @@ fn resolve_graph_specifier_types(
         let specifier =
           node::resolve_specifier_into_node_modules(&module.specifier);
         NodeResolution::into_specifier_and_media_type(
-          node::url_to_node_resolution(specifier, npm_resolver).ok(),
+          node::url_to_node_resolution(
+            specifier,
+            &npm_resolver.as_require_npm_resolver(),
+          )
+          .ok(),
         )
       }))
     }
@@ -673,7 +677,7 @@ fn resolve_non_graph_specifier_types(
         specifier,
         referrer,
         NodeResolutionMode::Types,
-        npm_resolver,
+        &npm_resolver.as_require_npm_resolver(),
         &mut PermissionsContainer::allow_all(),
       )
       .ok()
@@ -697,7 +701,7 @@ fn resolve_non_graph_specifier_types(
 
 pub fn resolve_npm_package_reference_types(
   npm_ref: &NpmPackageNvReference,
-  npm_resolver: &NpmPackageResolver,
+  npm_resolver: &Arc<NpmPackageResolver>,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(
     npm_ref,

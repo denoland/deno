@@ -60,7 +60,7 @@ const {
   ReflectOwnKeys,
   RegExpPrototypeTest,
   SafeRegExp,
-  Set,
+  SafeSet,
   SetPrototypeEntries,
   SetPrototypeForEach,
   SetPrototypeKeys,
@@ -642,11 +642,9 @@ converters["sequence<DOMString>"] = createSequenceConverter(
   converters.DOMString,
 );
 
-function requiredArguments(length, required, opts = {}) {
+function requiredArguments(length, required, prefix) {
   if (length < required) {
-    const errMsg = `${
-      opts.prefix ? opts.prefix + ": " : ""
-    }${required} argument${
+    const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
     } required, but only ${length} present.`;
     throw new TypeError(errMsg);
@@ -754,7 +752,7 @@ function createDictionaryConverter(name, ...dictionaries) {
 
 // https://heycam.github.io/webidl/#es-enumeration
 function createEnumConverter(name, values) {
-  const E = new Set(values);
+  const E = new SafeSet(values);
 
   return function (V, opts = {}) {
     const S = String(V);

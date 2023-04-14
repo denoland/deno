@@ -1,4 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+const ops = globalThis.Deno.core.ops;
+
 export default function randomInt(max: number): number;
 export default function randomInt(min: number, max: number): number;
 export default function randomInt(
@@ -40,16 +42,9 @@ export default function randomInt(
     throw new Error("Min is bigger than Max!");
   }
 
-  const randomBuffer = new Uint32Array(1);
-
-  globalThis.crypto.getRandomValues(randomBuffer);
-
-  const randomNumber = randomBuffer[0] / (0xffffffff + 1);
-
   min = Math.ceil(min);
   max = Math.floor(max);
-
-  const result = Math.floor(randomNumber * (max - min)) + min;
+  const result = ops.op_node_random_int(min, max);
 
   if (cb) {
     cb(null, result);
