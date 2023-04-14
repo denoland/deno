@@ -11,9 +11,9 @@ use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_npm::registry::NpmRegistryApi;
-use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptionsPackage;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageReq;
 
@@ -77,7 +77,7 @@ pub fn discover(
 pub async fn snapshot_from_lockfile(
   lockfile: Arc<Mutex<Lockfile>>,
   api: &CliNpmRegistryApi,
-) -> Result<NpmResolutionSnapshot, AnyError> {
+) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
   let (root_packages, mut packages) = {
     let lockfile = lockfile.lock();
 
@@ -105,7 +105,7 @@ pub async fn snapshot_from_lockfile(
         dependencies.insert(name.clone(), dep_id);
       }
 
-      packages.push(NpmResolutionSnapshotCreateOptionsPackage {
+      packages.push(SerializedNpmResolutionSnapshotPackage {
         pkg_id,
         dist: Default::default(), // temporarily empty
         dependencies,
@@ -154,9 +154,10 @@ pub async fn snapshot_from_lockfile(
   // clear the memory cache to reduce memory usage
   api.clear_memory_cache();
 
-  NpmResolutionSnapshot::from_packages(NpmResolutionSnapshotCreateOptions {
+  SerializedNpmResolutionSnapshot {
     packages,
     root_packages,
-  })
+  }
+  .into_valid()
   .context("The lockfile is corrupt. You can recreate it with --lock-write")
 }

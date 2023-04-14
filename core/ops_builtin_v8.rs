@@ -50,28 +50,6 @@ fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
 }
 
 #[op(v8)]
-fn op_set_macrotask_callback(
-  scope: &mut v8::HandleScope,
-  cb: serde_v8::Value,
-) -> Result<(), Error> {
-  let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().js_macrotask_cbs.push(cb);
-  Ok(())
-}
-
-#[op(v8)]
-fn op_set_next_tick_callback(
-  scope: &mut v8::HandleScope,
-  cb: serde_v8::Value,
-) -> Result<(), Error> {
-  let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().js_nexttick_cbs.push(cb);
-  Ok(())
-}
-
-#[op(v8)]
 fn op_set_promise_reject_callback<'a>(
   scope: &mut v8::HandleScope<'a>,
   cb: serde_v8::Value,

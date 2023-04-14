@@ -25,6 +25,7 @@ regex.workspace = true
 syn.workspace = true
 
 [dev-dependencies]
+pretty_assertions.workspace = true
 prettyplease = "0.1.21"
 testing_macros = "0.2.7"
 trybuild = "1.0.71"
