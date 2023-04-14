@@ -562,11 +562,6 @@ impl JsRuntime {
   /// pre-initialized with all of the extensions that were passed in
   /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was
   /// constructed.
-  ///
-  /// The `module_loader` parameter gives the [`ModuleLoader`] that
-  /// will be used to load ES modules in the realm (see also
-  /// [`RuntimeOptions::module_loader`]). If `None`, module loading in
-  /// the realm will fail.
   pub fn create_realm(
     &mut self,
     options: CreateRealmOptions,
@@ -4493,7 +4488,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           runtime.v8_isolate(),
           "",
           r#"
-            
+
             var promise = Deno.core.opAsync("op_pending");
           "#,
         )
