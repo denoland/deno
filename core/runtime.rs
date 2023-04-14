@@ -265,6 +265,16 @@ pub struct RuntimeOptions {
   pub is_main: bool,
 }
 
+#[derive(Default)]
+pub struct CreateRealmOptions {
+  /// Implementation of `ModuleLoader` which will be
+  /// called when V8 requests to load ES modules in the realm.
+  ///
+  /// If not provided, there will be an error if code being
+  /// executed tries to load modules from the realm.
+  pub module_loader: Option<Rc<dyn ModuleLoader>>,
+}
+
 impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
@@ -559,7 +569,7 @@ impl JsRuntime {
   /// the realm will fail.
   pub fn create_realm(
     &mut self,
-    module_loader: Option<Rc<dyn ModuleLoader>>,
+    options: CreateRealmOptions,
   ) -> Result<JsRealm, Error> {
     let realm = {
       let realm_idx = self.state.borrow().known_realms.len();
@@ -601,7 +611,9 @@ impl JsRuntime {
 
       // TODO(andreubotella): Set up ExtModuleLoader.
       let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
-        module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
+        options
+          .module_loader
+          .unwrap_or_else(|| Rc::new(NoopModuleLoader)),
         self.op_state(),
         self.snapshot_options == snapshot_util::SnapshotOptions::Load,
       )));
@@ -2646,8 +2658,16 @@ pub mod tests {
       ..Default::default()
     });
     let main_realm = runtime.global_realm();
-    let other_realm = runtime.create_realm(Some(loader.clone())).unwrap();
-    let other_realm2 = runtime.create_realm(Some(loader)).unwrap();
+    let other_realm = runtime
+      .create_realm(CreateRealmOptions {
+        module_loader: Some(loader.clone()),
+      })
+      .unwrap();
+    let other_realm2 = runtime
+      .create_realm(CreateRealmOptions {
+        module_loader: Some(loader),
+      })
+      .unwrap();
 
     async fn load_test_module(
       runtime: &mut JsRuntime,
@@ -2721,7 +2741,11 @@ pub mod tests {
       ..Default::default()
     });
     let main_realm = runtime.global_realm();
-    let other_realm = runtime.create_realm(Some(loader)).unwrap();
+    let other_realm = runtime
+      .create_realm(CreateRealmOptions {
+        module_loader: Some(loader),
+      })
+      .unwrap();
 
     fn import_wrapper_function(
       realm: &JsRealm,
@@ -2844,7 +2868,11 @@ pub mod tests {
       .put::<Vec<oneshot::Sender<()>>>(vec![]);
 
     let global_realm = runtime.global_realm();
-    let other_realm = runtime.create_realm(Some(Rc::new(Loader))).unwrap();
+    let other_realm = runtime
+      .create_realm(CreateRealmOptions {
+        module_loader: Some(Rc::new(Loader)),
+      })
+      .unwrap();
 
     let global_realm_id = global_realm
       .load_main_module(
@@ -2947,7 +2975,11 @@ pub mod tests {
       .put::<Vec<oneshot::Sender<()>>>(vec![]);
 
     let global_realm = runtime.global_realm();
-    let other_realm = runtime.create_realm(Some(Rc::new(Loader))).unwrap();
+    let other_realm = runtime
+      .create_realm(CreateRealmOptions {
+        module_loader: Some(Rc::new(Loader)),
+      })
+      .unwrap();
 
     let global_realm_promise = {
       let global = global_realm
@@ -3043,7 +3075,11 @@ pub mod tests {
     }
 
     let mut runtime = JsRuntime::new(Default::default());
-    let realm = runtime.create_realm(Some(Rc::new(Loader))).unwrap();
+    let realm = runtime
+      .create_realm(CreateRealmOptions {
+        module_loader: Some(Rc::new(Loader)),
+      })
+      .unwrap();
 
     let module_id = realm
       .load_main_module(
@@ -3950,8 +3986,8 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   async fn test_set_promise_reject_callback_realms() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
     let global_realm = runtime.global_realm();
-    let realm1 = runtime.create_realm(None).unwrap();
-    let realm2 = runtime.create_realm(None).unwrap();
+    let realm1 = runtime.create_realm(Default::default()).unwrap();
+    let realm2 = runtime.create_realm(Default::default()).unwrap();
 
     let realm_expectations = &[
       (&global_realm, "global_realm", 42),
@@ -4242,7 +4278,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       v8::Global::new(scope, local_global)
     };
 
-    let realm = runtime.create_realm(None).unwrap();
+    let realm = runtime.create_realm(Default::default()).unwrap();
     assert_ne!(realm.context(), &main_context);
     assert_ne!(realm.global_object(runtime.v8_isolate()), main_global);
 
@@ -4265,7 +4301,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
-    let realm = runtime.create_realm(None).unwrap();
+    let realm = runtime.create_realm(Default::default()).unwrap();
     let ret = realm
       .execute_script_static(
         runtime.v8_isolate(),
@@ -4306,7 +4342,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
-    let realm = runtime.create_realm(None).unwrap();
+    let realm = runtime.create_realm(Default::default()).unwrap();
     let ret = realm
       .execute_script_static(
         runtime.v8_isolate(),
@@ -4343,7 +4379,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       }),
       ..Default::default()
     });
-    let new_realm = runtime.create_realm(None).unwrap();
+    let new_realm = runtime.create_realm(Default::default()).unwrap();
 
     // Test in both realms
     for realm in [runtime.global_realm(), new_realm].into_iter() {
@@ -4393,7 +4429,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     });
 
     let global_realm = runtime.global_realm();
-    let new_realm = runtime.create_realm(None).unwrap();
+    let new_realm = runtime.create_realm(Default::default()).unwrap();
 
     let mut rets = vec![];
 
@@ -4450,7 +4486,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
 
     run_in_task(move |cx| {
       let main_realm = runtime.global_realm();
-      let other_realm = runtime.create_realm(None).unwrap();
+      let other_realm = runtime.create_realm(Default::default()).unwrap();
 
       main_realm
         .execute_script_static(
