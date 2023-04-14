@@ -20,6 +20,7 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File as StdFile;
+use std::io;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
@@ -78,7 +79,6 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
-  ops = [op_read_sync, op_write_sync],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
@@ -453,28 +453,25 @@ impl StdFileResource {
     }
   }
 
-  fn with_inner_and_metadata<TResult>(
-    self: Rc<Self>,
+  fn with_inner_and_metadata<TResult, E>(
+    &self,
     action: impl FnOnce(
       &mut StdFileResourceInner,
       &Arc<Mutex<FileMetadata>>,
-    ) -> Result<TResult, AnyError>,
-  ) -> Result<TResult, AnyError> {
+    ) -> Result<TResult, E>,
+  ) -> Option<Result<TResult, E>> {
     match self.cell.try_borrow_mut() {
       Ok(mut cell) => {
         let mut file = cell.take().unwrap();
         let result = action(&mut file.inner, &file.meta_data);
         cell.replace(file);
-        result
+        Some(result)
       }
-      Err(_) => Err(resource_unavailable()),
+      Err(_) => None,
     }
   }
 
-  async fn with_inner_blocking_task<F, R: Send + 'static>(
-    self: Rc<Self>,
-    action: F,
-  ) -> R
+  async fn with_inner_blocking_task<F, R: Send + 'static>(&self, action: F) -> R
   where
     F: FnOnce(&mut StdFileResourceInner) -> R + Send + 'static,
   {
@@ -520,20 +517,37 @@ impl StdFileResource {
       .await
   }
 
-  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
-    let buf = data.to_owned();
+  async fn write(
+    self: Rc<Self>,
+    view: BufView,
+  ) -> Result<deno_core::WriteOutcome, AnyError> {
     self
-      .with_inner_blocking_task(move |inner| inner.write_and_maybe_flush(&buf))
+      .with_inner_blocking_task(move |inner| {
+        let nwritten = inner.write_and_maybe_flush(&view)?;
+        Ok(deno_core::WriteOutcome::Partial { nwritten, view })
+      })
       .await
   }
 
-  async fn write_all(self: Rc<Self>, data: &[u8]) -> Result<(), AnyError> {
-    let buf = data.to_owned();
+  async fn write_all(self: Rc<Self>, view: BufView) -> Result<(), AnyError> {
     self
       .with_inner_blocking_task(move |inner| {
-        inner.write_all_and_maybe_flush(&buf)
+        inner.write_all_and_maybe_flush(&view)
       })
       .await
+  }
+
+  fn read_byob_sync(&self, buf: &mut [u8]) -> Result<usize, AnyError> {
+    self
+      .with_inner_and_metadata(|inner, _| inner.read(buf))
+      .ok_or_else(resource_unavailable)?
+      .map_err(Into::into)
+  }
+
+  fn write_sync(&self, data: &[u8]) -> Result<usize, AnyError> {
+    self
+      .with_inner_and_metadata(|inner, _| inner.write_and_maybe_flush(data))
+      .ok_or_else(resource_unavailable)?
   }
 
   fn with_resource<F, R>(
@@ -557,8 +571,17 @@ impl StdFileResource {
     F: FnOnce(&mut StdFile) -> Result<R, AnyError>,
   {
     Self::with_resource(state, rid, move |resource| {
-      resource.with_inner_and_metadata(move |inner, _| inner.with_file(f))
+      resource
+        .with_inner_and_metadata(move |inner, _| inner.with_file(f))
+        .ok_or_else(resource_unavailable)?
     })
+  }
+
+  pub fn with_file2<F, R>(self: Rc<Self>, f: F) -> Option<Result<R, io::Error>>
+  where
+    F: FnOnce(&mut StdFile) -> Result<R, io::Error>,
+  {
+    self.with_inner_and_metadata(move |inner, _| inner.with_file(f))
   }
 
   pub fn with_file_and_metadata<F, R>(
@@ -570,9 +593,11 @@ impl StdFileResource {
     F: FnOnce(&mut StdFile, &Arc<Mutex<FileMetadata>>) -> Result<R, AnyError>,
   {
     Self::with_resource(state, rid, move |resource| {
-      resource.with_inner_and_metadata(move |inner, metadata| {
-        inner.with_file(move |file| f(file, metadata))
-      })
+      resource
+        .with_inner_and_metadata(move |inner, metadata| {
+          inner.with_file(move |file| f(file, metadata))
+        })
+        .ok_or_else(resource_unavailable)?
     })
   }
 
@@ -594,6 +619,18 @@ impl StdFileResource {
       .await
   }
 
+  pub async fn with_file_blocking_task2<F, R: Send + 'static>(
+    self: Rc<Self>,
+    f: F,
+  ) -> Result<R, io::Error>
+  where
+    F: (FnOnce(&mut StdFile) -> Result<R, io::Error>) + Send + 'static,
+  {
+    self
+      .with_inner_blocking_task(move |inner| inner.with_file(f))
+      .await
+  }
+
   pub fn clone_file(
     state: &mut OpState,
     rid: ResourceId,
@@ -608,13 +645,15 @@ impl StdFileResource {
     rid: u32,
   ) -> Result<std::process::Stdio, AnyError> {
     Self::with_resource(state, rid, |resource| {
-      resource.with_inner_and_metadata(|inner, _| match inner.kind {
-        StdFileResourceKind::File => {
-          let file = inner.file.try_clone()?;
-          Ok(file.into())
-        }
-        _ => Ok(std::process::Stdio::inherit()),
-      })
+      resource
+        .with_inner_and_metadata(|inner, _| match inner.kind {
+          StdFileResourceKind::File => {
+            let file = inner.file.try_clone()?;
+            Ok(file.into())
+          }
+          _ => Ok(std::process::Stdio::inherit()),
+        })
+        .ok_or_else(resource_unavailable)?
     })
   }
 }
@@ -628,7 +667,7 @@ impl Resource for StdFileResource {
     Box::pin(async move {
       let vec = vec![0; limit];
       let buf = BufMutView::from(vec);
-      let (nread, buf) = self.read_byob(buf).await?;
+      let (nread, buf) = StdFileResource::read_byob(self, buf).await?;
       let mut vec = buf.unwrap_vec();
       if vec.len() != nread {
         vec.truncate(nread);
@@ -641,18 +680,38 @@ impl Resource for StdFileResource {
     self: Rc<Self>,
     buf: deno_core::BufMutView,
   ) -> AsyncResult<(usize, deno_core::BufMutView)> {
-    Box::pin(self.read_byob(buf))
+    Box::pin(StdFileResource::read_byob(self, buf))
   }
 
-  deno_core::impl_writable!(with_all);
+  fn write(
+    self: Rc<Self>,
+    view: deno_core::BufView,
+  ) -> AsyncResult<deno_core::WriteOutcome> {
+    Box::pin(StdFileResource::write(self, view))
+  }
+
+  fn write_all(self: Rc<Self>, view: deno_core::BufView) -> AsyncResult<()> {
+    Box::pin(StdFileResource::write_all(self, view))
+  }
+
+  fn write_sync(&self, data: &[u8]) -> Result<usize, deno_core::anyhow::Error> {
+    StdFileResource::write_sync(self, data)
+  }
+
+  fn read_byob_sync(
+    &self,
+    data: &mut [u8],
+  ) -> Result<usize, deno_core::anyhow::Error> {
+    StdFileResource::read_byob_sync(self, data)
+  }
 
   #[cfg(unix)]
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
     use std::os::unix::io::AsRawFd;
     self
       .with_inner_and_metadata(move |std_file, _| {
-        Ok(std_file.with_file(|f| f.as_raw_fd()))
-      })
+        Ok::<_, ()>(std_file.with_file(|f| f.as_raw_fd()))
+      })?
       .ok()
   }
 }
@@ -666,41 +725,11 @@ pub fn op_print(
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };
   StdFileResource::with_resource(state, rid, move |resource| {
-    resource.with_inner_and_metadata(|inner, _| {
-      inner.write_all_and_maybe_flush(msg.as_bytes())?;
-      Ok(())
-    })
-  })
-}
-
-#[op(fast)]
-fn op_read_sync(
-  state: &mut OpState,
-  rid: u32,
-  buf: &mut [u8],
-) -> Result<u32, AnyError> {
-  StdFileResource::with_resource(state, rid, move |resource| {
-    resource.with_inner_and_metadata(|inner, _| {
-      inner
-        .read(buf)
-        .map(|n: usize| n as u32)
-        .map_err(AnyError::from)
-    })
-  })
-}
-
-#[op(fast)]
-fn op_write_sync(
-  state: &mut OpState,
-  rid: u32,
-  buf: &mut [u8],
-) -> Result<u32, AnyError> {
-  StdFileResource::with_resource(state, rid, move |resource| {
-    resource.with_inner_and_metadata(|inner, _| {
-      inner
-        .write_and_maybe_flush(buf)
-        .map(|nwritten: usize| nwritten as u32)
-        .map_err(AnyError::from)
-    })
+    resource
+      .with_inner_and_metadata(|inner, _| {
+        inner.write_all_and_maybe_flush(msg.as_bytes())?;
+        Ok(())
+      })
+      .ok_or_else(resource_unavailable)?
   })
 }

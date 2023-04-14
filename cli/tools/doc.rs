@@ -23,7 +23,7 @@ pub async fn print_docs(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
 
   let mut doc_nodes = match doc_flags.source_file {
     DocSourceFileFlag::Builtin => {

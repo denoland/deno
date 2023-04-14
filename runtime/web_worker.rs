@@ -9,6 +9,7 @@ use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -33,6 +34,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
@@ -439,7 +441,7 @@ impl WebWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),
@@ -572,11 +574,13 @@ impl WebWorker {
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
     // Save a reference to function that will start polling for messages
     // from a worker host; it will be called after the user code is loaded.
-    let script = r#"
+    let script = ascii_str!(
+      r#"
     const pollForMessages = globalThis.pollForMessages;
     delete globalThis.pollForMessages;
     pollForMessages
-    "#;
+    "#
+    );
     let poll_for_messages_fn = self
       .js_runtime
       .execute_script(located_script_name!(), script)
@@ -585,10 +589,10 @@ impl WebWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script<S: Into<ModuleCode>>(
+  pub fn execute_script(
     &mut self,
     name: &'static str,
-    source_code: S,
+    source_code: ModuleCode,
   ) -> Result<(), AnyError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())
@@ -777,7 +781,7 @@ pub fn run_web_worker(
 
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code.take() {
-      let r = worker.execute_script(located_script_name!(), source_code);
+      let r = worker.execute_script(located_script_name!(), source_code.into());
       worker.start_polling_for_messages();
       r
     } else {

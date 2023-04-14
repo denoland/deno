@@ -15,8 +15,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::npm::NpmPackageNvReference;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::find_builtin_node_module;
@@ -35,8 +33,9 @@ use deno_runtime::deno_node::RealFs;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNvReference;
 use once_cell::sync::Lazy;
-use regex::Regex;
 
 use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::FileFetcher;
@@ -500,8 +499,7 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // todo(dsherret): cache
-  let encoded_sep_re = Regex::new(r"%2F|%2C").unwrap();
+  let encoded_sep_re = lazy_regex::regex!(r"%2F|%2C");
 
   if encoded_sep_re.is_match(resolved.path()) {
     return Err(errors::err_invalid_module_specifier(

@@ -72,11 +72,11 @@ mod tests {
     }
   }
 
-  // TODO: Get a good expected value here for Windows.
-  #[cfg(not(windows))]
   #[test]
   fn resolve_from_cwd_absolute() {
-    let expected = Path::new("/a");
-    assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
+    let expected = Path::new("a");
+    let cwd = current_dir().unwrap();
+    let absolute_expected = cwd.join(expected);
+    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }
 }

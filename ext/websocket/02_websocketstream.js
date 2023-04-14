@@ -87,7 +87,7 @@ class WebSocketStream {
   constructor(url, options) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'WebSocketStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, {
       prefix,
       context: "Argument 1",

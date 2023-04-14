@@ -133,12 +133,47 @@
     return promiseRing[idx] != NO_PROMISE;
   }
 
-  function opresolve() {
-    for (let i = 0; i < arguments.length; i += 2) {
+  const macrotaskCallbacks = [];
+  const nextTickCallbacks = [];
+
+  function setMacrotaskCallback(cb) {
+    ArrayPrototypePush(macrotaskCallbacks, cb);
+  }
+
+  function setNextTickCallback(cb) {
+    ArrayPrototypePush(nextTickCallbacks, cb);
+  }
+
+  // This function has variable number of arguments. The last argument describes
+  // if there's a "next tick" scheduled by the Node.js compat layer. Arguments
+  // before last are alternating integers and any values that describe the
+  // responses of async ops.
+  function eventLoopTick() {
+    // First respond to all pending ops.
+    for (let i = 0; i < arguments.length - 1; i += 2) {
       const promiseId = arguments[i];
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
+    }
+    // Drain nextTick queue if there's a tick scheduled.
+    if (arguments[arguments.length - 1]) {
+      for (let i = 0; i < nextTickCallbacks.length; i++) {
+        nextTickCallbacks[i]();
+      }
+    } else {
+      ops.op_run_microtasks();
+    }
+    // Finally drain macrotask queue.
+    for (let i = 0; i < macrotaskCallbacks.length; i++) {
+      const cb = macrotaskCallbacks[i];
+      while (true) {
+        const res = cb();
+        ops.op_run_microtasks();
+        if (res === true) {
+          break;
+        }
+      }
     }
   }
 
@@ -194,8 +229,9 @@
   function opAsync2(name, arg0, arg1) {
     const id = nextPromiseId++;
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+    let maybeResult;
     try {
-      ops[name](id, arg0, arg1);
+      maybeResult = ops[name](id, arg0, arg1);
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
@@ -204,14 +240,20 @@
     }
     promise = handleOpCallTracing(name, id, promise);
     promise[promiseIdSymbol] = id;
+    if (typeof maybeResult !== "undefined") {
+      const promise = getPromise(id);
+      promise.resolve(maybeResult);
+    }
+
     return promise;
   }
 
   function opAsync(name, ...args) {
     const id = nextPromiseId++;
     let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+    let maybeResult;
     try {
-      ops[name](id, ...new SafeArrayIterator(args));
+      maybeResult = ops[name](id, ...new SafeArrayIterator(args));
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
@@ -220,6 +262,11 @@
     }
     promise = handleOpCallTracing(name, id, promise);
     promise[promiseIdSymbol] = id;
+    if (typeof maybeResult !== "undefined") {
+      const promise = getPromise(id);
+      promise.resolve(maybeResult);
+    }
+
     return promise;
   }
 
@@ -394,7 +441,7 @@
     registerErrorBuilder,
     registerErrorClass,
     buildCustomError,
-    opresolve,
+    eventLoopTick,
     BadResource,
     BadResourcePrototype,
     Interrupted,
@@ -412,10 +459,12 @@
     readAll: opAsync.bind(null, "op_read_all"),
     write: opAsync.bind(null, "op_write"),
     writeAll: opAsync.bind(null, "op_write_all"),
+    readSync: (rid, buffer) => ops.op_read_sync(rid, buffer),
+    writeSync: (rid, buffer) => ops.op_write_sync(rid, buffer),
     shutdown: opAsync.bind(null, "op_shutdown"),
     print: (msg, isErr) => ops.op_print(msg, isErr),
-    setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
-    setNextTickCallback: (fn) => ops.op_set_next_tick_callback(fn),
+    setMacrotaskCallback,
+    setNextTickCallback,
     runMicrotasks: () => ops.op_run_microtasks(),
     hasTickScheduled: () => ops.op_has_tick_scheduled(),
     setHasTickScheduled: (bool) => ops.op_set_has_tick_scheduled(bool),
