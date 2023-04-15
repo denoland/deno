@@ -1,7 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { createSecretKey, randomBytes } from "node:crypto";
+import {
+  createSecretKey,
+  generateKeyPair,
+  generateKeyPairSync,
+  randomBytes,
+} from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "../../../test_util/std/testing/asserts.ts";
 import { createHmac } from "node:crypto";
 
 Deno.test({
@@ -45,3 +53,79 @@ Deno.test({
     );
   },
 });
+
+for (const type of ["rsa", "rsa-pss", "dsa"]) {
+  for (const modulusLength of [2048, 3072]) {
+    Deno.test({
+      name: `generate ${type} key`,
+      fn() {
+        const { publicKey, privateKey } = generateKeyPairSync(type as any, {
+          modulusLength,
+        });
+
+        assertEquals(publicKey.type, "public");
+        assertEquals(privateKey.type, "private");
+      },
+    });
+  }
+}
+
+for (const namedCurve of ["P-384", "P-256"]) {
+  Deno.test({
+    name: `generate ec key ${namedCurve}`,
+    fn() {
+      const { publicKey, privateKey } = generateKeyPairSync("ec", {
+        namedCurve,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate ec key ${namedCurve} paramEncoding=explicit false`,
+    fn() {
+      assertThrows(() => {
+        // @ts-ignore
+        generateKeyPairSync("ec", {
+          namedCurve,
+          paramEncoding: "explicit",
+        });
+      });
+    },
+  });
+}
+
+for (
+  const groupName of ["modp5", "modp14", "modp15", "modp16", "modp17", "modp18"]
+) {
+  Deno.test({
+    name: `generate dh key ${groupName}`,
+    fn() {
+      // @ts-ignore
+      const { publicKey, privateKey } = generateKeyPairSync("dh", {
+        group: groupName,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+}
+
+for (const primeLength of [1024, 2048, 4096]) {
+  Deno.test({
+    name: `generate dh key ${primeLength}`,
+    fn() {
+      // @ts-ignore
+      const { publicKey, privateKey } = generateKeyPairSync("dh", {
+        primeLength,
+        generator: 2,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+}

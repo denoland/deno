@@ -868,7 +868,7 @@ function createJob(mode, type, options) {
 
       let { divisorLength } = options;
       if (divisorLength == null) {
-        divisorLength = -1;
+        divisorLength = 256;
       } else {
         validateInt32(divisorLength, "options.divisorLength", 0);
       }
