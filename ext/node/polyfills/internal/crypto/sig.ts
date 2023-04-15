@@ -150,7 +150,9 @@ export class Verify extends Writable {
     } else {
       // TODO(kt3k): Add support for the case when publicKey is a KeyObject,
       // CryptoKey, etc
-      notImplemented("crypto.Verify.prototype.verify with non BinaryLike input");
+      notImplemented(
+        "crypto.Verify.prototype.verify with non BinaryLike input",
+      );
     }
     return ops.op_node_verify(
       this.hash.digest(),
