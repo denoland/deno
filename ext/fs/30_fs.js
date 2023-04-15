@@ -85,43 +85,50 @@ function chdir(directory) {
 }
 
 function makeTempDirSync(options = {}) {
-  return ops.op_make_temp_dir_sync(options);
+  return ops.op_make_temp_dir_sync(options.dir, options.prefix, options.suffix);
 }
 
 function makeTempDir(options = {}) {
-  return core.opAsync("op_make_temp_dir_async", options);
+  return core.opAsync(
+    "op_make_temp_dir_async",
+    options.dir,
+    options.prefix,
+    options.suffix,
+  );
 }
 
 function makeTempFileSync(options = {}) {
-  return ops.op_make_temp_file_sync(options);
+  return ops.op_make_temp_file_sync(
+    options.dir,
+    options.prefix,
+    options.suffix,
+  );
 }
 
 function makeTempFile(options = {}) {
-  return core.opAsync("op_make_temp_file_async", options);
-}
-
-function mkdirArgs(path, options) {
-  const args = { path: pathFromURL(path), recursive: false };
-  if (options != null) {
-    if (typeof options.recursive == "boolean") {
-      args.recursive = options.recursive;
-    }
-    if (options.mode) {
-      args.mode = options.mode;
-    }
-  }
-  return args;
+  return core.opAsync(
+    "op_make_temp_file_async",
+    options.dir,
+    options.prefix,
+    options.suffix,
+  );
 }
 
 function mkdirSync(path, options) {
-  ops.op_mkdir_sync(mkdirArgs(path, options));
+  ops.op_mkdir_sync(
+    pathFromURL(path),
+    options?.recursive ?? false,
+    options?.mode,
+  );
 }
 
-async function mkdir(
-  path,
-  options,
-) {
-  await core.opAsync2("op_mkdir_async", mkdirArgs(path, options));
+async function mkdir(path, options) {
+  await core.opAsync(
+    "op_mkdir_async",
+    pathFromURL(path),
+    options?.recursive ?? false,
+    options?.mode,
+  );
 }
 
 function readDirSync(path) {
@@ -306,36 +313,22 @@ async function fstat(rid) {
 }
 
 async function lstat(path) {
-  const res = await core.opAsync("op_stat_async", {
-    path: pathFromURL(path),
-    lstat: true,
-  });
+  const res = await core.opAsync("op_lstat_async", pathFromURL(path));
   return parseFileInfo(res);
 }
 
 function lstatSync(path) {
-  ops.op_stat_sync(
-    pathFromURL(path),
-    true,
-    statBuf,
-  );
+  ops.op_lstat_sync(pathFromURL(path), statBuf);
   return statStruct(statBuf);
 }
 
 async function stat(path) {
-  const res = await core.opAsync("op_stat_async", {
-    path: pathFromURL(path),
-    lstat: false,
-  });
+  const res = await core.opAsync("op_stat_async", pathFromURL(path));
   return parseFileInfo(res);
 }
 
 function statSync(path) {
-  ops.op_stat_sync(
-    pathFromURL(path),
-    false,
-    statBuf,
-  );
+  ops.op_stat_sync(pathFromURL(path), statBuf);
   return statStruct(statBuf);
 }
 
@@ -343,7 +336,6 @@ function coerceLen(len) {
   if (len == null || len < 0) {
     return 0;
   }
-
   return len;
 }
 
@@ -518,7 +510,7 @@ function seekSync(
   offset,
   whence,
 ) {
-  return ops.op_seek_sync({ rid, offset, whence });
+  return ops.op_seek_sync(rid, offset, whence);
 }
 
 function seek(
@@ -526,7 +518,7 @@ function seek(
   offset,
   whence,
 ) {
-  return core.opAsync("op_seek_async", { rid, offset, whence });
+  return core.opAsync("op_seek_async", rid, offset, whence);
 }
 
 function openSync(
@@ -534,11 +526,9 @@ function openSync(
   options,
 ) {
   if (options) checkOpenOptions(options);
-  const mode = options?.mode;
   const rid = ops.op_open_sync(
     pathFromURL(path),
     options,
-    mode,
   );
 
   return new FsFile(rid);
@@ -549,12 +539,10 @@ async function open(
   options,
 ) {
   if (options) checkOpenOptions(options);
-  const mode = options?.mode;
   const rid = await core.opAsync(
     "op_open_async",
     pathFromURL(path),
     options,
-    mode,
   );
 
   return new FsFile(rid);
@@ -679,7 +667,7 @@ function checkOpenOptions(options) {
 const File = FsFile;
 
 function readFileSync(path) {
-  return ops.op_readfile_sync(pathFromURL(path));
+  return ops.op_read_file_sync(pathFromURL(path));
 }
 
 async function readFile(path, options) {
@@ -694,7 +682,7 @@ async function readFile(path, options) {
 
   try {
     const read = await core.opAsync(
-      "op_readfile_async",
+      "op_read_file_async",
       pathFromURL(path),
       cancelRid,
     );
@@ -710,7 +698,7 @@ async function readFile(path, options) {
 }
 
 function readTextFileSync(path) {
-  return ops.op_readfile_text_sync(pathFromURL(path));
+  return ops.op_read_file_text_sync(pathFromURL(path));
 }
 
 async function readTextFile(path, options) {
@@ -725,7 +713,7 @@ async function readTextFile(path, options) {
 
   try {
     const read = await core.opAsync(
-      "op_readfile_text_async",
+      "op_read_file_text_async",
       pathFromURL(path),
       cancelRid,
     );

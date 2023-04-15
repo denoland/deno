@@ -48,7 +48,6 @@ class Kv {
   }
 
   async get(key: Deno.KvKey, opts?: { consistency?: Deno.KvConsistencyLevel }) {
-    key = convertKey(key);
     const [entries]: [RawKvEntry[]] = await core.opAsync(
       "op_kv_snapshot_read",
       this.#rid,
@@ -76,7 +75,6 @@ class Kv {
     keys: Deno.KvKey[],
     opts?: { consistency?: Deno.KvConsistencyLevel },
   ): Promise<Deno.KvEntry<unknown>[]> {
-    keys = keys.map(convertKey);
     const ranges: RawKvEntry[][] = await core.opAsync(
       "op_kv_snapshot_read",
       this.#rid,
@@ -103,7 +101,6 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown) {
-    key = convertKey(key);
     value = serializeValue(value);
 
     const checks: Deno.AtomicCheck[] = [];
@@ -123,8 +120,6 @@ class Kv {
   }
 
   async delete(key: Deno.KvKey) {
-    key = convertKey(key);
-
     const checks: Deno.AtomicCheck[] = [];
     const mutations = [
       [key, "delete", null],
@@ -211,14 +206,14 @@ class AtomicOperation {
 
   check(...checks: Deno.AtomicCheck[]): this {
     for (const check of checks) {
-      this.#checks.push([convertKey(check.key), check.versionstamp]);
+      this.#checks.push([check.key, check.versionstamp]);
     }
     return this;
   }
 
   mutate(...mutations: Deno.KvMutation[]): this {
     for (const mutation of mutations) {
-      const key = convertKey(mutation.key);
+      const key = mutation.key;
       let type: string;
       let value: RawValue | null;
       switch (mutation.type) {
@@ -247,12 +242,12 @@ class AtomicOperation {
   }
 
   set(key: Deno.KvKey, value: unknown): this {
-    this.#mutations.push([convertKey(key), "set", serializeValue(value)]);
+    this.#mutations.push([key, "set", serializeValue(value)]);
     return this;
   }
 
   delete(key: Deno.KvKey): this {
-    this.#mutations.push([convertKey(key), "delete", null]);
+    this.#mutations.push([key, "delete", null]);
     return this;
   }
 
@@ -293,14 +288,6 @@ class KvU64 {
     }
     this.value = value;
     Object.freeze(this);
-  }
-}
-
-function convertKey(key: Deno.KvKey | Deno.KvKeyPart): Deno.KvKey {
-  if (Array.isArray(key)) {
-    return key;
-  } else {
-    return [key as Deno.KvKeyPart];
   }
 }
 

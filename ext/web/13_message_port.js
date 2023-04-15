@@ -100,7 +100,7 @@ class MessagePort extends EventTarget {
   postMessage(message, transferOrOptions = {}) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (
@@ -329,7 +329,7 @@ webidl.converters.StructuredSerializeOptions = webidl
 
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   options = webidl.converters.StructuredSerializeOptions(options, {
     prefix,
     context: "Argument 2",
