@@ -536,9 +536,9 @@ export function generateKeyPair(
   ) => void,
 ): void;
 export function generateKeyPair(
-  _type: KeyType,
-  _options: unknown,
-  _callback: (
+  type: KeyType,
+  options: unknown,
+  callback: (
     err: Error | null,
     // deno-lint-ignore no-explicit-any
     publicKey: any,
@@ -546,7 +546,26 @@ export function generateKeyPair(
     privateKey: any,
   ) => void,
 ) {
-  notImplemented("crypto.generateKeyPair");
+  createJob(kAsync, type, options).then(([privateKey, publicKey]) => {
+    privateKey = new KeyObject("private", setOwnedKey(privateKey));
+    publicKey = new KeyObject("public", setOwnedKey(publicKey));
+
+    if (typeof options === "object" && options !== null) {
+      const { publicKeyEncoding, privateKeyEncoding } = options as any;
+
+      if (publicKeyEncoding) {
+        publicKey = publicKey.export(publicKeyEncoding);
+      }
+
+      if (privateKeyEncoding) {
+        privateKey = privateKey.export(privateKeyEncoding);
+      }
+    }
+
+    callback(null, publicKey, privateKey);
+  }).catch((err) => {
+    callback(err, null, null);
+  });
 }
 
 export interface KeyPairKeyObjectResult {
@@ -829,16 +848,18 @@ function createJob(mode, type, options) {
         }
       }
 
-      return new RsaKeyPairGenJob(
-        mode,
-        kKeyVariantRSA_PSS,
-        modulusLength,
-        publicExponent,
-        hashAlgorithm || hash,
-        mgf1HashAlgorithm || mgf1Hash,
-        saltLength,
-        ...encoding,
-      );
+      if (mode === kSync) {
+        return ops.op_node_generate_rsa(
+          modulusLength,
+          publicExponent,
+        );
+      } else {
+        return core.opAsync(
+          "op_node_generate_rsa_async",
+          modulusLength,
+          publicExponent,
+        );
+      }
     }
     case "dsa": {
       validateObject(options, "options");
@@ -937,7 +958,19 @@ function createJob(mode, type, options) {
       if (generator != null) {
         validateInt32(generator, "options.generator", 0);
       }
-      notImplemented("DH");
+
+      const g = generator == null ? 2 : generator;
+
+      if (mode === kSync) {
+        return ops.op_node_dh_generate(prime, primeLength ?? 0, g);
+      } else {
+        return core.opAsync(
+          "op_node_dh_generate_async",
+          prime,
+          primeLength ?? 0,
+          g,
+        );
+      }
     }
     default:
       // Fall through

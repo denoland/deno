@@ -1163,6 +1163,7 @@ dependencies = [
  "md-5",
  "md4",
  "num-bigint",
+ "num-bigint-dig",
  "num-integer",
  "num-traits",
  "once_cell",
@@ -1181,6 +1182,7 @@ dependencies = [
  "tokio",
  "typenum",
  "x25519-dalek",
+ "x509-parser",
 ]
 
 [[package]]
@@ -1395,6 +1397,20 @@ checksum = "82b10af9f9f9f2134a42d3f8aa74658660f2e0234b0eb81bd171df8aa32779ed"
 dependencies = [
  "const-oid",
  "zeroize",
+]
+
+[[package]]
+name = "der-parser"
+version = "8.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbd676fbbab537128ef0278adb5576cf363cff6aa22a7b24effe97347cfab61e"
+dependencies = [
+ "asn1-rs",
+ "displaydoc",
+ "nom",
+ "num-bigint",
+ "num-traits",
+ "rusticata-macros",
 ]
 
 [[package]]
@@ -2989,6 +3005,7 @@ dependencies = [
  "num-iter",
  "num-traits",
  "rand",
+ "serde",
  "smallvec",
  "zeroize",
 ]

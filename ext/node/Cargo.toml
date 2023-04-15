@@ -30,6 +30,7 @@ libz-sys = { version = "1.1.8", features = ["static"] }
 md-5 = "0.10.5"
 md4 = "0.10.2"
 num-bigint.workspace = true
+num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
 num-traits = "0.2.14"
 once_cell.workspace = true

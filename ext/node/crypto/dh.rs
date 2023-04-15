@@ -1,8 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use num_bigint::BigUint;
+use super::primes::Prime;
+use num_bigint_dig::BigUint;
+use num_bigint_dig::RandBigInt;
 use num_traits::FromPrimitive;
-use rand::Rng;
 
 pub struct PublicKey(BigUint);
 
@@ -17,7 +18,7 @@ pub struct PrivateKey(BigUint);
 impl PrivateKey {
   pub fn new(exponent_size: usize) -> Self {
     let mut rng = rand::thread_rng();
-    let exponent = BigUint::from_bytes_be(&rng.gen::<[u8; 32]>());
+    let exponent = rng.gen_biguint(exponent_size);
     Self(exponent)
   }
 
@@ -48,12 +49,24 @@ impl DiffieHellman {
   where
     G: DiffieHellmanGroup,
   {
-    let private_key = PrivateKey::new(G::EXPONENT_SIZE);
+    let private_key = PrivateKey::new(G::EXPONENT_SIZE / 8);
 
     let generator = BigUint::from_usize(G::GENERATOR).unwrap();
     let modulus = BigUint::from_slice(G::MODULUS);
 
     let public_key = private_key.compute_public_key(&generator, &modulus);
+
+    Self {
+      private_key,
+      public_key,
+    }
+  }
+
+  pub fn new(prime: Prime, generator: usize) -> Self {
+    let private_key = PrivateKey::new(32);
+
+    let generator = BigUint::from_usize(generator).unwrap();
+    let public_key = private_key.compute_public_key(&generator, &prime);
 
     Self {
       private_key,
@@ -72,7 +85,7 @@ impl DiffieHellman {
 pub trait DiffieHellmanGroup {
   const GENERATOR: usize;
   const MODULUS: &'static [u32];
-  /// Size of the exponent in bytes
+  /// Size of the exponent in bits
   const EXPONENT_SIZE: usize;
 }
 

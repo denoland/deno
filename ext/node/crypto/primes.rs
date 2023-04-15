@@ -1,10 +1,35 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use num_bigint::BigInt;
+use num_bigint_dig::RandPrime;
 use num_integer::Integer;
 use num_traits::One;
 use num_traits::Zero;
 use rand::Rng;
+use std::ops::Deref;
+
+pub struct Prime(num_bigint_dig::BigUint);
+
+impl Prime {
+  pub fn generate(n: usize) -> Self {
+    let mut rng = rand::thread_rng();
+    Self(rng.gen_prime(n))
+  }
+}
+
+impl From<&[u8]> for Prime {
+  fn from(value: &[u8]) -> Self {
+    Self(num_bigint_dig::BigUint::from_bytes_be(value))
+  }
+}
+
+impl Deref for Prime {
+  type Target = num_bigint_dig::BigUint;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
 
 struct Witness {
   pow: BigInt,

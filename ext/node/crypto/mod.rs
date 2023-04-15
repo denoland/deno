@@ -487,6 +487,8 @@ pub async fn op_node_hkdf_async(
 use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
 
+use self::primes::Prime;
+
 fn generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
@@ -714,7 +716,42 @@ pub async fn op_node_dh_generate_group_async(
   tokio::task::spawn_blocking(move || dh_generate_group(&group_name)).await?
 }
 
-fn dh_generate() {}
+fn dh_generate(
+  prime: Option<&[u8]>,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let prime = prime
+    .map(|p| p.into())
+    .unwrap_or_else(|| Prime::generate(prime_len));
+  let dh = dh::DiffieHellman::new(prime, generator);
+
+  Ok((
+    dh.private_key.into_vec().into(),
+    dh.public_key.into_vec().into(),
+  ))
+}
+
+#[op]
+pub fn op_node_dh_generate(
+  prime: Option<&[u8]>,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  dh_generate(prime, prime_len, generator)
+}
+
+#[op]
+pub async fn op_node_dh_generate_async(
+  prime: Option<ZeroCopyBuf>,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || {
+    dh_generate(prime.as_deref(), prime_len, generator)
+  })
+  .await?
+}
 
 #[op]
 pub fn op_node_random_int(min: i32, max: i32) -> Result<i32, AnyError> {
