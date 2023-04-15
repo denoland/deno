@@ -1,3 +1,5 @@
+// deno-lint-ignore-file no-explicit-any
+
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
@@ -886,7 +888,7 @@ function createJob(mode, type, options) {
       validateObject(options, "options");
       const { namedCurve } = options;
       validateString(namedCurve, "options.namedCurve");
-      let { paramEncoding } = options;
+      const { paramEncoding } = options;
       if (paramEncoding == null || paramEncoding === "named") {
         // pass.
       } else if (paramEncoding === "explicit") {
@@ -917,6 +919,7 @@ function createJob(mode, type, options) {
     case "ed448":
     case "x448": {
       notImplemented(type);
+      break;
     }
     case "dh": {
       validateObject(options, "options");

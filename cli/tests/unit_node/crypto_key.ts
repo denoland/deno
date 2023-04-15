@@ -1,16 +1,38 @@
+// deno-lint-ignore-file no-explicit-any
+
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   createSecretKey,
   generateKeyPair,
   generateKeyPairSync,
+  KeyObject,
   randomBytes,
 } from "node:crypto";
+import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
 import {
   assertEquals,
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 import { createHmac } from "node:crypto";
+
+const generateKeyPairAsync = promisify(
+  (
+    type: any,
+    options: any,
+    callback: (
+      err: Error | null,
+      key: { publicKey: KeyObject; privateKey: KeyObject },
+    ) => void,
+  ) =>
+    generateKeyPair(
+      type,
+      options,
+      (err: Error | null, publicKey: KeyObject, privateKey: KeyObject) => {
+        callback(err, { publicKey, privateKey });
+      },
+    ),
+);
 
 Deno.test({
   name: "create secret key",
@@ -67,6 +89,18 @@ for (const type of ["rsa", "rsa-pss", "dsa"]) {
         assertEquals(privateKey.type, "private");
       },
     });
+
+    Deno.test({
+      name: `generate ${type} key async`,
+      async fn() {
+        const x = await generateKeyPairAsync(type as any, {
+          modulusLength,
+        });
+        const { publicKey, privateKey } = x;
+        assertEquals(publicKey.type, "public");
+        assertEquals(privateKey.type, "private");
+      },
+    });
   }
 }
 
@@ -84,10 +118,22 @@ for (const namedCurve of ["P-384", "P-256"]) {
   });
 
   Deno.test({
-    name: `generate ec key ${namedCurve} paramEncoding=explicit false`,
+    name: `generate ec key ${namedCurve} async`,
+    async fn() {
+      const { publicKey, privateKey } = await generateKeyPairAsync("ec", {
+        namedCurve,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate ec key ${namedCurve} paramEncoding=explicit fails`,
     fn() {
       assertThrows(() => {
-        // @ts-ignore
+        // @ts-ignore: @types/node is broken?
         generateKeyPairSync("ec", {
           namedCurve,
           paramEncoding: "explicit",
@@ -103,8 +149,21 @@ for (
   Deno.test({
     name: `generate dh key ${groupName}`,
     fn() {
-      // @ts-ignore
+      // @ts-ignore: @types/node is broken?
       const { publicKey, privateKey } = generateKeyPairSync("dh", {
+        group: groupName,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate dh key ${groupName} async`,
+    async fn() {
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = await generateKeyPairAsync("dh", {
         group: groupName,
       });
 
@@ -118,8 +177,22 @@ for (const primeLength of [1024, 2048, 4096]) {
   Deno.test({
     name: `generate dh key ${primeLength}`,
     fn() {
-      // @ts-ignore
+      // @ts-ignore: @types/node is broken?
       const { publicKey, privateKey } = generateKeyPairSync("dh", {
+        primeLength,
+        generator: 2,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate dh key ${primeLength} async`,
+    async fn() {
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = await generateKeyPairAsync("dh", {
         primeLength,
         generator: 2,
       });
