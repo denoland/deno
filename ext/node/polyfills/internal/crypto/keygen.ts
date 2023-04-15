@@ -542,9 +542,7 @@ export function generateKeyPair(
   options: unknown,
   callback: (
     err: Error | null,
-    // deno-lint-ignore no-explicit-any
     publicKey: any,
-    // deno-lint-ignore no-explicit-any
     privateKey: any,
   ) => void,
 ) {
