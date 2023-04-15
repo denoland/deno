@@ -14,8 +14,8 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   SafeArrayIterator,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
@@ -69,7 +69,7 @@ class AbortSignal extends EventTarget {
       return;
     }
     if (this[abortAlgos] === null) {
-      this[abortAlgos] = new Set();
+      this[abortAlgos] = new SafeSet();
     }
     SetPrototypeAdd(this[abortAlgos], algorithm);
   }

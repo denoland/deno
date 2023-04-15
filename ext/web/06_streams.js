@@ -34,7 +34,6 @@ const {
   DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
-  FinalizationRegistry,
   Int8Array,
   Int16Array,
   Int32Array,
@@ -56,7 +55,9 @@ const {
   queueMicrotask,
   RangeError,
   ReflectHas,
+  SafeFinalizationRegistry,
   SafePromiseAll,
+  SafeWeakMap,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
   Symbol,
@@ -73,7 +74,6 @@ const {
   Uint16Array,
   Uint32Array,
   Uint8ClampedArray,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
   WeakMapPrototypeSet,
@@ -695,7 +695,7 @@ function isReadableStreamDisturbed(stream) {
 const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
 // A finalization registry to clean up underlying resources that are GC'ed.
-const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
   core.tryClose(rid);
 });
 
@@ -4743,7 +4743,7 @@ webidl.configurePrototype(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
-const byteSizeFunctionWeakMap = new WeakMap();
+const byteSizeFunctionWeakMap = new SafeWeakMap();
 
 function initializeByteLengthSizeFunction(globalObject) {
   if (WeakMapPrototypeHas(byteSizeFunctionWeakMap, globalObject)) {
@@ -4800,7 +4800,7 @@ webidl.configurePrototype(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
-const countSizeFunctionWeakMap = new WeakMap();
+const countSizeFunctionWeakMap = new SafeWeakMap();
 
 /** @param {typeof globalThis} globalObject */
 function initializeCountSizeFunction(globalObject) {

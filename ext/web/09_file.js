@@ -27,13 +27,13 @@ const {
   DataViewPrototypeGetByteOffset,
   Date,
   DatePrototypeGetTime,
-  FinalizationRegistry,
   MathMax,
   MathMin,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
+  SafeFinalizationRegistry,
   SafeRegExp,
   StringPrototypeCharAt,
   StringPrototypeToLowerCase,
@@ -549,7 +549,7 @@ webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(
 
 // A finalization registry to deallocate a blob part when its JS reference is
 // garbage collected.
-const registry = new FinalizationRegistry((uuid) => {
+const registry = new SafeFinalizationRegistry((uuid) => {
   ops.op_blob_remove_part(uuid);
 });
 

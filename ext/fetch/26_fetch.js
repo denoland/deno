@@ -42,13 +42,13 @@ const {
   PromisePrototypeThen,
   PromisePrototypeCatch,
   SafeArrayIterator,
+  SafeWeakMap,
   String,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
-  WeakMap,
   WeakMapPrototypeDelete,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
@@ -62,7 +62,7 @@ const REQUEST_BODY_HEADER_NAMES = [
   "content-type",
 ];
 
-const requestBodyReaders = new WeakMap();
+const requestBodyReaders = new SafeWeakMap();
 
 /**
  * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args

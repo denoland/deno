@@ -80,7 +80,10 @@ pub async fn print_docs(
       // Save our fake file into file fetcher cache.
       ps.file_fetcher.insert_cached(root);
 
-      let graph = ps.create_graph(vec![root_specifier.clone()]).await?;
+      let graph = ps
+        .module_graph_builder
+        .create_graph(vec![root_specifier.clone()])
+        .await?;
 
       if let Some(lockfile) = &ps.lockfile {
         graph_lock_or_exit(&graph, &mut lockfile.lock());

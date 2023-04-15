@@ -33,6 +33,7 @@ const {
   StringPrototypeCharCodeAt,
   StringFromCharCode,
   SafeArrayIterator,
+  SafeWeakMap,
   Symbol,
   SymbolFor,
   SyntaxError,
@@ -43,7 +44,6 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
@@ -391,7 +391,7 @@ function usageIntersection(a, b) {
 
 // TODO(lucacasonato): this should be moved to rust
 /** @type {WeakMap<object, object>} */
-const KEY_STORE = new WeakMap();
+const KEY_STORE = new SafeWeakMap();
 
 function getKeyLength(algorithm) {
   switch (algorithm.name) {
