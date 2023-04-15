@@ -665,6 +665,7 @@ itest!(deno_run_cowsay {
 
 itest!(deno_run_cowsay_with_node_modules_dir {
   args: "run -A --quiet --node-modules-dir npm:cowsay@1.5.0 Hello",
+  temp_cwd: true,
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
