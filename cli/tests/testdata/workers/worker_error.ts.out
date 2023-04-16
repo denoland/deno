@@ -3,3 +3,4 @@
     at [WILDCARD]
 error: Uncaught (in promise) Error: Unhandled error in child worker.
     at Worker.#pollControl ([WILDCARD])
+    at eventLoopTick (ext:core/01_core.js:[WILDCARD])

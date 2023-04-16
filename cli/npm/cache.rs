@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -13,8 +12,10 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::semver::Version;
+use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npm::NpmPackageCacheFolderId;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::Version;
 use once_cell::sync::Lazy;
 
 use crate::args::CacheSetting;
@@ -25,7 +26,6 @@ use crate::util::fs::hard_link_dir_recursive;
 use crate::util::path::root_url_to_safe_local_dirname;
 use crate::util::progress_bar::ProgressBar;
 
-use super::registry::NpmPackageVersionDistInfo;
 use super::tarball::verify_and_extract_tarball;
 
 static SHOULD_SYNC_DOWNLOAD: Lazy<bool> =
@@ -109,32 +109,6 @@ pub fn with_folder_sync_lock(
       }
       Err(err)
     }
-  }
-}
-
-pub struct NpmPackageCacheFolderId {
-  pub nv: NpmPackageNv,
-  /// Peer dependency resolution may require us to have duplicate copies
-  /// of the same package.
-  pub copy_index: usize,
-}
-
-impl NpmPackageCacheFolderId {
-  pub fn with_no_count(&self) -> Self {
-    Self {
-      nv: self.nv.clone(),
-      copy_index: 0,
-    }
-  }
-}
-
-impl std::fmt::Display for NpmPackageCacheFolderId {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", self.nv)?;
-    if self.copy_index > 0 {
-      write!(f, "_{}", self.copy_index)?;
-    }
-    Ok(())
   }
 }
 
@@ -302,7 +276,7 @@ impl ReadonlyNpmCache {
     let name = parts.join("/");
     let (version, copy_index) =
       if let Some((version, copy_count)) = version_part.split_once('_') {
-        (version, copy_count.parse::<usize>().ok()?)
+        (version, copy_count.parse::<u8>().ok()?)
       } else {
         (version_part, 0)
       };
@@ -321,14 +295,14 @@ impl ReadonlyNpmCache {
 }
 
 /// Stores a single copy of npm packages in a cache.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
   http_client: HttpClient,
   progress_bar: ProgressBar,
   /// ensures a package is only downloaded once per run
-  previously_reloaded_packages: Arc<Mutex<HashSet<NpmPackageNv>>>,
+  previously_reloaded_packages: Mutex<HashSet<NpmPackageNv>>,
 }
 
 impl NpmCache {
@@ -515,8 +489,8 @@ pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
 #[cfg(test)]
 mod test {
   use deno_core::url::Url;
-  use deno_graph::npm::NpmPackageNv;
-  use deno_graph::semver::Version;
+  use deno_semver::npm::NpmPackageNv;
+  use deno_semver::Version;
 
   use super::ReadonlyNpmCache;
   use crate::npm::cache::NpmPackageCacheFolderId;

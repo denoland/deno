@@ -40,26 +40,29 @@ pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
   }
 }
 
-pub(crate) fn make_template(sym: &Symbol, trampoline: &Trampoline) -> Template {
+pub(crate) fn make_template(
+  sym: &Symbol,
+  trampoline: &Trampoline,
+) -> fast_api::FastFunction {
   let mut params = once(fast_api::Type::V8Value) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Vec<_>>();
 
   let ret = if needs_unwrap(&sym.result_type) {
     params.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
-    fast_api::Type::Void
+    fast_api::CType::Void
   } else if sym.result_type == NativeType::Buffer {
     // Buffer can be used as a return type and converts differently than in parameters.
-    fast_api::Type::Pointer
+    fast_api::CType::Pointer
   } else {
-    fast_api::Type::from(&sym.result_type)
+    fast_api::CType::from(&fast_api::Type::from(&sym.result_type))
   };
 
-  Template {
-    args: params.into_boxed_slice(),
-    ret: (&ret).into(),
-    symbol_ptr: trampoline.ptr(),
-  }
+  fast_api::FastFunction::new(
+    Box::leak(params.into_boxed_slice()),
+    ret,
+    trampoline.ptr(),
+  )
 }
 
 /// Trampoline for fast-call FFI functions
@@ -70,26 +73,6 @@ pub(crate) struct Trampoline(ExecutableBuffer);
 impl Trampoline {
   fn ptr(&self) -> *const c_void {
     &self.0[0] as *const u8 as *const c_void
-  }
-}
-
-pub(crate) struct Template {
-  pub args: Box<[fast_api::Type]>,
-  pub ret: fast_api::CType,
-  pub symbol_ptr: *const c_void,
-}
-
-impl fast_api::FastFunction for Template {
-  fn function(&self) -> *const c_void {
-    self.symbol_ptr
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    Box::leak(self.args.clone())
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    self.ret
   }
 }
 

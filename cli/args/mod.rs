@@ -8,14 +8,14 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
+use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
-use deno_graph::npm::NpmPackageReqReference;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
-use crate::npm::NpmRegistryApi;
-use crate::npm::NpmResolutionSnapshot;
 pub use config_file::BenchConfig;
 pub use config_file::CompilerOptions;
 pub use config_file::ConfigFile;
@@ -64,6 +64,7 @@ use std::sync::Arc;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -745,17 +746,17 @@ impl CliOptions {
 
   pub async fn resolve_npm_resolution_snapshot(
     &self,
-    api: &NpmRegistryApi,
-  ) -> Result<Option<NpmResolutionSnapshot>, AnyError> {
+    api: &CliNpmRegistryApi,
+  ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
     if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone
-      return Ok(Some(state.snapshot.clone()));
+      return Ok(Some(state.snapshot.clone().into_valid()?));
     }
 
     if let Some(lockfile) = self.maybe_lock_file() {
       if !lockfile.lock().overwrite {
         return Ok(Some(
-          NpmResolutionSnapshot::from_lockfile(lockfile.clone(), api)
+          snapshot_from_lockfile(lockfile.clone(), api)
             .await
             .with_context(|| {
               format!(

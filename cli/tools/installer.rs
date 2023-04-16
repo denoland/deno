@@ -15,7 +15,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -35,7 +35,7 @@ static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z][\w-]*$")
     .case_insensitive(true)
     .build()
-    .unwrap()
+    .expect("invalid regex")
 });
 
 fn validate_name(exec_name: &str) -> Result<(), AnyError> {
@@ -233,8 +233,9 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  ProcState::build(flags.clone())
+  ProcState::from_flags(flags.clone())
     .await?
+    .module_load_preparer
     .load_and_type_check_files(&[install_flags.module_url.clone()])
     .await?;
 

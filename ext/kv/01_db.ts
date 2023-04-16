@@ -48,7 +48,6 @@ class Kv {
   }
 
   async get(key: Deno.KvKey, opts?: { consistency?: Deno.KvConsistencyLevel }) {
-    key = convertKey(key);
     const [entries]: [RawKvEntry[]] = await core.opAsync(
       "op_kv_snapshot_read",
       this.#rid,
@@ -75,8 +74,7 @@ class Kv {
   async getMany(
     keys: Deno.KvKey[],
     opts?: { consistency?: Deno.KvConsistencyLevel },
-  ): Promise<Deno.KvEntry[]> {
-    keys = keys.map(convertKey);
+  ): Promise<Deno.KvEntry<unknown>[]> {
     const ranges: RawKvEntry[][] = await core.opAsync(
       "op_kv_snapshot_read",
       this.#rid,
@@ -103,7 +101,6 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown) {
-    key = convertKey(key);
     value = serializeValue(value);
 
     const checks: Deno.AtomicCheck[] = [];
@@ -111,19 +108,18 @@ class Kv {
       [key, "set", value],
     ];
 
-    const result = await core.opAsync(
+    const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       checks,
       mutations,
       [],
     );
-    if (!result) throw new TypeError("Failed to set value");
+    if (versionstamp === null) throw new TypeError("Failed to set value");
+    return { versionstamp };
   }
 
   async delete(key: Deno.KvKey) {
-    key = convertKey(key);
-
     const checks: Deno.AtomicCheck[] = [];
     const mutations = [
       [key, "delete", null],
@@ -173,7 +169,7 @@ class Kv {
     cursor: string | undefined,
     reverse: boolean,
     consistency: Deno.KvConsistencyLevel,
-  ) => Promise<Deno.KvEntry[]> {
+  ) => Promise<Deno.KvEntry<unknown>[]> {
     return async (selector, cursor, reverse, consistency) => {
       const [entries]: [RawKvEntry[]] = await core.opAsync(
         "op_kv_snapshot_read",
@@ -210,14 +206,22 @@ class AtomicOperation {
 
   check(...checks: Deno.AtomicCheck[]): this {
     for (const check of checks) {
-      this.#checks.push([convertKey(check.key), check.versionstamp]);
+      this.#checks.push([check.key, check.versionstamp]);
     }
     return this;
   }
 
+  sum(key: Deno.KvKey, n: bigint): this {
+    return this.mutate({
+      type: "sum",
+      key,
+      value: new KvU64(n),
+    });
+  }
+
   mutate(...mutations: Deno.KvMutation[]): this {
     for (const mutation of mutations) {
-      const key = convertKey(mutation.key);
+      const key = mutation.key;
       let type: string;
       let value: RawValue | null;
       switch (mutation.type) {
@@ -246,24 +250,25 @@ class AtomicOperation {
   }
 
   set(key: Deno.KvKey, value: unknown): this {
-    this.#mutations.push([convertKey(key), "set", serializeValue(value)]);
+    this.#mutations.push([key, "set", serializeValue(value)]);
     return this;
   }
 
   delete(key: Deno.KvKey): this {
-    this.#mutations.push([convertKey(key), "delete", null]);
+    this.#mutations.push([key, "delete", null]);
     return this;
   }
 
-  async commit(): Promise<boolean> {
-    const result = await core.opAsync(
+  async commit(): Promise<Deno.KvCommitResult | null> {
+    const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       this.#checks,
       this.#mutations,
       [], // TODO(@losfair): enqueue
     );
-    return result;
+    if (versionstamp === null) return null;
+    return { versionstamp };
   }
 
   then() {
@@ -294,15 +299,7 @@ class KvU64 {
   }
 }
 
-function convertKey(key: Deno.KvKey | Deno.KvKeyPart): Deno.KvKey {
-  if (Array.isArray(key)) {
-    return key;
-  } else {
-    return [key as Deno.KvKeyPart];
-  }
-}
-
-function deserializeValue(entry: RawKvEntry): Deno.KvEntry {
+function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
   const { kind, value } = entry.value;
   switch (kind) {
     case "v8":
@@ -355,9 +352,9 @@ const AsyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
 const AsyncIterator = AsyncIteratorPrototype.constructor;
 
 class KvListIterator extends AsyncIterator
-  implements AsyncIterator<Deno.KvEntry> {
+  implements AsyncIterator<Deno.KvEntry<unknown>> {
   #selector: Deno.KvListSelector;
-  #entries: Deno.KvEntry[] | null = null;
+  #entries: Deno.KvEntry<unknown>[] | null = null;
   #cursorGen: (() => string) | null = null;
   #done = false;
   #lastBatch = false;
@@ -366,7 +363,7 @@ class KvListIterator extends AsyncIterator
     cursor: string | undefined,
     reverse: boolean,
     consistency: Deno.KvConsistencyLevel,
-  ) => Promise<Deno.KvEntry[]>;
+  ) => Promise<Deno.KvEntry<unknown>[]>;
   #limit: number | undefined;
   #count = 0;
   #reverse: boolean;
@@ -386,7 +383,7 @@ class KvListIterator extends AsyncIterator
         cursor: string | undefined,
         reverse: boolean,
         consistency: Deno.KvConsistencyLevel,
-      ) => Promise<Deno.KvEntry[]>;
+      ) => Promise<Deno.KvEntry<unknown>[]>;
     },
   ) {
     super();
@@ -441,7 +438,7 @@ class KvListIterator extends AsyncIterator
     return this.#cursorGen();
   }
 
-  async next(): Promise<IteratorResult<Deno.KvEntry>> {
+  async next(): Promise<IteratorResult<Deno.KvEntry<unknown>>> {
     // Fused or limit exceeded
     if (
       this.#done ||
@@ -491,7 +488,7 @@ class KvListIterator extends AsyncIterator
     };
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntry> {
+  [Symbol.asyncIterator](): AsyncIterator<Deno.KvEntry<unknown>> {
     return this;
   }
 }

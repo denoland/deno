@@ -21,6 +21,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
@@ -29,11 +30,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
-static ABSTRACT_MODIFIER: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
+static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
 
-static EXPORT_MODIFIER: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\bexport\b").unwrap());
+static EXPORT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\bexport\b");
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum CodeLensSource {
@@ -297,70 +296,72 @@ async fn resolve_references_code_lens(
   data: CodeLensData,
   language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
-  let asset_or_document =
-    language_server.get_asset_or_document(&data.specifier)?;
-  let line_index = asset_or_document.line_index();
-  let req = tsc::RequestMethod::GetReferences((
-    data.specifier.clone(),
-    line_index.offset_tsc(code_lens.range.start)?,
-  ));
-  let snapshot = language_server.snapshot();
-  let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
-    language_server.ts_server.request(snapshot, req).await?;
-  if let Some(references) = maybe_references {
+  fn get_locations(
+    maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>>,
+    language_server: &language_server::Inner,
+  ) -> Result<Vec<lsp::Location>, AnyError> {
+    let symbols = match maybe_referenced_symbols {
+      Some(symbols) => symbols,
+      None => return Ok(Vec::new()),
+    };
     let mut locations = Vec::new();
-    for reference in references {
+    for reference in symbols.iter().flat_map(|s| &s.references) {
       if reference.is_definition {
         continue;
       }
       let reference_specifier =
-        resolve_url(&reference.document_span.file_name)?;
+        resolve_url(&reference.entry.document_span.file_name)?;
       let asset_or_doc =
         language_server.get_asset_or_document(&reference_specifier)?;
       locations.push(
         reference
+          .entry
           .to_location(asset_or_doc.line_index(), &language_server.url_map),
       );
     }
-    let command = if !locations.is_empty() {
-      let title = if locations.len() > 1 {
-        format!("{} references", locations.len())
-      } else {
-        "1 reference".to_string()
-      };
-      lsp::Command {
-        title,
-        command: "deno.showReferences".to_string(),
-        arguments: Some(vec![
-          json!(data.specifier),
-          json!(code_lens.range.start),
-          json!(locations),
-        ]),
-      }
-    } else {
-      lsp::Command {
-        title: "0 references".to_string(),
-        command: "".to_string(),
-        arguments: None,
-      }
-    };
-    Ok(lsp::CodeLens {
-      range: code_lens.range,
-      command: Some(command),
-      data: None,
-    })
-  } else {
-    let command = lsp::Command {
-      title: "0 references".to_string(),
-      command: "".to_string(),
-      arguments: None,
-    };
-    Ok(lsp::CodeLens {
-      range: code_lens.range,
-      command: Some(command),
-      data: None,
-    })
+    Ok(locations)
   }
+
+  let asset_or_document =
+    language_server.get_asset_or_document(&data.specifier)?;
+  let line_index = asset_or_document.line_index();
+  let snapshot = language_server.snapshot();
+  let maybe_referenced_symbols = language_server
+    .ts_server
+    .find_references(
+      snapshot,
+      &data.specifier,
+      line_index.offset_tsc(code_lens.range.start)?,
+    )
+    .await?;
+  let locations = get_locations(maybe_referenced_symbols, language_server)?;
+  let title = if locations.len() == 1 {
+    "1 reference".to_string()
+  } else {
+    format!("{} references", locations.len())
+  };
+  let command = if locations.is_empty() {
+    lsp::Command {
+      title,
+      command: String::new(),
+      arguments: None,
+    }
+  } else {
+    lsp::Command {
+      title,
+      command: "deno.showReferences".to_string(),
+      arguments: Some(vec![
+        json!(data.specifier),
+        json!(code_lens.range.start),
+        json!(locations),
+      ]),
+    }
+  };
+  Ok(lsp::CodeLens {
+    range: code_lens.range,
+    command: Some(command),
+    data: None,
+  })
 }
 
 pub async fn resolve_code_lens(

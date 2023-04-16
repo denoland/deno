@@ -3,19 +3,20 @@
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::url::Url;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmResolutionPackage;
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait]
@@ -26,11 +27,10 @@ pub trait NpmPackageFsResolver: Send + Sync {
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<PathBuf>;
 
-  fn resolve_package_folder_from_deno_module(
+  fn package_folder(
     &self,
-    id: &NpmPackageId,
+    package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError>;
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -42,8 +42,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
-
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
   async fn cache_packages(&self) -> Result<(), AnyError>;
 
@@ -57,7 +55,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   mut packages: Vec<NpmResolutionPackage>,
-  cache: &NpmCache,
+  cache: &Arc<NpmCache>,
   registry_url: &Url,
 ) -> Result<(), AnyError> {
   let sync_download = should_sync_download();

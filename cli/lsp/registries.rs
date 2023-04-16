@@ -33,7 +33,6 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use tower_lsp::lsp_types as lsp;
@@ -66,8 +65,8 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
 
 const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
 
-static REPLACEMENT_VARIABLE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
+static REPLACEMENT_VARIABLE_RE: Lazy<regex::Regex> =
+  lazy_regex::lazy_regex!(r"\$\{\{?(\w+)\}?\}");
 
 fn base_url(url: &Url) -> String {
   url.origin().ascii_serialization()
@@ -1675,16 +1674,17 @@ mod tests {
     let module_registry =
       ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
         .unwrap();
-    let result = module_registry.check_origin("https://deno.com").await;
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err
-      .contains("https://deno.com/.well-known/deno-import-intellisense.json"));
+    assert!(err.contains(
+      "https://example.com/.well-known/deno-import-intellisense.json"
+    ));
 
     // because we are caching an empty file when we hit an error with import
     // detection when fetching the config file, we should have an error now that
     // indicates trying to parse an empty file.
-    let result = module_registry.check_origin("https://deno.com").await;
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("EOF while parsing a value at line 1 column 0"));

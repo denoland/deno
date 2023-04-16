@@ -11,6 +11,7 @@ use std::task::Poll;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -29,6 +30,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
@@ -263,8 +265,7 @@ impl MainWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
+      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),
@@ -371,10 +372,10 @@ impl MainWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script<S: Into<ModuleCode>>(
+  pub fn execute_script(
     &mut self,
     script_name: &'static str,
-    source_code: S,
+    source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
@@ -511,12 +512,12 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
   ) -> Result<(), AnyError> {
-    self.execute_script(
+    self.js_runtime.execute_script(
       script_name,
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('load'))",
+      ascii_str!("dispatchEvent(new Event('load'))"),
     )?;
     Ok(())
   }
@@ -528,12 +529,12 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
   ) -> Result<(), AnyError> {
-    self.execute_script(
+    self.js_runtime.execute_script(
       script_name,
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('unload'))",
+      ascii_str!("dispatchEvent(new Event('unload'))"),
     )?;
     Ok(())
   }
@@ -550,7 +551,9 @@ impl MainWorker {
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
+      ascii_str!(
+        "dispatchEvent(new Event('beforeunload', { cancelable: true }));"
+      ),
     )?;
     let local_value = value.open(&mut self.js_runtime.handle_scope());
     Ok(local_value.is_false())

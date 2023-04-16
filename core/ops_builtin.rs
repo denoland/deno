@@ -33,6 +33,8 @@ crate::extension!(
     op_read,
     op_read_all,
     op_write,
+    op_read_sync,
+    op_write_sync,
     op_write_all,
     op_shutdown,
     op_metrics,
@@ -41,8 +43,6 @@ crate::extension!(
     op_str_byte_length,
     ops_builtin_v8::op_ref_op,
     ops_builtin_v8::op_unref_op,
-    ops_builtin_v8::op_set_macrotask_callback,
-    ops_builtin_v8::op_set_next_tick_callback,
     ops_builtin_v8::op_set_promise_reject_callback,
     ops_builtin_v8::op_run_microtasks,
     ops_builtin_v8::op_has_tick_scheduled,
@@ -72,6 +72,9 @@ crate::extension!(
     ops_builtin_v8::op_arraybuffer_was_detached,
   ],
   js = ["00_primordials.js", "01_core.js", "02_error.js"],
+  customizer = |ext: &mut crate::ExtensionBuilder| {
+    ext.deno_core();
+  }
 );
 
 /// Return map of resources with id as key
@@ -277,6 +280,27 @@ async fn op_write(
   let view = BufView::from(buf);
   let resp = resource.write(view).await?;
   Ok(resp.nwritten() as u32)
+}
+
+#[op(fast)]
+fn op_read_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  data: &mut [u8],
+) -> Result<u32, Error> {
+  let resource = state.resource_table.get_any(rid)?;
+  resource.read_byob_sync(data).map(|n| n as u32)
+}
+
+#[op]
+fn op_write_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  data: &[u8],
+) -> Result<u32, Error> {
+  let resource = state.resource_table.get_any(rid)?;
+  let nwritten = resource.write_sync(data)?;
+  Ok(nwritten as u32)
 }
 
 #[op]

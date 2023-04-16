@@ -13,8 +13,8 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
+use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
 use pty::Pty;
 use regex::Regex;
@@ -91,10 +91,8 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
-lazy_static! {
-  static ref GUARD: Mutex<HttpServerCount> =
-    Mutex::new(HttpServerCount::default());
-}
+static GUARD: Lazy<Mutex<HttpServerCount>> =
+  Lazy::new(|| Mutex::new(HttpServerCount::default()));
 
 pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
   vec![
@@ -2076,13 +2074,13 @@ impl<'a> CheckOutputIntegrationTest<'a> {
   pub fn output(&self) -> TestCommandOutput {
     let mut context_builder = TestContextBuilder::default();
     if self.temp_cwd {
-      context_builder.use_temp_cwd();
+      context_builder = context_builder.use_temp_cwd();
     }
     if let Some(dir) = &self.copy_temp_dir {
-      context_builder.use_copy_temp_dir(dir);
+      context_builder = context_builder.use_copy_temp_dir(dir);
     }
     if self.http_server {
-      context_builder.use_http_server();
+      context_builder = context_builder.use_http_server();
     }
 
     let context = context_builder.build();
@@ -2090,23 +2088,22 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     let mut command_builder = context.new_command();
 
     if !self.args.is_empty() {
-      command_builder.args(self.args);
+      command_builder = command_builder.args(self.args);
     }
     if !self.args_vec.is_empty() {
-      command_builder
-        .args_vec(self.args_vec.iter().map(|a| a.to_string()).collect());
+      command_builder = command_builder.args_vec(self.args_vec.clone());
     }
     if let Some(input) = &self.input {
-      command_builder.stdin(input);
+      command_builder = command_builder.stdin(input);
     }
     for (key, value) in &self.envs {
-      command_builder.env(key, value);
+      command_builder = command_builder.env(key, value);
     }
     if self.env_clear {
-      command_builder.env_clear();
+      command_builder = command_builder.env_clear();
     }
     if let Some(cwd) = &self.cwd {
-      command_builder.cwd(cwd);
+      command_builder = command_builder.cwd(cwd);
     }
 
     command_builder.run()
@@ -2166,24 +2163,9 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Pty)) {
-  if !Pty::is_supported() {
-    return;
-  }
-
-  let deno_dir = new_deno_dir();
-  let mut env_vars = std::collections::HashMap::new();
-  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  env_vars.insert(
-    "DENO_DIR".to_string(),
-    deno_dir.path().to_string_lossy().to_string(),
-  );
-  action(Pty::new(
-    &deno_exe_path(),
-    deno_args,
-    &testdata_path(),
-    Some(env_vars),
-  ))
+pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.new_command().args_vec(deno_args).with_pty(action);
 }
 
 pub struct WrkOutput {
@@ -2192,12 +2174,10 @@ pub struct WrkOutput {
 }
 
 pub fn parse_wrk_output(output: &str) -> WrkOutput {
-  lazy_static! {
-    static ref REQUESTS_RX: Regex =
-      Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
-    static ref LATENCY_RX: Regex =
-      Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
-  }
+  static REQUESTS_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"Requests/sec:\s+(\d+)");
+  static LATENCY_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))");
 
   let mut requests = None;
   let mut latency = None;

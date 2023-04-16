@@ -3,9 +3,11 @@
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
+use deno_core::serde_json;
 use deno_core::JsRuntime;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -41,18 +43,75 @@ pub use resolution::DEFAULT_CONDITIONS;
 
 pub trait NodeEnv {
   type P: NodePermissions;
-  // TODO(bartlomieju):
-  // type Fs: NodeFs;
+  type Fs: NodeFs;
 }
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
-// TODO(bartlomieju):
-// pub trait NodeFs {
-//   fn current_dir() -> Result<PathBuf, AnyError>;
-// }
+#[derive(Default, Clone)]
+pub struct NodeFsMetadata {
+  pub is_file: bool,
+  pub is_dir: bool,
+}
+
+pub trait NodeFs {
+  fn current_dir() -> io::Result<PathBuf>;
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata>;
+  fn is_file<P: AsRef<Path>>(path: P) -> bool;
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool;
+  fn exists<P: AsRef<Path>>(path: P) -> bool;
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf>;
+}
+
+pub struct RealFs;
+impl NodeFs for RealFs {
+  fn current_dir() -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::env::current_dir()
+  }
+
+  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).map(|metadata| {
+      // on most systems, calling is_file() and is_dir() is cheap
+      // and returns information already found in the metadata object
+      NodeFsMetadata {
+        is_file: metadata.is_file(),
+        is_dir: metadata.is_dir(),
+      }
+    })
+  }
+
+  fn exists<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).is_ok()
+  }
+
+  fn is_file<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path)
+      .map(|m| m.is_file())
+      .unwrap_or(false)
+  }
+
+  fn is_dir<P: AsRef<Path>>(path: P) -> bool {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
+  }
+
+  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::read_to_string(path)
+  }
+
+  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+    #[allow(clippy::disallowed_methods)]
+    std::path::Path::canonicalize(path.as_ref())
+  }
+}
 
 pub trait RequireNpmResolver {
   fn resolve_package_folder_from_package(
@@ -130,7 +189,24 @@ deno_core::extension!(deno_node,
     crypto::op_node_check_prime_bytes_async,
     crypto::op_node_pbkdf2,
     crypto::op_node_pbkdf2_async,
+    crypto::op_node_hkdf,
+    crypto::op_node_hkdf_async,
+    crypto::op_node_generate_secret,
+    crypto::op_node_generate_secret_async,
     crypto::op_node_sign,
+    crypto::op_node_random_int,
+    crypto::x509::op_node_x509_parse,
+    crypto::x509::op_node_x509_ca,
+    crypto::x509::op_node_x509_check_email,
+    crypto::x509::op_node_x509_fingerprint,
+    crypto::x509::op_node_x509_fingerprint256,
+    crypto::x509::op_node_x509_fingerprint512,
+    crypto::x509::op_node_x509_get_issuer,
+    crypto::x509::op_node_x509_get_subject,
+    crypto::x509::op_node_x509_get_valid_from,
+    crypto::x509::op_node_x509_get_valid_to,
+    crypto::x509::op_node_x509_get_serial_number,
+    crypto::x509::op_node_x509_key_usage,
     winerror::op_node_sys_to_uv_error,
     v8::op_v8_cached_data_version_tag,
     v8::op_v8_get_heap_statistics,
@@ -411,7 +487,7 @@ pub fn initialize_runtime(
   maybe_binary_command_name: Option<String>,
 ) -> Result<(), AnyError> {
   let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    format!("\"{}\"", binary_command_name)
+    serde_json::to_string(binary_command_name.as_str())?
   } else {
     "undefined".to_string()
   };
@@ -428,7 +504,7 @@ pub fn initialize_runtime(
     argv0
   );
 
-  js_runtime.execute_script(located_script_name!(), source_code)?;
+  js_runtime.execute_script(located_script_name!(), source_code.into())?;
   Ok(())
 }
 
@@ -449,7 +525,8 @@ pub fn load_cjs_module(
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
-  );
+  )
+  .into();
 
   js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())

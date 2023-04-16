@@ -10,11 +10,11 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use regex::Regex;
 
 use crate::errors;
 use crate::package_json::PackageJson;
 use crate::path::PathClean;
+use crate::NodeFs;
 use crate::NodePermissions;
 use crate::RequireNpmResolver;
 
@@ -40,11 +40,11 @@ impl NodeResolutionMode {
 }
 
 /// Checks if the resolved file has a corresponding declaration file.
-pub fn path_to_declaration_path(
+pub fn path_to_declaration_path<Fs: NodeFs>(
   path: PathBuf,
   referrer_kind: NodeModuleKind,
 ) -> Option<PathBuf> {
-  fn probe_extensions(
+  fn probe_extensions<Fs: NodeFs>(
     path: &Path,
     referrer_kind: NodeModuleKind,
   ) -> Option<PathBuf> {
@@ -52,11 +52,11 @@ pub fn path_to_declaration_path(
       NodeModuleKind::Cjs => with_known_extension(path, "d.cts"),
       NodeModuleKind::Esm => with_known_extension(path, "d.mts"),
     };
-    if specific_dts_path.exists() {
+    if Fs::exists(&specific_dts_path) {
       return Some(specific_dts_path);
     }
     let dts_path = with_known_extension(path, "d.ts");
-    if dts_path.exists() {
+    if Fs::exists(&dts_path) {
       Some(dts_path)
     } else {
       None
@@ -70,11 +70,13 @@ pub fn path_to_declaration_path(
   {
     return Some(path);
   }
-  if let Some(path) = probe_extensions(&path, referrer_kind) {
+  if let Some(path) = probe_extensions::<Fs>(&path, referrer_kind) {
     return Some(path);
   }
-  if path.is_dir() {
-    if let Some(path) = probe_extensions(&path.join("index"), referrer_kind) {
+  if Fs::is_dir(&path) {
+    if let Some(path) =
+      probe_extensions::<Fs>(&path.join("index"), referrer_kind)
+    {
       return Some(path);
     }
   }
@@ -182,7 +184,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
-pub fn package_imports_resolve(
+pub fn package_imports_resolve<Fs: NodeFs>(
   name: &str,
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
@@ -201,13 +203,13 @@ pub fn package_imports_resolve(
   }
 
   let package_config =
-    get_package_scope_config(referrer, npm_resolver, permissions)?;
+    get_package_scope_config::<Fs>(referrer, npm_resolver, permissions)?;
   let mut package_json_path = None;
   if package_config.exists {
     package_json_path = Some(package_config.path.clone());
     if let Some(imports) = &package_config.imports {
       if imports.contains_key(name) && !name.contains('*') {
-        let maybe_resolved = resolve_package_target(
+        let maybe_resolved = resolve_package_target::<Fs>(
           package_json_path.as_ref().unwrap(),
           imports.get(name).unwrap().to_owned(),
           "".to_string(),
@@ -250,7 +252,7 @@ pub fn package_imports_resolve(
 
         if !best_match.is_empty() {
           let target = imports.get(best_match).unwrap().to_owned();
-          let maybe_resolved = resolve_package_target(
+          let maybe_resolved = resolve_package_target::<Fs>(
             package_json_path.as_ref().unwrap(),
             target,
             best_match_subpath.unwrap(),
@@ -315,7 +317,7 @@ fn throw_invalid_subpath(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_package_target_string(
+fn resolve_package_target_string<Fs: NodeFs>(
   target: String,
   subpath: String,
   match_: String,
@@ -339,8 +341,8 @@ fn resolve_package_target_string(
     ));
   }
   let invalid_segment_re =
-    Regex::new(r"(^|\\|/)(\.\.?|node_modules)(\\|/|$)").expect("bad regex");
-  let pattern_re = Regex::new(r"\*").expect("bad regex");
+    lazy_regex::regex!(r"(^|\\|/)(\.\.?|node_modules)(\\|/|$)");
+  let pattern_re = lazy_regex::regex!(r"\*");
   if !target.starts_with("./") {
     if internal && !target.starts_with("../") && !target.starts_with('/') {
       let is_url = Url::parse(&target).is_ok();
@@ -354,7 +356,7 @@ fn resolve_package_target_string(
         };
         let package_json_url =
           ModuleSpecifier::from_file_path(package_json_path).unwrap();
-        return match package_resolve(
+        return match package_resolve::<Fs>(
           &export_target,
           &package_json_url,
           referrer_kind,
@@ -425,7 +427,7 @@ fn resolve_package_target_string(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_package_target(
+fn resolve_package_target<Fs: NodeFs>(
   package_json_path: &Path,
   target: Value,
   subpath: String,
@@ -440,7 +442,7 @@ fn resolve_package_target(
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   if let Some(target) = target.as_str() {
-    return resolve_package_target_string(
+    return resolve_package_target_string::<Fs>(
       target.to_string(),
       subpath,
       package_subpath,
@@ -456,7 +458,7 @@ fn resolve_package_target(
     )
     .map(|path| {
       if mode.is_types() {
-        path_to_declaration_path(path, referrer_kind)
+        path_to_declaration_path::<Fs>(path, referrer_kind)
       } else {
         Some(path)
       }
@@ -468,7 +470,7 @@ fn resolve_package_target(
 
     let mut last_error = None;
     for target_item in target_arr {
-      let resolved_result = resolve_package_target(
+      let resolved_result = resolve_package_target::<Fs>(
         package_json_path,
         target_item.to_owned(),
         subpath.clone(),
@@ -518,7 +520,7 @@ fn resolve_package_target(
       {
         let condition_target = target_obj.get(key).unwrap().to_owned();
 
-        let resolved = resolve_package_target(
+        let resolved = resolve_package_target::<Fs>(
           package_json_path,
           condition_target,
           subpath.clone(),
@@ -566,7 +568,7 @@ fn throw_exports_not_found(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn package_exports_resolve(
+pub fn package_exports_resolve<Fs: NodeFs>(
   package_json_path: &Path,
   package_subpath: String,
   package_exports: &Map<String, Value>,
@@ -582,7 +584,7 @@ pub fn package_exports_resolve(
     && !package_subpath.ends_with('/')
   {
     let target = package_exports.get(&package_subpath).unwrap().to_owned();
-    let resolved = resolve_package_target(
+    let resolved = resolve_package_target::<Fs>(
       package_json_path,
       target,
       "".to_string(),
@@ -642,7 +644,7 @@ pub fn package_exports_resolve(
 
   if !best_match.is_empty() {
     let target = package_exports.get(best_match).unwrap().to_owned();
-    let maybe_resolved = resolve_package_target(
+    let maybe_resolved = resolve_package_target::<Fs>(
       package_json_path,
       target,
       best_match_subpath.unwrap(),
@@ -725,7 +727,7 @@ fn parse_package_name(
   Ok((package_name, package_subpath, is_scoped))
 }
 
-pub fn package_resolve(
+pub fn package_resolve<Fs: NodeFs>(
   specifier: &str,
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
@@ -739,12 +741,12 @@ pub fn package_resolve(
 
   // ResolveSelf
   let package_config =
-    get_package_scope_config(referrer, npm_resolver, permissions)?;
+    get_package_scope_config::<Fs>(referrer, npm_resolver, permissions)?;
   if package_config.exists
     && package_config.name.as_ref() == Some(&package_name)
   {
     if let Some(exports) = &package_config.exports {
-      return package_exports_resolve(
+      return package_exports_resolve::<Fs>(
         &package_config.path,
         package_subpath,
         exports,
@@ -781,9 +783,9 @@ pub fn package_resolve(
 
   // Package match.
   let package_json =
-    PackageJson::load(npm_resolver, permissions, package_json_path)?;
+    PackageJson::load::<Fs>(npm_resolver, permissions, package_json_path)?;
   if let Some(exports) = &package_json.exports {
-    return package_exports_resolve(
+    return package_exports_resolve::<Fs>(
       &package_json.path,
       package_subpath,
       exports,
@@ -797,21 +799,21 @@ pub fn package_resolve(
     .map(Some);
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json, referrer_kind, mode);
+    return legacy_main_resolve::<Fs>(&package_json, referrer_kind, mode);
   }
 
   let file_path = package_json.path.parent().unwrap().join(&package_subpath);
 
   if mode.is_types() {
     let maybe_declaration_path =
-      path_to_declaration_path(file_path, referrer_kind);
+      path_to_declaration_path::<Fs>(file_path, referrer_kind);
     Ok(maybe_declaration_path)
   } else {
     Ok(Some(file_path))
   }
 }
 
-pub fn get_package_scope_config(
+pub fn get_package_scope_config<Fs: NodeFs>(
   referrer: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
   permissions: &mut dyn NodePermissions,
@@ -819,26 +821,27 @@ pub fn get_package_scope_config(
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
   let package_json_path = root_folder.join("package.json");
-  PackageJson::load(npm_resolver, permissions, package_json_path)
+  PackageJson::load::<Fs>(npm_resolver, permissions, package_json_path)
 }
 
-pub fn get_closest_package_json(
+pub fn get_closest_package_json<Fs: NodeFs>(
   url: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
-  let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
-  PackageJson::load(npm_resolver, permissions, package_json_path)
+  let package_json_path =
+    get_closest_package_json_path::<Fs>(url, npm_resolver)?;
+  PackageJson::load::<Fs>(npm_resolver, permissions, package_json_path)
 }
 
-fn get_closest_package_json_path(
+fn get_closest_package_json_path<Fs: NodeFs>(
   url: &ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   let file_path = url.to_file_path().unwrap();
   let mut current_dir = file_path.parent().unwrap();
   let package_json_path = current_dir.join("package.json");
-  if package_json_path.exists() {
+  if Fs::exists(&package_json_path) {
     return Ok(package_json_path);
   }
   let root_pkg_folder = npm_resolver
@@ -846,7 +849,7 @@ fn get_closest_package_json_path(
   while current_dir.starts_with(&root_pkg_folder) {
     current_dir = current_dir.parent().unwrap();
     let package_json_path = current_dir.join("package.json");
-    if package_json_path.exists() {
+    if Fs::exists(&package_json_path) {
       return Ok(package_json_path);
     }
   }
@@ -854,15 +857,7 @@ fn get_closest_package_json_path(
   bail!("did not find package.json in {}", root_pkg_folder.display())
 }
 
-fn file_exists(path: &Path) -> bool {
-  if let Ok(stats) = std::fs::metadata(path) {
-    stats.is_file()
-  } else {
-    false
-  }
-}
-
-pub fn legacy_main_resolve(
+pub fn legacy_main_resolve<Fs: NodeFs>(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
   mode: NodeResolutionMode,
@@ -875,7 +870,9 @@ pub fn legacy_main_resolve(
         // a corresponding declaration file
         if let Some(main) = package_json.main(referrer_kind) {
           let main = package_json.path.parent().unwrap().join(main).clean();
-          if let Some(path) = path_to_declaration_path(main, referrer_kind) {
+          if let Some(path) =
+            path_to_declaration_path::<Fs>(main, referrer_kind)
+          {
             return Ok(Some(path));
           }
         }
@@ -888,7 +885,7 @@ pub fn legacy_main_resolve(
 
   if let Some(main) = maybe_main {
     let guess = package_json.path.parent().unwrap().join(main).clean();
-    if file_exists(&guess) {
+    if Fs::is_file(&guess) {
       return Ok(Some(guess));
     }
 
@@ -917,7 +914,7 @@ pub fn legacy_main_resolve(
         .unwrap()
         .join(format!("{main}{ending}"))
         .clean();
-      if file_exists(&guess) {
+      if Fs::is_file(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(Some(guess));
       }
@@ -940,7 +937,7 @@ pub fn legacy_main_resolve(
       .unwrap()
       .join(index_file_name)
       .clean();
-    if file_exists(&guess) {
+    if Fs::is_file(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
       return Ok(Some(guess));
     }
