@@ -1,21 +1,28 @@
 # Deno
 
-[![Build Status - Cirrus][]][Build status] [![Twitter badge][]][Twitter link]
-[![Discord badge][]][Discord link] [![YouTube badge][]][Youtube link]
+[![](https://img.shields.io/crates/v/deno.svg)](https://crates.io/crates/deno)
+[![Twitter badge][]][Twitter link] [![Discord badge][]][Discord link]
+[![YouTube badge][]][Youtube link]
 
 <img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
 
-[Deno](https://deno.com/runtime) is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
-**TypeScript** that uses V8 and is built in Rust.
+[Deno](https://deno.com/runtime) is a _simple_, _modern_ and _secure_ runtime
+for **JavaScript** and **TypeScript** that uses V8 and is built in Rust.
 
 ### Features
 
-- [Secure by default.](https://deno.land/manual/basics/permissions) No file, network, or environment access, unless explicitly enabled.
-- Provides [web platform functionality and APIs](https://deno.land/manual/runtime/web_platform_apis), e.g. using ES modules, web workers, and `fetch()`.
-- Supports [TypeScript out of the box](https://deno.land/manual/advanced/typescript).
+- [Secure by default.](https://deno.land/manual/basics/permissions) No file,
+  network, or environment access, unless explicitly enabled.
+- Provides
+  [web platform functionality and APIs](https://deno.land/manual/runtime/web_platform_apis),
+  e.g. using ES modules, web workers, and `fetch()`.
+- Supports
+  [TypeScript out of the box](https://deno.land/manual/advanced/typescript).
 - Ships only a single executable file.
-- [Built-in tooling](https://deno.land/manual/tools#built-in-tooling) including `deno test`, `deno fmt`, `deno bench`, and more.
-- Includes [a set of reviewed standard modules](https://deno.land/std/) guaranteed to work with Deno.
+- [Built-in tooling](https://deno.land/manual/tools#built-in-tooling) including
+  `deno test`, `deno fmt`, `deno bench`, and more.
+- Includes [a set of reviewed standard modules](https://deno.land/std/)
+  guaranteed to work with Deno.
 - [Supports npm.](https://deno.land/manual/node)
 
 ### Install
@@ -73,23 +80,25 @@ Or [setup a simple HTTP server](https://examples.deno.land/http-server):
 ```ts
 import { serve } from "https://deno.land/std@0.182.0/http/server.ts";
 
-function handler(_req: Request): Response {
-  return new Response("Hello, World!");
-}
-
-console.log("Listening on http://localhost:8000");
-serve(handler);
+serve((_req) => new Response("Hello, World!"));
 ```
 
 [More examples](https://examples.deno.land/).
 
 ### Additional Resources
 
-- **[The Deno Manual](https://deno.land/manual)** is a great starting point for [additional examples](https://deno.land/manual/examples), [setting up your environment](https://deno.land/manual/getting_started/setup_your_environment), [using npm](https://deno.land/manual/node), and more.
-- **[Runtime API reference](https://deno.land/api)** documents all APIs built into Deno CLI.
-- **[Deno Standard Modules](https://deno.land/std)** do not have external dependencies and are reviewed by the Deno core team.
-- **[deno.land/x](https://deno.land/x)** is the registry for third party modules.
-- **[Blog](https://deno.com/blog)** is where the Deno team writes how tos, about solving technical problems, and important product updates.
+- **[The Deno Manual](https://deno.land/manual)** is a great starting point for
+  [additional examples](https://deno.land/manual/examples),
+  [setting up your environment](https://deno.land/manual/getting_started/setup_your_environment),
+  [using npm](https://deno.land/manual/node), and more.
+- **[Runtime API reference](https://deno.land/api)** documents all APIs built
+  into Deno CLI.
+- **[Deno Standard Modules](https://deno.land/std)** do not have external
+  dependencies and are reviewed by the Deno core team.
+- **[deno.land/x](https://deno.land/x)** is the registry for third party
+  modules.
+- **[Blog](https://deno.com/blog)** is where the Deno team shares important
+  product updates and "how to"s, about solving technical problems.
 
 ### Contributing
 
