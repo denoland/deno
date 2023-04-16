@@ -72,7 +72,7 @@ pub(crate) struct ContextState {
 /// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
 /// keep the underlying V8 context alive even if it would have otherwise been
 /// garbage collected.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct JsRealm(v8::Global<v8::Context>);
 impl JsRealm {
   pub fn new(context: v8::Global<v8::Context>) -> Self {
@@ -241,5 +241,96 @@ impl JsRealm {
     let scope = &mut self.handle_scope(isolate);
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception, true)
+  }
+}
+
+pub(crate) struct KnownRealms(Option<KnownRealmsStruct>);
+
+struct KnownRealmsStruct {
+  main: JsRealm,
+  other_realms: Vec<v8::Weak<v8::Context>>,
+}
+
+impl KnownRealms {
+  pub fn new() -> KnownRealms {
+    KnownRealms(None)
+  }
+
+  pub fn main_realm(&self) -> &JsRealm {
+    &self.0.as_ref().unwrap().main
+  }
+
+  pub fn len(&self) -> usize {
+    if let Some(krs) = &self.0 {
+      krs.other_realms.len() + 1
+    } else {
+      0
+    }
+  }
+
+  pub fn push_context(
+    &mut self,
+    isolate: &mut v8::Isolate,
+    handle: impl v8::Handle<Data = v8::Context>,
+  ) {
+    if let Some(krs) = &mut self.0 {
+      let weak = v8::Weak::new(isolate, handle);
+      krs.other_realms.push(weak);
+    } else {
+      let global = v8::Global::new(isolate, handle);
+      self.0 = Some(KnownRealmsStruct {
+        main: JsRealm(global),
+        other_realms: Vec::new(),
+      })
+    }
+  }
+
+  pub fn for_each_realm<'s, F>(&self, isolate: &'s mut v8::Isolate, mut f: F)
+  where
+    F: FnMut(&JsRealm, &mut v8::Isolate),
+  {
+    if let Some(krs) = &self.0 {
+      f(&krs.main, isolate);
+      for weak in &krs.other_realms {
+        if let Some(global) = weak.to_global(isolate) {
+          let realm = JsRealm(global);
+          f(&realm, isolate);
+        }
+      }
+    }
+  }
+
+  pub fn realm_at(
+    &self,
+    isolate: &mut v8::Isolate,
+    idx: usize,
+  ) -> Option<JsRealm> {
+    if let Some(krs) = &self.0 {
+      if idx == 0 {
+        return Some(krs.main.clone());
+      } else if idx <= krs.other_realms.len() {
+        let weak = &krs.other_realms[idx - 1];
+        if let Some(global) = weak.to_global(isolate) {
+          return Some(JsRealm(global));
+        }
+      }
+    }
+    None
+  }
+
+  pub fn local_at<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s, ()>,
+    idx: usize,
+  ) -> Option<v8::Local<'s, v8::Context>> {
+    if let Some(krs) = &self.0 {
+      if idx == 0 {
+        let global = krs.main.context();
+        return Some(v8::Local::new(scope, global));
+      } else if idx <= krs.other_realms.len() {
+        return krs.other_realms[idx - 1].to_local(scope);
+      }
+    }
+    None
   }
 }

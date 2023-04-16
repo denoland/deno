@@ -20,6 +20,7 @@ use crate::op_void_sync;
 use crate::ops::*;
 use crate::realm::ContextState;
 use crate::realm::JsRealm;
+use crate::realm::KnownRealms;
 use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
@@ -156,8 +157,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct JsRuntimeState {
-  global_realm: Option<JsRealm>,
-  known_realms: Vec<v8::Weak<v8::Context>>,
+  known_realms: KnownRealms,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
@@ -352,8 +352,7 @@ impl JsRuntime {
       dispatched_exceptions: Default::default(),
       // Some fields are initialized later after isolate is created
       inspector: None,
-      global_realm: None,
-      known_realms: Vec::with_capacity(1),
+      known_realms: KnownRealms::new(),
     }));
 
     let weak = Rc::downgrade(&state_rc);
@@ -494,11 +493,10 @@ impl JsRuntime {
 
     {
       let mut state = state_rc.borrow_mut();
-      state.global_realm = Some(JsRealm::new(global_context.clone()));
-      state.inspector = inspector;
       state
         .known_realms
-        .push(v8::Weak::new(&mut isolate, &global_context));
+        .push_context(&mut isolate, &global_context);
+      state.inspector = inspector;
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
@@ -565,8 +563,7 @@ impl JsRuntime {
   #[inline]
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
     let state = self.state.borrow();
-    let global_realm = state.global_realm.as_ref().unwrap();
-    global_realm.context().clone()
+    state.known_realms.main_realm().context().clone()
   }
 
   #[inline]
@@ -582,7 +579,7 @@ impl JsRuntime {
   #[inline]
   pub fn global_realm(&mut self) -> JsRealm {
     let state = self.state.borrow();
-    state.global_realm.clone().unwrap()
+    state.known_realms.main_realm().clone()
   }
 
   /// Creates a new realm (V8 context) in this JS execution context,
@@ -632,7 +629,7 @@ impl JsRuntime {
         .state
         .borrow_mut()
         .known_realms
-        .push(v8::Weak::new(scope, context));
+        .push_context(scope, context);
 
       JsRealm::new(v8::Global::new(scope, context))
     };
@@ -972,27 +969,24 @@ impl JsRuntime {
       Self::drop_state_and_module_map(v8_isolate);
     }
 
-    self.state.borrow_mut().global_realm.take();
-
     // Drop other v8::Global handles before snapshotting
     {
-      for weak_context in &self.state.clone().borrow().known_realms {
-        let v8_isolate = self.v8_isolate();
-        if let Some(context) = weak_context.to_global(v8_isolate) {
-          let realm = JsRealm::new(context.clone());
-          let realm_state_rc = realm.state(v8_isolate);
+      let state_rc = self.state.clone();
+      let mut state = state_rc.borrow_mut();
+      state
+        .known_realms
+        .for_each_realm(self.v8_isolate(), |realm, isolate| {
+          let realm_state_rc = realm.state(isolate);
           let mut realm_state = realm_state_rc.borrow_mut();
           std::mem::take(&mut realm_state.js_event_loop_tick_cb);
           std::mem::take(&mut realm_state.js_build_custom_error_cb);
           std::mem::take(&mut realm_state.js_promise_reject_cb);
           std::mem::take(&mut realm_state.js_format_exception_cb);
           std::mem::take(&mut realm_state.js_wasm_streaming_cb);
-          context.open(v8_isolate).clear_all_slots(v8_isolate);
-        }
-      }
+          realm.context().open(isolate).clear_all_slots(isolate);
+        });
 
-      let mut state = self.state.borrow_mut();
-      state.known_realms.clear();
+      state.known_realms = KnownRealms::new();
     }
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
@@ -1421,12 +1415,11 @@ impl EventLoopPendingState {
     module_map: &ModuleMap,
   ) -> EventLoopPendingState {
     let mut num_unrefed_ops = 0;
-    for weak_context in &state.known_realms {
-      if let Some(context) = weak_context.to_global(isolate) {
-        let realm = JsRealm::new(context);
+    state
+      .known_realms
+      .for_each_realm(isolate, |realm, isolate| {
         num_unrefed_ops += realm.state(isolate).borrow().unrefed_ops.len();
-      }
-    }
+      });
 
     EventLoopPendingState {
       has_pending_refed_ops: state.pending_ops.len() > num_unrefed_ops,
@@ -1595,7 +1588,7 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
-    let global_realm = self.state.borrow_mut().global_realm.clone().unwrap();
+    let global_realm = self.state.borrow().known_realms.main_realm().clone();
     let scope =
       &mut global_realm.handle_scope(self.v8_isolate.as_mut().unwrap());
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -2176,14 +2169,15 @@ impl JsRuntime {
   }
 
   fn check_promise_rejections(&mut self) -> Result<(), Error> {
-    let known_realms = self.state.borrow().known_realms.clone();
-    let isolate = self.v8_isolate();
-    for weak_context in known_realms {
-      if let Some(context) = weak_context.to_global(isolate) {
-        JsRealm::new(context).check_promise_rejections(isolate)?;
+    let state_rc = self.state.clone();
+    let known_realms = &state_rc.borrow().known_realms;
+    let mut result = Ok(());
+    known_realms.for_each_realm(self.v8_isolate(), |realm, isolate| {
+      if result.is_ok() {
+        result = realm.check_promise_rejections(isolate);
       }
-    }
-    Ok(())
+    });
+    result
   }
 
   // Polls pending ops and then runs `Deno.core.eventLoopTick` callback.
@@ -2216,12 +2210,12 @@ impl JsRuntime {
     // Handle responses for each realm.
     let isolate = self.v8_isolate.as_mut().unwrap();
     for (realm_idx, responses) in responses_per_realm.into_iter().enumerate() {
-      let realm = {
-        let context = self.state.borrow().known_realms[realm_idx]
-          .to_global(isolate)
-          .unwrap();
-        JsRealm::new(context)
-      };
+      let realm = self
+        .state
+        .borrow()
+        .known_realms
+        .realm_at(isolate, realm_idx)
+        .unwrap();
       let context_state_rc = realm.state(isolate);
       let mut context_state = context_state_rc.borrow_mut();
       let scope = &mut realm.handle_scope(isolate);
@@ -2284,9 +2278,8 @@ impl JsRuntime {
     let scope = &mut self
       .state
       .borrow()
-      .global_realm
-      .as_ref()
-      .unwrap()
+      .known_realms
+      .main_realm()
       .handle_scope(isolate);
 
     // We return async responses to JS in unbounded batches (may change),
@@ -2306,15 +2299,15 @@ impl JsRuntime {
       let mut state = self.state.borrow_mut();
       state.have_unpolled_ops = false;
 
-      let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
+      let realm_state_rc = state.known_realms.main_realm().state(scope);
       let mut realm_state = realm_state_rc.borrow_mut();
 
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
         let (realm_idx, promise_id, op_id, mut resp) = item;
         debug_assert_eq!(
-          state.known_realms[realm_idx],
-          state.global_realm.as_ref().unwrap().context()
+          state.known_realms.realm_at(scope, realm_idx).as_ref(),
+          Some(state.known_realms.main_realm())
         );
         realm_state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
@@ -2334,7 +2327,7 @@ impl JsRuntime {
 
     let js_event_loop_tick_cb_handle = {
       let state = self.state.borrow_mut();
-      let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
+      let realm_state_rc = state.known_realms.main_realm().state(scope);
       let handle = realm_state_rc
         .borrow()
         .js_event_loop_tick_cb
@@ -2393,7 +2386,10 @@ pub fn queue_async_op<'s>(
   // deno_core doesn't currently support such exposure, even though embedders
   // can cause them, so we panic in debug mode (since the check is expensive).
   debug_assert_eq!(
-    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
+    runtime_state
+      .borrow()
+      .known_realms
+      .local_at(scope, ctx.realm_idx),
     Some(scope.get_current_context())
   );
 
