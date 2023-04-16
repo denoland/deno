@@ -285,7 +285,7 @@ impl KnownRealms {
     }
   }
 
-  pub fn for_each_realm<'s, F>(&self, isolate: &'s mut v8::Isolate, mut f: F)
+  pub fn for_each_realm<F>(&self, isolate: &mut v8::Isolate, mut f: F)
   where
     F: FnMut(&JsRealm, &mut v8::Isolate),
   {
