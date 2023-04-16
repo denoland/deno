@@ -82,7 +82,7 @@ impl send_stdin {
             state.tracker.track_async(op_id);
             state.get_error_class_fn
         };
-        deno_core::_ops::queue_async_op(
+        let maybe_response = deno_core::_ops::queue_async_op(
             ctx,
             scope,
             false,
@@ -100,5 +100,8 @@ impl send_stdin {
                 )
             },
         );
+        if let Some(response) = maybe_response {
+            rv.set(response);
+        }
     }
 }

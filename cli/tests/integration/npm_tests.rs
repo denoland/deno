@@ -665,6 +665,7 @@ itest!(deno_run_cowsay {
 
 itest!(deno_run_cowsay_with_node_modules_dir {
   args: "run -A --quiet --node-modules-dir npm:cowsay@1.5.0 Hello",
+  temp_cwd: true,
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
@@ -1757,6 +1758,40 @@ fn reload_info_not_found_cache_but_exists_remote() {
       "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
       "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
+      "Node esm importing node cjs\n[WILDCARD]",
+    ));
+    output.assert_exit_code(0);
+  }
+
+  // now try using a lockfile
+  {
+    // create it
+    temp_dir.write("deno.json", r#"{}"#);
+    test_context.new_command().args("cache main.ts").run();
+    assert!(temp_dir.path().join("deno.lock").exists());
+
+    // remove a version found in the lockfile
+    remove_version_for_package(deno_dir, "@denotest/esm-basic", "1.0.0");
+
+    // should error for --cached-only
+    let output = test_context
+      .new_command()
+      .args("run --cached-only main.ts")
+      .run();
+    output.assert_matches_text(concat!(
+      "error: failed reading lockfile '[WILDCARD]deno.lock'\n",
+      "\n",
+      "Caused by:\n",
+      "    Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n"
+    ));
+    output.assert_exit_code(1);
+
+    // now try running, it should work and only initialize the new package
+    let output = test_context.new_command().args("run main.ts").run();
+    output.assert_matches_text(concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
     output.assert_exit_code(0);

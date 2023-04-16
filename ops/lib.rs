@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use attrs::Attributes;
-use once_cell::sync::Lazy;
 use optimizer::BailoutReason;
 use optimizer::Optimizer;
 use proc_macro::TokenStream;
@@ -9,7 +8,6 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use quote::ToTokens;
-use regex::Regex;
 use syn::parse;
 use syn::parse_macro_input;
 use syn::punctuated::Punctuated;
@@ -321,11 +319,15 @@ fn codegen_v8_async(
     };
 
     #pre_result
-    #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
+    let maybe_response = #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
       (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
+
+    if let Some(response) = maybe_response {
+      rv.set(response);
+    }
   }
 }
 
@@ -859,30 +861,26 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 }
 
 fn is_resource_id(arg: impl ToTokens) -> bool {
-  static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#": (?:deno_core :: )?ResourceId$"#).unwrap());
-  RE.is_match(&tokens(arg))
+  let re = lazy_regex::regex!(r#": (?:deno_core :: )?ResourceId$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_mut_ref_opstate(arg: impl ToTokens) -> bool {
-  static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#": & mut (?:deno_core :: )?OpState$"#).unwrap());
-  RE.is_match(&tokens(arg))
+  let re = lazy_regex::regex!(r#": & mut (?:deno_core :: )?OpState$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
-  static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#).unwrap()
-  });
-  RE.is_match(&tokens(arg))
+  let re =
+    lazy_regex::regex!(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_handle_scope(arg: &syn::FnArg) -> bool {
-  static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#)
-      .unwrap()
-  });
-  RE.is_match(&tokens(arg))
+  let re = lazy_regex::regex!(
+    r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#
+  );
+  re.is_match(&tokens(arg))
 }
 
 fn is_future(ty: impl ToTokens) -> bool {
@@ -907,6 +905,7 @@ fn exclude_lifetime_params(
 mod tests {
   use crate::Attributes;
   use crate::Op;
+  use pretty_assertions::assert_eq;
   use std::path::PathBuf;
 
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]
