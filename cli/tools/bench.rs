@@ -15,7 +15,7 @@ use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
 use crate::version::get_user_agent;
-use crate::worker::create_main_worker_for_test_or_bench;
+use crate::worker::create_custom_worker;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -24,11 +24,15 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::located_script_name;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -87,6 +91,8 @@ pub struct BenchDescription {
   pub origin: String,
   pub baseline: bool,
   pub group: Option<String>,
+  pub ignore: bool,
+  pub only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -416,14 +422,15 @@ async fn check_specifiers(
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
-  ps.prepare_module_load(
-    specifiers,
-    false,
-    lib,
-    PermissionsContainer::allow_all(),
-    PermissionsContainer::new(permissions),
-  )
-  .await?;
+  ps.module_load_preparer
+    .prepare_module_load(
+      specifiers,
+      false,
+      lib,
+      PermissionsContainer::allow_all(),
+      PermissionsContainer::new(permissions),
+    )
+    .await?;
 
   Ok(())
 }
@@ -433,20 +440,80 @@ async fn bench_specifier(
   ps: ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
-  channel: UnboundedSender<BenchEvent>,
-  options: BenchSpecifierOptions,
+  sender: UnboundedSender<BenchEvent>,
+  filter: TestFilter,
 ) -> Result<(), AnyError> {
-  let filter = options.filter;
-  let mut worker = create_main_worker_for_test_or_bench(
+  let mut worker = create_custom_worker(
     &ps,
-    specifier,
+    specifier.clone(),
     PermissionsContainer::new(permissions),
-    vec![ops::bench::deno_bench::init_ops(channel, filter)],
+    vec![ops::bench::deno_bench::init_ops(sender.clone())],
     Default::default(),
   )
   .await?;
 
-  worker.run_bench_specifier().await
+  // We execute the main module as a side module so that import.meta.main is not set.
+  worker.execute_side_module_possibly_with_npm().await?;
+
+  let mut worker = worker.into_main_worker();
+  worker.dispatch_load_event(located_script_name!())?;
+
+  let benchmarks = {
+    let state_rc = worker.js_runtime.op_state();
+    let mut state = state_rc.borrow_mut();
+    std::mem::take(&mut state.borrow_mut::<ops::bench::BenchContainer>().0)
+  };
+  let (only, no_only): (Vec<_>, Vec<_>) =
+    benchmarks.into_iter().partition(|(d, _)| d.only);
+  let used_only = !only.is_empty();
+  let benchmarks = if used_only { only } else { no_only };
+  let mut benchmarks = benchmarks
+    .into_iter()
+    .filter(|(d, _)| filter.includes(&d.name) && !d.ignore)
+    .collect::<Vec<_>>();
+  let mut groups = IndexSet::<Option<String>>::new();
+  // make sure ungrouped benchmarks are placed above grouped
+  groups.insert(None);
+  for (desc, _) in &benchmarks {
+    groups.insert(desc.group.clone());
+  }
+  benchmarks.sort_by(|(d1, _), (d2, _)| {
+    groups
+      .get_index_of(&d1.group)
+      .unwrap()
+      .partial_cmp(&groups.get_index_of(&d2.group).unwrap())
+      .unwrap()
+  });
+  sender.send(BenchEvent::Plan(BenchPlan {
+    origin: specifier.to_string(),
+    total: benchmarks.len(),
+    used_only,
+    names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
+  }))?;
+  for (desc, function) in benchmarks {
+    sender.send(BenchEvent::Wait(desc.id))?;
+    let promise = {
+      let scope = &mut worker.js_runtime.handle_scope();
+      let cb = function.open(scope);
+      let this = v8::undefined(scope).into();
+      let promise = cb.call(scope, this, &[]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    let result = worker.js_runtime.resolve_value(promise).await?;
+    let scope = &mut worker.js_runtime.handle_scope();
+    let result = v8::Local::new(scope, result);
+    let result = serde_v8::from_v8::<BenchResult>(scope, result)?;
+    sender.send(BenchEvent::Result(desc.id, result))?;
+  }
+
+  loop {
+    if !worker.dispatch_beforeunload_event(located_script_name!())? {
+      break;
+    }
+    worker.run_event_loop(false).await?;
+  }
+  worker.dispatch_unload_event(located_script_name!())?;
+  Ok(())
 }
 
 /// Test a collection of specifiers with test modes concurrently.
@@ -468,10 +535,9 @@ async fn bench_specifiers(
     let specifier = specifier;
     let sender = sender.clone();
     let options = option_for_handles.clone();
-
     tokio::task::spawn_blocking(move || {
-      let future = bench_specifier(ps, permissions, specifier, sender, options);
-
+      let future =
+        bench_specifier(ps, permissions, specifier, sender, options.filter);
       run_local(future)
     })
   });
@@ -640,7 +706,10 @@ pub async fn run_benchmarks_with_watch(
       } else {
         bench_modules.clone()
       };
-      let graph = ps.create_graph(bench_modules.clone()).await?;
+      let graph = ps
+        .module_graph_builder
+        .create_graph(bench_modules.clone())
+        .await?;
       graph_valid_with_cli_options(&graph, &bench_modules, &ps.options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.

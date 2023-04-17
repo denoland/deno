@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
 
@@ -13,18 +12,18 @@ use super::node::NODE_ANALYSIS_CACHE_DB;
 use super::parsed_source::PARSED_SOURCE_CACHE_DB;
 use super::DenoDir;
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct Caches {
-  fmt_incremental_cache_db: Arc<OnceCell<CacheDB>>,
-  lint_incremental_cache_db: Arc<OnceCell<CacheDB>>,
-  dep_analysis_db: Arc<OnceCell<CacheDB>>,
-  node_analysis_db: Arc<OnceCell<CacheDB>>,
-  type_checking_cache_db: Arc<OnceCell<CacheDB>>,
+  fmt_incremental_cache_db: OnceCell<CacheDB>,
+  lint_incremental_cache_db: OnceCell<CacheDB>,
+  dep_analysis_db: OnceCell<CacheDB>,
+  node_analysis_db: OnceCell<CacheDB>,
+  type_checking_cache_db: OnceCell<CacheDB>,
 }
 
 impl Caches {
   fn make_db(
-    cell: &Arc<OnceCell<CacheDB>>,
+    cell: &OnceCell<CacheDB>,
     config: &'static CacheDBConfiguration,
     path: PathBuf,
   ) -> CacheDB {

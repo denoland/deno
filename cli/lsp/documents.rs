@@ -828,7 +828,7 @@ pub struct Documents {
   imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
-  resolver: CliGraphResolver,
+  resolver: Arc<CliGraphResolver>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -849,7 +849,7 @@ impl Documents {
       lsp_client_kind,
       resolver_config_hash: 0,
       imports: Default::default(),
-      resolver: CliGraphResolver::default(),
+      resolver: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -1057,7 +1057,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_npm_resolver: Option<&NpmPackageResolver>,
+    maybe_npm_resolver: Option<&Arc<NpmPackageResolver>>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1074,7 +1074,7 @@ impl Documents {
               &specifier,
               referrer,
               NodeResolutionMode::Types,
-              npm_resolver,
+              &npm_resolver.as_require_npm_resolver(),
               &mut PermissionsContainer::allow_all(),
             )
             .ok()
@@ -1166,8 +1166,8 @@ impl Documents {
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
-    npm_registry_api: CliNpmRegistryApi,
-    npm_resolution: NpmResolution,
+    npm_registry_api: Arc<CliNpmRegistryApi>,
+    npm_resolution: Arc<NpmResolution>,
   ) {
     fn calculate_resolver_config_hash(
       enabled_urls: &[Url],
@@ -1218,19 +1218,19 @@ impl Documents {
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
     );
-    let deps_installer = PackageJsonDepsInstaller::new(
+    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
       npm_registry_api.clone(),
       npm_resolution.clone(),
       maybe_package_json_deps,
-    );
-    self.resolver = CliGraphResolver::new(
+    ));
+    self.resolver = Arc::new(CliGraphResolver::new(
       maybe_jsx_config,
       maybe_import_map,
       false,
       npm_registry_api,
       npm_resolution,
       deps_installer,
-    );
+    ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1418,7 +1418,7 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_npm_resolver: Option<&NpmPackageResolver>,
+    maybe_npm_resolver: Option<&Arc<NpmPackageResolver>>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
       return node_resolve_npm_req_ref(npm_ref, maybe_npm_resolver);
@@ -1453,7 +1453,7 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_npm_resolver: Option<&NpmPackageResolver>,
+  maybe_npm_resolver: Option<&Arc<NpmPackageResolver>>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
   maybe_npm_resolver.map(|npm_resolver| {
     NodeResolution::into_specifier_and_media_type(
@@ -1864,9 +1864,12 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
-    let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
+    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
+      npm_registry_api.clone(),
+      None,
+      None,
+    ));
 
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway

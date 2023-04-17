@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -277,7 +276,7 @@ impl ReadonlyNpmCache {
     let name = parts.join("/");
     let (version, copy_index) =
       if let Some((version, copy_count)) = version_part.split_once('_') {
-        (version, copy_count.parse::<usize>().ok()?)
+        (version, copy_count.parse::<u8>().ok()?)
       } else {
         (version_part, 0)
       };
@@ -296,14 +295,14 @@ impl ReadonlyNpmCache {
 }
 
 /// Stores a single copy of npm packages in a cache.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
   http_client: HttpClient,
   progress_bar: ProgressBar,
   /// ensures a package is only downloaded once per run
-  previously_reloaded_packages: Arc<Mutex<HashSet<NpmPackageNv>>>,
+  previously_reloaded_packages: Mutex<HashSet<NpmPackageNv>>,
 }
 
 impl NpmCache {

@@ -70,13 +70,17 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Cache(cache_flags) => {
       let ps = ProcState::from_flags(flags).await?;
-      ps.load_and_type_check_files(&cache_flags.files).await?;
-      ps.cache_module_emits()?;
+      ps.module_load_preparer
+        .load_and_type_check_files(&cache_flags.files)
+        .await?;
+      ps.emitter.cache_module_emits(&ps.graph_container.graph())?;
       Ok(0)
     }
     DenoSubcommand::Check(check_flags) => {
       let ps = ProcState::from_flags(flags).await?;
-      ps.load_and_type_check_files(&check_flags.files).await?;
+      ps.module_load_preparer
+        .load_and_type_check_files(&check_flags.files)
+        .await?;
       Ok(0)
     }
     DenoSubcommand::Compile(compile_flags) => {

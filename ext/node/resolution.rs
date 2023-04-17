@@ -10,7 +10,6 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use regex::Regex;
 
 use crate::errors;
 use crate::package_json::PackageJson;
@@ -342,8 +341,8 @@ fn resolve_package_target_string<Fs: NodeFs>(
     ));
   }
   let invalid_segment_re =
-    Regex::new(r"(^|\\|/)(\.\.?|node_modules)(\\|/|$)").expect("bad regex");
-  let pattern_re = Regex::new(r"\*").expect("bad regex");
+    lazy_regex::regex!(r"(^|\\|/)(\.\.?|node_modules)(\\|/|$)");
+  let pattern_re = lazy_regex::regex!(r"\*");
   if !target.starts_with("./") {
     if internal && !target.starts_with("../") && !target.starts_with('/') {
       let is_url = Url::parse(&target).is_ok();

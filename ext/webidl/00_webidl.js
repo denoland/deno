@@ -60,7 +60,7 @@ const {
   ReflectOwnKeys,
   RegExpPrototypeTest,
   SafeRegExp,
-  Set,
+  SafeSet,
   SetPrototypeEntries,
   SetPrototypeForEach,
   SetPrototypeKeys,
@@ -752,7 +752,7 @@ function createDictionaryConverter(name, ...dictionaries) {
 
 // https://heycam.github.io/webidl/#es-enumeration
 function createEnumConverter(name, values) {
-  const E = new Set(values);
+  const E = new SafeSet(values);
 
   return function (V, opts = {}) {
     const S = String(V);

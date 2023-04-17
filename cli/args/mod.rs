@@ -12,7 +12,7 @@ use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
-use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
@@ -747,10 +747,10 @@ impl CliOptions {
   pub async fn resolve_npm_resolution_snapshot(
     &self,
     api: &CliNpmRegistryApi,
-  ) -> Result<Option<NpmResolutionSnapshot>, AnyError> {
+  ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
     if let Some(state) = &*NPM_PROCESS_STATE {
       // TODO(bartlomieju): remove this clone
-      return Ok(Some(state.snapshot.clone()));
+      return Ok(Some(state.snapshot.clone().into_valid()?));
     }
 
     if let Some(lockfile) = self.maybe_lock_file() {

@@ -17,4 +17,4 @@ async function bench(fun) {
 }
 
 const core = Deno[Deno.internal].core;
-bench(() => core.opAsync("op_void_async"));
+bench(() => core.opAsync("op_void_async_deferred"));

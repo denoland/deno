@@ -65,7 +65,7 @@ pub async fn vendor(
   );
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
-    if maybe_update_config_file(&output_dir, &ps) {
+    if maybe_update_config_file(&output_dir, &ps.options) {
       log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
@@ -147,15 +147,14 @@ fn validate_options(
   Ok(())
 }
 
-fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
+fn maybe_update_config_file(output_dir: &Path, options: &CliOptions) -> bool {
   assert!(output_dir.is_absolute());
-  let config_file_specifier = match ps.options.maybe_config_file_specifier() {
+  let config_file_specifier = match options.maybe_config_file_specifier() {
     Some(f) => f,
     None => return false,
   };
 
-  let fmt_config = ps
-    .options
+  let fmt_config = options
     .maybe_config_file()
     .as_ref()
     .and_then(|config| config.to_fmt_config().ok())
@@ -271,7 +270,7 @@ async fn create_graph(
     .map(|p| resolve_url_or_path(p, ps.options.initial_cwd()))
     .collect::<Result<Vec<_>, _>>()?;
 
-  ps.create_graph(entry_points).await
+  ps.module_graph_builder.create_graph(entry_points).await
 }
 
 #[cfg(test)]

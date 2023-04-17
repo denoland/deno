@@ -5,14 +5,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::serde_json::json;
-use deno_core::serde_v8;
-use deno_core::v8;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
@@ -36,7 +32,6 @@ use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::test::TestMode;
 use crate::util::checksum;
 use crate::version;
 
@@ -45,11 +40,6 @@ pub struct CliMainWorker {
   is_main_cjs: bool,
   worker: MainWorker,
   ps: ProcState,
-
-  js_run_tests_callback: Option<v8::Global<v8::Function>>,
-  js_run_benchmarks_callback: Option<v8::Global<v8::Function>>,
-  js_enable_test_callback: Option<v8::Global<v8::Function>>,
-  js_enable_bench_callback: Option<v8::Global<v8::Function>>,
 }
 
 impl CliMainWorker {
@@ -176,114 +166,14 @@ impl CliMainWorker {
     executor.execute().await
   }
 
-  pub async fn run_test_specifier(
-    &mut self,
-    mode: TestMode,
-  ) -> Result<(), AnyError> {
-    self.enable_test();
-
-    // Enable op call tracing in core to enable better debugging of op sanitizer
-    // failures.
-    if self.ps.options.trace_ops() {
-      self.worker.js_runtime.execute_script_static(
-        located_script_name!(),
-        "Deno[Deno.internal].core.enableOpCallTracing();",
-      )?;
-    }
-
-    let mut maybe_coverage_collector =
-      self.maybe_setup_coverage_collector().await?;
-
-    // We only execute the specifier as a module if it is tagged with TestMode::Module or
-    // TestMode::Both.
-    if mode != TestMode::Documentation {
-      // We execute the module module as a side module so that import.meta.main is not set.
-      self.execute_side_module_possibly_with_npm().await?;
-    }
-
-    self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_tests(&self.ps.options.shuffle_tests()).await?;
-    loop {
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
-        break;
-      }
-      self.worker.run_event_loop(false).await?;
-    }
-
-    self.worker.dispatch_unload_event(located_script_name!())?;
-
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      self
-        .worker
-        .with_event_loop(coverage_collector.stop_collecting().boxed_local())
-        .await?;
-    }
-    Ok(())
-  }
-
-  pub async fn run_lsp_test_specifier(
-    &mut self,
-    mode: TestMode,
-  ) -> Result<(), AnyError> {
-    self.enable_test();
-
-    self.worker.execute_script(
-      located_script_name!(),
-      ascii_str!("Deno[Deno.internal].core.enableOpCallTracing();"),
-    )?;
-
-    if mode != TestMode::Documentation {
-      // We execute the module module as a side module so that import.meta.main is not set.
-      self.execute_side_module_possibly_with_npm().await?;
-    }
-
-    self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_tests(&None).await?;
-    loop {
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
-        break;
-      }
-      self.worker.run_event_loop(false).await?;
-    }
-    self.worker.dispatch_unload_event(located_script_name!())?;
-    Ok(())
-  }
-
-  pub async fn run_bench_specifier(&mut self) -> Result<(), AnyError> {
-    self.enable_bench();
-
-    // We execute the module module as a side module so that import.meta.main is not set.
-    self.execute_side_module_possibly_with_npm().await?;
-
-    self.worker.dispatch_load_event(located_script_name!())?;
-    self.run_benchmarks().await?;
-    loop {
-      if !self
-        .worker
-        .dispatch_beforeunload_event(located_script_name!())?
-      {
-        break;
-      }
-      self.worker.run_event_loop(false).await?;
-    }
-    self.worker.dispatch_unload_event(located_script_name!())?;
-    Ok(())
-  }
-
-  async fn execute_main_module_possibly_with_npm(
+  pub async fn execute_main_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
 
-  async fn execute_side_module_possibly_with_npm(
+  pub async fn execute_side_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
@@ -294,7 +184,8 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages() || self.ps.graph().has_node_specifier
+    if self.ps.npm_resolver.has_packages()
+      || self.ps.graph_container.graph().has_node_specifier
     {
       self.initialize_main_module_for_node()?;
     }
@@ -325,7 +216,7 @@ impl CliMainWorker {
     Ok(())
   }
 
-  async fn maybe_setup_coverage_collector(
+  pub async fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<CoverageCollector>, AnyError> {
     if let Some(ref coverage_dir) = self.ps.options.coverage_dir() {
@@ -343,61 +234,6 @@ impl CliMainWorker {
       Ok(None)
     }
   }
-
-  /// Run tests declared with `Deno.test()`. Test events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  pub async fn run_tests(
-    &mut self,
-    shuffle: &Option<u64>,
-  ) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.worker.js_runtime.handle_scope();
-      let cb = self.js_run_tests_callback.as_ref().unwrap().open(scope);
-      let this = v8::undefined(scope).into();
-      let options =
-        serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
-      let promise = cb.call(scope, this, &[options]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    self.worker.js_runtime.resolve_value(promise).await?;
-    Ok(())
-  }
-
-  /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
-  /// by calling ops which are currently only implemented in the CLI crate.
-  pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
-    let promise = {
-      let scope = &mut self.worker.js_runtime.handle_scope();
-      let cb = self
-        .js_run_benchmarks_callback
-        .as_ref()
-        .unwrap()
-        .open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    self.worker.js_runtime.resolve_value(promise).await?;
-    Ok(())
-  }
-
-  /// Enable `Deno.test()`. If this isn't called before executing user code,
-  /// `Deno.test()` calls will noop.
-  pub fn enable_test(&mut self) {
-    let scope = &mut self.worker.js_runtime.handle_scope();
-    let cb = self.js_enable_test_callback.as_ref().unwrap().open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
-  }
-
-  /// Enable `Deno.bench()`. If this isn't called before executing user code,
-  /// `Deno.bench()` calls will noop.
-  pub fn enable_bench(&mut self) {
-    let scope = &mut self.worker.js_runtime.handle_scope();
-    let cb = self.js_enable_bench_callback.as_ref().unwrap().open(scope);
-    let this = v8::undefined(scope).into();
-    cb.call(scope, this, &[]).unwrap();
-  }
 }
 
 pub async fn create_main_worker(
@@ -405,42 +241,16 @@ pub async fn create_main_worker(
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
 ) -> Result<CliMainWorker, AnyError> {
-  create_main_worker_internal(
-    ps,
-    main_module,
-    permissions,
-    vec![],
-    Default::default(),
-    false,
-  )
-  .await
+  create_custom_worker(ps, main_module, permissions, vec![], Default::default())
+    .await
 }
 
-pub async fn create_main_worker_for_test_or_bench(
-  ps: &ProcState,
-  main_module: ModuleSpecifier,
-  permissions: PermissionsContainer,
-  custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::deno_io::Stdio,
-) -> Result<CliMainWorker, AnyError> {
-  create_main_worker_internal(
-    ps,
-    main_module,
-    permissions,
-    custom_extensions,
-    stdio,
-    true,
-  )
-  .await
-}
-
-async fn create_main_worker_internal(
+pub async fn create_custom_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::deno_io::Stdio,
-  bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
     NpmPackageReqReference::from_specifier(&main_module)
@@ -461,8 +271,10 @@ async fn create_main_worker_internal(
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
   } else if ps.options.is_npm_main() {
-    let node_resolution =
-      node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
+    let node_resolution = node::url_to_node_resolution(
+      main_module,
+      &ps.npm_resolver.as_require_npm_resolver(),
+    )?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
@@ -541,7 +353,7 @@ async fn create_main_worker_internal(
     should_break_on_first_statement: ps.options.inspect_brk().is_some(),
     should_wait_for_inspector_session: ps.options.inspect_wait().is_some(),
     module_loader,
-    npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
+    npm_resolver: Some(Rc::new(ps.npm_resolver.as_require_npm_resolver())),
     get_error_class_fn: Some(&errors::get_error_class_name),
     cache_storage_dir,
     origin_storage_dir,
@@ -552,59 +364,17 @@ async fn create_main_worker_internal(
     stdio,
   };
 
-  let mut worker = MainWorker::bootstrap_from_options(
+  let worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
     permissions,
     options,
   );
-
-  let (
-    js_run_tests_callback,
-    js_run_benchmarks_callback,
-    js_enable_test_callback,
-    js_enable_bench_callback,
-  ) = if bench_or_test {
-    let scope = &mut worker.js_runtime.handle_scope();
-    let js_run_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
-      scope,
-      "Deno[Deno.internal].testing.runTests",
-    )
-    .unwrap();
-    let js_run_benchmarks_callback =
-      deno_core::JsRuntime::eval::<v8::Function>(
-        scope,
-        "Deno[Deno.internal].testing.runBenchmarks",
-      )
-      .unwrap();
-    let js_enable_tests_callback = deno_core::JsRuntime::eval::<v8::Function>(
-      scope,
-      "Deno[Deno.internal].testing.enableTest",
-    )
-    .unwrap();
-    let js_enable_bench_callback = deno_core::JsRuntime::eval::<v8::Function>(
-      scope,
-      "Deno[Deno.internal].testing.enableBench",
-    )
-    .unwrap();
-    (
-      Some(v8::Global::new(scope, js_run_tests_callback)),
-      Some(v8::Global::new(scope, js_run_benchmarks_callback)),
-      Some(v8::Global::new(scope, js_enable_tests_callback)),
-      Some(v8::Global::new(scope, js_enable_bench_callback)),
-    )
-  } else {
-    (None, None, None, None)
-  };
 
   Ok(CliMainWorker {
     main_module,
     is_main_cjs,
     worker,
     ps: ps.clone(),
-    js_run_tests_callback,
-    js_run_benchmarks_callback,
-    js_enable_test_callback,
-    js_enable_bench_callback,
   })
 }
 
@@ -706,7 +476,7 @@ fn create_web_worker_callback(
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(module_loader.clone())),
       module_loader,
-      npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
+      npm_resolver: Some(Rc::new(ps.npm_resolver.as_require_npm_resolver())),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),

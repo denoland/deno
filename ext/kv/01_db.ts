@@ -211,6 +211,14 @@ class AtomicOperation {
     return this;
   }
 
+  sum(key: Deno.KvKey, n: bigint): this {
+    return this.mutate({
+      type: "sum",
+      key,
+      value: new KvU64(n),
+    });
+  }
+
   mutate(...mutations: Deno.KvMutation[]): this {
     for (const mutation of mutations) {
       const key = mutation.key;

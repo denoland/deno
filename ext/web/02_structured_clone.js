@@ -20,12 +20,12 @@ const {
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
   ObjectPrototypeIsPrototypeOf,
+  SafeWeakMap,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypeErrorPrototype,
-  WeakMap,
   WeakMapPrototypeSet,
   Int8Array,
   Int16Array,
@@ -40,7 +40,7 @@ const {
   Float64Array,
 } = primordials;
 
-const objectCloneMemo = new WeakMap();
+const objectCloneMemo = new SafeWeakMap();
 
 function cloneArrayBuffer(
   srcBuffer,
