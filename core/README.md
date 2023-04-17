@@ -23,9 +23,7 @@ the [`deno_ops`](https://github.com/denoland/deno/blob/main/ops) crate.
 
 Documentation for this crate is thin at the moment. Please see
 [hello_world.rs](https://github.com/denoland/deno/blob/main/core/examples/hello_world.rs)
-and
-[http_bench_json_ops.js](https://github.com/denoland/deno/blob/main/core/examples/http_bench_json_ops/http_bench_json_ops.js)
-as examples of usage.
+as an example of usage.
 
 TypeScript support and lots of other functionality are not available at this
 layer. See the [CLI](https://github.com/denoland/deno/tree/main/cli) for that.
