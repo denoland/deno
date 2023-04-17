@@ -1033,7 +1033,7 @@ mod tests {
     let clone_addr = addr.clone();
     tokio::spawn(async move {
       let listener = TcpListener::bind(addr).await.unwrap();
-      let _ = listener.accept().await;
+      let _ = listener.accept().await.unwrap();
     });
 
     deno_core::extension!(
