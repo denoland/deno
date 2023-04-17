@@ -549,7 +549,7 @@ export class IncomingMessageForServer extends NodeReadable {
   method: string;
   // Mock socket object.
   // These socket properties are used by `npm:forwarded` for example.
-  socket: { remoteAddress: string, remotePort: number };
+  socket: { remoteAddress: string; remotePort: number };
 
   constructor(req: Request, conn: Deno.Conn) {
     // Check if no body (GET/HEAD/OPTIONS/...)
@@ -581,7 +581,7 @@ export class IncomingMessageForServer extends NodeReadable {
     this.socket = {
       remoteAddress: conn.remoteAddr.hostname,
       remotePort: conn.remoteAddr.port,
-    }
+    };
     this.#req = req;
   }
 
