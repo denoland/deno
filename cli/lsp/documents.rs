@@ -17,11 +17,9 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::lsp::logging::lsp_warn;
-use crate::node;
-use crate::node::node_resolve_npm_reference;
+use crate::node::CliNodeResolver;
 use crate::node::NodeResolution;
 use crate::npm::CliNpmRegistryApi;
-use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -1057,7 +1055,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_npm_resolver: Option<&Arc<NpmPackageResolver>>,
+    maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1066,19 +1064,19 @@ impl Documents {
     };
     let mut results = Vec::new();
     for specifier in specifiers {
-      if let Some(npm_resolver) = maybe_npm_resolver {
-        if npm_resolver.in_npm_package(referrer) {
+      if let Some(node_resolver) = maybe_node_resolver {
+        if node_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
-            node::node_resolve(
-              &specifier,
-              referrer,
-              NodeResolutionMode::Types,
-              &npm_resolver.as_require_npm_resolver(),
-              &mut PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten(),
+            node_resolver
+              .resolve(
+                &specifier,
+                referrer,
+                NodeResolutionMode::Types,
+                &mut PermissionsContainer::allow_all(),
+              )
+              .ok()
+              .flatten(),
           )));
           continue;
         }
@@ -1106,9 +1104,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
         } else {
           results.push(None);
         }
@@ -1116,11 +1114,12 @@ impl Documents {
         .resolve_imports_dependency(&specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+        results.push(self.resolve_dependency(specifier, maybe_node_resolver));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(&specifier)
       {
-        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm_resolver));
+        results
+          .push(node_resolve_npm_req_ref(npm_req_ref, maybe_node_resolver));
       } else {
         results.push(None);
       }
@@ -1418,10 +1417,10 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_npm_resolver: Option<&Arc<NpmPackageResolver>>,
+    maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_npm_resolver);
+      return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1430,7 +1429,7 @@ impl Documents {
     if let Some(specifier) =
       maybe_types_dependency.and_then(|d| d.maybe_specifier())
     {
-      self.resolve_dependency(specifier, maybe_npm_resolver)
+      self.resolve_dependency(specifier, maybe_node_resolver)
     } else {
       let media_type = doc.media_type();
       Some((specifier.clone(), media_type))
@@ -1453,23 +1452,18 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_npm_resolver: Option<&Arc<NpmPackageResolver>>,
+  maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  maybe_npm_resolver.map(|npm_resolver| {
+  maybe_node_resolver.map(|node_resolver| {
     NodeResolution::into_specifier_and_media_type(
-      npm_resolver
-        .pkg_req_ref_to_nv_ref(npm_req_ref)
+      node_resolver
+        .resolve_npm_req_reference(
+          &npm_req_ref,
+          NodeResolutionMode::Types,
+          &mut PermissionsContainer::allow_all(),
+        )
         .ok()
-        .and_then(|pkg_id_ref| {
-          node_resolve_npm_reference(
-            &pkg_id_ref,
-            NodeResolutionMode::Types,
-            npm_resolver,
-            &mut PermissionsContainer::allow_all(),
-          )
-          .ok()
-          .flatten()
-        }),
+        .flatten(),
     )
   })
 }
