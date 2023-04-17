@@ -1,9 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import http from "node:http";
-import {
-  assertEquals,
-} from "../../../test_util/std/testing/asserts.ts";
+import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 
