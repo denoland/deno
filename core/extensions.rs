@@ -165,6 +165,7 @@ macro_rules! ops {
 ///
 ///  * deps: a comma-separated list of module dependencies, eg: `deps = [ my_other_extension ]`
 ///  * parameters: a comma-separated list of parameters and base traits, eg: `parameters = [ P: MyTrait ]`
+///  * bounds: a comma-separated list of additional type bounds, eg: `bounds = [ P::MyAssociatedType: MyTrait ]`
 ///  * ops: a comma-separated list of [`OpDecl`]s to provide, eg: `ops = [ op_foo, op_bar ]`
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
 ///  * esm_setup_script: see [`ExtensionBuilder::esm_setup_script`]
@@ -179,6 +180,7 @@ macro_rules! extension {
     $name:ident
     $(, deps = [ $( $dep:ident ),* ] )?
     $(, parameters = [ $( $param:ident : $type:ident ),+ ] )?
+    $(, bounds = [ $( $bound:path : $bound_type:ident ),+ ] )?
     $(, ops_fn = $ops_symbol:ident $( < $ops_param:ident > )? )?
     $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $( $op_param:ident ),* > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
@@ -229,7 +231,9 @@ macro_rules! extension {
       // If ops were specified, add those ops to the extension.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
+      fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder)
+      $( where $( $bound : $bound_type ),+ )?
+      {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
           ext.ops(vec![
@@ -247,7 +251,9 @@ macro_rules! extension {
       // Includes the state and middleware functions, if defined.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
+      fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? )
+      $( where $( $bound : $bound_type ),+ )?
+      {
         $crate::extension!(! __config__ ext $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? $( state_fn = $state_fn )? );
 
         $(
@@ -267,7 +273,9 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_js_only $( <  $( $param : $type + 'static ),* > )? () -> $crate::Extension {
+      pub fn init_js_only $( <  $( $param : $type + 'static ),* > )? () -> $crate::Extension
+      $( where $( $bound : $bound_type ),+ )?
+      {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
@@ -277,7 +285,9 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_ops_and_esm $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops_and_esm $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
+      $( where $( $bound : $bound_type ),+ )?
+      {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
@@ -288,7 +298,9 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
+      $( where $( $bound : $bound_type ),+ )?
+      {
         let mut ext = Self::ext();
         Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
