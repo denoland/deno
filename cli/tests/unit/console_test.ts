@@ -358,7 +358,6 @@ Deno.test(function consoleTestStringifyMultipleCircular() {
   const y = { a: { b: {} }, foo: { bar: {} } };
   y.a.b = y.a;
   y.foo.bar = y.foo;
-  console.log(y);
   assertEquals(
     stringify(y),
     "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
@@ -395,7 +394,7 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
     y: 3,
     z: [Function (anonymous)],
     b: [Function: bar],
-    a: Map {}
+    a: Map(0) {}
   }
 }`,
   );
@@ -412,7 +411,7 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
     y: 3,
     z: [Function (anonymous)],
     b: [Function: bar],
-    a: Map {},
+    a: Map(0) {},
     s: [Circular *1],
     t: [Function: t] { x: [Circular *1] }
   }
@@ -1801,7 +1800,7 @@ Deno.test(function inspectGetters() {
         throw new Error("bar");
       },
     }, { getters: true }),
-    "{ foo: [Getter: [Thrown Error: bar]] }",
+    "{ foo: [Getter: <Inspection threw (bar)>] }",
   );
 });
 
@@ -1866,7 +1865,7 @@ Deno.test(function inspectTrailingComma() {
       ]),
       { trailingComma: true },
     )),
-    `Set {
+    `Set(2) {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 }`,
@@ -1879,7 +1878,7 @@ Deno.test(function inspectTrailingComma() {
       ]),
       { trailingComma: true },
     )),
-    `Map {
+    `Map(2) {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" => 1,
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" => 2,
 }`,
@@ -1899,11 +1898,11 @@ Deno.test(function inspectCompact() {
 Deno.test(function inspectIterableLimit() {
   assertEquals(
     stripColor(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
-    `[ "a", "b", ... 1 more items ]`,
+    `[ "a", "b", ... 1 more item ]`,
   );
   assertEquals(
     stripColor(Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 })),
-    `Set { "a", "b", ... 1 more items }`,
+    `Set(3) { "a", "b", ... 1 more item }`,
   );
   assertEquals(
     stripColor(Deno.inspect(
@@ -1914,7 +1913,7 @@ Deno.test(function inspectIterableLimit() {
       ]),
       { iterableLimit: 2 },
     )),
-    `Map { "a" => 1, "b" => 2, ... 1 more items }`,
+    `Map(3) { "a" => 1, "b" => 2, ... 1 more item }`,
   );
 });
 
@@ -1953,7 +1952,7 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `MyProxy { prop1: 5, prop2: 5 }`,
+    `Object [MyProxy] { prop1: 5, prop2: 5 }`,
   );
   assertEquals(
     stripColor(Deno.inspect(
@@ -2118,12 +2117,12 @@ Deno.test(function inspectStringAbbreviation() {
 
   assertEquals(
     Deno.inspect(obj, { strAbbreviateSize: 10 }),
-    '{ str: "This is a ..." }',
+    '{ str: "This is a "... 59 more characters }',
   );
 
   assertEquals(
     Deno.inspect(arr, { strAbbreviateSize: 10 }),
-    '[ "This is a ..." ]',
+    '[ "This is a "... 59 more characters ]',
   );
 });
 
