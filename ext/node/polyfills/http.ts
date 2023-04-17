@@ -603,6 +603,11 @@ export class IncomingMessageForServer extends NodeReadable {
         this.#req.headers.get("upgrade"),
     );
   }
+
+  // connection is deprecated, but still tested in unit test.
+  get connection() {
+    return this.socket;
+  }
 }
 
 type ServerHandler = (

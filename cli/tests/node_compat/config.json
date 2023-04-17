@@ -342,6 +342,7 @@
       "test-http-agent-getname.js",
       "test-http-client-get-url.js",
       "test-http-client-read-in-error.js",
+      "test-http-localaddress.js",
       "test-http-outgoing-buffer.js",
       "test-http-outgoing-internal-headernames-getter.js",
       "test-http-outgoing-internal-headernames-setter.js",
