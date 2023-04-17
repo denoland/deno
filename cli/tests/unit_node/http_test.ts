@@ -2,9 +2,7 @@
 
 import http from "node:http";
 import {
-  assert,
   assertEquals,
-  assertFalse,
 } from "../../../test_util/std/testing/asserts.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
@@ -13,7 +11,7 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
   const d = deferred<void>();
   const server = http.createServer((_req, res) => {
     const writeHeadSpy = spy(res, "writeHead");
-    // deno-lint-ignore no-implicit-any
+    // deno-lint-ignore no-explicit-any
     (res as any)._implicitHeader();
     assertSpyCalls(writeHeadSpy, 1);
     writeHeadSpy.restore();
