@@ -11,10 +11,9 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
+use crate::node::CliNodeResolver;
 use crate::node::NodeCodeTranslator;
 use crate::node::NodeResolution;
-use crate::npm::NpmPackageResolver;
-use crate::npm::NpmResolution;
 use crate::proc_state::CjsResolutionStore;
 use crate::proc_state::FileWatcherReporter;
 use crate::proc_state::ProcState;
@@ -243,8 +242,7 @@ pub struct CliModuleLoader {
   graph_container: Arc<ModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<NodeCodeTranslator>,
-  npm_resolution: Arc<NpmResolution>,
-  npm_resolver: Arc<NpmPackageResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
 }
@@ -265,8 +263,7 @@ impl CliModuleLoader {
       graph_container: ps.graph_container.clone(),
       module_load_preparer: ps.module_load_preparer.clone(),
       node_code_translator: ps.node_code_translator.clone(),
-      npm_resolution: ps.npm_resolution.clone(),
-      npm_resolver: ps.npm_resolver.clone(),
+      node_resolver: ps.node_resolver.clone(),
       parsed_source_cache: ps.parsed_source_cache.clone(),
       resolver: ps.resolver.clone(),
     })
@@ -287,8 +284,7 @@ impl CliModuleLoader {
       graph_container: ps.graph_container.clone(),
       module_load_preparer: ps.module_load_preparer.clone(),
       node_code_translator: ps.node_code_translator.clone(),
-      npm_resolution: ps.npm_resolution.clone(),
-      npm_resolver: ps.npm_resolver.clone(),
+      node_resolver: ps.node_resolver.clone(),
       parsed_source_cache: ps.parsed_source_cache.clone(),
       resolver: ps.resolver.clone(),
     })
@@ -370,7 +366,7 @@ impl CliModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Result<ModuleSource, AnyError> {
-    let code_source = if self.npm_resolver.in_npm_package(specifier) {
+    let code_source = if self.node_resolver.in_npm_package(specifier) {
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path).with_context(|| {
         let mut msg = "Unable to load ".to_string();
@@ -466,14 +462,13 @@ impl ModuleLoader for CliModuleLoader {
     let referrer_result = deno_core::resolve_url_or_path(referrer, &cwd);
 
     if let Ok(referrer) = referrer_result.as_ref() {
-      if self.npm_resolver.in_npm_package(referrer) {
+      if self.node_resolver.in_npm_package(referrer) {
         // we're in an npm package, so use node resolution
         return self
-          .handle_node_resolve_result(node::node_resolve(
+          .handle_node_resolve_result(self.node_resolver.resolve(
             specifier,
             referrer,
             NodeResolutionMode::Execution,
-            &self.npm_resolver.as_require_npm_resolver(),
             &mut permissions,
           ))
           .with_context(|| {
@@ -495,12 +490,13 @@ impl ModuleLoader for CliModuleLoader {
 
           return match graph.get(specifier) {
             Some(Module::Npm(module)) => self
-              .handle_node_resolve_result(node::node_resolve_npm_reference(
-                &module.nv_reference,
-                NodeResolutionMode::Execution,
-                &self.npm_resolver,
-                &mut permissions,
-              ))
+              .handle_node_resolve_result(
+                self.node_resolver.resolve_npm_reference(
+                  &module.nv_reference,
+                  NodeResolutionMode::Execution,
+                  &mut permissions,
+                ),
+              )
               .with_context(|| {
                 format!("Could not resolve '{}'.", module.nv_reference)
               }),
@@ -555,15 +551,14 @@ impl ModuleLoader for CliModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          let reference =
-            self.npm_resolution.pkg_req_ref_to_nv_ref(reference)?;
           return self
-            .handle_node_resolve_result(node::node_resolve_npm_reference(
-              &reference,
-              deno_runtime::deno_node::NodeResolutionMode::Execution,
-              &self.npm_resolver,
-              &mut permissions,
-            ))
+            .handle_node_resolve_result(
+              self.node_resolver.resolve_npm_req_reference(
+                &reference,
+                deno_runtime::deno_node::NodeResolutionMode::Execution,
+                &mut permissions,
+              ),
+            )
             .with_context(|| format!("Could not resolve '{reference}'."));
         }
       }
@@ -595,7 +590,7 @@ impl ModuleLoader for CliModuleLoader {
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    if self.npm_resolver.in_npm_package(specifier) {
+    if self.node_resolver.in_npm_package(specifier) {
       // nothing to prepare
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }

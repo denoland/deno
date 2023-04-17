@@ -258,23 +258,14 @@ pub async fn create_custom_worker(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
-    let pkg_nv = ps
-      .npm_resolution
-      .resolve_pkg_id_from_pkg_req(&package_ref.req)?
-      .nv;
-    let node_resolution = node::node_resolve_binary_export(
-      &pkg_nv,
-      package_ref.sub_path.as_deref(),
-      &ps.npm_resolver,
-    )?;
+    let node_resolution =
+      ps.node_resolver.resolve_binary_export(&package_ref)?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
   } else if ps.options.is_npm_main() {
-    let node_resolution = node::url_to_node_resolution(
-      main_module,
-      &ps.npm_resolver.as_require_npm_resolver(),
-    )?;
+    let node_resolution =
+      ps.node_resolver.url_to_node_resolution(main_module)?;
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
@@ -311,7 +302,7 @@ pub async fn create_custom_worker(
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
-  let mut extensions = ops::cli_exts(ps.clone());
+  let mut extensions = ops::cli_exts(ps.npm_resolver.clone());
   extensions.append(&mut custom_extensions);
 
   let options = WorkerOptions {
@@ -429,7 +420,7 @@ fn create_web_worker_callback(
     let pre_execute_module_cb =
       create_web_worker_pre_execute_module_callback(ps.clone());
 
-    let extensions = ops::cli_exts(ps.clone());
+    let extensions = ops::cli_exts(ps.npm_resolver.clone());
 
     let maybe_storage_key = ps.options.resolve_storage_key(&args.main_module);
     let cache_storage_dir = maybe_storage_key.map(|key| {

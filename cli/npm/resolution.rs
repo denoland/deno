@@ -156,12 +156,12 @@ impl NpmResolution {
 
   pub fn pkg_req_ref_to_nv_ref(
     &self,
-    req_ref: NpmPackageReqReference,
+    req_ref: &NpmPackageReqReference,
   ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
     let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
     Ok(NpmPackageNvReference {
       nv: node_id.nv,
-      sub_path: req_ref.sub_path,
+      sub_path: req_ref.sub_path.clone(),
     })
   }
 

@@ -17,6 +17,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::node::CliNodeResolver;
 use crate::node::NodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
@@ -75,6 +76,7 @@ pub struct Inner {
   pub module_graph_builder: Arc<ModuleGraphBuilder>,
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub node_code_translator: Arc<NodeCodeTranslator>,
+  pub node_resolver: Arc<CliNodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
   pub npm_resolver: Arc<NpmPackageResolver>,
@@ -145,6 +147,7 @@ impl ProcState {
       module_graph_builder: self.module_graph_builder.clone(),
       module_load_preparer: self.module_load_preparer.clone(),
       node_code_translator: self.node_code_translator.clone(),
+      node_resolver: self.node_resolver.clone(),
       npm_api: self.npm_api.clone(),
       npm_cache: self.npm_cache.clone(),
       npm_resolver: self.npm_resolver.clone(),
@@ -306,10 +309,15 @@ impl ProcState {
       file_fetcher.clone(),
       npm_resolver.clone(),
     ));
+    let node_resolver = Arc::new(CliNodeResolver::new(
+      npm_resolution.clone(),
+      npm_resolver.clone(),
+    ));
     let type_checker = Arc::new(TypeChecker::new(
       dir.clone(),
       caches.clone(),
       cli_options.clone(),
+      node_resolver.clone(),
       npm_resolver.clone(),
     ));
     let module_graph_builder = Arc::new(ModuleGraphBuilder::new(
@@ -357,6 +365,7 @@ impl ProcState {
       maybe_file_watcher_reporter,
       module_graph_builder,
       node_code_translator,
+      node_resolver,
       npm_api,
       npm_cache,
       npm_resolver,

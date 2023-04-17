@@ -78,6 +78,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::lsp::urls::LspUrlKind;
+use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
@@ -101,6 +102,7 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
+  pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
   pub maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
 }
 
@@ -695,30 +697,32 @@ impl Inner {
   }
 
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
+    // create a new snapshotted npm resolution and resolver
+    let npm_resolution = Arc::new(NpmResolution::new(
+      self.npm_api.clone(),
+      self.npm_resolution.snapshot(),
+      None,
+    ));
+    let npm_resolver = Arc::new(NpmPackageResolver::new(
+      npm_resolution.clone(),
+      create_npm_fs_resolver(
+        self.npm_cache.clone(),
+        &ProgressBar::new(ProgressBarStyle::TextOnly),
+        self.npm_api.base_url().clone(),
+        npm_resolution.clone(),
+        None,
+      ),
+      None,
+    ));
+    let node_resolver =
+      Arc::new(CliNodeResolver::new(npm_resolution, npm_resolver.clone()));
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_npm_resolver: Some({
-        // create a new snapshotted npm resolution and resolver
-        let resolution = Arc::new(NpmResolution::new(
-          self.npm_api.clone(),
-          self.npm_resolution.snapshot(),
-          None,
-        ));
-        Arc::new(NpmPackageResolver::new(
-          resolution.clone(),
-          create_npm_fs_resolver(
-            self.npm_cache.clone(),
-            &ProgressBar::new(ProgressBarStyle::TextOnly),
-            self.npm_api.base_url().clone(),
-            resolution,
-            None,
-          ),
-          None,
-        ))
-      }),
+      maybe_node_resolver: Some(node_resolver),
+      maybe_npm_resolver: Some(npm_resolver),
     })
   }
 
