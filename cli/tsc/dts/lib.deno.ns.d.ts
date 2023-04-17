@@ -973,13 +973,55 @@ declare namespace Deno {
   ): void;
 
   /**
+   * Context that is passed to a benchmarked function. The instance is shared
+   * between iterations of the benchmark. Its methods can be used for example
+   * to override of the measured portion of the function.
+   *
+   * @category Testing
+   */
+  export interface BenchContext {
+    /** The current benchmark name. */
+    name: string;
+    /** The string URL of the current benchmark. */
+    origin: string;
+
+    /** Restarts the timer for the bench measurement. This should be called
+     * after doing setup work which should not be measured.
+     *
+     * ```ts
+     * Deno.bench("foo", async (t) => {
+     *   const data = await Deno.readFile("data.txt");
+     *   t.start();
+     *   // some operation on `data`...
+     * });
+     * ```
+     */
+    start(): void;
+
+    /** End the timer early for the bench measurement. This should be called
+     * before doing teardown work which should not be measured.
+     *
+     * ```ts
+     * Deno.bench("foo", async (t) => {
+     *   const file = await Deno.open("data.txt");
+     *   t.start();
+     *   // some operation on `file`...
+     *   t.end();
+     *   file.close();
+     * });
+     * ```
+     */
+    end(): void;
+  }
+
+  /**
    * The interface for defining a benchmark test using {@linkcode Deno.bench}.
    *
    * @category Testing
    */
   export interface BenchDefinition {
     /** The test function which will be benchmarked. */
-    fn: () => void | Promise<void>;
+    fn: (t: BenchContext) => void | Promise<void>;
     /** The name of the test, which will be used in displaying the results. */
     name: string;
     /** If truthy, the benchmark test will be ignored/skipped. */
@@ -1077,7 +1119,7 @@ declare namespace Deno {
    */
   export function bench(
     name: string,
-    fn: () => void | Promise<void>,
+    fn: (t: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1103,7 +1145,7 @@ declare namespace Deno {
    *
    * @category Testing
    */
-  export function bench(fn: () => void | Promise<void>): void;
+  export function bench(fn: (t: BenchContext) => void | Promise<void>): void;
 
   /**
    * Register a benchmark test which will be run when `deno bench` is used on
@@ -1139,7 +1181,7 @@ declare namespace Deno {
   export function bench(
     name: string,
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>,
+    fn: (t: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1173,7 +1215,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn">,
-    fn: () => void | Promise<void>,
+    fn: (t: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1207,7 +1249,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>,
+    fn: (t: BenchContext) => void | Promise<void>,
   ): void;
 
   /** Exit the Deno process with optional exit code.
