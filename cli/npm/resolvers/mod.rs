@@ -23,9 +23,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
@@ -85,13 +83,6 @@ impl NpmPackageResolver {
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
-  }
-
-  pub fn pkg_req_ref_to_nv_ref(
-    &self,
-    req_ref: NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    self.resolution.pkg_req_ref_to_nv_ref(req_ref)
   }
 
   /// Resolves an npm package folder path from a Deno module.
@@ -245,6 +236,7 @@ impl NpmPackageResolver {
   }
 }
 
+#[derive(Debug)]
 pub struct RequireNpmPackageResolver(Arc<NpmPackageResolver>);
 
 impl RequireNpmResolver for RequireNpmPackageResolver {
