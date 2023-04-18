@@ -1,4 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use deno_core::error::generic_error;
+use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -489,4 +491,89 @@ pub fn op_node_random_int(min: i32, max: i32) -> Result<i32, AnyError> {
   let dist = Uniform::from(min..max);
 
   Ok(dist.sample(&mut rng))
+}
+
+fn scrypt(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  _maxmem: u32,
+  output_buffer: &mut [u8],
+) -> Result<(), AnyError> {
+  // Construct Params
+  let params = scrypt::Params::new(
+    cost as u8,
+    block_size,
+    parallelization,
+    keylen as usize,
+  )
+  .unwrap();
+
+  // Call into scrypt
+  let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
+  if res.is_ok() {
+    Ok(())
+  } else {
+    // TODO(lev): key derivation failed, so what?
+    Err(generic_error("scrypt key derivation failed"))
+  }
+}
+
+#[op]
+pub fn op_node_scrypt_sync(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  maxmem: u32,
+  output_buffer: &mut [u8],
+) -> Result<(), AnyError> {
+  scrypt(
+    password,
+    salt,
+    keylen,
+    cost,
+    block_size,
+    parallelization,
+    maxmem,
+    output_buffer,
+  )
+}
+
+#[op]
+pub async fn op_node_scrypt_async(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  maxmem: u32,
+) -> Result<ZeroCopyBuf, AnyError> {
+  tokio::task::spawn_blocking(move || {
+    let mut output_buffer = vec![0u8; keylen as usize];
+    let res = scrypt(
+      password,
+      salt,
+      keylen,
+      cost,
+      block_size,
+      parallelization,
+      maxmem,
+      &mut output_buffer,
+    );
+
+    if res.is_ok() {
+      Ok(output_buffer.into())
+    } else {
+      // TODO(lev): rethrow the error?
+      Err(generic_error("scrypt failure"))
+    }
+  })
+  .await?
 }

@@ -27,6 +27,9 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 import { pbkdf2Sync as pbkdf2 } from "ext:deno_node/internal/crypto/pbkdf2.ts";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
+
 type Opts = Partial<{
   N: number;
   cost: number;
@@ -226,17 +229,13 @@ export function scryptSync(
   const blen = p * 128 * r;
 
   if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("excedes max memory");
+    throw new Error("exceeds max memory");
   }
 
-  const b = pbkdf2(password, salt, 1, blen, "sha256");
+  let buf = Buffer.alloc(keylen);
+  ops.op_node_scrypt_sync(password, salt, keylen, Math.log2(N), r, p, maxmem, buf.buffer);
 
-  const scryptRom = new ScryptRom(b, r, N, p);
-  const out = scryptRom.run();
-
-  const fin = pbkdf2(password, out, 1, keylen, "sha256");
-  scryptRom.clean();
-  return fin;
+  return buf;
 }
 
 type Callback = (err: unknown, result?: Buffer) => void;
@@ -256,17 +255,15 @@ export function scrypt(
 
   const blen = p * 128 * r;
   if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("excedes max memory");
+    throw new Error("exceeds max memory");
   }
 
   try {
-    const b = pbkdf2(password, salt, 1, blen, "sha256");
-
-    const scryptRom = new ScryptRom(b, r, N, p);
-    const out = scryptRom.run();
-    const result = pbkdf2(password, out, 1, keylen, "sha256");
-    scryptRom.clean();
-    cb(null, result);
+    core.opAsync("op_node_scrypt_async", password, salt, keylen, Math.log2(N), r, p, maxmem).then(
+      (buf: Uint8Array) => {
+        cb(null, Buffer.from(buf.buffer));
+      }
+    );
   } catch (err: unknown) {
     return cb(err);
   }

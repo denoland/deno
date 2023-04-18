@@ -46,3 +46,4 @@ signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
 x509-parser = "0.15.0"
+scrypt = "0.11.0"
