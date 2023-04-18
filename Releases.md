@@ -10,7 +10,7 @@ https://github.com/denoland/deno_install
 
 - Revert "perf(core): immediately schedule another tick if there are un…
   (#18718)
-- feat(kv): AtomicOperation#sum (#18704)
+- feat(UNSTABLE/kv): AtomicOperation#sum (#18704)
 - fix(core): Use safe primordials wrappers (#18687)
 - fix(ext/node): add req.socket.remoteAddress (#18733)
 - fix(ext/node): implement crypto.createVerify (#18703)
