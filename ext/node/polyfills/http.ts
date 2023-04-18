@@ -485,7 +485,7 @@ export class ServerResponse extends NodeWritable {
     return this.#headers.has(name);
   }
 
-  writeHead(status: number, headers: Record<string, string>) {
+  writeHead(status: number, headers: Record<string, string> = {}) {
     this.statusCode = status;
     for (const k in headers) {
       if (Object.hasOwn(headers, k)) {
@@ -539,6 +539,11 @@ export class ServerResponse extends NodeWritable {
 
     // @ts-expect-error The signature for cb is stricter than the one implemented here
     return super.end(chunk, encoding, cb);
+  }
+
+  // Undocumented API used by `npm:compression`.
+  _implicitHeader() {
+    this.writeHead(this.statusCode);
   }
 }
 
