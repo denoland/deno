@@ -73,10 +73,10 @@ pub(crate) struct ContextState {
 /// keep the underlying V8 context alive even if it would have otherwise been
 /// garbage collected.
 #[derive(Clone)]
-pub struct JsRealm(v8::Global<v8::Context>);
+pub struct JsRealm(Rc<v8::Global<v8::Context>>);
 impl JsRealm {
   pub fn new(context: v8::Global<v8::Context>) -> Self {
-    JsRealm(context)
+    JsRealm(Rc::new(context))
   }
 
   pub fn context(&self) -> &v8::Global<v8::Context> {
@@ -110,7 +110,7 @@ impl JsRealm {
     &self,
     isolate: &'s mut v8::Isolate,
   ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(isolate, &self.0)
+    v8::HandleScope::with_context(isolate, &*self.0)
   }
 
   /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
