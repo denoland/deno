@@ -1882,6 +1882,36 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
+static ALLOW_READ_HELP: &str = concat!(
+  "Allow file system read access. Optionally specify allowed path(s).\n",
+  "Manual: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-read\n",
+  "  --allow-read=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_WRITE_HELP: &str = concat!(
+  "Allow file system write access. Optionally specify allowed path(s).\n",
+  "Manual: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-write\n",
+  "  --allow-write=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_NET_HELP: &str = concat!(
+  "Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n",
+  "Manual: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-net\n",
+  "  --allow-net=\"localhost:8080,deno.land\""
+);
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -1891,13 +1921,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("\
-          Allow file system read access. Optionally specify allowed path(s).\n\
-          Manual: https://deno.land/manual/basics/permissions\n\
-          Examples:\n\
-          --allow-read\n\
-          --allow-read=\"/etc,/var/log.txt\"\
-        ")
+        .help(ALLOW_READ_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1908,13 +1932,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help("\
-          Allow file system write access. Optionally specify allowed path(s).\n\
-          Manual: https://deno.land/manual/basics/permissions\n\
-          Examples:\n\
-          --allow-write \n\
-          --allow-write=\"/etc,/var/log.txt\"\
-        ")
+        .help(ALLOW_WRITE_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1925,13 +1943,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("IP/HOSTNAME")
-        .help("\
-          Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n\
-          Manual: https://deno.land/manual/basics/permissions\n\
-          Examples:\n\
-          --allow-net \n\
-          --allow-net=\"localhost:8080,deno.land\"\
-        ")
+        .help(ALLOW_NET_HELP)
         .value_parser(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
