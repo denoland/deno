@@ -15,11 +15,11 @@ use v8::Local;
 
 #[derive(Default)]
 pub(crate) struct ContextState {
-  pub(crate) js_event_loop_tick_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_event_loop_tick_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_build_custom_error_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_promise_reject_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_format_exception_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_wasm_streaming_cb: Option<Rc<v8::Global<v8::Function>>>,
   pub(crate) pending_promise_rejections:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) unrefed_ops: HashSet<i32>,
@@ -79,10 +79,12 @@ impl JsRealm {
     JsRealm(Rc::new(context))
   }
 
+  #[inline(always)]
   pub fn context(&self) -> &v8::Global<v8::Context> {
     &self.0
   }
 
+  #[inline(always)]
   pub(crate) fn state(
     &self,
     isolate: &mut v8::Isolate,
@@ -95,6 +97,7 @@ impl JsRealm {
       .clone()
   }
 
+  #[inline(always)]
   pub(crate) fn state_from_scope(
     scope: &mut v8::HandleScope,
   ) -> Rc<RefCell<ContextState>> {
@@ -106,6 +109,7 @@ impl JsRealm {
   }
 
   /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
+  #[inline(always)]
   pub fn handle_scope<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -212,12 +216,36 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+}
+
+pub struct JsRealmLocal<'s>(v8::Local<'s, v8::Context>);
+impl<'s> JsRealmLocal<'s> {
+  pub fn new(context: v8::Local<'s, v8::Context>) -> Self {
+    JsRealmLocal(context)
+  }
+
+  #[inline(always)]
+  pub fn context(&self) -> v8::Local<v8::Context> {
+    self.0
+  }
+
+  #[inline(always)]
+  pub(crate) fn state(
+    &self,
+    isolate: &mut v8::Isolate,
+  ) -> Rc<RefCell<ContextState>> {
+    self
+      .context()
+      .get_slot::<Rc<RefCell<ContextState>>>(isolate)
+      .unwrap()
+      .clone()
+  }
 
   pub(crate) fn check_promise_rejections(
     &self,
-    isolate: &mut v8::Isolate,
+    scope: &mut v8::HandleScope,
   ) -> Result<(), Error> {
-    let context_state_rc = self.state(isolate);
+    let context_state_rc = self.state(scope);
     let mut context_state = context_state_rc.borrow_mut();
 
     if context_state.pending_promise_rejections.is_empty() {
@@ -238,7 +266,6 @@ impl JsRealm {
       .unwrap();
     drop(context_state);
 
-    let scope = &mut self.handle_scope(isolate);
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception, true)
   }
