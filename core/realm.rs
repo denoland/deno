@@ -8,10 +8,32 @@ use anyhow::Error;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::hash::BuildHasherDefault;
+use std::hash::Hasher;
+use std::marker::PhantomData;
 use std::option::Option;
 use std::rc::Rc;
 use v8::HandleScope;
 use v8::Local;
+
+// Hasher used for `unrefed_ops`. Since these are rolling i32, there's no
+// need to actually hash them.
+#[derive(Default)]
+pub(crate) struct IdentityHasher(u64, PhantomData<i32>);
+
+impl Hasher for IdentityHasher {
+  fn write_i32(&mut self, i: i32) {
+    self.0 = i as u64;
+  }
+
+  fn finish(&self) -> u64 {
+    self.0
+  }
+
+  fn write(&mut self, _bytes: &[u8]) {
+    unreachable!()
+  }
+}
 
 #[derive(Default)]
 pub(crate) struct ContextState {
@@ -22,7 +44,7 @@ pub(crate) struct ContextState {
   pub(crate) js_wasm_streaming_cb: Option<Rc<v8::Global<v8::Function>>>,
   pub(crate) pending_promise_rejections:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
-  pub(crate) unrefed_ops: HashSet<i32>,
+  pub(crate) unrefed_ops: HashSet<i32, BuildHasherDefault<IdentityHasher>>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
   pub(crate) op_ctxs: Box<[OpCtx]>,
