@@ -1354,10 +1354,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(
-    handler: ServeHandler,
-    options?: ServeOptions | ServeTlsOptions,
-  ): Promise<void>;
+  export function serve(handler: ServeHandler): Promise<void>;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.

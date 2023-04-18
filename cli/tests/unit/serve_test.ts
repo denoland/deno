@@ -160,7 +160,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
   const promise = deferred();
   const listeningPromise = deferred();
 
-  const server = Deno.serve(async (request) => {
+  const server = Deno.serve(async (request: Request) => {
     // FIXME(bartlomieju):
     // make sure that request can be inspected
     console.log(request);
@@ -2158,7 +2158,7 @@ Deno.test(
     const ac = new AbortController();
     const promise = deferred();
     let count = 0;
-    const server = Deno.serve(() => {
+    const server = Deno.serve((_req: Request) => {
       count++;
       return new Response(`hello world ${count}`);
     }, {
