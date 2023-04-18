@@ -1337,21 +1337,26 @@ impl JsRuntime {
   }
 
   fn event_loop_pending_state(&mut self) -> EventLoopPendingState {
+    let isolate = self.v8_isolate.as_mut().unwrap();
+    let mut scope = v8::HandleScope::new(isolate);
     EventLoopPendingState::new(
-      self.v8_isolate.as_mut().unwrap(),
+      &mut scope,
       &mut self.state.borrow_mut(),
       &self.module_map.as_ref().unwrap().borrow(),
     )
   }
 
-  pub(crate) fn event_loop_pending_state_from_isolate(
-    isolate: &mut v8::Isolate,
+  pub(crate) fn event_loop_pending_state_from_scope(
+    scope: &mut v8::HandleScope,
   ) -> EventLoopPendingState {
-    EventLoopPendingState::new(
-      isolate,
-      &mut Self::state(isolate).borrow_mut(),
-      &Self::module_map(isolate).borrow(),
-    )
+    let state = Self::state(scope);
+    let module_map = Self::module_map(scope);
+    let state = EventLoopPendingState::new(
+      scope,
+      &mut state.borrow_mut(),
+      &module_map.borrow(),
+    );
+    state
   }
 }
 
@@ -1418,13 +1423,12 @@ pub(crate) struct EventLoopPendingState {
 }
 impl EventLoopPendingState {
   pub fn new(
-    isolate: &mut v8::Isolate,
+    scope: &mut v8::HandleScope<()>,
     state: &mut JsRuntimeState,
     module_map: &ModuleMap,
   ) -> EventLoopPendingState {
     let mut num_unrefed_ops = 0;
     for weak_context in &state.known_realms {
-      let scope = &mut v8::HandleScope::new(isolate);
       if let Some(context) = weak_context.to_local(scope) {
         let realm = JsRealmLocal::new(context);
         num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
@@ -1438,7 +1442,7 @@ impl EventLoopPendingState {
         .pending_dyn_mod_evaluate
         .is_empty(),
       has_pending_module_evaluation: state.pending_mod_evaluate.is_some(),
-      has_pending_background_tasks: isolate.has_pending_background_tasks(),
+      has_pending_background_tasks: scope.has_pending_background_tasks(),
       has_tick_scheduled: state.has_tick_scheduled,
     }
   }
