@@ -198,6 +198,8 @@
       "test-buffer-zero-fill-cli.js",
       "test-buffer-zero-fill-reset.js",
       "test-buffer-zero-fill.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-can-write-to-stdout.js",
       "test-child-process-default-options.js",
       "test-child-process-double-pipe.js",
       "test-child-process-exec-abortcontroller-promisified.js",
@@ -209,6 +211,8 @@
       "test-child-process-exec-stdout-stderr-data-string.js",
       "test-child-process-exec-timeout-expire.js",
       "test-child-process-exec-timeout-kill.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile-maxbuf.js",
       "test-child-process-execfilesync-maxbuf.js",
       "test-child-process-execsync-maxbuf.js",
