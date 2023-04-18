@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
@@ -13,11 +14,14 @@ use deno_runtime::deno_node::PathClean;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::util;
+
 pub struct VirtualFsBuilder {
   root_path: PathBuf,
   root_dir: VirtualDirectory,
   files: Vec<Vec<u8>>,
   current_offset: u64,
+  file_offsets: HashMap<String, u64>,
 }
 
 impl VirtualFsBuilder {
@@ -34,6 +38,7 @@ impl VirtualFsBuilder {
       root_path,
       files: Vec::new(),
       current_offset: 0,
+      file_offsets: Default::default(),
     }
   }
 
@@ -71,7 +76,15 @@ impl VirtualFsBuilder {
   }
 
   pub fn add_file(&mut self, path: &Path, data: Vec<u8>) {
-    let offset = self.current_offset;
+    let checksum = util::checksum::gen(&[&data]);
+    let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
+      // duplicate file, reuse an old offset
+      *offset
+    } else {
+      self.file_offsets.insert(checksum, self.current_offset);
+      self.current_offset
+    };
+
     let dir = self.add_dir(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     let data_len = data.len();
@@ -88,12 +101,16 @@ impl VirtualFsBuilder {
         );
       }
     }
-    self.files.push(data);
-    self.current_offset += data_len as u64;
+
+    // new file, update the list of files
+    if self.current_offset == offset {
+      self.files.push(data);
+      self.current_offset += data_len as u64;
+    }
   }
 
   pub fn add_symlink(&mut self, path: &Path, target: &Path) {
-    let dest = self.root_path.strip_prefix(target).unwrap().to_path_buf();
+    let dest = target.strip_prefix(&self.root_path).unwrap().to_path_buf();
     let dir = self.add_dir(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
@@ -315,5 +332,93 @@ impl FileBackedVirtualFs {
         "stream did not contain valid UTF-8",
       )
     })
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use test_util::TempDir;
+
+  use super::*;
+
+  #[test]
+  fn builds_and_uses_virtual_fs() {
+    let temp_dir = TempDir::new();
+    let src_path = temp_dir.path().join("src");
+    let mut builder = VirtualFsBuilder::new(src_path.clone());
+    builder.add_file(&src_path.join("a.txt"), "data".into());
+    builder.add_file(&src_path.join("b.txt"), "data".into());
+    assert_eq!(builder.files.len(), 1); // because duplicate data
+    builder.add_file(&src_path.join("c.txt"), "c".into());
+    builder.add_file(&src_path.join("sub_dir").join("d.txt"), "d".into());
+    builder.add_file(&src_path.join("e.txt"), "e".into());
+    builder.add_symlink(
+      &src_path.join("sub_dir").join("e.txt"),
+      &src_path.join("e.txt"),
+    );
+
+    // write out the file data to a file
+    let virtual_fs_file = temp_dir.path().join("virtual_fs");
+    {
+      let mut file = std::fs::File::create(&virtual_fs_file).unwrap();
+      builder.write_files(&mut file).unwrap();
+    }
+
+    // get the virtual fs
+    let root_dir = builder.into_root_dir();
+
+    let file = std::fs::File::open(&virtual_fs_file).unwrap();
+    let dest_path = temp_dir.path().join("dest"); // test out using a separate directory
+    let mut virtual_fs = FileBackedVirtualFs::new(
+      file,
+      VirtualFsRoot {
+        dir: root_dir,
+        root: dest_path.clone(),
+        start_file_offset: 0,
+      },
+    );
+
+    assert_eq!(
+      virtual_fs.read_to_string(&dest_path.join("a.txt")).unwrap(),
+      "data",
+    );
+    assert_eq!(
+      virtual_fs.read_to_string(&dest_path.join("b.txt")).unwrap(),
+      "data",
+    );
+
+    // attempt reading a symlink
+    assert_eq!(
+      virtual_fs
+        .read_to_string(&dest_path.join("sub_dir").join("e.txt"))
+        .unwrap(),
+      "e",
+    );
+
+    // canonicalize symlink
+    assert_eq!(
+      virtual_fs
+        .canonicalize(&dest_path.join("sub_dir").join("e.txt"))
+        .unwrap(),
+      dest_path.join("e.txt"),
+    );
+
+    // metadata
+    assert_eq!(
+      virtual_fs
+        .metadata(&dest_path.join("sub_dir").join("e.txt"))
+        .unwrap(),
+      NodeFsMetadata {
+        is_dir: false,
+        is_file: true,
+      },
+    );
+    assert_eq!(
+      virtual_fs.metadata(&dest_path.join("sub_dir")).unwrap(),
+      NodeFsMetadata {
+        is_dir: true,
+        is_file: false,
+      },
+    );
   }
 }

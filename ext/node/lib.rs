@@ -50,7 +50,7 @@ pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NodeFsMetadata {
   pub is_file: bool,
   pub is_dir: bool,
