@@ -771,7 +771,7 @@ fn op_apply_source_map(
       location.file_name,
       location.line_number.into(),
       location.column_number.into(),
-      &mut *cache,
+      &mut cache,
       &**source_map_getter,
     );
     location.file_name = f;

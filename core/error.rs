@@ -221,7 +221,7 @@ impl JsStackFrame {
     if let Some(source_map_getter) = getter {
       let mut cache = cache.borrow_mut();
       let (f, l, c) =
-        apply_source_map(f, l, c, &mut *cache, &**source_map_getter);
+        apply_source_map(f, l, c, &mut cache, &**source_map_getter);
       Some(JsStackFrame::from_location(Some(f), Some(l), Some(c)))
     } else {
       Some(JsStackFrame::from_location(Some(f), Some(l), Some(c)))
@@ -300,7 +300,7 @@ impl JsError {
               source_line = get_source_line(
                 file_name,
                 line_number,
-                &mut *cache,
+                &mut cache,
                 &**source_map_getter,
               );
               source_line_frame_index = Some(i);
@@ -433,7 +433,7 @@ impl JsError {
                 source_line = get_source_line(
                   file_name,
                   line_number,
-                  &mut *cache,
+                  &mut cache,
                   &**source_map_getter,
                 );
                 source_line_frame_index = Some(i);
