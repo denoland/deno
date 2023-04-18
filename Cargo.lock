@@ -717,7 +717,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 
 [[package]]
 name = "deno"
-version = "1.32.4"
+version = "1.32.5"
 dependencies = [
  "async-trait",
  "atty",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.92.0"
+version = "0.93.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -847,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.92.0"
+version = "0.93.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -857,7 +857,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -869,14 +869,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.98.0"
+version = "0.99.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.180.0"
+version = "0.181.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.112.0"
+version = "0.113.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -969,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.122.0"
+version = "0.123.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -986,7 +986,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.85.0"
+version = "0.86.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -1001,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1041,7 +1041,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.93.0"
+version = "0.94.0"
 dependencies = [
  "async-compression",
  "base64 0.13.1",
@@ -1069,7 +1069,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "deno_core",
  "nix",
@@ -1080,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1123,7 +1123,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "deno_core",
  "libloading",
@@ -1131,7 +1131,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.90.0"
+version = "0.91.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "aes",
  "cbc",
@@ -1171,6 +1171,7 @@ dependencies = [
  "regex",
  "ripemd",
  "rsa",
+ "scrypt",
  "serde",
  "sha-1 0.10.0",
  "sha2",
@@ -1201,7 +1202,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "lazy-regex",
  "once_cell",
@@ -1219,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.106.0"
+version = "0.107.0"
 dependencies = [
  "atty",
  "console_static_text",
@@ -1299,7 +1300,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.85.0"
+version = "0.86.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1313,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.98.0"
+version = "0.99.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1325,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.129.0"
+version = "0.130.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1343,7 +1344,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.98.0"
+version = "0.99.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1351,7 +1352,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.103.0"
+version = "0.104.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1366,7 +1367,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.93.0"
+version = "0.94.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2866,7 +2867,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.26",
@@ -3155,6 +3156,17 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-sys 0.45.0",
+]
+
+[[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
 ]
 
 [[package]]
@@ -3822,6 +3834,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f91339c0467de62360649f8d3e185ca8de4224ff281f66000de5eb2a77a79041"
 
 [[package]]
+name = "salsa20"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97a22f5af31f73a954c10289c93e8a50cc23d971e80ee446f1f6f7137a088213"
+dependencies = [
+ "cipher",
+]
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3850,6 +3871,18 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "scrypt"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0516a385866c09368f0b5bcd1caff3366aace790fcd46e2bb032697bb172fd1f"
+dependencies = [
+ "password-hash",
+ "pbkdf2",
+ "salsa20",
+ "sha2",
+]
 
 [[package]]
 name = "sct"
@@ -3995,7 +4028,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.91.0"
+version = "0.92.0"
 dependencies = [
  "bencher",
  "bytes",
