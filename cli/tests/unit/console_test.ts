@@ -102,7 +102,12 @@ Deno.test(
       stringify(
         ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
       ),
-      `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v", "foo\\x00" ]`,
+      `[
+    "foo\\b", "foo\\f",
+    "foo\\n", "foo\\r",
+    "foo\\t", "foo\\v",
+    "foo\\x00"
+]`,
     );
     assertEquals(
       stringify(
@@ -360,7 +365,10 @@ Deno.test(function consoleTestStringifyMultipleCircular() {
   y.foo.bar = y.foo;
   assertEquals(
     stringify(y),
-    "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
+    "{\n" +
+    "  a: <ref *1> { b: [Circular *1] },\n" +
+    "  foo: <ref *2> { bar: [Circular *2] }\n" +
+    "}",
   );
 });
 
@@ -434,21 +442,21 @@ Deno.test(function consoleTestStringifyWithDepth() {
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
     stripColor(inspectArgs([nestedObj], { depth: 3 })),
-    "{ a: { b: { c: [Object] } } }",
+    "{\n  a: { b: { c: { d: [Object] } } }\n}",
   );
   assertEquals(
     stripColor(inspectArgs([nestedObj], { depth: 4 })),
-    "{ a: { b: { c: { d: [Object] } } } }",
+    "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
-  assertEquals(stripColor(inspectArgs([nestedObj], { depth: 0 })), "[Object]");
+  assertEquals(stripColor(inspectArgs([nestedObj], { depth: 0 })), "{ a: [Object] }");
   assertEquals(
     stripColor(inspectArgs([nestedObj])),
-    "{ a: { b: { c: { d: [Object] } } } }",
+    "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
   // test inspect is working the same way
   assertEquals(
     stripColor(Deno.inspect(nestedObj, { depth: 4 })),
-    "{ a: { b: { c: { d: [Object] } } } }",
+    "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
 });
 
@@ -1053,7 +1061,7 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
   assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
   assertEquals(
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
-    "{ a: { b: { c: { d: Set(1) { 1 } } } } }",
+    "{\n  a: {\n    b: { c: { d: Set(1) { 1 } } }\n  }\n}",
   );
 });
 

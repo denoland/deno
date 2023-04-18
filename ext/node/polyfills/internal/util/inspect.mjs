@@ -25,17 +25,35 @@ import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { createStylizeWithColor, formatValue, formatNumber, formatBigInt, styles, colors } from "ext:deno_console/02_console.js";
 
 const inspectDefaultOptions = {
+  indentationLvl: 0,
+  currentDepth: 0,
+  stylize: stylizeNoColor,
+
   showHidden: false,
   depth: 2,
   colors: false,
-  customInspect: true,
   showProxy: false,
-  maxArrayLength: 100,
-  maxStringLength: 10000,
   breakLength: 80,
   compact: 3,
   sorted: false,
   getters: false,
+
+  // node only
+  maxArrayLength: 100,
+  maxStringLength: 10000, // deno: strAbbreviateSize: 100
+  customInspect: true,
+
+  // deno only
+  /** You can override the quotes preference in inspectString.
+   * Used by util.inspect() */
+  // TODO(kt3k): Consider using symbol as a key to hide this from the public
+  // API.
+  quotes: ["'", '"', "`"],
+  iterableLimit: Infinity, // similar to node's maxArrayLength, but doesn't only apply to arrays
+  trailingComma: false,
+
+  // TODO
+  indentLevel: 0,
 };
 
 /**
@@ -47,21 +65,8 @@ export function inspect(value, opts) {
   // Default options
   const ctx = {
     budget: {},
-    indentationLvl: 0,
     seen: [],
-    currentDepth: 0,
-    stylize: stylizeNoColor,
-    showHidden: inspectDefaultOptions.showHidden,
-    depth: inspectDefaultOptions.depth,
-    colors: inspectDefaultOptions.colors,
-    customInspect: inspectDefaultOptions.customInspect,
-    showProxy: inspectDefaultOptions.showProxy,
-    maxArrayLength: inspectDefaultOptions.maxArrayLength,
-    maxStringLength: inspectDefaultOptions.maxStringLength,
-    breakLength: inspectDefaultOptions.breakLength,
-    compact: inspectDefaultOptions.compact,
-    sorted: inspectDefaultOptions.sorted,
-    getters: inspectDefaultOptions.getters,
+    ...inspectDefaultOptions,
   };
   if (arguments.length > 1) {
     // Legacy...

@@ -856,7 +856,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (isRegExp(value)) {
         // Make RegExps say that they are RegExps
-        base = SafeRegExp(constructor !== null ? value : new SafeRegExp(value))
+        base = new SafeRegExp(constructor !== null ? value : new SafeRegExp(value))
           .toString();
         const prefix = getPrefix(constructor, tag, "RegExp");
         if (prefix !== "RegExp ") {
@@ -2370,7 +2370,7 @@ const denoInspectDefaultOptions = {
   // node only
   maxArrayLength: 100,
   maxStringLength: 100, // deno: strAbbreviateSize: 100
-  customInspect: true, // TODO
+  customInspect: true,
 
   // deno only
   /** You can override the quotes preference in inspectString.
@@ -2379,9 +2379,9 @@ const denoInspectDefaultOptions = {
   // API.
   quotes: ['"', "'", "`"],
   iterableLimit: 100, // similar to node's maxArrayLength, but doesn't only apply to arrays
+  trailingComma: false,
 
   // TODO
-  trailingComma: false,
   indentLevel: 0,
 };
 
