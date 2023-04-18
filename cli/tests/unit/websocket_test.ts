@@ -12,7 +12,7 @@ Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
   const promise = deferred();
   const ws = new WebSocket(new URL("ws://localhost:4242/"));
   assertEquals(ws.url, "ws://localhost:4242/");
-  ws.onerror = (e) => console.log("error", e);
+  ws.onerror = () => fail();
   ws.onopen = () => ws.close();
   ws.onclose = () => {
     promise.resolve();
