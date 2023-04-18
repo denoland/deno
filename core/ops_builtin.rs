@@ -28,6 +28,7 @@ crate::extension!(
     op_wasm_streaming_set_url,
     op_void_sync,
     op_void_async,
+    op_void_async_deferred,
     op_add,
     // TODO(@AaronO): track IO metrics for builtin streams
     op_read,
@@ -98,6 +99,9 @@ pub fn op_void_sync() {}
 
 #[op]
 pub async fn op_void_async() {}
+
+#[op(deferred)]
+pub async fn op_void_async_deferred() {}
 
 /// Remove a resource from the resource table.
 #[op]

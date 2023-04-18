@@ -15,6 +15,7 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
+use crate::graph_util::ModuleGraphBuilder;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
@@ -43,7 +44,12 @@ pub async fn vendor(
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
   let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
-  let graph = create_graph(&ps, &vendor_flags).await?;
+  let graph = create_graph(
+    &ps.module_graph_builder,
+    &vendor_flags,
+    ps.options.initial_cwd(),
+  )
+  .await?;
   let vendored_count = build::build(
     graph,
     &ps.parsed_source_cache,
@@ -261,16 +267,17 @@ fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
 }
 
 async fn create_graph(
-  ps: &ProcState,
+  module_graph_builder: &ModuleGraphBuilder,
   flags: &VendorFlags,
+  initial_cwd: &Path,
 ) -> Result<deno_graph::ModuleGraph, AnyError> {
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| resolve_url_or_path(p, ps.options.initial_cwd()))
+    .map(|p| resolve_url_or_path(p, initial_cwd))
     .collect::<Result<Vec<_>, _>>()?;
 
-  ps.module_graph_builder.create_graph(entry_points).await
+  module_graph_builder.create_graph(entry_points).await
 }
 
 #[cfg(test)]

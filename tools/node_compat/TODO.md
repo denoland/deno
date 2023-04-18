@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2924
+Total: 2923
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -482,7 +482,6 @@ Total: 2924
 - [parallel/test-crypto-getcipherinfo.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-getcipherinfo.js)
 - [parallel/test-crypto-hash-stream-pipe.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-hash-stream-pipe.js)
 - [parallel/test-crypto-hash.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-hash.js)
-- [parallel/test-crypto-hkdf.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-hkdf.js)
 - [parallel/test-crypto-key-objects-messageport.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-key-objects-messageport.js)
 - [parallel/test-crypto-key-objects.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-key-objects.js)
 - [parallel/test-crypto-keygen-deprecation.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-keygen-deprecation.js)
@@ -493,7 +492,6 @@ Total: 2924
 - [parallel/test-crypto-padding-aes256.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-padding-aes256.js)
 - [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-padding.js)
 - [parallel/test-crypto-pbkdf2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-pbkdf2.js)
-- [parallel/test-crypto-prime.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-prime.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-psychic-signatures.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-psychic-signatures.js)
 - [parallel/test-crypto-random.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-random.js)
@@ -501,7 +499,6 @@ Total: 2924
 - [parallel/test-crypto-randomuuid.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-randomuuid.js)
 - [parallel/test-crypto-rsa-dsa.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-rsa-dsa.js)
 - [parallel/test-crypto-scrypt.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-scrypt.js)
-- [parallel/test-crypto-secret-keygen.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-secret-keygen.js)
 - [parallel/test-crypto-secure-heap.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-secure-heap.js)
 - [parallel/test-crypto-sign-verify.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-sign-verify.js)
 - [parallel/test-crypto-stream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-stream.js)
@@ -510,7 +507,6 @@ Total: 2924
 - [parallel/test-crypto-verify-failure.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-verify-failure.js)
 - [parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js)
 - [parallel/test-crypto-worker-thread.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-worker-thread.js)
-- [parallel/test-crypto-x509.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-x509.js)
 - [parallel/test-crypto.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto.js)
 - [parallel/test-cwd-enoent-preload.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cwd-enoent-preload.js)
 - [parallel/test-cwd-enoent-repl.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cwd-enoent-repl.js)
@@ -1073,7 +1069,6 @@ Total: 2924
 - [parallel/test-http-keepalive-request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-keepalive-request.js)
 - [parallel/test-http-listening.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-listening.js)
 - [parallel/test-http-localaddress-bind-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-localaddress-bind-error.js)
-- [parallel/test-http-localaddress.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-localaddress.js)
 - [parallel/test-http-malformed-request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-malformed-request.js)
 - [parallel/test-http-many-ended-pipelines.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-many-ended-pipelines.js)
 - [parallel/test-http-max-header-size-per-stream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-max-header-size-per-stream.js)
@@ -1222,9 +1217,13 @@ Total: 2924
 - [parallel/test-http-upgrade-server.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-upgrade-server.js)
 - [parallel/test-http-upgrade-server2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-upgrade-server2.js)
 - [parallel/test-http-url.parse-auth-with-header-in-request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-auth-with-header-in-request.js)
+- [parallel/test-http-url.parse-auth.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-auth.js)
 - [parallel/test-http-url.parse-basic.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-basic.js)
 - [parallel/test-http-url.parse-https.request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-https.request.js)
 - [parallel/test-http-url.parse-only-support-http-https-protocol.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-only-support-http-https-protocol.js)
+- [parallel/test-http-url.parse-path.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-path.js)
+- [parallel/test-http-url.parse-post.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-post.js)
+- [parallel/test-http-url.parse-search.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-url.parse-search.js)
 - [parallel/test-http-wget.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-wget.js)
 - [parallel/test-http-writable-true-after-close.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-writable-true-after-close.js)
 - [parallel/test-http-write-callbacks.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-write-callbacks.js)

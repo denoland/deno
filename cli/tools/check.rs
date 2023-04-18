@@ -21,6 +21,7 @@ use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
+use crate::node::CliNodeResolver;
 use crate::npm::NpmPackageResolver;
 use crate::tsc;
 use crate::version;
@@ -41,6 +42,7 @@ pub struct TypeChecker {
   deno_dir: DenoDir,
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<NpmPackageResolver>,
 }
 
@@ -49,12 +51,14 @@ impl TypeChecker {
     deno_dir: DenoDir,
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<NpmPackageResolver>,
   ) -> Self {
     Self {
       deno_dir,
       caches,
       cli_options,
+      node_resolver,
       npm_resolver,
     }
   }
@@ -133,7 +137,7 @@ impl TypeChecker {
       debug,
       graph: graph.clone(),
       hash_data,
-      maybe_npm_resolver: Some(self.npm_resolver.clone()),
+      maybe_node_resolver: Some(self.node_resolver.clone()),
       maybe_tsbuildinfo,
       root_names,
       check_mode: type_check_mode,
@@ -144,7 +148,7 @@ impl TypeChecker {
         if let Some(file_name) = &d.file_name {
           if !file_name.starts_with("http") {
             if ModuleSpecifier::parse(file_name)
-              .map(|specifier| !self.npm_resolver.in_npm_package(&specifier))
+              .map(|specifier| !self.node_resolver.in_npm_package(&specifier))
               .unwrap_or(true)
             {
               Some(d.clone())
