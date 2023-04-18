@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_runtime::deno_node::NodeFsMetadata;
+use deno_runtime::deno_fs::FsStat;
 use deno_runtime::deno_node::PathClean;
 use serde::Deserialize;
 use serde::Serialize;
@@ -287,20 +287,63 @@ impl FileBackedVirtualFs {
     Self { file, fs_root }
   }
 
-  pub fn metadata(&self, path: &Path) -> std::io::Result<NodeFsMetadata> {
-    let (_, entry) = self.fs_root.find_entry(path)?;
+  pub fn metadata(&self, path: &Path) -> std::io::Result<FsStat> {
+    let entry = self.fs_root.find_entry_no_follow(path)?;
     Ok(match entry {
-      VirtualFsEntryRef::Dir(dir) => NodeFsMetadata {
-        is_dir: true,
+      VirtualFsEntryRef::Dir(_) => FsStat {
+        is_directory: true,
         is_file: false,
+        is_symlink: false,
+        atime: None,
+        birthtime: None,
+        mtime: None,
+        blksize: 0,
+        size: 0,
+        dev: 0,
+        ino: 0,
+        mode: 0,
+        nlink: 0,
+        uid: 0,
+        gid: 0,
+        rdev: 0,
+        blocks: 0,
       },
-      VirtualFsEntryRef::File(file) => NodeFsMetadata {
-        is_dir: false,
+      VirtualFsEntryRef::File(file) => FsStat {
+        is_directory: false,
         is_file: true,
+        is_symlink: false,
+        atime: None,
+        birthtime: None,
+        mtime: None,
+        blksize: 0,
+        size: file.len,
+        dev: 0,
+        ino: 0,
+        mode: 0,
+        nlink: 0,
+        uid: 0,
+        gid: 0,
+        rdev: 0,
+        blocks: 0,
       },
-      VirtualFsEntryRef::Symlink(_) => {
-        unreachable!();
-      }
+      VirtualFsEntryRef::Symlink(_) => FsStat {
+        is_directory: false,
+        is_file: false,
+        is_symlink: true,
+        atime: None,
+        birthtime: None,
+        mtime: None,
+        blksize: 0,
+        size: 0,
+        dev: 0,
+        ino: 0,
+        mode: 0,
+        nlink: 0,
+        uid: 0,
+        gid: 0,
+        rdev: 0,
+        blocks: 0,
+      },
     })
   }
 
@@ -404,21 +447,23 @@ mod test {
     );
 
     // metadata
-    assert_eq!(
+    assert!(
       virtual_fs
         .metadata(&dest_path.join("sub_dir").join("e.txt"))
-        .unwrap(),
-      NodeFsMetadata {
-        is_dir: false,
-        is_file: true,
-      },
+        .unwrap()
+        .is_symlink
     );
-    assert_eq!(
-      virtual_fs.metadata(&dest_path.join("sub_dir")).unwrap(),
-      NodeFsMetadata {
-        is_dir: true,
-        is_file: false,
-      },
+    assert!(
+      virtual_fs
+        .metadata(&dest_path.join("sub_dir"))
+        .unwrap()
+        .is_directory,
+    );
+    assert!(
+      virtual_fs
+        .metadata(&dest_path.join("e.txt"))
+        .unwrap()
+        .is_file,
     );
   }
 }

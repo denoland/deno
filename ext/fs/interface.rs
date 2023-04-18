@@ -52,6 +52,7 @@ impl OpenOptions {
   }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct FsStat {
   pub is_file: bool,
   pub is_directory: bool,
