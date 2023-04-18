@@ -47,6 +47,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
+mod npm;
 mod virtual_fs;
 
 #[derive(Deserialize, Serialize)]

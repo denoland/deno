@@ -9,6 +9,8 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_runtime::deno_fs::FsStat;
 use deno_runtime::deno_node::PathClean;
 use serde::Deserialize;
@@ -40,6 +42,41 @@ impl VirtualFsBuilder {
       current_offset: 0,
       file_offsets: Default::default(),
     }
+  }
+
+  pub fn build_from_path(root_path: PathBuf) -> Result<Self, AnyError> {
+    fn include_dir_recursive(
+      builder: &mut VirtualFsBuilder,
+      path: &Path,
+    ) -> Result<(), AnyError> {
+      let read_dir = std::fs::read_dir(path)
+        .with_context(|| format!("Reading {}", path.display()))?;
+
+      for entry in read_dir {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+
+        if file_type.is_dir() {
+          builder.add_dir(&path);
+          include_dir_recursive(builder, &path)?;
+        } else if file_type.is_file() {
+          let file_bytes = std::fs::read(&path)
+            .with_context(|| format!("Reading {}", path.display()))?;
+          builder.add_file(&path, file_bytes);
+        } else if file_type.is_symlink() {
+          let target = std::fs::read_link(&path)
+            .with_context(|| format!("Reading symlink {}", path.display()))?;
+          builder.add_symlink(&path, &target);
+        }
+      }
+
+      Ok(())
+    }
+
+    let mut builder = Self::new(root_path.clone());
+    include_dir_recursive(&mut builder, &root_path)?;
+    Ok(builder)
   }
 
   pub fn add_dir(&mut self, path: &Path) -> &mut VirtualDirectory {
