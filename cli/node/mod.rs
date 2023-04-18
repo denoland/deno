@@ -31,8 +31,11 @@ use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 
 use crate::npm::NpmPackageResolver;
+use crate::npm::NpmResolution;
+use crate::npm::RequireNpmPackageResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod analyze;
@@ -109,127 +112,305 @@ pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
   )))
 }
 
-/// This function is an implementation of `defaultResolve` in
-/// `lib/internal/modules/esm/resolve.js` from Node.
-pub fn node_resolve(
-  specifier: &str,
-  referrer: &ModuleSpecifier,
-  mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
-  permissions: &mut dyn NodePermissions,
-) -> Result<Option<NodeResolution>, AnyError> {
-  // Note: if we are here, then the referrer is an esm module
-  // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
-
-  if deno_node::is_builtin_node_module(specifier) {
-    return Ok(Some(NodeResolution::BuiltIn(specifier.to_string())));
-  }
-
-  if let Ok(url) = Url::parse(specifier) {
-    if url.scheme() == "data" {
-      return Ok(Some(NodeResolution::Esm(url)));
-    }
-
-    let protocol = url.scheme();
-
-    if protocol == "node" {
-      let split_specifier = url.as_str().split(':');
-      let specifier = split_specifier.skip(1).collect::<String>();
-
-      if deno_node::is_builtin_node_module(&specifier) {
-        return Ok(Some(NodeResolution::BuiltIn(specifier)));
-      }
-    }
-
-    if protocol != "file" && protocol != "data" {
-      return Err(errors::err_unsupported_esm_url_scheme(&url));
-    }
-
-    // todo(dsherret): this seems wrong
-    if referrer.scheme() == "data" {
-      let url = referrer.join(specifier).map_err(AnyError::from)?;
-      return Ok(Some(NodeResolution::Esm(url)));
-    }
-  }
-
-  let url = module_resolve(
-    specifier,
-    referrer,
-    DEFAULT_CONDITIONS,
-    mode,
-    npm_resolver,
-    permissions,
-  )?;
-  let url = match url {
-    Some(url) => url,
-    None => return Ok(None),
-  };
-  let url = match mode {
-    NodeResolutionMode::Execution => url,
-    NodeResolutionMode::Types => {
-      let path = url.to_file_path().unwrap();
-      // todo(16370): the module kind is not correct here. I think we need
-      // typescript to tell us if the referrer is esm or cjs
-      let path =
-        match path_to_declaration_path::<RealFs>(path, NodeModuleKind::Esm) {
-          Some(path) => path,
-          None => return Ok(None),
-        };
-      ModuleSpecifier::from_file_path(path).unwrap()
-    }
-  };
-
-  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
-  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-  // "preserveSymlinksMain"/"preserveSymlinks" options.
-  Ok(Some(resolve_response))
+#[derive(Debug)]
+pub struct CliNodeResolver {
+  npm_resolution: Arc<NpmResolution>,
+  npm_resolver: Arc<NpmPackageResolver>,
+  require_npm_resolver: RequireNpmPackageResolver,
 }
 
-pub fn node_resolve_npm_reference(
-  reference: &NpmPackageNvReference,
-  mode: NodeResolutionMode,
-  npm_resolver: &Arc<NpmPackageResolver>,
-  permissions: &mut dyn NodePermissions,
-) -> Result<Option<NodeResolution>, AnyError> {
-  let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(&reference.nv)?;
-  let node_module_kind = NodeModuleKind::Esm;
-  let maybe_resolved_path = package_config_resolve(
-    &reference
-      .sub_path
-      .as_ref()
-      .map(|s| format!("./{s}"))
-      .unwrap_or_else(|| ".".to_string()),
-    &package_folder,
-    node_module_kind,
-    DEFAULT_CONDITIONS,
-    mode,
-    &npm_resolver.as_require_npm_resolver(),
-    permissions,
-  )
-  .with_context(|| {
-    format!("Error resolving package config for '{reference}'")
-  })?;
-  let resolved_path = match maybe_resolved_path {
-    Some(resolved_path) => resolved_path,
-    None => return Ok(None),
-  };
-  let resolved_path = match mode {
-    NodeResolutionMode::Execution => resolved_path,
-    NodeResolutionMode::Types => {
-      match path_to_declaration_path::<RealFs>(resolved_path, node_module_kind)
-      {
-        Some(path) => path,
-        None => return Ok(None),
+impl CliNodeResolver {
+  pub fn new(
+    npm_resolution: Arc<NpmResolution>,
+    npm_package_resolver: Arc<NpmPackageResolver>,
+  ) -> Self {
+    Self {
+      npm_resolution,
+      require_npm_resolver: npm_package_resolver.as_require_npm_resolver(),
+      npm_resolver: npm_package_resolver,
+    }
+  }
+
+  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    self.npm_resolver.in_npm_package(specifier)
+  }
+
+  /// This function is an implementation of `defaultResolve` in
+  /// `lib/internal/modules/esm/resolve.js` from Node.
+  pub fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+    permissions: &mut dyn NodePermissions,
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    // Note: if we are here, then the referrer is an esm module
+    // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
+
+    if deno_node::is_builtin_node_module(specifier) {
+      return Ok(Some(NodeResolution::BuiltIn(specifier.to_string())));
+    }
+
+    if let Ok(url) = Url::parse(specifier) {
+      if url.scheme() == "data" {
+        return Ok(Some(NodeResolution::Esm(url)));
+      }
+
+      let protocol = url.scheme();
+
+      if protocol == "node" {
+        let split_specifier = url.as_str().split(':');
+        let specifier = split_specifier.skip(1).collect::<String>();
+
+        if deno_node::is_builtin_node_module(&specifier) {
+          return Ok(Some(NodeResolution::BuiltIn(specifier)));
+        }
+      }
+
+      if protocol != "file" && protocol != "data" {
+        return Err(errors::err_unsupported_esm_url_scheme(&url));
+      }
+
+      // todo(dsherret): this seems wrong
+      if referrer.scheme() == "data" {
+        let url = referrer.join(specifier).map_err(AnyError::from)?;
+        return Ok(Some(NodeResolution::Esm(url)));
       }
     }
-  };
-  let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
-  let resolve_response =
-    url_to_node_resolution(url, &npm_resolver.as_require_npm_resolver())?;
-  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-  // "preserveSymlinksMain"/"preserveSymlinks" options.
-  Ok(Some(resolve_response))
+
+    let url = self.module_resolve(
+      specifier,
+      referrer,
+      DEFAULT_CONDITIONS,
+      mode,
+      permissions,
+    )?;
+    let url = match url {
+      Some(url) => url,
+      None => return Ok(None),
+    };
+    let url = match mode {
+      NodeResolutionMode::Execution => url,
+      NodeResolutionMode::Types => {
+        let path = url.to_file_path().unwrap();
+        // todo(16370): the module kind is not correct here. I think we need
+        // typescript to tell us if the referrer is esm or cjs
+        let path =
+          match path_to_declaration_path::<RealFs>(path, NodeModuleKind::Esm) {
+            Some(path) => path,
+            None => return Ok(None),
+          };
+        ModuleSpecifier::from_file_path(path).unwrap()
+      }
+    };
+
+    let resolve_response = self.url_to_node_resolution(url)?;
+    // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+    // "preserveSymlinksMain"/"preserveSymlinks" options.
+    Ok(Some(resolve_response))
+  }
+
+  fn module_resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    conditions: &[&str],
+    mode: NodeResolutionMode,
+    permissions: &mut dyn NodePermissions,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
+    // note: if we're here, the referrer is an esm module
+    let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
+      let resolved_specifier = referrer.join(specifier)?;
+      if mode.is_types() {
+        let file_path = to_file_path(&resolved_specifier);
+        // todo(dsherret): the node module kind is not correct and we
+        // should use the value provided by typescript instead
+        let declaration_path =
+          path_to_declaration_path::<RealFs>(file_path, NodeModuleKind::Esm);
+        declaration_path.map(|declaration_path| {
+          ModuleSpecifier::from_file_path(declaration_path).unwrap()
+        })
+      } else {
+        Some(resolved_specifier)
+      }
+    } else if specifier.starts_with('#') {
+      Some(
+        package_imports_resolve::<RealFs>(
+          specifier,
+          referrer,
+          NodeModuleKind::Esm,
+          conditions,
+          mode,
+          &self.require_npm_resolver,
+          permissions,
+        )
+        .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
+      )
+    } else if let Ok(resolved) = Url::parse(specifier) {
+      Some(resolved)
+    } else {
+      package_resolve::<RealFs>(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        mode,
+        &self.require_npm_resolver,
+        permissions,
+      )?
+      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
+    };
+    Ok(match url {
+      Some(url) => Some(finalize_resolution(url, referrer)?),
+      None => None,
+    })
+  }
+
+  pub fn resolve_npm_req_reference(
+    &self,
+    reference: &NpmPackageReqReference,
+    mode: NodeResolutionMode,
+    permissions: &mut dyn NodePermissions,
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    let reference = self.npm_resolution.pkg_req_ref_to_nv_ref(reference)?;
+    self.resolve_npm_reference(&reference, mode, permissions)
+  }
+
+  pub fn resolve_npm_reference(
+    &self,
+    reference: &NpmPackageNvReference,
+    mode: NodeResolutionMode,
+    permissions: &mut dyn NodePermissions,
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_package_folder_from_deno_module(&reference.nv)?;
+    let node_module_kind = NodeModuleKind::Esm;
+    let maybe_resolved_path = package_config_resolve(
+      &reference
+        .sub_path
+        .as_ref()
+        .map(|s| format!("./{s}"))
+        .unwrap_or_else(|| ".".to_string()),
+      &package_folder,
+      node_module_kind,
+      DEFAULT_CONDITIONS,
+      mode,
+      &self.require_npm_resolver,
+      permissions,
+    )
+    .with_context(|| {
+      format!("Error resolving package config for '{reference}'")
+    })?;
+    let resolved_path = match maybe_resolved_path {
+      Some(resolved_path) => resolved_path,
+      None => return Ok(None),
+    };
+    let resolved_path = match mode {
+      NodeResolutionMode::Execution => resolved_path,
+      NodeResolutionMode::Types => {
+        match path_to_declaration_path::<RealFs>(
+          resolved_path,
+          node_module_kind,
+        ) {
+          Some(path) => path,
+          None => return Ok(None),
+        }
+      }
+    };
+    let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
+    let resolve_response = self.url_to_node_resolution(url)?;
+    // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+    // "preserveSymlinksMain"/"preserveSymlinks" options.
+    Ok(Some(resolve_response))
+  }
+
+  pub fn resolve_binary_commands(
+    &self,
+    pkg_nv: &NpmPackageNv,
+  ) -> Result<Vec<String>, AnyError> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_package_folder_from_deno_module(pkg_nv)?;
+    let package_json_path = package_folder.join("package.json");
+    let package_json = PackageJson::load::<RealFs>(
+      &self.require_npm_resolver,
+      &mut PermissionsContainer::allow_all(),
+      package_json_path,
+    )?;
+
+    Ok(match package_json.bin {
+      Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
+      Some(Value::Object(o)) => {
+        o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
+      }
+      _ => Vec::new(),
+    })
+  }
+
+  pub fn resolve_binary_export(
+    &self,
+    pkg_ref: &NpmPackageReqReference,
+  ) -> Result<NodeResolution, AnyError> {
+    let pkg_nv = self
+      .npm_resolution
+      .resolve_pkg_id_from_pkg_req(&pkg_ref.req)?
+      .nv;
+    let bin_name = pkg_ref.sub_path.as_deref();
+    let package_folder = self
+      .npm_resolver
+      .resolve_package_folder_from_deno_module(&pkg_nv)?;
+    let package_json_path = package_folder.join("package.json");
+    let package_json = PackageJson::load::<RealFs>(
+      &self.require_npm_resolver,
+      &mut PermissionsContainer::allow_all(),
+      package_json_path,
+    )?;
+    let bin = match &package_json.bin {
+      Some(bin) => bin,
+      None => bail!(
+        "package '{}' did not have a bin property in its package.json",
+        &pkg_nv.name,
+      ),
+    };
+    let bin_entry = resolve_bin_entry_value(&pkg_nv, bin_name, bin)?;
+    let url =
+      ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
+
+    let resolve_response = self.url_to_node_resolution(url)?;
+    // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+    // "preserveSymlinksMain"/"preserveSymlinks" options.
+    Ok(resolve_response)
+  }
+
+  pub fn url_to_node_resolution(
+    &self,
+    url: ModuleSpecifier,
+  ) -> Result<NodeResolution, AnyError> {
+    let url_str = url.as_str().to_lowercase();
+    if url_str.starts_with("http") {
+      Ok(NodeResolution::Esm(url))
+    } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
+      let package_config = get_closest_package_json::<RealFs>(
+        &url,
+        &self.require_npm_resolver,
+        &mut PermissionsContainer::allow_all(),
+      )?;
+      if package_config.typ == "module" {
+        Ok(NodeResolution::Esm(url))
+      } else {
+        Ok(NodeResolution::CommonJs(url))
+      }
+    } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
+      Ok(NodeResolution::Esm(url))
+    } else if url_str.ends_with(".ts") {
+      Err(generic_error(format!(
+        "TypeScript files are not supported in npm packages: {url}"
+      )))
+    } else {
+      Ok(NodeResolution::CommonJs(url))
+    }
+  }
 }
 
 /// Resolves a specifier that is pointing into a node_modules folder.
@@ -249,59 +430,6 @@ pub fn resolve_specifier_into_node_modules(
     .and_then(|path| canonicalize_path_maybe_not_exists(&path).ok())
     .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
     .unwrap_or_else(|| specifier.clone())
-}
-
-pub fn node_resolve_binary_commands(
-  pkg_nv: &NpmPackageNv,
-  npm_resolver: &Arc<NpmPackageResolver>,
-) -> Result<Vec<String>, AnyError> {
-  let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
-  let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load::<RealFs>(
-    &npm_resolver.as_require_npm_resolver(),
-    &mut PermissionsContainer::allow_all(),
-    package_json_path,
-  )?;
-
-  Ok(match package_json.bin {
-    Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
-    Some(Value::Object(o)) => {
-      o.into_iter().map(|(key, _)| key).collect::<Vec<_>>()
-    }
-    _ => Vec::new(),
-  })
-}
-
-pub fn node_resolve_binary_export(
-  pkg_nv: &NpmPackageNv,
-  bin_name: Option<&str>,
-  npm_resolver: &Arc<NpmPackageResolver>,
-) -> Result<NodeResolution, AnyError> {
-  let package_folder =
-    npm_resolver.resolve_package_folder_from_deno_module(pkg_nv)?;
-  let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load::<RealFs>(
-    &npm_resolver.as_require_npm_resolver(),
-    &mut PermissionsContainer::allow_all(),
-    package_json_path,
-  )?;
-  let bin = match &package_json.bin {
-    Some(bin) => bin,
-    None => bail!(
-      "package '{}' did not have a bin property in its package.json",
-      &pkg_nv.name,
-    ),
-  };
-  let bin_entry = resolve_bin_entry_value(pkg_nv, bin_name, bin)?;
-  let url =
-    ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
-
-  let resolve_response =
-    url_to_node_resolution(url, &npm_resolver.as_require_npm_resolver())?;
-  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-  // "preserveSymlinksMain"/"preserveSymlinks" options.
-  Ok(resolve_response)
 }
 
 fn resolve_bin_entry_value<'a>(
@@ -411,35 +539,6 @@ fn package_config_resolve(
   Ok(Some(package_dir.join(package_subpath)))
 }
 
-pub fn url_to_node_resolution(
-  url: ModuleSpecifier,
-  npm_resolver: &dyn RequireNpmResolver,
-) -> Result<NodeResolution, AnyError> {
-  let url_str = url.as_str().to_lowercase();
-  if url_str.starts_with("http") {
-    Ok(NodeResolution::Esm(url))
-  } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-    let package_config = get_closest_package_json::<RealFs>(
-      &url,
-      npm_resolver,
-      &mut PermissionsContainer::allow_all(),
-    )?;
-    if package_config.typ == "module" {
-      Ok(NodeResolution::Esm(url))
-    } else {
-      Ok(NodeResolution::CommonJs(url))
-    }
-  } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
-    Ok(NodeResolution::Esm(url))
-  } else if url_str.ends_with(".ts") {
-    Err(generic_error(format!(
-      "TypeScript files are not supported in npm packages: {url}"
-    )))
-  } else {
-    Ok(NodeResolution::CommonJs(url))
-  }
-}
-
 fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
@@ -487,62 +586,6 @@ fn finalize_resolution(
   }
 
   Ok(resolved)
-}
-
-fn module_resolve(
-  specifier: &str,
-  referrer: &ModuleSpecifier,
-  conditions: &[&str],
-  mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
-  permissions: &mut dyn NodePermissions,
-) -> Result<Option<ModuleSpecifier>, AnyError> {
-  // note: if we're here, the referrer is an esm module
-  let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
-    let resolved_specifier = referrer.join(specifier)?;
-    if mode.is_types() {
-      let file_path = to_file_path(&resolved_specifier);
-      // todo(dsherret): the node module kind is not correct and we
-      // should use the value provided by typescript instead
-      let declaration_path =
-        path_to_declaration_path::<RealFs>(file_path, NodeModuleKind::Esm);
-      declaration_path.map(|declaration_path| {
-        ModuleSpecifier::from_file_path(declaration_path).unwrap()
-      })
-    } else {
-      Some(resolved_specifier)
-    }
-  } else if specifier.starts_with('#') {
-    Some(
-      package_imports_resolve::<RealFs>(
-        specifier,
-        referrer,
-        NodeModuleKind::Esm,
-        conditions,
-        mode,
-        npm_resolver,
-        permissions,
-      )
-      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
-    )
-  } else if let Ok(resolved) = Url::parse(specifier) {
-    Some(resolved)
-  } else {
-    package_resolve::<RealFs>(
-      specifier,
-      referrer,
-      NodeModuleKind::Esm,
-      conditions,
-      mode,
-      npm_resolver,
-      permissions,
-    )?
-    .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
-  };
-  Ok(match url {
-    Some(url) => Some(finalize_resolution(url, referrer)?),
-    None => None,
-  })
 }
 
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
