@@ -624,7 +624,9 @@ async function serve(arg1, arg2) {
   let handler = undefined;
   if (typeof arg1 === "function") {
     handler = arg1;
-    options = arg2;
+  } else if (typeof arg2 === "function") {
+    options = arg1;
+    handler = arg2;
   } else {
     options = arg1;
   }

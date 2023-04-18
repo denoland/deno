@@ -160,7 +160,12 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
   const promise = deferred();
   const listeningPromise = deferred();
 
-  const server = Deno.serve(async (request: Request) => {
+  const server = Deno.serve({
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  }, async (request) => {
     // FIXME(bartlomieju):
     // make sure that request can be inspected
     console.log(request);
@@ -168,11 +173,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
     assertEquals(await request.text(), "");
     promise.resolve();
     return new Response("Hello World", { headers: { "foo": "bar" } });
-  }, {
-    port: 4501,
-    signal: ac.signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
   });
 
   await listeningPromise;
@@ -2158,10 +2158,7 @@ Deno.test(
     const ac = new AbortController();
     const promise = deferred();
     let count = 0;
-    const server = Deno.serve((_req: Request) => {
-      count++;
-      return new Response(`hello world ${count}`);
-    }, {
+    const server = Deno.serve({
       async onListen() {
         const res1 = await fetch("http://localhost:9000/");
         assertEquals(await res1.text(), "hello world 1");
@@ -2173,6 +2170,9 @@ Deno.test(
         ac.abort();
       },
       signal: ac.signal,
+    }, () => {
+      count++;
+      return new Response(`hello world ${count}`);
     });
 
     await promise;
@@ -2226,7 +2226,16 @@ Deno.test(
   async function testIssue16567() {
     const ac = new AbortController();
     const promise = deferred();
-    const server = Deno.serve(() =>
+    const server = Deno.serve({
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals((await res1.text()).length, 40 * 50_000);
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    }, () =>
       new Response(
         new ReadableStream({
           start(c) {
@@ -2237,16 +2246,7 @@ Deno.test(
             c.close();
           },
         }),
-      ), {
-      async onListen() {
-        const res1 = await fetch("http://localhost:9000/");
-        assertEquals((await res1.text()).length, 40 * 50_000);
-
-        promise.resolve();
-        ac.abort();
-      },
-      signal: ac.signal,
-    });
+      ));
 
     await promise;
     await server;
