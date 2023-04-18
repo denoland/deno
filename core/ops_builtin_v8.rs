@@ -8,7 +8,7 @@ use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url;
 use crate::serde_v8::from_v8;
-use crate::source_map::apply_source_map as apply_source_map_;
+use crate::source_map::apply_source_map;
 use crate::JsRealm;
 use crate::JsRuntime;
 use crate::ZeroCopyBuf;
@@ -17,6 +17,7 @@ use deno_ops::op;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
+use std::rc::Rc;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
@@ -59,8 +60,8 @@ fn op_set_promise_reject_callback<'a>(
   let old = context_state_rc
     .borrow_mut()
     .js_promise_reject_cb
-    .replace(cb);
-  let old = old.map(|v| v8::Local::new(scope, v));
+    .replace(Rc::new(cb));
+  let old = old.map(|v| v8::Local::new(scope, &*v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
 
@@ -633,7 +634,7 @@ fn op_set_wasm_streaming_callback(
   if context_state.js_wasm_streaming_cb.is_some() {
     return Err(type_error("op_set_wasm_streaming_callback already called"));
   }
-  context_state.js_wasm_streaming_cb = Some(cb);
+  context_state.js_wasm_streaming_cb = Some(Rc::new(cb));
 
   scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
     let (cb_handle, streaming_rid) = {
@@ -755,15 +756,23 @@ fn op_apply_source_map(
   location: Location,
 ) -> Result<Location, Error> {
   let state_rc = JsRuntime::state(scope);
-  let state = &mut *state_rc.borrow_mut();
-  if let Some(source_map_getter) = &state.source_map_getter {
+  let (getter, cache) = {
+    let state = state_rc.borrow();
+    (
+      state.source_map_getter.clone(),
+      state.source_map_cache.clone(),
+    )
+  };
+
+  if let Some(source_map_getter) = getter {
+    let mut cache = cache.borrow_mut();
     let mut location = location;
-    let (f, l, c) = apply_source_map_(
+    let (f, l, c) = apply_source_map(
       location.file_name,
       location.line_number.into(),
       location.column_number.into(),
-      &mut state.source_map_cache,
-      source_map_getter.as_ref(),
+      &mut cache,
+      &**source_map_getter,
     );
     location.file_name = f;
     location.line_number = l as u32;
@@ -788,14 +797,14 @@ fn op_set_format_exception_callback<'a>(
   let old = context_state_rc
     .borrow_mut()
     .js_format_exception_cb
-    .replace(cb);
-  let old = old.map(|v| v8::Local::new(scope, v));
+    .replace(Rc::new(cb));
+  let old = old.map(|v| v8::Local::new(scope, &*v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
 
 #[op(v8)]
 fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
-  JsRuntime::event_loop_pending_state_from_isolate(scope).is_pending()
+  JsRuntime::event_loop_pending_state_from_scope(scope).is_pending()
 }
 
 #[op(v8)]
