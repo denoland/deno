@@ -67,7 +67,7 @@ export class Sign extends Writable {
   }
 
   sign(
-    privateKey: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
+    privateKey: BinaryLike | SignKeyObjectInput | SignPrivateKeyInput,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
     let keyData: Uint8Array;
@@ -75,7 +75,8 @@ export class Sign extends Writable {
     let keyFormat: KeyFormat;
     if (typeof privateKey === "string" || isArrayBufferView(privateKey)) {
       // if the key is BinaryLike, interpret it as a PEM encoded RSA key
-      keyData = privateKey;
+      // deno-lint-ignore no-explicit-any
+      keyData = privateKey as any;
       keyType = "rsa";
       keyFormat = "pem";
     } else {
@@ -103,35 +104,64 @@ export class Sign extends Writable {
 }
 
 export class Verify extends Writable {
+  hash: Hash;
+  #digestType: string;
+
   constructor(algorithm: string, _options?: WritableOptions) {
     validateString(algorithm, "algorithm");
 
-    super();
+    super({
+      write(chunk, enc, callback) {
+        this.update(chunk, enc);
+        callback();
+      },
+    });
 
-    notImplemented("crypto.Verify");
+    algorithm = algorithm.toLowerCase();
+
+    if (algorithm.startsWith("rsa-")) {
+      // Allows RSA-[digest_algorithm] as a valid algorithm
+      algorithm = algorithm.slice(4);
+    }
+
+    this.#digestType = algorithm;
+    this.hash = createHash(this.#digestType);
   }
 
-  update(data: BinaryLike): this;
-  update(data: string, inputEncoding: Encoding): this;
-  update(_data: BinaryLike, _inputEncoding?: string): this {
-    notImplemented("crypto.Sign.prototype.update");
+  update(data: BinaryLike, encoding?: string): this {
+    this.hash.update(data, encoding);
+    return this;
   }
 
   verify(
-    object: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-    signature: ArrayBufferView,
-  ): boolean;
-  verify(
-    object: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-    signature: string,
-    signatureEncoding?: BinaryToTextEncoding,
-  ): boolean;
-  verify(
-    _object: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-    _signature: ArrayBufferView | string,
-    _signatureEncoding?: BinaryToTextEncoding,
+    publicKey: BinaryLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
+    signature: BinaryLike,
+    encoding?: BinaryToTextEncoding,
   ): boolean {
-    notImplemented("crypto.Sign.prototype.sign");
+    let keyData: BinaryLike;
+    let keyType: KeyType;
+    let keyFormat: KeyFormat;
+    if (typeof publicKey === "string" || isArrayBufferView(publicKey)) {
+      // if the key is BinaryLike, interpret it as a PEM encoded RSA key
+      // deno-lint-ignore no-explicit-any
+      keyData = publicKey as any;
+      keyType = "rsa";
+      keyFormat = "pem";
+    } else {
+      // TODO(kt3k): Add support for the case when publicKey is a KeyObject,
+      // CryptoKey, etc
+      notImplemented(
+        "crypto.Verify.prototype.verify with non BinaryLike input",
+      );
+    }
+    return ops.op_node_verify(
+      this.hash.digest(),
+      this.#digestType,
+      keyData!,
+      keyType,
+      keyFormat,
+      Buffer.from(signature, encoding),
+    );
   }
 }
 

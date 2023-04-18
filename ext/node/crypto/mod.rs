@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -309,7 +310,7 @@ pub fn op_node_sign(
       use signature::hazmat::PrehashSigner;
       let key = match key_format {
         "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
-          .map_err(|_| type_error("Invalid RSA key"))?,
+          .map_err(|_| type_error("Invalid RSA private key"))?,
         // TODO(kt3k): Support der and jwk formats
         _ => {
           return Err(type_error(format!(
@@ -348,6 +349,58 @@ pub fn op_node_sign(
     }
     _ => Err(type_error(format!(
       "Signing with {} keys is not supported yet",
+      key_type
+    ))),
+  }
+}
+
+#[op]
+fn op_node_verify(
+  digest: &[u8],
+  digest_type: &str,
+  key: StringOrBuffer,
+  key_type: &str,
+  key_format: &str,
+  signature: &[u8],
+) -> Result<bool, AnyError> {
+  match key_type {
+    "rsa" => {
+      use rsa::pkcs1v15::VerifyingKey;
+      use signature::hazmat::PrehashVerifier;
+      let key = match key_format {
+        "pem" => RsaPublicKey::from_public_key_pem((&key).try_into()?)
+          .map_err(|_| type_error("Invalid RSA public key"))?,
+        // TODO(kt3k): Support der and jwk formats
+        _ => {
+          return Err(type_error(format!(
+            "Unsupported key format: {}",
+            key_format
+          )))
+        }
+      };
+      Ok(match digest_type {
+        "sha224" => VerifyingKey::<sha2::Sha224>::new_with_prefix(key)
+          .verify_prehash(digest, &signature.to_vec().try_into()?)
+          .is_ok(),
+        "sha256" => VerifyingKey::<sha2::Sha256>::new_with_prefix(key)
+          .verify_prehash(digest, &signature.to_vec().try_into()?)
+          .is_ok(),
+        "sha384" => VerifyingKey::<sha2::Sha384>::new_with_prefix(key)
+          .verify_prehash(digest, &signature.to_vec().try_into()?)
+          .is_ok(),
+        "sha512" => VerifyingKey::<sha2::Sha512>::new_with_prefix(key)
+          .verify_prehash(digest, &signature.to_vec().try_into()?)
+          .is_ok(),
+        _ => {
+          return Err(type_error(format!(
+            "Unknown digest algorithm: {}",
+            digest_type
+          )))
+        }
+      })
+    }
+    _ => Err(type_error(format!(
+      "Verifying with {} keys is not supported yet",
       key_type
     ))),
   }
@@ -489,4 +542,90 @@ pub fn op_node_random_int(min: i32, max: i32) -> Result<i32, AnyError> {
   let dist = Uniform::from(min..max);
 
   Ok(dist.sample(&mut rng))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scrypt(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  _maxmem: u32,
+  output_buffer: &mut [u8],
+) -> Result<(), AnyError> {
+  // Construct Params
+  let params = scrypt::Params::new(
+    cost as u8,
+    block_size,
+    parallelization,
+    keylen as usize,
+  )
+  .unwrap();
+
+  // Call into scrypt
+  let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
+  if res.is_ok() {
+    Ok(())
+  } else {
+    // TODO(lev): key derivation failed, so what?
+    Err(generic_error("scrypt key derivation failed"))
+  }
+}
+
+#[op]
+pub fn op_node_scrypt_sync(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  maxmem: u32,
+  output_buffer: &mut [u8],
+) -> Result<(), AnyError> {
+  scrypt(
+    password,
+    salt,
+    keylen,
+    cost,
+    block_size,
+    parallelization,
+    maxmem,
+    output_buffer,
+  )
+}
+
+#[op]
+pub async fn op_node_scrypt_async(
+  password: StringOrBuffer,
+  salt: StringOrBuffer,
+  keylen: u32,
+  cost: u32,
+  block_size: u32,
+  parallelization: u32,
+  maxmem: u32,
+) -> Result<ZeroCopyBuf, AnyError> {
+  tokio::task::spawn_blocking(move || {
+    let mut output_buffer = vec![0u8; keylen as usize];
+    let res = scrypt(
+      password,
+      salt,
+      keylen,
+      cost,
+      block_size,
+      parallelization,
+      maxmem,
+      &mut output_buffer,
+    );
+
+    if res.is_ok() {
+      Ok(output_buffer.into())
+    } else {
+      // TODO(lev): rethrow the error?
+      Err(generic_error("scrypt failure"))
+    }
+  })
+  .await?
 }
