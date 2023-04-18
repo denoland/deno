@@ -1531,7 +1531,7 @@ fn is_supported_test_path(path: &Path) -> bool {
 }
 
 /// Checks if the path has an extension Deno supports for tests.
-fn is_supported_test_ext(path: &Path) -> bool {
+pub(crate) fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
