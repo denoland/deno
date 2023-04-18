@@ -38,6 +38,7 @@ rand.workspace = true
 regex.workspace = true
 ripemd = "0.1.3"
 rsa.workspace = true
+scrypt = "0.11.0"
 serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true
