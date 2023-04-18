@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::generic_error;
-use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -493,6 +492,7 @@ pub fn op_node_random_int(min: i32, max: i32) -> Result<i32, AnyError> {
   Ok(dist.sample(&mut rng))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
