@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2924
+Total: 2923
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -1069,7 +1069,6 @@ Total: 2924
 - [parallel/test-http-keepalive-request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-keepalive-request.js)
 - [parallel/test-http-listening.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-listening.js)
 - [parallel/test-http-localaddress-bind-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-localaddress-bind-error.js)
-- [parallel/test-http-localaddress.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-localaddress.js)
 - [parallel/test-http-malformed-request.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-malformed-request.js)
 - [parallel/test-http-many-ended-pipelines.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-many-ended-pipelines.js)
 - [parallel/test-http-max-header-size-per-stream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-max-header-size-per-stream.js)
