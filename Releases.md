@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.32.5 / 2023.04.18
 
-- Revert "perf(core): immediately schedule another tick if there are un…
-  (#18718)
 - feat(UNSTABLE/kv): AtomicOperation#sum (#18704)
 - fix(core): Use safe primordials wrappers (#18687)
 - fix(ext/node): add req.socket.remoteAddress (#18733)
@@ -22,8 +20,6 @@ https://github.com/denoland/deno_install
   found locally (#18673)
 - fix(path): Remove non node symbols (#18630)
 - fix(test): add process sigint handler for --watch (#18678)
-- perf(core): immediately schedule another tick if there are unpolled ops
-  (#18611)
 - perf(ext/websocket): make `op_server_ws_next_event` deferred (#18632)
 - perf(ops): directly respond for eager ops (#18683)
 
