@@ -166,11 +166,20 @@ where
   let uri: Uri = url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
+  let authority = uri.authority().unwrap().as_str();
+  let host = authority
+    .find('@')
+    .map(|idx| authority.split_at(idx + 1).1)
+    .unwrap_or_else(|| authority);
   request = request
     .header("User-Agent", user_agent)
+    .header("Host", host)
     .header(UPGRADE, "websocket")
     .header(CONNECTION, "upgrade")
-    .header("Sec-WebSocket-Key", "gn/tcQDBSTmTj39Xf8bBNg==")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
     .header("Sec-WebSocket-Version", "13");
 
   if !protocols.is_empty() {
