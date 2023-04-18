@@ -47,6 +47,8 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
+mod virtual_fs;
+
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
