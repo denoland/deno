@@ -1428,10 +1428,16 @@ impl EventLoopPendingState {
     module_map: &ModuleMap,
   ) -> EventLoopPendingState {
     let mut num_unrefed_ops = 0;
-    for weak_context in &state.known_realms {
-      if let Some(context) = weak_context.to_local(scope) {
-        let realm = JsRealmLocal::new(context);
-        num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
+
+    if state.known_realms.len() == 1 {
+      let realm = state.global_realm.as_ref().unwrap();
+      num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
+    } else {
+      for weak_context in &state.known_realms {
+        if let Some(context) = weak_context.to_local(scope) {
+          let realm = JsRealmLocal::new(context);
+          num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
+        }
       }
     }
 
