@@ -14,8 +14,8 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   SafeArrayIterator,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
@@ -45,7 +45,7 @@ class AbortSignal extends EventTarget {
 
   static timeout(millis) {
     const prefix = "Failed to call 'AbortSignal.timeout'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     millis = webidl.converters["unsigned long long"](millis, {
       enforceRange: true,
     });
@@ -69,7 +69,7 @@ class AbortSignal extends EventTarget {
       return;
     }
     if (this[abortAlgos] === null) {
-      this[abortAlgos] = new Set();
+      this[abortAlgos] = new SafeSet();
     }
     SetPrototypeAdd(this[abortAlgos], algorithm);
   }

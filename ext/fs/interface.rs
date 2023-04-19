@@ -5,32 +5,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::error::not_supported;
-use deno_core::error::resource_unavailable;
-use deno_core::error::AnyError;
-use deno_core::Resource;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::task::JoinError;
-
-pub trait FsPermissions {
-  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
-  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
-  fn check_read_blind(
-    &mut self,
-    p: &Path,
-    display: &str,
-    api_name: &str,
-  ) -> Result<(), AnyError>;
-  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
-  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
-  fn check_write_blind(
-    &mut self,
-    p: &Path,
-    display: &str,
-    api_name: &str,
-  ) -> Result<(), AnyError>;
-}
 
 #[derive(Deserialize, Default, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -73,21 +49,6 @@ impl OpenOptions {
       create_new,
       mode,
     }
-  }
-
-  pub(crate) fn check<P: FsPermissions>(
-    &self,
-    permissions: &mut P,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    if self.read {
-      permissions.check_read(path, api_name)?;
-    }
-    if self.write || self.append {
-      permissions.check_write(path, api_name)?;
-    }
-    Ok(())
   }
 }
 
@@ -138,28 +99,6 @@ pub enum FsError {
 impl From<io::Error> for FsError {
   fn from(err: io::Error) -> Self {
     Self::Io(err)
-  }
-}
-
-impl From<JoinError> for FsError {
-  fn from(err: JoinError) -> Self {
-    if err.is_cancelled() {
-      todo!("async tasks must not be cancelled")
-    }
-    if err.is_panic() {
-      std::panic::resume_unwind(err.into_panic()); // resume the panic on the main thread
-    }
-    unreachable!()
-  }
-}
-
-impl From<FsError> for AnyError {
-  fn from(err: FsError) -> Self {
-    match err {
-      FsError::Io(err) => AnyError::from(err),
-      FsError::FileBusy => resource_unavailable(),
-      FsError::NotSupported => not_supported(),
-    }
   }
 }
 
@@ -214,7 +153,7 @@ pub trait File {
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: Clone {
-  type File: File + Resource;
+  type File: File;
 
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;

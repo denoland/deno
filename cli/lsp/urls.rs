@@ -188,10 +188,14 @@ impl LspUrlMap {
     if let Some(specifier) = inner.get_specifier(url).cloned() {
       specifier
     } else {
-      let specifier = if let Ok(path) = url.to_file_path() {
-        match kind {
-          LspUrlKind::Folder => Url::from_directory_path(path).unwrap(),
-          LspUrlKind::File => Url::from_file_path(path).unwrap(),
+      let specifier = if url.scheme() == "file" {
+        if let Ok(path) = url.to_file_path() {
+          match kind {
+            LspUrlKind::Folder => Url::from_directory_path(path).unwrap(),
+            LspUrlKind::File => Url::from_file_path(path).unwrap(),
+          }
+        } else {
+          url.clone()
         }
       } else {
         url.clone()
@@ -292,5 +296,13 @@ mod tests {
       Url::parse("file:///Users/deno/Desktop/file with spaces in name.txt")
         .unwrap();
     assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn test_normalize_deno_status() {
+    let map = LspUrlMap::default();
+    let fixture = resolve_url("deno:/status.md").unwrap();
+    let actual = map.normalize_url(&fixture, LspUrlKind::File);
+    assert_eq!(actual, fixture);
   }
 }
