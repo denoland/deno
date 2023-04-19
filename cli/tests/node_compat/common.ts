@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { partition } from "../../../test_util/std/collections/partition.ts";
 import { join } from "../../../test_util/std/path/mod.ts";
-
+import * as JSONC from "../../../test_util/std/encoding/jsonc.ts";
 /**
  * The test suite matches the folders inside the `test` folder inside the
  * node repo
@@ -26,9 +26,9 @@ interface Config {
   darwinIgnore: TestSuites;
 }
 
-export const config: Config = JSON.parse(
-  await Deno.readTextFile(new URL("./config.json", import.meta.url)),
-);
+export const config: Config = JSONC.parse(
+  await Deno.readTextFile(new URL("./config.jsonc", import.meta.url)),
+) as unknown as Config;
 
 export const ignoreList = Object.entries(config.ignore).reduce(
   (total: RegExp[], [suite, paths]) => {

@@ -786,6 +786,8 @@ mod tests {
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
   use std::path::Path;
+  use std::sync::Arc;
+  use std::sync::Mutex;
   use trust_dns_proto::rr::rdata::caa::KeyValue;
   use trust_dns_proto::rr::rdata::caa::CAA;
   use trust_dns_proto::rr::rdata::mx::MX;
@@ -1009,7 +1011,7 @@ mod tests {
       assert!(socket.nodelay().unwrap());
       assert!(!socket.keepalive().unwrap());
     });
-    check_sockopt(String::from("127.0.0.1:4245"), set_nodelay, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4145"), set_nodelay, test_fn).await;
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1021,7 +1023,7 @@ mod tests {
       assert!(!socket.nodelay().unwrap());
       assert!(socket.keepalive().unwrap());
     });
-    check_sockopt(String::from("127.0.0.1:4246"), set_keepalive, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4146"), set_keepalive, test_fn).await;
   }
 
   #[allow(clippy::type_complexity)]
@@ -1030,10 +1032,12 @@ mod tests {
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,
     test_fn: Box<dyn FnOnce(SockRef)>,
   ) {
+    let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
     tokio::spawn(async move {
       let listener = TcpListener::bind(addr).await.unwrap();
-      let _ = listener.accept().await.unwrap();
+      let socket = listener.accept().await.unwrap();
+      sockets.lock().unwrap().push(socket);
     });
 
     deno_core::extension!(
