@@ -235,7 +235,7 @@
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
-      if (err.message.includes("is not a function")) {
+      if (!(name in ops)) {
         throw new TypeError(`${name} is not a registered op`);
       }
       // Rethrow the error
@@ -260,7 +260,7 @@
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
-      if (err.message.includes("is not a function")) {
+      if (!(name in ops)) {
         throw new TypeError(`${name} is not a registered op`);
       }
       // Rethrow the error
