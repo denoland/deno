@@ -56,7 +56,7 @@ const {
   SafeArrayIterator,
   SafeMap,
   SafeStringIterator,
-  SafeSet,
+  SafeSetIterator,
   SafeRegExp,
   SetPrototype,
   SetPrototypeEntries,
@@ -2158,7 +2158,7 @@ class Console {
     const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
     if (isSet) {
-      resultData = [...new SafeSet(data)];
+      resultData = [...new SafeSetIterator(data)];
     } else if (isMap) {
       let idx = 0;
       resultData = {};
