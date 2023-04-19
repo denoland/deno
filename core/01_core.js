@@ -20,6 +20,7 @@
     PromisePrototypeThen,
     RangeError,
     ReferenceError,
+    ReflectHas,
     SafeArrayIterator,
     SafeMap,
     SafePromisePrototypeFinally,
@@ -235,6 +236,9 @@
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
+      if (!ReflectHas(ops, name)) {
+        throw new TypeError(`${name} is not a registered op`);
+      }
       // Rethrow the error
       throw err;
     }
@@ -257,6 +261,9 @@
     } catch (err) {
       // Cleanup the just-created promise
       getPromise(id);
+      if (!ReflectHas(ops, name)) {
+        throw new TypeError(`${name} is not a registered op`);
+      }
       // Rethrow the error
       throw err;
     }
