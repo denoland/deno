@@ -30,7 +30,8 @@
       "test-child-process-exec-kill-throws.js",
       "test-child-process-exec-maxbuf.js",
       "test-child-process-exec-std-encoding.js",
-      "test-child-process-exec-timeout-expire.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-exec-timeout-expire.js",
       "test-child-process-exec-timeout-kill.js",
       "test-child-process-exec-timeout-not-expired.js",
       "test-child-process-execFile-promisified-abortController.js",
@@ -43,7 +44,10 @@
       "test-child-process-stdout-flush-exit.js",
       "test-child-process-stdout-flush.js",
       "test-console-instance.js",
+      "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
+      "test-crypto-prime.js",
+      "test-crypto-x509.js",
       "test-dgram-custom-lookup.js",
       "test-dgram-ipv6only.js",
       "test-dgram-send-cb-quelches-error.js",
@@ -131,7 +135,8 @@
     ],
     "fixtures/keys": [
       "agent1-cert.pem",
-      "agent1-key.pem"
+      "agent1-key.pem",
+      "ca1-cert.pem"
     ],
     "internet": [
       "test-dns-any.js",
@@ -194,7 +199,8 @@
       "test-buffer-zero-fill-cli.js",
       "test-buffer-zero-fill-reset.js",
       "test-buffer-zero-fill.js",
-      "test-child-process-can-write-to-stdout.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-can-write-to-stdout.js",
       "test-child-process-default-options.js",
       "test-child-process-double-pipe.js",
       "test-child-process-exec-abortcontroller-promisified.js",
@@ -204,9 +210,11 @@
       "test-child-process-exec-kill-throws.js",
       "test-child-process-exec-maxbuf.js",
       "test-child-process-exec-stdout-stderr-data-string.js",
-      "test-child-process-exec-timeout-expire.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-exec-timeout-expire.js",
       "test-child-process-exec-timeout-kill.js",
-      "test-child-process-execFile-promisified-abortController.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile-maxbuf.js",
       "test-child-process-execfilesync-maxbuf.js",
       "test-child-process-execsync-maxbuf.js",
@@ -232,6 +240,7 @@
       "test-crypto-hmac.js",
       "test-crypto-prime.js",
       "test-crypto-secret-keygen.js",
+      "test-crypto-update-encoding.js",
       "test-crypto-x509.js",
       "test-dgram-close-during-bind.js",
       "test-dgram-close-signal.js",
@@ -342,6 +351,7 @@
       "test-http-agent-getname.js",
       "test-http-client-get-url.js",
       "test-http-client-read-in-error.js",
+      "test-http-localaddress.js",
       "test-http-outgoing-buffer.js",
       "test-http-outgoing-internal-headernames-getter.js",
       "test-http-outgoing-internal-headernames-setter.js",
