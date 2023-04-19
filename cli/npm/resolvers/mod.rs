@@ -78,6 +78,10 @@ impl NpmPackageResolver {
     self.fs_resolver.root_dir_url()
   }
 
+  pub fn node_modules_path(&self) -> Option<PathBuf> {
+    self.fs_resolver.node_modules_path()
+  }
+
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,

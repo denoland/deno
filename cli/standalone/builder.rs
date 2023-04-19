@@ -19,6 +19,8 @@ use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
+use crate::npm::NpmPackageResolver;
+use crate::npm::NpmResolution;
 use crate::proc_state::ProcState;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -31,6 +33,8 @@ pub struct DenoCompileBinaryBuilder {
   file_fetcher: Arc<FileFetcher>,
   client: HttpClient,
   deno_dir: DenoDir,
+  npm_resolver: Arc<NpmPackageResolver>,
+  resolution: Arc<NpmResolution>,
 }
 
 impl DenoCompileBinaryBuilder {
@@ -38,11 +42,15 @@ impl DenoCompileBinaryBuilder {
     file_fetcher: Arc<FileFetcher>,
     client: HttpClient,
     deno_dir: DenoDir,
+    npm_resolver: Arc<NpmPackageResolver>,
+    resolution: Arc<NpmResolution>,
   ) -> Self {
     Self {
       file_fetcher,
       client,
       deno_dir,
+      npm_resolver,
+      resolution,
     }
   }
 
