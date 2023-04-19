@@ -21,7 +21,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { core } from "ext:deno_node/_core.ts";
+const { core } = globalThis.__bootstrap;
 
 // https://tc39.es/ecma262/#sec-object.prototype.tostring
 const _toString = Object.prototype.toString;
