@@ -38,10 +38,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 mod binary;
-mod builder;
 
 pub use binary::extract_standalone;
-pub use builder::DenoCompileBinaryBuilder;
+pub use binary::is_standalone_binary;
+pub use binary::DenoCompileBinaryWriter;
 
 use self::binary::Metadata;
 
