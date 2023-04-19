@@ -46,7 +46,7 @@ export interface VerifyKeyObjectInput extends SigningOptions {
 
 export type KeyLike = string | Buffer | KeyObject;
 
-export class Sign extends Writable {
+export class SignImpl extends Writable {
   hash: Hash;
   #digestType: string;
 
@@ -107,7 +107,13 @@ export class Sign extends Writable {
   }
 }
 
-export class Verify extends Writable {
+export function Sign(algorithm: string, options?: WritableOptions) {
+  return new SignImpl(algorithm, options);
+}
+
+Sign.prototype = SignImpl.prototype;
+
+export class VerifyImpl extends Writable {
   hash: Hash;
   #digestType: string;
 
@@ -169,6 +175,12 @@ export class Verify extends Writable {
   }
 }
 
+export function Verify(algorithm: string, options?: WritableOptions) {
+  return new VerifyImpl(algorithm, options);
+}
+
+Verify.prototype = VerifyImpl.prototype;
+
 export function signOneShot(
   algorithm: string | null | undefined,
   data: ArrayBufferView,
@@ -187,7 +199,7 @@ export function signOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const result = new Sign(algorithm!).update(data).sign(key);
+  const result = Sign(algorithm!).update(data).sign(key);
 
   if (callback) {
     setTimeout(() => callback(null, result));
@@ -215,7 +227,7 @@ export function verifyOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const result = new Verify(algorithm!).update(data).verify(key, signature);
+  const result = Verify(algorithm!).update(data).verify(key, signature);
 
   if (callback) {
     setTimeout(() => callback(null, result));
