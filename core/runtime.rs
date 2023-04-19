@@ -4644,6 +4644,21 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .unwrap();
   }
 
+  #[test]
+  fn test_non_existent_async_op_error() {
+    // Verify that "resizable ArrayBuffer" is disabled
+    let mut runtime = JsRuntime::new(Default::default());
+    let err = runtime
+      .execute_script_static(
+        "test_rab.js",
+        r#"Deno.core.opAsync("this_op_doesnt_exist");"#,
+      )
+      .unwrap_err();
+    assert!(err
+      .to_string()
+      .contains("this_op_doesnt_exist is not a registered op"));
+  }
+
   #[tokio::test]
   async fn cant_load_internal_module_when_snapshot_is_loaded_and_not_snapshotting(
   ) {

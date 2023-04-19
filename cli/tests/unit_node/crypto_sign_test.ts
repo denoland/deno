@@ -4,7 +4,7 @@ import {
   assert,
   assertEquals,
 } from "../../../test_util/std/testing/asserts.ts";
-import { createSign, createVerify } from "node:crypto";
+import { createSign, createVerify, sign, verify } from "node:crypto";
 import { Buffer } from "node:buffer";
 
 const rsaPrivatePem = Buffer.from(
@@ -41,30 +41,48 @@ const table = [
   },
 ];
 
+const data = Buffer.from("some data to sign");
+
 Deno.test({
-  name: "crypto.Sign - RSA PEM with SHA224, SHA256, SHA384, SHA512 digests",
+  name:
+    "crypto.Sign|sign - RSA PEM with SHA224, SHA256, SHA384, SHA512 digests",
   fn() {
     for (const testCase of table) {
       for (const algorithm of testCase.algorithms) {
-        const signature = createSign(algorithm)
-          .update("some data to sign")
-          .sign(rsaPrivatePem, "hex");
-        assertEquals(signature, testCase.signature);
+        assertEquals(
+          createSign(algorithm)
+            .update(data)
+            .sign(rsaPrivatePem, "hex"),
+          testCase.signature,
+        );
+        assertEquals(
+          sign(algorithm, data, rsaPrivatePem),
+          Buffer.from(testCase.signature, "hex"),
+        );
       }
     }
   },
 });
 
 Deno.test({
-  name: "crypto.Verify - RSA PEM with SHA224, SHA256, SHA384, SHA512 digests",
+  name:
+    "crypto.Verify|verify - RSA PEM with SHA224, SHA256, SHA384, SHA512 digests",
   fn() {
     for (const testCase of table) {
       for (const algorithm of testCase.algorithms) {
         assert(
-          createVerify(algorithm).update("some data to sign").verify(
+          createVerify(algorithm).update(data).verify(
             rsaPublicPem,
             testCase.signature,
             "hex",
+          ),
+        );
+        assert(
+          verify(
+            algorithm,
+            data,
+            rsaPublicPem,
+            Buffer.from(testCase.signature, "hex"),
           ),
         );
       }
