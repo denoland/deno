@@ -2,7 +2,10 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateFunction,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
 import Writable from "ext:deno_node/internal/streams/writable.mjs";
@@ -17,6 +20,7 @@ import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
@@ -169,43 +173,55 @@ export function signOneShot(
   algorithm: string | null | undefined,
   data: ArrayBufferView,
   key: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
-): Buffer;
-export function signOneShot(
-  algorithm: string | null | undefined,
-  data: ArrayBufferView,
-  key: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
-  callback: (error: Error | null, data: Buffer) => void,
-): void;
-export function signOneShot(
-  _algorithm: string | null | undefined,
-  _data: ArrayBufferView,
-  _key: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
-  _callback?: (error: Error | null, data: Buffer) => void,
+  callback?: (error: Error | null, data: Buffer) => void,
 ): Buffer | void {
-  notImplemented("crypto.sign");
+  if (algorithm != null) {
+    validateString(algorithm, "algorithm");
+  }
+
+  if (callback !== undefined) {
+    validateFunction(callback, "callback");
+  }
+
+  if (!key) {
+    throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
+  }
+
+  const result = new Sign(algorithm!).update(data).sign(key);
+
+  if (callback) {
+    setTimeout(() => callback(null, result));
+  } else {
+    return result;
+  }
 }
 
 export function verifyOneShot(
   algorithm: string | null | undefined,
-  data: ArrayBufferView,
+  data: BinaryLike,
   key: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-  signature: ArrayBufferView,
-): boolean;
-export function verifyOneShot(
-  algorithm: string | null | undefined,
-  data: ArrayBufferView,
-  key: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-  signature: ArrayBufferView,
-  callback: (error: Error | null, result: boolean) => void,
-): void;
-export function verifyOneShot(
-  _algorithm: string | null | undefined,
-  _data: ArrayBufferView,
-  _key: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-  _signature: ArrayBufferView,
-  _callback?: (error: Error | null, result: boolean) => void,
+  signature: BinaryLike,
+  callback?: (error: Error | null, result: boolean) => void,
 ): boolean | void {
-  notImplemented("crypto.verify");
+  if (algorithm != null) {
+    validateString(algorithm, "algorithm");
+  }
+
+  if (callback !== undefined) {
+    validateFunction(callback, "callback");
+  }
+
+  if (!key) {
+    throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
+  }
+
+  const result = new Verify(algorithm!).update(data).verify(key, signature);
+
+  if (callback) {
+    setTimeout(() => callback(null, result));
+  } else {
+    return result;
+  }
 }
 
 export default {
