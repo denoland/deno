@@ -218,7 +218,7 @@ jobs:
           sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15
 
           # What version of LLVM did we get?
-          lld —version
+          lld-15 —version
 
           # What OS is this runner on?
           cat /etc/os-release
