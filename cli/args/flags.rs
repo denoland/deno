@@ -1984,6 +1984,7 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(
       Arg::new("no-prompt")
+        .short('N')
         .long("no-prompt")
         .action(ArgAction::SetTrue)
         .help("Always throw if required permission wasn't passed"),
