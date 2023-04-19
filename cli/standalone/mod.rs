@@ -47,8 +47,10 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-mod npm;
+mod builder;
 mod virtual_fs;
+
+pub use builder::DenoCompileBinaryBuilder;
 
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
