@@ -30,6 +30,7 @@ use hyper::Response;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
@@ -258,6 +259,7 @@ where
 
   let resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(stream)),
+    closed: Cell::new(false),
   };
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(resource);
@@ -291,6 +293,7 @@ pub enum MessageKind {
 
 pub struct ServerWebSocket {
   ws: AsyncRefCell<FragmentCollector<Upgraded>>,
+  closed: Cell<bool>,
 }
 
 impl ServerWebSocket {
@@ -326,6 +329,7 @@ pub async fn ws_create_server_stream(
 
   let ws_resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(ws)),
+    closed: Cell::new(false),
   };
 
   let resource_table = &mut state.borrow_mut().resource_table;
@@ -401,6 +405,7 @@ pub async fn op_ws_close(
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![]));
+  resource.closed.set(true);
   resource.write_frame(frame).await
 }
 
@@ -413,6 +418,17 @@ pub async fn op_ws_next_event(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
+
+  // No message was received, socket closed while we waited.
+  // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+  if resource.closed.get() {
+    let _ = state.borrow_mut().resource_table.close(rid);
+    return Ok((
+      MessageKind::Closed as u16,
+      StringOrBuffer::Buffer(vec![].into()),
+    ));
+  }
+
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
   let val = match ws.read_frame().await {
     Ok(val) => val,
