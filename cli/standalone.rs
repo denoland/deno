@@ -265,7 +265,7 @@ fn create_web_worker_callback(
         user_agent: version::get_user_agent().to_string(),
         inspect: ps.options.is_inspecting(),
       },
-      extensions: ops::cli_exts(ps.clone()),
+      extensions: ops::cli_exts(ps.npm_resolver.clone()),
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: ps
         .options
@@ -307,7 +307,7 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &metadata.permissions,
   )?);
@@ -354,7 +354,7 @@ pub async fn run(
       user_agent: version::get_user_agent().to_string(),
       inspect: ps.options.is_inspecting(),
     },
-    extensions: ops::cli_exts(ps.clone()),
+    extensions: ops::cli_exts(ps.npm_resolver.clone()),
     startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,

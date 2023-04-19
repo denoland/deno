@@ -1138,6 +1138,51 @@ dbTest("operation size limit", async (db) => {
   );
 });
 
+dbTest("keys must be arrays", async (db) => {
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.get("a"),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.getMany(["a"]),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.set("a", 1),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.delete("a"),
+    TypeError,
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic()
+        // @ts-expect-error invalid type
+        .mutate({ key: "a", type: "set", value: 1 } satisfies Deno.KvMutation)
+        .commit(),
+    TypeError,
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic()
+        // @ts-expect-error invalid type
+        .check({ key: "a", versionstamp: null })
+        .set(["a"], 1)
+        .commit(),
+    TypeError,
+  );
+});
+
 // This function is never called, it is just used to check that all the types
 // are behaving as expected.
 async function _typeCheckingTests() {
