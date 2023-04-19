@@ -176,7 +176,7 @@ class WebSocketStream {
                         create.rid,
                       );
 
-                      if (kind > 6) {
+                      if (kind > 5) {
                         /* close */
                         break;
                       }

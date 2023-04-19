@@ -259,7 +259,7 @@ where
 
   let resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(stream)),
-    closed: Cell::new(false),
+    closed: Rc::new(Cell::new(false)),
   };
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(resource);
@@ -293,7 +293,7 @@ pub enum MessageKind {
 
 pub struct ServerWebSocket {
   ws: AsyncRefCell<FragmentCollector<Upgraded>>,
-  closed: Cell<bool>,
+  closed: Rc<Cell<bool>>,
 }
 
 impl ServerWebSocket {
@@ -329,7 +329,7 @@ pub async fn ws_create_server_stream(
 
   let ws_resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(ws)),
-    closed: Cell::new(false),
+    closed: Rc::new(Cell::new(false)),
   };
 
   let resource_table = &mut state.borrow_mut().resource_table;
@@ -405,8 +405,12 @@ pub async fn op_ws_close(
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![]));
-  resource.closed.set(true);
-  resource.write_frame(frame).await
+
+  let cell = Rc::clone(&resource.closed);
+  cell.set(true);
+  resource.write_frame(frame).await?;
+  cell.set(false);
+  Ok(())
 }
 
 #[op(deferred)]
