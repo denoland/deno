@@ -3,8 +3,8 @@
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
 const Runners = (() => {
-  const ubuntuRunner = "ubuntu-22.04";
-  const ubuntuXlRunner = "ubuntu-22.04-xl";
+  const ubuntuRunner = "buildjet-2vcpu-ubuntu-2204";
+  const ubuntuXlRunner = "buildjet-8vcpu-ubuntu-2204";
 
   return {
     ubuntuXl:
