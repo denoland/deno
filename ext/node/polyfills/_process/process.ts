@@ -36,7 +36,7 @@ function denoEnvGet(name: string) {
     Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
       "granted"; // for Deno Deploy
   // Returns undefined if the env permission is unavailable
-  if (perm !== "granted") {
+  if (perm === "rejected") {
     return undefined;
   }
   try {
