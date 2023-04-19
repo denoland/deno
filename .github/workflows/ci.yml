@@ -61,7 +61,7 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-            runner: '${{ github.event_name == ''pull_request'' && ''buildjet-2vcpu-ubuntu-2204'' || ''macos-12'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''macos-12'' }}'
             os_display_name: macos-x86_64
           - os: windows-2022
             job: test
@@ -71,27 +71,27 @@ jobs:
             job: test
             profile: release
             skip_pr: true
-            runner: '${{ github.event_name == ''pull_request'' && ''buildjet-2vcpu-ubuntu-2204'' || ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''windows-2022'' }}'
             os_display_name: windows-x86_64
-          - os: '${{ github.repository == ''denoland/deno'' && ''buildjet-8vcpu-ubuntu-2204'' || ''buildjet-2vcpu-ubuntu-2204'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''buildjet-8vcpu-ubuntu-2204'' || ''ubuntu-22.04'' }}'
             job: test
             profile: release
             use_sysroot: true
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
             os_display_name: ubuntu-x86_64
-          - os: '${{ github.repository == ''denoland/deno'' && ''buildjet-8vcpu-ubuntu-2204'' || ''buildjet-2vcpu-ubuntu-2204'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''buildjet-8vcpu-ubuntu-2204'' || ''ubuntu-22.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
             skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
-            runner: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''buildjet-2vcpu-ubuntu-2204'' || github.repository == ''denoland/deno'' && ''buildjet-8vcpu-ubuntu-2204'' || ''buildjet-2vcpu-ubuntu-2204'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''buildjet-8vcpu-ubuntu-2204'' || ''ubuntu-22.04'' }}'
             os_display_name: ubuntu-x86_64
-          - os: buildjet-2vcpu-ubuntu-2204
+          - os: ubuntu-22.04
             job: test
             profile: debug
             use_sysroot: true
             os_display_name: ubuntu-x86_64
-          - os: buildjet-2vcpu-ubuntu-2204
+          - os: ubuntu-22.04
             job: lint
             profile: debug
             os_display_name: ubuntu-x86_64
