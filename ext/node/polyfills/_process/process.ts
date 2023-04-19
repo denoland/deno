@@ -36,7 +36,7 @@ function denoEnvGet(name: string) {
     Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
       "granted"; // for Deno Deploy
   // Returns undefined if the env permission is unavailable
-  if (perm === "rejected") {
+  if (perm === "denied") {
     return undefined;
   }
   try {
@@ -57,21 +57,14 @@ const OBJECT_PROTO_PROP_NAMES = Object.getOwnPropertyNames(Object.prototype);
 export const env: InstanceType<ObjectConstructor> & Record<string, string> =
   new Proxy(Object(), {
     get: (target, prop) => {
-      if (typeof prop === "symbol") {
+      if (
+        typeof prop === "symbol"
+        || OBJECT_PROTO_PROP_NAMES.includes(prop)
+      ) {
         return target[prop];
       }
 
-      const envValue = denoEnvGet(prop);
-
-      if (envValue) {
-        return envValue;
-      }
-
-      if (OBJECT_PROTO_PROP_NAMES.includes(prop)) {
-        return target[prop];
-      }
-
-      return envValue;
+      return denoEnvGet(prop);
     },
     ownKeys: () => Reflect.ownKeys(Deno.env.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
@@ -88,7 +81,12 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       Deno.env.set(String(prop), String(value));
       return true; // success
     },
-    has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
+    has: (_target, prop) => {
+      if (typeof prop === "symbol") {
+        return false;
+      }
+      return typeof denoEnvGet(String(prop)) === "string"
+    },
   });
 
 /**
