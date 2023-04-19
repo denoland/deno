@@ -1073,11 +1073,11 @@ mod tests {
       _ = store_fut => {
         let result = connect_fut.await;
         let vals = result.unwrap();
-        rid = rid.or_else(|| Some(vals.0));
+        rid = rid.or(Some(vals.0));
       },
       result = &mut connect_fut => {
         let vals = result.unwrap();
-        rid = rid.or_else(|| Some(vals.0));
+        rid = rid.or(Some(vals.0));
       }
     };
     let rid = rid.unwrap();
