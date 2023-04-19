@@ -65,7 +65,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "crypto.Verify|verify - RSA PEM with SHA224, SHA256, SHA384, SHA512 digests",
+  name:
+    "crypto.Verify|verify - RSA PEM with SHA224, SHA256, SHA384, SHA512 digests",
   fn() {
     for (const testCase of table) {
       for (const algorithm of testCase.algorithms) {
