@@ -217,11 +217,13 @@ jobs:
           # this was unreliable sometimes, so try again if it fails
           sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15
 
-          # What version of LLVM did we get?
-          lld-15 —version
-
           # What OS is this runner on?
           cat /etc/os-release
+
+          # What version of LLVM did we get?
+          llvm-link --version
+          lld-15 —version
+
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
           # `libc6-dev` is required for building any C source files.
