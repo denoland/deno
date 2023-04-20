@@ -671,7 +671,10 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     // Iterators and the rest are split to reduce checks.
     // We have to check all values in case the constructor is set to null.
     // Otherwise it would not possible to identify all types properly.
-    if (ObjectPrototypeHasOwnProperty(value, SymbolIterator) || constructor === null) {
+    if (
+      ObjectPrototypeHasOwnProperty(value, SymbolIterator) ||
+      constructor === null
+    ) {
       noIterator = false;
       if (ArrayIsArray(value)) {
         // Only set the constructor for non ordinary ("Array [...]") arrays.
