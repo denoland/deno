@@ -263,7 +263,7 @@ pub async fn upgrade(
   flags: Flags,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let current_exe_path = std::env::current_exe()?;
   let output_exe_path =
     upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
@@ -293,9 +293,9 @@ pub async fn upgrade(
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
-      if upgrade_flags.canary
-        && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
-      {
+      let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+
+      if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
         bail!("Invalid commit hash passed");
       } else if !upgrade_flags.canary
         && Version::parse_standard(&passed_version).is_err()

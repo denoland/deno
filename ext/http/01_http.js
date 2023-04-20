@@ -47,8 +47,9 @@ const {
   ArrayPrototypePush,
   Error,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
   SetPrototypeClear,
@@ -56,8 +57,6 @@ const {
   StringPrototypeIncludes,
   StringPrototypeToLowerCase,
   StringPrototypeSplit,
-  SafeSet,
-  PromisePrototypeCatch,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -79,7 +78,7 @@ class HttpConn {
   // that were created during lifecycle of this request.
   // When the connection is closed these resources should be closed
   // as well.
-  managedResources = new Set();
+  managedResources = new SafeSet();
 
   constructor(rid, remoteAddr, localAddr) {
     this.#rid = rid;

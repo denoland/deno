@@ -30,6 +30,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_node::RequireNpmResolver;
@@ -264,7 +265,7 @@ impl MainWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),

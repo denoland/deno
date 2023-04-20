@@ -219,7 +219,7 @@ class PerformanceMark extends PerformanceEntry {
     options = {},
   ) {
     const prefix = "Failed to construct 'PerformanceMark'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     name = webidl.converters.DOMString(name, {
       prefix,
@@ -394,7 +394,7 @@ class Performance extends EventTarget {
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     name = webidl.converters.DOMString(name, {
       prefix,
@@ -414,7 +414,7 @@ class Performance extends EventTarget {
   getEntriesByType(type) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     type = webidl.converters.DOMString(type, {
       prefix,
@@ -430,7 +430,7 @@ class Performance extends EventTarget {
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'mark' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     markName = webidl.converters.DOMString(markName, {
       prefix,
@@ -458,7 +458,7 @@ class Performance extends EventTarget {
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'measure' on 'Performance'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     measureName = webidl.converters.DOMString(measureName, {
       prefix,

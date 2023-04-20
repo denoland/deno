@@ -78,10 +78,11 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::lsp::urls::LspUrlKind;
+use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistry;
 use crate::npm::NpmResolution;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
@@ -101,7 +102,8 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_npm_resolver: Option<NpmPackageResolver>,
+  pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  pub maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
 }
 
 #[derive(Debug)]
@@ -145,13 +147,13 @@ pub struct Inner {
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// Npm's registry api.
-  npm_api: NpmRegistry,
+  npm_api: Arc<CliNpmRegistryApi>,
   /// Npm cache
-  npm_cache: NpmCache,
+  npm_cache: Arc<NpmCache>,
   /// Npm resolution that is stored in memory.
-  npm_resolution: NpmResolution,
+  npm_resolution: Arc<NpmResolution>,
   /// Resolver for npm packages.
-  npm_resolver: NpmPackageResolver,
+  npm_resolver: Arc<NpmPackageResolver>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -182,13 +184,15 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
-      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.create_graph_loader();
+      // todo(dsherret): don't use ProcState here
+      let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+      let mut inner_loader = ps.module_graph_builder.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
       let graph = ps
+        .module_graph_builder
         .create_graph_with_loader(roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
@@ -417,10 +421,15 @@ impl LanguageServer {
 fn create_lsp_structs(
   dir: &DenoDir,
   http_client: HttpClient,
-) -> (NpmRegistry, NpmCache, NpmPackageResolver, NpmResolution) {
-  let registry_url = NpmRegistry::default_url();
+) -> (
+  Arc<CliNpmRegistryApi>,
+  Arc<NpmCache>,
+  Arc<NpmPackageResolver>,
+  Arc<NpmResolution>,
+) {
+  let registry_url = CliNpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let npm_cache = NpmCache::from_deno_dir(
+  let npm_cache = Arc::new(NpmCache::from_deno_dir(
     dir,
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
@@ -429,14 +438,15 @@ fn create_lsp_structs(
     CacheSetting::Only,
     http_client.clone(),
     progress_bar.clone(),
-  );
-  let api = NpmRegistry::new(
+  ));
+  let api = Arc::new(CliNpmRegistryApi::new(
     registry_url.clone(),
     npm_cache.clone(),
     http_client,
     progress_bar.clone(),
-  );
-  let resolution = NpmResolution::new(api.clone(), None, None);
+  ));
+  let resolution =
+    Arc::new(NpmResolution::from_serialized(api.clone(), None, None));
   let fs_resolver = create_npm_fs_resolver(
     npm_cache.clone(),
     &progress_bar,
@@ -447,7 +457,11 @@ fn create_lsp_structs(
   (
     api,
     npm_cache,
-    NpmPackageResolver::new(resolution.clone(), fs_resolver, None),
+    Arc::new(NpmPackageResolver::new(
+      resolution.clone(),
+      fs_resolver,
+      None,
+    )),
     resolution,
   )
 }
@@ -683,30 +697,32 @@ impl Inner {
   }
 
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
+    // create a new snapshotted npm resolution and resolver
+    let npm_resolution = Arc::new(NpmResolution::new(
+      self.npm_api.clone(),
+      self.npm_resolution.snapshot(),
+      None,
+    ));
+    let npm_resolver = Arc::new(NpmPackageResolver::new(
+      npm_resolution.clone(),
+      create_npm_fs_resolver(
+        self.npm_cache.clone(),
+        &ProgressBar::new(ProgressBarStyle::TextOnly),
+        self.npm_api.base_url().clone(),
+        npm_resolution.clone(),
+        None,
+      ),
+      None,
+    ));
+    let node_resolver =
+      Arc::new(CliNodeResolver::new(npm_resolution, npm_resolver.clone()));
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_npm_resolver: Some({
-        // create a new snapshotted npm resolution and resolver
-        let resolution = NpmResolution::new(
-          self.npm_api.clone(),
-          Some(self.npm_resolution.snapshot()),
-          None,
-        );
-        NpmPackageResolver::new(
-          resolution.clone(),
-          create_npm_fs_resolver(
-            self.npm_cache.clone(),
-            &ProgressBar::new(ProgressBarStyle::TextOnly),
-            self.npm_api.base_url().clone(),
-            resolution,
-            None,
-          ),
-          None,
-        )
-      }),
+      maybe_node_resolver: Some(node_resolver),
+      maybe_npm_resolver: Some(npm_resolver),
     })
   }
 
@@ -1125,7 +1141,6 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err);
     }
 
-    // self.refresh_documents_config(); // todo(THIS PR): REMOVE
     self.assets.intitialize(self.snapshot()).await;
 
     self.performance.measure(mark);

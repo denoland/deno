@@ -4,8 +4,9 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  SafeSet,
   SafeSetIterator,
-  Set,
+  SetPrototypeAdd,
   SetPrototypeDelete,
   SymbolFor,
   TypeError,
@@ -32,7 +33,7 @@ const signalData = {};
 /** Gets the signal handlers and resource data of the given signal */
 function getSignalData(signo) {
   return signalData[signo] ??
-    (signalData[signo] = { rid: undefined, listeners: new Set() });
+    (signalData[signo] = { rid: undefined, listeners: new SafeSet() });
 }
 
 function checkSignalListenerType(listener) {
@@ -47,7 +48,7 @@ function addSignalListener(signo, listener) {
   checkSignalListenerType(listener);
 
   const sigData = getSignalData(signo);
-  sigData.listeners.add(listener);
+  SetPrototypeAdd(sigData.listeners, listener);
 
   if (!sigData.rid) {
     // If signal resource doesn't exist, create it.

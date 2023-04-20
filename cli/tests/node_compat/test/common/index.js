@@ -446,6 +446,9 @@ module.exports = {
   getArrayBufferViews,
   getBufferSources,
   hasCrypto: true,
+  hasMultiLocalhost() {
+    return false;
+  },
   invalidArgTypeHelper,
   mustCall,
   mustCallAtLeast,

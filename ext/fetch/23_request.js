@@ -273,7 +273,7 @@ class Request {
    */
   constructor(input, init = {}) {
     const prefix = "Failed to construct 'Request'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters["RequestInfo_DOMString"](input, {
       prefix,
       context: "Argument 1",
@@ -341,7 +341,8 @@ class Request {
         throw webidl.makeException(
           TypeError,
           "`client` must be a Deno.HttpClient",
-          { prefix, context: "Argument 2" },
+          prefix,
+          "Argument 2",
         );
       }
       request.clientRid = init.client?.rid ?? null;
