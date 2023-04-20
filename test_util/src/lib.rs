@@ -49,7 +49,6 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::accept_async;
 use url::Url;
 
 pub mod assertions;
@@ -302,26 +301,109 @@ async fn basic_auth_redirect(
   Ok(resp)
 }
 
+async fn echo_websocket(
+  mut req: Request<Body>,
+) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+  let (response, fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
+
+  async fn echo_websocket_handler(
+    fut: fastwebsockets::upgrade::UpgradeFut,
+  ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut ws = fut.await?;
+    ws.set_writev(true);
+    ws.set_auto_close(true);
+    ws.set_auto_pong(true);
+
+    let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+    loop {
+      let frame = ws.read_frame().await?;
+      match frame.opcode {
+        fastwebsockets::OpCode::Close => break,
+        fastwebsockets::OpCode::Text | fastwebsockets::OpCode::Binary => {
+          ws.write_frame(frame).await?;
+        }
+        _ => {}
+      }
+    }
+
+    Ok(())
+  }
+
+  tokio::spawn(async move {
+    if let Err(e) = echo_websocket_handler(fut).await {
+      eprintln!("Error in websocket connection: {}", e);
+    }
+  });
+
+  Ok(response)
+}
+
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
-      let ws_stream_fut = accept_async(stream);
+      let conn_fut = hyper::server::conn::Http::new()
+        .serve_connection(stream, service_fn(echo_websocket))
+        .with_upgrades();
 
-      let ws_stream = ws_stream_fut.await;
-      if let Ok(ws_stream) = ws_stream {
-        let (tx, rx) = ws_stream.split();
-        rx.forward(tx)
-          .map(|result| {
-            if let Err(e) = result {
-              println!("websocket server error: {e:?}");
-            }
-          })
-          .await;
+      if let Err(e) = conn_fut.await {
+        eprintln!("websocket server error: {e:?}");
       }
     });
   }
+}
+
+async fn ping_websocket(
+  mut req: Request<Body>,
+) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+  let (response, fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
+
+  async fn handler(
+    fut: fastwebsockets::upgrade::UpgradeFut,
+  ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use fastwebsockets::Frame;
+    use fastwebsockets::OpCode;
+
+    let mut ws = fut.await?;
+    ws.set_writev(true);
+    ws.set_auto_close(true);
+    ws.set_auto_pong(true);
+
+    let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+    for i in 0..9 {
+      ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+        .await
+        .unwrap();
+
+      let frame = ws.read_frame().await.unwrap();
+      assert_eq!(frame.opcode, OpCode::Pong);
+      assert_eq!(frame.payload, vec![] as Vec<u8>);
+
+      ws.write_frame(Frame::text(format!("hello {}", i).as_bytes().to_vec()))
+        .await
+        .unwrap();
+
+      let frame = ws.read_frame().await.unwrap();
+      assert_eq!(frame.opcode, OpCode::Text);
+      assert_eq!(frame.payload, format!("hello {}", i).as_bytes());
+    }
+
+    ws.write_frame(fastwebsockets::Frame::close(1005, b""))
+      .await?;
+
+    Ok(())
+  }
+
+  tokio::spawn(async move {
+    if let Err(e) = handler(fut).await {
+      eprintln!("Error in websocket connection: {}", e);
+    }
+  });
+
+  Ok(response)
 }
 
 async fn run_ws_ping_server(addr: &SocketAddr) {
@@ -329,40 +411,57 @@ async fn run_ws_ping_server(addr: &SocketAddr) {
   println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
-      let ws_stream = accept_async(stream).await;
-      use futures::SinkExt;
-      use tokio_tungstenite::tungstenite::Message;
-      if let Ok(mut ws_stream) = ws_stream {
-        for i in 0..9 {
-          ws_stream.send(Message::Ping(vec![])).await.unwrap();
+      let conn_fut = hyper::server::conn::Http::new()
+        .serve_connection(stream, service_fn(ping_websocket))
+        .with_upgrades();
 
-          let msg = ws_stream.next().await.unwrap().unwrap();
-          assert_eq!(msg, Message::Pong(vec![]));
-
-          ws_stream
-            .send(Message::Text(format!("hello {}", i)))
-            .await
-            .unwrap();
-
-          let msg = ws_stream.next().await.unwrap().unwrap();
-          assert_eq!(msg, Message::Text(format!("hello {}", i)));
-        }
-
-        ws_stream.close(None).await.unwrap();
+      if let Err(e) = conn_fut.await {
+        eprintln!("websocket server error: {e:?}");
       }
     });
   }
+}
+
+async fn close_websocket(
+  mut req: Request<Body>,
+) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
+  let (response, fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
+
+  async fn handler(
+    fut: fastwebsockets::upgrade::UpgradeFut,
+  ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut ws = fut.await?;
+    ws.set_writev(true);
+    ws.set_auto_close(true);
+    ws.set_auto_pong(true);
+
+    let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+    ws.write_frame(fastwebsockets::Frame::close(1005, b""))
+      .await?;
+
+    Ok(())
+  }
+
+  tokio::spawn(async move {
+    if let Err(e) = handler(fut).await {
+      eprintln!("Error in websocket connection: {}", e);
+    }
+  });
+
+  Ok(response)
 }
 
 async fn run_ws_close_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
-      let ws_stream_fut = accept_async(stream);
+      let conn_fut = hyper::server::conn::Http::new()
+        .serve_connection(stream, service_fn(close_websocket))
+        .with_upgrades();
 
-      let ws_stream = ws_stream_fut.await;
-      if let Ok(mut ws_stream) = ws_stream {
-        ws_stream.close(None).await.unwrap();
+      if let Err(e) = conn_fut.await {
+        eprintln!("websocket server error: {e:?}");
       }
     });
   }
@@ -471,18 +570,15 @@ async fn run_wss_server(addr: &SocketAddr) {
     tokio::spawn(async move {
       match acceptor.accept(stream).await {
         Ok(tls_stream) => {
-          let ws_stream_fut = accept_async(tls_stream);
-          let ws_stream = ws_stream_fut.await;
-          if let Ok(ws_stream) = ws_stream {
-            let (tx, rx) = ws_stream.split();
-            rx.forward(tx)
-              .map(|result| {
-                if let Err(e) = result {
-                  println!("Websocket server error: {e:?}");
-                }
-              })
-              .await;
-          }
+          tokio::spawn(async move {
+            let conn_fut = hyper::server::conn::Http::new()
+              .serve_connection(tls_stream, service_fn(echo_websocket))
+              .with_upgrades();
+
+            if let Err(e) = conn_fut.await {
+              eprintln!("websocket server error: {e:?}");
+            }
+          });
         }
         Err(e) => {
           eprintln!("TLS accept error: {e:?}");
