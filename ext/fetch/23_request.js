@@ -341,7 +341,8 @@ class Request {
         throw webidl.makeException(
           TypeError,
           "`client` must be a Deno.HttpClient",
-          { prefix, context: "Argument 2" },
+          prefix,
+          "Argument 2",
         );
       }
       request.clientRid = init.client?.rid ?? null;
