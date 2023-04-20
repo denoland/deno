@@ -20,6 +20,7 @@ use crate::op_void_sync;
 use crate::ops::*;
 use crate::realm::ContextState;
 use crate::realm::JsRealm;
+use crate::realm::JsRealmLocal;
 use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
@@ -164,8 +165,8 @@ pub struct JsRuntimeState {
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
-  pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub(crate) source_map_cache: SourceMapCache,
+  pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
+  pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
@@ -341,7 +342,7 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
       has_tick_scheduled: false,
-      source_map_getter: options.source_map_getter,
+      source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
@@ -871,10 +872,12 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
-    state.js_event_loop_tick_cb.replace(event_loop_tick_cb);
+    state
+      .js_event_loop_tick_cb
+      .replace(Rc::new(event_loop_tick_cb));
     state
       .js_build_custom_error_cb
-      .replace(build_custom_error_cb);
+      .replace(Rc::new(build_custom_error_cb));
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -972,27 +975,26 @@ impl JsRuntime {
       Self::drop_state_and_module_map(v8_isolate);
     }
 
-    self.state.borrow_mut().global_realm.take();
-
     // Drop other v8::Global handles before snapshotting
     {
       for weak_context in &self.state.clone().borrow().known_realms {
-        let v8_isolate = self.v8_isolate();
-        if let Some(context) = weak_context.to_global(v8_isolate) {
-          let realm = JsRealm::new(context.clone());
-          let realm_state_rc = realm.state(v8_isolate);
+        let scope = &mut self.handle_scope();
+        if let Some(context) = weak_context.to_local(scope) {
+          let realm = JsRealmLocal::new(context);
+          let realm_state_rc = realm.state(scope);
           let mut realm_state = realm_state_rc.borrow_mut();
           std::mem::take(&mut realm_state.js_event_loop_tick_cb);
           std::mem::take(&mut realm_state.js_build_custom_error_cb);
           std::mem::take(&mut realm_state.js_promise_reject_cb);
           std::mem::take(&mut realm_state.js_format_exception_cb);
           std::mem::take(&mut realm_state.js_wasm_streaming_cb);
-          context.open(v8_isolate).clear_all_slots(v8_isolate);
+          context.clear_all_slots(scope);
         }
       }
 
       let mut state = self.state.borrow_mut();
       state.known_realms.clear();
+      state.global_realm.take();
     }
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
@@ -1335,21 +1337,26 @@ impl JsRuntime {
   }
 
   fn event_loop_pending_state(&mut self) -> EventLoopPendingState {
+    let isolate = self.v8_isolate.as_mut().unwrap();
+    let mut scope = v8::HandleScope::new(isolate);
     EventLoopPendingState::new(
-      self.v8_isolate.as_mut().unwrap(),
+      &mut scope,
       &mut self.state.borrow_mut(),
       &self.module_map.as_ref().unwrap().borrow(),
     )
   }
 
-  pub(crate) fn event_loop_pending_state_from_isolate(
-    isolate: &mut v8::Isolate,
+  pub(crate) fn event_loop_pending_state_from_scope(
+    scope: &mut v8::HandleScope,
   ) -> EventLoopPendingState {
-    EventLoopPendingState::new(
-      isolate,
-      &mut Self::state(isolate).borrow_mut(),
-      &Self::module_map(isolate).borrow(),
-    )
+    let state = Self::state(scope);
+    let module_map = Self::module_map(scope);
+    let state = EventLoopPendingState::new(
+      scope,
+      &mut state.borrow_mut(),
+      &module_map.borrow(),
+    );
+    state
   }
 }
 
@@ -1416,15 +1423,21 @@ pub(crate) struct EventLoopPendingState {
 }
 impl EventLoopPendingState {
   pub fn new(
-    isolate: &mut v8::Isolate,
+    scope: &mut v8::HandleScope<()>,
     state: &mut JsRuntimeState,
     module_map: &ModuleMap,
   ) -> EventLoopPendingState {
     let mut num_unrefed_ops = 0;
-    for weak_context in &state.known_realms {
-      if let Some(context) = weak_context.to_global(isolate) {
-        let realm = JsRealm::new(context);
-        num_unrefed_ops += realm.state(isolate).borrow().unrefed_ops.len();
+
+    if state.known_realms.len() == 1 {
+      let realm = state.global_realm.as_ref().unwrap();
+      num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
+    } else {
+      for weak_context in &state.known_realms {
+        if let Some(context) = weak_context.to_local(scope) {
+          let realm = JsRealmLocal::new(context);
+          num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
+        }
       }
     }
 
@@ -1435,7 +1448,7 @@ impl EventLoopPendingState {
         .pending_dyn_mod_evaluate
         .is_empty(),
       has_pending_module_evaluation: state.pending_mod_evaluate.is_some(),
-      has_pending_background_tasks: isolate.has_pending_background_tasks(),
+      has_pending_background_tasks: scope.has_pending_background_tasks(),
       has_tick_scheduled: state.has_tick_scheduled,
     }
   }
@@ -2176,11 +2189,12 @@ impl JsRuntime {
   }
 
   fn check_promise_rejections(&mut self) -> Result<(), Error> {
-    let known_realms = self.state.borrow().known_realms.clone();
-    let isolate = self.v8_isolate();
-    for weak_context in known_realms {
-      if let Some(context) = weak_context.to_global(isolate) {
-        JsRealm::new(context).check_promise_rejections(isolate)?;
+    let state = self.state.clone();
+    let scope = &mut self.handle_scope();
+    let state = state.borrow();
+    for weak_context in &state.known_realms {
+      if let Some(context) = weak_context.to_local(scope) {
+        JsRealmLocal::new(context).check_promise_rejections(scope)?;
       }
     }
     Ok(())
@@ -4628,6 +4642,21 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         "#,
       )
       .unwrap();
+  }
+
+  #[test]
+  fn test_non_existent_async_op_error() {
+    // Verify that "resizable ArrayBuffer" is disabled
+    let mut runtime = JsRuntime::new(Default::default());
+    let err = runtime
+      .execute_script_static(
+        "test_rab.js",
+        r#"Deno.core.opAsync("this_op_doesnt_exist");"#,
+      )
+      .unwrap_err();
+    assert!(err
+      .to_string()
+      .contains("this_op_doesnt_exist is not a registered op"));
   }
 
   #[tokio::test]

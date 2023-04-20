@@ -1,33 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
-use crate::cache::DenoDir;
 use crate::graph_util::error_for_any_npm_specifier;
-use crate::http_util::HttpClient;
-use crate::standalone::DenoCompileBinaryBuilder;
-use crate::standalone::Metadata;
-use crate::standalone::MAGIC_TRAILER;
+use crate::standalone::is_standalone_binary;
+use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
 use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
-use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use std::env;
-use std::fs;
-use std::fs::File;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,6 +24,11 @@ pub async fn compile(
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::from_flags(flags).await?;
+  let binary_writer = DenoCompileBinaryWriter::new(
+    ps.file_fetcher.clone(),
+    ps.http_client.clone(),
+    ps.dir.clone(),
+  );
   let module_specifier = ps.options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
@@ -75,16 +65,83 @@ pub async fn compile(
   );
 
   log::info!(
-    "{} {}",
+    "{} {} to {}",
     colors::green("Compile"),
-    module_specifier.to_string()
+    module_specifier.to_string(),
+    output_path.display(),
   );
-  let final_bin = binary_builder
-    .build_bin(eszip, &module_specifier, &compile_flags, &ps.options)
-    .await?;
+  validate_output_path(&output_path)?;
 
-  log::info!("{} {}", colors::green("Emit"), output_path.display());
-  binary_builder.write(output_path, final_bin)?;
+  let mut file = std::fs::File::create(&output_path)?;
+  binary_writer
+    .write_bin(
+      &mut file,
+      eszip,
+      &module_specifier,
+      &compile_flags,
+      &ps.options,
+    )
+    .await
+    .with_context(|| format!("Writing {}", output_path.display()))?;
+  drop(file);
+
+  // set it as executable
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o777);
+    std::fs::set_permissions(output_path, perms)?;
+  }
+
+  Ok(())
+}
+
+/// This function writes out a final binary to specified path. If output path
+/// is not already standalone binary it will return error instead.
+fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
+  if output_path.exists() {
+    // If the output is a directory, throw error
+    if output_path.is_dir() {
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because a directory exists with ",
+          "the same name. You can use the `--output <file-path>` flag to ",
+          "provide an alternative name."
+        ),
+        output_path.display()
+      );
+    }
+
+    // Make sure we don't overwrite any file not created by Deno compiler because
+    // this filename is chosen automatically in some cases.
+    if !is_standalone_binary(output_path) {
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because the file already exists ",
+          "and cannot be overwritten. Please delete the existing file or ",
+          "use the `--output <file-path` flag to provide an alternative name."
+        ),
+        output_path.display()
+      );
+    }
+
+    // Remove file if it was indeed a deno compiled binary, to avoid corruption
+    // (see https://github.com/denoland/deno/issues/10310)
+    std::fs::remove_file(output_path)?;
+  } else {
+    let output_base = &output_path.parent().unwrap();
+    if output_base.exists() && output_base.is_file() {
+      bail!(
+          concat!(
+            "Could not compile to file '{}' because its parent directory ",
+            "is an existing file. You can use the `--output <file-path>` flag to ",
+            "provide an alternative name.",
+          ),
+          output_base.display(),
+        );
+    }
+    std::fs::create_dir_all(output_base)?;
+  }
 
   Ok(())
 }

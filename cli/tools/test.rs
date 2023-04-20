@@ -1518,7 +1518,7 @@ async fn test_specifiers(
 }
 
 /// Checks if the path has a basename and extension Deno supports for tests.
-fn is_supported_test_path(path: &Path) -> bool {
+pub(crate) fn is_supported_test_path(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
     (basename.ends_with("_test")
