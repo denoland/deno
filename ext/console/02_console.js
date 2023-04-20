@@ -43,6 +43,7 @@ const {
   NumberIsInteger,
   NumberParseInt,
   SafeArrayIterator,
+  SafeMap,
   ArrayPrototypeShift,
   AggregateErrorPrototype,
   RegExpPrototypeTest,
@@ -81,7 +82,6 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
   FunctionPrototypeBind,
-  Map,
   MapPrototype,
   MapPrototypeHas,
   MapPrototypeGet,
@@ -573,7 +573,7 @@ function formatValue(
   if (ctx.seen.includes(value)) {
     let index = 1;
     if (ctx.circular === undefined) {
-      ctx.circular = new Map();
+      ctx.circular = new SafeMap();
       ctx.circular.set(value, index);
     } else {
       index = ctx.circular.get(value);
@@ -1346,7 +1346,7 @@ function inspectFunction(value, ctx) {
 function handleCircular(value, ctx) {
   let index = 1;
   if (ctx.circular === undefined) {
-    ctx.circular = new Map();
+    ctx.circular = new SafeMap();
     MapPrototypeSet(ctx.circular, value, index);
   } else {
     index = MapPrototypeGet(ctx.circular, value);
@@ -1376,7 +1376,7 @@ function inspectError(value, ctx) {
     }
   }
 
-  const refMap = new Map();
+  const refMap = new SafeMap();
   for (let i = 0; i < causes.length; ++i) {
     const cause = causes[i];
     if (ctx.circular !== undefined) {
@@ -2377,7 +2377,7 @@ function inspectValueWithQuotes(
   }
 }
 
-const colorKeywords = new Map([
+const colorKeywords = new SafeMap([
   ["black", "#000000"],
   ["silver", "#c0c0c0"],
   ["gray", "#808080"],
@@ -2985,8 +2985,8 @@ function createStylizeWithColor(styles, colors) {
   };
 }
 
-const countMap = new Map();
-const timerMap = new Map();
+const countMap = new SafeMap();
+const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 function getConsoleInspectOptions() {
