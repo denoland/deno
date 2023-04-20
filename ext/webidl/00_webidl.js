@@ -419,6 +419,7 @@ converters.ByteString = (V, opts) => {
 
 converters.USVString = (V, opts) => {
   const S = converters.DOMString(V, opts);
+  // TODO(petamoriken): add StringPrototypeToWellFormed to primordials
   const n = S.length;
   let U = "";
   for (let i = 0; i < n; ++i) {
