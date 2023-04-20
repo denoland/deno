@@ -9,6 +9,7 @@ use hyper::header::HeaderValue;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
+use hyper::upgrade::Upgraded;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
@@ -304,16 +305,9 @@ async fn basic_auth_redirect(
 async fn echo_websocket(
   mut req: Request<Body>,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
-  let (response, fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
-
   async fn echo_websocket_handler(
-    fut: fastwebsockets::upgrade::UpgradeFut,
+    ws: fastwebsockets::WebSocket<Upgraded>,
   ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut ws = fut.await?;
-    ws.set_writev(true);
-    ws.set_auto_close(true);
-    ws.set_auto_pong(true);
-
     let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
     loop {
@@ -330,8 +324,14 @@ async fn echo_websocket(
     Ok(())
   }
 
+  let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
+  let mut ws = upgrade_fut.await?;
+  ws.set_writev(true);
+  ws.set_auto_close(true);
+  ws.set_auto_pong(true);
+
   tokio::spawn(async move {
-    if let Err(e) = echo_websocket_handler(fut).await {
+    if let Err(e) = echo_websocket_handler(ws).await {
       eprintln!("Error in websocket connection: {}", e);
     }
   });
@@ -358,18 +358,11 @@ async fn run_ws_server(addr: &SocketAddr) {
 async fn ping_websocket(
   mut req: Request<Body>,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
-  let (response, fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
-
   async fn handler(
-    fut: fastwebsockets::upgrade::UpgradeFut,
+    ws: fastwebsockets::WebSocket<Upgraded>,
   ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use fastwebsockets::Frame;
     use fastwebsockets::OpCode;
-
-    let mut ws = fut.await?;
-    ws.set_writev(true);
-    ws.set_auto_close(true);
-    ws.set_auto_pong(true);
 
     let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
@@ -397,8 +390,14 @@ async fn ping_websocket(
     Ok(())
   }
 
+  let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
+  let mut ws = upgrade_fut.await?;
+  ws.set_writev(true);
+  ws.set_auto_close(true);
+  ws.set_auto_pong(true);
+
   tokio::spawn(async move {
-    if let Err(e) = handler(fut).await {
+    if let Err(e) = handler(ws).await {
       eprintln!("Error in websocket connection: {}", e);
     }
   });
@@ -425,16 +424,9 @@ async fn run_ws_ping_server(addr: &SocketAddr) {
 async fn close_websocket(
   mut req: Request<Body>,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
-  let (response, fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
-
   async fn handler(
-    fut: fastwebsockets::upgrade::UpgradeFut,
+    ws: fastwebsockets::WebSocket<Upgraded>,
   ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut ws = fut.await?;
-    ws.set_writev(true);
-    ws.set_auto_close(true);
-    ws.set_auto_pong(true);
-
     let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
     ws.write_frame(fastwebsockets::Frame::close(1005, b""))
@@ -443,8 +435,14 @@ async fn close_websocket(
     Ok(())
   }
 
+  let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
+  let mut ws = upgrade_fut.await?;
+  ws.set_writev(true);
+  ws.set_auto_close(true);
+  ws.set_auto_pong(true);
+
   tokio::spawn(async move {
-    if let Err(e) = handler(fut).await {
+    if let Err(e) = handler(ws).await {
       eprintln!("Error in websocket connection: {}", e);
     }
   });
