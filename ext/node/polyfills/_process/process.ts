@@ -60,8 +60,8 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
   new Proxy(Object(), {
     get: (target, prop) => {
       if (
-        typeof prop === "symbol"
-        || OBJECT_PROTO_PROP_NAMES.includes(prop)
+        typeof prop === "symbol" ||
+        OBJECT_PROTO_PROP_NAMES.includes(prop)
       ) {
         return target[prop];
       }
@@ -87,7 +87,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       if (typeof prop === "symbol") {
         return false;
       }
-      return typeof denoEnvGet(String(prop)) === "string"
+      return typeof denoEnvGet(String(prop)) === "string";
     },
   });
 
