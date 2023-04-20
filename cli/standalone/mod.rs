@@ -38,6 +38,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 mod binary;
+mod virtual_fs;
 
 pub use binary::extract_standalone;
 pub use binary::is_standalone_binary;

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::env::current_exe;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -15,8 +16,10 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_runtime::permissions::PermissionsOptions;
 use log::Level;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -26,8 +29,15 @@ use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
+use crate::npm::NpmPackageResolver;
+use crate::npm::NpmResolution;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+
+use super::virtual_fs::FileBackedVfs;
+use super::virtual_fs::VfsBuilder;
+use super::virtual_fs::VfsRoot;
+use super::virtual_fs::VirtualDirectory;
 
 const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
@@ -45,27 +55,68 @@ pub struct Metadata {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
+  pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
 }
 
-pub fn write_binary_bytes(
+pub const NPM_VFS: Lazy<FileBackedVfs> = Lazy::new(|| {
+  let file_path = current_exe().unwrap();
+  let name = file_path.file_name().unwrap().to_string_lossy();
+  let root = std::env::temp_dir()
+    .join(format!("deno-compile-{}", name))
+    .join("node_modules");
+  let mut file = std::fs::File::open(file_path).unwrap();
+  let _trailer_pos = file.seek(SeekFrom::End(-40)).unwrap();
+  let mut trailer = [0; 40];
+  file.read_exact(&mut trailer).unwrap();
+  let trailer = Trailer::parse(&trailer).unwrap().unwrap();
+  file.seek(SeekFrom::Start(trailer.npm_vfs_pos)).unwrap();
+  let mut vfs_data = vec![0; trailer.npm_vfs_len() as usize];
+  file.read_exact(&mut vfs_data).unwrap();
+  let dir: VirtualDirectory = serde_json::from_slice(&vfs_data).unwrap();
+
+  let fs_root = VfsRoot {
+    dir,
+    root,
+    start_file_offset: trailer.npm_files_pos,
+  };
+  FileBackedVfs::new(file, fs_root)
+});
+
+fn write_binary_bytes(
   writer: &mut impl Write,
   original_bin: Vec<u8>,
   metadata: &Metadata,
   eszip: eszip::EszipV2,
+  npm_vfs: Option<&VirtualDirectory>,
+  npm_files: &Vec<Vec<u8>>,
 ) -> Result<(), AnyError> {
   let metadata = serde_json::to_string(metadata)?.as_bytes().to_vec();
+  let npm_vfs = serde_json::to_string(&npm_vfs)?.as_bytes().to_vec();
   let eszip_archive = eszip.into_bytes();
-
-  let eszip_pos = original_bin.len();
-  let metadata_pos = eszip_pos + eszip_archive.len();
-  let mut trailer = MAGIC_TRAILER.to_vec();
-  trailer.write_all(&eszip_pos.to_be_bytes())?;
-  trailer.write_all(&metadata_pos.to_be_bytes())?;
 
   writer.write_all(&original_bin)?;
   writer.write_all(&eszip_archive)?;
   writer.write_all(&metadata)?;
-  writer.write_all(&trailer)?;
+  writer.write_all(&npm_vfs)?;
+  for file in npm_files {
+    writer.write_all(file)?;
+  }
+
+  // write the trailer, which includes the positions
+  // of the data blocks in the file
+  writer.write_all(&{
+    let eszip_pos = original_bin.len() as u64;
+    let metadata_pos = eszip_pos + (eszip_archive.len() as u64);
+    let npm_vfs_pos = metadata_pos + (metadata.len() as u64);
+    let npm_files_pos = npm_vfs_pos + (npm_vfs.len() as u64);
+    Trailer {
+      eszip_pos,
+      metadata_pos,
+      npm_vfs_pos,
+      npm_files_pos,
+    }
+    .as_bytes()
+  })?;
 
   Ok(())
 }
@@ -74,12 +125,12 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   let Ok(mut output_file) = std::fs::File::open(exe_path) else {
     return false;
   };
-  if output_file.seek(SeekFrom::End(-24)).is_err() {
+  if output_file.seek(SeekFrom::End(-40)).is_err() {
     // This seek may fail because the file is too small to possibly be
     // `deno compile` output.
     return false;
   }
-  let mut trailer = [0; 24];
+  let mut trailer = [0; 40];
   if output_file.read_exact(&mut trailer).is_err() {
     return false;
   };
@@ -89,7 +140,7 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
-/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-24 (8 bytes * 3).
+/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-40 (8 bytes * 5).
 /// The magic trailer is followed by:
 /// - a u64 pointer to the JS bundle embedded in the binary
 /// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
@@ -105,21 +156,15 @@ pub async fn extract_standalone(
   let mut bufreader =
     deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
-  let trailer_pos = bufreader.seek(SeekFrom::End(-24)).await?;
-  let mut trailer = [0; 24];
+  let _trailer_pos = bufreader.seek(SeekFrom::End(-40)).await?;
+  let mut trailer = [0; 40];
   bufreader.read_exact(&mut trailer).await?;
-  let (magic_trailer, rest) = trailer.split_at(8);
-  if magic_trailer != MAGIC_TRAILER {
-    return Ok(None);
-  }
+  let trailer = match Trailer::parse(&trailer)? {
+    None => return Ok(None),
+    Some(trailer) => trailer,
+  };
 
-  let (eszip_archive_pos, rest) = rest.split_at(8);
-  let metadata_pos = rest;
-  let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
-  let metadata_pos = u64_from_bytes(metadata_pos)?;
-  let metadata_len = trailer_pos - metadata_pos;
-
-  bufreader.seek(SeekFrom::Start(eszip_archive_pos)).await?;
+  bufreader.seek(SeekFrom::Start(trailer.eszip_pos)).await?;
 
   let (eszip, loader) = eszip::EszipV2::parse(bufreader)
     .await
@@ -127,12 +172,14 @@ pub async fn extract_standalone(
 
   let mut bufreader = loader.await.context("Failed to parse eszip archive")?;
 
-  bufreader.seek(SeekFrom::Start(metadata_pos)).await?;
+  bufreader
+    .seek(SeekFrom::Start(trailer.metadata_pos))
+    .await?;
 
   let mut metadata = String::new();
 
   bufreader
-    .take(metadata_len)
+    .take(trailer.metadata_len())
     .read_to_string(&mut metadata)
     .await
     .context("Failed to read metadata from the current executable")?;
@@ -141,6 +188,55 @@ pub async fn extract_standalone(
   metadata.argv.append(&mut cli_args[1..].to_vec());
 
   Ok(Some((metadata, eszip)))
+}
+
+struct Trailer {
+  eszip_pos: u64,
+  metadata_pos: u64,
+  npm_vfs_pos: u64,
+  npm_files_pos: u64,
+}
+
+impl Trailer {
+  pub fn parse(trailer: &[u8]) -> Result<Option<Trailer>, AnyError> {
+    let (magic_trailer, rest) = trailer.split_at(8);
+    if magic_trailer != MAGIC_TRAILER {
+      return Ok(None);
+    }
+
+    let (eszip_archive_pos, rest) = rest.split_at(8);
+    let (metadata_pos, rest) = rest.split_at(8);
+    let (npm_vfs_pos, npm_files_pos) = rest.split_at(8);
+    let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
+    let metadata_pos = u64_from_bytes(metadata_pos)?;
+    let npm_vfs_pos = u64_from_bytes(npm_vfs_pos)?;
+    let npm_files_pos = u64_from_bytes(npm_files_pos)?;
+    Ok(Some(Trailer {
+      eszip_pos: eszip_archive_pos,
+      metadata_pos,
+      npm_vfs_pos,
+      npm_files_pos,
+    }))
+  }
+
+  pub fn metadata_len(&self) -> u64 {
+    self.npm_vfs_pos - self.metadata_pos
+  }
+
+  pub fn npm_vfs_len(&self) -> u64 {
+    self.npm_files_pos - self.npm_vfs_pos
+  }
+
+  pub fn as_bytes(&self) -> Vec<u8> {
+    let mut trailer = MAGIC_TRAILER.to_vec();
+    trailer.write_all(&self.eszip_pos.to_be_bytes()).unwrap();
+    trailer.write_all(&self.metadata_pos.to_be_bytes()).unwrap();
+    trailer.write_all(&self.npm_vfs_pos.to_be_bytes()).unwrap();
+    trailer
+      .write_all(&self.npm_files_pos.to_be_bytes())
+      .unwrap();
+    trailer
+  }
 }
 
 fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
@@ -154,6 +250,8 @@ pub struct DenoCompileBinaryWriter {
   file_fetcher: Arc<FileFetcher>,
   client: HttpClient,
   deno_dir: DenoDir,
+  npm_resolver: Arc<NpmPackageResolver>,
+  resolution: Arc<NpmResolution>,
 }
 
 impl DenoCompileBinaryWriter {
@@ -161,11 +259,15 @@ impl DenoCompileBinaryWriter {
     file_fetcher: Arc<FileFetcher>,
     client: HttpClient,
     deno_dir: DenoDir,
+    npm_resolver: Arc<NpmPackageResolver>,
+    resolution: Arc<NpmResolution>,
   ) -> Self {
     Self {
       file_fetcher,
       client,
       deno_dir,
+      npm_resolver,
+      resolution,
     }
   }
 
@@ -285,6 +387,14 @@ impl DenoCompileBinaryWriter {
       .resolve_import_map(&self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
+    let (npm_snapshot, npm_vfs, npm_files) = if self.resolution.has_packages() {
+      let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+      let snapshot = self.resolution.serialized_snapshot();
+      (Some(snapshot), Some(root_dir), files)
+    } else {
+      (None, None, Vec::new())
+    };
+
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       unstable: cli_options.unstable(),
@@ -300,8 +410,32 @@ impl DenoCompileBinaryWriter {
       ca_data,
       entrypoint: entrypoint.clone(),
       maybe_import_map,
+      npm_snapshot,
     };
 
-    write_binary_bytes(writer, original_bin, &metadata, eszip)
+    write_binary_bytes(
+      writer,
+      original_bin,
+      &metadata,
+      eszip,
+      npm_vfs.as_ref(),
+      &npm_files,
+    )
+  }
+
+  fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
+    let root_path = self.npm_resolver.root_dir_url().to_file_path().unwrap();
+    let mut builder = VfsBuilder::new(root_path);
+    if let Some(node_modules_path) = self.npm_resolver.node_modules_path() {
+      builder.add_dir_recursive(&node_modules_path)?;
+    } else {
+      for package in self.resolution.all_packages() {
+        let folder = self
+          .npm_resolver
+          .resolve_pkg_folder_from_pkg_id(&package.pkg_id)?;
+        builder.add_dir_recursive(&folder)?;
+      }
+    }
+    Ok(builder)
   }
 }

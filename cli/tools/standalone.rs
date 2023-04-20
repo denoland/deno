@@ -28,6 +28,8 @@ pub async fn compile(
     ps.file_fetcher.clone(),
     ps.http_client.clone(),
     ps.dir.clone(),
+    ps.npm_resolver.clone(),
+    ps.npm_resolution.clone(),
   );
   let module_specifier = ps.options.resolve_main_module()?;
   let module_roots = {
@@ -52,17 +54,8 @@ pub async fn compile(
   )
   .unwrap();
 
-  // at the moment, we don't support npm specifiers in deno_compile, so show an error
-  error_for_any_npm_specifier(&graph)?;
-
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
-
-  let binary_builder = DenoCompileBinaryBuilder::new(
-    ps.file_fetcher.clone(),
-    ps.http_client.clone(),
-    ps.dir.clone(),
-  );
 
   log::info!(
     "{} {} to {}",

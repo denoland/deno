@@ -527,8 +527,11 @@ impl Flags {
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) | Repl(_) => std::env::current_dir().ok(),
-      _ => None,
+      | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
+        std::env::current_dir().ok()
+      }
+      Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
+      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
     }
   }
 
@@ -2230,7 +2233,7 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.
-  
+
 Alternatively, the 'deno check' subcommand can be used.",
     )
   } else {

@@ -237,6 +237,10 @@ impl NpmResolution {
     Ok(nv)
   }
 
+  pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
+    self.snapshot.read().all_packages()
+  }
+
   pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
     self.snapshot.read().all_packages_partitioned()
   }

@@ -95,10 +95,10 @@ impl NpmPackageResolver {
     pkg_nv: &NpmPackageNv,
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
-    self.resolve_pkg_folder_from_deno_module_at_pkg_id(&pkg_id)
+    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 
-  fn resolve_pkg_folder_from_deno_module_at_pkg_id(
+  pub fn resolve_pkg_folder_from_pkg_id(
     &self,
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {

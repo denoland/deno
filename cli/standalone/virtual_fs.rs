@@ -5,7 +5,6 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -157,15 +156,8 @@ impl VfsBuilder {
     }
   }
 
-  pub fn write_files(&self, writer: &mut impl Write) -> std::io::Result<()> {
-    for file in &self.files {
-      writer.write_all(file)?;
-    }
-    Ok(())
-  }
-
-  pub fn into_root_dir(self) -> VirtualDirectory {
-    self.root_dir
+  pub fn into_dir_and_files(self) -> (VirtualDirectory, Vec<Vec<u8>>) {
+    (self.root_dir, self.files)
   }
 }
 
@@ -467,6 +459,7 @@ impl FileBackedVfs {
 
 #[cfg(test)]
 mod test {
+  use std::io::Write;
   use test_util::TempDir;
 
   use super::*;
@@ -604,11 +597,13 @@ mod test {
     temp_dir: &TempDir,
   ) -> (PathBuf, FileBackedVfs) {
     let virtual_fs_file = temp_dir.path().join("virtual_fs");
+    let (root_dir, files) = builder.into_dir_and_files();
     {
       let mut file = std::fs::File::create(&virtual_fs_file).unwrap();
-      builder.write_files(&mut file).unwrap();
+      for file_data in &files {
+        file.write_all(file_data).unwrap();
+      }
     }
-    let root_dir = builder.into_root_dir();
     let file = std::fs::File::open(&virtual_fs_file).unwrap();
     let dest_path = temp_dir.path().join("dest");
     (
