@@ -13,6 +13,7 @@ const {
   ObjectCreate,
   ObjectFreeze,
   ObjectValues,
+  SharedArrayBufferPrototype,
   ObjectFromEntries,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -64,12 +65,19 @@ const {
   Uint8Array,
   Set,
   isNaN,
-  getOwnNonIndexProperties,
-  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeGetByteLength,
+  SetPrototypeValues,
+  RegExpPrototype,
+  RegExpPrototypeToString,
+  PromisePrototype,
+  WeakSetPrototype,
+  WeakMapPrototype,
+  ArrayBufferPrototype,
   ReflectOwnKeys,
   Array,
-  RegExpPrototypeToString,
+  SafeSetIterator,
+  SafeMapIterator,
   ArrayIsArray,
   SymbolIterator,
   ArrayBufferIsView,
@@ -220,15 +228,9 @@ const _stringValueOf = String.prototype.valueOf;
 // https://tc39.es/ecma262/#sec-symbol.prototype.valueof
 const _symbolValueOf = Symbol.prototype.valueOf;
 
-// https://tc39.es/ecma262/#sec-weakmap.prototype.has
-const _weakMapHas = WeakMap.prototype.has;
-
-// https://tc39.es/ecma262/#sec-weakset.prototype.has
-const _weakSetHas = WeakSet.prototype.has;
-
 // https://tc39.es/ecma262/#sec-get-arraybuffer.prototype.bytelength
 const _getArrayBufferByteLength = ObjectGetOwnPropertyDescriptor(
-  ArrayBuffer.prototype,
+  ArrayBufferPrototype,
   "byteLength",
 ).get;
 
@@ -237,20 +239,8 @@ let _getSharedArrayBufferByteLength;
 
 // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
 const _getTypedArrayToStringTag = ObjectGetOwnPropertyDescriptor(
-  Object.getPrototypeOf(Uint8Array).prototype,
+  ObjectGetPrototypeOf(Uint8Array).prototype,
   SymbolToStringTag,
-).get;
-
-// https://tc39.es/ecma262/#sec-get-set.prototype.size
-const _getSetSize = ObjectGetOwnPropertyDescriptor(
-  Set.prototype,
-  "size",
-).get;
-
-// https://tc39.es/ecma262/#sec-get-map.prototype.size
-const _getMapSize = ObjectGetOwnPropertyDescriptor(
-  Map.prototype,
-  "size",
 ).get;
 
 function isObjectLike(value) {
@@ -330,15 +320,6 @@ export function isGeneratorFunction(
   );
 }
 
-export function isMap(value) {
-  try {
-    _getMapSize.call(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function isMapIterator(
   value,
 ) {
@@ -391,29 +372,6 @@ export function isBigIntObject(value) {
   }
 }
 
-export function isPromise(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === "Promise"
-  );
-}
-export function isRegExp(value) {
-  return (
-    isObjectLike(value) &&
-    value[SymbolToStringTag] === undefined &&
-    ObjectPrototypeToString(value) === "[object RegExp]"
-  );
-}
-
-export function isSet(value) {
-  try {
-    _getSetSize.call(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function isSetIterator(
   value,
 ) {
@@ -428,7 +386,7 @@ export function isSharedArrayBuffer(
 ) {
   // TODO(kt3k): add SharedArrayBuffer to primordials
   _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
-    SharedArrayBuffer.prototype,
+    SharedArrayBufferPrototype,
     "byteLength",
   ).get;
 
@@ -460,28 +418,6 @@ export function isSymbolObject(value) {
 
   try {
     _symbolValueOf.call(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function isWeakMap(
-  value,
-) {
-  try {
-    _weakMapHas.call(value, null);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function isWeakSet(
-  value,
-) {
-  try {
-    _weakSetHas.call(value, null);
     return true;
   } catch {
     return false;
@@ -657,7 +593,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     tag = "";
   }
   let base = "";
-  let formatter = getEmptyFormatArray;
+  let formatter = () => [];
   let braces;
   let noIterator = true;
   let i = 0;
@@ -690,7 +626,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
         extrasType = kArrayExtrasType;
         formatter = formatArray;
-      } else if (isSet(value)) {
+      } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
         const size = SetPrototypeGetSize(value);
         const prefix = getPrefix(constructor, tag, "Set", `(${size})`);
         keys = getKeys(value, ctx.showHidden);
@@ -701,7 +637,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return `${prefix}{}`;
         }
         braces = [`${prefix}{`, "}"];
-      } else if (isMap(value)) {
+      } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
         const size = MapPrototypeGetSize(value);
         const prefix = getPrefix(constructor, tag, "Map", `(${size})`);
         keys = getKeys(value, ctx.showHidden);
@@ -765,7 +701,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         if (keys.length === 0 && protoProps === undefined) {
           return ctx.stylize(base, "special");
         }
-      } else if (isRegExp(value)) {
+      } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
         // Make RegExps say that they are RegExps
         base = RegExpPrototypeToString(
           constructor !== null ? value : new SafeRegExp(value),
@@ -805,7 +741,9 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           formatter = formatArrayBuffer;
         } else if (keys.length === 0 && protoProps === undefined) {
           return prefix +
-            `{ byteLength: ${formatNumber(ctx.stylize, value.byteLength)} }`;
+            `{ byteLength: ${
+              formatNumber(ctx.stylize, TypedArrayPrototypeGetByteLength(value))
+            } }`;
         }
         braces[0] = `${prefix}{`;
         ArrayPrototypeUnshift(keys, "byteLength");
@@ -813,13 +751,13 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         braces[0] = `${getPrefix(constructor, tag, "DataView")}{`;
         // .buffer goes last, it's not a primitive like the others.
         ArrayPrototypeUnshift(keys, "byteLength", "byteOffset", "buffer");
-      } else if (isPromise(value)) {
+      } else if (ObjectPrototypeIsPrototypeOf(PromisePrototype, value)) {
         braces[0] = `${getPrefix(constructor, tag, "Promise")}{`;
         formatter = formatPromise;
-      } else if (isWeakSet(value)) {
+      } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
         braces[0] = `${getPrefix(constructor, tag, "WeakSet")}{`;
         formatter = ctx.showHidden ? formatWeakSet : formatWeakCollection;
-      } else if (isWeakMap(value)) {
+      } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
         braces[0] = `${getPrefix(constructor, tag, "WeakMap")}{`;
         formatter = ctx.showHidden ? formatWeakMap : formatWeakCollection;
       } else if (isModuleNamespaceObject(value)) {
@@ -902,7 +840,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
       output = ArrayPrototypeSort(output, comparator);
     } else if (keys.length > 1) {
       const sorted = output.slice(output.length - keys.length).sort(comparator);
-      output.splice(output.length - keys.length, keys.length, ...sorted);
+      output.splice(
+        output.length - keys.length,
+        keys.length,
+        ...new SafeArrayIterator(sorted),
+      );
     }
   }
 
@@ -1024,7 +966,7 @@ function getConstructorName(
       descriptor !== undefined &&
       typeof descriptor.value === "function" &&
       descriptor.value.name !== "" &&
-      isInstanceof(tmp, descriptor.value)
+      ObjectPrototypeIsPrototypeOf(tmp, descriptor.value)
     ) {
       if (
         protoProps !== undefined &&
@@ -1118,19 +1060,6 @@ function formatPrimitive(fn, value, ctx) {
   return fn(maybeQuoteSymbol(value, ctx), "symbol");
 }
 
-// Return a new empty array to push in the results of the default formatter.
-function getEmptyFormatArray() {
-  return [];
-}
-
-function isInstanceof(object, proto) {
-  try {
-    return object instanceof proto;
-  } catch {
-    return false;
-  }
-}
-
 function getPrefix(constructor, tag, fallback, size = "") {
   if (constructor === null) {
     if (tag !== "" && fallback !== tag) {
@@ -1215,7 +1144,7 @@ function getKeys(value, showHidden) {
 function formatSet(value, ctx, _ignored, recurseTimes) {
   ctx.indentationLvl += 2;
 
-  const values = [...value.values()];
+  const values = [...new SafeSetIterator(value.values())];
   const valLen = value.size;
   const len = MathMin(MathMax(0, ctx.iterableLimit), valLen);
 
@@ -1235,7 +1164,7 @@ function formatSet(value, ctx, _ignored, recurseTimes) {
 function formatMap(value, ctx, _gnored, recurseTimes) {
   ctx.indentationLvl += 2;
 
-  const values = [...value.entries()];
+  const values = [...new SafeMapIterator(value.entries())];
   const valLen = value.size;
   const len = MathMin(MathMax(0, ctx.iterableLimit), valLen);
 
