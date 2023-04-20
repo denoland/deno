@@ -320,6 +320,20 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.env access without permission should trigger prompt",
+  permissions: "none",
+  fn() {
+    assertThrows(
+      () => {
+        process.env.FOO;
+      },
+      Deno.errors.PermissionDenied,
+      "FOO",
+    );
+  },
+});
+
+Deno.test({
   name: "process.env doesn't throw with invalid env var names",
   fn() {
     assertEquals(process.env[""], undefined);
