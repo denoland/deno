@@ -31,13 +31,15 @@ export const nextTick = _nextTick;
 
 /** Wrapper of Deno.env.get, which doesn't throw type error when
  * the env name has "=" or "\0" in it. */
-function denoEnvGet(name: string) {
-  const perm =
-    Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
-      "granted"; // for Deno Deploy
-  // Returns undefined if the env permission is unavailable
-  if (perm === "denied") {
-    return undefined;
+function denoEnvGet(name: string, silent = true) {
+  if (silent) {
+    const perm =
+      Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
+        "granted"; // for Deno Deploy
+    // Returns undefined if the env permission is unavailable
+    if (perm !== "granted") {
+      return undefined;
+    }
   }
   try {
     return Deno.env.get(name);
@@ -64,7 +66,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
         return target[prop];
       }
 
-      return denoEnvGet(prop);
+      return denoEnvGet(prop, false);
     },
     ownKeys: () => Reflect.ownKeys(Deno.env.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
