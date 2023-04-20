@@ -46,6 +46,7 @@ const {
   ArrayPrototypeShift,
   AggregateErrorPrototype,
   RegExpPrototypeTest,
+  ObjectPrototypeToString,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
   DatePrototypeGetTime,
@@ -103,6 +104,7 @@ const {
   ReflectGetOwnPropertyDescriptor,
   ReflectGetPrototypeOf,
   ReflectHas,
+  BigIntPrototypeValueOf,
   ObjectGetPrototypeOf,
   FunctionPrototypeToString,
   StringPrototypeStartsWith,
@@ -206,12 +208,6 @@ defineColorAlias("inverse", "swapColors");
 defineColorAlias("inverse", "swapcolors");
 defineColorAlias("doubleunderline", "doubleUnderline");
 
-// https://tc39.es/ecma262/#sec-object.prototype.tostring
-const _toString = Object.prototype.toString;
-
-// https://tc39.es/ecma262/#sec-bigint.prototype.valueof
-const _bigIntValueOf = BigInt.prototype.valueOf;
-
 // https://tc39.es/ecma262/#sec-boolean.prototype.valueof
 const _booleanValueOf = Boolean.prototype.valueOf;
 
@@ -269,7 +265,7 @@ export function isArgumentsObject(value) {
   return (
     isObjectLike(value) &&
     value[SymbolToStringTag] === undefined &&
-    _toString.call(value) === "[object Arguments]"
+    ObjectPrototypeToString(value) === "[object Arguments]"
   );
 }
 
@@ -365,7 +361,7 @@ export function isNativeError(value) {
   return (
     isObjectLike(value) &&
     value[SymbolToStringTag] === undefined &&
-    _toString.call(value) === "[object Error]"
+    ObjectPrototypeToString(value) === "[object Error]"
   );
 }
 
@@ -388,7 +384,7 @@ export function isBigIntObject(value) {
   }
 
   try {
-    _bigIntValueOf.call(value);
+    BigIntPrototypeValueOf(value);
     return true;
   } catch {
     return false;
@@ -405,7 +401,7 @@ export function isRegExp(value) {
   return (
     isObjectLike(value) &&
     value[SymbolToStringTag] === undefined &&
-    _toString.call(value) === "[object RegExp]"
+    ObjectPrototypeToString(value) === "[object RegExp]"
   );
 }
 
@@ -675,7 +671,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     // Iterators and the rest are split to reduce checks.
     // We have to check all values in case the constructor is set to null.
     // Otherwise it would not possible to identify all types properly.
-    if (SymbolIterator in value || constructor === null) {
+    if (ObjectPrototypeHasOwnProperty(value, SymbolIterator) || constructor === null) {
       noIterator = false;
       if (ArrayIsArray(value)) {
         // Only set the constructor for non ordinary ("Array [...]") arrays.
@@ -1765,28 +1761,6 @@ function getBoxedBase(
     return base;
   }
   return ctx.stylize(base, type.toLowerCase());
-}
-
-function getClassBase(value, constructor, tag) {
-  // deno-lint-ignore no-prototype-builtins
-  const hasName = value.hasOwnProperty("name");
-  const name = (hasName && value.name) || "(anonymous)";
-  let base = `class ${name}`;
-  if (constructor !== "Function" && constructor !== null) {
-    base += ` [${constructor}]`;
-  }
-  if (tag !== "" && constructor !== tag) {
-    base += ` [${tag}]`;
-  }
-  if (constructor !== null) {
-    const superName = ObjectGetPrototypeOf(value).name;
-    if (superName) {
-      base += ` extends ${superName}`;
-    }
-  } else {
-    base += " extends [null prototype]";
-  }
-  return `[${base}]`;
 }
 
 function reduceToSingleString(
@@ -3016,9 +2990,11 @@ const timerMap = new Map();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 function getConsoleInspectOptions() {
+  const color = !colors_.getNoColor();
   return {
     ...getDefaultInspectOptions(),
-    colors: !colors_.getNoColor(),
+    colors: color,
+    stylize: color ? createStylizeWithColor(styles, colors) : stylizeNoColor,
   };
 }
 
