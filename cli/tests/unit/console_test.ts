@@ -307,16 +307,20 @@ Deno.test(function consoleTestStringifyCircular() {
   assertEquals(stringify(Uint8Array.prototype), "Uint8Array {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
-    "{ a: { b: { c: { d: [Set] } } } }",
+    `{
+  a: {
+    b: { c: { d: Set(1) { 1 } } }
+  }
+}`,
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
     stringify(JSON),
-    "JSON {}",
+    "Object [JSON] {}",
   );
   assertEquals(
     stringify(new Console(() => {})),
-    `console {
+    `Object [console] {
   log: [Function: log],
   debug: [Function: debug],
   info: [Function: info],
@@ -345,15 +349,11 @@ Deno.test(function consoleTestStringifyCircular() {
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
-    'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
-  );
-  assertEquals(
-    stringify({
-      [Symbol.for("Deno.customInspect")]: function () {
-        return Deno.inspect(this);
-      },
-    }),
-    "[Circular *1]",
+    `Object [TAG] {
+  str: 1,
+  [Symbol(sym)]: 2,
+  [Symbol(Symbol.toStringTag)]: "TAG"
+}`,
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
@@ -433,7 +433,75 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
 
   assertEquals(
     stripColor(Deno.inspect(Array, { showHidden: true })),
-    `[Function: Array] { [Symbol(Symbol.species)]: [Getter] }`,
+    `<ref *1> [Function: Array] {
+  [length]: 1,
+  [name]: "Array",
+  [prototype]: Object(0) [
+    [length]: 0,
+    [constructor]: [Circular *1],
+    [at]: [Function: at] { [length]: 1, [name]: "at" },
+    [concat]: [Function: concat] { [length]: 1, [name]: "concat" },
+    [copyWithin]: [Function: copyWithin] { [length]: 2, [name]: "copyWithin" },
+    [fill]: [Function: fill] { [length]: 1, [name]: "fill" },
+    [find]: [Function: find] { [length]: 1, [name]: "find" },
+    [findIndex]: [Function: findIndex] { [length]: 1, [name]: "findIndex" },
+    [findLast]: [Function: findLast] { [length]: 1, [name]: "findLast" },
+    [findLastIndex]: [Function: findLastIndex] { [length]: 1, [name]: "findLastIndex" },
+    [lastIndexOf]: [Function: lastIndexOf] { [length]: 1, [name]: "lastIndexOf" },
+    [pop]: [Function: pop] { [length]: 0, [name]: "pop" },
+    [push]: [Function: push] { [length]: 1, [name]: "push" },
+    [reverse]: [Function: reverse] { [length]: 0, [name]: "reverse" },
+    [shift]: [Function: shift] { [length]: 0, [name]: "shift" },
+    [unshift]: [Function: unshift] { [length]: 1, [name]: "unshift" },
+    [slice]: [Function: slice] { [length]: 2, [name]: "slice" },
+    [sort]: [Function: sort] { [length]: 1, [name]: "sort" },
+    [splice]: [Function: splice] { [length]: 2, [name]: "splice" },
+    [includes]: [Function: includes] { [length]: 1, [name]: "includes" },
+    [indexOf]: [Function: indexOf] { [length]: 1, [name]: "indexOf" },
+    [join]: [Function: join] { [length]: 1, [name]: "join" },
+    [keys]: [Function: keys] { [length]: 0, [name]: "keys" },
+    [entries]: [Function: entries] { [length]: 0, [name]: "entries" },
+    [values]: [Function: values] { [length]: 0, [name]: "values" },
+    [forEach]: [Function: forEach] { [length]: 1, [name]: "forEach" },
+    [filter]: [Function: filter] { [length]: 1, [name]: "filter" },
+    [flat]: [Function: flat] { [length]: 0, [name]: "flat" },
+    [flatMap]: [Function: flatMap] { [length]: 1, [name]: "flatMap" },
+    [map]: [Function: map] { [length]: 1, [name]: "map" },
+    [every]: [Function: every] { [length]: 1, [name]: "every" },
+    [some]: [Function: some] { [length]: 1, [name]: "some" },
+    [reduce]: [Function: reduce] { [length]: 1, [name]: "reduce" },
+    [reduceRight]: [Function: reduceRight] { [length]: 1, [name]: "reduceRight" },
+    [toLocaleString]: [Function: toLocaleString] { [length]: 0, [name]: "toLocaleString" },
+    [toString]: [Function: toString] { [length]: 0, [name]: "toString" },
+    [toReversed]: [Function: toReversed] { [length]: 0, [name]: "toReversed" },
+    [toSorted]: [Function: toSorted] { [length]: 1, [name]: "toSorted" },
+    [toSpliced]: [Function: toSpliced] { [length]: 2, [name]: "toSpliced" },
+    [with]: [Function: with] { [length]: 2, [name]: "with" },
+    [Symbol(Symbol.iterator)]: [Function: values] { [length]: 0, [name]: "values" },
+    [Symbol(Symbol.unscopables)]: [Object: null prototype] {
+      at: true,
+      copyWithin: true,
+      entries: true,
+      fill: true,
+      find: true,
+      findIndex: true,
+      findLast: true,
+      findLastIndex: true,
+      flat: true,
+      flatMap: true,
+      includes: true,
+      keys: true,
+      values: true,
+      toReversed: true,
+      toSorted: true,
+      toSpliced: true
+    }
+  ],
+  [isArray]: [Function: isArray] { [length]: 1, [name]: "isArray" },
+  [from]: [Function: from] { [length]: 1, [name]: "from" },
+  [of]: [Function: of] { [length]: 0, [name]: "of" },
+  [Symbol(Symbol.species)]: [Getter]
+}`,
   );
 });
 
@@ -1512,15 +1580,15 @@ Deno.test(function consoleTable() {
     assertEquals(
       stripColor(out.toString()),
       `\
-┌───────┬───────────┬───────────────────┬────────┐
-│ (idx) │ c         │ e                 │ Values │
-├───────┼───────────┼───────────────────┼────────┤
-│ a     │           │                   │ true   │
-│ b     │ { d: 10 } │ [ 1, 2, [Array] ] │        │
-│ f     │           │                   │ "test" │
-│ g     │           │                   │        │
-│ h     │           │                   │        │
-└───────┴───────────┴───────────────────┴────────┘
+┌───────┬───────────┬────────────────────┬────────┐
+│ (idx) │ c         │ e                  │ Values │
+├───────┼───────────┼────────────────────┼────────┤
+│ a     │           │                    │ true   │
+│ b     │ { d: 10 } │ [ 1, 2, [ 5, 6 ] ] │        │
+│ f     │           │                    │ "test" │
+│ g     │           │                    │        │
+│ h     │           │                    │        │
+└───────┴───────────┴────────────────────┴────────┘
 `,
     );
   });
@@ -1992,10 +2060,13 @@ Deno.test(function inspectProxy() {
       new Proxy([1, 2, 3, 4, 5, 6, 7], { get() {} }),
       { showProxy: true },
     )),
-    `Proxy [ [
+    `Proxy [
+  [
     1, 2, 3, 4,
     5, 6, 7
-  ], { get: [Function: get] } ]`,
+  ],
+  { get: [Function: get] }
+]`,
   );
   assertEquals(
     stripColor(Deno.inspect(

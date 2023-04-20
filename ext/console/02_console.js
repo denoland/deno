@@ -20,6 +20,8 @@ const {
   String,
   SafeStringIterator,
   DatePrototype,
+  MapPrototypeEntries,
+  SetPrototypeGetSize,
   StringPrototypeRepeat,
   StringPrototypeReplace,
   StringPrototypeReplaceAll,
@@ -30,6 +32,8 @@ const {
   StringPrototypePadEnd,
   ObjectGetOwnPropertySymbols,
   ObjectGetOwnPropertyNames,
+  SymbolPrototypeGetDescription,
+  SymbolPrototypeToString,
   ArrayPrototypePushApply,
   ObjectPrototypePropertyIsEnumerable,
   StringPrototypeMatch,
@@ -42,6 +46,7 @@ const {
   ArrayPrototypeShift,
   AggregateErrorPrototype,
   RegExpPrototypeTest,
+  ArrayPrototypeSort,
   ArrayPrototypeUnshift,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
@@ -57,8 +62,12 @@ const {
   Uint8Array,
   Set,
   isNaN,
+  getOwnNonIndexProperties,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  TypedArrayPrototypeGetLength,
   ReflectOwnKeys,
   Array,
+  RegExpPrototypeToString,
   ArrayIsArray,
   SymbolIterator,
   ArrayBufferIsView,
@@ -276,7 +285,6 @@ export function isArrayBuffer(value) {
 export function isAsyncFunction(value) {
   return (
     typeof value === "function" &&
-    // @ts-ignore: function is a kind of object
     value[SymbolToStringTag] === "AsyncFunction"
   );
 }
@@ -322,7 +330,6 @@ export function isGeneratorFunction(
 ) {
   return (
     typeof value === "function" &&
-    // @ts-ignore: function is a kind of object
     value[SymbolToStringTag] === "GeneratorFunction"
   );
 }
@@ -565,6 +572,23 @@ function formatValue(
   //   value = proxy;
   // }
 
+  // Using an array here is actually better for the average case than using
+  // a Set. `seen` will only check for the depth and will never grow too large.
+  if (ctx.seen.includes(value)) {
+    let index = 1;
+    if (ctx.circular === undefined) {
+      ctx.circular = new Map();
+      ctx.circular.set(value, index);
+    } else {
+      index = ctx.circular.get(value);
+      if (index === undefined) {
+        index = ctx.circular.size + 1;
+        ctx.circular.set(value, index);
+      }
+    }
+    return ctx.stylize(`[Circular *${index}]`, "special");
+  }
+
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
   if (ctx.customInspect) {
@@ -589,23 +613,6 @@ function formatValue(
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
     }
-  }
-
-  // Using an array here is actually better for the average case than using
-  // a Set. `seen` will only check for the depth and will never grow too large.
-  if (ctx.seen.includes(value)) {
-    let index = 1;
-    if (ctx.circular === undefined) {
-      ctx.circular = new Map();
-      ctx.circular.set(value, index);
-    } else {
-      index = ctx.circular.get(value);
-      if (index === undefined) {
-        index = ctx.circular.size + 1;
-        ctx.circular.set(value, index);
-      }
-    }
-    return ctx.stylize(`[Circular *${index}]`, "special");
   }
 
   return formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails);
@@ -663,12 +670,12 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   let extrasType = kObjectType;
 
   if (proxyDetails != null && ctx.showProxy) {
-    return `Proxy ` + formatValue(ctx, proxyDetails);
+    return `Proxy ` + formatValue(ctx, proxyDetails, recurseTimes);
   } else {
     // Iterators and the rest are split to reduce checks.
     // We have to check all values in case the constructor is set to null.
     // Otherwise it would not possible to identify all types properly.
-    if (value[SymbolIterator] || constructor === null) {
+    if (SymbolIterator in value || constructor === null) {
       noIterator = false;
       if (ArrayIsArray(value)) {
         // Only set the constructor for non ordinary ("Array [...]") arrays.
@@ -685,23 +692,23 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         extrasType = kArrayExtrasType;
         formatter = formatArray;
       } else if (isSet(value)) {
-        const size = value.size;
+        const size = SetPrototypeGetSize(value);
         const prefix = getPrefix(constructor, tag, "Set", `(${size})`);
         keys = getKeys(value, ctx.showHidden);
         formatter = constructor !== null
-          ? formatSet.bind(null, value)
-          : formatSet.bind(null, value.values());
+          ? FunctionPrototypeBind(formatSet, null, value)
+          : FunctionPrototypeBind(formatSet, null, SetPrototypeValues(value));
         if (size === 0 && keys.length === 0 && protoProps === undefined) {
           return `${prefix}{}`;
         }
         braces = [`${prefix}{`, "}"];
       } else if (isMap(value)) {
-        const size = value.size;
+        const size = MapPrototypeGetSize(value);
         const prefix = getPrefix(constructor, tag, "Map", `(${size})`);
         keys = getKeys(value, ctx.showHidden);
         formatter = constructor !== null
-          ? formatMap.bind(null, value)
-          : formatMap.bind(null, value.entries());
+          ? FunctionPrototypeBind(formatMap, null, value)
+          : FunctionPrototypeBind(formatMap, null, MapPrototypeEntries(value));
         if (size === 0 && keys.length === 0 && protoProps === undefined) {
           return `${prefix}{}`;
         }
@@ -716,7 +723,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           // // Reconstruct the array information.
           // bound = new primordials[fallback](value);
         }
-        const size = value.length;
+        const size = TypedArrayPrototypeGetLength(value);
         const prefix = getPrefix(constructor, tag, fallback, `(${size})`);
         braces = [`${prefix}[`, "]"];
         if (value.length === 0 && keys.length === 0 && !ctx.showHidden) {
@@ -724,18 +731,18 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
         // Special handle the value. The original value is required below. The
         // bound function is required to reconstruct missing information.
-        (formatter) = formatTypedArray.bind(null, bound, size);
+        formatter = FunctionPrototypeBind(formatTypedArray, null, bound, size);
         extrasType = kArrayExtrasType;
       } else if (isMapIterator(value)) {
         keys = getKeys(value, ctx.showHidden);
         braces = getIteratorBraces("Map", tag);
         // Add braces to the formatter parameters.
-        (formatter) = formatIterator.bind(null, braces);
+        formatter = FunctionPrototypeBind(formatIterator, null, braces);
       } else if (isSetIterator(value)) {
         keys = getKeys(value, ctx.showHidden);
         braces = getIteratorBraces("Set", tag);
         // Add braces to the formatter parameters.
-        (formatter) = formatIterator.bind(null, braces);
+        formatter = FunctionPrototypeBind(formatIterator, null, braces);
       } else {
         noIterator = true;
       }
@@ -761,10 +768,9 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (isRegExp(value)) {
         // Make RegExps say that they are RegExps
-        base = new SafeRegExp(
+        base = RegExpPrototypeToString(
           constructor !== null ? value : new SafeRegExp(value),
-        )
-          .toString();
+        );
         const prefix = getPrefix(constructor, tag, "RegExp");
         if (prefix !== "RegExp ") {
           base = `${prefix}${base}`;
@@ -797,35 +803,30 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
         const prefix = getPrefix(constructor, tag, arrayType);
         if (typedArray === undefined) {
-          (formatter) = formatArrayBuffer;
+          formatter = formatArrayBuffer;
         } else if (keys.length === 0 && protoProps === undefined) {
           return prefix +
             `{ byteLength: ${formatNumber(ctx.stylize, value.byteLength)} }`;
         }
         braces[0] = `${prefix}{`;
-        Array.prototype.unshift.call(keys, "byteLength");
+        ArrayPrototypeUnshift(keys, "byteLength");
       } else if (isDataView(value)) {
         braces[0] = `${getPrefix(constructor, tag, "DataView")}{`;
         // .buffer goes last, it's not a primitive like the others.
-        Array.prototype.unshift.call(
-          keys,
-          "byteLength",
-          "byteOffset",
-          "buffer",
-        );
+        ArrayPrototypeUnshift(keys, "byteLength", "byteOffset", "buffer");
       } else if (isPromise(value)) {
         braces[0] = `${getPrefix(constructor, tag, "Promise")}{`;
-        (formatter) = formatPromise;
+        formatter = formatPromise;
       } else if (isWeakSet(value)) {
         braces[0] = `${getPrefix(constructor, tag, "WeakSet")}{`;
-        (formatter) = ctx.showHidden ? formatWeakSet : formatWeakCollection;
+        formatter = ctx.showHidden ? formatWeakSet : formatWeakCollection;
       } else if (isWeakMap(value)) {
         braces[0] = `${getPrefix(constructor, tag, "WeakMap")}{`;
-        (formatter) = ctx.showHidden ? formatWeakMap : formatWeakCollection;
+        formatter = ctx.showHidden ? formatWeakMap : formatWeakCollection;
       } else if (isModuleNamespaceObject(value)) {
         braces[0] = `${getPrefix(constructor, tag, "Module")}{`;
         // Special handle keys for namespace objects.
-        (formatter) = formatNamespaceObject.bind(null, keys);
+        formatter = formatNamespaceObject.bind(null, keys);
       } else if (isBoxedPrimitive(value)) {
         base = getBoxedBase(value, ctx, keys, constructor, tag);
         if (keys.length === 0 && protoProps === undefined) {
@@ -838,15 +839,19 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           //   const address = getExternalValue(value).toString(16);
           //   return ctx.stylize(`[External: ${address}]`, 'special');
           // }
-          return `${getCtxStyle(value, constructor, tag)}{}`;
+          return `${getCtxStyle(value, constructor, tag, displayName)}{}`;
         }
-        braces[0] = `${getCtxStyle(value, constructor, tag)}{`;
+        braces[0] = `${getCtxStyle(value, constructor, tag, displayName)}{`;
       }
     }
   }
 
   if (recurseTimes > ctx.depth && ctx.depth !== null) {
-    let constructorName = getCtxStyle(value, constructor, tag).slice(0, -1);
+    let constructorName = StringPrototypeSlice(
+      getCtxStyle(value, constructor, tag, displayName),
+      0,
+      -1,
+    );
     if (constructor !== null) {
       constructorName = `[${constructorName}]`;
     }
@@ -861,15 +866,20 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   try {
     output = formatter(ctx, value, recurseTimes);
     for (i = 0; i < keys.length; i++) {
-      output.push(
+      ArrayPrototypePush(
+        output,
         formatProperty(ctx, value, recurseTimes, keys[i], extrasType),
       );
     }
     if (protoProps !== undefined) {
-      output.push(...protoProps);
+      ArrayPrototypePushApply(output, protoProps);
     }
   } catch (err) {
-    const constructorName = getCtxStyle(value, constructor, tag).slice(0, -1);
+    const constructorName = StringPrototypeSlice(
+      getCtxStyle(value, constructor, tag, displayName),
+      0,
+      -1,
+    );
     return handleMaxCallStackSize(ctx, err, constructorName, indentationLvl);
   }
 
@@ -890,7 +900,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   if (ctx.sorted) {
     const comparator = ctx.sorted === true ? undefined : ctx.sorted;
     if (extrasType === kObjectType) {
-      output = output.sort(comparator);
+      output = ArrayPrototypeSort(output, comparator);
     } else if (keys.length > 1) {
       const sorted = output.slice(output.length - keys.length).sort(comparator);
       output.splice(output.length - keys.length, keys.length, ...sorted);
@@ -1106,10 +1116,7 @@ function formatPrimitive(fn, value, ctx) {
     return fn("undefined", "undefined");
   }
   // es6 symbol primitive
-  if (typeof value === "symbol" && value.description !== undefined) {
-    return fn(`Symbol(${quoteString(value.description, ctx)})`, "symbol");
-  }
-  return fn(value.toString(), "symbol");
+  return fn(maybeQuoteSymbol(value, ctx), "symbol");
 }
 
 // Return a new empty array to push in the results of the default formatter.
@@ -1159,7 +1166,10 @@ function formatArray(ctx, value, recurseTimes) {
   return output;
 }
 
-function getCtxStyle(_value, constructor, tag) {
+function getCtxStyle(_value, constructor, tag, displayName) {
+  if (displayName) {
+    return displayName + " ";
+  }
   let fallback = "";
   if (constructor === null) {
     // TODO(wafuwafu13): Implement
@@ -1562,10 +1572,7 @@ function formatProperty(
     return str;
   }
   if (typeof key === "symbol") {
-    const tmp = (key.description !== undefined)
-      ? `Symbol(${quoteString(key.description, ctx)})`
-      : key.toString().replace(strEscapeSequencesReplacer, escapeFn);
-    name = `[${ctx.stylize(tmp, "symbol")}]`;
+    name = `[${ctx.stylize(maybeQuoteSymbol(key, ctx), "symbol")}]`;
   } else if (key === "__proto__") {
     name = "['__proto__']";
   } else if (desc.enumerable === false) {
@@ -1628,7 +1635,7 @@ function isBelowBreakLength(ctx, output, start, base) {
     }
   }
   // Do not line up properties on the same line if `base` contains line breaks.
-  return base === "" || !base.includes("\n");
+  return base === "" || !StringPrototypeIncludes(base, "\n");
 }
 
 function formatBigInt(fn, value) {
@@ -2308,6 +2315,22 @@ class CSI {
   static kClearScreenDown = "\x1b[0J";
 }
 
+const QUOTE_SYMBOL_REG = new SafeRegExp(/^[a-zA-Z_][a-zA-Z_.0-9]*$/);
+
+function maybeQuoteSymbol(symbol, ctx) {
+  const description = SymbolPrototypeGetDescription(symbol);
+
+  if (description === undefined) {
+    return SymbolPrototypeToString(symbol);
+  }
+
+  if (RegExpPrototypeTest(QUOTE_SYMBOL_REG, description)) {
+    return SymbolPrototypeToString(symbol);
+  }
+
+  return `Symbol(${quoteString(description, ctx)})`;
+}
+
 /** Surround the string in quotes.
  *
  * The quote symbol is chosen by taking the first of the `QUOTES` array which
@@ -2376,7 +2399,7 @@ function inspectValueWithQuotes(
       return ctx.stylize(quoteString(trunc, ctx), "string"); // Quoted strings are green
     }
     default:
-      return formatValue(ctx, value);
+      return formatValue(ctx, value, 0);
   }
 }
 
