@@ -217,7 +217,7 @@ async function run() {
     await Deno.writeTextFile(wptreport, JSON.stringify(report));
   }
 
-  const code = reportFinal(results);
+  const code = reportFinal(results, endTime - startTime);
   Deno.exit(code);
 }
 
@@ -325,6 +325,7 @@ function assertAllExpectationsHaveTests(
 
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
+  const startTime = new Date().getTime();
   const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest, true);
   console.log(`Going to run ${tests.length} test files.`);
 
@@ -346,6 +347,7 @@ async function update() {
 
     return results;
   });
+  const endTime = new Date().getTime();
 
   if (json) {
     await Deno.writeTextFile(json, JSON.stringify(results));
@@ -394,7 +396,7 @@ async function update() {
 
   saveExpectation(currentExpectation);
 
-  reportFinal(results);
+  reportFinal(results, endTime - startTime);
 
   console.log(blue("Updated expectation.json to match reality."));
 
@@ -428,6 +430,7 @@ function insertExpectation(
 
 function reportFinal(
   results: { test: TestToRun; result: TestResult }[],
+  duration: number,
 ): number {
   const finalTotalCount = results.length;
   let finalFailedCount = 0;
@@ -509,7 +512,7 @@ function reportFinal(
   console.log(
     `\nfinal result: ${
       failed ? red("failed") : green("ok")
-    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`,
+    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)\n`,
   );
 
   return failed ? 1 : 0;
@@ -564,7 +567,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. ${failReason}\n`,
+      }. ${failReason} (${formatDuration(result.duration)})\n`,
     );
     return;
   }
@@ -601,7 +604,9 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   console.log(
     `\nfile result: ${
       failedCount > 0 ? red("failed") : green("ok")
-    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount}\n`,
+    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount} (${
+      formatDuration(result.duration)
+    })\n`,
   );
 }
 
@@ -758,4 +763,14 @@ function partitionTests(tests: TestToRun[]): TestToRun[][] {
     testsByKey[key].push(test);
   }
   return Object.values(testsByKey);
+}
+
+function formatDuration(duration: number): string {
+  if (duration >= 5000) {
+    return red(`${duration}ms`);
+  } else if (duration >= 1000) {
+    return yellow(`${duration}ms`);
+  } else {
+    return `${duration}ms`;
+  }
 }

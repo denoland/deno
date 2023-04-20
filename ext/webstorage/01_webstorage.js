@@ -35,7 +35,7 @@ class Storage {
   key(index) {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'key' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     index = webidl.converters["unsigned long"](index, {
       prefix,
       context: "Argument 1",
@@ -47,7 +47,7 @@ class Storage {
   setItem(key, value) {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'setItem' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     key = webidl.converters.DOMString(key, {
       prefix,
       context: "Argument 1",
@@ -63,7 +63,7 @@ class Storage {
   getItem(key) {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'getItem' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     key = webidl.converters.DOMString(key, {
       prefix,
       context: "Argument 1",
@@ -75,7 +75,7 @@ class Storage {
   removeItem(key) {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'removeItem' on 'Storage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     key = webidl.converters.DOMString(key, {
       prefix,
       context: "Argument 1",

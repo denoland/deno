@@ -11,14 +11,15 @@ use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_npm::registry::NpmRegistryApi;
-use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptionsPackage;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageReq;
 
 use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
+use crate::npm::CliNpmRegistryApi;
 use crate::Flags;
 
 use super::DenoSubcommand;
@@ -75,8 +76,8 @@ pub fn discover(
 
 pub async fn snapshot_from_lockfile(
   lockfile: Arc<Mutex<Lockfile>>,
-  api: &dyn NpmRegistryApi,
-) -> Result<NpmResolutionSnapshot, AnyError> {
+  api: &CliNpmRegistryApi,
+) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
   let (root_packages, mut packages) = {
     let lockfile = lockfile.lock();
 
@@ -104,7 +105,7 @@ pub async fn snapshot_from_lockfile(
         dependencies.insert(name.clone(), dep_id);
       }
 
-      packages.push(NpmResolutionSnapshotCreateOptionsPackage {
+      packages.push(SerializedNpmResolutionSnapshotPackage {
         pkg_id,
         dist: Default::default(), // temporarily empty
         dependencies,
@@ -114,28 +115,49 @@ pub async fn snapshot_from_lockfile(
   };
 
   // now that the lockfile is dropped, fetch the package version information
-  let mut version_infos =
-      FuturesOrdered::from_iter(packages.iter().map(|p| p.pkg_id.nv.clone()).map(
-        |nv| async move {
-          let package_info = api.package_info(&nv.name).await?;
-          match package_info.version_info(&nv) {
-            Ok(version_info) => Ok(version_info),
-            Err(err) => {
-              bail!("Could not find '{}' specified in the lockfile. Maybe try again with --reload", err.0);
-            }
-          }
-        },
-      ));
+  let pkg_nvs = packages
+    .iter()
+    .map(|p| p.pkg_id.nv.clone())
+    .collect::<Vec<_>>();
+  let get_version_infos = || {
+    FuturesOrdered::from_iter(pkg_nvs.iter().map(|nv| async move {
+      let package_info = api.package_info(&nv.name).await?;
+      match package_info.version_info(nv) {
+        Ok(version_info) => Ok(version_info),
+        Err(err) => {
+          bail!("Could not find '{}' specified in the lockfile.", err.0);
+        }
+      }
+    }))
+  };
+  let mut version_infos = get_version_infos();
 
   let mut i = 0;
-  while let Some(version_info) = version_infos.next().await {
-    packages[i].dist = version_info?.dist;
+  while let Some(result) = version_infos.next().await {
+    packages[i].dist = match result {
+      Ok(version_info) => version_info.dist,
+      Err(err) => {
+        if api.mark_force_reload() {
+          // reset and try again
+          version_infos = get_version_infos();
+          i = 0;
+          continue;
+        } else {
+          return Err(err);
+        }
+      }
+    };
+
     i += 1;
   }
 
-  NpmResolutionSnapshot::from_packages(NpmResolutionSnapshotCreateOptions {
+  // clear the memory cache to reduce memory usage
+  api.clear_memory_cache();
+
+  SerializedNpmResolutionSnapshot {
     packages,
     root_packages,
-  })
+  }
+  .into_valid()
   .context("The lockfile is corrupt. You can recreate it with --lock-write")
 }
