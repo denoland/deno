@@ -351,6 +351,9 @@
       "test-http-agent-getname.js",
       "test-http-client-get-url.js",
       "test-http-client-read-in-error.js",
+      // TODO(lev): ClientRequest.socket is not polyfilled so this test keeps
+      //            failing
+      //"test-http-client-set-timeout.js",
       "test-http-localaddress.js",
       "test-http-outgoing-buffer.js",
       "test-http-outgoing-internal-headernames-getter.js",

@@ -18,6 +18,7 @@ import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import * as denoHttp from "ext:deno_http/01_http.js";
 import * as httpRuntime from "ext:runtime/40_http.js";
+import { connResetException } from "ext:deno_node/internal/errors.ts";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -265,11 +266,15 @@ class ClientRequest extends NodeWritable {
       .catch((e) => {
         if (e.message.includes("connection closed before message completed")) {
           // Node.js seems ignoring this error
+        } else if (e.message.includes("The signal has been aborted")) {
+          // Remap this error
+          this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", e);
         }
         return undefined;
       });
+
     const res = new IncomingMessageForClient(
       await mayResponse,
       this._createSocket(),
@@ -284,7 +289,6 @@ class ClientRequest extends NodeWritable {
       clearTimeout(this.opts.timeout);
       this.opts.timeout = undefined;
     }
-
     this.cb?.(res);
   }
 
@@ -347,11 +351,14 @@ class ClientRequest extends NodeWritable {
   }
 
   setTimeout(timeout: number, callback?: () => void) {
-    let controller = new AbortController();
+    const controller = new AbortController();
     this.opts.signal = controller.signal;
 
     this.opts.timeout = setTimeout(() => {
       controller.abort();
+
+      this.emit("timeout");
+
       if (callback !== undefined) {
         callback();
       }
