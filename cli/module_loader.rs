@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
+use crate::cache::CliNodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -12,8 +13,8 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
 use crate::node::CliNodeResolver;
-use crate::node::NodeCodeTranslator;
 use crate::node::NodeResolution;
+use crate::npm::CliRequireNpmResolver;
 use crate::proc_state::CjsResolutionStore;
 use crate::proc_state::FileWatcherReporter;
 use crate::proc_state::ProcState;
@@ -49,7 +50,9 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::RealFs;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
@@ -241,7 +244,8 @@ pub struct CliModuleLoader {
   emitter: Arc<Emitter>,
   graph_container: Arc<ModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
-  node_code_translator: Arc<NodeCodeTranslator>,
+  node_code_translator:
+    Arc<NodeCodeTranslator<CliNodeAnalysisCache, CliRequireNpmResolver>>,
   node_resolver: Arc<CliNodeResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
@@ -385,7 +389,7 @@ impl CliModuleLoader {
           self.root_permissions.clone()
         };
         // translate cjs to esm if it's cjs and inject node globals
-        self.node_code_translator.translate_cjs_to_esm(
+        self.node_code_translator.translate_cjs_to_esm::<RealFs>(
           specifier,
           code,
           MediaType::Cjs,

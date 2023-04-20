@@ -33,14 +33,10 @@ use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 
+use crate::npm::CliRequireNpmResolver;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
-use crate::npm::RequireNpmPackageResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-
-mod analyze;
-
-pub use analyze::NodeCodeTranslator;
 
 #[derive(Debug)]
 pub enum NodeResolution {
@@ -116,7 +112,7 @@ pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
 pub struct CliNodeResolver {
   npm_resolution: Arc<NpmResolution>,
   npm_resolver: Arc<NpmPackageResolver>,
-  require_npm_resolver: RequireNpmPackageResolver,
+  require_npm_resolver: CliRequireNpmResolver,
 }
 
 impl CliNodeResolver {

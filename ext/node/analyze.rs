@@ -5,32 +5,29 @@ use std::collections::VecDeque;
 use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_ast::swc::common::SyntaxContext;
 use deno_ast::view::Node;
 use deno_ast::view::NodeTrait;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
-use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRanged;
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_runtime::deno_node::package_exports_resolve;
-use deno_runtime::deno_node::NodeModuleKind;
-use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_node::PathClean;
-use deno_runtime::deno_node::RealFs;
-use deno_runtime::deno_node::RequireNpmResolver;
-use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
+use deno_core::anyhow::Context;
+use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 
-use crate::cache::NodeAnalysisCache;
-use crate::file_fetcher::FileFetcher;
-use crate::npm::NpmPackageResolver;
+use deno_core::error::AnyError;
+
+use crate::package_exports_resolve;
+use crate::NodeFs;
+use crate::NodeModuleKind;
+use crate::NodePermissions;
+use crate::NodeResolutionMode;
+use crate::PackageJson;
+use crate::PathClean;
+use crate::RequireNpmResolver;
+use crate::NODE_GLOBAL_THIS_NAME;
 
 static NODE_GLOBALS: &[&str] = &[
   "Buffer",
@@ -45,21 +42,55 @@ static NODE_GLOBALS: &[&str] = &[
   "setTimeout",
 ];
 
-pub struct NodeCodeTranslator {
-  analysis_cache: NodeAnalysisCache,
-  file_fetcher: Arc<FileFetcher>,
-  npm_resolver: Arc<NpmPackageResolver>,
+pub trait NodeAnalysisCache {
+  fn get_cjs_analysis(
+    &self,
+    specifier: &str,
+    expected_source_hash: &str,
+  ) -> Option<CjsAnalysis>;
+
+  fn set_cjs_analysis(
+    &self,
+    specifier: &str,
+    source_hash: &str,
+    cjs_analysis: &CjsAnalysis,
+  );
+
+  fn get_esm_analysis(
+    &self,
+    specifier: &str,
+    expected_source_hash: &str,
+  ) -> Option<Vec<String>>;
+
+  fn set_esm_analysis(
+    &self,
+    specifier: &str,
+    source_hash: &str,
+    top_level_decls: &[String],
+  );
+
+  fn compute_source_hash(&self, text: &str) -> String;
 }
 
-impl NodeCodeTranslator {
+pub struct NodeCodeTranslator<
+  TNodeAnalysisCache: NodeAnalysisCache,
+  TRequireNpmResolver: RequireNpmResolver,
+> {
+  analysis_cache: TNodeAnalysisCache,
+  npm_resolver: TRequireNpmResolver,
+}
+
+impl<
+    TNodeAnalysisCache: NodeAnalysisCache,
+    TRequireNpmResolver: RequireNpmResolver,
+  > NodeCodeTranslator<TNodeAnalysisCache, TRequireNpmResolver>
+{
   pub fn new(
-    analysis_cache: NodeAnalysisCache,
-    file_fetcher: Arc<FileFetcher>,
-    npm_resolver: Arc<NpmPackageResolver>,
+    analysis_cache: TNodeAnalysisCache,
+    npm_resolver: TRequireNpmResolver,
   ) -> Self {
     Self {
       analysis_cache,
-      file_fetcher,
       npm_resolver,
     }
   }
@@ -78,7 +109,7 @@ impl NodeCodeTranslator {
   /// For all discovered reexports the analysis will be performed recursively.
   ///
   /// If successful a source code for equivalent ES module is returned.
-  pub fn translate_cjs_to_esm(
+  pub fn translate_cjs_to_esm<Fs: NodeFs>(
     &self,
     specifier: &ModuleSpecifier,
     code: String,
@@ -117,7 +148,7 @@ impl NodeCodeTranslator {
       handled_reexports.insert(reexport.to_string());
 
       // First, resolve relate reexport specifier
-      let resolved_reexport = self.resolve(
+      let resolved_reexport = self.resolve::<Fs>(
         &reexport,
         &referrer,
         // FIXME(bartlomieju): check if these conditions are okay, probably
@@ -126,26 +157,22 @@ impl NodeCodeTranslator {
         NodeResolutionMode::Execution,
         permissions,
       )?;
-      let reexport_specifier =
-        ModuleSpecifier::from_file_path(resolved_reexport).unwrap();
       // Second, read the source code from disk
-      let reexport_file = self
-        .file_fetcher
-        .get_source(&reexport_specifier)
-        .ok_or_else(|| {
-          anyhow!(
+      let reexport_specifier =
+        ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
+      let reexport_file_text = Fs::read_to_string(&resolved_reexport)
+        .with_context(|| {
+          format!(
             "Could not find '{}' ({}) referenced from {}",
-            reexport,
-            reexport_specifier,
-            referrer
+            reexport, reexport_specifier, referrer
           )
         })?;
-
+      let reexport_file_media_type = MediaType::from_path(&resolved_reexport);
       {
         let analysis = self.perform_cjs_analysis(
           reexport_specifier.as_str(),
-          reexport_file.media_type,
-          reexport_file.source.to_string(),
+          reexport_file_media_type,
+          reexport_file_text,
         )?;
 
         for reexport in analysis.reexports {
@@ -196,7 +223,7 @@ impl NodeCodeTranslator {
     media_type: MediaType,
     code: String,
   ) -> Result<CjsAnalysis, AnyError> {
-    let source_hash = NodeAnalysisCache::compute_source_hash(&code);
+    let source_hash = self.analysis_cache.compute_source_hash(&code);
     if let Some(analysis) = self
       .analysis_cache
       .get_cjs_analysis(specifier, &source_hash)
@@ -227,7 +254,7 @@ impl NodeCodeTranslator {
     Ok(analysis)
   }
 
-  fn resolve(
+  fn resolve<Fs: NodeFs>(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
@@ -242,7 +269,10 @@ impl NodeCodeTranslator {
     let referrer_path = referrer.to_file_path().unwrap();
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
-        return file_extension_probe(parent.join(specifier), &referrer_path);
+        return file_extension_probe::<Fs>(
+          parent.join(specifier),
+          &referrer_path,
+        );
       } else {
         todo!();
       }
@@ -254,23 +284,22 @@ impl NodeCodeTranslator {
       parse_specifier(specifier).unwrap();
 
     // todo(dsherret): use not_found error on not found here
-    let resolver = self.npm_resolver.as_require_npm_resolver();
-    let module_dir = resolver.resolve_package_folder_from_package(
+    let module_dir = self.npm_resolver.resolve_package_folder_from_package(
       package_specifier.as_str(),
       &referrer_path,
       mode,
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    if package_json_path.exists() {
-      let package_json = PackageJson::load::<RealFs>(
-        &self.npm_resolver.as_require_npm_resolver(),
+    if Fs::exists(&package_json_path) {
+      let package_json = PackageJson::load::<Fs>(
+        &self.npm_resolver,
         permissions,
         package_json_path.clone(),
       )?;
 
       if let Some(exports) = &package_json.exports {
-        return package_exports_resolve::<RealFs>(
+        return package_exports_resolve::<Fs>(
           &package_json_path,
           package_subpath,
           exports,
@@ -278,7 +307,7 @@ impl NodeCodeTranslator {
           NodeModuleKind::Esm,
           conditions,
           mode,
-          &self.npm_resolver.as_require_npm_resolver(),
+          &self.npm_resolver,
           permissions,
         );
       }
@@ -286,25 +315,23 @@ impl NodeCodeTranslator {
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if let Ok(m) = d.metadata() {
-          if m.is_dir() {
-            // subdir might have a package.json that specifies the entrypoint
-            let package_json_path = d.join("package.json");
-            if package_json_path.exists() {
-              let package_json = PackageJson::load::<RealFs>(
-                &self.npm_resolver.as_require_npm_resolver(),
-                permissions,
-                package_json_path,
-              )?;
-              if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-                return Ok(d.join(main).clean());
-              }
+        if Fs::is_dir(&d) {
+          // subdir might have a package.json that specifies the entrypoint
+          let package_json_path = d.join("package.json");
+          if Fs::exists(&package_json_path) {
+            let package_json = PackageJson::load::<Fs>(
+              &self.npm_resolver,
+              permissions,
+              package_json_path,
+            )?;
+            if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+              return Ok(d.join(main).clean());
             }
-
-            return Ok(d.join("index.js").clean());
           }
+
+          return Ok(d.join("index.js").clean());
         }
-        return file_extension_probe(d, &referrer_path);
+        return file_extension_probe::<Fs>(d, &referrer_path);
       } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
         return Ok(module_dir.join(main).clean());
       } else {
@@ -316,7 +343,7 @@ impl NodeCodeTranslator {
 }
 
 fn esm_code_with_node_globals(
-  analysis_cache: &NodeAnalysisCache,
+  analysis_cache: &dyn NodeAnalysisCache,
   specifier: &ModuleSpecifier,
   code: String,
 ) -> Result<String, AnyError> {
@@ -326,7 +353,7 @@ fn esm_code_with_node_globals(
   // and instead only use swc's APIs to go through the portions of the tree
   // that we know will affect the global scope while still ensuring that
   // `var` decls are taken into consideration.
-  let source_hash = NodeAnalysisCache::compute_source_hash(&code);
+  let source_hash = analysis_cache.compute_source_hash(&code);
   let text_info = deno_ast::SourceTextInfo::from_string(code);
   let top_level_decls = if let Some(decls) =
     analysis_cache.get_esm_analysis(specifier.as_str(), &source_hash)
@@ -345,7 +372,7 @@ fn esm_code_with_node_globals(
     analysis_cache.set_esm_analysis(
       specifier.as_str(),
       &source_hash,
-      &top_level_decls.clone().into_iter().collect(),
+      &top_level_decls.clone().into_iter().collect::<Vec<_>>(),
     );
     top_level_decls
   };
@@ -579,24 +606,24 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   Some((package_name, package_subpath))
 }
 
-fn file_extension_probe(
+fn file_extension_probe<Fs: NodeFs>(
   p: PathBuf,
   referrer: &Path,
 ) -> Result<PathBuf, AnyError> {
   let p = p.clean();
-  if p.exists() {
+  if Fs::exists(&p) {
     let file_name = p.file_name().unwrap();
     let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-    if p_js.exists() && p_js.is_file() {
+    if Fs::is_file(&p_js) {
       return Ok(p_js);
-    } else if p.is_dir() {
+    } else if Fs::is_dir(&p) {
       return Ok(p.join("index.js"));
     } else {
       return Ok(p);
     }
   } else if let Some(file_name) = p.file_name() {
     let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-    if p_js.exists() && p_js.is_file() {
+    if Fs::is_file(&p_js) {
       return Ok(p_js);
     }
   }
@@ -616,10 +643,50 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
 mod tests {
   use super::*;
 
+  struct NoopAnalysisCache;
+
+  impl NodeAnalysisCache for NoopAnalysisCache {
+    fn get_cjs_analysis(
+      &self,
+      _specifier: &str,
+      _expected_source_hash: &str,
+    ) -> Option<CjsAnalysis> {
+      None
+    }
+
+    fn set_cjs_analysis(
+      &self,
+      _specifier: &str,
+      _source_hash: &str,
+      _cjs_analysis: &CjsAnalysis,
+    ) {
+    }
+
+    fn get_esm_analysis(
+      &self,
+      _specifier: &str,
+      _expected_source_hash: &str,
+    ) -> Option<Vec<String>> {
+      None
+    }
+
+    fn set_esm_analysis(
+      &self,
+      _specifier: &str,
+      _source_hash: &str,
+      _top_level_decls: &[String],
+    ) {
+    }
+
+    fn compute_source_hash(&self, _text: &str) -> String {
+      String::new()
+    }
+  }
+
   #[test]
   fn test_esm_code_with_node_globals() {
     let r = esm_code_with_node_globals(
-      &NodeAnalysisCache::new_in_memory(),
+      &NoopAnalysisCache,
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "export const x = 1;".to_string(),
     )
@@ -635,7 +702,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals_with_shebang() {
     let r = esm_code_with_node_globals(
-      &NodeAnalysisCache::new_in_memory(),
+      &NoopAnalysisCache,
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "#!/usr/bin/env node\nexport const x = 1;".to_string(),
     )

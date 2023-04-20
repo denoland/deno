@@ -1150,6 +1150,7 @@ dependencies = [
  "aes",
  "cbc",
  "data-encoding",
+ "deno_ast",
  "deno_core",
  "digest 0.10.6",
  "dsa",

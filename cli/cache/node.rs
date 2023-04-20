@@ -3,6 +3,7 @@
 use deno_ast::CjsAnalysis;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_runtime::deno_node::analyze::NodeAnalysisCache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
@@ -37,30 +38,15 @@ pub static NODE_ANALYSIS_CACHE_DB: CacheDBConfiguration =
   };
 
 #[derive(Clone)]
-pub struct NodeAnalysisCache {
+pub struct CliNodeAnalysisCache {
   inner: NodeAnalysisCacheInner,
 }
 
-impl NodeAnalysisCache {
-  #[cfg(test)]
-  pub fn new_in_memory() -> Self {
-    Self::new(CacheDB::in_memory(
-      &NODE_ANALYSIS_CACHE_DB,
-      crate::version::deno(),
-    ))
-  }
-
+impl CliNodeAnalysisCache {
   pub fn new(db: CacheDB) -> Self {
     Self {
       inner: NodeAnalysisCacheInner::new(db),
     }
-  }
-
-  pub fn compute_source_hash(text: &str) -> String {
-    FastInsecureHasher::new()
-      .write_str(text)
-      .finish()
-      .to_string()
   }
 
   fn ensure_ok<T: Default>(res: Result<T, AnyError>) -> T {
@@ -79,8 +65,17 @@ impl NodeAnalysisCache {
       }
     }
   }
+}
 
-  pub fn get_cjs_analysis(
+impl NodeAnalysisCache for CliNodeAnalysisCache {
+  fn compute_source_hash(&self, text: &str) -> String {
+    FastInsecureHasher::new()
+      .write_str(text)
+      .finish()
+      .to_string()
+  }
+
+  fn get_cjs_analysis(
     &self,
     specifier: &str,
     expected_source_hash: &str,
@@ -90,7 +85,7 @@ impl NodeAnalysisCache {
     )
   }
 
-  pub fn set_cjs_analysis(
+  fn set_cjs_analysis(
     &self,
     specifier: &str,
     source_hash: &str,
@@ -103,7 +98,7 @@ impl NodeAnalysisCache {
     ));
   }
 
-  pub fn get_esm_analysis(
+  fn get_esm_analysis(
     &self,
     specifier: &str,
     expected_source_hash: &str,
@@ -113,11 +108,11 @@ impl NodeAnalysisCache {
     )
   }
 
-  pub fn set_esm_analysis(
+  fn set_esm_analysis(
     &self,
     specifier: &str,
     source_hash: &str,
-    top_level_decls: &Vec<String>,
+    top_level_decls: &[String],
   ) {
     Self::ensure_ok(self.inner.set_esm_analysis(
       specifier,
@@ -214,7 +209,7 @@ impl NodeAnalysisCacheInner {
     &self,
     specifier: &str,
     source_hash: &str,
-    top_level_decls: &Vec<String>,
+    top_level_decls: &[String],
   ) -> Result<(), AnyError> {
     let sql = "
       INSERT OR REPLACE INTO

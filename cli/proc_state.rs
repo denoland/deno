@@ -6,10 +6,10 @@ use crate::args::Flags;
 use crate::args::Lockfile;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
+use crate::cache::CliNodeAnalysisCache;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::HttpCache;
-use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
@@ -18,9 +18,9 @@ use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliNodeResolver;
-use crate::node::NodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
+use crate::npm::CliRequireNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
@@ -37,6 +37,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
 
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -75,7 +76,8 @@ pub struct Inner {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub module_graph_builder: Arc<ModuleGraphBuilder>,
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
-  pub node_code_translator: Arc<NodeCodeTranslator>,
+  pub node_code_translator:
+    Arc<NodeCodeTranslator<CliNodeAnalysisCache, CliRequireNpmResolver>>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
@@ -303,11 +305,10 @@ impl ProcState {
     ));
     let file_fetcher = Arc::new(file_fetcher);
     let node_analysis_cache =
-      NodeAnalysisCache::new(caches.node_analysis_db(&dir));
+      CliNodeAnalysisCache::new(caches.node_analysis_db(&dir));
     let node_code_translator = Arc::new(NodeCodeTranslator::new(
       node_analysis_cache,
-      file_fetcher.clone(),
-      npm_resolver.clone(),
+      npm_resolver.as_require_npm_resolver(),
     ));
     let node_resolver = Arc::new(CliNodeResolver::new(
       npm_resolution.clone(),

@@ -35,7 +35,7 @@ pub use emit::EmitCache;
 pub use http_cache::CachedUrlMetadata;
 pub use http_cache::HttpCache;
 pub use incremental::IncrementalCache;
-pub use node::NodeAnalysisCache;
+pub use node::CliNodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
 
 /// Permissions used to save a file in the disk caches.
