@@ -259,6 +259,7 @@ class ClientRequest extends NodeWritable {
       method: this.opts.method,
       client,
       headers: this.opts.headers,
+      signal: this.opts.signal ?? undefined,
     };
     const mayResponse = fetch(this._createUrlStrFromOptions(this.opts), opts)
       .catch((e) => {
@@ -340,8 +341,16 @@ class ClientRequest extends NodeWritable {
     }${path}`;
   }
 
-  setTimeout() {
-    console.log("not implemented: ClientRequest.setTimeout");
+  setTimeout(timeout: number, callback?: () => void) {
+    let controller = new AbortController();
+    this.opts.signal = controller.signal;
+
+    setTimeout(() => {
+      controller.abort();
+      if (callback !== undefined) {
+        callback();
+      }
+    }, timeout);
   }
 }
 
