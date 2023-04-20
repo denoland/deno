@@ -166,7 +166,7 @@ Deno.test(
   },
 );
 
-Deno.test(function consoleTestStringifyQuotexs() {
+Deno.test(function consoleTestStringifyQuotes() {
   assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
   assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
   assertEquals(stringify([`\\,",'`]), `[ \`\\\\,",'\` ]`);
