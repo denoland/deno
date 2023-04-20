@@ -409,7 +409,6 @@ pub async fn op_ws_close(
   let cell = Rc::clone(&resource.closed);
   cell.set(true);
   resource.write_frame(frame).await?;
-  cell.set(false);
   Ok(())
 }
 
@@ -423,24 +422,24 @@ pub async fn op_ws_next_event(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
 
-  // No message was received, socket closed while we waited.
-  // Try close the stream, ignoring any errors, and report closed status to JavaScript.
-  if resource.closed.get() {
-    let _ = state.borrow_mut().resource_table.close(rid);
-    return Ok((
-      MessageKind::Closed as u16,
-      StringOrBuffer::Buffer(vec![].into()),
-    ));
-  }
-
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
   let val = match ws.read_frame().await {
     Ok(val) => val,
     Err(err) => {
+      // No message was received, socket closed while we waited.
+      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+      if resource.closed.get() {
+        let _ = state.borrow_mut().resource_table.close(rid);
+        return Ok((
+          MessageKind::Closed as u16,
+          StringOrBuffer::Buffer(vec![].into()),
+        ));
+      }
+
       return Ok((
         MessageKind::Error as u16,
         StringOrBuffer::String(err.to_string()),
-      ))
+      ));
     }
   };
 
