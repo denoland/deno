@@ -280,6 +280,11 @@ class ClientRequest extends NodeWritable {
         client.close();
       });
     }
+    if (this.opts.timeout != undefined) {
+      clearTimeout(this.opts.timeout);
+      this.opts.timeout = undefined;
+    }
+
     this.cb?.(res);
   }
 
@@ -345,7 +350,7 @@ class ClientRequest extends NodeWritable {
     let controller = new AbortController();
     this.opts.signal = controller.signal;
 
-    setTimeout(() => {
+    this.opts.timeout = setTimeout(() => {
       controller.abort();
       if (callback !== undefined) {
         callback();
