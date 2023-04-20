@@ -5,7 +5,7 @@
 /// <reference lib="esnext" />
 
 declare module "ext:deno_webidl/00_webidl.js" {
-  interface ConverterOpts {
+  interface ValueConverterOpts {
     /**
      * The prefix for error messages created by this converter.
      * Examples:
@@ -13,8 +13,6 @@ declare module "ext:deno_webidl/00_webidl.js" {
      *    - `Failed to execute 'removeEventListener' on 'EventTarget'`
      */
     prefix: string;
-  }
-  interface ValueConverterOpts extends ConverterOpts {
     /**
      * The context of this value error messages created by this converter.
      * Examples:
@@ -26,7 +24,8 @@ declare module "ext:deno_webidl/00_webidl.js" {
   function makeException(
     ErrorType: any,
     message: string,
-    opts: ValueConverterOpts,
+    prefix: string,
+    context: string,
   ): any;
   interface IntConverterOpts extends ValueConverterOpts {
     /**
@@ -261,7 +260,8 @@ declare module "ext:deno_webidl/00_webidl.js" {
     args: any[],
     thisArg: any,
     returnValueConverter: (v: any, opts: ValueConverterOpts) => T,
-    opts: ConverterOpts & { returnsPromise?: boolean },
+    prefix: string,
+    returnsPromise?: boolean,
   ): T;
 
   /**

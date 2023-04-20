@@ -6,6 +6,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
+use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
@@ -27,6 +28,7 @@ use std::io::BufWriter;
 use std::io::Error;
 use std::io::Write;
 use std::io::{self};
+use std::path::Path;
 use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
@@ -602,7 +604,8 @@ fn filter_coverages(
         || e.url.starts_with(npm_root_dir)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
-        || e.url.ends_with(".snap");
+        || e.url.ends_with(".snap")
+        || is_supported_test_path(Path::new(e.url.as_str()));
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));

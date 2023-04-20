@@ -431,7 +431,8 @@ webidl.converters["HeadersInit"] = (V, opts) => {
   throw webidl.makeException(
     TypeError,
     "The provided value is not of type '(sequence<sequence<ByteString>> or record<ByteString, ByteString>)'",
-    opts,
+    opts.prefix,
+    opts.context,
   );
 };
 webidl.converters["Headers"] = webidl.createInterfaceConverter(
