@@ -52,7 +52,7 @@ const inspectDefaultOptions = {
   iterableLimit: Infinity, // similar to node's maxArrayLength, but doesn't only apply to arrays
   trailingComma: false,
 
-  // TODO
+  // TODO(@crowlKats): merge into indentationLvl
   indentLevel: 0,
 };
 

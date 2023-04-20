@@ -26,8 +26,12 @@ const {
   StringPrototypeSplit,
   StringPrototypeSlice,
   StringPrototypeCharCodeAt,
-  NumberParseFloat,
-  JSONStringify,
+  MathFloor,
+  StringPrototypePadEnd,
+  ObjectGetOwnPropertySymbols,
+  ObjectGetOwnPropertyNames,
+  ArrayPrototypePushApply,
+  ObjectPrototypePropertyIsEnumerable,
   StringPrototypeMatch,
   StringPrototypePadStart,
   StringPrototypeTrim,
@@ -48,8 +52,16 @@ const {
   SymbolToStringTag,
   SymbolHasInstance,
   SymbolFor,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectIs,
+  Uint8Array,
+  Set,
+  isNaN,
+  ReflectOwnKeys,
   Array,
   ArrayIsArray,
+  SymbolIterator,
+  ArrayBufferIsView,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeReduce,
@@ -70,6 +82,7 @@ const {
   Error,
   ErrorPrototype,
   ErrorCaptureStackTrace,
+  MathSqrt,
   MathAbs,
   MathMax,
   MathMin,
@@ -193,9 +206,6 @@ const _bigIntValueOf = BigInt.prototype.valueOf;
 // https://tc39.es/ecma262/#sec-boolean.prototype.valueof
 const _booleanValueOf = Boolean.prototype.valueOf;
 
-// https://tc39.es/ecma262/#sec-date.prototype.valueof
-const _dateValueOf = Date.prototype.valueOf;
-
 // https://tc39.es/ecma262/#sec-number.prototype.valueof
 const _numberValueOf = Number.prototype.valueOf;
 
@@ -212,7 +222,7 @@ const _weakMapHas = WeakMap.prototype.has;
 const _weakSetHas = WeakSet.prototype.has;
 
 // https://tc39.es/ecma262/#sec-get-arraybuffer.prototype.bytelength
-const _getArrayBufferByteLength = Object.getOwnPropertyDescriptor(
+const _getArrayBufferByteLength = ObjectGetOwnPropertyDescriptor(
   ArrayBuffer.prototype,
   "byteLength",
 ).get;
@@ -221,19 +231,19 @@ const _getArrayBufferByteLength = Object.getOwnPropertyDescriptor(
 let _getSharedArrayBufferByteLength;
 
 // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
-const _getTypedArrayToStringTag = Object.getOwnPropertyDescriptor(
+const _getTypedArrayToStringTag = ObjectGetOwnPropertyDescriptor(
   Object.getPrototypeOf(Uint8Array).prototype,
-  Symbol.toStringTag,
+  SymbolToStringTag,
 ).get;
 
 // https://tc39.es/ecma262/#sec-get-set.prototype.size
-const _getSetSize = Object.getOwnPropertyDescriptor(
+const _getSetSize = ObjectGetOwnPropertyDescriptor(
   Set.prototype,
   "size",
 ).get;
 
 // https://tc39.es/ecma262/#sec-get-map.prototype.size
-const _getMapSize = Object.getOwnPropertyDescriptor(
+const _getMapSize = ObjectGetOwnPropertyDescriptor(
   Map.prototype,
   "size",
 ).get;
@@ -249,7 +259,7 @@ export function isAnyArrayBuffer(value) {
 export function isArgumentsObject(value) {
   return (
     isObjectLike(value) &&
-    value[Symbol.toStringTag] === undefined &&
+    value[SymbolToStringTag] === undefined &&
     _toString.call(value) === "[object Arguments]"
   );
 }
@@ -271,7 +281,6 @@ export function isAsyncFunction(value) {
   );
 }
 
-// deno-lint-ignore ban-types
 export function isBooleanObject(value) {
   if (!isObjectLike(value)) {
     return false;
@@ -287,7 +296,6 @@ export function isBooleanObject(value) {
 
 export function isBoxedPrimitive(
   value,
-  // deno-lint-ignore ban-types
 ) {
   return (
     isBooleanObject(value) ||
@@ -300,7 +308,7 @@ export function isBoxedPrimitive(
 
 export function isDataView(value) {
   return (
-    ArrayBuffer.isView(value) &&
+    ArrayBufferIsView(value) &&
     _getTypedArrayToStringTag.call(value) === undefined
   );
 }
@@ -315,7 +323,7 @@ export function isGeneratorFunction(
   return (
     typeof value === "function" &&
     // @ts-ignore: function is a kind of object
-    value[Symbol.toStringTag] === "GeneratorFunction"
+    value[SymbolToStringTag] === "GeneratorFunction"
   );
 }
 
@@ -333,7 +341,7 @@ export function isMapIterator(
 ) {
   return (
     isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Map Iterator"
+    value[SymbolToStringTag] === "Map Iterator"
   );
 }
 
@@ -342,19 +350,18 @@ export function isModuleNamespaceObject(
 ) {
   return (
     isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Module"
+    value[SymbolToStringTag] === "Module"
   );
 }
 
 export function isNativeError(value) {
   return (
     isObjectLike(value) &&
-    value[Symbol.toStringTag] === undefined &&
+    value[SymbolToStringTag] === undefined &&
     _toString.call(value) === "[object Error]"
   );
 }
 
-// deno-lint-ignore ban-types
 export function isNumberObject(value) {
   if (!isObjectLike(value)) {
     return false;
@@ -384,13 +391,13 @@ export function isBigIntObject(value) {
 export function isPromise(value) {
   return (
     isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Promise"
+    value[SymbolToStringTag] === "Promise"
   );
 }
 export function isRegExp(value) {
   return (
     isObjectLike(value) &&
-    value[Symbol.toStringTag] === undefined &&
+    value[SymbolToStringTag] === undefined &&
     _toString.call(value) === "[object RegExp]"
   );
 }
@@ -409,7 +416,7 @@ export function isSetIterator(
 ) {
   return (
     isObjectLike(value) &&
-    value[Symbol.toStringTag] === "Set Iterator"
+    value[SymbolToStringTag] === "Set Iterator"
   );
 }
 
@@ -417,7 +424,7 @@ export function isSharedArrayBuffer(
   value,
 ) {
   // TODO(kt3k): add SharedArrayBuffer to primordials
-  _getSharedArrayBufferByteLength ??= Object.getOwnPropertyDescriptor(
+  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
     SharedArrayBuffer.prototype,
     "byteLength",
   ).get;
@@ -430,7 +437,6 @@ export function isSharedArrayBuffer(
   }
 }
 
-// deno-lint-ignore ban-types
 export function isStringObject(value) {
   if (!isObjectLike(value)) {
     return false;
@@ -444,7 +450,6 @@ export function isStringObject(value) {
   }
 }
 
-// deno-lint-ignore ban-types
 export function isSymbolObject(value) {
   if (!isObjectLike(value)) {
     return false;
@@ -462,7 +467,6 @@ export function isWeakMap(
   value,
 ) {
   try {
-    // deno-lint-ignore no-explicit-any
     _weakMapHas.call(value, null);
     return true;
   } catch {
@@ -474,105 +478,11 @@ export function isWeakSet(
   value,
 ) {
   try {
-    // deno-lint-ignore no-explicit-any
     _weakSetHas.call(value, null);
     return true;
   } catch {
     return false;
   }
-}
-
-export const ALL_PROPERTIES = 0;
-export const ONLY_WRITABLE = 1;
-export const ONLY_ENUMERABLE = 2;
-export const ONLY_CONFIGURABLE = 4;
-export const SKIP_STRINGS = 8;
-export const SKIP_SYMBOLS = 16;
-
-/**
- * Efficiently determine whether the provided property key is numeric
- * (and thus could be an array indexer) or not.
- *
- * Always returns true for values of type `'number'`.
- *
- * Otherwise, only returns true for strings that consist only of positive integers.
- *
- * Results are cached.
- */
-const isNumericLookup = {};
-export function isArrayIndex(value) {
-  switch (typeof value) {
-    case "number":
-      return value >= 0 && (value | 0) === value;
-    case "string": {
-      const result = isNumericLookup[value];
-      if (result !== void 0) {
-        return result;
-      }
-      const length = value.length;
-      if (length === 0) {
-        return isNumericLookup[value] = false;
-      }
-      let ch = 0;
-      let i = 0;
-      for (; i < length; ++i) {
-        ch = value.charCodeAt(i);
-        if (
-          i === 0 && ch === 0x30 && length > 1 /* must not start with 0 */ ||
-          ch < 0x30 /* 0 */ || ch > 0x39 /* 9 */
-        ) {
-          return isNumericLookup[value] = false;
-        }
-      }
-      return isNumericLookup[value] = true;
-    }
-    default:
-      return false;
-  }
-}
-
-export function getOwnNonIndexProperties(
-  // deno-lint-ignore ban-types
-  obj,
-  filter,
-) {
-  let allProperties = [
-    ...Object.getOwnPropertyNames(obj),
-    ...Object.getOwnPropertySymbols(obj),
-  ];
-
-  if (Array.isArray(obj)) {
-    allProperties = allProperties.filter((k) => !isArrayIndex(k));
-  }
-
-  if (filter === ALL_PROPERTIES) {
-    return allProperties;
-  }
-
-  const result = [];
-  for (const key of allProperties) {
-    const desc = Object.getOwnPropertyDescriptor(obj, key);
-    if (desc === undefined) {
-      continue;
-    }
-    if (filter & ONLY_WRITABLE && !desc.writable) {
-      continue;
-    }
-    if (filter & ONLY_ENUMERABLE && !desc.enumerable) {
-      continue;
-    }
-    if (filter & ONLY_CONFIGURABLE && !desc.configurable) {
-      continue;
-    }
-    if (filter & SKIP_STRINGS && typeof key === "string") {
-      continue;
-    }
-    if (filter & SKIP_SYMBOLS && typeof key === "symbol") {
-      continue;
-    }
-    result.push(key);
-  }
-  return result;
 }
 
 const kObjectType = 0;
@@ -615,16 +525,6 @@ const strEscapeSequencesReplacer = /[\x00-\x1f\x27\x5c\x7f-\x9f]/g;
 const keyStrRegExp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
 const numberRegExp = /^(0|[1-9][0-9]*)$/;
 
-function addQuotes(str, quotes) {
-  if (quotes === -1) {
-    return `"${str}"`;
-  }
-  if (quotes === -2) {
-    return `\`${str}\``;
-  }
-  return `'${str}'`;
-}
-
 // TODO(wafuwafu13): Figure out
 const escapeFn = (str) => meta[str.charCodeAt(0)];
 
@@ -653,8 +553,6 @@ function formatValue(
     return ctx.stylize("null", "null");
   }
 
-  // Memorize the context for custom inspection on proxies.
-  const context = value;
   // Always check for proxies to prevent side effects and to prevent triggering
   // any proxy handlers.
   // TODO(wafuwafu13): Set Proxy
@@ -726,7 +624,20 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     protoProps = undefined;
   }
 
-  let tag = value[Symbol.toStringTag];
+  let displayName = undefined;
+  if (
+    value?.constructor && typeof value.constructor == "function" &&
+    value.constructor.name
+  ) {
+    if (
+      value.constructor.name !== "Object" &&
+      value.constructor.name !== "anonymous"
+    ) {
+      displayName = value.constructor.name;
+    }
+  }
+
+  let tag = value[SymbolToStringTag];
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
   if (
@@ -757,14 +668,14 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     // Iterators and the rest are split to reduce checks.
     // We have to check all values in case the constructor is set to null.
     // Otherwise it would not possible to identify all types properly.
-    if (value[Symbol.iterator] || constructor === null) {
+    if (value[SymbolIterator] || constructor === null) {
       noIterator = false;
-      if (Array.isArray(value)) {
+      if (ArrayIsArray(value)) {
         // Only set the constructor for non ordinary ("Array [...]") arrays.
         const prefix = (constructor !== "Array" || tag !== "")
           ? getPrefix(constructor, tag, "Array", `(${value.length})`)
           : "";
-        keys = getOwnNonIndexProperties(value, filter);
+        keys = core.ops.op_get_non_index_property_names(value, filter);
         braces = [`${prefix}[`, "]"];
         if (
           value.length === 0 && keys.length === 0 && protoProps === undefined
@@ -796,7 +707,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
         braces = [`${prefix}{`, "}"];
       } else if (isTypedArray(value)) {
-        keys = getOwnNonIndexProperties(value, filter);
+        keys = core.ops.op_get_non_index_property_names(value, filter);
         const bound = value;
         const fallback = "";
         if (constructor === null) {
@@ -837,14 +748,8 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           braces[0] = "[Arguments] {";
         } else if (tag !== "") {
           braces[0] = `${getPrefix(constructor, tag, "Object")}{`;
-        } else if (
-          value?.constructor && typeof value.constructor == "function" &&
-          value.constructor.name
-        ) {
-          const displayName = value.constructor.name;
-          if (displayName !== "Object" && displayName !== "anonymous") {
-            braces[0] = `${displayName} {`;
-          }
+        } else if (displayName !== undefined) {
+          braces[0] = `${displayName} {`;
         }
         if (keys.length === 0 && protoProps === undefined) {
           return `${braces[0]}}`;
@@ -856,7 +761,9 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (isRegExp(value)) {
         // Make RegExps say that they are RegExps
-        base = new SafeRegExp(constructor !== null ? value : new SafeRegExp(value))
+        base = new SafeRegExp(
+          constructor !== null ? value : new SafeRegExp(value),
+        )
           .toString();
         const prefix = getPrefix(constructor, tag, "RegExp");
         if (prefix !== "RegExp ") {
@@ -1016,7 +923,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 }
 
 const builtInObjects = new Set(
-  Object.getOwnPropertyNames(globalThis).filter((e) =>
+  ObjectGetOwnPropertyNames(globalThis).filter((e) =>
     /^[A-Z][a-zA-Z0-9]+$/.test(e)
   ),
 );
@@ -1033,13 +940,13 @@ function addPrototypeProperties(
   let keySet;
   do {
     if (depth !== 0 || main === obj) {
-      obj = Object.getPrototypeOf(obj);
+      obj = ObjectGetPrototypeOf(obj);
       // Stop as soon as a null prototype is encountered.
       if (obj === null) {
         return;
       }
       // Stop as soon as a built-in object type is detected.
-      const descriptor = Object.getOwnPropertyDescriptor(obj, "constructor");
+      const descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
       if (
         descriptor !== undefined &&
         typeof descriptor.value === "function" &&
@@ -1055,9 +962,9 @@ function addPrototypeProperties(
       Array.prototype.forEach.call(keys, (key) => keySet.add(key));
     }
     // Get all own property names and symbols.
-    keys = Reflect.ownKeys(obj);
+    keys = ReflectOwnKeys(obj);
     Array.prototype.push.call(ctx.seen, main);
-    for (const key of keys) {
+    for (const key of new SafeArrayIterator(keys)) {
       // Ignore the `constructor` property and keys that exist on layers above.
       if (
         key === "constructor" ||
@@ -1067,7 +974,7 @@ function addPrototypeProperties(
       ) {
         continue;
       }
-      const desc = Object.getOwnPropertyDescriptor(obj, key);
+      const desc = ObjectGetOwnPropertyDescriptor(obj, key);
       if (typeof desc.value === "function") {
         continue;
       }
@@ -1103,7 +1010,7 @@ function getConstructorName(
   let firstProto;
   const tmp = obj;
   while (obj || isUndetectableObject(obj)) {
-    const descriptor = Object.getOwnPropertyDescriptor(obj, "constructor");
+    const descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
     if (
       descriptor !== undefined &&
       typeof descriptor.value === "function" &&
@@ -1126,7 +1033,7 @@ function getConstructorName(
       return descriptor.value.name;
     }
 
-    obj = Object.getPrototypeOf(obj);
+    obj = ObjectGetPrototypeOf(obj);
     if (firstProto === undefined) {
       firstProto = obj;
     }
@@ -1267,11 +1174,11 @@ function getCtxStyle(_value, constructor, tag) {
 // Look up the keys of the object.
 function getKeys(value, showHidden) {
   let keys;
-  const symbols = Object.getOwnPropertySymbols(value);
+  const symbols = ObjectGetOwnPropertySymbols(value);
   if (showHidden) {
-    keys = Object.getOwnPropertyNames(value);
+    keys = ObjectGetOwnPropertyNames(value);
     if (symbols.length !== 0) {
-      Array.prototype.push.apply(keys, symbols);
+      ArrayPrototypePushApply(keys, symbols);
     }
   } else {
     // This might throw if `value` is a Module Namespace Object from an
@@ -1280,22 +1187,17 @@ function getKeys(value, showHidden) {
     // TODO(devsnek): track https://github.com/tc39/ecma262/issues/1209
     // and modify this logic as needed.
     try {
-      keys = Object.keys(value);
-    } catch (_err) {
-      // TODO(wafuwafu13): Implement
-      // assert(isNativeError(err) && err.name === 'ReferenceError' &&
-      //        isModuleNamespaceObject(value));
-      keys = Object.getOwnPropertyNames(value);
+      keys = ObjectKeys(value);
+    } catch (err) {
+      assert(
+        isNativeError(err) && err.name === "ReferenceError" &&
+          isModuleNamespaceObject(value),
+      );
+      keys = ObjectGetOwnPropertyNames(value);
     }
     if (symbols.length !== 0) {
-      // TODO(wafuwafu13): Implement
-      // const filter = (key: any) =>
-      //
-      //   Object.prototype.propertyIsEnumerable(value, key);
-      // Array.prototype.push.apply(
-      //   keys,
-      //   symbols.filter(filter),
-      // );
+      const filter = (key) => ObjectPrototypePropertyIsEnumerable(value, key);
+      ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }
   return keys;
@@ -1369,13 +1271,13 @@ function formatTypedArray(
     // All besides `BYTES_PER_ELEMENT` are actually getters.
     ctx.indentationLvl += 2;
     for (
-      const key of [
+      const key of new SafeArrayIterator([
         "BYTES_PER_ELEMENT",
         "length",
         "byteLength",
         "byteOffset",
         "buffer",
-      ]
+      ])
     ) {
       const str = formatValue(ctx, value[key], recurseTimes, true);
       Array.prototype.push.call(output, `[${key}]: ${str}`);
@@ -1556,7 +1458,7 @@ function formatArrayBuffer(ctx, value) {
 
 function formatNumber(fn, value) {
   // Format -0 as '-0'. Checking `value === -0` won't distinguish 0 from -0.
-  return fn(Object.is(value, -0) ? "-0" : `${value}`, "number");
+  return fn(ObjectIs(value, -0) ? "-0" : `${value}`, "number");
 }
 
 const PromiseState = {
@@ -1613,7 +1515,7 @@ function formatProperty(
 ) {
   let name, str;
   let extra = " ";
-  desc = desc || Object.getOwnPropertyDescriptor(value, key) ||
+  desc = desc || ObjectGetOwnPropertyDescriptor(value, key) ||
     { value: value[key], enumerable: true };
   if (desc.value !== undefined) {
     const diff = (ctx.compact !== true || type !== kObjectType) ? 2 : 3;
@@ -1660,8 +1562,9 @@ function formatProperty(
     return str;
   }
   if (typeof key === "symbol") {
-    const tmp = key.toString().replace(strEscapeSequencesReplacer, escapeFn);
-
+    const tmp = (key.description !== undefined)
+      ? `Symbol(${quoteString(key.description, ctx)})`
+      : key.toString().replace(strEscapeSequencesReplacer, escapeFn);
     name = `[${ctx.stylize(tmp, "symbol")}]`;
   } else if (key === "__proto__") {
     name = "['__proto__']";
@@ -1777,7 +1680,7 @@ function formatSpecialArray(
   output,
   i,
 ) {
-  const keys = Object.keys(value);
+  const keys = ObjectKeys(value);
   let index = i;
   for (; i < keys.length && output.length < maxLength; i++) {
     const key = keys[i];
@@ -1869,7 +1772,7 @@ function getClassBase(value, constructor, tag) {
     base += ` [${tag}]`;
   }
   if (constructor !== null) {
-    const superName = Object.getPrototypeOf(value).name;
+    const superName = ObjectGetPrototypeOf(value).name;
     if (superName) {
       base += ` extends ${superName}`;
     }
@@ -1922,13 +1825,16 @@ function reduceToSingleString(
         const start = output.length + ctx.indentationLvl +
           braces[0].length + base.length + 10;
         if (isBelowBreakLength(ctx, output, start, base)) {
-          return `${base ? `${base} ` : ""}${braces[0]} ${join(output, ", ")}` +
-            ` ${braces[1]}`;
+          const joinedOutput = join(output, ", ");
+          if (!StringPrototypeIncludes(joinedOutput, "\n")) {
+            return `${base ? `${base} ` : ""}${braces[0]} ${joinedOutput}` +
+              ` ${braces[1]}`;
+          }
         }
       }
     }
     // Line up each entry on an individual line.
-    const indentation = `\n${" ".repeat(ctx.indentationLvl)}`;
+    const indentation = `\n${StringPrototypeRepeat(" ", ctx.indentationLvl)}`;
     return `${base ? `${base} ` : ""}${braces[0]}${indentation}  ` +
       `${join(output, `,${indentation}  `)}${
         ctx.trailingComma ? "," : ""
@@ -1940,7 +1846,7 @@ function reduceToSingleString(
     return `${braces[0]}${base ? ` ${base}` : ""} ${join(output, ", ")} ` +
       braces[1];
   }
-  const indentation = " ".repeat(ctx.indentationLvl);
+  const indentation = StringPrototypeRepeat(" ", ctx.indentationLvl);
   // If the opening "brace" is too large, like in the case of "Set {",
   // we need to force the first item to be on the next line or the
   // items will not line up correctly.
@@ -2000,7 +1906,7 @@ function groupArrayElements(ctx, output, value) {
     (totalLength / actualMax > 5 || maxLength <= 6)
   ) {
     const approxCharHeights = 2.5;
-    const averageBias = Math.sqrt(actualMax - totalLength / output.length);
+    const averageBias = MathSqrt(actualMax - totalLength / output.length);
     const biasedMax = MathMax(actualMax - 3 - averageBias, 1);
     // Dynamically check how many columns seem possible.
     const columns = MathMin(
@@ -2009,13 +1915,13 @@ function groupArrayElements(ctx, output, value) {
       // which contains n rectangles of size `actualMax * approxCharHeights`.
       // Divide that by `actualMax` to receive the correct number of columns.
       // The added bias increases the columns for short entries.
-      Math.round(
-        Math.sqrt(
+      MathRound(
+        MathSqrt(
           approxCharHeights * biasedMax * outputLength,
         ) / biasedMax,
       ),
       // Do not exceed the breakLength.
-      Math.floor((ctx.breakLength - ctx.indentationLvl) / actualMax),
+      MathFloor((ctx.breakLength - ctx.indentationLvl) / actualMax),
       // Limit array grouping for small `compact` modes as the user requested
       // minimal grouping.
       ctx.compact * 4,
@@ -2038,11 +1944,11 @@ function groupArrayElements(ctx, output, value) {
       lineMaxLength += separatorSpace;
       maxLineLength[i] = lineMaxLength;
     }
-    let order = String.prototype.padStart;
+    let order = StringPrototypePadStart;
     if (value !== undefined) {
       for (let i = 0; i < output.length; i++) {
         if (typeof value[i] !== "number" && typeof value[i] !== "bigint") {
-          order = String.prototype.padEnd;
+          order = StringPrototypePadEnd;
           break;
         }
       }
@@ -2058,21 +1964,21 @@ function groupArrayElements(ctx, output, value) {
         // done line by line as some lines might contain more colors than
         // others.
         const padding = maxLineLength[j - i] + output[j].length - dataLen[j];
-        str += `${output[j]}, `.padStart(padding, " ");
+        str += order(`${output[j]}, `, padding, " ");
       }
-      if (order === String.prototype.padStart) {
+      if (order === StringPrototypePadStart) {
         const padding = maxLineLength[j - i] +
           output[j].length -
           dataLen[j] -
           separatorSpace;
-        str += output[j].padStart(padding, " ");
+        str += StringPrototypePadStart(output[j], padding, " ");
       } else {
         str += output[j];
       }
-      Array.prototype.push.call(tmp, str);
+      ArrayPrototypePush(tmp, str);
     }
     if (ctx.maxArrayLength < output.length) {
-      Array.prototype.push.call(tmp, output[outputLength]);
+      ArrayPrototypePush(tmp, output[outputLength]);
     }
     output = tmp;
   }
@@ -2381,7 +2287,7 @@ const denoInspectDefaultOptions = {
   iterableLimit: 100, // similar to node's maxArrayLength, but doesn't only apply to arrays
   trailingComma: false,
 
-  // TODO
+  // TODO(@crowlKats): merge into indentationLvl
   indentLevel: 0,
 };
 
@@ -2410,12 +2316,12 @@ class CSI {
  * Insert a backslash before any occurrence of the chosen quote symbol and
  * before any backslash.
  */
-function quoteString(string, inspectOptions) {
-  inspectOptions ??= getDefaultInspectOptions();
-  const quotes = inspectOptions.quotes;
-  const quote =
-    ArrayPrototypeFind(quotes, (c) => !StringPrototypeIncludes(string, c)) ??
-      quotes[0];
+function quoteString(string, ctx) {
+  const quote = ArrayPrototypeFind(
+    ctx.quotes,
+    (c) => !StringPrototypeIncludes(string, c),
+  ) ??
+    ctx.quotes[0];
   const escapePattern = new SafeRegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
   string = replaceEscapeSequences(string);
@@ -3422,7 +3328,7 @@ function inspect(
     ctx.maxStringLength = inspectOptions.strAbbreviateSize;
   }
 
-  if (ctx.colors) ctx.stylize = createStylizeWithColor(styles, colors); // TODO
+  if (ctx.colors) ctx.stylize = createStylizeWithColor(styles, colors);
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
   return formatValue(ctx, value, 0);
@@ -3529,6 +3435,7 @@ export {
   formatBigInt,
   formatNumber,
   formatValue,
+  getDefaultInspectOptions,
   inspect,
   inspectArgs,
   quoteString,

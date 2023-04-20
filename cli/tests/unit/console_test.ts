@@ -103,10 +103,10 @@ Deno.test(
         ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
       ),
       `[
-    "foo\\b", "foo\\f",
-    "foo\\n", "foo\\r",
-    "foo\\t", "foo\\v",
-    "foo\\x00"
+  "foo\\b",   "foo\\f",
+  "foo\\n",   "foo\\r",
+  "foo\\t",   "foo\\v",
+  "foo\\x00"
 ]`,
     );
     assertEquals(
@@ -152,21 +152,21 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n\")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n\")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r\")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t\")',
-  [Symbol("qux\\x00")]: 'Symbol(\"qux\\x00")'
+  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
+  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
+  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
+  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
+  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
       stringify(new Set(["foo\n", "foo\r", "foo\0"])),
-      `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
+      `Set(3) { "foo\\n", "foo\\r", "foo\\x00" }`,
     );
   },
 );
 
-Deno.test(function consoleTestStringifyQuotes() {
+Deno.test(function consoleTestStringifyQuotexs() {
   assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
   assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
   assertEquals(stringify([`\\,",'`]), `[ \`\\\\,",'\` ]`);
@@ -366,9 +366,9 @@ Deno.test(function consoleTestStringifyMultipleCircular() {
   assertEquals(
     stringify(y),
     "{\n" +
-    "  a: <ref *1> { b: [Circular *1] },\n" +
-    "  foo: <ref *2> { bar: [Circular *2] }\n" +
-    "}",
+      "  a: <ref *1> { b: [Circular *1] },\n" +
+      "  foo: <ref *2> { bar: [Circular *2] }\n" +
+      "}",
   );
 });
 
@@ -448,7 +448,10 @@ Deno.test(function consoleTestStringifyWithDepth() {
     stripColor(inspectArgs([nestedObj], { depth: 4 })),
     "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
-  assertEquals(stripColor(inspectArgs([nestedObj], { depth: 0 })), "{ a: [Object] }");
+  assertEquals(
+    stripColor(inspectArgs([nestedObj], { depth: 0 })),
+    "{ a: [Object] }",
+  );
   assertEquals(
     stripColor(inspectArgs([nestedObj])),
     "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
@@ -504,13 +507,15 @@ Deno.test(function consoleTestStringifyIterable() {
   assertEquals(
     stringify(longArray),
     `[
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0,
   ... 100 more items
 ]`,
   );
@@ -521,13 +526,15 @@ Deno.test(function consoleTestStringifyIterable() {
     `{
   a: "a",
   longArray: [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
     ... 100 more items
   ]
 }`,
@@ -537,7 +544,7 @@ Deno.test(function consoleTestStringifyIterable() {
     ["a", 0],
     ["b", 1],
   ]);
-  assertEquals(stringify(shortMap), `Map { "a" => 0, "b" => 1 }`);
+  assertEquals(stringify(shortMap), `Map(2) { "a" => 0, "b" => 1 }`);
 
   const longMap = new Map();
   for (const key of Array(200).keys()) {
@@ -545,7 +552,7 @@ Deno.test(function consoleTestStringifyIterable() {
   }
   assertEquals(
     stringify(longMap),
-    `Map {
+    `Map(200) {
   "0" => 0,
   "1" => 1,
   "2" => 2,
@@ -651,14 +658,14 @@ Deno.test(function consoleTestStringifyIterable() {
   );
 
   const shortSet = new Set([1, 2, 3]);
-  assertEquals(stringify(shortSet), `Set { 1, 2, 3 }`);
+  assertEquals(stringify(shortSet), `Set(3) { 1, 2, 3 }`);
   const longSet = new Set();
   for (const key of Array(200).keys()) {
     longSet.add(key);
   }
   assertEquals(
     stringify(longSet),
-    `Set {
+    `Set(200) {
   0,
   1,
   2,

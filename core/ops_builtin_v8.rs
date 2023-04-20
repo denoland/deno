@@ -644,7 +644,7 @@ fn op_get_non_index_property_names<'a>(
     property_filter = property_filter | v8::SKIP_SYMBOLS
   }
 
-  let maybe_names = obj.get_own_property_names(
+  let maybe_names = obj.get_property_names(
     scope,
     v8::GetPropertyNamesArgs {
       mode: v8::KeyCollectionMode::OwnOnly,
