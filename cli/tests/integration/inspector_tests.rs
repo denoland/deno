@@ -6,15 +6,18 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_websocket::tokio_tungstenite;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
+use fastwebsockets::WebSocket;
 use hyper::upgrade::Upgraded;
+use hyper::Body;
 use hyper::Request;
+use hyper::Response;
 use std::io::BufRead;
 use test_util as util;
 use test_util::TempDir;
 use tokio::net::TcpStream;
+use url::Url;
 use util::http_server;
 use util::DenoChild;
 
@@ -28,6 +31,37 @@ where
   fn execute(&self, fut: Fut) {
     tokio::task::spawn(fut);
   }
+}
+
+async fn connect_to_ws(uri: Url) -> (WebSocket<Upgraded>, Response<Body>) {
+  let domain = &uri.host().unwrap().to_string();
+  let port = &uri.port().unwrap_or(match uri.scheme() {
+    "wss" | "https" => 443,
+    _ => 80,
+  });
+  let addr = format!("{domain}:{port}");
+
+  let stream = TcpStream::connect(addr).await.unwrap();
+
+  let host = uri.host_str().unwrap();
+
+  let req = Request::builder()
+    .method("GET")
+    .uri(uri.path())
+    .header("Host", host)
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(hyper::header::CONNECTION, "Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .body(hyper::Body::empty())
+    .unwrap();
+
+  fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+    .await
+    .unwrap()
 }
 
 struct InspectorTester {
@@ -57,35 +91,7 @@ impl InspectorTester {
 
     let uri = extract_ws_url_from_stderr(&mut stderr_lines);
 
-    let domain = &uri.host().unwrap().to_string();
-    let port = &uri.port().unwrap_or(match uri.scheme() {
-      "wss" | "https" => 443,
-      _ => 80,
-    });
-    let addr = format!("{domain}:{port}");
-
-    let stream = TcpStream::connect(addr).await.unwrap();
-
-    let host = uri.host_str().unwrap();
-
-    let req = Request::builder()
-      .method("GET")
-      .uri(uri.path())
-      .header("Host", host)
-      .header(hyper::header::UPGRADE, "websocket")
-      .header(hyper::header::CONNECTION, "Upgrade")
-      .header(
-        "Sec-WebSocket-Key",
-        fastwebsockets::handshake::generate_key(),
-      )
-      .header("Sec-WebSocket-Version", "13")
-      .body(hyper::Body::empty())
-      .unwrap();
-
-    let (socket, response) =
-      fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
-        .await
-        .unwrap();
+    let (socket, response) = connect_to_ws(uri).await;
 
     assert_eq!(response.status(), 101); // Switching protocols.
 
@@ -289,10 +295,7 @@ async fn inspector_connect() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  // We use tokio_tungstenite as a websocket client because warp (which is
-  // a dependency of Deno) uses it.
-  let (_socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
+  let (_socket, response) = connect_to_ws(ws_url).await;
   assert_eq!("101 Switching Protocols", response.status().to_string());
   child.kill().unwrap();
   child.wait().unwrap();
