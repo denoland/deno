@@ -6,7 +6,7 @@ Node esm importing node cjs
   MyClass: [Class: MyClass]
 }
 { default: [Function (anonymous)], named: [Function (anonymous)] }
-Module {
+[Module: null prototype] {
   MyClass: [Class: MyClass],
   __esModule: true,
   default: {
@@ -16,7 +16,7 @@ Module {
   },
   named: [Function (anonymous)]
 }
-Module {
+[Module: null prototype] {
   __esModule: true,
   default: { default: [Function (anonymous)], named: [Function (anonymous)] },
   named: [Function (anonymous)]
@@ -30,7 +30,7 @@ Deno esm importing node cjs
   named: [Function (anonymous)],
   MyClass: [Class: MyClass]
 }
-Module {
+[Module: null prototype] {
   MyClass: [Class: MyClass],
   __esModule: true,
   default: {
@@ -44,7 +44,7 @@ Module {
 Deno esm importing node esm
 ===========================
 [Function: default]
-Module { default: [Function: default] }
+[Module: null prototype] { default: [Function: default] }
 ===========================
 1
 5

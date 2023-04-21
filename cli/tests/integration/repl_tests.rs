@@ -870,7 +870,7 @@ fn npm_packages() {
       true,
     );
 
-    assert_contains!(out, "Module {");
+    assert_contains!(out, "[Module: null prototype] {");
     assert_contains!(out, "Chalk: [Class: Chalk],");
     assert!(err.is_empty());
   }

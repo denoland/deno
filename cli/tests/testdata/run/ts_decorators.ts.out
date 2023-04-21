@@ -1,2 +1,2 @@
 Check [WILDCARD]
-{ someField: "asdf" }
+SomeClass { someField: "asdf" }
