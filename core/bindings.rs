@@ -160,30 +160,41 @@ pub(crate) fn initialize_context<'s>(
 
   if matches!(snapshot_options, SnapshotOptions::Load) {
     // Only register ops that have `force_registration` flag set to true,
-    // the remaining ones should already be in the snapshot.
-    for op_ctx in op_ctxs
-      .iter()
-      .filter(|op_ctx| op_ctx.decl.force_registration)
-    {
-      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+    // the remaining ones should already be in the snapshot. Ignore ops that
+    // are disabled.
+    for op_ctx in op_ctxs {
+      if op_ctx.decl.enabled {
+        if op_ctx.decl.force_registration {
+          add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+        }
+      } else {
+        delete_op_from_deno_core_ops(scope, ops_obj, op_ctx)
+      }
     }
   } else if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
-    // Register all ops, probing for which ones are already registered.
+    // Register all enabled ops, probing for which ones are already registered.
     for op_ctx in op_ctxs {
       let key = v8::String::new_external_onebyte_static(
         scope,
         op_ctx.decl.name.as_bytes(),
       )
       .unwrap();
-      if ops_obj.get(scope, key.into()).is_some() {
-        continue;
+
+      if op_ctx.decl.enabled {
+        if ops_obj.get(scope, key.into()).is_some() {
+          continue;
+        }
+        add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+      } else {
+        delete_op_from_deno_core_ops(scope, ops_obj, op_ctx)
       }
-      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
     }
   } else {
-    // In other cases register all ops unconditionally.
+    // In other cases register all ops enabled unconditionally.
     for op_ctx in op_ctxs {
-      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+      if op_ctx.decl.enabled {
+        add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+      }
     }
   }
 
@@ -201,6 +212,17 @@ fn set_func(
   let val = v8::Function::new(scope, callback).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
+}
+
+fn delete_op_from_deno_core_ops(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  op_ctx: &OpCtx,
+) {
+  let key =
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
+  obj.delete(scope, key.into());
 }
 
 fn add_op_to_deno_core_ops(
