@@ -40,6 +40,7 @@ const {
   Symbol,
   TypeError,
   Uint8ArrayPrototype,
+  Uint8Array,
 } = primordials;
 
 const _upgraded = Symbol("_upgraded");
