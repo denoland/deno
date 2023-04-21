@@ -26,6 +26,7 @@ import {
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 import {
+  Deferred,
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
@@ -127,6 +128,11 @@ class InnerRequest {
       this.headerList;
       this.close();
 
+      const goAhead = new Deferred();
+      this.#upgraded = () => {
+        goAhead.resolve();
+      };
+
       // Start the upgrade in the background.
       (async () => {
         try {
@@ -137,9 +143,11 @@ class InnerRequest {
             response.headerList,
           );
           const wsRid = core.ops.op_ws_server_create(upgrade[0], upgrade[1]);
-          ws[_rid] = wsRid;
 
-          this.#upgraded = true;
+          // We have to wait for the go-ahead signal
+          await goAhead;
+
+          ws[_rid] = wsRid;
           ws[_readyState] = WebSocket.OPEN;
           ws[_role] = SERVER;
           const event = new Event("open");
@@ -369,6 +377,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
+      innerRequest[_upgraded]();
       return;
     }
 
