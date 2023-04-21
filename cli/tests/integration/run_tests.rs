@@ -4088,14 +4088,46 @@ fn websocketstream() {
   assert!(status.success());
 }
 
-#[test]
-fn websocketstream_ping() {
-  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+#[tokio::test(flavor = "multi_thread")]
+async fn websocketstream_ping() {
   let _g = util::http_server();
 
   let script = util::testdata_path().join("run/websocketstream_ping_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let mut child = util::deno_cmd()
+
+  let srv_fn = hyper::service::service_fn(|mut req| async move {
+    let (response, upgrade_fut) =
+      fastwebsockets::upgrade::upgrade(&mut req).unwrap();
+    tokio::spawn(async move {
+      let mut ws = upgrade_fut.await.unwrap();
+
+      ws.write_frame(fastwebsockets::Frame::text("A".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::new(
+        true,
+        fastwebsockets::OpCode::Ping,
+        None,
+        vec![],
+      ))
+      .await
+      .unwrap();
+      ws.write_frame(fastwebsockets::Frame::text("B".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      let message = ws.read_frame().await.unwrap();
+      assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
+      ws.write_frame(fastwebsockets::Frame::text("C".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+        .await
+        .unwrap();
+    });
+    Ok::<_, std::convert::Infallible>(response)
+  });
+
+  let child = util::deno_cmd()
     .arg("test")
     .arg("--unstable")
     .arg("--allow-net")
@@ -4105,27 +4137,22 @@ fn websocketstream_ping() {
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap();
+  let server = tokio::net::TcpListener::bind("127.0.0.1:4513")
+    .await
+    .unwrap();
+  tokio::spawn(async move {
+    let (stream, _) = server.accept().await.unwrap();
+    let conn_fut = hyper::server::conn::Http::new()
+      .serve_connection(stream, srv_fn)
+      .with_upgrades();
 
-  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
-  let (stream, _) = server.accept().unwrap();
-  let mut socket = tungstenite::accept(stream).unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("A")))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Ping(vec![]))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("B")))
-    .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, tungstenite::Message::Pong(vec![]));
-  socket
-    .write_message(tungstenite::Message::Text(String::from("C")))
-    .unwrap();
-  socket.close(None).unwrap();
+    if let Err(e) = conn_fut.await {
+      eprintln!("websocket server error: {e:?}");
+    }
+  });
 
-  assert!(child.wait().unwrap().success());
+  let r = child.wait_with_output().unwrap();
+  assert!(r.status.success());
 }
 
 struct SpawnExecutor;
