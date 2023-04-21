@@ -6,10 +6,10 @@ use crate::args::Flags;
 use crate::args::Lockfile;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
-use crate::cache::CliNodeAnalysisCache;
 use crate::cache::DenoDir;
 use crate::cache::EmitCache;
 use crate::cache::HttpCache;
+use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
@@ -17,6 +17,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::node::CliCjsEsmCodeAnalyzer;
 use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
@@ -77,7 +78,7 @@ pub struct Inner {
   pub module_graph_builder: Arc<ModuleGraphBuilder>,
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub node_code_translator:
-    Arc<NodeCodeTranslator<CliNodeAnalysisCache, CliRequireNpmResolver>>,
+    Arc<NodeCodeTranslator<CliCjsEsmCodeAnalyzer, CliRequireNpmResolver>>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
@@ -305,9 +306,10 @@ impl ProcState {
     ));
     let file_fetcher = Arc::new(file_fetcher);
     let node_analysis_cache =
-      CliNodeAnalysisCache::new(caches.node_analysis_db(&dir));
+      NodeAnalysisCache::new(caches.node_analysis_db(&dir));
+    let cjs_esm_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
     let node_code_translator = Arc::new(NodeCodeTranslator::new(
-      node_analysis_cache,
+      cjs_esm_analyzer,
       npm_resolver.as_require_npm_resolver(),
     ));
     let node_resolver = Arc::new(CliNodeResolver::new(

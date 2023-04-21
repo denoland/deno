@@ -6,13 +6,6 @@ use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_ast::swc::common::SyntaxContext;
-use deno_ast::view::Node;
-use deno_ast::view::NodeTrait;
-use deno_ast::CjsAnalysis;
-use deno_ast::MediaType;
-use deno_ast::ParsedSource;
-use deno_ast::SourceRanged;
 use deno_core::anyhow::Context;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
@@ -42,65 +35,70 @@ static NODE_GLOBALS: &[&str] = &[
   "setTimeout",
 ];
 
-pub trait NodeAnalysisCache {
-  fn get_cjs_analysis(
-    &self,
-    specifier: &str,
-    expected_source_hash: &str,
-  ) -> Option<CjsAnalysis>;
+#[derive(Debug, Clone)]
+pub struct CjsAnalysis {
+  pub exports: Vec<String>,
+  pub reexports: Vec<String>,
+}
 
-  fn set_cjs_analysis(
+/// Code analyzer for CJS and ESM files.
+pub trait CjsEsmCodeAnalyzer {
+  /// Analyzes CommonJs code for exports and reexports, which is
+  /// then used to determine the wrapper ESM module exports.
+  fn analyze_cjs(
     &self,
-    specifier: &str,
-    source_hash: &str,
-    cjs_analysis: &CjsAnalysis,
-  );
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> Result<CjsAnalysis, AnyError>;
 
-  fn get_esm_analysis(
+  /// Analyzes ESM code for top level declarations. This is used
+  /// to help inform injecting node specific globals into Node ESM
+  /// code. For example, if a top level `setTimeout` function exists
+  /// then we don't want to inject a `setTimeout` declaration.
+  ///
+  /// Note: This will go away in the future once we do this all in v8.
+  fn analyze_esm_top_level_decls(
     &self,
-    specifier: &str,
-    expected_source_hash: &str,
-  ) -> Option<Vec<String>>;
-
-  fn set_esm_analysis(
-    &self,
-    specifier: &str,
-    source_hash: &str,
-    top_level_decls: &[String],
-  );
-
-  fn compute_source_hash(&self, text: &str) -> String;
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> Result<HashSet<String>, AnyError>;
 }
 
 pub struct NodeCodeTranslator<
-  TNodeAnalysisCache: NodeAnalysisCache,
+  TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
   TRequireNpmResolver: RequireNpmResolver,
 > {
-  analysis_cache: TNodeAnalysisCache,
+  cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
   npm_resolver: TRequireNpmResolver,
 }
 
 impl<
-    TNodeAnalysisCache: NodeAnalysisCache,
+    TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
     TRequireNpmResolver: RequireNpmResolver,
-  > NodeCodeTranslator<TNodeAnalysisCache, TRequireNpmResolver>
+  > NodeCodeTranslator<TCjsEsmCodeAnalyzer, TRequireNpmResolver>
 {
   pub fn new(
-    analysis_cache: TNodeAnalysisCache,
+    cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
     npm_resolver: TRequireNpmResolver,
   ) -> Self {
     Self {
-      analysis_cache,
+      cjs_esm_code_analyzer,
       npm_resolver,
     }
   }
 
+  /// Resolves the code to be used when executing Node specific ESM code.
+  ///
+  /// Note: This will go away in the future once we do this all in v8.
   pub fn esm_code_with_node_globals(
     &self,
     specifier: &ModuleSpecifier,
-    code: String,
+    source: &str,
   ) -> Result<String, AnyError> {
-    esm_code_with_node_globals(&self.analysis_cache, specifier, code)
+    let top_level_decls = self
+      .cjs_esm_code_analyzer
+      .analyze_esm_top_level_decls(specifier, source)?;
+    Ok(esm_code_from_top_level_decls(source, &top_level_decls))
   }
 
   /// Translates given CJS module into ESM. This function will perform static
@@ -112,21 +110,19 @@ impl<
   pub fn translate_cjs_to_esm<Fs: NodeFs>(
     &self,
     specifier: &ModuleSpecifier,
-    code: String,
-    media_type: MediaType,
+    source: &str,
     permissions: &mut dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<String> = HashSet::default();
+
+    let analysis = self.cjs_esm_code_analyzer.analyze_cjs(specifier, source)?;
 
     let mut source = vec![
       r#"import {createRequire as __internalCreateRequire} from "node:module";
       const require = __internalCreateRequire(import.meta.url);"#
         .to_string(),
     ];
-
-    let analysis =
-      self.perform_cjs_analysis(specifier.as_str(), media_type, code)?;
 
     let mut all_exports = analysis
       .exports
@@ -167,13 +163,10 @@ impl<
             reexport, reexport_specifier, referrer
           )
         })?;
-      let reexport_file_media_type = MediaType::from_path(&resolved_reexport);
       {
-        let analysis = self.perform_cjs_analysis(
-          reexport_specifier.as_str(),
-          reexport_file_media_type,
-          reexport_file_text,
-        )?;
+        let analysis = self
+          .cjs_esm_code_analyzer
+          .analyze_cjs(&reexport_specifier, &reexport_file_text)?;
 
         for reexport in analysis.reexports {
           reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
@@ -215,43 +208,6 @@ impl<
 
     let translated_source = source.join("\n");
     Ok(translated_source)
-  }
-
-  fn perform_cjs_analysis(
-    &self,
-    specifier: &str,
-    media_type: MediaType,
-    code: String,
-  ) -> Result<CjsAnalysis, AnyError> {
-    let source_hash = self.analysis_cache.compute_source_hash(&code);
-    if let Some(analysis) = self
-      .analysis_cache
-      .get_cjs_analysis(specifier, &source_hash)
-    {
-      return Ok(analysis);
-    }
-
-    if media_type == MediaType::Json {
-      return Ok(CjsAnalysis {
-        exports: vec![],
-        reexports: vec![],
-      });
-    }
-
-    let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
-      text_info: deno_ast::SourceTextInfo::new(code.into()),
-      media_type,
-      capture_tokens: true,
-      scope_analysis: false,
-      maybe_syntax: None,
-    })?;
-    let analysis = parsed_source.analyze_cjs();
-    self
-      .analysis_cache
-      .set_cjs_analysis(specifier, &source_hash, &analysis);
-
-    Ok(analysis)
   }
 
   fn resolve<Fs: NodeFs>(
@@ -342,47 +298,6 @@ impl<
   }
 }
 
-fn esm_code_with_node_globals(
-  analysis_cache: &dyn NodeAnalysisCache,
-  specifier: &ModuleSpecifier,
-  code: String,
-) -> Result<String, AnyError> {
-  // TODO(dsherret): this code is way more inefficient than it needs to be.
-  //
-  // In the future, we should disable capturing tokens & scope analysis
-  // and instead only use swc's APIs to go through the portions of the tree
-  // that we know will affect the global scope while still ensuring that
-  // `var` decls are taken into consideration.
-  let source_hash = analysis_cache.compute_source_hash(&code);
-  let text_info = deno_ast::SourceTextInfo::from_string(code);
-  let top_level_decls = if let Some(decls) =
-    analysis_cache.get_esm_analysis(specifier.as_str(), &source_hash)
-  {
-    HashSet::from_iter(decls)
-  } else {
-    let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
-      text_info: text_info.clone(),
-      media_type: deno_ast::MediaType::from_specifier(specifier),
-      capture_tokens: true,
-      scope_analysis: true,
-      maybe_syntax: None,
-    })?;
-    let top_level_decls = analyze_top_level_decls(&parsed_source)?;
-    analysis_cache.set_esm_analysis(
-      specifier.as_str(),
-      &source_hash,
-      &top_level_decls.clone().into_iter().collect::<Vec<_>>(),
-    );
-    top_level_decls
-  };
-
-  Ok(esm_code_from_top_level_decls(
-    text_info.text_str(),
-    &top_level_decls,
-  ))
-}
-
 fn esm_code_from_top_level_decls(
   file_text: &str,
   top_level_decls: &HashSet<String>,
@@ -417,70 +332,6 @@ fn esm_code_from_top_level_decls(
   result.push_str(file_text);
 
   result
-}
-
-fn analyze_top_level_decls(
-  parsed_source: &ParsedSource,
-) -> Result<HashSet<String>, AnyError> {
-  fn visit_children(
-    node: Node,
-    top_level_context: SyntaxContext,
-    results: &mut HashSet<String>,
-  ) {
-    if let Node::Ident(ident) = node {
-      if ident.ctxt() == top_level_context && is_local_declaration_ident(node) {
-        results.insert(ident.sym().to_string());
-      }
-    }
-
-    for child in node.children() {
-      visit_children(child, top_level_context, results);
-    }
-  }
-
-  let top_level_context = parsed_source.top_level_context();
-
-  parsed_source.with_view(|program| {
-    let mut results = HashSet::new();
-    visit_children(program.into(), top_level_context, &mut results);
-    Ok(results)
-  })
-}
-
-fn is_local_declaration_ident(node: Node) -> bool {
-  if let Some(parent) = node.parent() {
-    match parent {
-      Node::BindingIdent(decl) => decl.id.range().contains(&node.range()),
-      Node::ClassDecl(decl) => decl.ident.range().contains(&node.range()),
-      Node::ClassExpr(decl) => decl
-        .ident
-        .as_ref()
-        .map(|i| i.range().contains(&node.range()))
-        .unwrap_or(false),
-      Node::TsInterfaceDecl(decl) => decl.id.range().contains(&node.range()),
-      Node::FnDecl(decl) => decl.ident.range().contains(&node.range()),
-      Node::FnExpr(decl) => decl
-        .ident
-        .as_ref()
-        .map(|i| i.range().contains(&node.range()))
-        .unwrap_or(false),
-      Node::TsModuleDecl(decl) => decl.id.range().contains(&node.range()),
-      Node::TsNamespaceDecl(decl) => decl.id.range().contains(&node.range()),
-      Node::VarDeclarator(decl) => decl.name.range().contains(&node.range()),
-      Node::ImportNamedSpecifier(decl) => {
-        decl.local.range().contains(&node.range())
-      }
-      Node::ImportDefaultSpecifier(decl) => {
-        decl.local.range().contains(&node.range())
-      }
-      Node::ImportStarAsSpecifier(decl) => decl.range().contains(&node.range()),
-      Node::KeyValuePatProp(decl) => decl.key.range().contains(&node.range()),
-      Node::AssignPatProp(decl) => decl.key.range().contains(&node.range()),
-      _ => false,
-    }
-  } else {
-    false
-  }
 }
 
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
@@ -643,54 +494,12 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
 mod tests {
   use super::*;
 
-  struct NoopAnalysisCache;
-
-  impl NodeAnalysisCache for NoopAnalysisCache {
-    fn get_cjs_analysis(
-      &self,
-      _specifier: &str,
-      _expected_source_hash: &str,
-    ) -> Option<CjsAnalysis> {
-      None
-    }
-
-    fn set_cjs_analysis(
-      &self,
-      _specifier: &str,
-      _source_hash: &str,
-      _cjs_analysis: &CjsAnalysis,
-    ) {
-    }
-
-    fn get_esm_analysis(
-      &self,
-      _specifier: &str,
-      _expected_source_hash: &str,
-    ) -> Option<Vec<String>> {
-      None
-    }
-
-    fn set_esm_analysis(
-      &self,
-      _specifier: &str,
-      _source_hash: &str,
-      _top_level_decls: &[String],
-    ) {
-    }
-
-    fn compute_source_hash(&self, _text: &str) -> String {
-      String::new()
-    }
-  }
-
   #[test]
   fn test_esm_code_with_node_globals() {
-    let r = esm_code_with_node_globals(
-      &NoopAnalysisCache,
-      &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
-      "export const x = 1;".to_string(),
-    )
-    .unwrap();
+    let r = esm_code_from_top_level_decls(
+      "export const x = 1;",
+      &HashSet::from(["x".to_string()]),
+    );
     assert!(r.contains(&format!(
       "var globalThis = {};",
       NODE_GLOBAL_THIS_NAME.as_str()
@@ -701,12 +510,10 @@ mod tests {
 
   #[test]
   fn test_esm_code_with_node_globals_with_shebang() {
-    let r = esm_code_with_node_globals(
-      &NoopAnalysisCache,
-      &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
-      "#!/usr/bin/env node\nexport const x = 1;".to_string(),
-    )
-    .unwrap();
+    let r = esm_code_from_top_level_decls(
+      "#!/usr/bin/env node\nexport const x = 1;",
+      &HashSet::from(["x".to_string()]),
+    );
     assert_eq!(
       r,
       format!(

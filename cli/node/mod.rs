@@ -38,6 +38,10 @@ use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+mod analyze;
+
+pub use analyze::CliCjsEsmCodeAnalyzer;
+
 #[derive(Debug)]
 pub enum NodeResolution {
   Esm(ModuleSpecifier),

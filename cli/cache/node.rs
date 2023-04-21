@@ -3,7 +3,6 @@
 use deno_ast::CjsAnalysis;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_runtime::deno_node::analyze::NodeAnalysisCache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
@@ -38,15 +37,22 @@ pub static NODE_ANALYSIS_CACHE_DB: CacheDBConfiguration =
   };
 
 #[derive(Clone)]
-pub struct CliNodeAnalysisCache {
+pub struct NodeAnalysisCache {
   inner: NodeAnalysisCacheInner,
 }
 
-impl CliNodeAnalysisCache {
+impl NodeAnalysisCache {
   pub fn new(db: CacheDB) -> Self {
     Self {
       inner: NodeAnalysisCacheInner::new(db),
     }
+  }
+
+  pub fn compute_source_hash(text: &str) -> String {
+    FastInsecureHasher::new()
+      .write_str(text)
+      .finish()
+      .to_string()
   }
 
   fn ensure_ok<T: Default>(res: Result<T, AnyError>) -> T {
@@ -65,17 +71,8 @@ impl CliNodeAnalysisCache {
       }
     }
   }
-}
 
-impl NodeAnalysisCache for CliNodeAnalysisCache {
-  fn compute_source_hash(&self, text: &str) -> String {
-    FastInsecureHasher::new()
-      .write_str(text)
-      .finish()
-      .to_string()
-  }
-
-  fn get_cjs_analysis(
+  pub fn get_cjs_analysis(
     &self,
     specifier: &str,
     expected_source_hash: &str,
@@ -85,7 +82,7 @@ impl NodeAnalysisCache for CliNodeAnalysisCache {
     )
   }
 
-  fn set_cjs_analysis(
+  pub fn set_cjs_analysis(
     &self,
     specifier: &str,
     source_hash: &str,
@@ -98,7 +95,7 @@ impl NodeAnalysisCache for CliNodeAnalysisCache {
     ));
   }
 
-  fn get_esm_analysis(
+  pub fn get_esm_analysis(
     &self,
     specifier: &str,
     expected_source_hash: &str,
@@ -108,11 +105,11 @@ impl NodeAnalysisCache for CliNodeAnalysisCache {
     )
   }
 
-  fn set_esm_analysis(
+  pub fn set_esm_analysis(
     &self,
     specifier: &str,
     source_hash: &str,
-    top_level_decls: &[String],
+    top_level_decls: &Vec<String>,
   ) {
     Self::ensure_ok(self.inner.set_esm_analysis(
       specifier,
@@ -209,7 +206,7 @@ impl NodeAnalysisCacheInner {
     &self,
     specifier: &str,
     source_hash: &str,
-    top_level_decls: &[String],
+    top_level_decls: &Vec<String>,
   ) -> Result<(), AnyError> {
     let sql = "
       INSERT OR REPLACE INTO
