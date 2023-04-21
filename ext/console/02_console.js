@@ -108,6 +108,11 @@ const {
   ObjectGetPrototypeOf,
   FunctionPrototypeToString,
   StringPrototypeStartsWith,
+  SetPrototypeValues,
+  SafeSetIterator,
+  TypedArrayPrototypeGetByteLength,
+  SafeMapIterator,
+  ArrayBufferPrototype,
 } = primordials;
 import * as colors_ from "ext:deno_console/01_colors.js";
 
@@ -228,7 +233,7 @@ const _weakSetHas = WeakSet.prototype.has;
 
 // https://tc39.es/ecma262/#sec-get-arraybuffer.prototype.bytelength
 const _getArrayBufferByteLength = ObjectGetOwnPropertyDescriptor(
-  ArrayBuffer.prototype,
+  ArrayBufferPrototype,
   "byteLength",
 ).get;
 
@@ -237,19 +242,19 @@ let _getSharedArrayBufferByteLength;
 
 // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
 const _getTypedArrayToStringTag = ObjectGetOwnPropertyDescriptor(
-  Object.getPrototypeOf(Uint8Array).prototype,
+  ObjectGetPrototypeOf(Uint8Array).prototype,
   SymbolToStringTag,
 ).get;
 
 // https://tc39.es/ecma262/#sec-get-set.prototype.size
 const _getSetSize = ObjectGetOwnPropertyDescriptor(
-  Set.prototype,
+  SetPrototype,
   "size",
 ).get;
 
 // https://tc39.es/ecma262/#sec-get-map.prototype.size
 const _getMapSize = ObjectGetOwnPropertyDescriptor(
-  Map.prototype,
+  MapPrototype,
   "size",
 ).get;
 
@@ -657,7 +662,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     tag = "";
   }
   let base = "";
-  let formatter = getEmptyFormatArray;
+  let formatter = () => [];
   let braces;
   let noIterator = true;
   let i = 0;
@@ -671,7 +676,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     // Iterators and the rest are split to reduce checks.
     // We have to check all values in case the constructor is set to null.
     // Otherwise it would not possible to identify all types properly.
-    if (SymbolIterator in value || constructor === null) {
+    if (ReflectHas(value, SymbolIterator) || constructor === null) {
       noIterator = false;
       if (ArrayIsArray(value)) {
         // Only set the constructor for non ordinary ("Array [...]") arrays.
@@ -802,7 +807,9 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           formatter = formatArrayBuffer;
         } else if (keys.length === 0 && protoProps === undefined) {
           return prefix +
-            `{ byteLength: ${formatNumber(ctx.stylize, value.byteLength)} }`;
+            `{ byteLength: ${
+              formatNumber(ctx.stylize, TypedArrayPrototypeGetByteLength(value))
+            } }`;
         }
         braces[0] = `${prefix}{`;
         ArrayPrototypeUnshift(keys, "byteLength");
@@ -899,7 +906,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
       output = ArrayPrototypeSort(output, comparator);
     } else if (keys.length > 1) {
       const sorted = output.slice(output.length - keys.length).sort(comparator);
-      output.splice(output.length - keys.length, keys.length, ...sorted);
+      output.splice(
+        output.length - keys.length,
+        keys.length,
+        ...new SafeArrayIterator(sorted),
+      );
     }
   }
 
@@ -1115,11 +1126,6 @@ function formatPrimitive(fn, value, ctx) {
   return fn(maybeQuoteSymbol(value, ctx), "symbol");
 }
 
-// Return a new empty array to push in the results of the default formatter.
-function getEmptyFormatArray() {
-  return [];
-}
-
 function isInstanceof(object, proto) {
   try {
     return object instanceof proto;
@@ -1212,8 +1218,8 @@ function getKeys(value, showHidden) {
 function formatSet(value, ctx, _ignored, recurseTimes) {
   ctx.indentationLvl += 2;
 
-  const values = [...value.values()];
-  const valLen = value.size;
+  const values = [...new SafeSetIterator(value)];
+  const valLen = SetPrototypeGetSize(value);
   const len = MathMin(MathMax(0, ctx.iterableLimit), valLen);
 
   const remaining = valLen - len;
@@ -1232,8 +1238,8 @@ function formatSet(value, ctx, _ignored, recurseTimes) {
 function formatMap(value, ctx, _gnored, recurseTimes) {
   ctx.indentationLvl += 2;
 
-  const values = [...value.entries()];
-  const valLen = value.size;
+  const values = [...new SafeMapIterator(value)];
+  const valLen = MapPrototypeGetSize(value);
   const len = MathMin(MathMax(0, ctx.iterableLimit), valLen);
 
   const remaining = valLen - len;
