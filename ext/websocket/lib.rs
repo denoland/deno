@@ -34,6 +34,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
+use std::future::Future;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -239,7 +240,8 @@ where
     _ => unreachable!(),
   };
 
-  let client = fastwebsockets::handshake::client(request, socket);
+  let client =
+    fastwebsockets::handshake::client(&LocalExecutor, request, socket);
 
   let (stream, response): (WebSocket<Upgraded>, Response<Body>) =
     if let Some(cancel_resource) = cancel_resource {
@@ -532,4 +534,18 @@ impl std::error::Error for DomExceptionNetworkError {}
 pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionNetworkError>()
     .map(|_| "DOMExceptionNetworkError")
+}
+
+// Needed so hyper can use non Send futures
+#[derive(Clone)]
+struct LocalExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
+where
+  Fut: Future + 'static,
+  Fut::Output: 'static,
+{
+  fn execute(&self, fut: Fut) {
+    tokio::task::spawn_local(fut);
+  }
 }
