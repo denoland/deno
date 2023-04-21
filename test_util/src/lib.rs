@@ -2,6 +2,7 @@
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -337,6 +338,39 @@ async fn echo_websocket(
   });
 
   Ok(response)
+}
+
+type WsHandler =
+  fn(
+    fastwebsockets::WebSocket<Upgraded>,
+  ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send>>;
+
+fn spawn_ws_server(stream: TcpStream, handler: WsHandler) {
+  let srv_fn = service_fn(move |mut req: Request<Body>| async move {
+    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
+    let mut ws = upgrade_fut.await?;
+    ws.set_writev(true);
+    ws.set_auto_close(true);
+    ws.set_auto_pong(true);
+
+    tokio::spawn(async move {
+      if let Err(e) = handler(ws).await {
+        eprintln!("Error in websocket connection: {}", e);
+      }
+    });
+
+    Ok::<_, anyhow::Error>(response)
+  });
+
+  tokio::spawn(async move {
+    let conn_fut = hyper::server::conn::Http::new()
+      .serve_connection(stream, srv_fn)
+      .with_upgrades();
+
+    if let Err(e) = conn_fut.await {
+      eprintln!("websocket server error: {e:?}");
+    }
+  });
 }
 
 async fn run_ws_server(addr: &SocketAddr) {
