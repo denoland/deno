@@ -5,7 +5,11 @@ const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
-import { Response, toInnerResponse } from "ext:deno_fetch/23_response.js";
+import {
+  fromInnerResponse,
+  newInnerResponse,
+  toInnerResponse,
+} from "ext:deno_fetch/23_response.js";
 import { fromInnerRequest } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
@@ -39,9 +43,41 @@ const {
 
 const _upgraded = Symbol("_upgraded");
 
-const INTERNAL_SERVER_ERROR = new Response("Internal Server Error", {
-  status: 500,
-});
+function internalServerError() {
+  // "Internal Server Error"
+  return new Response(
+    new Uint8Array([
+      73,
+      110,
+      116,
+      101,
+      114,
+      110,
+      97,
+      108,
+      32,
+      83,
+      101,
+      114,
+      118,
+      101,
+      114,
+      32,
+      69,
+      114,
+      114,
+      111,
+      114,
+    ]),
+    { status: 500 },
+  );
+}
+
+// Used to ensure that user returns a valid response (but not a different response) from handlers that are upgraded.
+const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
+  newInnerResponse(101),
+  "immutable",
+);
 
 class InnerRequest {
   #slabId;
@@ -70,8 +106,6 @@ class InnerRequest {
   }
 
   _wantsUpgrade(upgradeType, ...originalArgs) {
-    this.#upgraded = true;
-
     // upgradeHttp is async
     // TODO(mmastrac)
     if (upgradeType == "upgradeHttp") {
@@ -104,6 +138,8 @@ class InnerRequest {
           );
           const wsRid = core.ops.op_ws_server_create(upgrade[0], upgrade[1]);
           ws[_rid] = wsRid;
+
+          this.#upgraded = true;
           ws[_readyState] = WebSocket.OPEN;
           ws[_role] = SERVER;
           const event = new Event("open");
@@ -122,7 +158,7 @@ class InnerRequest {
           ws.dispatchEvent(event);
         }
       })();
-      return { response: new Response(), socket: ws };
+      return { response: UPGRADE_RESPONSE_SENTINEL, socket: ws };
     }
   }
 
@@ -221,11 +257,22 @@ class CallbackContext {
   scheme;
   fallbackHost;
   serverRid;
+  closed;
 
   initialize(args) {
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
+    this.closed = false;
+  }
+
+  close() {
+    try {
+      this.closed = true;
+      core.tryClose(this.serverRid);
+    } catch {
+      // Pass
+    }
   }
 }
 
@@ -311,13 +358,17 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
         response = await onError(error);
       } catch (error) {
         console.error("Exception in onError while handling exception", error);
-        response = INTERNAL_SERVER_ERROR;
+        response = internalServerError();
       }
     }
 
     const inner = toInnerResponse(response);
     if (innerRequest[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
+      if (response !== UPGRADE_RESPONSE_SENTINEL) {
+        console.error("Upgrade response was not returned from callback");
+        context.close();
+      }
       return;
     }
 
@@ -381,7 +432,7 @@ async function serve(arg1, arg2) {
   const signal = options.signal;
   const onError = options.onError ?? function (error) {
     console.error(error);
-    return INTERNAL_SERVER_ERROR;
+    return internalServerError();
   };
   const listenOpts = {
     hostname: options.hostname ?? "0.0.0.0",
@@ -425,14 +476,7 @@ async function serve(arg1, arg2) {
 
   signal?.addEventListener(
     "abort",
-    () => {
-      try {
-        context.closed = true;
-        core.tryClose(context.serverRid);
-      } catch {
-        // Pass
-      }
-    },
+    () => context.close(),
     { once: true },
   );
 
@@ -468,12 +512,7 @@ async function serve(arg1, arg2) {
         "Terminating Deno.serve loop due to unexpected error",
         error,
       );
-      try {
-        context.closed = true;
-        core.tryClose(rid);
-      } catch {
-        // Pass
-      }
+      context.close();
     });
   }
 
