@@ -89,7 +89,7 @@ Deno.test(
   },
 );
 
-//  https://github.com/denoland/deno/issues/18775
+// https://github.com/denoland/deno/issues/18775
 Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
