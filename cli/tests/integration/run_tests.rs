@@ -4128,8 +4128,20 @@ fn websocketstream_ping() {
   assert!(child.wait().unwrap().success());
 }
 
-#[test]
-fn websocket_server_multi_field_connection_header() {
+struct SpawnExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+where
+  Fut: std::future::Future + Send + 'static,
+  Fut::Output: Send + 'static,
+{
+  fn execute(&self, fut: Fut) {
+    tokio::task::spawn(fut);
+  }
+}
+
+#[tokio::test]
+async fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("run/websocket_server_multi_field_connection_header_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4151,17 +4163,33 @@ fn websocket_server_multi_field_connection_header() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .header(http::header::CONNECTION, "keep-alive, Upgrade")
-    .uri("ws://localhost:4319")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4319")
+    .await
     .unwrap();
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4319")
+    .body(hyper::Body::empty())
+    .unwrap();
+
   let (mut socket, _) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
-  socket.close(None).unwrap();
+
+  let message = socket.read_frame().await.unwrap();
+  assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
+  assert!(message.payload.is_empty());
+  socket
+    .write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .await
+    .unwrap();
   assert!(child.wait().unwrap().success());
 }
 
