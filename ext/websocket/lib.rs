@@ -39,11 +39,9 @@ use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
-use tokio_rustls::TlsConnector;
 
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollector;
@@ -234,12 +232,11 @@ where
         unsafely_ignore_certificate_errors,
         None,
       )?;
-      let tls_connector = TlsConnector::from(Arc::new(tls_config));
-      let dnsname = ServerName::try_from(domain.as_str())
+      let server_name = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
-      let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      let (stream, connection) = tls_socket.into_inner();
-      NetworkStream::Tls(TlsStream::new_client_side_from(stream, connection))
+      let stream =
+        TlsStream::new_client_side(tcp_socket, tls_config.into(), server_name);
+      NetworkStream::Tls(stream)
     }
     _ => unreachable!(),
   };
