@@ -26,8 +26,6 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::put_network_stream_resource;
-use deno_net::raw::take_network_stream_listener_resource;
-use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use http::request::Parts;
@@ -619,10 +617,11 @@ pub fn op_serve_http(
   state: Rc<RefCell<OpState>>,
   listener_rid: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError> {
-  let listener = take_network_stream_listener_resource(
-    &mut state.borrow_mut().resource_table,
-    listener_rid,
-  )?;
+  let listener =
+    DefaultHttpRequestProperties::get_network_stream_listener_for_rid(
+      &mut state.borrow_mut(),
+      listener_rid,
+    )?;
 
   let local_address = listener.listen_address()?;
   let listen_properties = DefaultHttpRequestProperties::listen_properties(
@@ -674,7 +673,10 @@ pub fn op_serve_http_on(
   conn: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError> {
   let network_stream =
-    take_network_stream_resource(&mut state.borrow_mut().resource_table, conn)?;
+    DefaultHttpRequestProperties::get_network_stream_for_rid(
+      &mut state.borrow_mut(),
+      conn,
+    )?;
 
   let local_address = network_stream.local_address()?;
   let listen_properties = DefaultHttpRequestProperties::listen_properties(
