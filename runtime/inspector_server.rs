@@ -149,8 +149,15 @@ fn handle_ws_request(
   let (parts, _) = req.into_parts();
   let mut req = http::Request::from_parts(parts, body);
 
-  let (resp, fut) =
-    fastwebsockets::upgrade::upgrade(&mut req).expect("upgrade failed");
+  let (resp, fut) = match fastwebsockets::upgrade::upgrade(&mut req) {
+    Ok(e) => e,
+    _ => {
+      return http::Response::builder()
+        .status(http::StatusCode::BAD_REQUEST)
+        .body("Not a valid Websocket Request".into());
+    }
+  };
+
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
   tokio::task::spawn_local(async move {

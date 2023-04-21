@@ -265,7 +265,7 @@ fn skip_check_line(
     let mut line = stderr_lines.next().unwrap();
     line = util::strip_ansi_codes(&line).to_string();
 
-    if line.starts_with("Check") {
+    if line.starts_with("Check") || line.starts_with("Download") {
       continue;
     }
 
