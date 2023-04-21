@@ -1819,9 +1819,9 @@ dependencies = [
 
 [[package]]
 name = "fastwebsockets"
-version = "0.2.1"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99a248d92ac4e9048a30d147d7897eaaadd0a5230f11982ab7d6935d7d268902"
+checksum = "fcf2f933f24f45831bd66580a8f9394e440f1f5a23806cf0d4d8b6649e1a01e9"
 dependencies = [
  "base64 0.21.0",
  "cc",
@@ -4898,7 +4898,6 @@ dependencies = [
  "atty",
  "base64 0.13.1",
  "console_static_text",
- "fastwebsockets",
  "flate2",
  "futures",
  "hyper",
