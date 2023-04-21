@@ -1819,9 +1819,9 @@ dependencies = [
 
 [[package]]
 name = "fastwebsockets"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8618126e3852c8629ef166c477dd773310e5ce4ef9b778af834cbfb216577069"
+checksum = "fcf2f933f24f45831bd66580a8f9394e440f1f5a23806cf0d4d8b6649e1a01e9"
 dependencies = [
  "base64 0.21.0",
  "cc",
