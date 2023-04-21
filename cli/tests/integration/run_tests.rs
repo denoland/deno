@@ -4195,9 +4195,9 @@ async fn websocket_server_multi_field_connection_header() {
 
 // TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
 // test hangs then. https://github.com/denoland/deno/issues/14283
-#[test]
+#[tokio::test]
 #[ignore]
-fn websocket_server_idletimeout() {
+async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4219,12 +4219,24 @@ fn websocket_server_idletimeout() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .uri("ws://localhost:4509")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4509")
+    .await
     .unwrap();
-  let (_ws, _request) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4509")
+    .body(hyper::Body::empty())
+    .unwrap();
+
+  let (_socket, _) =
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
 
   assert!(child.wait().unwrap().success());
