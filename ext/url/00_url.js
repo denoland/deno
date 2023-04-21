@@ -157,7 +157,7 @@ class URLSearchParams {
   append(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -176,7 +176,7 @@ class URLSearchParams {
   delete(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -200,7 +200,7 @@ class URLSearchParams {
   getAll(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -223,7 +223,7 @@ class URLSearchParams {
   get(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'get' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -245,7 +245,7 @@ class URLSearchParams {
   has(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -260,7 +260,7 @@ class URLSearchParams {
   set(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'set' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
     name = webidl.converters.USVString(name, {
       prefix,
       context: "Argument 1",
@@ -464,7 +464,7 @@ class URL {
   set hash(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'hash' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -492,7 +492,7 @@ class URL {
   set host(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'host' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -520,7 +520,7 @@ class URL {
   set hostname(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'hostname' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -547,7 +547,7 @@ class URL {
   set href(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'href' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -603,7 +603,7 @@ class URL {
   set password(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'password' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -636,7 +636,7 @@ class URL {
   set pathname(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'pathname' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -671,7 +671,7 @@ class URL {
   set port(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'port' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -699,7 +699,7 @@ class URL {
   set protocol(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'protocol' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -730,7 +730,7 @@ class URL {
   set search(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'search' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",
@@ -770,7 +770,7 @@ class URL {
   set username(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'username' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     value = webidl.converters.DOMString(value, {
       prefix,
       context: "Argument 1",

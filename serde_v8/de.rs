@@ -281,8 +281,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     if obj.is_array() {
       // If the obj is an array fail if it's length differs from the tuple length
       let array = v8::Local::<v8::Array>::try_from(self.input).unwrap();
-      if array.length() as usize != len {
-        return Err(Error::LengthMismatch);
+      let array_len = array.length() as usize;
+      if array_len != len {
+        return Err(Error::LengthMismatch(array_len, len));
       }
     }
     visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32))
@@ -409,8 +410,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         let prop_names =
           obj.get_own_property_names(self.scope, Default::default());
         let prop_names = prop_names.ok_or(Error::ExpectedEnum)?;
-        if prop_names.length() != 1 {
-          return Err(Error::LengthMismatch);
+        let prop_names_len = prop_names.length();
+        if prop_names_len != 1 {
+          return Err(Error::LengthMismatch(prop_names_len as usize, 1));
         }
         prop_names.get_index(self.scope, 0).unwrap()
       };

@@ -8,6 +8,7 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
+use deno_runtime::deno_fs::StdFs;
 use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
@@ -19,7 +20,6 @@ mod ts {
   use deno_core::op;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-  use regex::Regex;
   use serde::Deserialize;
   use serde_json::json;
   use serde_json::Value;
@@ -68,8 +68,7 @@ mod ts {
   fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
-    let re_asset =
-      Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
+    let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
     let build_specifier = "asset:///bootstrap.ts";
 
     // we need a basic file to send to tsc to warm it up.
@@ -361,7 +360,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::deno_http::init_ops(),
     deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false),
+    deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(false, StdFs),
     deno_node::deno_node::init_ops::<deno_runtime::RuntimeNodeEnv>(None),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];

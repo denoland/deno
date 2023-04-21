@@ -1,5 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, deferred, fail } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  deferred,
+  fail,
+} from "./test_util.ts";
 
 Deno.test({ permissions: "none" }, function websocketPermissionless() {
   assertThrows(
@@ -35,4 +41,93 @@ Deno.test(async function websocketPingPong() {
   };
   await promise;
   ws.close();
+});
+
+// https://github.com/denoland/deno/issues/18700
+Deno.test(
+  { sanitizeOps: false, sanitizeResources: false },
+  async function websocketWriteLock() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: (req) => {
+        const { socket, response } = Deno.upgradeWebSocket(req);
+        socket.onopen = function () {
+          setTimeout(() => socket.send("Hello"), 500);
+        };
+        socket.onmessage = function (e) {
+          assertEquals(e.data, "Hello");
+          ac.abort();
+        };
+        return response;
+      },
+      signal: ac.signal,
+      onListen: () => listeningPromise.resolve(),
+      hostname: "localhost",
+      port: 4246,
+    });
+
+    await listeningPromise;
+    const promise = deferred();
+    const ws = new WebSocket("ws://localhost:4246/");
+    assertEquals(ws.url, "ws://localhost:4246/");
+    ws.onerror = () => fail();
+    ws.onmessage = (e) => {
+      assertEquals(e.data, "Hello");
+      setTimeout(() => {
+        ws.send(e.data);
+      }, 1000);
+      promise.resolve();
+    };
+    ws.onclose = () => {
+      promise.resolve();
+    };
+
+    await Promise.all([promise, server]);
+    ws.close();
+  },
+);
+
+// https://github.com/denoland/deno/issues/18775
+Deno.test({
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async function websocketDoubleClose() {
+  const promise = deferred();
+
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+
+  const server = Deno.serve({
+    handler: (req) => {
+      const { response, socket } = Deno.upgradeWebSocket(req);
+      let called = false;
+      socket.onopen = () => socket.send("Hello");
+      socket.onmessage = () => {
+        assert(!called);
+        called = true;
+        socket.send("bye");
+        socket.close();
+      };
+      socket.onclose = () => ac.abort();
+      socket.onerror = () => fail();
+      return response;
+    },
+    signal: ac.signal,
+    onListen: () => listeningPromise.resolve(),
+    hostname: "localhost",
+    port: 4247,
+  });
+
+  await listeningPromise;
+
+  const ws = new WebSocket("ws://localhost:4247/");
+  assertEquals(ws.url, "ws://localhost:4247/");
+  ws.onerror = () => fail();
+  ws.onmessage = () => ws.send("bye");
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await Promise.all([promise, server]);
 });

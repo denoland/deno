@@ -1,8 +1,38 @@
+// deno-lint-ignore-file no-explicit-any
+
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { createSecretKey, randomBytes } from "node:crypto";
+import {
+  createSecretKey,
+  generateKeyPair,
+  generateKeyPairSync,
+  KeyObject,
+  randomBytes,
+} from "node:crypto";
+import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "../../../test_util/std/testing/asserts.ts";
 import { createHmac } from "node:crypto";
+
+const generateKeyPairAsync = promisify(
+  (
+    type: any,
+    options: any,
+    callback: (
+      err: Error | null,
+      key: { publicKey: KeyObject; privateKey: KeyObject },
+    ) => void,
+  ) =>
+    generateKeyPair(
+      type,
+      options,
+      (err: Error | null, publicKey: KeyObject, privateKey: KeyObject) => {
+        callback(err, { publicKey, privateKey });
+      },
+    ),
+);
 
 Deno.test({
   name: "create secret key",
@@ -45,3 +75,130 @@ Deno.test({
     );
   },
 });
+
+for (const type of ["rsa", "rsa-pss", "dsa"]) {
+  for (const modulusLength of [2048, 3072]) {
+    Deno.test({
+      name: `generate ${type} key`,
+      fn() {
+        const { publicKey, privateKey } = generateKeyPairSync(type as any, {
+          modulusLength,
+        });
+
+        assertEquals(publicKey.type, "public");
+        assertEquals(privateKey.type, "private");
+      },
+    });
+
+    Deno.test({
+      name: `generate ${type} key async`,
+      async fn() {
+        const x = await generateKeyPairAsync(type as any, {
+          modulusLength,
+        });
+        const { publicKey, privateKey } = x;
+        assertEquals(publicKey.type, "public");
+        assertEquals(privateKey.type, "private");
+      },
+    });
+  }
+}
+
+for (const namedCurve of ["P-384", "P-256"]) {
+  Deno.test({
+    name: `generate ec key ${namedCurve}`,
+    fn() {
+      const { publicKey, privateKey } = generateKeyPairSync("ec", {
+        namedCurve,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate ec key ${namedCurve} async`,
+    async fn() {
+      const { publicKey, privateKey } = await generateKeyPairAsync("ec", {
+        namedCurve,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate ec key ${namedCurve} paramEncoding=explicit fails`,
+    fn() {
+      assertThrows(() => {
+        // @ts-ignore: @types/node is broken?
+        generateKeyPairSync("ec", {
+          namedCurve,
+          paramEncoding: "explicit",
+        });
+      });
+    },
+  });
+}
+
+for (
+  const groupName of ["modp5", "modp14", "modp15", "modp16", "modp17", "modp18"]
+) {
+  Deno.test({
+    name: `generate dh key ${groupName}`,
+    fn() {
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = generateKeyPairSync("dh", {
+        group: groupName,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate dh key ${groupName} async`,
+    async fn() {
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = await generateKeyPairAsync("dh", {
+        group: groupName,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+}
+
+for (const primeLength of [1024, 2048, 4096]) {
+  Deno.test({
+    name: `generate dh key ${primeLength}`,
+    fn() {
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = generateKeyPairSync("dh", {
+        primeLength,
+        generator: 2,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+
+  Deno.test({
+    name: `generate dh key ${primeLength} async`,
+    async fn() {
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = await generateKeyPairAsync("dh", {
+        primeLength,
+        generator: 2,
+      });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
+    },
+  });
+}

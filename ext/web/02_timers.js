@@ -7,7 +7,6 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeHas,
@@ -18,6 +17,7 @@ const {
   NumberPOSITIVE_INFINITY,
   PromisePrototypeThen,
   SafeArrayIterator,
+  SafeMap,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypeError,
@@ -76,7 +76,7 @@ function handleTimerMacrotask() {
  *
  * @type {Map<number, { cancelRid: number, isRef: boolean, promiseId: number }>}
  */
-const activeTimers = new Map();
+const activeTimers = new SafeMap();
 
 let nextId = 1;
 

@@ -108,7 +108,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
 ${stderrOutput}
 
 You can repeat only this test with the command:
-  
+
   ${repeatCmd}
 `;
         console.log(msg);

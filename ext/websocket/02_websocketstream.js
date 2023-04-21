@@ -21,7 +21,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
-  Set,
+  SafeSet,
   SetPrototypeGetSize,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
@@ -87,7 +87,7 @@ class WebSocketStream {
   constructor(url, options) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'WebSocketStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, {
       prefix,
       context: "Argument 1",
@@ -118,7 +118,7 @@ class WebSocketStream {
     if (
       options.protocols.length !==
         SetPrototypeGetSize(
-          new Set(
+          new SafeSet(
             ArrayPrototypeMap(
               options.protocols,
               (p) => StringPrototypeToLowerCase(p),
@@ -176,7 +176,7 @@ class WebSocketStream {
                         create.rid,
                       );
 
-                      if (kind > 6) {
+                      if (kind > 5) {
                         /* close */
                         break;
                       }
