@@ -4223,11 +4223,12 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
-    let r = runtime
+    let err = runtime
       .execute_script_static("test.js", "Deno.core.ops.op_foo()")
-      .unwrap();
-    let scope = &mut runtime.handle_scope();
-    assert!(r.open(scope).is_undefined());
+      .unwrap_err();
+    assert!(err
+      .to_string()
+      .contains("TypeError: Deno.core.ops.op_foo is not a function"));
   }
 
   #[test]
@@ -4327,7 +4328,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         if (Deno.core.ops.op_foo() !== 42) {
           throw new Error("Exptected op_foo() === 42");
         }
-        if (Deno.core.ops.op_bar() !== undefined) {
+        if (typeof Deno.core.ops.op_bar !== "undefined") {
           throw new Error("Expected op_bar to be disabled")
         }
       "#,
