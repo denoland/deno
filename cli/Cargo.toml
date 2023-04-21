@@ -72,9 +72,11 @@ encoding_rs.workspace = true
 env_logger = "=0.9.0"
 eszip = "=0.40.0"
 fancy-regex = "=0.10.0"
+fastwebsockets.workspace = true
 flate2.workspace = true
 fs3.workspace = true
 http.workspace = true
+hyper.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
@@ -94,8 +96,6 @@ ring.workspace = true
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
 serde.workspace = true
-fastwebsockets.workspace = true
-hyper.workspace = true
 serde_repr.workspace = true
 shell-escape = "=0.1.5"
 tar.workspace = true

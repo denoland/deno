@@ -334,14 +334,13 @@ where
   let srv_fn = service_fn(move |mut req: Request<Body>| async move {
     let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
       .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
-    let mut ws = upgrade_fut
-      .await
-      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
-    ws.set_writev(true);
-    ws.set_auto_close(true);
-    ws.set_auto_pong(true);
 
     tokio::spawn(async move {
+      let ws = upgrade_fut
+        .await
+        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
+        .unwrap();
+
       if let Err(e) = handler(ws).await {
         eprintln!("Error in websocket connection: {}", e);
       }
@@ -384,7 +383,7 @@ async fn ping_websocket_handler(
 
     let frame = ws.read_frame().await.unwrap();
     assert_eq!(frame.opcode, OpCode::Pong);
-    assert_eq!(frame.payload, vec![] as Vec<u8>);
+    assert!(frame.payload.is_empty());
 
     ws.write_frame(Frame::text(format!("hello {}", i).as_bytes().to_vec()))
       .await
@@ -395,7 +394,7 @@ async fn ping_websocket_handler(
     assert_eq!(frame.payload, format!("hello {}", i).as_bytes());
   }
 
-  ws.write_frame(fastwebsockets::Frame::close(1005, b""))
+  ws.write_frame(fastwebsockets::Frame::close(1000, b""))
     .await
     .unwrap();
 
