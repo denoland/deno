@@ -94,6 +94,8 @@ ring.workspace = true
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
 serde.workspace = true
+fastwebsockets.workspace = true
+hyper.workspace = true
 serde_repr.workspace = true
 shell-escape = "=0.1.5"
 tar.workspace = true

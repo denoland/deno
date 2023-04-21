@@ -10,6 +10,8 @@ use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+use fastwebsockets::FragmentCollector;
+use hyper::Request;
 use std::io::BufRead;
 use test_util as util;
 use test_util::TempDir;
@@ -17,18 +19,20 @@ use tokio::net::TcpStream;
 use util::http_server;
 use util::DenoChild;
 
+struct SpawnExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+where
+  Fut: std::future::Future + Send + 'static,
+  Fut::Output: Send + 'static,
+{
+  fn execute(&self, fut: Fut) {
+    tokio::task::spawn(fut);
+  }
+}
+
 struct InspectorTester {
-  socket_tx: SplitSink<
-    tokio_tungstenite::WebSocketStream<
-      tokio_tungstenite::MaybeTlsStream<TcpStream>,
-    >,
-    tungstenite::Message,
-  >,
-  socket_rx: SplitStream<
-    tokio_tungstenite::WebSocketStream<
-      tokio_tungstenite::MaybeTlsStream<TcpStream>,
-    >,
-  >,
+  socket: FragmentCollector<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
   notification_filter: Box<dyn FnMut(&str) -> bool + 'static>,
   child: DenoChild,
   stderr_lines: Box<dyn Iterator<Item = String>>,
@@ -52,17 +56,46 @@ impl InspectorTester {
     let mut stderr_lines =
       std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+    let uri = extract_ws_url_from_stderr(&mut stderr_lines);
+
+    let domain = &uri.host().unwrap().to_string();
+    let port = &uri.port().unwrap_or(match uri.scheme_str() {
+      Some("wss") => 443,
+      Some("ws") => 80,
+      _ => unreachable!(),
+    });
+    let addr = format!("{domain}:{port}");
+
+    let stream = TcpStream::connect(addr).await?;
+
+    let authority = uri.authority().unwrap().as_str();
+    let host = authority
+      .find('@')
+      .map(|idx| authority.split_at(idx + 1).1)
+      .unwrap_or_else(|| authority);
+
+    let req = Request::builder()
+      .method("GET")
+      .uri(&uri)
+      .header("Host", host)
+      .header(hyper::header::UPGRADE, "websocket")
+      .header(hyper::header::CONNECTION, "Upgrade")
+      .header(
+        "Sec-WebSocket-Key",
+        fastwebsockets::handshake::generate_key(),
+      )
+      .header("Sec-WebSocket-Version", "13")
+      .body(hyper::Body::empty())?;
 
     let (socket, response) =
-      tokio_tungstenite::connect_async(ws_url).await.unwrap();
+      fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+        .await
+        .unwrap();
+
     assert_eq!(response.status(), 101); // Switching protocols.
 
-    let (socket_tx, socket_rx) = socket.split();
-
     Self {
-      socket_tx,
-      socket_rx,
+      socket: FragmentCollector::new(socket),
       notification_filter: Box::new(notification_filter),
       child,
       stderr_lines: Box::new(stderr_lines),
