@@ -12,6 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+pub mod analyze;
 mod crypto;
 pub mod errors;
 mod idna;

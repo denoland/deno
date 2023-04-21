@@ -17,10 +17,11 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::node::CliCjsEsmCodeAnalyzer;
 use crate::node::CliNodeResolver;
-use crate::node::NodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
+use crate::npm::CliRequireNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
@@ -37,6 +38,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
 
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -75,7 +77,8 @@ pub struct Inner {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub module_graph_builder: Arc<ModuleGraphBuilder>,
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
-  pub node_code_translator: Arc<NodeCodeTranslator>,
+  pub node_code_translator:
+    Arc<NodeCodeTranslator<CliCjsEsmCodeAnalyzer, CliRequireNpmResolver>>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
@@ -304,10 +307,10 @@ impl ProcState {
     let file_fetcher = Arc::new(file_fetcher);
     let node_analysis_cache =
       NodeAnalysisCache::new(caches.node_analysis_db(&dir));
+    let cjs_esm_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
     let node_code_translator = Arc::new(NodeCodeTranslator::new(
-      node_analysis_cache,
-      file_fetcher.clone(),
-      npm_resolver.clone(),
+      cjs_esm_analyzer,
+      npm_resolver.as_require_npm_resolver(),
     ));
     let node_resolver = Arc::new(CliNodeResolver::new(
       npm_resolution.clone(),

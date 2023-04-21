@@ -229,17 +229,15 @@ impl NpmPackageResolver {
     Ok(())
   }
 
-  pub fn as_require_npm_resolver(
-    self: &Arc<Self>,
-  ) -> RequireNpmPackageResolver {
-    RequireNpmPackageResolver(self.clone())
+  pub fn as_require_npm_resolver(self: &Arc<Self>) -> CliRequireNpmResolver {
+    CliRequireNpmResolver(self.clone())
   }
 }
 
 #[derive(Debug)]
-pub struct RequireNpmPackageResolver(Arc<NpmPackageResolver>);
+pub struct CliRequireNpmResolver(Arc<NpmPackageResolver>);
 
-impl RequireNpmResolver for RequireNpmPackageResolver {
+impl RequireNpmResolver for CliRequireNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
