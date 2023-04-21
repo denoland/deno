@@ -347,8 +347,11 @@ type WsHandler =
 
 fn spawn_ws_server(stream: TcpStream, handler: WsHandler) {
   let srv_fn = service_fn(move |mut req: Request<Body>| async move {
-    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)?;
-    let mut ws = upgrade_fut.await?;
+    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
+      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
+    let mut ws = upgrade_fut
+      .await
+      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
     ws.set_writev(true);
     ws.set_auto_close(true);
     ws.set_auto_pong(true);
