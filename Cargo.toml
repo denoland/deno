@@ -122,6 +122,7 @@ serde_json = "1.0.85"
 serde_repr = "=0.1.9"
 sha2 = { version = "0.10.6", features = ["oid"] }
 signature = "=1.6.4"
+slab = "0.4"
 smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
