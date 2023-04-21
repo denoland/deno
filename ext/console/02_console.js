@@ -64,7 +64,6 @@ const {
   Uint8Array,
   Set,
   isNaN,
-  getOwnNonIndexProperties,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeGetLength,
   ReflectOwnKeys,
@@ -240,12 +239,6 @@ const _getArrayBufferByteLength = ObjectGetOwnPropertyDescriptor(
 // https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
 let _getSharedArrayBufferByteLength;
 
-// https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
-const _getTypedArrayToStringTag = ObjectGetOwnPropertyDescriptor(
-  ObjectGetPrototypeOf(Uint8Array).prototype,
-  SymbolToStringTag,
-).get;
-
 // https://tc39.es/ecma262/#sec-get-set.prototype.size
 const _getSetSize = ObjectGetOwnPropertyDescriptor(
   SetPrototype,
@@ -318,12 +311,12 @@ export function isBoxedPrimitive(
 export function isDataView(value) {
   return (
     ArrayBufferIsView(value) &&
-    _getTypedArrayToStringTag.call(value) === undefined
+    TypedArrayPrototypeGetSymbolToStringTag(value) === undefined
   );
 }
 
 export function isTypedArray(value) {
-  return _getTypedArrayToStringTag.call(value) !== undefined;
+  return TypedArrayPrototypeGetSymbolToStringTag(value) !== undefined;
 }
 
 export function isGeneratorFunction(
@@ -433,6 +426,7 @@ export function isSharedArrayBuffer(
 ) {
   // TODO(kt3k): add SharedArrayBuffer to primordials
   _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
+    // deno-lint-ignore prefer-primordials
     SharedArrayBuffer.prototype,
     "byteLength",
   ).get;
@@ -1032,7 +1026,7 @@ function getConstructorName(
       descriptor !== undefined &&
       typeof descriptor.value === "function" &&
       descriptor.value.name !== "" &&
-      isInstanceof(tmp, descriptor.value)
+      ObjectPrototypeIsPrototypeOf(descriptor.value.prototype, tmp)
     ) {
       if (
         protoProps !== undefined &&
@@ -1124,14 +1118,6 @@ function formatPrimitive(fn, value, ctx) {
   }
   // es6 symbol primitive
   return fn(maybeQuoteSymbol(value, ctx), "symbol");
-}
-
-function isInstanceof(object, proto) {
-  try {
-    return object instanceof proto;
-  } catch {
-    return false;
-  }
 }
 
 function getPrefix(constructor, tag, fallback, size = "") {
