@@ -4901,6 +4901,7 @@ dependencies = [
  "atty",
  "base64 0.13.1",
  "console_static_text",
+ "deno_tls",
  "fastwebsockets",
  "flate2",
  "futures",

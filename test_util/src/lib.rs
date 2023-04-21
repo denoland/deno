@@ -414,7 +414,7 @@ async fn close_websocket_handler(
 ) -> Result<(), anyhow::Error> {
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
-  ws.write_frame(fastwebsockets::Frame::close(1005, b""))
+  ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
     .await
     .unwrap();
 
