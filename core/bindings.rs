@@ -160,16 +160,17 @@ pub(crate) fn initialize_context<'s>(
 
   if matches!(snapshot_options, SnapshotOptions::Load) {
     // Only register ops that have `force_registration` flag set to true,
-    // the remaining ones should already be in the snapshot.
+    // the remaining ones should already be in the snapshot. Ignore ops that
+    // are disabled.
     for op_ctx in op_ctxs
       .iter()
-      .filter(|op_ctx| op_ctx.decl.force_registration)
+      .filter(|op_ctx| op_ctx.decl.force_registration && op_ctx.decl.enabled)
     {
       add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
     }
   } else if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
-    // Register all ops, probing for which ones are already registered.
-    for op_ctx in op_ctxs {
+    // Register all enabled ops, probing for which ones are already registered.
+    for op_ctx in op_ctxs.iter().filter(|op_ctx| op_ctx.decl.enabled) {
       let key = v8::String::new_external_onebyte_static(
         scope,
         op_ctx.decl.name.as_bytes(),
@@ -181,8 +182,8 @@ pub(crate) fn initialize_context<'s>(
       add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
     }
   } else {
-    // In other cases register all ops unconditionally.
-    for op_ctx in op_ctxs {
+    // In other cases register all ops enabled unconditionally.
+    for op_ctx in op_ctxs.iter().filter(|op_ctx| op_ctx.decl.enabled) {
       add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
     }
   }
