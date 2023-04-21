@@ -15,8 +15,6 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::op_void_async;
-use crate::op_void_sync;
 use crate::ops::*;
 use crate::realm::ContextState;
 use crate::realm::JsRealm;
@@ -772,16 +770,6 @@ impl JsRuntime {
       .map(|d| OpDecl {
         name: d.name,
         ..macroware(d)
-      })
-      .map(|op| match op.enabled {
-        true => op,
-        false => OpDecl {
-          v8_fn_ptr: match op.is_async {
-            true => op_void_async::v8_fn_ptr as _,
-            false => op_void_sync::v8_fn_ptr as _,
-          },
-          ..op
-        },
       })
       .collect()
   }
