@@ -32,7 +32,8 @@ pub async fn client<S>(
 where
   S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
-  let (mut sender, conn) = hyper::client::conn::handshake(socket).await?;
+  let (mut sender, conn) =
+    hyper::client::conn::http1::handshake(socket).await?;
   spawn_local(async move {
     if let Err(e) = conn.await {
       eprintln!("Error polling connection: {}", e);

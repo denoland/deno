@@ -18,9 +18,9 @@ bytes.workspace = true
 deno_core.workspace = true
 deno_net.workspace = true
 deno_tls.workspace = true
-fastwebsockets = { version = "0.2.4", features = ["upgrade"] }
+fastwebsockets.workspace = true
 http.workspace = true
-hyper.workspace = true
+hyper = { workspace = true, features = ["backports"] }
 serde.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true

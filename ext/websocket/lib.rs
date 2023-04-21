@@ -226,16 +226,21 @@ where
   let socket: NetworkStream = match uri.scheme_str() {
     Some("ws") => NetworkStream::Tcp(tcp_socket),
     Some("wss") => {
-      let tls_config = create_client_config(
+      let mut tls_config = create_client_config(
         root_cert_store,
         vec![],
         unsafely_ignore_certificate_errors,
         None,
       )?;
+      // Send http/1.1 for ALPN
+      // https://chromestatus.com/feature/5687059162333184
+      tls_config.alpn_protocols =
+        vec![vec![104, 116, 116, 112, 47, 49, 46, 49]];
       let server_name = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
-      let stream =
+      let mut stream =
         TlsStream::new_client_side(tcp_socket, tls_config.into(), server_name);
+      stream.handshake().await?;
       NetworkStream::Tls(stream)
     }
     _ => unreachable!(),
