@@ -330,7 +330,9 @@ async fn pump_websocket_messages(
         Ok(msg) = websocket.read_frame() => {
             match msg.opcode {
                 OpCode::Text => {
-                    let _ = inbound_tx.unbounded_send(String::from_utf8(msg.payload).unwrap());
+                    if let Ok(s) = String::from_utf8(msg.payload) {
+                      let _ = inbound_tx.unbounded_send(s);
+                    }
                 }
                 OpCode::Close => {
                     // Users don't care if there was an error coming from debugger,
