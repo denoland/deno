@@ -5,9 +5,7 @@ const [hostname, port] = addr.split(":");
 const { serve } = Deno;
 
 function readFileSync(file) {
-  return new TextDecoder().decode(
-    Deno.readFileSync(new URL(file, import.meta.url).pathname),
-  );
+  return Deno.readTextFileSync(new URL(file, import.meta.url).pathname);
 }
 
 const CERT = readFileSync("../../tests/testdata/tls/localhost.crt");
