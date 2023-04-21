@@ -60,6 +60,7 @@ winres.workspace = true
 winapi.workspace = true
 
 [dependencies]
+fastwebsockets.workspace = true
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_console.workspace = true

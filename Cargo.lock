@@ -1253,6 +1253,7 @@ dependencies = [
  "deno_webstorage",
  "dlopen",
  "encoding_rs",
+ "fastwebsockets",
  "filetime",
  "fs3",
  "fwdansi",
