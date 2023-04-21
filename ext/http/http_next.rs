@@ -13,7 +13,6 @@ use crate::LocalExecutor;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
-use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::BufView;
 use deno_core::ByteString;
@@ -45,7 +44,6 @@ use pin_project::pin_project;
 use pin_project::pinned_drop;
 use slab::Slab;
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
@@ -74,7 +72,6 @@ pub struct HttpSlabRecord {
 
 thread_local! {
   pub static SLAB: RefCell<Slab<HttpSlabRecord>> = RefCell::new(Slab::with_capacity(1024));
-  static LOCAL_ISOLATE_POINTER: Cell<*const v8::Isolate> = Cell::new(std::ptr::null());
 }
 
 /// Generates getters and setters for the [`SLAB`]. For example,
@@ -617,28 +614,11 @@ impl Resource for HttpJoinHandle {
   }
 }
 
-/// Serving HTTP fast is incompatible with more than one thread per isolate, so we'll enforce that here. If we find a better
-/// way than using a thread-local in the future, we can relax this requirement.
-fn ensure_one_thread_per_isolate(scope: &mut v8::HandleScope) {
-  let isolate: *const v8::Isolate = &*scope as &v8::Isolate;
-  LOCAL_ISOLATE_POINTER.with(|s| {
-    let ptr = s.get();
-    if ptr.is_null() {
-      s.set(isolate);
-    } else {
-      assert!(isolate == ptr);
-    }
-  });
-}
-
 #[op(v8)]
 pub fn op_serve_http(
-  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   listener_rid: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError> {
-  ensure_one_thread_per_isolate(scope);
-
   let listener = take_network_stream_listener_resource(
     &mut state.borrow_mut().resource_table,
     listener_rid,
@@ -690,12 +670,9 @@ pub fn op_serve_http(
 
 #[op(v8)]
 pub fn op_serve_http_on(
-  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   conn: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError> {
-  ensure_one_thread_per_isolate(scope);
-
   let network_stream =
     take_network_stream_resource(&mut state.borrow_mut().resource_table, conn)?;
 
