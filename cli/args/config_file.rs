@@ -25,6 +25,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+use glob::glob;
 
 pub type MaybeImportsResult =
   Result<Vec<deno_graph::ReferrerImports>, AnyError>;
@@ -305,6 +306,30 @@ impl SerializedFilesConfig {
         .include
         .into_iter()
         .map(|p| {
+          if p.starts_with("/") && p.ends_with("/") {
+            let trimmed_file_str = p.trim_end_matches(|c| c == p.chars().last().unwrap())
+              .trim_start_matches(|c| c == p.chars().next().unwrap());
+
+              if glob::Pattern::new(&trimmed_file_str).is_ok() {
+                println!("{trimmed_file_str}");
+                let mut files_in_pattern = Vec::new();
+                for entry in glob(&p)? {
+                  match entry {
+                      Ok(path) => {
+                          if path.is_file() {
+                            if let Ok(file) = canonicalize_path(&path) {
+                              files_in_pattern.push(file);
+                            }
+                          }
+                      }
+                      Err(e) => println!("{:?}", e),
+                  }
+                }
+                println!("{:?}", files_in_pattern);
+                // return Ok(files_in_pattern)
+              }
+          }
+
           let url = config_dir.join(&p)?;
           specifier_to_file_path(&url)
         })
