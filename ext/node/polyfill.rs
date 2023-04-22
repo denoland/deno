@@ -1,8 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-pub fn find_builtin_node_module(
-  module_name: &str,
-) -> Option<&NodeModulePolyfill> {
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+
+// TODO(bartlomieju): seems super wasteful to parse the specifier each time
+pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
+  if let Some(module) = find_builtin_node_module(module_name) {
+    return Ok(ModuleSpecifier::parse(module.specifier).unwrap());
+  }
+
+  Err(generic_error(format!(
+    "Unknown built-in \"node:\" module: {module_name}"
+  )))
+}
+
+fn find_builtin_node_module(module_name: &str) -> Option<&NodeModulePolyfill> {
   SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
     .find(|m| m.name == module_name)

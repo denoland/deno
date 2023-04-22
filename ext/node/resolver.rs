@@ -2,45 +2,34 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use deno_ast::MediaType;
-use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_runtime::deno_node;
-use deno_runtime::deno_node::errors;
-use deno_runtime::deno_node::find_builtin_node_module;
-use deno_runtime::deno_node::get_closest_package_json;
-use deno_runtime::deno_node::legacy_main_resolve;
-use deno_runtime::deno_node::package_exports_resolve;
-use deno_runtime::deno_node::package_imports_resolve;
-use deno_runtime::deno_node::package_resolve;
-use deno_runtime::deno_node::path_to_declaration_path;
-use deno_runtime::deno_node::NodeModuleKind;
-use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_node::RealFs;
-use deno_runtime::deno_node::RequireNpmResolver;
-use deno_runtime::deno_node::DEFAULT_CONDITIONS;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_core::ModuleSpecifier;
+use deno_media_type::MediaType;
 use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 
-use crate::npm::CliRequireNpmResolver;
-use crate::npm::NpmPackageResolver;
-use crate::npm::NpmResolution;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
-
-mod analyze;
-
-pub use analyze::CliCjsEsmCodeAnalyzer;
+use crate::errors;
+use crate::get_closest_package_json;
+use crate::legacy_main_resolve;
+use crate::package_exports_resolve;
+use crate::package_imports_resolve;
+use crate::package_resolve;
+use crate::path_to_declaration_path;
+use crate::AllowAllNodePermissions;
+use crate::NodeFs;
+use crate::NodeModuleKind;
+use crate::NodePermissions;
+use crate::NodeResolutionMode;
+use crate::NpmResolver;
+use crate::PackageJson;
+use crate::DEFAULT_CONDITIONS;
 
 #[derive(Debug)]
 pub enum NodeResolution {
@@ -101,43 +90,25 @@ impl NodeResolution {
   }
 }
 
-// TODO(bartlomieju): seems super wasteful to parse specified each time
-pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
-  if let Some(module) = find_builtin_node_module(module_name) {
-    return Ok(ModuleSpecifier::parse(module.specifier).unwrap());
-  }
-
-  Err(generic_error(format!(
-    "Unknown built-in \"node:\" module: {module_name}"
-  )))
-}
-
 #[derive(Debug)]
-pub struct CliNodeResolver {
-  npm_resolution: Arc<NpmResolution>,
-  npm_resolver: Arc<NpmPackageResolver>,
-  require_npm_resolver: CliRequireNpmResolver,
+pub struct NodeResolver<TRequireNpmResolver: NpmResolver> {
+  inner: TRequireNpmResolver,
 }
 
-impl CliNodeResolver {
-  pub fn new(
-    npm_resolution: Arc<NpmResolution>,
-    npm_package_resolver: Arc<NpmPackageResolver>,
-  ) -> Self {
+impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
+  pub fn new(require_npm_resolver: TRequireNpmResolver) -> Self {
     Self {
-      npm_resolution,
-      require_npm_resolver: npm_package_resolver.as_require_npm_resolver(),
-      npm_resolver: npm_package_resolver,
+      inner: require_npm_resolver,
     }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self.npm_resolver.in_npm_package(specifier)
+    self.inner.in_npm_package(specifier)
   }
 
   /// This function is an implementation of `defaultResolve` in
   /// `lib/internal/modules/esm/resolve.js` from Node.
-  pub fn resolve(
+  pub fn resolve<Fs: NodeFs>(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
@@ -147,7 +118,7 @@ impl CliNodeResolver {
     // Note: if we are here, then the referrer is an esm module
     // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-    if deno_node::is_builtin_node_module(specifier) {
+    if crate::is_builtin_node_module(specifier) {
       return Ok(Some(NodeResolution::BuiltIn(specifier.to_string())));
     }
 
@@ -162,7 +133,7 @@ impl CliNodeResolver {
         let split_specifier = url.as_str().split(':');
         let specifier = split_specifier.skip(1).collect::<String>();
 
-        if deno_node::is_builtin_node_module(&specifier) {
+        if crate::is_builtin_node_module(&specifier) {
           return Ok(Some(NodeResolution::BuiltIn(specifier)));
         }
       }
@@ -178,7 +149,7 @@ impl CliNodeResolver {
       }
     }
 
-    let url = self.module_resolve(
+    let url = self.module_resolve::<Fs>(
       specifier,
       referrer,
       DEFAULT_CONDITIONS,
@@ -196,7 +167,7 @@ impl CliNodeResolver {
         // todo(16370): the module kind is not correct here. I think we need
         // typescript to tell us if the referrer is esm or cjs
         let path =
-          match path_to_declaration_path::<RealFs>(path, NodeModuleKind::Esm) {
+          match path_to_declaration_path::<Fs>(path, NodeModuleKind::Esm) {
             Some(path) => path,
             None => return Ok(None),
           };
@@ -204,13 +175,13 @@ impl CliNodeResolver {
       }
     };
 
-    let resolve_response = self.url_to_node_resolution(url)?;
+    let resolve_response = self.url_to_node_resolution::<Fs>(url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(Some(resolve_response))
   }
 
-  fn module_resolve(
+  fn module_resolve<Fs: NodeFs>(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
@@ -226,7 +197,7 @@ impl CliNodeResolver {
         // todo(dsherret): the node module kind is not correct and we
         // should use the value provided by typescript instead
         let declaration_path =
-          path_to_declaration_path::<RealFs>(file_path, NodeModuleKind::Esm);
+          path_to_declaration_path::<Fs>(file_path, NodeModuleKind::Esm);
         declaration_path.map(|declaration_path| {
           ModuleSpecifier::from_file_path(declaration_path).unwrap()
         })
@@ -235,13 +206,13 @@ impl CliNodeResolver {
       }
     } else if specifier.starts_with('#') {
       Some(
-        package_imports_resolve::<RealFs>(
+        package_imports_resolve::<Fs>(
           specifier,
           referrer,
           NodeModuleKind::Esm,
           conditions,
           mode,
-          &self.require_npm_resolver,
+          &self.inner,
           permissions,
         )
         .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
@@ -249,44 +220,44 @@ impl CliNodeResolver {
     } else if let Ok(resolved) = Url::parse(specifier) {
       Some(resolved)
     } else {
-      package_resolve::<RealFs>(
+      package_resolve::<Fs>(
         specifier,
         referrer,
         NodeModuleKind::Esm,
         conditions,
         mode,
-        &self.require_npm_resolver,
+        &self.inner,
         permissions,
       )?
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
     };
     Ok(match url {
-      Some(url) => Some(finalize_resolution(url, referrer)?),
+      Some(url) => Some(finalize_resolution::<Fs>(url, referrer)?),
       None => None,
     })
   }
 
-  pub fn resolve_npm_req_reference(
+  pub fn resolve_npm_req_reference<Fs: NodeFs>(
     &self,
     reference: &NpmPackageReqReference,
     mode: NodeResolutionMode,
     permissions: &mut dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
-    let reference = self.npm_resolution.pkg_req_ref_to_nv_ref(reference)?;
-    self.resolve_npm_reference(&reference, mode, permissions)
+    let reference = self.inner.resolve_nv_ref_from_pkg_req_ref(reference)?;
+    self.resolve_npm_reference::<Fs>(&reference, mode, permissions)
   }
 
-  pub fn resolve_npm_reference(
+  pub fn resolve_npm_reference<Fs: NodeFs>(
     &self,
     reference: &NpmPackageNvReference,
     mode: NodeResolutionMode,
     permissions: &mut dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
     let package_folder = self
-      .npm_resolver
+      .inner
       .resolve_package_folder_from_deno_module(&reference.nv)?;
     let node_module_kind = NodeModuleKind::Esm;
-    let maybe_resolved_path = package_config_resolve(
+    let maybe_resolved_path = package_config_resolve::<Fs>(
       &reference
         .sub_path
         .as_ref()
@@ -296,7 +267,7 @@ impl CliNodeResolver {
       node_module_kind,
       DEFAULT_CONDITIONS,
       mode,
-      &self.require_npm_resolver,
+      &self.inner,
       permissions,
     )
     .with_context(|| {
@@ -309,33 +280,29 @@ impl CliNodeResolver {
     let resolved_path = match mode {
       NodeResolutionMode::Execution => resolved_path,
       NodeResolutionMode::Types => {
-        match path_to_declaration_path::<RealFs>(
-          resolved_path,
-          node_module_kind,
-        ) {
+        match path_to_declaration_path::<Fs>(resolved_path, node_module_kind) {
           Some(path) => path,
           None => return Ok(None),
         }
       }
     };
     let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
-    let resolve_response = self.url_to_node_resolution(url)?;
+    let resolve_response = self.url_to_node_resolution::<Fs>(url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(Some(resolve_response))
   }
 
-  pub fn resolve_binary_commands(
+  pub fn resolve_binary_commands<Fs: NodeFs>(
     &self,
     pkg_nv: &NpmPackageNv,
   ) -> Result<Vec<String>, AnyError> {
-    let package_folder = self
-      .npm_resolver
-      .resolve_package_folder_from_deno_module(pkg_nv)?;
+    let package_folder =
+      self.inner.resolve_package_folder_from_deno_module(pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
-    let package_json = PackageJson::load::<RealFs>(
-      &self.require_npm_resolver,
-      &mut PermissionsContainer::allow_all(),
+    let package_json = PackageJson::load::<Fs>(
+      &self.inner,
+      &mut AllowAllNodePermissions,
       package_json_path,
     )?;
 
@@ -348,22 +315,19 @@ impl CliNodeResolver {
     })
   }
 
-  pub fn resolve_binary_export(
+  pub fn resolve_binary_export<Fs: NodeFs>(
     &self,
     pkg_ref: &NpmPackageReqReference,
   ) -> Result<NodeResolution, AnyError> {
-    let pkg_nv = self
-      .npm_resolution
-      .resolve_pkg_id_from_pkg_req(&pkg_ref.req)?
-      .nv;
+    let pkg_nv = self.inner.resolve_pkg_id_from_pkg_req(&pkg_ref.req)?.nv;
     let bin_name = pkg_ref.sub_path.as_deref();
     let package_folder = self
-      .npm_resolver
+      .inner
       .resolve_package_folder_from_deno_module(&pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
-    let package_json = PackageJson::load::<RealFs>(
-      &self.require_npm_resolver,
-      &mut PermissionsContainer::allow_all(),
+    let package_json = PackageJson::load::<Fs>(
+      &self.inner,
+      &mut AllowAllNodePermissions,
       package_json_path,
     )?;
     let bin = match &package_json.bin {
@@ -377,13 +341,13 @@ impl CliNodeResolver {
     let url =
       ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
 
-    let resolve_response = self.url_to_node_resolution(url)?;
+    let resolve_response = self.url_to_node_resolution::<Fs>(url)?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(resolve_response)
   }
 
-  pub fn url_to_node_resolution(
+  pub fn url_to_node_resolution<Fs: NodeFs>(
     &self,
     url: ModuleSpecifier,
   ) -> Result<NodeResolution, AnyError> {
@@ -391,10 +355,10 @@ impl CliNodeResolver {
     if url_str.starts_with("http") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-      let package_config = get_closest_package_json::<RealFs>(
+      let package_config = get_closest_package_json::<Fs>(
         &url,
-        &self.require_npm_resolver,
-        &mut PermissionsContainer::allow_all(),
+        &self.inner,
+        &mut AllowAllNodePermissions,
       )?;
       if package_config.typ == "module" {
         Ok(NodeResolution::Esm(url))
@@ -411,25 +375,6 @@ impl CliNodeResolver {
       Ok(NodeResolution::CommonJs(url))
     }
   }
-}
-
-/// Resolves a specifier that is pointing into a node_modules folder.
-///
-/// Note: This should be called whenever getting the specifier from
-/// a Module::External(module) reference because that module might
-/// not be fully resolved at the time deno_graph is analyzing it
-/// because the node_modules folder might not exist at that time.
-pub fn resolve_specifier_into_node_modules(
-  specifier: &ModuleSpecifier,
-) -> ModuleSpecifier {
-  specifier
-    .to_file_path()
-    .ok()
-    // this path might not exist at the time the graph is being created
-    // because the node_modules folder might not yet exist
-    .and_then(|path| canonicalize_path_maybe_not_exists(&path).ok())
-    .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
-    .unwrap_or_else(|| specifier.clone())
 }
 
 fn resolve_bin_entry_value<'a>(
@@ -488,24 +433,24 @@ fn resolve_bin_entry_value<'a>(
   }
 }
 
-fn package_config_resolve(
+fn package_config_resolve<Fs: NodeFs>(
   package_subpath: &str,
   package_dir: &Path,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
-  let package_config = PackageJson::load::<RealFs>(
+  let package_config = PackageJson::load::<Fs>(
     npm_resolver,
     permissions,
     package_json_path.clone(),
   )?;
   if let Some(exports) = &package_config.exports {
-    let result = package_exports_resolve::<RealFs>(
+    let result = package_exports_resolve::<Fs>(
       &package_json_path,
       package_subpath.to_string(),
       exports,
@@ -521,7 +466,7 @@ fn package_config_resolve(
       Err(exports_err) => {
         if mode.is_types() && package_subpath == "." {
           if let Ok(Some(path)) =
-            legacy_main_resolve::<RealFs>(&package_config, referrer_kind, mode)
+            legacy_main_resolve::<Fs>(&package_config, referrer_kind, mode)
           {
             return Ok(Some(path));
           } else {
@@ -533,13 +478,13 @@ fn package_config_resolve(
     }
   }
   if package_subpath == "." {
-    return legacy_main_resolve::<RealFs>(&package_config, referrer_kind, mode);
+    return legacy_main_resolve::<Fs>(&package_config, referrer_kind, mode);
   }
 
   Ok(Some(package_dir.join(package_subpath)))
 }
 
-fn finalize_resolution(
+fn finalize_resolution<Fs: NodeFs>(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
@@ -567,8 +512,8 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(p) {
-    (stats.is_dir(), stats.is_file())
+  let (is_dir, is_file) = if let Ok(stats) = Fs::metadata(p) {
+    (stats.is_dir, stats.is_file)
   } else {
     (false, false)
   };

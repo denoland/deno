@@ -9,7 +9,7 @@ use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
-use crate::npm::NpmPackageResolver;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
@@ -29,6 +29,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
 use std::collections::HashMap;
@@ -165,7 +166,7 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
 pub struct ModuleGraphBuilder {
   options: Arc<CliOptions>,
   resolver: Arc<CliGraphResolver>,
-  npm_resolver: Arc<NpmPackageResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
   emit_cache: cache::EmitCache,
@@ -178,7 +179,7 @@ impl ModuleGraphBuilder {
   pub fn new(
     options: Arc<CliOptions>,
     resolver: Arc<CliGraphResolver>,
-    npm_resolver: Arc<NpmPackageResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
     emit_cache: cache::EmitCache,
@@ -377,7 +378,7 @@ pub fn get_resolution_error_bare_node_specifier(
   error: &ResolutionError,
 ) -> Option<&str> {
   get_resolution_error_bare_specifier(error).filter(|specifier| {
-    crate::node::resolve_builtin_node_module(specifier).is_ok()
+    deno_node::resolve_builtin_node_module(specifier).is_ok()
   })
 }
 
