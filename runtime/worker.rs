@@ -33,7 +33,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::RequireNpmResolver;
+use deno_node::NpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -94,7 +94,7 @@ pub struct WorkerOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Rc<dyn NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,

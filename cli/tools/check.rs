@@ -22,7 +22,7 @@ use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::node::CliNodeResolver;
-use crate::npm::NpmPackageResolver;
+use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::version;
 
@@ -43,7 +43,7 @@ pub struct TypeChecker {
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
   node_resolver: Arc<CliNodeResolver>,
-  npm_resolver: Arc<NpmPackageResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
 }
 
 impl TypeChecker {
@@ -52,7 +52,7 @@ impl TypeChecker {
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
     node_resolver: Arc<CliNodeResolver>,
-    npm_resolver: Arc<NpmPackageResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
   ) -> Self {
     Self {
       deno_dir,
