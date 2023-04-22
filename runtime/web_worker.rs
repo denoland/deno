@@ -34,9 +34,10 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::RequireNpmResolver;
+use deno_node::NpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -332,7 +333,7 @@ pub struct WebWorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Rc<dyn NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -440,7 +441,7 @@ impl WebWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
+      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
       ),

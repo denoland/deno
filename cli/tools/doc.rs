@@ -22,7 +22,7 @@ pub async fn print_docs(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
 
   let mut doc_nodes = match doc_flags.source_file {
     DocSourceFileFlag::Builtin => {
@@ -78,7 +78,10 @@ pub async fn print_docs(
       // Save our fake file into file fetcher cache.
       ps.file_fetcher.insert_cached(root);
 
-      let graph = ps.create_graph(vec![root_specifier.clone()]).await?;
+      let graph = ps
+        .module_graph_builder
+        .create_graph(vec![root_specifier.clone()])
+        .await?;
 
       if let Some(lockfile) = &ps.lockfile {
         graph_lock_or_exit(&graph, &mut lockfile.lock());

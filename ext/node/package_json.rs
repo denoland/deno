@@ -4,7 +4,7 @@ use crate::NodeFs;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 
-use super::RequireNpmResolver;
+use super::NpmResolver;
 
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
@@ -63,7 +63,7 @@ impl PackageJson {
   }
 
   pub fn load<Fs: NodeFs>(
-    resolver: &dyn RequireNpmResolver,
+    resolver: &dyn NpmResolver,
     permissions: &mut dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {

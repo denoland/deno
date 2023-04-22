@@ -37,7 +37,7 @@ use std::fmt::Write as _;
 use std::iter::Peekable;
 
 static ESCAPE_STRING_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"([.+*?=^!:${}()\[\]|/\\])").unwrap());
+  lazy_regex::lazy_regex!(r"([.+*?=^!:${}()\[\]|/\\])");
 
 #[derive(Debug, PartialEq, Eq)]
 enum TokenType {

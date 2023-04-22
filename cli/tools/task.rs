@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
+use crate::node::CliNodeResolver;
+use crate::npm::CliNpmResolver;
 use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
@@ -10,6 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_runtime::deno_node::RealFs;
 use deno_semver::npm::NpmPackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
@@ -23,7 +27,7 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let tasks_config = ps.options.resolve_tasks_config()?;
   let maybe_package_json = ps.options.maybe_package_json();
   let package_json_scripts = maybe_package_json
@@ -50,7 +54,7 @@ pub async fn execute_script(
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => config_file_path.parent().unwrap().to_owned(),
     };
-    let script = get_script_with_args(script, &ps);
+    let script = get_script_with_args(script, &ps.options);
     output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
@@ -92,11 +96,12 @@ pub async fn execute_script(
         .unwrap()
         .to_owned(),
     };
-    let script = get_script_with_args(script, &ps);
+    let script = get_script_with_args(script, &ps.options);
     output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
-    let npx_commands = resolve_npm_commands(&ps)?;
+    let npx_commands =
+      resolve_npm_commands(&ps.npm_resolver, &ps.node_resolver)?;
     let env_vars = collect_env_vars();
     let exit_code =
       deno_task_shell::execute(seq_list, env_vars, &cwd, npx_commands).await;
@@ -108,9 +113,8 @@ pub async fn execute_script(
   }
 }
 
-fn get_script_with_args(script: &str, ps: &ProcState) -> String {
-  let additional_args = ps
-    .options
+fn get_script_with_args(script: &str, options: &CliOptions) -> String {
+  let additional_args = options
     .argv()
     .iter()
     // surround all the additional arguments in double quotes
@@ -231,13 +235,14 @@ impl ShellCommand for NpmPackageBinCommand {
 }
 
 fn resolve_npm_commands(
-  ps: &ProcState,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
-  let snapshot = ps.npm_resolver.snapshot();
+  let snapshot = npm_resolver.snapshot();
   for id in snapshot.top_level_packages() {
     let bin_commands =
-      crate::node::node_resolve_binary_commands(&id.nv, &ps.npm_resolver)?;
+      node_resolver.resolve_binary_commands::<RealFs>(&id.nv)?;
     for bin_command in bin_commands {
       result.insert(
         bin_command.to_string(),

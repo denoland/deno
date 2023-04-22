@@ -7,6 +7,7 @@ use log::debug;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
+use crate::error::JsStackFrame;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::resolve_helper;
@@ -159,30 +160,41 @@ pub(crate) fn initialize_context<'s>(
 
   if matches!(snapshot_options, SnapshotOptions::Load) {
     // Only register ops that have `force_registration` flag set to true,
-    // the remaining ones should already be in the snapshot.
-    for op_ctx in op_ctxs
-      .iter()
-      .filter(|op_ctx| op_ctx.decl.force_registration)
-    {
-      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+    // the remaining ones should already be in the snapshot. Ignore ops that
+    // are disabled.
+    for op_ctx in op_ctxs {
+      if op_ctx.decl.enabled {
+        if op_ctx.decl.force_registration {
+          add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+        }
+      } else {
+        delete_op_from_deno_core_ops(scope, ops_obj, op_ctx)
+      }
     }
   } else if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
-    // Register all ops, probing for which ones are already registered.
+    // Register all enabled ops, probing for which ones are already registered.
     for op_ctx in op_ctxs {
       let key = v8::String::new_external_onebyte_static(
         scope,
         op_ctx.decl.name.as_bytes(),
       )
       .unwrap();
-      if ops_obj.get(scope, key.into()).is_some() {
-        continue;
+
+      if op_ctx.decl.enabled {
+        if ops_obj.get(scope, key.into()).is_some() {
+          continue;
+        }
+        add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+      } else {
+        delete_op_from_deno_core_ops(scope, ops_obj, op_ctx)
       }
-      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
     }
   } else {
-    // In other cases register all ops unconditionally.
+    // In other cases register all ops enabled unconditionally.
     for op_ctx in op_ctxs {
-      add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+      if op_ctx.decl.enabled {
+        add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
+      }
     }
   }
 
@@ -200,6 +212,17 @@ fn set_func(
   let val = v8::Function::new(scope, callback).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
+}
+
+fn delete_op_from_deno_core_ops(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  op_ctx: &OpCtx,
+) {
+  let key =
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
+  obj.delete(scope, key.into());
 }
 
 fn add_op_to_deno_core_ops(
@@ -436,26 +459,26 @@ fn catch_dynamic_import_promise_error(
   if is_instance_of_error(scope, arg) {
     let e: crate::error::NativeJsError = serde_v8::from_v8(scope, arg).unwrap();
     let name = e.name.unwrap_or_else(|| "Error".to_string());
-    let message = v8::Exception::create_message(scope, arg);
-    if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
+    let msg = v8::Exception::create_message(scope, arg);
+    if msg.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
       let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
       let message_key =
         v8::String::new_external_onebyte_static(scope, b"message").unwrap();
       let message = arg.get(scope, message_key.into()).unwrap();
+      let mut message: v8::Local<v8::String> = message.try_into().unwrap();
+      if let Some(stack_frame) = JsStackFrame::from_v8_message(scope, msg) {
+        if let Some(location) = stack_frame.maybe_format_location() {
+          let str =
+            format!("{} at {location}", message.to_rust_string_lossy(scope));
+          message = v8::String::new(scope, &str).unwrap();
+        }
+      }
       let exception = match name.as_str() {
-        "RangeError" => {
-          v8::Exception::range_error(scope, message.try_into().unwrap())
-        }
-        "TypeError" => {
-          v8::Exception::type_error(scope, message.try_into().unwrap())
-        }
-        "SyntaxError" => {
-          v8::Exception::syntax_error(scope, message.try_into().unwrap())
-        }
-        "ReferenceError" => {
-          v8::Exception::reference_error(scope, message.try_into().unwrap())
-        }
-        _ => v8::Exception::error(scope, message.try_into().unwrap()),
+        "RangeError" => v8::Exception::range_error(scope, message),
+        "TypeError" => v8::Exception::type_error(scope, message),
+        "SyntaxError" => v8::Exception::syntax_error(scope, message),
+        "ReferenceError" => v8::Exception::reference_error(scope, message),
+        _ => v8::Exception::error(scope, message),
       };
       let code_key =
         v8::String::new_external_onebyte_static(scope, b"code").unwrap();
