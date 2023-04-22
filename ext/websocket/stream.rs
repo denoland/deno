@@ -7,14 +7,22 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
+use tokio::net::TcpStream;
+use tokio_tungstenite::MaybeTlsStream;
+
+// TODO(bartlomieju): remove this
+pub(crate) enum WsStreamKind {
+  Tungstenite(MaybeTlsStream<TcpStream>),
+  Network(NetworkStream),
+}
 
 pub(crate) struct WebSocketStream {
-  stream: NetworkStream,
+  stream: WsStreamKind,
   pre: Option<Bytes>,
 }
 
 impl WebSocketStream {
-  pub fn new(stream: NetworkStream, buffer: Option<Bytes>) -> Self {
+  pub fn new(stream: WsStreamKind, buffer: Option<Bytes>) -> Self {
     Self {
       stream,
       pre: buffer,
@@ -44,7 +52,10 @@ impl AsyncRead for WebSocketStream {
         return Poll::Ready(Ok(()));
       }
     }
-    Pin::new(&mut self.stream).poll_read(cx, buf)
+    match &mut self.stream {
+      WsStreamKind::Network(stream) => Pin::new(stream).poll_read(cx, buf),
+      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_read(cx, buf),
+    }
   }
 }
 
@@ -54,25 +65,37 @@ impl AsyncWrite for WebSocketStream {
     cx: &mut std::task::Context<'_>,
     buf: &[u8],
   ) -> std::task::Poll<Result<usize, std::io::Error>> {
-    Pin::new(&mut self.stream).poll_write(cx, buf)
+    match &mut self.stream {
+      WsStreamKind::Network(stream) => Pin::new(stream).poll_write(cx, buf),
+      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_write(cx, buf),
+    }
   }
 
   fn poll_flush(
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.stream).poll_flush(cx)
+    match &mut self.stream {
+      WsStreamKind::Network(stream) => Pin::new(stream).poll_flush(cx),
+      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_flush(cx),
+    }
   }
 
   fn poll_shutdown(
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.stream).poll_shutdown(cx)
+    match &mut self.stream {
+      WsStreamKind::Network(stream) => Pin::new(stream).poll_shutdown(cx),
+      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_shutdown(cx),
+    }
   }
 
   fn is_write_vectored(&self) -> bool {
-    self.stream.is_write_vectored()
+    match &self.stream {
+      WsStreamKind::Network(stream) => stream.is_write_vectored(),
+      WsStreamKind::Tungstenite(stream) => stream.is_write_vectored(),
+    }
   }
 
   fn poll_write_vectored(
@@ -80,6 +103,13 @@ impl AsyncWrite for WebSocketStream {
     cx: &mut std::task::Context<'_>,
     bufs: &[std::io::IoSlice<'_>],
   ) -> std::task::Poll<Result<usize, std::io::Error>> {
-    Pin::new(&mut self.stream).poll_write_vectored(cx, bufs)
+    match &mut self.stream {
+      WsStreamKind::Network(stream) => {
+        Pin::new(stream).poll_write_vectored(cx, bufs)
+      }
+      WsStreamKind::Tungstenite(stream) => {
+        Pin::new(stream).poll_write_vectored(cx, bufs)
+      }
+    }
   }
 }

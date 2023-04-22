@@ -16,7 +16,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
-use deno_net::ops_tls::TlsStream;
 use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
@@ -39,9 +38,12 @@ use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
+use tokio_rustls::TlsConnector;
+use tokio_tungstenite::MaybeTlsStream;
 
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollector;
@@ -51,7 +53,6 @@ use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
-mod handshake;
 mod stream;
 
 #[derive(Clone)]
@@ -223,30 +224,26 @@ where
   let addr = format!("{domain}:{port}");
   let tcp_socket = TcpStream::connect(addr).await?;
 
-  let socket: NetworkStream = match uri.scheme_str() {
-    Some("ws") => NetworkStream::Tcp(tcp_socket),
+  let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
+    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
     Some("wss") => {
-      let mut tls_config = create_client_config(
+      let tls_config = create_client_config(
         root_cert_store,
         vec![],
         unsafely_ignore_certificate_errors,
         None,
       )?;
-      // Send http/1.1 for ALPN
-      // https://chromestatus.com/feature/5687059162333184
-      tls_config.alpn_protocols =
-        vec![vec![104, 116, 116, 112, 47, 49, 46, 49]];
-      let server_name = ServerName::try_from(domain.as_str())
+      let tls_connector = TlsConnector::from(Arc::new(tls_config));
+      let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
-      let mut stream =
-        TlsStream::new_client_side(tcp_socket, tls_config.into(), server_name);
-      stream.handshake().await?;
-      NetworkStream::Tls(stream)
+      let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
+      MaybeTlsStream::Rustls(tls_socket)
     }
     _ => unreachable!(),
   };
 
-  let client = crate::handshake::client(request, socket);
+  let client =
+    fastwebsockets::handshake::client(&LocalExecutor, request, socket);
 
   let (upgraded, response) = if let Some(cancel_resource) = cancel_resource {
     client.or_cancel(cancel_resource.0.to_owned()).await?
@@ -259,10 +256,13 @@ where
     ))
   })?;
 
-  let Parts { io, read_buf, .. } =
-    upgraded.downcast::<NetworkStream>().unwrap();
+  let Parts { io, read_buf, .. } = upgraded
+    .into_inner()
+    .downcast::<MaybeTlsStream<TcpStream>>()
+    .unwrap();
 
-  let stream = WebSocketStream::new(io, Some(read_buf));
+  let stream =
+    WebSocketStream::new(stream::WsStreamKind::Tungstenite(io), Some(read_buf));
   let stream = WebSocket::after_handshake(stream, Role::Client);
 
   if let Some(cancel_rid) = cancel_handle {
@@ -337,7 +337,10 @@ pub fn ws_create_server_stream(
   read_buf: Bytes,
 ) -> Result<ResourceId, AnyError> {
   let mut ws = WebSocket::after_handshake(
-    WebSocketStream::new(transport, Some(read_buf)),
+    WebSocketStream::new(
+      stream::WsStreamKind::Network(transport),
+      Some(read_buf),
+    ),
     Role::Server,
   );
   ws.set_writev(true);
@@ -357,7 +360,7 @@ pub fn ws_create_server_stream(
 pub fn op_ws_server_create(
   state: &mut OpState,
   conn: ResourceId,
-  extra_bytes: ZeroCopyBuf,
+  extra_bytes: &[u8],
 ) -> Result<ResourceId, AnyError> {
   let network_stream =
     take_network_stream_resource(&mut state.resource_table, conn)?;
