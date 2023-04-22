@@ -613,6 +613,26 @@ function formatValue(
   return formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails);
 }
 
+function getClassInstanceName(instance) {
+  if (typeof instance != "object") {
+    return "";
+  }
+  const constructor = instance?.constructor;
+  if (typeof constructor == "function") {
+    return constructor.name ?? "";
+  }
+  return "";
+}
+
+function getDisplayName(value) {
+  const name = getClassInstanceName(value);
+  if (name && name !== "Object" && name !== "anonymous") {
+    return name;
+  } else {
+    undefined;
+  }
+}
+
 function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   let keys;
   let protoProps;
@@ -626,33 +646,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     protoProps = undefined;
   }
 
-  let displayName = undefined;
-  if (
-    value?.constructor && typeof value.constructor == "function" &&
-    value.constructor.name
-  ) {
-    if (
-      value.constructor.name !== "Object" &&
-      value.constructor.name !== "anonymous"
-    ) {
-      displayName = value.constructor.name;
-    }
-  }
-
   let tag = value[SymbolToStringTag];
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
-  if (
-    typeof tag !== "string"
-    // TODO(wafuwafu13): Implement
-    // (tag !== "" &&
-    //   (ctx.showHidden
-    //     ? Object.prototype.hasOwnProperty
-    //     : Object.prototype.propertyIsEnumerable)(
-    //       value,
-    //       Symbol.toStringTag,
-    //     ))
-  ) {
+  if (typeof tag !== "string" ||
+    (tag !== "" &&
+      (ctx.showHidden ?
+        ObjectPrototypeHasOwnProperty :
+        ObjectPrototypePropertyIsEnumerable)(
+        value, SymbolToStringTag,
+      ))) {
     tag = "";
   }
   let base = "";
@@ -746,6 +749,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
       keys = getKeys(value, ctx.showHidden);
       braces = ["{", "}"];
       if (constructor === "Object") {
+        const displayName = getDisplayName(value);
         if (isArgumentsObject(value)) {
           braces[0] = "[Arguments] {";
         } else if (tag !== "") {
@@ -836,16 +840,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           //   const address = getExternalValue(value).toString(16);
           //   return ctx.stylize(`[External: ${address}]`, 'special');
           // }
-          return `${getCtxStyle(value, constructor, tag, displayName)}{}`;
+          return `${getCtxStyle(value, constructor, tag)}{}`;
         }
-        braces[0] = `${getCtxStyle(value, constructor, tag, displayName)}{`;
+        braces[0] = `${getCtxStyle(value, constructor, tag)}{`;
       }
     }
   }
 
   if (recurseTimes > ctx.depth && ctx.depth !== null) {
     let constructorName = StringPrototypeSlice(
-      getCtxStyle(value, constructor, tag, displayName),
+      getCtxStyle(value, constructor, tag),
       0,
       -1,
     );
@@ -1012,36 +1016,22 @@ function addPrototypeProperties(
   } while (++depth !== 3);
 }
 
-function getConstructorName(
-  obj,
-  ctx,
-  recurseTimes,
-  protoProps,
-) {
+function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   let firstProto;
   const tmp = obj;
   while (obj || isUndetectableObject(obj)) {
     const descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
-    if (
-      descriptor !== undefined &&
+    if (descriptor !== undefined &&
       typeof descriptor.value === "function" &&
       descriptor.value.name !== "" &&
-      ObjectPrototypeIsPrototypeOf(descriptor.value.prototype, tmp)
-    ) {
-      if (
-        protoProps !== undefined &&
+      tmp instanceof descriptor.value) {
+      if (protoProps !== undefined &&
         (firstProto !== obj ||
-          !builtInObjects.has(descriptor.value.name))
-      ) {
+          !builtInObjects.has(descriptor.value.name))) {
         addPrototypeProperties(
-          ctx,
-          tmp,
-          firstProto || tmp,
-          recurseTimes,
-          protoProps,
-        );
+          ctx, tmp, firstProto || tmp, recurseTimes, protoProps);
       }
-      return descriptor.value.name;
+      return String(descriptor.value.name);
     }
 
     obj = ObjectGetPrototypeOf(obj);
@@ -1054,29 +1044,21 @@ function getConstructorName(
     return null;
   }
 
-  // TODO(wafuwafu13): Implement
-  // const res = internalGetConstructorName(tmp);
-  const res = undefined;
+  const res = core.ops.op_get_constructor_name(tmp);
 
   if (recurseTimes > ctx.depth && ctx.depth !== null) {
     return `${res} <Complex prototype>`;
   }
 
   const protoConstr = getConstructorName(
-    firstProto,
-    ctx,
-    recurseTimes + 1,
-    protoProps,
-  );
+    firstProto, ctx, recurseTimes + 1, protoProps);
 
   if (protoConstr === null) {
-    return `${res} <${
-      inspect(firstProto, {
-        ...ctx,
-        customInspect: false,
-        depth: -1,
-      })
-    }>`;
+    return `${res} <${inspect(firstProto, {
+      ...ctx,
+      customInspect: false,
+      depth: -1,
+    })}>`;
   }
 
   return `${res} <${protoConstr}>`;
@@ -1154,14 +1136,10 @@ function formatArray(ctx, value, recurseTimes) {
   return output;
 }
 
-function getCtxStyle(_value, constructor, tag, displayName) {
-  if (displayName) {
-    return displayName + " ";
-  }
+function getCtxStyle(value, constructor, tag) {
   let fallback = "";
   if (constructor === null) {
-    // TODO(wafuwafu13): Implement
-    // fallback = internalGetConstructorName(value);
+    fallback = core.ops.op_get_constructor_name(value);
     if (fallback === tag) {
       fallback = "Object";
     }
@@ -2864,8 +2842,10 @@ function inspectArgs(args, inspectOptions = {}) {
   if (inspectOptions.strAbbreviateSize !== undefined) {
     ctx.maxStringLength = inspectOptions.strAbbreviateSize;
   }
+  if (ctx.colors) ctx.stylize = createStylizeWithColor(styles, colors);
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
+
 
   const noColor = colors_.getNoColor();
   const first = args[0];

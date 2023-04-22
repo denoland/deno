@@ -641,6 +641,20 @@ fn op_get_non_index_property_names<'a>(
   }
 }
 
+#[op(v8)]
+fn op_get_constructor_name<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  obj: serde_v8::Value<'a>,
+) -> Option<String> {
+  let obj = match v8::Local::<v8::Object>::try_from(obj.v8_value) {
+    Ok(proxy) => proxy,
+    Err(_) => return None,
+  };
+
+  let name = obj.get_constructor_name().to_rust_string_lossy(scope);
+  Some(name)
+}
+
 // HeapStats stores values from a isolate.get_heap_statistics() call
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
