@@ -5,13 +5,22 @@ use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::JsRuntime;
+use deno_core::ModuleSpecifier;
+use deno_npm::resolution::PackageReqNotFoundError;
+use deno_npm::NpmPackageId;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
+pub mod analyze;
 mod crypto;
 pub mod errors;
 mod idna;
@@ -20,14 +29,15 @@ mod package_json;
 mod path;
 mod polyfill;
 mod resolution;
+mod resolver;
 mod v8;
 mod winerror;
 mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
-pub use polyfill::find_builtin_node_module;
 pub use polyfill::is_builtin_node_module;
+pub use polyfill::resolve_builtin_node_module;
 pub use polyfill::NodeModulePolyfill;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::get_closest_package_json;
@@ -40,6 +50,8 @@ pub use resolution::path_to_declaration_path;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
+pub use resolver::NodeResolution;
+pub use resolver::NodeResolver;
 
 pub trait NodeEnv {
   type P: NodePermissions;
@@ -48,6 +60,14 @@ pub trait NodeEnv {
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+}
+
+pub(crate) struct AllowAllNodePermissions;
+
+impl NodePermissions for AllowAllNodePermissions {
+  fn check_read(&mut self, _path: &Path) -> Result<(), AnyError> {
+    Ok(())
+  }
 }
 
 #[derive(Default, Clone)]
@@ -113,26 +133,104 @@ impl NodeFs for RealFs {
   }
 }
 
-pub trait RequireNpmResolver {
+pub trait NpmResolver {
+  /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
-    referrer: &Path,
+    referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
+  /// Resolves the npm package folder path from the specified path.
   fn resolve_package_folder_from_path(
     &self,
     path: &Path,
   ) -> Result<PathBuf, AnyError>;
 
-  fn in_npm_package(&self, path: &Path) -> bool;
+  /// Resolves an npm package folder path from a Deno module.
+  fn resolve_package_folder_from_deno_module(
+    &self,
+    pkg_nv: &NpmPackageNv,
+  ) -> Result<PathBuf, AnyError>;
+
+  fn resolve_pkg_id_from_pkg_req(
+    &self,
+    req: &NpmPackageReq,
+  ) -> Result<NpmPackageId, PackageReqNotFoundError>;
+
+  fn resolve_nv_ref_from_pkg_req_ref(
+    &self,
+    req_ref: &NpmPackageReqReference,
+  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError>;
+
+  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
+
+  fn in_npm_package_at_path(&self, path: &Path) -> bool {
+    let specifier =
+      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
+        Ok(p) => p,
+        Err(_) => return false,
+      };
+    self.in_npm_package(&specifier)
+  }
 
   fn ensure_read_permission(
     &self,
     permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
+}
+
+impl<T: NpmResolver + ?Sized> NpmResolver for Arc<T> {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+  ) -> Result<PathBuf, AnyError> {
+    (**self).resolve_package_folder_from_package(specifier, referrer, mode)
+  }
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<PathBuf, AnyError> {
+    (**self).resolve_package_folder_from_path(path)
+  }
+
+  fn resolve_package_folder_from_deno_module(
+    &self,
+    pkg_nv: &NpmPackageNv,
+  ) -> Result<PathBuf, AnyError> {
+    (**self).resolve_package_folder_from_deno_module(pkg_nv)
+  }
+
+  fn resolve_pkg_id_from_pkg_req(
+    &self,
+    req: &NpmPackageReq,
+  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
+    (**self).resolve_pkg_id_from_pkg_req(req)
+  }
+
+  fn resolve_nv_ref_from_pkg_req_ref(
+    &self,
+    req_ref: &NpmPackageReqReference,
+  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
+    (**self).resolve_nv_ref_from_pkg_req_ref(req_ref)
+  }
+
+  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    (**self).in_npm_package(specifier)
+  }
+
+  fn ensure_read_permission(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    (**self).ensure_read_permission(permissions, path)
+  }
 }
 
 pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
@@ -489,7 +587,7 @@ deno_core::extension!(deno_node,
     "zlib.ts",
   ],
   options = {
-    maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+    maybe_npm_resolver: Option<Rc<dyn NpmResolver>>,
   },
   state = |state, options| {
     if let Some(npm_resolver) = options.maybe_npm_resolver {

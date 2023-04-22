@@ -16,7 +16,7 @@ use crate::package_json::PackageJson;
 use crate::path::PathClean;
 use crate::NodeFs;
 use crate::NodePermissions;
-use crate::RequireNpmResolver;
+use crate::NpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
@@ -190,7 +190,7 @@ pub fn package_imports_resolve<Fs: NodeFs>(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if name == "#" || name.starts_with("#/") || name.ends_with('/') {
@@ -328,7 +328,7 @@ fn resolve_package_target_string<Fs: NodeFs>(
   internal: bool,
   conditions: &[&str],
   mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
@@ -438,7 +438,7 @@ fn resolve_package_target<Fs: NodeFs>(
   internal: bool,
   conditions: &[&str],
   mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   if let Some(target) = target.as_str() {
@@ -576,7 +576,7 @@ pub fn package_exports_resolve<Fs: NodeFs>(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PathBuf, AnyError> {
   if package_exports.contains_key(&package_subpath)
@@ -733,7 +733,7 @@ pub fn package_resolve<Fs: NodeFs>(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   mode: NodeResolutionMode,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<Option<PathBuf>, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
@@ -763,7 +763,7 @@ pub fn package_resolve<Fs: NodeFs>(
 
   let package_dir_path = npm_resolver.resolve_package_folder_from_package(
     &package_name,
-    &referrer.to_file_path().unwrap(),
+    referrer,
     mode,
   )?;
   let package_json_path = package_dir_path.join("package.json");
@@ -815,7 +815,7 @@ pub fn package_resolve<Fs: NodeFs>(
 
 pub fn get_package_scope_config<Fs: NodeFs>(
   referrer: &ModuleSpecifier,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
   let root_folder = npm_resolver
@@ -826,7 +826,7 @@ pub fn get_package_scope_config<Fs: NodeFs>(
 
 pub fn get_closest_package_json<Fs: NodeFs>(
   url: &ModuleSpecifier,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
   permissions: &mut dyn NodePermissions,
 ) -> Result<PackageJson, AnyError> {
   let package_json_path =
@@ -836,7 +836,7 @@ pub fn get_closest_package_json<Fs: NodeFs>(
 
 fn get_closest_package_json_path<Fs: NodeFs>(
   url: &ModuleSpecifier,
-  npm_resolver: &dyn RequireNpmResolver,
+  npm_resolver: &dyn NpmResolver,
 ) -> Result<PathBuf, AnyError> {
   let file_path = url.to_file_path().unwrap();
   let mut current_dir = file_path.parent().unwrap();

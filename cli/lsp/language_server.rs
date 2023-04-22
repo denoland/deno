@@ -9,6 +9,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
@@ -81,8 +82,8 @@ use crate::lsp::urls::LspUrlKind;
 use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
@@ -103,7 +104,7 @@ pub struct StateSnapshot {
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
-  pub maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
+  pub maybe_npm_resolver: Option<Arc<CliNpmResolver>>,
 }
 
 #[derive(Debug)]
@@ -153,7 +154,7 @@ pub struct Inner {
   /// Npm resolution that is stored in memory.
   npm_resolution: Arc<NpmResolution>,
   /// Resolver for npm packages.
-  npm_resolver: Arc<NpmPackageResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -424,7 +425,7 @@ fn create_lsp_structs(
 ) -> (
   Arc<CliNpmRegistryApi>,
   Arc<NpmCache>,
-  Arc<NpmPackageResolver>,
+  Arc<CliNpmResolver>,
   Arc<NpmResolution>,
 ) {
   let registry_url = CliNpmRegistryApi::default_url();
@@ -457,11 +458,7 @@ fn create_lsp_structs(
   (
     api,
     npm_cache,
-    Arc::new(NpmPackageResolver::new(
-      resolution.clone(),
-      fs_resolver,
-      None,
-    )),
+    Arc::new(CliNpmResolver::new(resolution.clone(), fs_resolver, None)),
     resolution,
   )
 }
@@ -703,19 +700,18 @@ impl Inner {
       self.npm_resolution.snapshot(),
       None,
     ));
-    let npm_resolver = Arc::new(NpmPackageResolver::new(
+    let npm_resolver = Arc::new(CliNpmResolver::new(
       npm_resolution.clone(),
       create_npm_fs_resolver(
         self.npm_cache.clone(),
         &ProgressBar::new(ProgressBarStyle::TextOnly),
         self.npm_api.base_url().clone(),
-        npm_resolution.clone(),
+        npm_resolution,
         None,
       ),
       None,
     ));
-    let node_resolver =
-      Arc::new(CliNodeResolver::new(npm_resolution, npm_resolver.clone()));
+    let node_resolver = Arc::new(NodeResolver::new(npm_resolver.clone()));
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),

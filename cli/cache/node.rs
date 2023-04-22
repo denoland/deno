@@ -42,14 +42,6 @@ pub struct NodeAnalysisCache {
 }
 
 impl NodeAnalysisCache {
-  #[cfg(test)]
-  pub fn new_in_memory() -> Self {
-    Self::new(CacheDB::in_memory(
-      &NODE_ANALYSIS_CACHE_DB,
-      crate::version::deno(),
-    ))
-  }
-
   pub fn new(db: CacheDB) -> Self {
     Self {
       inner: NodeAnalysisCacheInner::new(db),
