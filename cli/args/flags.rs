@@ -2676,6 +2676,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Some(f) => f.collect(),
     None => vec![],
   };
+
   let ignore = match matches.remove_many::<PathBuf>("ignore") {
     Some(f) => f.collect(),
     None => vec![],

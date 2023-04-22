@@ -727,6 +727,7 @@ dependencies = [
  "fs3",
  "fwdansi",
  "glibc_version",
+ "glob",
  "http",
  "hyper",
  "import_map 0.15.0",

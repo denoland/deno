@@ -67,6 +67,7 @@ pub async fn lint(
   }
 
   let files = lint_options.files;
+  println!("options.files: {:?}", files);
   let reporter_kind = lint_options.reporter_kind;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {

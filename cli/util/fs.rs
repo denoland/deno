@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use walkdir::WalkDir;
+use glob::glob;
 
 use crate::args::FilesConfig;
 use crate::util::progress_bar::ProgressBar;
@@ -219,6 +220,34 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
       Cow::Borrowed(files)
     };
     for file in files.iter() {
+
+      let file_as_str = file.to_str().unwrap();
+      println!("{file_as_str}");
+      
+      if file_as_str.starts_with("/") && file_as_str.ends_with("/") {
+        let trimmed_file_str = file_as_str.trim_end_matches(|c| c == file_as_str.chars().last().unwrap())
+          .trim_start_matches(|c| c == file_as_str.chars().next().unwrap());
+        
+        if glob::Pattern::new(trimmed_file_str).is_ok() {
+          // println!("{trimmed_file_str}");
+          let mut files_in_pattern = Vec::new();
+          for entry in glob(trimmed_file_str)? {
+            match entry {
+                Ok(path) => {
+                    if path.is_file() {
+                      if let Ok(file) = canonicalize_path(&path) {
+                        files_in_pattern.push(file);
+                      }
+                    }
+                }
+                Err(e) => println!("{:?}", e),
+            }
+          }
+          // println!("{:?}", files_in_pattern);
+          return Ok(files_in_pattern)
+        }
+      }
+
       if let Ok(file) = canonicalize_path(file) {
         // use an iterator like this in order to minimize the number of file system operations
         let mut iterator = WalkDir::new(&file).into_iter();
