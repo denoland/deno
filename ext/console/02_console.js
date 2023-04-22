@@ -629,7 +629,7 @@ function getDisplayName(value) {
   if (name && name !== "Object" && name !== "anonymous") {
     return name;
   } else {
-    undefined;
+    return undefined;
   }
 }
 
