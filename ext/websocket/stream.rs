@@ -2,17 +2,17 @@
 use bytes::Buf;
 use bytes::Bytes;
 use deno_net::raw::NetworkStream;
+use hyper::upgrade::Upgraded;
 use std::pin::Pin;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
-use tokio::net::TcpStream;
 use tokio_tungstenite::MaybeTlsStream;
 
 // TODO(bartlomieju): remove this
 pub(crate) enum WsStreamKind {
-  Tungstenite(MaybeTlsStream<TcpStream>),
+  Tungstenite(MaybeTlsStream<Upgraded>),
   Network(NetworkStream),
 }
 

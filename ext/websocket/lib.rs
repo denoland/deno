@@ -26,7 +26,6 @@ use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
-use hyper::upgrade::Parts;
 use hyper::Body;
 use serde::Deserialize;
 use serde::Serialize;
@@ -256,13 +255,9 @@ where
     ))
   })?;
 
-  let Parts { io, read_buf, .. } = upgraded
-    .into_inner()
-    .downcast::<MaybeTlsStream<TcpStream>>()
-    .unwrap();
-
+  let inner = MaybeTlsStream::Plain(upgraded.into_inner());
   let stream =
-    WebSocketStream::new(stream::WsStreamKind::Tungstenite(io), Some(read_buf));
+    WebSocketStream::new(stream::WsStreamKind::Tungstenite(inner), None);
   let stream = WebSocket::after_handshake(stream, Role::Client);
 
   if let Some(cancel_rid) = cancel_handle {
