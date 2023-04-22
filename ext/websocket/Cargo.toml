@@ -16,7 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_tls.workspace = true
-fastwebsockets = { version = "0.2.1", features = ["upgrade"] }
+fastwebsockets = { version = "0.2.4", features = ["upgrade"] }
 http.workspace = true
 hyper.workspace = true
 serde.workspace = true
