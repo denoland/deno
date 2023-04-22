@@ -92,18 +92,18 @@ impl NodeResolution {
 
 #[derive(Debug)]
 pub struct NodeResolver<TRequireNpmResolver: NpmResolver> {
-  inner: TRequireNpmResolver,
+  npm_resolver: TRequireNpmResolver,
 }
 
 impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
   pub fn new(require_npm_resolver: TRequireNpmResolver) -> Self {
     Self {
-      inner: require_npm_resolver,
+      npm_resolver: require_npm_resolver,
     }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self.inner.in_npm_package(specifier)
+    self.npm_resolver.in_npm_package(specifier)
   }
 
   /// This function is an implementation of `defaultResolve` in
@@ -212,7 +212,7 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
           NodeModuleKind::Esm,
           conditions,
           mode,
-          &self.inner,
+          &self.npm_resolver,
           permissions,
         )
         .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
@@ -226,7 +226,7 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
         NodeModuleKind::Esm,
         conditions,
         mode,
-        &self.inner,
+        &self.npm_resolver,
         permissions,
       )?
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
@@ -243,7 +243,9 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
     mode: NodeResolutionMode,
     permissions: &mut dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
-    let reference = self.inner.resolve_nv_ref_from_pkg_req_ref(reference)?;
+    let reference = self
+      .npm_resolver
+      .resolve_nv_ref_from_pkg_req_ref(reference)?;
     self.resolve_npm_reference::<Fs>(&reference, mode, permissions)
   }
 
@@ -254,7 +256,7 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
     permissions: &mut dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
     let package_folder = self
-      .inner
+      .npm_resolver
       .resolve_package_folder_from_deno_module(&reference.nv)?;
     let node_module_kind = NodeModuleKind::Esm;
     let maybe_resolved_path = package_config_resolve::<Fs>(
@@ -267,7 +269,7 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
       node_module_kind,
       DEFAULT_CONDITIONS,
       mode,
-      &self.inner,
+      &self.npm_resolver,
       permissions,
     )
     .with_context(|| {
@@ -297,11 +299,12 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
     &self,
     pkg_nv: &NpmPackageNv,
   ) -> Result<Vec<String>, AnyError> {
-    let package_folder =
-      self.inner.resolve_package_folder_from_deno_module(pkg_nv)?;
+    let package_folder = self
+      .npm_resolver
+      .resolve_package_folder_from_deno_module(pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
     let package_json = PackageJson::load::<Fs>(
-      &self.inner,
+      &self.npm_resolver,
       &mut AllowAllNodePermissions,
       package_json_path,
     )?;
@@ -319,14 +322,17 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
     &self,
     pkg_ref: &NpmPackageReqReference,
   ) -> Result<NodeResolution, AnyError> {
-    let pkg_nv = self.inner.resolve_pkg_id_from_pkg_req(&pkg_ref.req)?.nv;
+    let pkg_nv = self
+      .npm_resolver
+      .resolve_pkg_id_from_pkg_req(&pkg_ref.req)?
+      .nv;
     let bin_name = pkg_ref.sub_path.as_deref();
     let package_folder = self
-      .inner
+      .npm_resolver
       .resolve_package_folder_from_deno_module(&pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
     let package_json = PackageJson::load::<Fs>(
-      &self.inner,
+      &self.npm_resolver,
       &mut AllowAllNodePermissions,
       package_json_path,
     )?;
@@ -357,7 +363,7 @@ impl<TRequireNpmResolver: NpmResolver> NodeResolver<TRequireNpmResolver> {
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
       let package_config = get_closest_package_json::<Fs>(
         &url,
-        &self.inner,
+        &self.npm_resolver,
         &mut AllowAllNodePermissions,
       )?;
       if package_config.typ == "module" {
