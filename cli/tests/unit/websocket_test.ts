@@ -43,6 +43,22 @@ Deno.test(async function websocketPingPong() {
   ws.close();
 });
 
+// TODO(mmastrac): This requires us to ignore bad certs
+// Deno.test(async function websocketSecureConnect() {
+//   const promise = deferred();
+//   const ws = new WebSocket("wss://localhost:4243/");
+//   assertEquals(ws.url, "wss://localhost:4243/");
+//   ws.onerror = (error) => {
+//     console.log(error);
+//     fail();
+//   };
+//   ws.onopen = () => ws.close();
+//   ws.onclose = () => {
+//     promise.resolve();
+//   };
+//   await promise;
+// });
+
 // https://github.com/denoland/deno/issues/18700
 Deno.test(
   { sanitizeOps: false, sanitizeResources: false },

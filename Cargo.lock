@@ -728,7 +728,7 @@ dependencies = [
  "fwdansi",
  "glibc_version",
  "http",
- "hyper",
+ "hyper 0.14.26",
  "import_map 0.15.0",
  "indexmap",
  "jsonc-parser",
@@ -1022,11 +1022,14 @@ dependencies = [
  "bytes",
  "cache_control",
  "deno_core",
+ "deno_net",
  "deno_websocket",
  "flate2",
  "fly-accept-encoding",
+ "http",
  "httparse",
- "hyper",
+ "hyper 0.14.26",
+ "hyper 1.0.0-rc.3",
  "memmem",
  "mime",
  "once_cell",
@@ -1035,6 +1038,8 @@ dependencies = [
  "pin-project",
  "ring",
  "serde",
+ "slab",
+ "thiserror",
  "tokio",
  "tokio-util",
 ]
@@ -1119,6 +1124,7 @@ dependencies = [
  "deno_core",
  "deno_tls",
  "log",
+ "pin-project",
  "serde",
  "socket2",
  "tokio",
@@ -1242,7 +1248,7 @@ dependencies = [
  "fs3",
  "fwdansi",
  "http",
- "hyper",
+ "hyper 0.14.26",
  "libc",
  "log",
  "netif",
@@ -1345,11 +1351,13 @@ dependencies = [
 name = "deno_websocket"
 version = "0.104.0"
 dependencies = [
+ "bytes",
  "deno_core",
+ "deno_net",
  "deno_tls",
  "fastwebsockets",
  "http",
- "hyper",
+ "hyper 0.14.26",
  "serde",
  "tokio",
  "tokio-rustls",
@@ -1794,13 +1802,13 @@ dependencies = [
 
 [[package]]
 name = "fastwebsockets"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9e973e2bd2dbd77cc9e929ede2ce65984a35ac5481976afbfbd509cb40dc965"
+checksum = "2fbc4aeb6c0ab927a93b5e5fc70d4c7f834260fc414021ac40c58d046ea0e394"
 dependencies = [
  "base64 0.21.0",
  "cc",
- "hyper",
+ "hyper 0.14.26",
  "pin-project",
  "rand",
  "sha1",
@@ -2238,6 +2246,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-body"
+version = "1.0.0-rc.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "951dfc2e32ac02d67c90c0d65bd27009a635dc9b381a2cc7d284ab01e3a0150d"
+dependencies = [
+ "bytes",
+ "http",
+]
+
+[[package]]
 name = "httparse"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2267,7 +2285,7 @@ dependencies = [
  "futures-util",
  "h2",
  "http",
- "http-body",
+ "http-body 0.4.5",
  "httparse",
  "httpdate",
  "itoa",
@@ -2280,13 +2298,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper"
+version = "1.0.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b75264b2003a3913f118d35c586e535293b3e22e41f074930762929d071e092"
+dependencies = [
+ "bytes",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "h2",
+ "http",
+ "http-body 1.0.0-rc.2",
+ "httparse",
+ "httpdate",
+ "itoa",
+ "pin-project-lite",
+ "tokio",
+ "tracing",
+ "want",
+]
+
+[[package]]
 name = "hyper-rustls"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1788965e61b367cd03a62950836d5cd41560c3577d90e40e0819373194d1661c"
 dependencies = [
  "http",
- "hyper",
+ "hyper 0.14.26",
  "rustls",
  "tokio",
  "tokio-rustls",
@@ -3614,8 +3654,8 @@ dependencies = [
  "futures-util",
  "h2",
  "http",
- "http-body",
- "hyper",
+ "http-body 0.4.5",
+ "hyper 0.14.26",
  "hyper-rustls",
  "ipnet",
  "js-sys",
@@ -4870,7 +4910,7 @@ dependencies = [
  "fastwebsockets",
  "flate2",
  "futures",
- "hyper",
+ "hyper 0.14.26",
  "lazy-regex",
  "lsp-types",
  "nix",
