@@ -18,12 +18,12 @@ use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsEsmCodeAnalyzer;
+use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
-use crate::npm::CliRequireNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -39,6 +39,7 @@ use deno_core::SharedArrayBufferStore;
 
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -77,12 +78,11 @@ pub struct Inner {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub module_graph_builder: Arc<ModuleGraphBuilder>,
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
-  pub node_code_translator:
-    Arc<NodeCodeTranslator<CliCjsEsmCodeAnalyzer, CliRequireNpmResolver>>,
+  pub node_code_translator: Arc<CliNodeCodeTranslator>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
-  pub npm_resolver: Arc<NpmPackageResolver>,
+  pub npm_resolver: Arc<CliNpmResolver>,
   pub npm_resolution: Arc<NpmResolution>,
   pub package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   pub cjs_resolutions: Arc<CjsResolutionStore>,
@@ -252,7 +252,7 @@ impl ProcState {
       npm_resolution.clone(),
       cli_options.node_modules_dir_path(),
     );
-    let npm_resolver = Arc::new(NpmPackageResolver::new(
+    let npm_resolver = Arc::new(CliNpmResolver::new(
       npm_resolution.clone(),
       npm_fs_resolver,
       lockfile.as_ref().cloned(),
@@ -310,12 +310,9 @@ impl ProcState {
     let cjs_esm_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
     let node_code_translator = Arc::new(NodeCodeTranslator::new(
       cjs_esm_analyzer,
-      npm_resolver.as_require_npm_resolver(),
-    ));
-    let node_resolver = Arc::new(CliNodeResolver::new(
-      npm_resolution.clone(),
       npm_resolver.clone(),
     ));
+    let node_resolver = Arc::new(NodeResolver::new(npm_resolver.clone()));
     let type_checker = Arc::new(TypeChecker::new(
       dir.clone(),
       caches.clone(),

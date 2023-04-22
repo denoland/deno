@@ -11,10 +11,8 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
-use crate::node::CliCjsEsmCodeAnalyzer;
+use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
-use crate::node::NodeResolution;
-use crate::npm::CliRequireNpmResolver;
 use crate::proc_state::CjsResolutionStore;
 use crate::proc_state::FileWatcherReporter;
 use crate::proc_state::ProcState;
@@ -50,7 +48,8 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
-use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::RealFs;
 use deno_runtime::permissions::PermissionsContainer;
@@ -244,8 +243,7 @@ pub struct CliModuleLoader {
   emitter: Arc<Emitter>,
   graph_container: Arc<ModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
-  node_code_translator:
-    Arc<NodeCodeTranslator<CliCjsEsmCodeAnalyzer, CliRequireNpmResolver>>,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
@@ -430,7 +428,7 @@ impl CliModuleLoader {
 
   fn handle_node_resolve_result(
     &self,
-    result: Result<Option<node::NodeResolution>, AnyError>,
+    result: Result<Option<NodeResolution>, AnyError>,
   ) -> Result<ModuleSpecifier, AnyError> {
     let response = match result? {
       Some(response) => response,
@@ -440,7 +438,7 @@ impl CliModuleLoader {
       // remember that this was a common js resolution
       self.cjs_resolutions.insert(specifier.clone());
     } else if let NodeResolution::BuiltIn(specifier) = &response {
-      return node::resolve_builtin_node_module(specifier);
+      return deno_node::resolve_builtin_node_module(specifier);
     }
     Ok(response.into_url())
   }
@@ -468,7 +466,7 @@ impl ModuleLoader for CliModuleLoader {
       if self.node_resolver.in_npm_package(referrer) {
         // we're in an npm package, so use node resolution
         return self
-          .handle_node_resolve_result(self.node_resolver.resolve(
+          .handle_node_resolve_result(self.node_resolver.resolve::<RealFs>(
             specifier,
             referrer,
             NodeResolutionMode::Execution,
@@ -494,7 +492,7 @@ impl ModuleLoader for CliModuleLoader {
           return match graph.get(specifier) {
             Some(Module::Npm(module)) => self
               .handle_node_resolve_result(
-                self.node_resolver.resolve_npm_reference(
+                self.node_resolver.resolve_npm_reference::<RealFs>(
                   &module.nv_reference,
                   NodeResolutionMode::Execution,
                   &mut permissions,
@@ -504,7 +502,7 @@ impl ModuleLoader for CliModuleLoader {
                 format!("Could not resolve '{}'.", module.nv_reference)
               }),
             Some(Module::Node(module)) => {
-              node::resolve_builtin_node_module(&module.module_name)
+              deno_node::resolve_builtin_node_module(&module.module_name)
             }
             Some(Module::Esm(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
@@ -526,7 +524,7 @@ impl ModuleLoader for CliModuleLoader {
 
     // Built-in Node modules
     if let Some(module_name) = specifier.strip_prefix("node:") {
-      return node::resolve_builtin_node_module(module_name);
+      return deno_node::resolve_builtin_node_module(module_name);
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
@@ -556,9 +554,9 @@ impl ModuleLoader for CliModuleLoader {
         {
           return self
             .handle_node_resolve_result(
-              self.node_resolver.resolve_npm_req_reference(
+              self.node_resolver.resolve_npm_req_reference::<RealFs>(
                 &reference,
-                deno_runtime::deno_node::NodeResolutionMode::Execution,
+                NodeResolutionMode::Execution,
                 &mut permissions,
               ),
             )

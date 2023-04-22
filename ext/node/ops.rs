@@ -7,6 +7,7 @@ use deno_core::normalize_path;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::JsRuntimeInspector;
+use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::path::Path;
@@ -20,8 +21,8 @@ use super::resolution;
 use super::NodeModuleKind;
 use super::NodePermissions;
 use super::NodeResolutionMode;
+use super::NpmResolver;
 use super::PackageJson;
-use super::RequireNpmResolver;
 
 fn ensure_read_permission<P>(
   state: &mut OpState,
@@ -31,7 +32,7 @@ where
   P: NodePermissions + 'static,
 {
   let resolver = {
-    let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
+    let resolver = state.borrow::<Rc<dyn NpmResolver>>();
     resolver.clone()
   };
   let permissions = state.borrow_mut::<P>();
@@ -191,11 +192,11 @@ fn op_require_resolve_deno_dir(
   request: String,
   parent_filename: String,
 ) -> Option<String> {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
+  let resolver = state.borrow::<Rc<dyn NpmResolver>>();
   resolver
     .resolve_package_folder_from_package(
       &request,
-      &PathBuf::from(parent_filename),
+      &ModuleSpecifier::from_file_path(parent_filename).unwrap(),
       NodeResolutionMode::Execution,
     )
     .ok()
@@ -204,8 +205,8 @@ fn op_require_resolve_deno_dir(
 
 #[op]
 fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
-  resolver.in_npm_package(&PathBuf::from(path))
+  let resolver = state.borrow::<Rc<dyn NpmResolver>>();
+  resolver.in_npm_package_at_path(&PathBuf::from(path))
 }
 
 #[op]
@@ -375,7 +376,7 @@ where
     return Ok(None);
   }
 
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
   let pkg = resolution::get_package_scope_config::<Env::Fs>(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
@@ -462,10 +463,11 @@ fn op_require_resolve_exports<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
 
-  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path))
+  let pkg_path = if resolver
+    .in_npm_package_at_path(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
   {
     modules_path
@@ -515,7 +517,7 @@ where
     state,
     PathBuf::from(&filename).parent().unwrap(),
   )?;
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
   resolution::get_closest_package_json::<Env::Fs>(
     &Url::from_file_path(filename).unwrap(),
@@ -532,7 +534,7 @@ fn op_require_read_package_scope<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
   let package_json_path = PathBuf::from(package_json_path);
   PackageJson::load::<Env::Fs>(&*resolver, permissions, package_json_path).ok()
@@ -549,7 +551,7 @@ where
 {
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<Env::P>(state, &parent_path)?;
-  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
   let pkg = PackageJson::load::<Env::Fs>(
     &*resolver,

@@ -17,9 +17,9 @@ use crate::NodeFs;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 use crate::NodeResolutionMode;
+use crate::NpmResolver;
 use crate::PackageJson;
 use crate::PathClean;
-use crate::RequireNpmResolver;
 use crate::NODE_GLOBAL_THIS_NAME;
 
 static NODE_GLOBALS: &[&str] = &[
@@ -66,20 +66,18 @@ pub trait CjsEsmCodeAnalyzer {
 
 pub struct NodeCodeTranslator<
   TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
-  TRequireNpmResolver: RequireNpmResolver,
+  TNpmResolver: NpmResolver,
 > {
   cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-  npm_resolver: TRequireNpmResolver,
+  npm_resolver: TNpmResolver,
 }
 
-impl<
-    TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
-    TRequireNpmResolver: RequireNpmResolver,
-  > NodeCodeTranslator<TCjsEsmCodeAnalyzer, TRequireNpmResolver>
+impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
+  NodeCodeTranslator<TCjsEsmCodeAnalyzer, TNpmResolver>
 {
   pub fn new(
     cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-    npm_resolver: TRequireNpmResolver,
+    npm_resolver: TNpmResolver,
   ) -> Self {
     Self {
       cjs_esm_code_analyzer,
@@ -242,7 +240,7 @@ impl<
     // todo(dsherret): use not_found error on not found here
     let module_dir = self.npm_resolver.resolve_package_folder_from_package(
       package_specifier.as_str(),
-      &referrer_path,
+      referrer,
       mode,
     )?;
 

@@ -5,7 +5,6 @@ use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
 use crate::node::CliNodeResolver;
-use crate::node::NodeResolution;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -33,7 +32,10 @@ use deno_core::Snapshot;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::RealFs;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
@@ -537,7 +539,7 @@ fn op_resolve(
   };
   for specifier in args.specifiers {
     if let Some(module_name) = specifier.strip_prefix("node:") {
-      if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+      if deno_node::resolve_builtin_node_module(module_name).is_ok() {
         // return itself for node: specifiers because during type checking
         // we resolve to the ambient modules in the @types/node package
         // rather than deno_std/node
@@ -635,7 +637,7 @@ fn resolve_graph_specifier_types(
     }
     Some(Module::Npm(module)) => {
       if let Some(node_resolver) = &state.maybe_node_resolver {
-        let maybe_resolution = node_resolver.resolve_npm_reference(
+        let maybe_resolution = node_resolver.resolve_npm_reference::<RealFs>(
           &module.nv_reference,
           NodeResolutionMode::Types,
           &mut PermissionsContainer::allow_all(),
@@ -653,7 +655,9 @@ fn resolve_graph_specifier_types(
         let specifier =
           node::resolve_specifier_into_node_modules(&module.specifier);
         NodeResolution::into_specifier_and_media_type(
-          node_resolver.url_to_node_resolution(specifier).ok(),
+          node_resolver
+            .url_to_node_resolution::<RealFs>(specifier)
+            .ok(),
         )
       }))
     }
@@ -674,7 +678,7 @@ fn resolve_non_graph_specifier_types(
     // we're in an npm package, so use node resolution
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       node_resolver
-        .resolve(
+        .resolve::<RealFs>(
           specifier,
           referrer,
           NodeResolutionMode::Types,
@@ -688,7 +692,7 @@ fn resolve_non_graph_specifier_types(
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let maybe_resolution = node_resolver.resolve_npm_req_reference(
+    let maybe_resolution = node_resolver.resolve_npm_req_reference::<RealFs>(
       &npm_ref,
       NodeResolutionMode::Types,
       &mut PermissionsContainer::allow_all(),

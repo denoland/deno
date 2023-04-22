@@ -16,7 +16,6 @@ use super::tsc::TsServer;
 use crate::args::LintOptions;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
-use crate::node;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::MediaType;
@@ -31,6 +30,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::rules::LintRule;
+use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use log::error;
@@ -469,8 +469,8 @@ async fn generate_lint_diagnostics(
       }
 
       // ignore any npm package files
-      if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
-        if npm_resolver.in_npm_package(document.specifier()) {
+      if let Some(node_resolver) = &snapshot.maybe_node_resolver {
+        if node_resolver.in_npm_package(document.specifier()) {
           continue;
         }
       }
@@ -926,7 +926,7 @@ fn diagnose_resolution(
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       {
-        if node::resolve_builtin_node_module(module_name).is_err() {
+        if deno_node::resolve_builtin_node_module(module_name).is_err() {
           diagnostics.push(
             DenoDiagnostic::InvalidNodeSpecifier(specifier.clone())
               .to_lsp_diagnostic(&range),

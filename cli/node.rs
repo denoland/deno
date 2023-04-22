@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use deno_ast::swc::common::SyntaxContext;
 use deno_ast::view::Node;
@@ -13,8 +14,35 @@ use deno_ast::SourceRanged;
 use deno_core::error::AnyError;
 use deno_runtime::deno_node::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use deno_runtime::deno_node::analyze::CjsEsmCodeAnalyzer;
+use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::NodeResolver;
 
 use crate::cache::NodeAnalysisCache;
+use crate::npm::CliNpmResolver;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
+
+pub type CliNodeCodeTranslator =
+  NodeCodeTranslator<CliCjsEsmCodeAnalyzer, Arc<CliNpmResolver>>;
+pub type CliNodeResolver = NodeResolver<Arc<CliNpmResolver>>;
+
+/// Resolves a specifier that is pointing into a node_modules folder.
+///
+/// Note: This should be called whenever getting the specifier from
+/// a Module::External(module) reference because that module might
+/// not be fully resolved at the time deno_graph is analyzing it
+/// because the node_modules folder might not exist at that time.
+pub fn resolve_specifier_into_node_modules(
+  specifier: &ModuleSpecifier,
+) -> ModuleSpecifier {
+  specifier
+    .to_file_path()
+    .ok()
+    // this path might not exist at the time the graph is being created
+    // because the node_modules folder might not yet exist
+    .and_then(|path| canonicalize_path_maybe_not_exists(&path).ok())
+    .and_then(|path| ModuleSpecifier::from_file_path(path).ok())
+    .unwrap_or_else(|| specifier.clone())
+}
 
 pub struct CliCjsEsmCodeAnalyzer {
   cache: NodeAnalysisCache,
