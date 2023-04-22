@@ -721,12 +721,14 @@ dependencies = [
  "env_logger",
  "eszip",
  "fancy-regex",
+ "fastwebsockets",
  "flaky_test",
  "flate2",
  "fs3",
  "fwdansi",
  "glibc_version",
  "http",
+ "hyper",
  "import_map 0.15.0",
  "indexmap",
  "jsonc-parser",
@@ -1235,6 +1237,7 @@ dependencies = [
  "deno_webstorage",
  "dlopen",
  "encoding_rs",
+ "fastwebsockets",
  "filetime",
  "fs3",
  "fwdansi",
@@ -1791,9 +1794,9 @@ dependencies = [
 
 [[package]]
 name = "fastwebsockets"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcf2f933f24f45831bd66580a8f9394e440f1f5a23806cf0d4d8b6649e1a01e9"
+checksum = "a9e973e2bd2dbd77cc9e929ede2ce65984a35ac5481976afbfbd509cb40dc965"
 dependencies = [
  "base64 0.21.0",
  "cc",
@@ -4864,6 +4867,7 @@ dependencies = [
  "atty",
  "base64 0.13.1",
  "console_static_text",
+ "fastwebsockets",
  "flate2",
  "futures",
  "hyper",
