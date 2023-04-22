@@ -14,15 +14,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::resolution;
 use crate::NodeEnv;
 use crate::NodeFs;
-
-use super::resolution;
-use super::NodeModuleKind;
-use super::NodePermissions;
-use super::NodeResolutionMode;
-use super::NpmResolver;
-use super::PackageJson;
+use crate::NodeModuleKind;
+use crate::NodePermissions;
+use crate::NodeResolutionMode;
+use crate::NpmResolver;
+use crate::PackageJson;
 
 fn ensure_read_permission<P>(
   state: &mut OpState,
