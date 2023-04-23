@@ -18,6 +18,7 @@ import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import * as denoHttp from "ext:deno_http/01_http.js";
 import * as httpRuntime from "ext:runtime/40_http.js";
+import { connResetException } from "ext:deno_node/internal/errors.ts";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -259,16 +260,21 @@ class ClientRequest extends NodeWritable {
       method: this.opts.method,
       client,
       headers: this.opts.headers,
+      signal: this.opts.signal ?? undefined,
     };
     const mayResponse = fetch(this._createUrlStrFromOptions(this.opts), opts)
       .catch((e) => {
         if (e.message.includes("connection closed before message completed")) {
           // Node.js seems ignoring this error
+        } else if (e.message.includes("The signal has been aborted")) {
+          // Remap this error
+          this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", e);
         }
         return undefined;
       });
+
     const res = new IncomingMessageForClient(
       await mayResponse,
       this._createSocket(),
@@ -278,6 +284,10 @@ class ClientRequest extends NodeWritable {
       res.on("end", () => {
         client.close();
       });
+    }
+    if (this.opts.timeout != undefined) {
+      clearTimeout(this.opts.timeout);
+      this.opts.timeout = undefined;
     }
     this.cb?.(res);
   }
@@ -340,8 +350,19 @@ class ClientRequest extends NodeWritable {
     }${path}`;
   }
 
-  setTimeout() {
-    console.log("not implemented: ClientRequest.setTimeout");
+  setTimeout(timeout: number, callback?: () => void) {
+    const controller = new AbortController();
+    this.opts.signal = controller.signal;
+
+    this.opts.timeout = setTimeout(() => {
+      controller.abort();
+
+      this.emit("timeout");
+
+      if (callback !== undefined) {
+        callback();
+      }
+    }, timeout);
   }
 }
 
