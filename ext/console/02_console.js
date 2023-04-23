@@ -881,7 +881,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     }
   } catch (err) {
     const constructorName = StringPrototypeSlice(
-      getCtxStyle(value, constructor, tag, displayName),
+      getCtxStyle(value, constructor, tag),
       0,
       -1,
     );
