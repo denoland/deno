@@ -1429,7 +1429,6 @@ function inspectError(value, ctx) {
   return finalMessage;
 }
 
-
 const hexSliceLookupTable = function () {
   const alphabet = "0123456789abcdef";
   const table = new Array(256);
@@ -1836,7 +1835,9 @@ function reduceToSingleString(
   // Line up all entries on a single line in case the entries do not exceed
   // `breakLength`.
   if (isBelowBreakLength(ctx, output, 0, base)) {
-    return `${braces[0]}${base ? ` ${base}` : ""} ${ArrayPrototypeJoin(output, ", ")} ` +
+    return `${braces[0]}${base ? ` ${base}` : ""} ${
+      ArrayPrototypeJoin(output, ", ")
+    } ` +
       braces[1];
   }
   const indentation = StringPrototypeRepeat(" ", ctx.indentationLvl);
@@ -1847,7 +1848,9 @@ function reduceToSingleString(
     ? " "
     : `${base ? ` ${base}` : ""}\n${indentation}  `;
   // Line up each entry on an individual line.
-  return `${braces[0]}${ln}${ArrayPrototypeJoin(output, `,\n${indentation}  `)} ${braces[1]}`;
+  return `${braces[0]}${ln}${
+    ArrayPrototypeJoin(output, `,\n${indentation}  `)
+  } ${braces[1]}`;
 }
 
 function groupArrayElements(ctx, output, value) {
