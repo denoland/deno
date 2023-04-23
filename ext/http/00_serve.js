@@ -108,6 +108,13 @@ class InnerRequest {
   }
 
   _wantsUpgrade(upgradeType, ...originalArgs) {
+    if (this.#upgraded) {
+      throw new Deno.errors.Http("already upgraded");
+    }
+    if (this.#slabId === undefined) {
+      throw new Deno.errors.Http("already closed");
+    }
+
     // upgradeHttp is async
     // TODO(mmastrac)
     if (upgradeType == "upgradeHttp") {
@@ -125,6 +132,8 @@ class InnerRequest {
       const response = originalArgs[0];
       const ws = originalArgs[1];
 
+      const slabId = this.#slabId;
+
       this.url();
       this.headerList;
       this.close();
@@ -140,7 +149,7 @@ class InnerRequest {
           // Returns the connection and extra bytes, which we can pass directly to op_ws_server_create
           const upgrade = await core.opAsync2(
             "op_upgrade",
-            this.#slabId,
+            slabId,
             response.headerList,
           );
           const wsRid = core.ops.op_ws_server_create(upgrade[0], upgrade[1]);
