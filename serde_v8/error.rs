@@ -93,7 +93,7 @@ pub(crate) fn value_to_type_str(value: v8::Local<v8::Value>) -> String {
   } else if value.is_int32_array() {
     "Int32Array"
   } else if value.is_uint32_array() {
-    "Int32Array"
+    "Uint32Array"
   } else if value.is_int16_array() {
     "Int16Array"
   } else if value.is_uint16_array() {

@@ -58,9 +58,8 @@ impl FromV8 for DetachedBuffer {
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    let (b, range) = to_ranged_buffer(scope, value).or_else(|_| {
-      Err(crate::Error::ExpectedBuffer(value_to_type_str(value)))
-    })?;
+    let (b, range) = to_ranged_buffer(scope, value)
+      .map_err(|_| crate::Error::ExpectedBuffer(value_to_type_str(value)))?;
     if !b.is_detachable() {
       return Err(crate::Error::ExpectedDetachable(value_to_type_str(value)));
     }

@@ -363,10 +363,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       _ => {
         // Regular struct
-        let obj =
-          v8::Local::<v8::Object>::try_from(self.input).or_else(|_| {
-            Err(Error::ExpectedObject(value_to_type_str(self.input)))
-          })?;
+        let obj = v8::Local::<v8::Object>::try_from(self.input)
+          .map_err(|_| Error::ExpectedObject(value_to_type_str(self.input)))?;
 
         // Fields names are a hint and must be inferred when not provided
         if fields.is_empty() {
