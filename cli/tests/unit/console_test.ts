@@ -304,7 +304,7 @@ Deno.test(function consoleTestStringifyCircular() {
     stringify(new Uint8Array([1, 2, 3])),
     "Uint8Array(3) [ 1, 2, 3 ]",
   );
-  assertEquals(stringify(Uint8Array.prototype), "Uint8Array {}");
+  assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
     `{

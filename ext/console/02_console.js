@@ -649,13 +649,17 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   let tag = value[SymbolToStringTag];
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
-  if (typeof tag !== "string" ||
-    (tag !== "" &&
-      (ctx.showHidden ?
-        ObjectPrototypeHasOwnProperty :
-        ObjectPrototypePropertyIsEnumerable)(
-        value, SymbolToStringTag,
-      ))) {
+  if (
+    typeof tag !== "string"
+    // TODO(wafuwafu13): Implement
+    // (tag !== "" &&
+    //   (ctx.showHidden
+    //     ? Object.prototype.hasOwnProperty
+    //     : Object.prototype.propertyIsEnumerable)(
+    //       value,
+    //       Symbol.toStringTag,
+    //     ))
+  ) {
     tag = "";
   }
   let base = "";
@@ -1021,15 +1025,24 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   const tmp = obj;
   while (obj || isUndetectableObject(obj)) {
     const descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
-    if (descriptor !== undefined &&
+    if (
+      descriptor !== undefined &&
       typeof descriptor.value === "function" &&
       descriptor.value.name !== "" &&
-      tmp instanceof descriptor.value) {
-      if (protoProps !== undefined &&
+      ObjectPrototypeIsPrototypeOf(descriptor.value.prototype, tmp)
+    ) {
+      if (
+        protoProps !== undefined &&
         (firstProto !== obj ||
-          !builtInObjects.has(descriptor.value.name))) {
+          !builtInObjects.has(descriptor.value.name))
+      ) {
         addPrototypeProperties(
-          ctx, tmp, firstProto || tmp, recurseTimes, protoProps);
+          ctx,
+          tmp,
+          firstProto || tmp,
+          recurseTimes,
+          protoProps,
+        );
       }
       return String(descriptor.value.name);
     }
@@ -1051,14 +1064,20 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   }
 
   const protoConstr = getConstructorName(
-    firstProto, ctx, recurseTimes + 1, protoProps);
+    firstProto,
+    ctx,
+    recurseTimes + 1,
+    protoProps,
+  );
 
   if (protoConstr === null) {
-    return `${res} <${inspect(firstProto, {
-      ...ctx,
-      customInspect: false,
-      depth: -1,
-    })}>`;
+    return `${res} <${
+      inspect(firstProto, {
+        ...ctx,
+        customInspect: false,
+        depth: -1,
+      })
+    }>`;
   }
 
   return `${res} <${protoConstr}>`;
@@ -2845,7 +2864,6 @@ function inspectArgs(args, inspectOptions = {}) {
   if (ctx.colors) ctx.stylize = createStylizeWithColor(styles, colors);
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
-
 
   const noColor = colors_.getNoColor();
   const first = args[0];
