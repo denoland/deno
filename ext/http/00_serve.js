@@ -108,6 +108,10 @@ class InnerRequest {
   }
 
   _wantsUpgrade(upgradeType, ...originalArgs) {
+    if (this.#upgraded) {
+      throw new Deno.errors.Http("already upgraded");
+    }
+
     // upgradeHttp is async
     // TODO(mmastrac)
     if (upgradeType == "upgradeHttp") {

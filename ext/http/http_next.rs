@@ -199,7 +199,11 @@ pub async fn op_upgrade(
   // Stage 1: set the respnse to 101 Switching Protocols and send it
   let upgrade = with_http_mut(index, |http| {
     // Manually perform the upgrade. We're peeking into hyper's underlying machinery here a bit
-    let upgrade = http.request_parts.extensions.remove::<OnUpgrade>().unwrap();
+    let upgrade = http
+      .request_parts
+      .extensions
+      .remove::<OnUpgrade>()
+      .ok_or_else(|| AnyError::msg("upgrade unavailable"))?;
 
     let response = http.response.as_mut().unwrap();
     *response.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
@@ -210,8 +214,8 @@ pub async fn op_upgrade(
       );
     }
     http.promise.complete(true);
-    upgrade
-  });
+    Ok::<_, AnyError>(upgrade)
+  })?;
 
   // Stage 2: wait for the request to finish upgrading
   let upgraded = upgrade.await?;

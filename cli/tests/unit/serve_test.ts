@@ -760,6 +760,92 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerWebSocketUpgradeTwice() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const server = Deno.serve({
+      handler: async (request) => {
+        const {
+          response,
+          socket,
+        } = Deno.upgradeWebSocket(request);
+        assertThrows(
+          () => {
+            Deno.upgradeWebSocket(request);
+          },
+          Deno.errors.Http,
+          "already upgraded",
+        );
+        socket.onerror = (e) => {
+          console.error(e);
+          fail();
+        };
+        socket.onmessage = (m) => {
+          socket.send(m.data);
+          socket.close(1001);
+        };
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const def = deferred();
+    const ws = new WebSocket("ws://localhost:4501");
+    ws.onmessage = (m) => assertEquals(m.data, "foo");
+    ws.onerror = (e) => {
+      console.error(e);
+      fail();
+    };
+    ws.onclose = () => def.resolve();
+    ws.onopen = () => ws.send("foo");
+
+    await def;
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketCloseFast() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const server = Deno.serve({
+      handler: async (request) => {
+        const {
+          response,
+          socket,
+        } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => socket.close();
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const def = deferred();
+    const ws = new WebSocket("ws://localhost:4501");
+    ws.onerror = (e) => {
+      console.error(e);
+      fail();
+    };
+    ws.onclose = () => def.resolve();
+
+    await def;
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerWebSocketCanAccessRequest() {
     const ac = new AbortController();
     const listeningPromise = deferred();
