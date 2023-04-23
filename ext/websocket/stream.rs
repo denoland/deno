@@ -8,11 +8,10 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
-use tokio_tungstenite::MaybeTlsStream;
 
 // TODO(bartlomieju): remove this
 pub(crate) enum WsStreamKind {
-  Tungstenite(MaybeTlsStream<Upgraded>),
+  Upgraded(Upgraded),
   Network(NetworkStream),
 }
 
@@ -54,7 +53,7 @@ impl AsyncRead for WebSocketStream {
     }
     match &mut self.stream {
       WsStreamKind::Network(stream) => Pin::new(stream).poll_read(cx, buf),
-      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_read(cx, buf),
+      WsStreamKind::Upgraded(stream) => Pin::new(stream).poll_read(cx, buf),
     }
   }
 }
@@ -67,7 +66,7 @@ impl AsyncWrite for WebSocketStream {
   ) -> std::task::Poll<Result<usize, std::io::Error>> {
     match &mut self.stream {
       WsStreamKind::Network(stream) => Pin::new(stream).poll_write(cx, buf),
-      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_write(cx, buf),
+      WsStreamKind::Upgraded(stream) => Pin::new(stream).poll_write(cx, buf),
     }
   }
 
@@ -77,7 +76,7 @@ impl AsyncWrite for WebSocketStream {
   ) -> std::task::Poll<Result<(), std::io::Error>> {
     match &mut self.stream {
       WsStreamKind::Network(stream) => Pin::new(stream).poll_flush(cx),
-      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_flush(cx),
+      WsStreamKind::Upgraded(stream) => Pin::new(stream).poll_flush(cx),
     }
   }
 
@@ -87,14 +86,14 @@ impl AsyncWrite for WebSocketStream {
   ) -> std::task::Poll<Result<(), std::io::Error>> {
     match &mut self.stream {
       WsStreamKind::Network(stream) => Pin::new(stream).poll_shutdown(cx),
-      WsStreamKind::Tungstenite(stream) => Pin::new(stream).poll_shutdown(cx),
+      WsStreamKind::Upgraded(stream) => Pin::new(stream).poll_shutdown(cx),
     }
   }
 
   fn is_write_vectored(&self) -> bool {
     match &self.stream {
       WsStreamKind::Network(stream) => stream.is_write_vectored(),
-      WsStreamKind::Tungstenite(stream) => stream.is_write_vectored(),
+      WsStreamKind::Upgraded(stream) => stream.is_write_vectored(),
     }
   }
 
@@ -107,7 +106,7 @@ impl AsyncWrite for WebSocketStream {
       WsStreamKind::Network(stream) => {
         Pin::new(stream).poll_write_vectored(cx, bufs)
       }
-      WsStreamKind::Tungstenite(stream) => {
+      WsStreamKind::Upgraded(stream) => {
         Pin::new(stream).poll_write_vectored(cx, bufs)
       }
     }
