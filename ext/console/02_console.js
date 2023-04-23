@@ -3309,7 +3309,7 @@ function inspect(
  * of the original object optionally without evaluating the properties
  * in order to get the values. */
 function createFilteredInspectProxy({ object, keys, evaluate }) {
-  return new Proxy({}, {
+  return new Proxy(object, {
     get(_target, key) {
       if (key === SymbolToStringTag) {
         return object.constructor?.name;
