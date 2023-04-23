@@ -996,7 +996,11 @@ fn diagnose_dependency(
   diagnose_resolution(
     diagnostics,
     snapshot,
-    &dependency.maybe_code,
+    if dependency.maybe_code.is_none() {
+      &dependency.maybe_type
+    } else {
+      &dependency.maybe_code
+    },
     dependency.is_dynamic,
     dependency.maybe_assert_type.as_deref(),
     dependency
