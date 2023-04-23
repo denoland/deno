@@ -41,7 +41,6 @@ tar.workspace = true
 tempfile.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
-tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 url.workspace = true
 
 [target.'cfg(unix)'.dependencies]
