@@ -28,7 +28,7 @@ use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::graph_util::graph_lock_or_exit;
-use crate::npm::NpmPackageResolver;
+use crate::npm::CliNpmResolver;
 use crate::proc_state::ProcState;
 use crate::util::checksum;
 
@@ -141,7 +141,7 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_resolver: &NpmPackageResolver,
+  npm_resolver: &CliNpmResolver,
 ) {
   // ideally deno_graph could handle this, but for now we just modify the json here
   let snapshot = npm_resolver.snapshot();
@@ -318,7 +318,7 @@ struct NpmInfo {
 impl NpmInfo {
   pub fn build<'a>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a CliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
@@ -344,7 +344,7 @@ impl NpmInfo {
   fn fill_package_info<'a>(
     &mut self,
     package: &NpmResolutionPackage,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a CliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
     self
@@ -380,7 +380,7 @@ struct GraphDisplayContext<'a> {
 impl<'a> GraphDisplayContext<'a> {
   pub fn write<TWrite: Write>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a CliNpmResolver,
     writer: &mut TWrite,
   ) -> fmt::Result {
     let npm_snapshot = npm_resolver.snapshot();

@@ -1,11 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
+use crate::stream::WebSocketStream;
+use bytes::Bytes;
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::StringOrBuffer;
-
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -15,7 +14,10 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use deno_net::raw::take_network_stream_resource;
+use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
 use http::header::CONNECTION;
 use http::header::UPGRADE;
@@ -24,9 +26,7 @@ use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
-use hyper::upgrade::Upgraded;
 use hyper::Body;
-use hyper::Response;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -38,11 +38,12 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::MaybeTlsStream;
 
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollector;
@@ -51,7 +52,7 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 
-pub use tokio_tungstenite; // Re-export tokio_tungstenite
+mod stream;
 
 #[derive(Clone)]
 pub struct WsRootStore(pub Option<RootCertStore>);
@@ -128,6 +129,33 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
+  cancel_resource: Option<Rc<CancelHandle>>,
+  request: Request<Body>,
+  socket: S,
+) -> Result<(WebSocket<WebSocketStream>, http::Response<Body>), AnyError> {
+  let client =
+    fastwebsockets::handshake::client(&LocalExecutor, request, socket);
+
+  let (upgraded, response) = if let Some(cancel_resource) = cancel_resource {
+    client.or_cancel(cancel_resource).await?
+  } else {
+    client.await
+  }
+  .map_err(|err| {
+    DomExceptionNetworkError::new(&format!(
+      "failed to connect to WebSocket: {err}"
+    ))
+  })?;
+
+  let upgraded = upgraded.into_inner();
+  let stream =
+    WebSocketStream::new(stream::WsStreamKind::Upgraded(upgraded), None);
+  let stream = WebSocket::after_handshake(stream, Role::Client);
+
+  Ok((stream, response))
+}
+
 #[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
@@ -154,7 +182,7 @@ where
       .borrow_mut()
       .resource_table
       .get::<WsCancelResource>(cancel_rid)?;
-    Some(r)
+    Some(r.0.clone())
   } else {
     None
   };
@@ -222,8 +250,8 @@ where
   let addr = format!("{domain}:{port}");
   let tcp_socket = TcpStream::connect(addr).await?;
 
-  let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
-    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
+  let (stream, response) = match uri.scheme_str() {
+    Some("ws") => handshake(cancel_resource, request, tcp_socket).await?,
     Some("wss") => {
       let tls_config = create_client_config(
         root_cert_store,
@@ -235,25 +263,10 @@ where
       let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      MaybeTlsStream::Rustls(tls_socket)
+      handshake(cancel_resource, request, tls_socket).await?
     }
     _ => unreachable!(),
   };
-
-  let client =
-    fastwebsockets::handshake::client(&LocalExecutor, request, socket);
-
-  let (stream, response): (WebSocket<Upgraded>, Response<Body>) =
-    if let Some(cancel_resource) = cancel_resource {
-      client.or_cancel(cancel_resource.0.to_owned()).await?
-    } else {
-      client.await
-    }
-    .map_err(|err| {
-      DomExceptionNetworkError::new(&format!(
-        "failed to connect to WebSocket: {err}"
-      ))
-    })?;
 
   if let Some(cancel_rid) = cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid).ok();
@@ -294,7 +307,7 @@ pub enum MessageKind {
 }
 
 pub struct ServerWebSocket {
-  ws: AsyncRefCell<FragmentCollector<Upgraded>>,
+  ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
   closed: Rc<Cell<bool>>,
 }
 
@@ -320,11 +333,19 @@ impl Resource for ServerWebSocket {
     "serverWebSocket".into()
   }
 }
-pub async fn ws_create_server_stream(
-  state: &Rc<RefCell<OpState>>,
-  transport: Upgraded,
+
+pub fn ws_create_server_stream(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
 ) -> Result<ResourceId, AnyError> {
-  let mut ws = WebSocket::after_handshake(transport, Role::Server);
+  let mut ws = WebSocket::after_handshake(
+    WebSocketStream::new(
+      stream::WsStreamKind::Network(transport),
+      Some(read_buf),
+    ),
+    Role::Server,
+  );
   ws.set_writev(true);
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
@@ -334,9 +355,24 @@ pub async fn ws_create_server_stream(
     closed: Rc::new(Cell::new(false)),
   };
 
-  let resource_table = &mut state.borrow_mut().resource_table;
-  let rid = resource_table.add(ws_resource);
+  let rid = state.resource_table.add(ws_resource);
   Ok(rid)
+}
+
+#[op]
+pub fn op_ws_server_create(
+  state: &mut OpState,
+  conn: ResourceId,
+  extra_bytes: &[u8],
+) -> Result<ResourceId, AnyError> {
+  let network_stream =
+    take_network_stream_resource(&mut state.resource_table, conn)?;
+  // Copying the extra bytes, but unlikely this will account for much
+  ws_create_server_stream(
+    state,
+    network_stream,
+    Bytes::from(extra_bytes.to_vec()),
+  )
 }
 
 #[op]
@@ -490,6 +526,7 @@ deno_core::extension!(deno_websocket,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    op_ws_server_create,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
