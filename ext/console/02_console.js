@@ -1429,7 +1429,33 @@ function inspectError(value, ctx) {
   return finalMessage;
 }
 
-let hexSlice;
+
+const hexSliceLookupTable = function () {
+  const alphabet = "0123456789abcdef";
+  const table = new Array(256);
+  for (let i = 0; i < 16; ++i) {
+    const i16 = i * 16;
+    for (let j = 0; j < 16; ++j) {
+      table[i16 + j] = alphabet[i] + alphabet[j];
+    }
+  }
+  return table;
+}();
+
+function hexSlice(buf, start, end) {
+  const len = buf.length;
+  if (!start || start < 0) {
+    start = 0;
+  }
+  if (!end || end < 0 || end > len) {
+    end = len;
+  }
+  let out = "";
+  for (let i = start; i < end; ++i) {
+    out += hexSliceLookupTable[buf[i]];
+  }
+  return out;
+}
 
 function formatArrayBuffer(ctx, value) {
   let buffer;
@@ -1438,9 +1464,6 @@ function formatArrayBuffer(ctx, value) {
   } catch {
     return [ctx.stylize("(detached)", "special")];
   }
-  // TODO(wafuwafu13): Implement
-  // if (hexSlice === undefined)
-  //   hexSlice = uncurryThis(require('buffer').Buffer.prototype.hexSlice);
   let str = hexSlice(buffer, 0, MathMin(ctx.maxArrayLength, buffer.length))
     .replace(/(.{2})/g, "$1 ").trim();
 
