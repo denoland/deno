@@ -5,6 +5,8 @@ use std::ops::DerefMut;
 use std::ops::Range;
 use std::rc::Rc;
 
+use crate::error::value_to_type_str;
+
 use super::rawbytes;
 use super::transl8::FromV8;
 
@@ -91,7 +93,7 @@ impl FromV8 for V8Slice {
   ) -> Result<Self, crate::Error> {
     to_ranged_buffer(scope, value)
       .and_then(|(b, r)| Self::from_buffer(b, r))
-      .map_err(|_| crate::Error::ExpectedBuffer)
+      .map_err(|_| crate::Error::ExpectedBuffer(value_to_type_str(value)))
   }
 }
 

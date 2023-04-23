@@ -2,6 +2,7 @@
 use super::buffer::ZeroCopyBuf;
 use super::transl8::FromV8;
 use super::transl8::ToV8;
+use crate::error::value_to_type_str;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
 use std::ops::Deref;
@@ -73,7 +74,7 @@ impl FromV8 for StringOrBuffer {
     } else if let Ok(s) = crate::from_v8(scope, value) {
       return Ok(Self::String(s));
     }
-    Err(Error::ExpectedBuffer)
+    Err(Error::ExpectedBuffer(value_to_type_str(value)))
   }
 }
 

@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use super::transl8::FromV8;
 use super::transl8::ToV8;
+use crate::error::value_to_type_str;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
 use smallvec::SmallVec;
@@ -49,7 +50,7 @@ impl FromV8 for ByteString {
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
     let v8str = v8::Local::<v8::String>::try_from(value)
-      .map_err(|_| Error::ExpectedString)?;
+      .map_err(|_| Error::ExpectedString(value_to_type_str(value)))?;
     if !v8str.contains_only_onebyte() {
       return Err(Error::ExpectedLatin1);
     }
