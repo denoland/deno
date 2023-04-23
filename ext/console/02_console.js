@@ -1795,7 +1795,7 @@ function reduceToSingleString(
         const start = output.length + ctx.indentationLvl +
           braces[0].length + base.length + 10;
         if (isBelowBreakLength(ctx, output, start, base)) {
-          const joinedOutput = join(output, ", ");
+          const joinedOutput = ArrayPrototypeJoin(output, ", ");
           if (!StringPrototypeIncludes(joinedOutput, "\n")) {
             return `${base ? `${base} ` : ""}${braces[0]} ${joinedOutput}` +
               ` ${braces[1]}`;
@@ -1806,14 +1806,14 @@ function reduceToSingleString(
     // Line up each entry on an individual line.
     const indentation = `\n${StringPrototypeRepeat(" ", ctx.indentationLvl)}`;
     return `${base ? `${base} ` : ""}${braces[0]}${indentation}  ` +
-      `${join(output, `,${indentation}  `)}${
+      `${ArrayPrototypeJoin(output, `,${indentation}  `)}${
         ctx.trailingComma ? "," : ""
       }${indentation}${braces[1]}`;
   }
   // Line up all entries on a single line in case the entries do not exceed
   // `breakLength`.
   if (isBelowBreakLength(ctx, output, 0, base)) {
-    return `${braces[0]}${base ? ` ${base}` : ""} ${join(output, ", ")} ` +
+    return `${braces[0]}${base ? ` ${base}` : ""} ${ArrayPrototypeJoin(output, ", ")} ` +
       braces[1];
   }
   const indentation = StringPrototypeRepeat(" ", ctx.indentationLvl);
@@ -1824,22 +1824,7 @@ function reduceToSingleString(
     ? " "
     : `${base ? ` ${base}` : ""}\n${indentation}  `;
   // Line up each entry on an individual line.
-  return `${braces[0]}${ln}${join(output, `,\n${indentation}  `)} ${braces[1]}`;
-}
-
-// The built-in Array#join is slower in v8 6.0
-function join(output, separator) {
-  let str = "";
-  if (output.length !== 0) {
-    const lastIndex = output.length - 1;
-    for (let i = 0; i < lastIndex; i++) {
-      // It is faster not to use a template string here
-      str += output[i];
-      str += separator;
-    }
-    str += output[lastIndex];
-  }
-  return str;
+  return `${braces[0]}${ln}${ArrayPrototypeJoin(output, `,\n${indentation}  `)} ${braces[1]}`;
 }
 
 function groupArrayElements(ctx, output, value) {
