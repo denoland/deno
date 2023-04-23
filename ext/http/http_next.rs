@@ -112,7 +112,14 @@ macro_rules! with {
       SLAB.with(|slab| {
         let mut borrow = slab.borrow_mut();
         #[allow(unused_mut)] // TODO(mmastrac): compiler issue?
-        let mut $http = borrow.get_mut(key).unwrap();
+        let mut $http = match borrow.get_mut(key) {
+          Some(http) => http,
+          None => panic!(
+            "Attemped to access invalid request {} ({} in total available)",
+            key,
+            borrow.len()
+          ),
+        };
         #[cfg(__zombie_http_tracking)]
         if !$http.alive {
           panic!("Attempted to access a dead HTTP object")
