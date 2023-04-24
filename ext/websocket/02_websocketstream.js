@@ -207,11 +207,11 @@ class WebSocketStream {
             const writable = new WritableStream({
               write: async (chunk) => {
                 if (typeof chunk === "string") {
-                  await core.opAsync("op_ws_send_text", this[_rid], chunk);
+                  await core.opAsync2("op_ws_send_text", this[_rid], chunk);
                 } else if (
                   ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
                 ) {
-                  await core.opAsync("op_ws_send_binary", this[_rid], chunk);
+                  await core.opAsync2("op_ws_send_binary", this[_rid], chunk);
                 } else {
                   throw new TypeError(
                     "A chunk may only be either a string or an Uint8Array",
