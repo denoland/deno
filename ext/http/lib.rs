@@ -78,6 +78,7 @@ use crate::reader_stream::ShutdownHandle;
 
 pub mod compressible;
 mod http_next;
+mod network_buffered_stream;
 mod reader_stream;
 mod request_body;
 mod request_properties;
