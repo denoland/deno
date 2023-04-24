@@ -4,7 +4,6 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
-use crate::node::CliNodeResolver;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -35,6 +34,7 @@ use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
@@ -306,7 +306,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: u64,
-  pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -330,7 +330,7 @@ struct State {
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
-  maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  maybe_node_resolver: Option<Arc<NodeResolver>>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
@@ -340,7 +340,7 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: u64,
-    maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+    maybe_node_resolver: Option<Arc<NodeResolver>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,

@@ -71,7 +71,7 @@ pub trait NodeFs: std::fmt::Debug + Send + Sync {
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RealFs;
 
 impl NodeFs for RealFs {

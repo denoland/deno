@@ -19,7 +19,6 @@ use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsEsmCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
-use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
@@ -81,7 +80,7 @@ pub struct Inner {
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub node_code_translator: Arc<CliNodeCodeTranslator>,
   pub node_fs: Arc<dyn deno_node::NodeFs>,
-  pub node_resolver: Arc<CliNodeResolver>,
+  pub node_resolver: Arc<NodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
   pub npm_resolver: Arc<CliNpmResolver>,

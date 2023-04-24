@@ -17,7 +17,6 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::lsp::logging::lsp_warn;
-use crate::node::CliNodeResolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
@@ -39,6 +38,7 @@ use deno_graph::Resolution;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReq;
@@ -1056,7 +1056,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
+    maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1418,7 +1418,7 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
+    maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
       return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
@@ -1453,7 +1453,7 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
+  maybe_node_resolver: Option<&Arc<NodeResolver>>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
   maybe_node_resolver.map(|node_resolver| {
     NodeResolution::into_specifier_and_media_type(

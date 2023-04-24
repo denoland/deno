@@ -14,13 +14,11 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_node::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use deno_runtime::deno_node::analyze::CjsEsmCodeAnalyzer;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
-use deno_runtime::deno_node::NodeResolver;
 
 use crate::cache::NodeAnalysisCache;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 pub type CliNodeCodeTranslator = NodeCodeTranslator<CliCjsEsmCodeAnalyzer>;
-pub type CliNodeResolver = NodeResolver;
 
 /// Resolves a specifier that is pointing into a node_modules folder.
 ///

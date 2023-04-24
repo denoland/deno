@@ -80,7 +80,6 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::lsp::urls::LspUrlKind;
-use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
@@ -104,7 +103,7 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
   pub maybe_npm_resolver: Option<Arc<CliNpmResolver>>,
 }
 

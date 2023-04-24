@@ -12,7 +12,6 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
 use crate::node::CliNodeCodeTranslator;
-use crate::node::CliNodeResolver;
 use crate::proc_state::CjsResolutionStore;
 use crate::proc_state::FileWatcherReporter;
 use crate::proc_state::ProcState;
@@ -51,6 +50,7 @@ use deno_lockfile::Lockfile;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
@@ -243,7 +243,7 @@ pub struct CliModuleLoader {
   graph_container: Arc<ModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  node_resolver: Arc<CliNodeResolver>,
+  node_resolver: Arc<NodeResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
 }
