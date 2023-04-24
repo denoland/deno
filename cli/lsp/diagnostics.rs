@@ -857,7 +857,7 @@ impl DenoDiagnostic {
 }
 
 fn diagnose_resolution(
-  diagnostics_: &mut Vec<lsp::Diagnostic>,
+  lsp_diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
   resolution: &Resolution,
   is_dynamic: bool,
@@ -957,7 +957,7 @@ fn diagnose_resolution(
   }
   for range in ranges {
     for diagnostic in &diagnostics {
-      diagnostics_.push(diagnostic.to_lsp_diagnostic(&range));
+      lsp_diagnostics.push(diagnostic.to_lsp_diagnostic(&range));
     }
   }
 }
@@ -1402,6 +1402,7 @@ let c: number = "a";
       &[(
         "file:///a.ts",
         r#"
+        // @deno-types="bad.d.ts"
         import "bad.js";
         import "bad.js";
         "#,
@@ -1421,11 +1422,11 @@ let c: number = "a";
         {
           "range": {
             "start": {
-              "line": 1,
+              "line": 2,
               "character": 15
             },
             "end": {
-              "line": 1,
+              "line": 2,
               "character": 23
             }
           },
@@ -1437,11 +1438,11 @@ let c: number = "a";
         {
           "range": {
             "start": {
-              "line": 2,
+              "line": 3,
               "character": 15
             },
             "end": {
-              "line": 2,
+              "line": 3,
               "character": 23
             }
           },
@@ -1449,7 +1450,23 @@ let c: number = "a";
           "code": "import-prefix-missing",
           "source": "deno",
           "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
-        }
+        },
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 23
+            },
+            "end": {
+              "line": 1,
+              "character": 33
+            }
+          },
+          "severity": 1,
+          "code": "import-prefix-missing",
+          "source": "deno",
+          "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
+        },
       ])
     );
   }
