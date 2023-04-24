@@ -97,6 +97,8 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
+   *
+   * @category FFI
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -351,7 +353,9 @@ declare namespace Deno {
       : StaticForeignSymbol<T[K]>;
   };
 
+  /** @category FFI */
   const brand: unique symbol;
+  /** @category FFI */
   type PointerObject = { [brand]: unknown };
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -643,8 +647,11 @@ declare namespace Deno {
 
   /**
    *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
+   *
+   *  @category FFI
    */
   type Cast<A, B> = A extends B ? A : B;
+  /** @category FFI */
   type Const<T> = Cast<
     T,
     | (T extends string | number | bigint | boolean ? T : never)
@@ -1770,6 +1777,7 @@ declare namespace Deno {
     batchSize?: number;
   }
 
+  /** @category KV */
   export interface KvCommitResult {
     /** The versionstamp of the value committed to KV. */
     versionstamp: string;

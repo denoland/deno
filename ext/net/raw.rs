@@ -30,6 +30,25 @@ pub enum NetworkStream {
   Unix(#[pin] UnixStream),
 }
 
+impl From<TcpStream> for NetworkStream {
+  fn from(value: TcpStream) -> Self {
+    NetworkStream::Tcp(value)
+  }
+}
+
+impl From<TlsStream> for NetworkStream {
+  fn from(value: TlsStream) -> Self {
+    NetworkStream::Tls(value)
+  }
+}
+
+#[cfg(unix)]
+impl From<UnixStream> for NetworkStream {
+  fn from(value: UnixStream) -> Self {
+    NetworkStream::Unix(value)
+  }
+}
+
 /// A raw stream of one of the types handled by this extension.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum NetworkStreamType {
