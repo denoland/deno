@@ -128,8 +128,8 @@ impl<S: AsyncRead + Unpin> NetworkBufferedStream<S> {
     // `slice` is initialized, and `MaybeUninit` is guaranteed to have the same layout as `T`.
     // The pointer obtained is valid since it refers to memory owned by `slice` which is a
     // reference and thus guaranteed to be valid for reads.
-    let prefix = unsafe { &*(slice as *const [_] as *const [u8]) };
-    prefix
+
+    unsafe { &*(slice as *const [_] as *const [u8]) as _ }
   }
 
   pub fn into_inner(self) -> (S, Bytes) {

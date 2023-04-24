@@ -1279,7 +1279,7 @@ fn maybe_extract_network_stream<
           Bytes::from(v)
         }
       };
-      return Ok((io.into(), bytes));
+      Ok((io.into(), bytes))
     }
     Err(x) => Err(x),
   }
