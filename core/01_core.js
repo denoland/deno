@@ -506,8 +506,11 @@
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
-  const internals = { enableOpCallTracing };
-  ObjectAssign(globalThis.__bootstrap, { internals });
+  ObjectAssign(globalThis.__bootstrap, {
+    internals: {
+      enableOpCallTracing,
+    },
+  });
   ObjectAssign(globalThis.Deno, { core });
 
   // Direct bindings on `globalThis`
