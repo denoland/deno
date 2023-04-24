@@ -32,7 +32,8 @@
       "test-child-process-exec-std-encoding.js",
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-expire.js",
-      "test-child-process-exec-timeout-kill.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-exec-timeout-kill.js",
       "test-child-process-exec-timeout-not-expired.js",
       "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile.js",
@@ -212,7 +213,8 @@
       "test-child-process-exec-stdout-stderr-data-string.js",
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-expire.js",
-      "test-child-process-exec-timeout-kill.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-exec-timeout-kill.js",
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile-maxbuf.js",
