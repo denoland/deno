@@ -59,10 +59,18 @@ type Request = hyper1::Request<Incoming>;
 type Response = hyper1::Response<ResponseBytes>;
 
 /// All HTTP/2 connections start with this byte string.
-const HTTP2_PREFIX: &[u8] = &[
-  0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54, 0x54, 0x50, 0x2f, 0x32, 0x2e,
-  0x30, 0x0d, 0x0a,
-];
+///
+/// In HTTP/2, each endpoint is required to send a connection preface as a final confirmation
+/// of the protocol in use and to establish the initial settings for the HTTP/2 connection. The
+/// client and server each send a different connection preface.
+///
+/// The client connection preface starts with a sequence of 24 octets, which in hex notation is:
+///
+/// 0x505249202a20485454502f322e300d0a0d0a534d0d0a0d0a
+///
+/// That is, the connection preface starts with the string PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n). This sequence
+/// MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty.
+const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
 /// ALPN negotation for "h2"
 const TLS_ALPN_HTTP_2: &[u8] = b"h2";
