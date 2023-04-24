@@ -44,13 +44,13 @@ pub trait NodeEnv {
 }
 
 pub trait NodePermissions {
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
-  fn check_read(&mut self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -164,7 +164,7 @@ pub trait NpmResolver: std::fmt::Debug + Send + Sync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }

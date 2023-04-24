@@ -206,7 +206,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     ensure_registry_read_permission(
