@@ -13,7 +13,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_runtime::deno_node::RealFs;
 use deno_semver::npm::NpmPackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
@@ -241,8 +240,7 @@ fn resolve_npm_commands(
   let mut result = HashMap::new();
   let snapshot = npm_resolver.snapshot();
   for id in snapshot.top_level_packages() {
-    let bin_commands =
-      node_resolver.resolve_binary_commands::<RealFs>(&id.nv)?;
+    let bin_commands = node_resolver.resolve_binary_commands(&id.nv)?;
     for bin_command in bin_commands {
       result.insert(
         bin_command.to_string(),

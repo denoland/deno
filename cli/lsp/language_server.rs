@@ -9,6 +9,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_web::BlobStore;
@@ -449,6 +450,7 @@ fn create_lsp_structs(
   let resolution =
     Arc::new(NpmResolution::from_serialized(api.clone(), None, None));
   let fs_resolver = create_npm_fs_resolver(
+    Arc::new(deno_node::RealFs),
     npm_cache.clone(),
     &progress_bar,
     registry_url.clone(),
@@ -700,9 +702,11 @@ impl Inner {
       self.npm_resolution.snapshot(),
       None,
     ));
+    let node_fs = Arc::new(deno_node::RealFs);
     let npm_resolver = Arc::new(CliNpmResolver::new(
       npm_resolution.clone(),
       create_npm_fs_resolver(
+        node_fs.clone(),
         self.npm_cache.clone(),
         &ProgressBar::new(ProgressBarStyle::TextOnly),
         self.npm_api.base_url().clone(),
@@ -711,7 +715,8 @@ impl Inner {
       ),
       None,
     ));
-    let node_resolver = Arc::new(NodeResolver::new(npm_resolver.clone()));
+    let node_resolver =
+      Arc::new(NodeResolver::new(node_fs, npm_resolver.clone()));
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),

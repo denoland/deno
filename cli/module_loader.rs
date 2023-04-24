@@ -51,7 +51,6 @@ use deno_lockfile::Lockfile;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::RealFs;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
@@ -387,7 +386,7 @@ impl CliModuleLoader {
           self.root_permissions.clone()
         };
         // translate cjs to esm if it's cjs and inject node globals
-        self.node_code_translator.translate_cjs_to_esm::<RealFs>(
+        self.node_code_translator.translate_cjs_to_esm(
           specifier,
           &code,
           &mut permissions,
@@ -466,7 +465,7 @@ impl ModuleLoader for CliModuleLoader {
       if self.node_resolver.in_npm_package(referrer) {
         // we're in an npm package, so use node resolution
         return self
-          .handle_node_resolve_result(self.node_resolver.resolve::<RealFs>(
+          .handle_node_resolve_result(self.node_resolver.resolve(
             specifier,
             referrer,
             NodeResolutionMode::Execution,
@@ -492,7 +491,7 @@ impl ModuleLoader for CliModuleLoader {
           return match graph.get(specifier) {
             Some(Module::Npm(module)) => self
               .handle_node_resolve_result(
-                self.node_resolver.resolve_npm_reference::<RealFs>(
+                self.node_resolver.resolve_npm_reference(
                   &module.nv_reference,
                   NodeResolutionMode::Execution,
                   &mut permissions,
@@ -554,7 +553,7 @@ impl ModuleLoader for CliModuleLoader {
         {
           return self
             .handle_node_resolve_result(
-              self.node_resolver.resolve_npm_req_reference::<RealFs>(
+              self.node_resolver.resolve_npm_req_reference(
                 &reference,
                 NodeResolutionMode::Execution,
                 &mut permissions,

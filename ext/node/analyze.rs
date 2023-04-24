@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::ModuleSpecifier;
@@ -67,9 +67,9 @@ pub trait CjsEsmCodeAnalyzer {
 
 pub struct NodeCodeTranslator<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer> {
   cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-  fs: Rc<dyn NodeFs>,
-  node_resolver: NodeResolver,
-  npm_resolver: Rc<dyn NpmResolver>,
+  fs: Arc<dyn NodeFs>,
+  node_resolver: Arc<NodeResolver>,
+  npm_resolver: Arc<dyn NpmResolver>,
 }
 
 impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
@@ -77,9 +77,9 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
 {
   pub fn new(
     cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-    fs: Rc<dyn NodeFs>,
-    node_resolver: NodeResolver,
-    npm_resolver: Rc<dyn NpmResolver>,
+    fs: Arc<dyn NodeFs>,
+    node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<dyn NpmResolver>,
   ) -> Self {
     Self {
       cjs_esm_code_analyzer,

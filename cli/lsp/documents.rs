@@ -40,7 +40,6 @@ use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_node::RealFs;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
@@ -1071,7 +1070,7 @@ impl Documents {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
             node_resolver
-              .resolve::<RealFs>(
+              .resolve(
                 &specifier,
                 referrer,
                 NodeResolutionMode::Types,
@@ -1459,7 +1458,7 @@ fn node_resolve_npm_req_ref(
   maybe_node_resolver.map(|node_resolver| {
     NodeResolution::into_specifier_and_media_type(
       node_resolver
-        .resolve_npm_req_reference::<RealFs>(
+        .resolve_npm_req_reference(
           &npm_req_ref,
           NodeResolutionMode::Types,
           &mut PermissionsContainer::allow_all(),

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -105,13 +105,14 @@ impl NodeResolution {
   }
 }
 
+#[derive(Debug)]
 pub struct NodeResolver {
-  fs: Rc<dyn NodeFs>,
-  npm_resolver: Rc<dyn NpmResolver>,
+  fs: Arc<dyn NodeFs>,
+  npm_resolver: Arc<dyn NpmResolver>,
 }
 
 impl NodeResolver {
-  pub fn new(fs: Rc<dyn NodeFs>, npm_resolver: Rc<dyn NpmResolver>) -> Self {
+  pub fn new(fs: Arc<dyn NodeFs>, npm_resolver: Arc<dyn NpmResolver>) -> Self {
     Self { fs, npm_resolver }
   }
 
@@ -279,8 +280,7 @@ impl NodeResolver {
       p_str.to_string()
     };
 
-    let (is_dir, is_file) = if let Ok(stats) = self.fs.metadata(&Path::new(&p))
-    {
+    let (is_dir, is_file) = if let Ok(stats) = self.fs.metadata(Path::new(&p)) {
       (stats.is_dir, stats.is_file)
     } else {
       (false, false)

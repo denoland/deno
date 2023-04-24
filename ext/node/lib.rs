@@ -13,7 +13,6 @@ use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
-use resolution::NodeResolutionMode;
 use std::collections::HashSet;
 use std::io;
 use std::path::Path;
@@ -37,6 +36,7 @@ pub use polyfill::NodeModulePolyfill;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
+pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
 
 pub trait NodeEnv {
@@ -61,7 +61,7 @@ pub struct NodeFsMetadata {
   pub is_dir: bool,
 }
 
-pub trait NodeFs {
+pub trait NodeFs: std::fmt::Debug + Send + Sync {
   fn current_dir(&self) -> io::Result<PathBuf>;
   fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata>;
   fn is_file(&self, path: &Path) -> bool;
@@ -71,6 +71,7 @@ pub trait NodeFs {
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
 
+#[derive(Debug, Clone)]
 pub struct RealFs;
 
 impl NodeFs for RealFs {
@@ -115,11 +116,11 @@ impl NodeFs for RealFs {
 
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
     #[allow(clippy::disallowed_methods)]
-    std::path::Path::canonicalize(path.as_ref())
+    std::path::Path::canonicalize(path)
   }
 }
 
-pub trait NpmResolver {
+pub trait NpmResolver: std::fmt::Debug + Send + Sync {
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -166,57 +167,6 @@ pub trait NpmResolver {
     permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
-}
-
-impl<T: NpmResolver + ?Sized> NpmResolver for Arc<T> {
-  fn resolve_package_folder_from_package(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_package(specifier, referrer, mode)
-  }
-
-  fn resolve_package_folder_from_path(
-    &self,
-    path: &Path,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_path(path)
-  }
-
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &NpmPackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_deno_module(pkg_nv)
-  }
-
-  fn resolve_pkg_id_from_pkg_req(
-    &self,
-    req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
-    (**self).resolve_pkg_id_from_pkg_req(req)
-  }
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    (**self).resolve_nv_ref_from_pkg_req_ref(req_ref)
-  }
-
-  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    (**self).in_npm_package(specifier)
-  }
-
-  fn ensure_read_permission(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
-    (**self).ensure_read_permission(permissions, path)
-  }
 }
 
 pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
@@ -573,18 +523,19 @@ deno_core::extension!(deno_node,
     "zlib.ts",
   ],
   options = {
-    maybe_node_resolver: Option<Rc<NodeResolver>>,
-    maybe_npm_resolver: Option<Rc<dyn NpmResolver>>,
-    fs: Rc<dyn NodeFs>,
+    maybe_npm_resolver: Option<Arc<dyn NpmResolver>>,
+    fs: Option<Arc<dyn NodeFs>>,
   },
   state = |state, options| {
+    let fs = options.fs.unwrap_or_else(|| Arc::new(RealFs));
+    state.put(fs.clone());
     if let Some(npm_resolver) = options.maybe_npm_resolver {
-      state.put(npm_resolver);
+      state.put(npm_resolver.clone());
+      state.put(Rc::new(NodeResolver::new(
+        fs,
+        npm_resolver,
+      )))
     }
-    if let Some(node_resolver) = options.maybe_node_resolver {
-      state.put(node_resolver);
-    }
-    state.put(options.fs);
   },
 );
 

@@ -13,6 +13,7 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::resolution;
 use crate::NodeEnv;
@@ -32,7 +33,7 @@ where
   P: NodePermissions + 'static,
 {
   let resolver = {
-    let resolver = state.borrow::<Rc<dyn NpmResolver>>();
+    let resolver = state.borrow::<Arc<dyn NpmResolver>>();
     resolver.clone()
   };
   let permissions = state.borrow_mut::<P>();
@@ -97,7 +98,7 @@ pub fn op_require_node_module_paths<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let fs = state.borrow::<Rc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(
     &from,
@@ -193,7 +194,7 @@ fn op_require_resolve_deno_dir(
   request: String,
   parent_filename: String,
 ) -> Option<String> {
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>();
+  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
   resolver
     .resolve_package_folder_from_package(
       &request,
@@ -206,7 +207,7 @@ fn op_require_resolve_deno_dir(
 
 #[op]
 fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>();
+  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
   resolver.in_npm_package_at_path(&PathBuf::from(path))
 }
 
@@ -266,7 +267,7 @@ where
 {
   let path = PathBuf::from(path);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let fs = state.borrow::<Rc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
   if let Ok(metadata) = fs.metadata(&path) {
     if metadata.is_file {
       return Ok(0);
@@ -288,7 +289,7 @@ where
 {
   let path = PathBuf::from(request);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let fs = state.borrow::<Rc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
   let mut canonicalized_path = fs.canonicalize(&path)?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
@@ -357,7 +358,7 @@ where
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
-      let fs = state.borrow::<Rc<dyn NodeFs>>().clone();
+      let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
       if let Ok(cwd) = fs.current_dir() {
         ensure_read_permission::<Env::P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().to_string()));
@@ -440,7 +441,7 @@ where
 {
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<Env::P>(state, &file_path)?;
-  let fs = state.borrow::<Rc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
   Ok(fs.read_to_string(&file_path)?)
 }
 
@@ -468,8 +469,8 @@ fn op_require_resolve_exports<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let fs = state.borrow::<Rc<dyn NodeFs>>().clone();
-  let npm_resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
+  let npm_resolver = state.borrow::<Arc<dyn NpmResolver>>().clone();
   let node_resolver = state.borrow::<Rc<NodeResolver>>().clone();
   let permissions = state.borrow_mut::<Env::P>();
 
@@ -481,7 +482,7 @@ where
   } else {
     let orignal = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
-    if fs.is_dir(&Path::new(&mod_dir)) {
+    if fs.is_dir(Path::new(&mod_dir)) {
       mod_dir
     } else {
       orignal

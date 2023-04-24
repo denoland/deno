@@ -38,6 +38,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
 
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -79,6 +80,7 @@ pub struct Inner {
   pub module_graph_builder: Arc<ModuleGraphBuilder>,
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub node_code_translator: Arc<CliNodeCodeTranslator>,
+  pub node_fs: Arc<dyn deno_node::NodeFs>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
@@ -150,6 +152,7 @@ impl ProcState {
       module_graph_builder: self.module_graph_builder.clone(),
       module_load_preparer: self.module_load_preparer.clone(),
       node_code_translator: self.node_code_translator.clone(),
+      node_fs: self.node_fs.clone(),
       node_resolver: self.node_resolver.clone(),
       npm_api: self.npm_api.clone(),
       npm_cache: self.npm_cache.clone(),
@@ -245,7 +248,9 @@ impl ProcState {
       npm_snapshot,
       lockfile.as_ref().cloned(),
     ));
+    let node_fs = Arc::new(deno_node::RealFs);
     let npm_fs_resolver = create_npm_fs_resolver(
+      node_fs.clone(),
       npm_cache,
       &progress_bar,
       npm_registry_url,
@@ -308,11 +313,14 @@ impl ProcState {
     let node_analysis_cache =
       NodeAnalysisCache::new(caches.node_analysis_db(&dir));
     let cjs_esm_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
+    let node_resolver =
+      Arc::new(NodeResolver::new(node_fs.clone(), npm_resolver.clone()));
     let node_code_translator = Arc::new(NodeCodeTranslator::new(
       cjs_esm_analyzer,
+      node_fs.clone(),
+      node_resolver.clone(),
       npm_resolver.clone(),
     ));
-    let node_resolver = Arc::new(NodeResolver::new(npm_resolver.clone()));
     let type_checker = Arc::new(TypeChecker::new(
       dir.clone(),
       caches.clone(),
@@ -365,6 +373,7 @@ impl ProcState {
       maybe_file_watcher_reporter,
       module_graph_builder,
       node_code_translator,
+      node_fs,
       node_resolver,
       npm_api,
       npm_cache,
