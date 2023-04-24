@@ -46,6 +46,10 @@ const digestAlgorithms = [
   "sha1",
 ];
 
+const ellipticCurves = [
+  "secp256k1"
+];
+
 // deno-fmt-ignore
 const supportedCiphers = [
   "aes-128-ecb",  "aes-192-ecb",
@@ -115,7 +119,7 @@ export function getHashes(): readonly string[] {
 }
 
 export function getCurves(): readonly string[] {
-  notImplemented("crypto.getCurves");
+  return ellipticCurves;
 }
 
 export interface SecureHeapUsage {

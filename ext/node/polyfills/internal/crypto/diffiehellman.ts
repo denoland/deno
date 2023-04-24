@@ -10,10 +10,12 @@ import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateString,
+  validateOneOf,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   getDefaultEncoding,
+  getCurves,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
 import type {
@@ -23,6 +25,8 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
+
+const { ops } = Deno.core;
 
 const DH_GENERATOR = 2;
 
@@ -219,10 +223,15 @@ export class DiffieHellmanGroup {
 }
 
 export class ECDH {
+  curve: string; // the selected curve
+  privbuf: Buffer; // the private key
+  pubbuf: Buffer; // the public key
+
   constructor(curve: string) {
     validateString(curve, "curve");
+    validateOneOf(curve, "curve", getCurves());
 
-    notImplemented("crypto.ECDH");
+    this.curve = curve;
   }
 
   static convertKey(
@@ -250,11 +259,15 @@ export class ECDH {
     outputEncoding: BinaryToTextEncoding,
   ): string;
   computeSecret(
-    _otherPublicKey: ArrayBufferView | string,
+    otherPublicKey: ArrayBufferView | string,
     _inputEncoding?: BinaryToTextEncoding,
     _outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    notImplemented("crypto.ECDH.prototype.computeSecret");
+    let secretBuf = Buffer.alloc(32);
+
+    ops.op_node_ecdh_compute_secret(this.curve, this.privbuf, otherPublicKey, secretBuf);
+
+    return secretBuf;
   }
 
   generateKeys(): Buffer;
@@ -263,13 +276,20 @@ export class ECDH {
     _encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    notImplemented("crypto.ECDH.prototype.generateKeys");
+    let pubbuf = Buffer.alloc(65);
+    let privbuf = Buffer.alloc(32);
+
+    ops.op_node_ecdh_generate_keys(this.curve, pubbuf, privbuf);
+
+    this.pubbuf = pubbuf;
+    this.privbuf = privbuf;
+    return pubbuf;
   }
 
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.ECDH.prototype.getPrivateKey");
+    return this.privbuf;
   }
 
   getPublicKey(): Buffer;
@@ -278,16 +298,22 @@ export class ECDH {
     _encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    notImplemented("crypto.ECDH.prototype.getPublicKey");
+    return this.pubbuf;
   }
 
   setPrivateKey(privateKey: ArrayBufferView): void;
   setPrivateKey(privateKey: string, encoding: BinaryToTextEncoding): void;
   setPrivateKey(
-    _privateKey: ArrayBufferView | string,
+    privateKey: ArrayBufferView | string,
     _encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    notImplemented("crypto.ECDH.prototype.setPrivateKey");
+    this.privbuf = privateKey;
+    let pubbuf = Buffer.alloc(65);
+
+    ops.op_node_ecdh_compute_public_key(this.curve, this.privbuf, pubbuf);
+    this.pubbuf = pubbuf;
+
+    return this.pubbuf;
   }
 }
 
