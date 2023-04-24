@@ -4,7 +4,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -365,18 +364,16 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 4. Create all the packages in the node_modules folder, which are symlinks.
+  // 4. Create all the top level packages in the node_modules folder, which are symlinks.
   //
   // Symlink node_modules/<package_name> to
   // node_modules/.deno/<package_id>/node_modules/<package_name>
   let mut found_names = HashSet::new();
-  let mut pending_packages = VecDeque::new();
-  pending_packages.extend(snapshot.top_level_packages().map(|id| (id, true)));
-  while let Some((id, is_top_level)) = pending_packages.pop_front() {
+  let mut ids = snapshot.top_level_packages().collect::<Vec<_>>();
+  ids.sort_by(|a, b| b.cmp(&a)); // create determinism and only include the latest version
+  for id in ids {
     let root_folder_name = if found_names.insert(id.nv.name.clone()) {
       id.nv.name.clone()
-    } else if is_top_level {
-      id.nv.to_string()
     } else {
       continue; // skip, already handled
     };
@@ -394,9 +391,6 @@ async fn sync_resolution_with_fs(
       &local_registry_package_path,
       &join_package_name(root_node_modules_dir_path, &root_folder_name),
     )?;
-    for id in package.dependencies.values() {
-      pending_packages.push_back((id, false));
-    }
   }
 
   drop(single_process_lock);
