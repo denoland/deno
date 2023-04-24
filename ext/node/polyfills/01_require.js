@@ -557,28 +557,24 @@ Module._findPath = function (request, paths, isMain, parentPath) {
       }
     }
 
-    const isDenoDirPackage = ops.op_require_is_deno_dir_package(
-      curPath,
-    );
-    const isRelative = ops.op_require_is_request_relative(
-      request,
-    );
-    console.log(
-      "pre basePath",
-      curPath,
-      request,
-      packageSpecifierSubPath(request),
-      isDenoDirPackage,
-      isRelative,
-    );
-    const basePath = (isDenoDirPackage && !isRelative)
-      ? pathResolve(curPath, packageSpecifierSubPath(request))
-      : pathResolve(curPath, request);
-    console.log("basePath", basePath);
+    let basePath;
+
+    if (usesLocalNodeModulesDir) {
+      basePath = pathResolve(curPath, request);
+    } else {
+      const isDenoDirPackage = ops.op_require_is_deno_dir_package(
+        curPath,
+      );
+      const isRelative = ops.op_require_is_request_relative(
+        request,
+      );
+      basePath = (isDenoDirPackage && !isRelative)
+        ? pathResolve(curPath, packageSpecifierSubPath(request))
+        : pathResolve(curPath, request);
+    }
     let filename;
 
     const rc = stat(basePath);
-    // console.log("stat result", rc);
     if (!trailingSlash) {
       if (rc === 0) { // File.
         filename = toRealPath(basePath);
@@ -625,7 +621,9 @@ Module._resolveLookupPaths = function (request, parent) {
     return paths;
   }
 
-  if (parent?.filename && parent.filename.length > 0) {
+  if (
+    !usesLocalNodeModulesDir && parent?.filename && parent.filename.length > 0
+  ) {
     const denoDirPath = ops.op_require_resolve_deno_dir(
       request,
       parent.filename,
@@ -815,9 +813,6 @@ Module._resolveFilename = function (
     return selfResolved;
   }
 
-  // if (request.startsWith("node-releases/")) {
-  //   console.log("req", request, paths, parentPath);
-  // }
   // Look up the filename first, since that's the cache key.
   const filename = Module._findPath(
     request,
