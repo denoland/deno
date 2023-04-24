@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::anyhow::Context;
 use deno_core::ModuleSpecifier;
@@ -65,21 +64,28 @@ pub trait CjsEsmCodeAnalyzer {
   ) -> Result<HashSet<String>, AnyError>;
 }
 
-pub struct NodeCodeTranslator<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer> {
+pub struct NodeCodeTranslator<
+  TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
+  TNpmResolver: NpmResolver,
+  TFs: NodeFs,
+> {
   cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-  fs: Rc<dyn NodeFs>,
-  node_resolver: NodeResolver,
-  npm_resolver: Rc<dyn NpmResolver>,
+  fs: TFs,
+  node_resolver: NodeResolver<TFs, TNpmResolver>,
+  npm_resolver: TNpmResolver,
 }
 
-impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
-  NodeCodeTranslator<TCjsEsmCodeAnalyzer>
+impl<
+    TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
+    TNpmResolver: NpmResolver,
+    TFs: NodeFs,
+  > NodeCodeTranslator<TCjsEsmCodeAnalyzer, TNpmResolver, TFs>
 {
   pub fn new(
     cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-    fs: Rc<dyn NodeFs>,
-    node_resolver: NodeResolver,
-    npm_resolver: Rc<dyn NpmResolver>,
+    fs: TFs,
+    node_resolver: NodeResolver<TFs, TNpmResolver>,
+    npm_resolver: TNpmResolver,
   ) -> Self {
     Self {
       cjs_esm_code_analyzer,
@@ -251,8 +257,8 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     let package_json_path = module_dir.join("package.json");
     if self.fs.exists(&package_json_path) {
       let package_json = PackageJson::load(
-        &*self.fs,
-        &*self.npm_resolver,
+        &self.fs,
+        &self.npm_resolver,
         permissions,
         package_json_path.clone(),
       )?;
@@ -278,8 +284,8 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
           let package_json_path = d.join("package.json");
           if self.fs.exists(&package_json_path) {
             let package_json = PackageJson::load(
-              &*self.fs,
-              &*self.npm_resolver,
+              &self.fs,
+              &self.npm_resolver,
               permissions,
               package_json_path,
             )?;

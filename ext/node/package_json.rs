@@ -63,7 +63,7 @@ impl PackageJson {
   }
 
   pub fn load(
-    fs: &dyn NodeFs,
+    fs: &impl NodeFs,
     resolver: &dyn NpmResolver,
     permissions: &mut dyn NodePermissions,
     path: PathBuf,
@@ -73,7 +73,7 @@ impl PackageJson {
   }
 
   pub fn load_skip_read_permission(
-    fs: &dyn NodeFs,
+    fs: &impl NodeFs,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     assert!(path.is_absolute());

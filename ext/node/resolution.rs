@@ -2,7 +2,6 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -105,14 +104,17 @@ impl NodeResolution {
   }
 }
 
-pub struct NodeResolver {
-  fs: Rc<dyn NodeFs>,
-  npm_resolver: Rc<dyn NpmResolver>,
+pub struct NodeResolver<TFs: NodeFs, TNpmResolver: NpmResolver> {
+  fs: TFs,
+  npm_resolver: TNpmResolver,
 }
 
-impl NodeResolver {
-  pub fn new(fs: Rc<dyn NodeFs>, npm_resolver: Rc<dyn NpmResolver>) -> Self {
-    Self { fs, npm_resolver }
+impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
+  pub fn new(fs: TFs, require_npm_resolver: TNpmResolver) -> Self {
+    Self {
+      fs,
+      npm_resolver: require_npm_resolver,
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -490,8 +492,8 @@ impl NodeResolver {
     path: PathBuf,
     referrer_kind: NodeModuleKind,
   ) -> Option<PathBuf> {
-    fn probe_extensions(
-      fs: &dyn NodeFs,
+    fn probe_extensions<Fs: NodeFs>(
+      fs: &Fs,
       path: &Path,
       referrer_kind: NodeModuleKind,
     ) -> Option<PathBuf> {
@@ -517,12 +519,12 @@ impl NodeResolver {
     {
       return Some(path);
     }
-    if let Some(path) = probe_extensions(&*self.fs, &path, referrer_kind) {
+    if let Some(path) = probe_extensions(&self.fs, &path, referrer_kind) {
       return Some(path);
     }
     if self.fs.is_dir(&path) {
       if let Some(path) =
-        probe_extensions(&*self.fs, &path.join("index"), referrer_kind)
+        probe_extensions(&self.fs, &path.join("index"), referrer_kind)
       {
         return Some(path);
       }
@@ -1103,8 +1105,8 @@ impl NodeResolver {
     package_json_path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     PackageJson::load(
-      &*self.fs,
-      &*self.npm_resolver,
+      &self.fs,
+      &self.npm_resolver,
       permissions,
       package_json_path,
     )
