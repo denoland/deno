@@ -4354,14 +4354,17 @@ fn stdio_streams_are_locked_in_permission_prompt() {
 #[test]
 fn permission_prompt_strips_ansi_codes_and_control_chars() {
   let _guard = util::http_server();
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line(
+  util::with_pty(
+    &["repl", "--enable-testing-features-do-not-use"],
+    |mut console| {
+      console.write_line(
       r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
     );
-    console.expect(
-      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\".",
-    )
-  });
+      console.expect(
+        "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\".",
+      )
+    },
+  );
 
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
