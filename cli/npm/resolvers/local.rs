@@ -370,7 +370,7 @@ async fn sync_resolution_with_fs(
   // node_modules/.deno/<package_id>/node_modules/<package_name>
   let mut found_names = HashSet::new();
   let mut ids = snapshot.top_level_packages().collect::<Vec<_>>();
-  ids.sort_by(|a, b| b.cmp(&a)); // create determinism and only include the latest version
+  ids.sort_by(|a, b| b.cmp(a)); // create determinism and only include the latest version
   for id in ids {
     let root_folder_name = if found_names.insert(id.nv.name.clone()) {
       id.nv.name.clone()
