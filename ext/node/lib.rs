@@ -41,8 +41,6 @@ pub use resolution::NodeResolver;
 
 pub trait NodeEnv {
   type P: NodePermissions;
-  type Fs: NodeFs;
-  type NpmResolver: NpmResolver;
 }
 
 pub trait NodePermissions {
@@ -63,17 +61,16 @@ pub struct NodeFsMetadata {
   pub is_dir: bool,
 }
 
-pub trait NodeFs: Clone {
+pub trait NodeFs {
   fn current_dir(&self) -> io::Result<PathBuf>;
-  fn metadata(&self, path: impl AsRef<Path>) -> io::Result<NodeFsMetadata>;
-  fn is_file(&self, path: impl AsRef<Path>) -> bool;
-  fn is_dir(&self, path: impl AsRef<Path>) -> bool;
-  fn exists(&self, path: impl AsRef<Path>) -> bool;
-  fn read_to_string(&self, path: impl AsRef<Path>) -> io::Result<String>;
-  fn canonicalize(&self, path: impl AsRef<Path>) -> io::Result<PathBuf>;
+  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata>;
+  fn is_file(&self, path: &Path) -> bool;
+  fn is_dir(&self, path: &Path) -> bool;
+  fn exists(&self, path: &Path) -> bool;
+  fn read_to_string(&self, path: &Path) -> io::Result<String>;
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
 
-#[derive(Clone)]
 pub struct RealFs;
 
 impl NodeFs for RealFs {
@@ -82,7 +79,7 @@ impl NodeFs for RealFs {
     std::env::current_dir()
   }
 
-  fn metadata(&self, path: impl AsRef<Path>) -> io::Result<NodeFsMetadata> {
+  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata> {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).map(|metadata| {
       // on most systems, calling is_file() and is_dir() is cheap
@@ -94,29 +91,29 @@ impl NodeFs for RealFs {
     })
   }
 
-  fn exists(&self, path: impl AsRef<Path>) -> bool {
+  fn exists(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).is_ok()
   }
 
-  fn is_file(&self, path: impl AsRef<Path>) -> bool {
+  fn is_file(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path)
       .map(|m| m.is_file())
       .unwrap_or(false)
   }
 
-  fn is_dir(&self, path: impl AsRef<Path>) -> bool {
+  fn is_dir(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
   }
 
-  fn read_to_string(&self, path: impl AsRef<Path>) -> io::Result<String> {
+  fn read_to_string(&self, path: &Path) -> io::Result<String> {
     #[allow(clippy::disallowed_methods)]
     std::fs::read_to_string(path)
   }
 
-  fn canonicalize(&self, path: impl AsRef<Path>) -> io::Result<PathBuf> {
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
     #[allow(clippy::disallowed_methods)]
     std::path::Path::canonicalize(path.as_ref())
   }
@@ -576,9 +573,9 @@ deno_core::extension!(deno_node,
     "zlib.ts",
   ],
   options = {
-    maybe_node_resolver: Option<NodeResolver<Env::Fs, Env::NpmResolver>>,
-    maybe_npm_resolver: Option<Env::NpmResolver>,
-    fs: Env::Fs,
+    maybe_node_resolver: Option<Rc<NodeResolver>>,
+    maybe_npm_resolver: Option<Rc<dyn NpmResolver>>,
+    fs: Rc<dyn NodeFs>,
   },
   state = |state, options| {
     if let Some(npm_resolver) = options.maybe_npm_resolver {
