@@ -12,11 +12,11 @@ use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
-use crate::package_exports_resolve;
 use crate::NodeFs;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 use crate::NodeResolutionMode;
+use crate::NodeResolver;
 use crate::NpmResolver;
 use crate::PackageJson;
 use crate::PathClean;
@@ -67,20 +67,30 @@ pub trait CjsEsmCodeAnalyzer {
 pub struct NodeCodeTranslator<
   TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
   TNpmResolver: NpmResolver,
+  TFs: NodeFs,
 > {
   cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
+  fs: TFs,
+  node_resolver: NodeResolver<TFs, TNpmResolver>,
   npm_resolver: TNpmResolver,
 }
 
-impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
-  NodeCodeTranslator<TCjsEsmCodeAnalyzer, TNpmResolver>
+impl<
+    TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer,
+    TNpmResolver: NpmResolver,
+    TFs: NodeFs,
+  > NodeCodeTranslator<TCjsEsmCodeAnalyzer, TNpmResolver, TFs>
 {
   pub fn new(
     cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
+    fs: TFs,
+    node_resolver: NodeResolver<TFs, TNpmResolver>,
     npm_resolver: TNpmResolver,
   ) -> Self {
     Self {
       cjs_esm_code_analyzer,
+      fs,
+      node_resolver,
       npm_resolver,
     }
   }
@@ -105,7 +115,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
   /// For all discovered reexports the analysis will be performed recursively.
   ///
   /// If successful a source code for equivalent ES module is returned.
-  pub fn translate_cjs_to_esm<Fs: NodeFs>(
+  pub fn translate_cjs_to_esm(
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
@@ -142,7 +152,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
       handled_reexports.insert(reexport.to_string());
 
       // First, resolve relate reexport specifier
-      let resolved_reexport = self.resolve::<Fs>(
+      let resolved_reexport = self.resolve(
         &reexport,
         &referrer,
         // FIXME(bartlomieju): check if these conditions are okay, probably
@@ -154,7 +164,9 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
       // Second, read the source code from disk
       let reexport_specifier =
         ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
-      let reexport_file_text = Fs::read_to_string(&resolved_reexport)
+      let reexport_file_text = self
+        .fs
+        .read_to_string(&resolved_reexport)
         .with_context(|| {
           format!(
             "Could not find '{}' ({}) referenced from {}",
@@ -208,7 +220,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
     Ok(translated_source)
   }
 
-  fn resolve<Fs: NodeFs>(
+  fn resolve(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
@@ -223,10 +235,8 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
     let referrer_path = referrer.to_file_path().unwrap();
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
-        return file_extension_probe::<Fs>(
-          parent.join(specifier),
-          &referrer_path,
-        );
+        return self
+          .file_extension_probe(parent.join(specifier), &referrer_path);
       } else {
         todo!();
       }
@@ -245,15 +255,16 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    if Fs::exists(&package_json_path) {
-      let package_json = PackageJson::load::<Fs>(
+    if self.fs.exists(&package_json_path) {
+      let package_json = PackageJson::load(
+        &self.fs,
         &self.npm_resolver,
         permissions,
         package_json_path.clone(),
       )?;
 
       if let Some(exports) = &package_json.exports {
-        return package_exports_resolve::<Fs>(
+        return self.node_resolver.package_exports_resolve(
           &package_json_path,
           package_subpath,
           exports,
@@ -261,7 +272,6 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
           NodeModuleKind::Esm,
           conditions,
           mode,
-          &self.npm_resolver,
           permissions,
         );
       }
@@ -269,11 +279,12 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if Fs::is_dir(&d) {
+        if self.fs.is_dir(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          if Fs::exists(&package_json_path) {
-            let package_json = PackageJson::load::<Fs>(
+          if self.fs.exists(&package_json_path) {
+            let package_json = PackageJson::load(
+              &self.fs,
               &self.npm_resolver,
               permissions,
               package_json_path,
@@ -285,7 +296,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
 
           return Ok(d.join("index.js").clean());
         }
-        return file_extension_probe::<Fs>(d, &referrer_path);
+        return self.file_extension_probe(d, &referrer_path);
       } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
         return Ok(module_dir.join(main).clean());
       } else {
@@ -293,6 +304,33 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer, TNpmResolver: NpmResolver>
       }
     }
     Err(not_found(specifier, &referrer_path))
+  }
+
+  fn file_extension_probe(
+    &self,
+    p: PathBuf,
+    referrer: &Path,
+  ) -> Result<PathBuf, AnyError> {
+    let p = p.clean();
+    if self.fs.exists(&p) {
+      let file_name = p.file_name().unwrap();
+      let p_js =
+        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+      if self.fs.is_file(&p_js) {
+        return Ok(p_js);
+      } else if self.fs.is_dir(&p) {
+        return Ok(p.join("index.js"));
+      } else {
+        return Ok(p);
+      }
+    } else if let Some(file_name) = p.file_name() {
+      let p_js =
+        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+      if self.fs.is_file(&p_js) {
+        return Ok(p_js);
+      }
+    }
+    Err(not_found(&p.to_string_lossy(), referrer))
   }
 }
 
@@ -453,30 +491,6 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   };
 
   Some((package_name, package_subpath))
-}
-
-fn file_extension_probe<Fs: NodeFs>(
-  p: PathBuf,
-  referrer: &Path,
-) -> Result<PathBuf, AnyError> {
-  let p = p.clean();
-  if Fs::exists(&p) {
-    let file_name = p.file_name().unwrap();
-    let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-    if Fs::is_file(&p_js) {
-      return Ok(p_js);
-    } else if Fs::is_dir(&p) {
-      return Ok(p.join("index.js"));
-    } else {
-      return Ok(p);
-    }
-  } else if let Some(file_name) = p.file_name() {
-    let p_js = p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-    if Fs::is_file(&p_js) {
-      return Ok(p_js);
-    }
-  }
-  Err(not_found(&p.to_string_lossy(), referrer))
 }
 
 fn not_found(path: &str, referrer: &Path) -> AnyError {
