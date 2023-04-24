@@ -15,6 +15,7 @@ import {
   deferred,
   fail,
 } from "./test_util.ts";
+import { consoleSize } from "../../../runtime/js/40_tty.js";
 
 function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
   return (err) => {
@@ -2708,4 +2709,81 @@ function parseTrailer(field: string | null): Headers | undefined {
 function isProhibitedForTrailer(key: string): boolean {
   const s = new Set(["transfer-encoding", "content-length", "trailer"]);
   return s.has(key.toLowerCase());
+}
+
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function httpServeCurlH2C() {
+    const ac = new AbortController();
+    const server = Deno.serve(
+      () => new Response("hello world!"),
+      { signal: ac.signal },
+    );
+
+    assertEquals(
+      "hello world!",
+      await curlRequest(["http://localhost:8000/path"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest(["http://localhost:8000/path", "--http2"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        "http://localhost:8000/path",
+        "--http2",
+        "--http2-prior-knowledge",
+      ]),
+    );
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  async function httpsServeCurlH2C() {
+    const ac = new AbortController();
+    const server = Deno.serve(
+      () => new Response("hello world!"),
+      {
+        signal: ac.signal,
+        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+      },
+    );
+
+    assertEquals(
+      "hello world!",
+      await curlRequest(["https://localhost:9000/path", "-k"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest(["https://localhost:9000/path", "-k", "--http2"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        "https://localhost:9000/path",
+        "-k",
+        "--http2",
+        "--http2-prior-knowledge",
+      ]),
+    );
+
+    ac.abort();
+    await server;
+  },
+);
+
+async function curlRequest(args: string[]) {
+  const { success, stdout } = await new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "null",
+  }).output();
+  assert(success);
+  return new TextDecoder().decode(stdout);
 }
