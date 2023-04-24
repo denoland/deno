@@ -534,13 +534,7 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await core.opAsync(
-            "op_ws_send",
-            this[_rid],
-            {
-              kind: "ping",
-            },
-          );
+          await core.opAsync("op_ws_send_ping", this[_rid]);
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
