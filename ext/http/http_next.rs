@@ -112,7 +112,14 @@ macro_rules! with {
       SLAB.with(|slab| {
         let mut borrow = slab.borrow_mut();
         #[allow(unused_mut)] // TODO(mmastrac): compiler issue?
-        let mut $http = borrow.get_mut(key).unwrap();
+        let mut $http = match borrow.get_mut(key) {
+          Some(http) => http,
+          None => panic!(
+            "Attemped to access invalid request {} ({} in total available)",
+            key,
+            borrow.len()
+          ),
+        };
         #[cfg(__zombie_http_tracking)]
         if !$http.alive {
           panic!("Attempted to access a dead HTTP object")
@@ -199,7 +206,11 @@ pub async fn op_upgrade(
   // Stage 1: set the respnse to 101 Switching Protocols and send it
   let upgrade = with_http_mut(index, |http| {
     // Manually perform the upgrade. We're peeking into hyper's underlying machinery here a bit
-    let upgrade = http.request_parts.extensions.remove::<OnUpgrade>().unwrap();
+    let upgrade = http
+      .request_parts
+      .extensions
+      .remove::<OnUpgrade>()
+      .ok_or_else(|| AnyError::msg("upgrade unavailable"))?;
 
     let response = http.response.as_mut().unwrap();
     *response.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
@@ -210,8 +221,8 @@ pub async fn op_upgrade(
       );
     }
     http.promise.complete(true);
-    upgrade
-  });
+    Ok::<_, AnyError>(upgrade)
+  })?;
 
   // Stage 2: wait for the request to finish upgrading
   let upgraded = upgrade.await?;

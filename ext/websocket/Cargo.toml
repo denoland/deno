@@ -24,4 +24,3 @@ hyper = { workspace = true, features = ["backports"] }
 serde.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
-tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
