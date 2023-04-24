@@ -23,6 +23,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_runtime::deno_core::futures;
+use deno_runtime::deno_node::NodeFs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
@@ -43,6 +44,7 @@ use super::common::NpmPackageFsResolver;
 /// and resolves packages from it.
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver {
+  fs: Arc<dyn NodeFs>,
   cache: Arc<NpmCache>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
@@ -53,6 +55,7 @@ pub struct LocalNpmPackageResolver {
 
 impl LocalNpmPackageResolver {
   pub fn new(
+    fs: Arc<dyn NodeFs>,
     cache: Arc<NpmCache>,
     progress_bar: ProgressBar,
     registry_url: Url,
@@ -60,6 +63,7 @@ impl LocalNpmPackageResolver {
     resolution: Arc<NpmResolution>,
   ) -> Self {
     Self {
+      fs,
       cache,
       progress_bar,
       resolution,
@@ -149,9 +153,10 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       if sub_dir.is_dir() {
         // if doing types resolution, only resolve the package if it specifies a types property
         if mode.is_types() && !name.starts_with("@types/") {
-          let package_json = PackageJson::load_skip_read_permission::<
-            deno_runtime::deno_node::RealFs,
-          >(sub_dir.join("package.json"))?;
+          let package_json = PackageJson::load_skip_read_permission(
+            &*self.fs,
+            sub_dir.join("package.json"),
+          )?;
           if package_json.types.is_some() {
             return Ok(sub_dir);
           }

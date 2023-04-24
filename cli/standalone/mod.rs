@@ -190,6 +190,7 @@ fn create_web_worker_callback(
       root_cert_store: Some(ps.root_cert_store.clone()),
       seed: ps.options.seed(),
       module_loader,
+      node_fs: Some(ps.node_fs.clone()),
       npm_resolver: None, // not currently supported
       create_web_worker_cb,
       preload_module_cb: web_worker_cb.clone(),
@@ -285,6 +286,7 @@ pub async fn run(
     should_break_on_first_statement: false,
     should_wait_for_inspector_session: false,
     module_loader,
+    node_fs: Some(ps.node_fs.clone()),
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
     cache_storage_dir: None,

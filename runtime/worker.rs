@@ -33,7 +33,6 @@ use deno_core::SourceMapGetter;
 use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::NpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -94,7 +93,8 @@ pub struct WorkerOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn NpmResolver>>,
+  pub node_fs: Option<Arc<dyn deno_node::NodeFs>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -164,6 +164,7 @@ impl Default for WorkerOptions {
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
       root_cert_store: Default::default(),
+      node_fs: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
@@ -268,6 +269,7 @@ impl MainWorker {
       deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
+        options.node_fs,
       ),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops(main_module.clone()),
