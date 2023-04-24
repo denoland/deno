@@ -426,7 +426,6 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         payload,
       })
     } else {
-      // TODO: improve error
       Err(Error::ExpectedEnum(value_to_type_str(self.input)))
     }
   }
