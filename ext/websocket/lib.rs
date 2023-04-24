@@ -52,7 +52,6 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 
-pub use tokio_tungstenite; // Re-export tokio_tungstenite
 mod stream;
 
 #[derive(Clone)]
