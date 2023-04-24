@@ -2,6 +2,7 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -104,18 +105,14 @@ impl NodeResolution {
   }
 }
 
-#[derive(Debug)]
-pub struct NodeResolver<TFs: NodeFs, TNpmResolver: NpmResolver> {
-  fs: TFs,
-  npm_resolver: TNpmResolver,
+pub struct NodeResolver {
+  fs: Rc<dyn NodeFs>,
+  npm_resolver: Rc<dyn NpmResolver>,
 }
 
-impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
-  pub fn new(fs: TFs, require_npm_resolver: TNpmResolver) -> Self {
-    Self {
-      fs,
-      npm_resolver: require_npm_resolver,
-    }
+impl NodeResolver {
+  pub fn new(fs: Rc<dyn NodeFs>, npm_resolver: Rc<dyn NpmResolver>) -> Self {
+    Self { fs, npm_resolver }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -282,7 +279,8 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
       p_str.to_string()
     };
 
-    let (is_dir, is_file) = if let Ok(stats) = self.fs.metadata(p) {
+    let (is_dir, is_file) = if let Ok(stats) = self.fs.metadata(&Path::new(&p))
+    {
       (stats.is_dir, stats.is_file)
     } else {
       (false, false)
@@ -369,12 +367,8 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
       .npm_resolver
       .resolve_package_folder_from_deno_module(pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
-    let package_json = PackageJson::load(
-      &self.fs,
-      &self.npm_resolver,
-      &mut AllowAllNodePermissions,
-      package_json_path,
-    )?;
+    let package_json = self
+      .load_package_json(&mut AllowAllNodePermissions, package_json_path)?;
 
     Ok(match package_json.bin {
       Some(Value::String(_)) => vec![pkg_nv.name.to_string()],
@@ -398,12 +392,8 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
       .npm_resolver
       .resolve_package_folder_from_deno_module(&pkg_nv)?;
     let package_json_path = package_folder.join("package.json");
-    let package_json = PackageJson::load(
-      &self.fs,
-      &self.npm_resolver,
-      &mut AllowAllNodePermissions,
-      package_json_path,
-    )?;
+    let package_json = self
+      .load_package_json(&mut AllowAllNodePermissions, package_json_path)?;
     let bin = match &package_json.bin {
       Some(bin) => bin,
       None => bail!(
@@ -458,12 +448,8 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
   ) -> Result<Option<PathBuf>, AnyError> {
     let package_json_path = package_dir.join("package.json");
     let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
-    let package_config = PackageJson::load(
-      &self.fs,
-      &self.npm_resolver,
-      permissions,
-      package_json_path.clone(),
-    )?;
+    let package_config =
+      self.load_package_json(permissions, package_json_path.clone())?;
     if let Some(exports) = &package_config.exports {
       let result = self.package_exports_resolve(
         &package_json_path,
@@ -504,8 +490,8 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
     path: PathBuf,
     referrer_kind: NodeModuleKind,
   ) -> Option<PathBuf> {
-    fn probe_extensions<Fs: NodeFs>(
-      fs: &Fs,
+    fn probe_extensions(
+      fs: &dyn NodeFs,
       path: &Path,
       referrer_kind: NodeModuleKind,
     ) -> Option<PathBuf> {
@@ -531,12 +517,12 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
     {
       return Some(path);
     }
-    if let Some(path) = probe_extensions(&self.fs, &path, referrer_kind) {
+    if let Some(path) = probe_extensions(&*self.fs, &path, referrer_kind) {
       return Some(path);
     }
     if self.fs.is_dir(&path) {
       if let Some(path) =
-        probe_extensions(&self.fs, &path.join("index"), referrer_kind)
+        probe_extensions(&*self.fs, &path.join("index"), referrer_kind)
       {
         return Some(path);
       }
@@ -1035,12 +1021,8 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
     // ))
 
     // Package match.
-    let package_json = PackageJson::load(
-      &self.fs,
-      &self.npm_resolver,
-      permissions,
-      package_json_path,
-    )?;
+    let package_json =
+      self.load_package_json(permissions, package_json_path)?;
     if let Some(exports) = &package_json.exports {
       return self
         .package_exports_resolve(
@@ -1079,12 +1061,7 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
       .npm_resolver
       .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
     let package_json_path = root_folder.join("package.json");
-    PackageJson::load(
-      &self.fs,
-      &self.npm_resolver,
-      permissions,
-      package_json_path,
-    )
+    self.load_package_json(permissions, package_json_path)
   }
 
   pub(super) fn get_closest_package_json(
@@ -1093,12 +1070,7 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
     permissions: &mut dyn NodePermissions,
   ) -> Result<PackageJson, AnyError> {
     let package_json_path = self.get_closest_package_json_path(url)?;
-    PackageJson::load(
-      &self.fs,
-      &self.npm_resolver,
-      permissions,
-      package_json_path,
-    )
+    self.load_package_json(permissions, package_json_path)
   }
 
   fn get_closest_package_json_path(
@@ -1123,6 +1095,19 @@ impl<TFs: NodeFs, TNpmResolver: NpmResolver> NodeResolver<TFs, TNpmResolver> {
     }
 
     bail!("did not find package.json in {}", root_pkg_folder.display())
+  }
+
+  pub(super) fn load_package_json(
+    &self,
+    permissions: &mut dyn NodePermissions,
+    package_json_path: PathBuf,
+  ) -> Result<PackageJson, AnyError> {
+    PackageJson::load(
+      &*self.fs,
+      &*self.npm_resolver,
+      permissions,
+      package_json_path,
+    )
   }
 
   pub(super) fn legacy_main_resolve(
