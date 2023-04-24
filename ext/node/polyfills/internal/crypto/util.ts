@@ -47,7 +47,9 @@ const digestAlgorithms = [
 ];
 
 const ellipticCurves = [
-  "secp256k1"
+  "secp256k1", // Weirerstrass-class EC used by Bitcoin
+  "prime256v1", // NIST P-256 EC
+  "secp256r1" // NIST P-256 EC (same as above)
 ];
 
 // deno-fmt-ignore

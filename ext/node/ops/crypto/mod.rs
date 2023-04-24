@@ -907,45 +907,63 @@ pub async fn op_node_scrypt_async(
 
 #[op]
 pub fn op_node_ecdh_generate_keys(
-  _curve: String,
+  curve: &str,
   pubbuf: &mut [u8],
   privbuf: &mut [u8],
 ) -> Result<(), AnyError> {
   let mut rng = rand::thread_rng();
-  let secp = Secp256k1::new();
-  let (privkey, pubkey) = secp.generate_keypair(&mut rng);
-  pubbuf.copy_from_slice(&pubkey.serialize_uncompressed());
-  privbuf.copy_from_slice(&privkey.secret_bytes());
+  match curve {
+    "secp256k1" => {
+      let secp = Secp256k1::new();
+      let (privkey, pubkey) = secp.generate_keypair(&mut rng);
+      pubbuf.copy_from_slice(&pubkey.serialize_uncompressed());
+      privbuf.copy_from_slice(&privkey.secret_bytes());
 
-  Ok(())
+      Ok(())
+    }
+    &_ => todo!(),
+  }
 }
 
 #[op]
 pub fn op_node_ecdh_compute_secret(
-  _curve: String,
+  curve: &str,
   this_priv: &mut [u8],
   their_pub: &mut [u8],
   secret: &mut [u8],
 ) -> Result<(), AnyError> {
-  let this_secret_key = SecretKey::from_slice(this_priv).unwrap();
-  let their_public_key = secp256k1::PublicKey::from_slice(their_pub).unwrap();
-  let shared_secret = SharedSecret::new(&their_public_key, &this_secret_key);
+  match curve {
+    "secp256k1" => {
+      let this_secret_key = SecretKey::from_slice(this_priv).unwrap();
+      let their_public_key =
+        secp256k1::PublicKey::from_slice(their_pub).unwrap();
+      let shared_secret =
+        SharedSecret::new(&their_public_key, &this_secret_key);
 
-  secret.copy_from_slice(&shared_secret.secret_bytes());
-  Ok(())
+      secret.copy_from_slice(&shared_secret.secret_bytes());
+      Ok(())
+    }
+    &_ => todo!(),
+  }
 }
 
 #[op]
 pub fn op_node_ecdh_compute_public_key(
-  _curve: String,
+  curve: &str,
   privkey: &[u8],
   pubkey: &mut [u8],
 ) -> Result<(), AnyError> {
-  let secp = Secp256k1::new();
-  let secret_key = SecretKey::from_slice(privkey).unwrap();
-  let public_key = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
+  match curve {
+    "secp256k1" => {
+      let secp = Secp256k1::new();
+      let secret_key = SecretKey::from_slice(privkey).unwrap();
+      let public_key =
+        secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
 
-  pubkey.copy_from_slice(&public_key.serialize_uncompressed());
+      pubkey.copy_from_slice(&public_key.serialize_uncompressed());
 
-  Ok(())
+      Ok(())
+    }
+    &_ => todo!(),
+  }
 }
