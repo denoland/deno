@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::extract_network_stream;
+use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::DefaultHttpRequestProperties;
 use crate::request_properties::HttpConnectionProperties;
@@ -36,6 +37,7 @@ use hyper1::http::HeaderValue;
 use hyper1::server::conn::http1;
 use hyper1::server::conn::http2;
 use hyper1::service::service_fn;
+use hyper1::service::HttpService;
 use hyper1::upgrade::OnUpgrade;
 use hyper1::StatusCode;
 use pin_project::pin_project;
@@ -55,6 +57,29 @@ use tokio::task::JoinHandle;
 
 type Request = hyper1::Request<Incoming>;
 type Response = hyper1::Response<ResponseBytes>;
+
+/// All HTTP/2 connections start with this byte string.
+const HTTP2_PREFIX: &[u8] = &[
+  0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54, 0x54, 0x50, 0x2f, 0x32, 0x2e,
+  0x30, 0x0d, 0x0a,
+];
+
+/// ALPN negotation for "h2"
+const TLS_ALPN_HTTP_2: &[u8] = b"h2";
+
+/// ALPN negotation for "http/1.1"
+const TLS_ALPN_HTTP_11: &[u8] = b"http/1.1";
+
+/// Name a trait for streams we can serve HTTP over.
+trait HttpServeStream:
+  tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
+{
+}
+impl<
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+  > HttpServeStream for S
+{
+}
 
 pub struct HttpSlabRecord {
   request_info: HttpConnectionProperties,
@@ -514,6 +539,44 @@ impl<F: Future<Output = ()>> Future for SlabFuture<F> {
   }
 }
 
+fn serve_http11_unconditional(
+  io: impl HttpServeStream,
+  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+  cancel: RcRef<CancelHandle>,
+) -> impl Future<Output = Result<(), AnyError>> + 'static {
+  let conn = http1::Builder::new()
+    .keep_alive(true)
+    .serve_connection(io, svc);
+
+  conn
+    .with_upgrades()
+    .map_err(AnyError::from)
+    .try_or_cancel(cancel)
+}
+
+fn serve_http2_unconditional(
+  io: impl HttpServeStream,
+  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+  cancel: RcRef<CancelHandle>,
+) -> impl Future<Output = Result<(), AnyError>> + 'static {
+  let conn = http2::Builder::new(LocalExecutor).serve_connection(io, svc);
+  conn.map_err(AnyError::from).try_or_cancel(cancel)
+}
+
+async fn serve_http2_autodetect(
+  io: impl HttpServeStream,
+  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+  cancel: RcRef<CancelHandle>,
+) -> Result<(), AnyError> {
+  let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
+  let (matches, io) = prefix.match_prefix().await?;
+  if matches {
+    serve_http2_unconditional(io, svc, cancel).await
+  } else {
+    serve_http11_unconditional(io, svc, cancel).await
+  }
+}
+
 fn serve_https(
   mut io: TlsStream,
   request_info: HttpConnectionProperties,
@@ -526,28 +589,21 @@ fn serve_https(
   });
   spawn_local(async {
     io.handshake().await?;
+    // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
+    // based on the prefix bytes
     let handshake = io.get_ref().1.alpn_protocol();
-    // h2
-    if handshake == Some(&[104, 50]) {
-      let conn = http2::Builder::new(LocalExecutor).serve_connection(io, svc);
-
-      conn.map_err(AnyError::from).try_or_cancel(cancel).await
+    if handshake == Some(TLS_ALPN_HTTP_2) {
+      serve_http2_unconditional(io, svc, cancel).await
+    } else if handshake == Some(TLS_ALPN_HTTP_11) {
+      serve_http11_unconditional(io, svc, cancel).await
     } else {
-      let conn = http1::Builder::new()
-        .keep_alive(true)
-        .serve_connection(io, svc);
-
-      conn
-        .with_upgrades()
-        .map_err(AnyError::from)
-        .try_or_cancel(cancel)
-        .await
+      serve_http2_autodetect(io, svc, cancel).await
     }
   })
 }
 
 fn serve_http(
-  io: impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+  io: impl HttpServeStream,
   request_info: HttpConnectionProperties,
   cancel: RcRef<CancelHandle>,
   tx: tokio::sync::mpsc::Sender<usize>,
@@ -556,16 +612,7 @@ fn serve_http(
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn_local(async {
-    let conn = http1::Builder::new()
-      .keep_alive(true)
-      .serve_connection(io, svc);
-    conn
-      .with_upgrades()
-      .map_err(AnyError::from)
-      .try_or_cancel(cancel)
-      .await
-  })
+  spawn_local(serve_http2_autodetect(io, svc, cancel))
 }
 
 fn serve_http_on(
@@ -702,7 +749,7 @@ pub fn op_serve_http_on(
     AsyncRefCell::new(rx),
   ));
 
-  let handle = serve_http_on(
+  let handle: JoinHandle<Result<(), deno_core::anyhow::Error>> = serve_http_on(
     network_stream,
     &listen_properties,
     resource.cancel_handle(),

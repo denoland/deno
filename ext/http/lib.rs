@@ -73,6 +73,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::task::spawn_local;
 use websocket_upgrade::WebSocketUpgrade;
 
+use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
 
@@ -1252,22 +1253,66 @@ impl CanDowncastUpgrade for hyper::upgrade::Upgraded {
   }
 }
 
+fn maybe_extract_network_stream<
+  T: Into<NetworkStream> + AsyncRead + AsyncWrite + Unpin + 'static,
+  U: CanDowncastUpgrade,
+>(
+  upgraded: U,
+) -> Result<(NetworkStream, Bytes), U> {
+  let upgraded = match upgraded.downcast::<T>() {
+    Ok((stream, bytes)) => return Ok((stream.into(), bytes)),
+    Err(x) => x,
+  };
+
+  match upgraded.downcast::<NetworkBufferedStream<T>>() {
+    Ok((stream, upgraded_bytes)) => {
+      // Both the upgrade and the stream might have unread bytes
+      let (io, stream_bytes) = stream.into_inner();
+      let bytes = match (stream_bytes.is_empty(), upgraded_bytes.is_empty()) {
+        (false, false) => Bytes::default(),
+        (true, false) => upgraded_bytes,
+        (false, true) => stream_bytes,
+        (true, true) => {
+          // The upgraded bytes come first as they have already been read
+          let mut v = upgraded_bytes.to_vec();
+          v.append(&mut stream_bytes.to_vec());
+          Bytes::from(v)
+        }
+      };
+      return Ok((io.into(), bytes));
+    }
+    Err(x) => Err(x),
+  }
+}
+
 fn extract_network_stream<U: CanDowncastUpgrade>(
   upgraded: U,
 ) -> (NetworkStream, Bytes) {
-  let upgraded = match upgraded.downcast::<tokio::net::TcpStream>() {
-    Ok((stream, bytes)) => return (NetworkStream::Tcp(stream), bytes),
-    Err(x) => x,
-  };
-  let upgraded = match upgraded.downcast::<deno_net::ops_tls::TlsStream>() {
-    Ok((stream, bytes)) => return (NetworkStream::Tls(stream), bytes),
-    Err(x) => x,
-  };
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::TcpStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
+      upgraded,
+    ) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
   #[cfg(unix)]
-  let upgraded = match upgraded.downcast::<tokio::net::UnixStream>() {
-    Ok((stream, bytes)) => return (NetworkStream::Unix(stream), bytes),
-    Err(x) => x,
-  };
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<NetworkStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+
+  // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
   drop(upgraded);
   unreachable!("unexpected stream type");
 }

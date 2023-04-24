@@ -1,23 +1,25 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use bytes::Bytes;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::ready;
 use std::io;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::task::Poll;
-
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::ready;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
 
 const MAX_PREFIX_SIZE: usize = 256;
 
-struct NetworkStreamPrefixCheck<S: AsyncRead + Unpin> {
+pub struct NetworkStreamPrefixCheck<S: AsyncRead + Unpin> {
   io: S,
   prefix: &'static [u8],
   buffer: [MaybeUninit<u8>; MAX_PREFIX_SIZE * 2],
 }
 
-impl <S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
+impl<S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
   pub fn new(io: S, prefix: &'static [u8]) -> Self {
     debug_assert!(prefix.len() < MAX_PREFIX_SIZE);
     Self {
@@ -29,7 +31,9 @@ impl <S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
 
   // Returns a [`NetworkBufferedStream`], rewound with the bytes we read to determine what
   // type of stream this is.
-  pub async fn match_prefix(self) -> io::Result<(bool, NetworkBufferedStream<S>)> {
+  pub async fn match_prefix(
+    self,
+  ) -> io::Result<(bool, NetworkBufferedStream<S>)> {
     let mut buffer = self.buffer;
     let mut readbuf = ReadBuf::uninit(&mut buffer);
     let mut io = self.io;
@@ -77,21 +81,21 @@ impl <S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
           return Ok((
             true,
             NetworkBufferedStream::new(io, buffer, initialized_len),
-          ))
+          ));
         }
         State::NotMatched => {
           let initialized_len = readbuf.filled().len();
           return Ok((
             false,
             NetworkBufferedStream::new(io, buffer, initialized_len),
-          ))
+          ));
         }
       }
     }
   }
 }
 
-struct NetworkBufferedStream<S: AsyncRead + Unpin> {
+pub struct NetworkBufferedStream<S: AsyncRead + Unpin> {
   io: S,
   initialized_len: usize,
   prefix_offset: usize,
@@ -99,7 +103,7 @@ struct NetworkBufferedStream<S: AsyncRead + Unpin> {
   prefix_read: bool,
 }
 
-impl <S: AsyncRead + Unpin> NetworkBufferedStream<S> {
+impl<S: AsyncRead + Unpin> NetworkBufferedStream<S> {
   fn new(
     io: S,
     prefix: [MaybeUninit<u8>; MAX_PREFIX_SIZE * 2],
@@ -113,9 +117,28 @@ impl <S: AsyncRead + Unpin> NetworkBufferedStream<S> {
       prefix_read: false,
     }
   }
+
+  fn current_slice(&self) -> &[u8] {
+    // We trust that these bytes are initialized properly
+    let slice = &self.prefix[self.prefix_offset..self.initialized_len];
+
+    // This guarantee comes from slice_assume_init_ref (we can't use that until it's stable)
+
+    // SAFETY: casting `slice` to a `*const [T]` is safe since the caller guarantees that
+    // `slice` is initialized, and `MaybeUninit` is guaranteed to have the same layout as `T`.
+    // The pointer obtained is valid since it refers to memory owned by `slice` which is a
+    // reference and thus guaranteed to be valid for reads.
+    let prefix = unsafe { &*(slice as *const [_] as *const [u8]) };
+    prefix
+  }
+
+  pub fn into_inner(self) -> (S, Bytes) {
+    let bytes = Bytes::copy_from_slice(self.current_slice());
+    (self.io, bytes)
+  }
 }
 
-impl <S: AsyncRead + Unpin> AsyncRead for NetworkBufferedStream<S> {
+impl<S: AsyncRead + Unpin> AsyncRead for NetworkBufferedStream<S> {
   // From hyper's Rewind (https://github.com/hyperium/hyper), MIT License, Copyright (c) Sean McArthur
   fn poll_read(
     mut self: Pin<&mut Self>,
@@ -123,15 +146,7 @@ impl <S: AsyncRead + Unpin> AsyncRead for NetworkBufferedStream<S> {
     buf: &mut ReadBuf<'_>,
   ) -> Poll<std::io::Result<()>> {
     if !self.prefix_read {
-      // We trust that these bytes are initialized properly
-      let slice = &self.prefix[self.prefix_offset..self.initialized_len];
-
-      // This guarantee comes from slice_assume_init_ref (we can't use that until it's stable)
-      // SAFETY: casting `slice` to a `*const [T]` is safe since the caller guarantees that
-      // `slice` is initialized, and `MaybeUninit` is guaranteed to have the same layout as `T`.
-      // The pointer obtained is valid since it refers to memory owned by `slice` which is a
-      // reference and thus guaranteed to be valid for reads.
-      let prefix = unsafe { &*(slice as *const [_] as *const [u8]) };
+      let prefix = self.current_slice();
 
       // If there are no remaining bytes, let the bytes get dropped.
       if !prefix.is_empty() {
@@ -148,7 +163,9 @@ impl <S: AsyncRead + Unpin> AsyncRead for NetworkBufferedStream<S> {
   }
 }
 
-impl <S: AsyncRead + AsyncWrite + Unpin> AsyncWrite for NetworkBufferedStream<S> {
+impl<S: AsyncRead + AsyncWrite + Unpin> AsyncWrite
+  for NetworkBufferedStream<S>
+{
   fn poll_write(
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
@@ -186,50 +203,82 @@ impl <S: AsyncRead + AsyncWrite + Unpin> AsyncWrite for NetworkBufferedStream<S>
 
 #[cfg(test)]
 mod tests {
-  use tokio::io::AsyncReadExt;
   use super::*;
+  use tokio::io::AsyncReadExt;
+
+  struct YieldsOneByteAtATime(&'static [u8]);
+
+  impl AsyncRead for YieldsOneByteAtATime {
+    fn poll_read(
+      mut self: Pin<&mut Self>,
+      _cx: &mut std::task::Context<'_>,
+      buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+      if let Some((head, tail)) = self.as_mut().0.split_first() {
+        self.as_mut().0 = tail;
+        let dest = buf.initialize_unfilled_to(1);
+        dest[0] = *head;
+        buf.advance(1);
+      }
+      Poll::Ready(Ok(()))
+    }
+  }
+
+  async fn test(
+    io: impl AsyncRead + Unpin,
+    prefix: &'static [u8],
+    expect_match: bool,
+    expect_string: &'static str,
+  ) -> io::Result<()> {
+    let (matches, mut io) = NetworkStreamPrefixCheck::new(io, prefix)
+      .match_prefix()
+      .await?;
+    assert_eq!(matches, expect_match);
+    let mut s = String::new();
+    Pin::new(&mut io).read_to_string(&mut s).await?;
+    assert_eq!(s, expect_string);
+    Ok(())
+  }
 
   #[tokio::test]
   async fn matches_prefix_simple() -> io::Result<()> {
     let buf = b"prefix match".as_slice();
-    let (matches, mut io) = NetworkStreamPrefixCheck::new(buf, b"prefix").match_prefix().await?;
-    assert!(matches);
-    let mut s = String::new();
-    Pin::new(&mut io).read_to_string(&mut s).await?;
-    assert_eq!(s, "prefix match");
-    Ok(())
+    test(buf, b"prefix", true, "prefix match").await
   }
 
   #[tokio::test]
   async fn matches_prefix_exact() -> io::Result<()> {
     let buf = b"prefix".as_slice();
-    let (matches, mut io) = NetworkStreamPrefixCheck::new(buf, b"prefix").match_prefix().await?;
-    assert!(matches);
-    let mut s = String::new();
-    Pin::new(&mut io).read_to_string(&mut s).await?;
-    assert_eq!(s, "prefix");
-    Ok(())
+    test(buf, b"prefix", true, "prefix").await
   }
 
   #[tokio::test]
   async fn not_matches_prefix_simple() -> io::Result<()> {
     let buf = b"prefill match".as_slice();
-    let (matches, mut io) = NetworkStreamPrefixCheck::new(buf, b"prefix").match_prefix().await?;
-    assert!(!matches);
-    let mut s = String::new();
-    Pin::new(&mut io).read_to_string(&mut s).await?;
-    assert_eq!(s, "prefill match");
-    Ok(())
+    test(buf, b"prefix", false, "prefill match").await
+  }
+
+  #[tokio::test]
+  async fn not_matches_prefix_short() -> io::Result<()> {
+    let buf = b"nope".as_slice();
+    test(buf, b"prefix", false, "nope").await
   }
 
   #[tokio::test]
   async fn not_matches_prefix_empty() -> io::Result<()> {
     let buf = b"".as_slice();
-    let (matches, mut io) = NetworkStreamPrefixCheck::new(buf, b"prefix").match_prefix().await?;
-    assert!(!matches);
-    let mut s = String::new();
-    Pin::new(&mut io).read_to_string(&mut s).await?;
-    assert_eq!(s, "");
-    Ok(())
+    test(buf, b"prefix", false, "").await
+  }
+
+  #[tokio::test]
+  async fn matches_one_byte_at_a_time() -> io::Result<()> {
+    let buf = YieldsOneByteAtATime(b"prefix");
+    test(buf, b"prefix", true, "prefix").await
+  }
+
+  #[tokio::test]
+  async fn not_matches_one_byte_at_a_time() -> io::Result<()> {
+    let buf = YieldsOneByteAtATime(b"prefill");
+    test(buf, b"prefix", false, "prefill").await
   }
 }
