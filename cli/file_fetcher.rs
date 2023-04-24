@@ -1982,7 +1982,7 @@ mod tests {
   async fn test_fetch_with_default_certificate_store() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
-    let url = Url::parse("https://deno.land").unwrap();
+    let url = Url::parse("https://deno.land/x").unwrap();
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
