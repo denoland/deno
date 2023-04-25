@@ -45,6 +45,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::option::Option;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -2378,11 +2379,86 @@ pub fn queue_fast_async_op(
 }
 
 #[inline]
+pub fn queue_async_op2<'s, R: serde::Serialize + 'static>(
+  ctx: &OpCtx,
+  scope: &'s mut v8::HandleScope,
+  deferred: bool,
+  realm_idx: RealmIdx,
+  promise_id: PromiseId,
+  op_id: OpId,
+  op: impl Future<Output = Result<R, Error>>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let get_class = {
+    let state = RefCell::borrow(&ctx.state);
+    state.tracker.track_async(op_id);
+    state.get_error_class_fn
+  };
+  let fut = op
+    .map(|result| crate::_ops::to_op_result(get_class, result))
+    .boxed_local();
+
+  foo(ctx, scope, deferred, realm_idx, promise_id, op_id, fut)
+}
+
+fn foo<'s>(
+  ctx: &OpCtx,
+  scope: &'s mut v8::HandleScope,
+  deferred: bool,
+  realm_idx: RealmIdx,
+  promise_id: PromiseId,
+  op_id: OpId,
+  op: Pin<Box<dyn Future<Output = OpResult>>>,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
+  // which it is invoked. Otherwise, we might have cross-realm object exposure.
+  // deno_core doesn't currently support such exposure, even though embedders
+  // can cause them, so we panic in debug mode (since the check is expensive).
+  debug_assert_eq!(
+    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
+    Some(scope.get_current_context())
+  );
+
+  match OpCall::eager(op) {
+    // If the result is ready we'll just return it straight to the caller, so
+    // we don't have to invoke a JS callback to respond. // This works under the
+    // assumption that `()` return value is serialized as `null`.
+    EagerPollResult::Ready((_, _, op_id, mut resp)) if !deferred => {
+      let resp = resp.to_v8(scope).unwrap();
+      ctx.state.borrow_mut().tracker.track_async_completed(op_id);
+      return Some(resp);
+    }
+    EagerPollResult::Ready(op) => {
+      let ready = OpCall::ready(op);
+      let mut state = runtime_state.borrow_mut();
+      state.pending_ops.push(ready);
+      state.have_unpolled_ops = true;
+    }
+    EagerPollResult::Pending(op) => {
+      let mut state = runtime_state.borrow_mut();
+      state.pending_ops.push(op);
+      state.have_unpolled_ops = true;
+    }
+  }
+
+  None
+}
+
+#[inline]
 pub fn queue_async_op<'s>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,
   deferred: bool,
-  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
+  realm_idx: RealmIdx,
+  promise_id: PromiseId,
+  op_id: OpId,
+  op: Pin<Box<dyn Future<Output = OpResult>>>,
+  // op2: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,

@@ -34,6 +34,13 @@ use v8::fast_api::CTypeInfo;
 /// turn of the event loop, which is too late for certain ops.
 pub struct OpCall<T>(MaybeDone<Pin<Box<dyn Future<Output = T>>>>);
 
+pub struct OpCall2 {
+  realm_ids: u32,
+  promise_id: i32,
+  op_id: u32,
+  fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
+}
+
 pub enum EagerPollResult<T> {
   Ready(T),
   Pending(OpCall<T>),
@@ -43,7 +50,7 @@ impl<T> OpCall<T> {
   /// Wraps a future, and polls the inner future immediately.
   /// This should be the default choice for ops.
   pub fn eager(fut: impl Future<Output = T> + 'static) -> EagerPollResult<T> {
-    let boxed = Box::pin(fut) as Pin<Box<dyn Future<Output = T>>>;
+    let boxed = Box::pin_in(fut, Allocator) as Pin<Box<dyn Future<Output = T>>>;
     let mut inner = maybe_done(boxed);
     let waker = noop_waker();
     let mut cx = Context::from_waker(&waker);
