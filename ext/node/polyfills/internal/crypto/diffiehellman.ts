@@ -234,7 +234,7 @@ export class ECDH {
     validateString(curve, "curve");
     validateOneOf(curve, "curve", getCurves());
 
-    let c = ellipticCurves.find((x) => x.name == curve);
+    const c = ellipticCurves.find((x) => x.name == curve);
     if (c == undefined) {
       throw new Error("invalid curve");
     }
@@ -271,7 +271,7 @@ export class ECDH {
     _inputEncoding?: BinaryToTextEncoding,
     _outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    let secretBuf = Buffer.alloc(this.curve.sharedSecretSize);
+    const secretBuf = Buffer.alloc(this.curve.sharedSecretSize);
 
     if (this.curve.ephemeral) {
       ops.op_node_ecdh_compute_secret(
@@ -301,9 +301,13 @@ export class ECDH {
     _format?: ECDHKeyFormat,
   ): Buffer | string {
     encoding = encoding ?? "__buffer";
-    let pubbuf = Buffer.alloc(this.curve.publicKeySize);
-    let privbuf = Buffer.alloc(this.curve.privateKeySize);
-    let rid = ops.op_node_ecdh_generate_keys(this.curve.name, pubbuf, privbuf);
+    const pubbuf = Buffer.alloc(this.curve.publicKeySize);
+    const privbuf = Buffer.alloc(this.curve.privateKeySize);
+    const rid = ops.op_node_ecdh_generate_keys(
+      this.curve.name,
+      pubbuf,
+      privbuf,
+    );
 
     this.pubbuf = pubbuf;
     if (this.curve.ephemeral) {
@@ -312,8 +316,9 @@ export class ECDH {
       this.privbuf = privbuf;
     }
 
-    if (encoding !== undefined)
-          return pubbuf.toString(encoding);
+    if (encoding !== undefined) {
+      return pubbuf.toString(encoding);
+    }
     return pubbuf;
   }
 
@@ -321,11 +326,14 @@ export class ECDH {
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
     if (this.curve.ephemeral) {
-      throw new Error("Curves that use ephemeral ECDH cannot be queried for their private key");
+      throw new Error(
+        "Curves that use ephemeral ECDH cannot be queried for their private key",
+      );
     }
 
-    if (encoding !== undefined)
+    if (encoding !== undefined) {
       return this.privbuf.toString(encoding);
+    }
     return this.privbuf;
   }
 
@@ -335,8 +343,9 @@ export class ECDH {
     encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    if (encoding !== undefined)
+    if (encoding !== undefined) {
       return this.pubbuf.toString(encoding);
+    }
     return this.pubbuf;
   }
 
@@ -353,13 +362,14 @@ export class ECDH {
     }
 
     this.privbuf = privateKey;
-    let pubbuf = Buffer.alloc(this.curve.publicKeySize);
+    const pubbuf = Buffer.alloc(this.curve.publicKeySize);
 
     ops.op_node_ecdh_compute_public_key(this.curve.name, this.privbuf, pubbuf);
     this.pubbuf = pubbuf;
 
-    if (encoding !== undefined)
+    if (encoding !== undefined) {
       return this.pubbuf.toString(encoding);
+    }
     return this.pubbuf;
   }
 }
