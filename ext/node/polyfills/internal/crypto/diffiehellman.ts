@@ -297,9 +297,10 @@ export class ECDH {
   generateKeys(): Buffer;
   generateKeys(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   generateKeys(
-    _encoding?: BinaryToTextEncoding,
+    encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
+    encoding = encoding ?? "__buffer";
     let pubbuf = Buffer.alloc(this.curve.publicKeySize);
     let privbuf = Buffer.alloc(this.curve.privateKeySize);
     let rid = ops.op_node_ecdh_generate_keys(this.curve.name, pubbuf, privbuf);
@@ -311,21 +312,31 @@ export class ECDH {
       this.privbuf = privbuf;
     }
 
+    if (encoding !== undefined)
+          return pubbuf.toString(encoding);
     return pubbuf;
   }
 
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
-  getPrivateKey(_encoding?: BinaryToTextEncoding): Buffer | string {
+  getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (this.curve.ephemeral) {
+      throw new Error("Curves that use ephemeral ECDH cannot be queried for their private key");
+    }
+
+    if (encoding !== undefined)
+      return this.privbuf.toString(encoding);
     return this.privbuf;
   }
 
   getPublicKey(): Buffer;
   getPublicKey(encoding: BinaryToTextEncoding, format?: ECDHKeyFormat): string;
   getPublicKey(
-    _encoding?: BinaryToTextEncoding,
+    encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
+    if (encoding !== undefined)
+      return this.pubbuf.toString(encoding);
     return this.pubbuf;
   }
 
@@ -333,7 +344,7 @@ export class ECDH {
   setPrivateKey(privateKey: string, encoding: BinaryToTextEncoding): void;
   setPrivateKey(
     privateKey: ArrayBufferView | string,
-    _encoding?: BinaryToTextEncoding,
+    encoding?: BinaryToTextEncoding,
   ): Buffer | string {
     if (this.curve.ephemeral) {
       throw new Error(
@@ -347,6 +358,8 @@ export class ECDH {
     ops.op_node_ecdh_compute_public_key(this.curve.name, this.privbuf, pubbuf);
     this.pubbuf = pubbuf;
 
+    if (encoding !== undefined)
+      return this.pubbuf.toString(encoding);
     return this.pubbuf;
   }
 }
