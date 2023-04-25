@@ -18,25 +18,11 @@ impl op_string_length {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr(),
             enabled: true,
-<<<<<<< HEAD
-            fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
-                use deno_core::v8::fast_api::CType;
-                Some(
-                    deno_core::v8::fast_api::FastFunction::new(
-                        &[V8Value, SeqOneByteString, CallbackOptions],
-                        CType::Uint32,
-                        op_string_length_fast_fn as *const ::std::ffi::c_void,
-                    ),
-                )
-            },
-=======
             fast_fn: Some(
                 Box::new(op_string_length_fast {
                     _phantom: ::std::marker::PhantomData,
                 }),
             ),
->>>>>>> parent of b9a379093 (perf: `const` op declaration (#18288))
             is_async: false,
             is_unstable: false,
             is_v8: false,
