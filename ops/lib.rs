@@ -258,7 +258,7 @@ fn codegen_v8_async(
   let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, asyncness);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
-  let (pre_result, mut result_fut) = match asyncness {
+  let (_pre_result, mut _result_fut) = match asyncness {
     true => (
       quote! {},
       quote! { Self::call::<#type_params>(#args_head #args_tail).await; },
@@ -268,11 +268,11 @@ fn codegen_v8_async(
       quote! { result_fut.await; },
     ),
   };
-  let result_wrapper = match is_result(&f.sig.output) {
+  let _result_wrapper = match is_result(&f.sig.output) {
     true => {
       // Support `Result<impl Future<Output = Result<T, AnyError>> + 'static, AnyError>`
       if !asyncness {
-        result_fut = quote! { result_fut; };
+        _result_fut = quote! { result_fut; };
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
@@ -284,6 +284,75 @@ fn codegen_v8_async(
       }
     }
     false => quote! { let result = Ok(result); },
+  };
+
+  let wrapper = match (asyncness, is_result(&f.sig.output)) {
+    (true, true) => {
+      quote! {
+        let maybe_response = #core::_ops::queue_async_op2(
+          ctx,
+          scope,
+          #deferred,
+          realm_idx,
+          promise_id,
+          op_id,
+          Self::call::<#type_params>(#args_head #args_tail),
+        );
+      }
+    }
+    (true, false) => {
+      quote! {
+        let maybe_response = #core::_ops::queue_async_op2(
+          ctx,
+          scope,
+          #deferred,
+          realm_idx,
+          promise_id,
+          op_id,
+          async move {
+            Ok(Self::call::<#type_params>(#args_head #args_tail).await)
+          },
+        );
+      }
+    }
+    (false, true) => {
+      quote! {
+        let result = Self::call::<#type_params>(#args_head #args_tail);
+        let maybe_response = #core::_ops::queue_async_op2(
+          ctx,
+          scope,
+          #deferred,
+          realm_idx,
+          promise_id,
+          op_id,
+          async move {
+            match result {
+              Ok(fut) => fut.await,
+              Err(e) => Err(e),
+            }
+          },
+        );
+      }
+    }
+    (false, false) => {
+      quote! {
+        let result = Self::call::<#type_params>(#args_head #args_tail);
+        let maybe_response = #core::_ops::queue_async_op2(
+          ctx,
+          scope,
+          #deferred,
+          realm_idx,
+          promise_id,
+          op_id,
+          async move {
+            match result {
+              Ok(fut) => Ok(fut.await),
+              Err(e) => Err(e),
+            }
+          },
+        );
+      }
+    }
   };
 
   quote! {
@@ -312,18 +381,19 @@ fn codegen_v8_async(
     #arg_decls
 
     // Track async call & get copy of get_error_class_fn
-    let get_class = {
-      let state = ::std::cell::RefCell::borrow(&ctx.state);
-      state.tracker.track_async(op_id);
-      state.get_error_class_fn
-    };
+    // let get_class = {
+    //   let state = ::std::cell::RefCell::borrow(&ctx.state);
+    //   state.tracker.track_async(op_id);
+    //   state.get_error_class_fn
+    // };
 
-    #pre_result
-    let maybe_response = #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
-      let result = #result_fut
-      #result_wrapper
-      (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
-    });
+    // #pre_result
+    // let maybe_response = #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
+    //   let result = #result_fut
+    //   #result_wrapper
+    //   (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+    // });
+    #wrapper
 
     if let Some(response) = maybe_response {
       rv.set(response);

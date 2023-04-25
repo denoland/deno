@@ -167,6 +167,7 @@ pub struct JsRuntimeState {
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) pending_ops2: FuturesUnordered<OpCall2>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -344,6 +345,7 @@ impl JsRuntime {
       source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
+      pending_ops2: FuturesUnordered::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -1431,7 +1433,8 @@ impl EventLoopPendingState {
     }
 
     EventLoopPendingState {
-      has_pending_refed_ops: state.pending_ops.len() > num_unrefed_ops,
+      has_pending_refed_ops: state.pending_ops.len() + state.pending_ops2.len()
+        > num_unrefed_ops,
       has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
       has_pending_dyn_module_evaluation: !state
         .pending_dyn_mod_evaluate
@@ -2214,6 +2217,12 @@ impl JsRuntime {
         state.op_state.borrow().tracker.track_async_completed(op_id);
         responses_per_realm[realm_idx].push((promise_id, resp));
       }
+      while let Poll::Ready(Some(item)) = state.pending_ops2.poll_next_unpin(cx)
+      {
+        let (realm_idx, promise_id, op_id, resp) = item;
+        state.op_state.borrow().tracker.track_async_completed(op_id);
+        responses_per_realm[realm_idx].push((promise_id, resp));
+      }
     }
 
     // Handle responses for each realm.
@@ -2329,6 +2338,23 @@ impl JsRuntime {
             .unwrap(),
         });
       }
+      while let Poll::Ready(Some(item)) = state.pending_ops2.poll_next_unpin(cx)
+      {
+        let (realm_idx, promise_id, op_id, mut resp) = item;
+        debug_assert_eq!(
+          state.known_realms[realm_idx],
+          state.global_realm.as_ref().unwrap().context()
+        );
+        realm_state.unrefed_ops.remove(&promise_id);
+        state.op_state.borrow().tracker.track_async_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id).into());
+        args.push(match resp.to_v8(scope) {
+          Ok(v) => v,
+          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+            .to_v8(scope)
+            .unwrap(),
+        });
+      }
     }
 
     let has_tick_scheduled =
@@ -2386,7 +2412,7 @@ pub fn queue_async_op2<'s, R: serde::Serialize + 'static>(
   realm_idx: RealmIdx,
   promise_id: PromiseId,
   op_id: OpId,
-  op: impl Future<Output = Result<R, Error>>,
+  op: impl Future<Output = Result<R, Error>> + 'static,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
@@ -2397,10 +2423,10 @@ pub fn queue_async_op2<'s, R: serde::Serialize + 'static>(
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
 
-  foo(ctx, scope, deferred, realm_idx, promise_id, op_id, fut)
+  do_queue_async_op(ctx, scope, deferred, realm_idx, promise_id, op_id, fut)
 }
 
-fn foo<'s>(
+fn do_queue_async_op<'s>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,
   deferred: bool,
@@ -2424,24 +2450,24 @@ fn foo<'s>(
     Some(scope.get_current_context())
   );
 
-  match OpCall::eager(op) {
+  match OpCall2::eager(realm_idx, promise_id, op_id, op) {
     // If the result is ready we'll just return it straight to the caller, so
     // we don't have to invoke a JS callback to respond. // This works under the
     // assumption that `()` return value is serialized as `null`.
-    EagerPollResult::Ready((_, _, op_id, mut resp)) if !deferred => {
-      let resp = resp.to_v8(scope).unwrap();
+    EagerPollResult2::Ready(mut op_result) if !deferred => {
+      let resp = op_result.to_v8(scope).unwrap();
       ctx.state.borrow_mut().tracker.track_async_completed(op_id);
       return Some(resp);
     }
-    EagerPollResult::Ready(op) => {
-      let ready = OpCall::ready(op);
+    EagerPollResult2::Ready(op_result) => {
+      let ready = OpCall2::ready(realm_idx, promise_id, op_id, op_result);
       let mut state = runtime_state.borrow_mut();
-      state.pending_ops.push(ready);
+      state.pending_ops2.push(ready);
       state.have_unpolled_ops = true;
     }
-    EagerPollResult::Pending(op) => {
+    EagerPollResult2::Pending(op) => {
       let mut state = runtime_state.borrow_mut();
-      state.pending_ops.push(op);
+      state.pending_ops2.push(op);
       state.have_unpolled_ops = true;
     }
   }
@@ -2454,11 +2480,7 @@ pub fn queue_async_op<'s>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,
   deferred: bool,
-  realm_idx: RealmIdx,
-  promise_id: PromiseId,
-  op_id: OpId,
-  op: Pin<Box<dyn Future<Output = OpResult>>>,
-  // op2: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
+  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,

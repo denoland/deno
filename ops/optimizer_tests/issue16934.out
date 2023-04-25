@@ -79,28 +79,17 @@ impl send_stdin {
                 );
             }
         };
-        let get_class = {
-            let state = ::std::cell::RefCell::borrow(&ctx.state);
-            state.tracker.track_async(op_id);
-            state.get_error_class_fn
-        };
-        let maybe_response = deno_core::_ops::queue_async_op(
+        let maybe_response = deno_core::_ops::queue_async_op2(
             ctx,
             scope,
             false,
-            async move {
-                let result = Self::call(
-                        compile_error!("mutable opstate is not supported in async ops"),
-                        arg_0,
-                    )
-                    .await;
-                (
-                    realm_idx,
-                    promise_id,
-                    op_id,
-                    deno_core::_ops::to_op_result(get_class, result),
-                )
-            },
+            realm_idx,
+            promise_id,
+            op_id,
+            Self::call(
+                compile_error!("mutable opstate is not supported in async ops"),
+                arg_0,
+            ),
         );
         if let Some(response) = maybe_response {
             rv.set(response);

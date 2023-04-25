@@ -35,9 +35,9 @@ use v8::fast_api::CTypeInfo;
 pub struct OpCall<T>(MaybeDone<Pin<Box<dyn Future<Output = T>>>>);
 
 pub struct OpCall2 {
-  realm_ids: u32,
-  promise_id: i32,
-  op_id: u32,
+  realm_idx: RealmIdx,
+  promise_id: PromiseId,
+  op_id: OpId,
   fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 }
 
@@ -47,15 +47,15 @@ pub enum EagerPollResult<T> {
 }
 
 pub enum EagerPollResult2 {
-  Ready(T),
-  Pending(OpCall<T>),
+  Ready(OpResult),
+  Pending(OpCall2),
 }
 
 impl<T> OpCall<T> {
   /// Wraps a future, and polls the inner future immediately.
   /// This should be the default choice for ops.
   pub fn eager(fut: impl Future<Output = T> + 'static) -> EagerPollResult<T> {
-    let boxed = Box::pin_in(fut, Allocator) as Pin<Box<dyn Future<Output = T>>>;
+    let boxed = Box::pin(fut) as Pin<Box<dyn Future<Output = T>>>;
     let mut inner = maybe_done(boxed);
     let waker = noop_waker();
     let mut cx = Context::from_waker(&waker);
@@ -103,6 +103,95 @@ where
 {
   fn is_terminated(&self) -> bool {
     self.0.is_terminated()
+  }
+}
+
+impl OpCall2 {
+  /// Wraps a future, and polls the inner future immediately.
+  /// This should be the default choice for ops.
+  pub fn eager(
+    realm_idx: RealmIdx,
+    promise_id: PromiseId,
+    op_id: OpId,
+    fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
+  ) -> EagerPollResult2 {
+    let mut inner = maybe_done(fut);
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    let mut pinned = Pin::new(&mut inner);
+    let poll = pinned.as_mut().poll(&mut cx);
+    match poll {
+      Poll::Ready(_) => EagerPollResult2::Ready(pinned.take_output().unwrap()),
+      _ => EagerPollResult2::Pending(Self {
+        realm_idx,
+        promise_id,
+        op_id,
+        fut: inner,
+      }),
+    }
+  }
+
+  /// Wraps a future; the inner future is polled the usual way (lazily).
+  #[allow(dead_code)]
+  pub fn lazy(
+    realm_idx: RealmIdx,
+    promise_id: PromiseId,
+    op_id: OpId,
+    fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
+  ) -> Self {
+    let inner = maybe_done(fut);
+    Self {
+      realm_idx,
+      promise_id,
+      op_id,
+      fut: inner,
+    }
+  }
+
+  /// Create a future by specifying its output. This is basically the same as
+  /// `async { value }` or `futures::future::ready(value)`.
+  pub fn ready(
+    realm_idx: RealmIdx,
+    promise_id: PromiseId,
+    op_id: OpId,
+    value: OpResult,
+  ) -> Self {
+    Self {
+      realm_idx,
+      promise_id,
+      op_id,
+      fut: MaybeDone::Done(value),
+    }
+  }
+}
+
+impl Future for OpCall2 {
+  type Output = (RealmIdx, PromiseId, OpId, OpResult);
+
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    let realm_idx = self.realm_idx;
+    let promise_id = self.promise_id;
+    let op_id = self.op_id;
+    // TODO(piscisaureus): safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    let inner = unsafe { &mut self.get_unchecked_mut().fut };
+    let mut pinned = Pin::new(inner);
+    ready!(pinned.as_mut().poll(cx));
+    Poll::Ready((
+      realm_idx,
+      promise_id,
+      op_id,
+      pinned.as_mut().take_output().unwrap(),
+    ))
+  }
+}
+
+impl FusedFuture for OpCall2 {
+  fn is_terminated(&self) -> bool {
+    self.fut.is_terminated()
   }
 }
 
@@ -187,13 +276,13 @@ impl OpCtx {
     let mut fast_fn_c_info = None;
 
     if let Some(fast_fn) = &decl.fast_fn {
-      let args = CTypeInfo::new_from_slice(fast_fn.args());
-      let ret = CTypeInfo::new(fast_fn.return_type());
+      let args = CTypeInfo::new_from_slice(fast_fn.args);
+      let ret = CTypeInfo::new(fast_fn.return_type);
 
       // SAFETY: all arguments are coming from the trait and they have
       // static lifetime
       let c_fn = unsafe {
-        CFunctionInfo::new(args.as_ptr(), fast_fn.args().len(), ret.as_ptr())
+        CFunctionInfo::new(args.as_ptr(), fast_fn.args.len(), ret.as_ptr())
       };
       fast_fn_c_info = Some(c_fn);
     }

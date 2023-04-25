@@ -74,25 +74,14 @@ impl op_void_async {
                 return;
             }
         };
-        let get_class = {
-            let state = ::std::cell::RefCell::borrow(&ctx.state);
-            state.tracker.track_async(op_id);
-            state.get_error_class_fn
-        };
-        let maybe_response = deno_core::_ops::queue_async_op(
+        let maybe_response = deno_core::_ops::queue_async_op2(
             ctx,
             scope,
             false,
-            async move {
-                let result = Self::call().await;
-                let result = Ok(result);
-                (
-                    realm_idx,
-                    promise_id,
-                    op_id,
-                    deno_core::_ops::to_op_result(get_class, result),
-                )
-            },
+            realm_idx,
+            promise_id,
+            op_id,
+            async move { Ok(Self::call().await) },
         );
         if let Some(response) = maybe_response {
             rv.set(response);
