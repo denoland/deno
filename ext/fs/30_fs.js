@@ -7,12 +7,15 @@ const {
   ArrayPrototypeFilter,
   Date,
   DatePrototype,
+  DatePrototypeGetTime,
   Error,
   Function,
   MathTrunc,
   ObjectEntries,
   ObjectPrototypeIsPrototypeOf,
   ObjectValues,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   SymbolAsyncIterator,
   SymbolIterator,
   Uint32Array,
@@ -232,8 +235,8 @@ function createByteStruct(types) {
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
 
-    const optional = type.startsWith("?");
-    if (optional) type = type.slice(1);
+    const optional = StringPrototypeStartsWith(type, "?");
+    if (optional) type = StringPrototypeSlice(type, 1);
 
     if (type == "u64") {
       if (!optional) {
@@ -369,7 +372,7 @@ async function link(oldpath, newpath) {
 
 function toUnixTimeFromEpoch(value) {
   if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-    const time = value.valueOf();
+    const time = DatePrototypeGetTime(value);
     const seconds = MathTrunc(time / 1e3);
     const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
 

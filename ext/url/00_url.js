@@ -17,13 +17,14 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ObjectKeys,
-  Uint32Array,
   SafeArrayIterator,
   StringPrototypeSlice,
+  StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  Uint32Array,
 } = primordials;
 
 const _list = Symbol("list");
@@ -448,7 +449,10 @@ class URL {
 
   #hasAuthority() {
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L824
-    return this.#serialization.slice(this.#schemeEnd).startsWith("://");
+    return StringPrototypeStartsWith(
+      StringPrototypeSlice(this.#serialization, this.#schemeEnd),
+      "://",
+    );
   }
 
   /** @return {string} */
@@ -456,7 +460,7 @@ class URL {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L263
     return this.#fragmentStart
-      ? trim(this.#serialization.slice(this.#fragmentStart))
+      ? trim(StringPrototypeSlice(this.#serialization, this.#fragmentStart))
       : "";
   }
 
@@ -485,7 +489,11 @@ class URL {
   get host() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L101
-    return this.#serialization.slice(this.#hostStart, this.#pathStart);
+    return StringPrototypeSlice(
+      this.#serialization,
+      this.#hostStart,
+      this.#pathStart,
+    );
   }
 
   /** @param {string} value */
@@ -513,7 +521,11 @@ class URL {
   get hostname() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L988
-    return this.#serialization.slice(this.#hostStart, this.#hostEnd);
+    return StringPrototypeSlice(
+      this.#serialization,
+      this.#hostStart,
+      this.#hostEnd,
+    );
   }
 
   /** @param {string} value */
@@ -562,7 +574,11 @@ class URL {
   get origin() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/origin.rs#L14
-    const scheme = this.#serialization.slice(0, this.#schemeEnd);
+    const scheme = StringPrototypeSlice(
+      this.#serialization,
+      0,
+      this.#schemeEnd,
+    );
     if (
       scheme === "http" || scheme === "https" || scheme === "ftp" ||
       scheme === "ws" || scheme === "wss"
@@ -591,7 +607,8 @@ class URL {
       this.#usernameEnd !== this.#serialization.length &&
       this.#serialization[this.#usernameEnd] === ":"
     ) {
-      return this.#serialization.slice(
+      return StringPrototypeSlice(
+        this.#serialization,
         this.#usernameEnd + 1,
         this.#hostStart - 1,
       );
@@ -625,11 +642,15 @@ class URL {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L1203
     if (!this.#queryStart && !this.#fragmentStart) {
-      return this.#serialization.slice(this.#pathStart);
+      return StringPrototypeSlice(this.#serialization, this.#pathStart);
     }
 
     const nextComponentStart = this.#queryStart || this.#fragmentStart;
-    return this.#serialization.slice(this.#pathStart, nextComponentStart);
+    return StringPrototypeSlice(
+      this.#serialization,
+      this.#pathStart,
+      nextComponentStart,
+    );
   }
 
   /** @param {string} value */
@@ -658,9 +679,14 @@ class URL {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L196
     if (this.#port === NO_PORT) {
-      return this.#serialization.slice(this.#hostEnd, this.#pathStart);
+      return StringPrototypeSlice(
+        this.#serialization,
+        this.#hostEnd,
+        this.#pathStart,
+      );
     } else {
-      return this.#serialization.slice(
+      return StringPrototypeSlice(
+        this.#serialization,
         this.#hostEnd + 1, /* : */
         this.#pathStart,
       );
@@ -692,7 +718,11 @@ class URL {
   get protocol() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L56
-    return this.#serialization.slice(0, this.#schemeEnd + 1 /* : */);
+    return StringPrototypeSlice(
+      this.#serialization,
+      0,
+      this.#schemeEnd + 1, /* : */
+    );
   }
 
   /** @param {string} value */
@@ -723,7 +753,9 @@ class URL {
     const afterPath = this.#queryStart || this.#fragmentStart ||
       this.#serialization.length;
     const afterQuery = this.#fragmentStart || this.#serialization.length;
-    return trim(this.#serialization.slice(afterPath, afterQuery));
+    return trim(
+      StringPrototypeSlice(this.#serialization, afterPath, afterQuery),
+    );
   }
 
   /** @param {string} value */
@@ -757,7 +789,8 @@ class URL {
       this.#hasAuthority() &&
       this.#usernameEnd > this.#schemeEnd + schemeSeperatorLen
     ) {
-      return this.#serialization.slice(
+      return StringPrototypeSlice(
+        this.#serialization,
         this.#schemeEnd + schemeSeperatorLen,
         this.#usernameEnd,
       );

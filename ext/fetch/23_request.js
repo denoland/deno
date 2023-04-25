@@ -37,6 +37,7 @@ const {
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
+  StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   TypeError,
@@ -90,7 +91,11 @@ function processUrlList(urlList, urlListProcessed) {
  */
 function newInnerRequest(method, url, headerList, body, maybeBlob) {
   let blobUrlEntry = null;
-  if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
+  if (
+    maybeBlob &&
+    typeof url === "string" &&
+    StringPrototypeStartsWith(url, "blob:")
+  ) {
     blobUrlEntry = blobFromObjectUrl(url);
   }
   return {

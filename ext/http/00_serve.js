@@ -33,14 +33,15 @@ import {
 } from "ext:deno_web/06_streams.js";
 const {
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
   SafeSet,
   SafeSetIterator,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
   TypeError,
-  Uint8ArrayPrototype,
   Uint8Array,
+  Uint8ArrayPrototype,
 } = primordials;
 
 const _upgraded = Symbol("_upgraded");
@@ -525,7 +526,7 @@ async function serve(arg1, arg2) {
     if (req === 0xffffffff) {
       break;
     }
-    callback(req).catch((error) => {
+    PromisePrototypeCatch(callback(req), (error) => {
       // Abnormal exit
       console.error(
         "Terminating Deno.serve loop due to unexpected error",
