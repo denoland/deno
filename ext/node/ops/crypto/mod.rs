@@ -20,6 +20,7 @@ use std::borrow::Cow;
 use std::future::Future;
 use std::rc::Rc;
 
+use p224::NistP224;
 use p256::elliptic_curve::ecdh::EphemeralSecret;
 use p256::NistP256;
 use p384::NistP384;
@@ -926,6 +927,12 @@ impl Resource for NodeCryptoWrapper<NistP384> {
   }
 }
 
+impl Resource for NodeCryptoWrapper<NistP224> {
+  fn name(&self) -> Cow<str> {
+    "node-crypto-secret-nist-p224".into()
+  }
+}
+
 #[op]
 pub fn op_node_ecdh_generate_keys(
   state: &mut OpState,
@@ -960,6 +967,16 @@ pub fn op_node_ecdh_generate_keys(
       let rid = state
         .resource_table
         .add(NodeCryptoWrapper::<NistP384> { secret: privkey });
+
+      Ok(rid)
+    }
+    "secp224r1" => {
+      let privkey = p224::ecdh::EphemeralSecret::random(&mut rng);
+      let pubkey = privkey.public_key();
+      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      let rid = state
+        .resource_table
+        .add(NodeCryptoWrapper::<NistP224> { secret: privkey });
 
       Ok(rid)
     }
@@ -1010,6 +1027,18 @@ pub fn op_node_ecdh_compute_secret(
       let es = &ncp.secret;
       let public_key =
         p384::PublicKey::from_sec1_bytes(their_pub).expect("bad public key");
+      let shared_secret = es.diffie_hellman(&public_key);
+      secret.copy_from_slice(shared_secret.raw_secret_bytes());
+      Ok(())
+    }
+    "secp224r1" => {
+      let ncp = state
+        .resource_table
+        .get::<NodeCryptoWrapper<NistP224>>(resource_id)
+        .expect("Invalid resource id");
+      let es = &ncp.secret;
+      let public_key =
+        p224::PublicKey::from_sec1_bytes(their_pub).expect("bad public key");
       let shared_secret = es.diffie_hellman(&public_key);
       secret.copy_from_slice(shared_secret.raw_secret_bytes());
       Ok(())

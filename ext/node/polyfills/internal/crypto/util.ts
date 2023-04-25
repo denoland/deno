@@ -83,6 +83,13 @@ export const ellipticCurves: Array<EllipticCurve> = [
     publicKeySize: 97,
     sharedSecretSize: 48,
   }, // NIST P-384 EC
+  {
+    name: "secp224r1",
+    ephemeral: true,
+    privateKeySize: 28,
+    publicKeySize: 57,
+    sharedSecretSize: 28,
+  }, // NIST P-224 EC
 ];
 
 // deno-fmt-ignore

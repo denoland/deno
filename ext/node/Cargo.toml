@@ -38,6 +38,7 @@ num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
 num-traits = "0.2.14"
 once_cell.workspace = true
+p224 = { version = "0.13.0", features = ["ecdh"] }
 p256 = { version = "0.13.2", features = ["ecdh"] }
 p384 = { version = "0.13.0", features = ["ecdh"] }
 path-clean = "=0.1.0"

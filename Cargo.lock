@@ -1169,6 +1169,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "once_cell",
+ "p224",
  "p256 0.13.2",
  "p384 0.13.0",
  "path-clean",
@@ -3201,6 +3202,18 @@ name = "outref"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4030760ffd992bef45b0ae3f10ce1aba99e33464c90d14dd7c039884963ddc7a"
+
+[[package]]
+name = "p224"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30c06436d66652bc2f01ade021592c80a2aad401570a18aa18b82e440d2b9aa1"
+dependencies = [
+ "ecdsa 0.16.6",
+ "elliptic-curve 0.13.4",
+ "primeorder",
+ "sha2",
+]
 
 [[package]]
 name = "p256"
