@@ -319,6 +319,10 @@ export class ECDH {
     privateKey: ArrayBufferView | string,
     _encoding?: BinaryToTextEncoding,
   ): Buffer | string {
+    if (this.ephemeral_secret) {
+      throw new Error("Curve " + this.curve + " does not support setPrivateKey");
+    }
+
     this.privbuf = privateKey;
     let pubbuf = Buffer.alloc(65);
 
