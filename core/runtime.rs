@@ -37,6 +37,7 @@ use futures::future::Future;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use futures::task::noop_waker;
 use futures::task::AtomicWaker;
 use smallvec::SmallVec;
 use std::any::Any;
@@ -45,7 +46,6 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::option::Option;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -2380,7 +2380,9 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops.push(OpCall::lazy(ctx, promise_id, fut));
+  state
+    .pending_ops
+    .push(OpCall::pending(ctx, promise_id, fut));
   state.have_unpolled_ops = true;
 }
 
@@ -2391,25 +2393,6 @@ pub fn queue_async_op<'s, R: serde::Serialize + 'static>(
   deferred: bool,
   promise_id: PromiseId,
   op: impl Future<Output = Result<R, Error>> + 'static,
-) -> Option<v8::Local<'s, v8::Value>> {
-  let get_class = {
-    let state = RefCell::borrow(&ctx.state);
-    state.tracker.track_async(ctx.id);
-    state.get_error_class_fn
-  };
-  let fut = op
-    .map(|result| crate::_ops::to_op_result(get_class, result))
-    .boxed_local();
-
-  do_queue_async_op(ctx, scope, deferred, promise_id, fut)
-}
-
-fn do_queue_async_op<'s>(
-  ctx: &OpCtx,
-  scope: &'s mut v8::HandleScope,
-  deferred: bool,
-  promise_id: PromiseId,
-  op: Pin<Box<dyn Future<Output = OpResult>>>,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
@@ -2426,29 +2409,63 @@ fn do_queue_async_op<'s>(
     Some(scope.get_current_context())
   );
 
-  match OpCall::eager(ctx, promise_id, op) {
-    // If the result is ready we'll just return it straight to the caller, so
-    // we don't have to invoke a JS callback to respond. // This works under the
-    // assumption that `()` return value is serialized as `null`.
-    EagerPollResult::Ready(mut op_result) if !deferred => {
+  let get_class = {
+    let state = RefCell::borrow(&ctx.state);
+    state.tracker.track_async(ctx.id);
+    state.get_error_class_fn
+  };
+
+  let mut fut = op
+    .map(|result| crate::_ops::to_op_result(get_class, result))
+    .boxed_local();
+
+  // All ops are polled immediately
+  let waker = noop_waker();
+  let mut cx = Context::from_waker(&waker);
+  let poll_result = fut.as_mut().poll(&mut cx);
+  // If the op is ready and is not marked as deferred we can immediately return
+  // the result.
+  if !deferred {
+    if let Poll::Ready(mut op_result) = poll_result {
       let resp = op_result.to_v8(scope).unwrap();
       ctx.state.borrow_mut().tracker.track_async_completed(ctx.id);
       return Some(resp);
     }
-    EagerPollResult::Ready(op_result) => {
-      let ready = OpCall::ready(ctx, promise_id, op_result);
-      let mut state = runtime_state.borrow_mut();
-      state.pending_ops.push(ready);
-      state.have_unpolled_ops = true;
-    }
-    EagerPollResult::Pending(op) => {
-      let mut state = runtime_state.borrow_mut();
-      state.pending_ops.push(op);
-      state.have_unpolled_ops = true;
-    }
   }
+  let op_call = match poll_result {
+    Poll::Pending => OpCall::pending(ctx, promise_id, fut),
+    Poll::Ready(op_result) => OpCall::ready(ctx, promise_id, op_result),
+  };
 
+  // Otherwise we will push it to the `pending_ops` and let it be polled again
+  // or resolved on the next tick of the event loop.
+  do_queue_async_op(ctx, scope, op_call);
   None
+}
+
+fn do_queue_async_op(
+  ctx: &OpCtx,
+  scope: &mut v8::HandleScope,
+  op_call: OpCall,
+) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
+  // which it is invoked. Otherwise, we might have cross-realm object exposure.
+  // deno_core doesn't currently support such exposure, even though embedders
+  // can cause them, so we panic in debug mode (since the check is expensive).
+  debug_assert_eq!(
+    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
+    Some(scope.get_current_context())
+  );
+
+  let mut state = runtime_state.borrow_mut();
+  state.pending_ops.push(op_call);
+  state.have_unpolled_ops = true;
 }
 
 #[cfg(test)]

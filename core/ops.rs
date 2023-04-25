@@ -8,11 +8,9 @@ use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
-use futures::future::maybe_done;
 use futures::future::FusedFuture;
 use futures::future::MaybeDone;
 use futures::ready;
-use futures::task::noop_waker;
 use futures::Future;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -22,7 +20,6 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
-use std::task::Context;
 use std::task::Poll;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
@@ -43,47 +40,18 @@ pub struct OpCall {
   fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 }
 
-pub enum EagerPollResult {
-  Ready(OpResult),
-  Pending(OpCall),
-}
-
 impl OpCall {
-  /// Wraps a future, and polls the inner future immediately.
-  /// This should be the default choice for ops.
-  pub fn eager(
-    op_ctx: &OpCtx,
-    promise_id: PromiseId,
-    fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
-  ) -> EagerPollResult {
-    let mut inner = maybe_done(fut);
-    let waker = noop_waker();
-    let mut cx = Context::from_waker(&waker);
-    let mut pinned = Pin::new(&mut inner);
-    let poll = pinned.as_mut().poll(&mut cx);
-    match poll {
-      Poll::Ready(_) => EagerPollResult::Ready(pinned.take_output().unwrap()),
-      _ => EagerPollResult::Pending(Self {
-        realm_idx: op_ctx.realm_idx,
-        op_id: op_ctx.id,
-        promise_id,
-        fut: inner,
-      }),
-    }
-  }
-
   /// Wraps a future; the inner future is polled the usual way (lazily).
-  pub fn lazy(
+  pub fn pending(
     op_ctx: &OpCtx,
     promise_id: PromiseId,
     fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
   ) -> Self {
-    let inner = maybe_done(fut);
     Self {
       realm_idx: op_ctx.realm_idx,
       op_id: op_ctx.id,
       promise_id,
-      fut: inner,
+      fut: MaybeDone::Future(fut),
     }
   }
 
