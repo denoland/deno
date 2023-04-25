@@ -17,7 +17,6 @@ use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
-use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::ThreadRng;
@@ -102,7 +101,6 @@ fn op_open_sync<Fs, P>(
 ) -> Result<ResourceId, AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -114,7 +112,7 @@ where
   let fs = state.borrow::<Fs>();
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
 
-  let rid = state.resource_table.add(file);
+  let rid = state.resource_table.add_rc_dyn(file.into_resource());
   Ok(rid)
 }
 
@@ -126,7 +124,6 @@ async fn op_open_async<Fs, P>(
 ) -> Result<ResourceId, AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -143,7 +140,10 @@ where
     .await
     .context_path("open", &path)?;
 
-  let rid = state.borrow_mut().resource_table.add(file);
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add_rc_dyn(file.into_resource());
   Ok(rid)
 }
 
@@ -1348,10 +1348,9 @@ fn op_seek_sync<Fs>(
 ) -> Result<u64, AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
   let pos = to_seek_from(offset, whence)?;
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   let cursor = file.seek_sync(pos)?;
   Ok(cursor)
 }
@@ -1365,10 +1364,9 @@ async fn op_seek_async<Fs>(
 ) -> Result<u64, AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
   let pos = to_seek_from(offset, whence)?;
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   let cursor = file.seek_async(pos).await?;
   Ok(cursor)
 }
@@ -1380,9 +1378,8 @@ fn op_fdatasync_sync<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   file.datasync_sync()?;
   Ok(())
 }
@@ -1394,9 +1391,8 @@ async fn op_fdatasync_async<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   file.datasync_async().await?;
   Ok(())
 }
@@ -1408,9 +1404,8 @@ fn op_fsync_sync<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   file.sync_sync()?;
   Ok(())
 }
@@ -1422,9 +1417,8 @@ async fn op_fsync_async<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   file.sync_async().await?;
   Ok(())
 }
@@ -1437,9 +1431,8 @@ fn op_fstat_sync<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   let stat = file.stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -1453,9 +1446,8 @@ async fn op_fstat_async<Fs>(
 ) -> Result<SerializableStat, AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   let stat = file.stat_async().await?;
   Ok(stat.into())
 }
@@ -1468,10 +1460,9 @@ fn op_flock_sync<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
   check_unstable(state, "Deno.flockSync");
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   file.lock_sync(exclusive)?;
   Ok(())
 }
@@ -1484,10 +1475,9 @@ async fn op_flock_async<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
   check_unstable2(&state, "Deno.flock");
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   file.lock_async(exclusive).await?;
   Ok(())
 }
@@ -1499,10 +1489,9 @@ fn op_funlock_sync<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
   check_unstable(state, "Deno.funlockSync");
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   file.unlock_sync()?;
   Ok(())
 }
@@ -1514,10 +1503,9 @@ async fn op_funlock_async<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
   check_unstable2(&state, "Deno.funlock");
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   file.unlock_async().await?;
   Ok(())
 }
@@ -1530,9 +1518,8 @@ fn op_ftruncate_sync<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   file.truncate_sync(len)?;
   Ok(())
 }
@@ -1545,9 +1532,8 @@ async fn op_ftruncate_async<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   file.truncate_async(len).await?;
   Ok(())
 }
@@ -1563,9 +1549,8 @@ fn op_futime_sync<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.resource_table.get::<Fs::File>(rid)?;
+  let file = state.resource_table.get::<dyn File>(rid)?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
@@ -1581,9 +1566,8 @@ async fn op_futime_async<Fs>(
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
 {
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+  let file = state.borrow().resource_table.get::<dyn File>(rid)?;
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;

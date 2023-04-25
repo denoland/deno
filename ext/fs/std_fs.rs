@@ -30,8 +30,6 @@ pub struct StdFs;
 
 #[async_trait::async_trait(?Send)]
 impl FileSystem for StdFs {
-  type File = StdFileResource;
-
   fn cwd(&self) -> FsResult<PathBuf> {
     std::env::current_dir().map_err(Into::into)
   }
@@ -80,20 +78,20 @@ impl FileSystem for StdFs {
     &self,
     path: impl AsRef<Path>,
     options: OpenOptions,
-  ) -> FsResult<Self::File> {
+  ) -> FsResult<Rc<dyn File>> {
     let opts = open_options(options);
     let std_file = opts.open(path)?;
-    Ok(StdFileResource::fs_file(std_file))
+    Ok(Rc::new(StdFileResource::fs_file(std_file)))
   }
   async fn open_async(
     &self,
     path: PathBuf,
     options: OpenOptions,
-  ) -> FsResult<Self::File> {
+  ) -> FsResult<Rc<dyn File>> {
     let opts = open_options(options);
     let std_file =
       tokio::task::spawn_blocking(move || opts.open(path)).await??;
-    Ok(StdFileResource::fs_file(std_file))
+    Ok(Rc::new(StdFileResource::fs_file(std_file)))
   }
 
   fn mkdir_sync(
@@ -925,5 +923,9 @@ impl File for StdFileResource {
       filetime::set_file_handle_times(file, Some(atime), Some(mtime))
     })
     .await
+  }
+
+  fn into_resource(self: Rc<Self>) -> Rc<dyn deno_core::Resource> {
+    self
   }
 }

@@ -18,7 +18,6 @@ pub use crate::std_fs::StdFs;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use deno_core::Resource;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
@@ -88,7 +87,6 @@ pub(crate) fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
 deno_core::extension!(deno_fs,
   deps = [ deno_web ],
   parameters = [Fs: FileSystem, P: FsPermissions],
-  bounds = [Fs::File: Resource],
   ops = [
     op_cwd<Fs, P>,
     op_umask<Fs>,

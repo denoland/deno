@@ -194,13 +194,15 @@ pub trait Resource: Any + 'static {
 
 impl dyn Resource {
   #[inline(always)]
-  fn is<T: Resource>(&self) -> bool {
+  fn is<T: Resource + ?Sized>(&self) -> bool {
     self.type_id() == TypeId::of::<T>()
   }
 
   #[inline(always)]
   #[allow(clippy::needless_lifetimes)]
-  pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
+  pub fn downcast_rc<'a, T: Resource + ?Sized>(
+    self: &'a Rc<Self>,
+  ) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;
       // TODO(piscisaureus): safety comment
@@ -272,7 +274,10 @@ impl ResourceTable {
   /// Returns a reference counted pointer to the resource of type `T` with the
   /// given `rid`. If `rid` is not present or has a type different than `T`,
   /// this function returns `None`.
-  pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<Rc<T>, Error> {
+  pub fn get<T: Resource + ?Sized>(
+    &self,
+    rid: ResourceId,
+  ) -> Result<Rc<T>, Error> {
     self
       .index
       .get(&rid)

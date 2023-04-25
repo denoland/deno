@@ -105,7 +105,7 @@ impl From<io::Error> for FsError {
 pub type FsResult<T> = Result<T, FsError>;
 
 #[async_trait::async_trait(?Send)]
-pub trait File {
+pub trait File: deno_core::Resource {
   fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()>;
   async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()>;
 
@@ -149,12 +149,13 @@ pub trait File {
     mtime_secs: i64,
     mtime_nanos: u32,
   ) -> FsResult<()>;
+
+  // workaround until trait upcasting is supported in Rust
+  fn into_resource(self: Rc<Self>) -> Rc<dyn deno_core::Resource>;
 }
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: Clone {
-  type File: File;
-
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
   fn chdir(&self, path: impl AsRef<Path>) -> FsResult<()>;
@@ -164,12 +165,12 @@ pub trait FileSystem: Clone {
     &self,
     path: impl AsRef<Path>,
     options: OpenOptions,
-  ) -> FsResult<Self::File>;
+  ) -> FsResult<Rc<dyn File>>;
   async fn open_async(
     &self,
     path: PathBuf,
     options: OpenOptions,
-  ) -> FsResult<Self::File>;
+  ) -> FsResult<Rc<dyn File>>;
 
   fn mkdir_sync(
     &self,
@@ -295,7 +296,6 @@ pub trait FileSystem: Clone {
     data: &[u8],
   ) -> FsResult<()> {
     let file = self.open_sync(path, options)?;
-    let file = Rc::new(file);
     if let Some(mode) = options.mode {
       file.clone().chmod_sync(mode)?;
     }
@@ -309,7 +309,6 @@ pub trait FileSystem: Clone {
     data: Vec<u8>,
   ) -> FsResult<()> {
     let file = self.open_async(path, options).await?;
-    let file = Rc::new(file);
     if let Some(mode) = options.mode {
       file.clone().chmod_async(mode).await?;
     }
@@ -320,14 +319,12 @@ pub trait FileSystem: Clone {
   fn read_file_sync(&self, path: impl AsRef<Path>) -> FsResult<Vec<u8>> {
     let options = OpenOptions::read();
     let file = self.open_sync(path, options)?;
-    let file = Rc::new(file);
     let buf = file.read_all_sync()?;
     Ok(buf)
   }
   async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
     let options = OpenOptions::read();
     let file = self.clone().open_async(path, options).await?;
-    let file = Rc::new(file);
     let buf = file.read_all_async().await?;
     Ok(buf)
   }
