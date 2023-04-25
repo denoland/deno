@@ -1253,7 +1253,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
 ) {
   let cloneResult;
   try {
-    if (ObjectPrototypeIsPrototypeOf(buffer, ArrayBufferPrototype)) {
+    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
       cloneResult = ArrayBufferPrototypeSlice(
         buffer,
         byteOffset,
