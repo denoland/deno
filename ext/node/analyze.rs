@@ -113,7 +113,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<String> = HashSet::default();
@@ -220,7 +220,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     referrer: &ModuleSpecifier,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
   ) -> Result<PathBuf, AnyError> {
     if specifier.starts_with('/') {
       todo!();
