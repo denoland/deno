@@ -278,8 +278,8 @@ class AtomicOperation {
   }
 }
 
-const MIN_U64 = 0n;
-const MAX_U64 = 0xffffffffffffffffn;
+const MIN_U64 = BigInt("0");
+const MAX_U64 = BigInt("0xffffffffffffffff");
 
 class KvU64 {
   readonly value: bigint;
