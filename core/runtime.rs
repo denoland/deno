@@ -2405,6 +2405,34 @@ pub fn queue_fast_async_op(
 }
 
 #[inline]
+pub fn queue_fast_async_op2<R: serde::Serialize + 'static>(
+  ctx: &OpCtx,
+  realm_idx: RealmIdx,
+  promise_id: PromiseId,
+  op_id: OpId,
+  op: impl Future<Output = Result<R, Error>> + 'static,
+) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+  let get_class = {
+    let state = RefCell::borrow(&ctx.state);
+    state.tracker.track_async(op_id);
+    state.get_error_class_fn
+  };
+  let fut = op
+    .map(|result| crate::_ops::to_op_result(get_class, result))
+    .boxed_local();
+  let mut state = runtime_state.borrow_mut();
+  state
+    .pending_ops2
+    .push(OpCall2::lazy(realm_idx, promise_id, op_id, fut));
+  state.have_unpolled_ops = true;
+}
+
+#[inline]
 pub fn queue_async_op2<'s, R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,

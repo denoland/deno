@@ -117,16 +117,11 @@ fn op_async_result_fast_fn<'scope>(
     };
     let state = __ctx.state.clone();
     let result = op_async_result::call(state, rid);
-    let __op_id = __ctx.id;
-    let __state = ::std::cell::RefCell::borrow(&__ctx.state);
-    __state.tracker.track_async(__op_id);
-    let realm_idx = __ctx.realm_idx;
-    let __get_class = __state.get_error_class_fn;
-    let result = _ops::queue_fast_async_op(
+    let result = _ops::queue_fast_async_op2(
         __ctx,
-        async move {
-            let result = result.await;
-            (realm_idx, __promise_id, __op_id, _ops::to_op_result(__get_class, result))
-        },
+        __ctx.realm_idx,
+        __promise_id,
+        __ctx.id,
+        result,
     );
 }
