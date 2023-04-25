@@ -96,7 +96,7 @@ pub fn op_node_x509_ca(
 pub fn op_node_x509_check_email(
   state: &mut OpState,
   rid: u32,
-  email: &str,
+  email: String,
 ) -> Result<bool, AnyError> {
   let cert = state
     .resource_table

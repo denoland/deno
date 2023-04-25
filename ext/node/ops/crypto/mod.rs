@@ -77,10 +77,10 @@ pub fn op_node_check_prime_bytes_async(
 }
 
 #[op(fast)]
-pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
+pub fn op_node_create_hash(state: &mut OpState, algorithm: String) -> u32 {
   state
     .resource_table
-    .add(match digest::Context::new(algorithm) {
+    .add(match digest::Context::new(&algorithm) {
       Ok(context) => context,
       Err(_) => return 0,
     })
@@ -100,7 +100,7 @@ pub fn op_node_hash_update(state: &mut OpState, rid: u32, data: &[u8]) -> bool {
 pub fn op_node_hash_update_str(
   state: &mut OpState,
   rid: u32,
-  data: &str,
+  data: String,
 ) -> bool {
   let context = match state.resource_table.get::<digest::Context>(rid) {
     Ok(context) => context,
@@ -216,12 +216,12 @@ pub fn op_node_public_encrypt(
 #[op(fast)]
 pub fn op_node_create_cipheriv(
   state: &mut OpState,
-  algorithm: &str,
+  algorithm: String,
   key: &[u8],
   iv: &[u8],
 ) -> u32 {
   state.resource_table.add(
-    match cipher::CipherContext::new(algorithm, key, iv) {
+    match cipher::CipherContext::new(&algorithm, key, iv) {
       Ok(context) => context,
       Err(_) => return 0,
     },
@@ -259,12 +259,12 @@ pub fn op_node_cipheriv_final(
 #[op(fast)]
 pub fn op_node_create_decipheriv(
   state: &mut OpState,
-  algorithm: &str,
+  algorithm: String,
   key: &[u8],
   iv: &[u8],
 ) -> u32 {
   state.resource_table.add(
-    match cipher::DecipherContext::new(algorithm, key, iv) {
+    match cipher::DecipherContext::new(&algorithm, key, iv) {
       Ok(context) => context,
       Err(_) => return 0,
     },
@@ -302,16 +302,16 @@ pub fn op_node_decipheriv_final(
 #[op]
 pub fn op_node_sign(
   digest: &[u8],
-  digest_type: &str,
+  digest_type: String,
   key: StringOrBuffer,
-  key_type: &str,
-  key_format: &str,
+  key_type: String,
+  key_format: String,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  match key_type {
+  match key_type.as_str() {
     "rsa" => {
       use rsa::pkcs1v15::SigningKey;
       use signature::hazmat::PrehashSigner;
-      let key = match key_format {
+      let key = match key_format.as_str() {
         "pem" => RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)
           .map_err(|_| type_error("Invalid RSA private key"))?,
         // TODO(kt3k): Support der and jwk formats
@@ -323,7 +323,7 @@ pub fn op_node_sign(
         }
       };
       Ok(
-        match digest_type {
+        match digest_type.as_str() {
           "sha224" => {
             let signing_key = SigningKey::<sha2::Sha224>::new_with_prefix(key);
             signing_key.sign_prehash(digest)?.to_vec()
@@ -360,17 +360,17 @@ pub fn op_node_sign(
 #[op]
 fn op_node_verify(
   digest: &[u8],
-  digest_type: &str,
+  digest_type: String,
   key: StringOrBuffer,
-  key_type: &str,
-  key_format: &str,
+  key_type: String,
+  key_format: String,
   signature: &[u8],
 ) -> Result<bool, AnyError> {
-  match key_type {
+  match key_type.as_str() {
     "rsa" => {
       use rsa::pkcs1v15::VerifyingKey;
       use signature::hazmat::PrehashVerifier;
-      let key = match key_format {
+      let key = match key_format.as_str() {
         "pem" => RsaPublicKey::from_public_key_pem((&key).try_into()?)
           .map_err(|_| type_error("Invalid RSA public key"))?,
         // TODO(kt3k): Support der and jwk formats
@@ -381,7 +381,7 @@ fn op_node_verify(
           )))
         }
       };
-      Ok(match digest_type {
+      Ok(match digest_type.as_str() {
         "sha224" => VerifyingKey::<sha2::Sha224>::new_with_prefix(key)
           .verify_prehash(digest, &signature.to_vec().try_into()?)
           .is_ok(),
@@ -413,7 +413,7 @@ fn pbkdf2_sync(
   password: &[u8],
   salt: &[u8],
   iterations: u32,
-  digest: &str,
+  digest: String,
   derived_key: &mut [u8],
 ) -> Result<(), AnyError> {
   macro_rules! pbkdf2_hmac {
@@ -422,7 +422,7 @@ fn pbkdf2_sync(
     }};
   }
 
-  match digest {
+  match digest.as_str() {
     "md4" => pbkdf2_hmac!(md4::Md4),
     "md5" => pbkdf2_hmac!(md5::Md5),
     "ripemd160" => pbkdf2_hmac!(ripemd::Ripemd160),
@@ -442,7 +442,7 @@ pub fn op_node_pbkdf2(
   password: StringOrBuffer,
   salt: StringOrBuffer,
   iterations: u32,
-  digest: &str,
+  digest: String,
   derived_key: &mut [u8],
 ) -> bool {
   pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
@@ -458,7 +458,7 @@ pub async fn op_node_pbkdf2_async(
 ) -> Result<ZeroCopyBuf, AnyError> {
   tokio::task::spawn_blocking(move || {
     let mut derived_key = vec![0; keylen];
-    pbkdf2_sync(&password, &salt, iterations, &digest, &mut derived_key)
+    pbkdf2_sync(&password, &salt, iterations, digest, &mut derived_key)
       .map(|_| derived_key.into())
   })
   .await?
@@ -512,13 +512,13 @@ fn hkdf_sync(
 
 #[op]
 pub fn op_node_hkdf(
-  hash: &str,
+  hash: String,
   ikm: &[u8],
   salt: &[u8],
   info: &[u8],
   okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  hkdf_sync(hash, ikm, salt, info, okm)
+  hkdf_sync(&hash, ikm, salt, info, okm)
 }
 
 #[op]
@@ -662,9 +662,9 @@ fn ec_generate(
 
 #[op]
 pub fn op_node_ec_generate(
-  named_curve: &str,
+  named_curve: String,
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  ec_generate(named_curve)
+  ec_generate(&named_curve)
 }
 
 #[op]
@@ -757,9 +757,9 @@ fn dh_generate_group(
 
 #[op]
 pub fn op_node_dh_generate_group(
-  group_name: &str,
+  group_name: String,
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  dh_generate_group(group_name)
+  dh_generate_group(&group_name)
 }
 
 #[op]
