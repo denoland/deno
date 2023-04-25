@@ -706,9 +706,9 @@ fn resolve_non_graph_specifier_types(
 }
 
 #[op]
-fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
+fn op_is_node_file(state: &mut OpState, path: String) -> bool {
   let state = state.borrow::<State>();
-  match ModuleSpecifier::parse(path) {
+  match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
       .maybe_node_resolver
       .as_ref()

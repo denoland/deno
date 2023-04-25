@@ -52,7 +52,7 @@ function opUrlReparse(href, setter, value) {
     href,
     setter,
     value,
-    componentsBuf,
+    componentsBuf.buffer,
   );
   return getSerialization(status, href);
 }
@@ -64,7 +64,13 @@ function opUrlReparse(href, setter, value) {
  */
 function opUrlParse(href, maybeBase) {
   if (maybeBase === undefined) {
-    return ops.op_url_parse(href, componentsBuf);
+    status = ops.op_url_parse(href, componentsBuf.buffer);
+  } else {
+    status = ops.op_url_parse_with_base(
+      href,
+      maybeBase,
+      componentsBuf.buffer,
+    );
   }
   return ops.op_url_parse_with_base(
     href,

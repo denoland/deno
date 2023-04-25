@@ -150,8 +150,8 @@ fn size_check(input: usize) -> Result<(), AnyError> {
 #[op]
 pub fn op_webstorage_set(
   state: &mut OpState,
-  key: &str,
-  value: &str,
+  key: String,
+  value: String,
   persistent: bool,
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
@@ -190,7 +190,7 @@ pub fn op_webstorage_get(
 #[op]
 pub fn op_webstorage_remove(
   state: &mut OpState,
-  key_name: &str,
+  key_name: String,
   persistent: bool,
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
