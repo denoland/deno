@@ -30,6 +30,7 @@ import {
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
+  readableStreamClose
 } from "ext:deno_web/06_streams.js";
 const {
   ObjectPrototypeIsPrototypeOf,
@@ -332,26 +333,58 @@ function fastSyncResponseOrStream(req, respBody) {
 
 async function asyncResponse(responseBodies, req, status, stream) {
   const reader = stream.getReader();
-  // Optimize for streams that are done in zero or one packets. We will not
-  // have to allocate a resource in this case.
-  const { value: value1, done: done1 } = await reader.read();
-  if (done1) {
-    core.ops.op_set_promise_complete(req, status);
-    return;
-  }
-  const { value: value2, done: done2 } = await reader.read();
-  if (done2) {
-    core.ops.op_set_response_body_bytes(req, value1);
-    core.ops.op_set_promise_complete(req, status);
-    return;
-  }
+  let responseRid;
+  try{
+    // IMPORTANT: We get a performance boost from this optimization, but V8 is very
+    // sensitive to the order and structure. Benchmark any changes to this code as it
+    // can easily halve performance!
 
-  const responseRid = core.ops.op_set_response_body_stream(req);
-  SetPrototypeAdd(responseBodies, responseRid);
-  core.ops.op_set_promise_complete(req, status);
-  try {
-    // Write our first packets
-    await core.writeAll(responseRid, value1);
+    // Optimize for streams that are done in zero or one packets. We will not
+    // have to allocate a resource in this case. 
+    const { value: value1, done: done1 } = await reader.read();
+    if (done1) {
+      core.ops.op_set_promise_complete(req, status);
+      readableStreamClose(reader);
+      return;
+    }
+
+    // The second value cannot block indefinitely, as someone may be waiting on a response
+    // of the first packet that may influence this packet. We set this timeout arbitrarily to 250ms
+    // and we race it.
+    let timeoutPromise;
+    const timeout = setTimeout(() => {
+      responseRid = core.ops.op_set_response_body_stream(req);
+      SetPrototypeAdd(responseBodies, responseRid);
+      core.ops.op_set_promise_complete(req, status);
+      timeoutPromise = core.writeAll(responseRid, value1);
+    }, 250);
+    const { value: value2, done: done2 } = await reader.read();
+
+    if (timeoutPromise) {
+      await timeoutPromise;
+      if (done2) {
+        reader.releaseLock();
+        core.tryClose(responseRid);
+        SetPrototypeDelete(responseBodies, responseRid);
+        return;
+      }
+    } else {
+      clearTimeout(timeout);
+
+      if (done2) {
+        core.ops.op_set_response_body_bytes(req, value1);
+        core.ops.op_set_promise_complete(req, status);
+        // reader.releaseLock();
+        return;
+      }
+
+      responseRid = core.ops.op_set_response_body_stream(req);
+      SetPrototypeAdd(responseBodies, responseRid);
+      core.ops.op_set_promise_complete(req, status);
+      // Write our first packet
+      await core.writeAll(responseRid, value1);
+    }
+
     await core.writeAll(responseRid, value2);
     while (true) {
       const { value, done } = await reader.read();
@@ -361,11 +394,13 @@ async function asyncResponse(responseBodies, req, status, stream) {
       await core.writeAll(responseRid, value);
     }
   } catch (error) {
+    console.log(error);
     await reader.cancel(error);
-  } finally {
+  }
+  reader.releaseLock();
+  if (responseRid) {
     core.tryClose(responseRid);
     SetPrototypeDelete(responseBodies, responseRid);
-    reader.releaseLock();
   }
 }
 
