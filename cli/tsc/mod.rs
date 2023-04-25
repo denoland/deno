@@ -368,9 +368,9 @@ fn normalize_specifier(
 }
 
 #[op]
-fn op_create_hash(s: &mut OpState, text: &str) -> String {
+fn op_create_hash(s: &mut OpState, text: String) -> String {
   let state = s.borrow_mut::<State>();
-  get_hash(text, state.hash_data)
+  get_hash(&text, state.hash_data)
 }
 
 #[derive(Debug, Deserialize)]
@@ -984,7 +984,8 @@ mod tests {
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(123), None).await;
-    let actual = op_create_hash::call(&mut state, "some sort of content");
+    let actual =
+      op_create_hash::call(&mut state, "some sort of content".to_string());
     assert_eq!(actual, "11905938177474799758");
   }
 
