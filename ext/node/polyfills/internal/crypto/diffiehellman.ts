@@ -16,6 +16,7 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   getDefaultEncoding,
   getCurves,
+  isCurveEphemeral,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
 import type {
@@ -226,12 +227,15 @@ export class ECDH {
   curve: string; // the selected curve
   privbuf: Buffer; // the private key
   pubbuf: Buffer; // the public key
+  ephemeral_secret: boolean; // if true the secret is in the resource table
+  ephemeral_secret_resource: number; // the resource id in the table
 
   constructor(curve: string) {
     validateString(curve, "curve");
     validateOneOf(curve, "curve", getCurves());
 
     this.curve = curve;
+    this.ephemeral_secret = isCurveEphemeral(this.curve);
   }
 
   static convertKey(
@@ -265,7 +269,14 @@ export class ECDH {
   ): Buffer | string {
     let secretBuf = Buffer.alloc(32);
 
-    ops.op_node_ecdh_compute_secret(this.curve, this.privbuf, otherPublicKey, secretBuf);
+    if (this.ephemeral_secret) {
+      console.log("ephemeral curve: ", this.curve);
+      ops.op_node_ecdh_compute_secret(this.curve, this.ephemeral_secret_resource, null, otherPublicKey, secretBuf);
+    } else {
+      console.log("computeSecret/NOT ephemeral curve:", this.curve);
+      console.log(this.privbuf);
+      ops.op_node_ecdh_compute_secret(this.curve, 0, this.privbuf, otherPublicKey, secretBuf);
+    }
 
     return secretBuf;
   }
@@ -278,11 +289,17 @@ export class ECDH {
   ): Buffer | string {
     let pubbuf = Buffer.alloc(65);
     let privbuf = Buffer.alloc(32);
-
-    ops.op_node_ecdh_generate_keys(this.curve, pubbuf, privbuf);
+    let rid = ops.op_node_ecdh_generate_keys(this.curve, pubbuf, privbuf);
 
     this.pubbuf = pubbuf;
-    this.privbuf = privbuf;
+    if (this.ephemeral_secret) {
+      console.log("genKeys/ephemeral curve: ", this.curve);
+      this.ephemeral_secret_resource = rid;
+    } else {
+      console.log("genKeys/NOT ephemeral curve: ", this.curve);
+      this.privbuf = privbuf;
+    }
+
     return pubbuf;
   }
 

@@ -47,10 +47,15 @@ const digestAlgorithms = [
 ];
 
 const ellipticCurves = [
-  "secp256k1", // Weirerstrass-class EC used by Bitcoin
+  "secp256k1", // Weierstrass-class EC used by Bitcoin
   "prime256v1", // NIST P-256 EC
   "secp256r1" // NIST P-256 EC (same as above)
 ];
+
+const ephemeralEllipticCurves = [
+  "prime256v1",
+  "secp256r1"
+]
 
 // deno-fmt-ignore
 const supportedCiphers = [
@@ -122,6 +127,10 @@ export function getHashes(): readonly string[] {
 
 export function getCurves(): readonly string[] {
   return ellipticCurves;
+}
+
+export function isCurveEphemeral(curve: string): boolean {
+  return ephemeralEllipticCurves.includes(curve);
 }
 
 export interface SecureHeapUsage {

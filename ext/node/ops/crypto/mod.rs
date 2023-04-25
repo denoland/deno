@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
@@ -15,9 +16,12 @@ use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
+use std::borrow::Cow;
 use std::future::Future;
 use std::rc::Rc;
 
+use p256::elliptic_curve::ecdh::EphemeralSecret;
+use p256::NistP256;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
@@ -905,12 +909,23 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
+struct NodeCryptoWrapper<T: elliptic_curve::CurveArithmetic> {
+  secret: EphemeralSecret<T>,
+}
+
+impl Resource for NodeCryptoWrapper<NistP256> {
+  fn name(&self) -> Cow<str> {
+    "node-crypto-secret-nist-p256".into()
+  }
+}
+
 #[op]
 pub fn op_node_ecdh_generate_keys(
+  state: &mut OpState,
   curve: &str,
   pubbuf: &mut [u8],
   privbuf: &mut [u8],
-) -> Result<(), AnyError> {
+) -> Result<ResourceId, AnyError> {
   let mut rng = rand::thread_rng();
   match curve {
     "secp256k1" => {
@@ -919,7 +934,17 @@ pub fn op_node_ecdh_generate_keys(
       pubbuf.copy_from_slice(&pubkey.serialize_uncompressed());
       privbuf.copy_from_slice(&privkey.secret_bytes());
 
-      Ok(())
+      Ok(0)
+    }
+    "prime256v1" | "secp256r1" => {
+      let privkey = p256::ecdh::EphemeralSecret::random(&mut rng);
+      let pubkey = privkey.public_key();
+      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      let rid = state
+        .resource_table
+        .add(NodeCryptoWrapper::<NistP256> { secret: privkey });
+
+      Ok(rid)
     }
     &_ => todo!(),
   }
@@ -927,20 +952,36 @@ pub fn op_node_ecdh_generate_keys(
 
 #[op]
 pub fn op_node_ecdh_compute_secret(
+  state: &mut OpState,
   curve: &str,
-  this_priv: &mut [u8],
+  resource_id: u32,
+  this_priv: Option<&mut [u8]>,
   their_pub: &mut [u8],
   secret: &mut [u8],
 ) -> Result<(), AnyError> {
   match curve {
     "secp256k1" => {
-      let this_secret_key = SecretKey::from_slice(this_priv).unwrap();
+      let this_secret_key =
+        SecretKey::from_slice(this_priv.expect("no private key provided?"))
+          .unwrap();
       let their_public_key =
         secp256k1::PublicKey::from_slice(their_pub).unwrap();
       let shared_secret =
         SharedSecret::new(&their_public_key, &this_secret_key);
 
       secret.copy_from_slice(&shared_secret.secret_bytes());
+      Ok(())
+    }
+    "prime256v1" | "secp256r1" => {
+      let ncp = state
+        .resource_table
+        .get::<NodeCryptoWrapper<NistP256>>(resource_id)
+        .expect("Invalid resource id");
+      let es = &ncp.secret;
+      let public_key =
+        p256::PublicKey::from_sec1_bytes(their_pub).expect("bad public key");
+      let shared_secret = es.diffie_hellman(&public_key);
+      secret.copy_from_slice(shared_secret.raw_secret_bytes());
       Ok(())
     }
     &_ => todo!(),
