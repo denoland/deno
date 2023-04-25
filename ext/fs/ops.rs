@@ -75,7 +75,10 @@ where
 }
 
 #[op]
-fn op_chdir<Fs, P>(state: &mut OpState, directory: &str) -> Result<(), AnyError>
+fn op_chdir<Fs, P>(
+  state: &mut OpState,
+  directory: String,
+) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
@@ -289,7 +292,7 @@ where
 #[op]
 fn op_remove_sync<Fs, P>(
   state: &mut OpState,
-  path: &str,
+  path: String,
   recursive: bool,
 ) -> Result<(), AnyError>
 where
@@ -339,8 +342,8 @@ where
 #[op]
 fn op_copy_file_sync<Fs, P>(
   state: &mut OpState,
-  from: &str,
-  to: &str,
+  from: String,
+  to: String,
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
@@ -636,8 +639,8 @@ where
 #[op]
 fn op_link_sync<Fs, P>(
   state: &mut OpState,
-  oldpath: &str,
-  newpath: &str,
+  oldpath: String,
+  newpath: String,
 ) -> Result<(), AnyError>
 where
   Fs: FileSystem + 'static,
@@ -692,8 +695,8 @@ where
 #[op]
 fn op_symlink_sync<Fs, P>(
   state: &mut OpState,
-  oldpath: &str,
-  newpath: &str,
+  oldpath: String,
+  newpath: String,
   file_type: Option<FsFileType>,
 ) -> Result<(), AnyError>
 where
@@ -795,7 +798,7 @@ where
 #[op]
 fn op_truncate_sync<Fs, P>(
   state: &mut OpState,
-  path: &str,
+  path: String,
   len: u64,
 ) -> Result<(), AnyError>
 where
@@ -845,7 +848,7 @@ where
 #[op]
 fn op_utime_sync<Fs, P>(
   state: &mut OpState,
-  path: &str,
+  path: String,
   atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
