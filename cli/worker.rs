@@ -11,6 +11,7 @@ use deno_core::located_script_name;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
+use deno_runtime::deno_fs::StdFs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::fmt_errors::format_js_error;
@@ -356,6 +357,7 @@ pub async fn create_custom_worker(
   let worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
     permissions,
+    StdFs,
     options,
   );
 
@@ -481,6 +483,7 @@ fn create_web_worker_callback(
     WebWorker::bootstrap_from_options(
       args.name,
       args.permissions,
+      StdFs,
       args.main_module,
       args.worker_id,
       options,
@@ -496,6 +499,7 @@ mod tests {
   use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+  use deno_runtime::deno_fs::StdFs;
   use deno_runtime::deno_web::BlobStore;
   use deno_runtime::permissions::Permissions;
 
@@ -532,7 +536,7 @@ mod tests {
       stdio: Default::default(),
     };
 
-    MainWorker::bootstrap_from_options(main_module, permissions, options)
+    MainWorker::bootstrap_from_options(main_module, permissions, StdFs, options)
   }
 
   #[tokio::test]

@@ -30,7 +30,6 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
-use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_tls::rustls::RootCertStore;
@@ -176,20 +175,22 @@ impl Default for WorkerOptions {
 }
 
 impl MainWorker {
-  pub fn bootstrap_from_options(
+  pub fn bootstrap_from_options<Fs: deno_fs::FileSystem + 'static>(
     main_module: ModuleSpecifier,
     permissions: PermissionsContainer,
+    fs: Fs,
     options: WorkerOptions,
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
-    let mut worker = Self::from_options(main_module, permissions, options);
+    let mut worker = Self::from_options(main_module, permissions, fs, options);
     worker.bootstrap(&bootstrap_options);
     worker
   }
 
-  pub fn from_options(
+  pub fn from_options<Fs: deno_fs::FileSystem + 'static>(
     main_module: ModuleSpecifier,
     permissions: PermissionsContainer,
+    fs: Fs,
     mut options: WorkerOptions,
   ) -> Self {
     deno_core::extension!(deno_permissions_worker,
@@ -266,7 +267,7 @@ impl MainWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
+      deno_fs::deno_fs::init_ops::<Fs, PermissionsContainer>(unstable, fs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
         options.node_fs,

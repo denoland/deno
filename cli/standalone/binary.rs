@@ -17,7 +17,6 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
-use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::permissions::PermissionsOptions;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -56,6 +55,8 @@ pub struct Metadata {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
+  /// Whether this uses a node_modules directory (true) or the global cache (false).
+  pub node_modules_dir: bool,
   pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
 }
 
@@ -411,6 +412,7 @@ impl DenoCompileBinaryWriter {
       ca_data,
       entrypoint: entrypoint.clone(),
       maybe_import_map,
+      node_modules_dir: self.npm_resolver.node_modules_path().is_some(),
       npm_snapshot,
     };
 

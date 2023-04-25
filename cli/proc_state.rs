@@ -101,11 +101,18 @@ impl ProcState {
   pub async fn from_cli_options(
     options: Arc<CliOptions>,
   ) -> Result<Self, AnyError> {
-    Self::build_with_sender(options, None).await
+    Self::build(options, Arc::new(deno_node::RealFs), None).await
   }
 
   pub async fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     Self::from_cli_options(Arc::new(CliOptions::from_flags(flags)?)).await
+  }
+
+  pub async fn from_flags_and_node_fs(
+    flags: Flags,
+    node_fs: Arc<dyn deno_node::NodeFs>,
+  ) -> Result<Self, AnyError> {
+    Self::build(Arc::new(CliOptions::from_flags(flags)?), node_fs, None).await
   }
 
   pub async fn from_flags_for_file_watcher(
@@ -114,9 +121,12 @@ impl ProcState {
   ) -> Result<Self, AnyError> {
     // resolve the config each time
     let cli_options = Arc::new(CliOptions::from_flags(flags)?);
-    let ps =
-      Self::build_with_sender(cli_options, Some(files_to_watch_sender.clone()))
-        .await?;
+    let ps = Self::build(
+      cli_options,
+      Arc::new(deno_node::RealFs),
+      Some(files_to_watch_sender.clone()),
+    )
+    .await?;
     ps.init_watcher();
     Ok(ps)
   }
@@ -183,8 +193,9 @@ impl ProcState {
     }
   }
 
-  async fn build_with_sender(
+  async fn build(
     cli_options: Arc<CliOptions>,
+    node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
   ) -> Result<Self, AnyError> {
     let dir = cli_options.resolve_deno_dir()?;
@@ -227,8 +238,10 @@ impl ProcState {
     let lockfile = cli_options.maybe_lock_file();
 
     let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
-    let npm_cache = Arc::new(NpmCache::from_deno_dir(
-      &dir,
+    let npm_cache = Arc::new(NpmCache::new(
+      cli_options
+        .npm_cache_dir()
+        .unwrap_or_else(|| dir.npm_folder_path()),
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
@@ -247,10 +260,9 @@ impl ProcState {
       npm_snapshot,
       lockfile.as_ref().cloned(),
     ));
-    let node_fs = Arc::new(deno_node::RealFs);
     let npm_fs_resolver = create_npm_fs_resolver(
       node_fs.clone(),
-      npm_cache,
+      npm_cache.clone(),
       &progress_bar,
       npm_registry_url,
       npm_resolution.clone(),
@@ -301,12 +313,6 @@ impl ProcState {
       emit_cache.clone(),
       parsed_source_cache.clone(),
       emit_options,
-    ));
-    let npm_cache = Arc::new(NpmCache::from_deno_dir(
-      &dir,
-      cli_options.cache_setting(),
-      http_client.clone(),
-      progress_bar.clone(),
     ));
     let file_fetcher = Arc::new(file_fetcher);
     let node_analysis_cache =

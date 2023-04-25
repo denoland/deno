@@ -34,7 +34,6 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
-use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_tls::rustls::RootCertStore;
@@ -351,23 +350,31 @@ pub struct WebWorkerOptions {
 }
 
 impl WebWorker {
-  pub fn bootstrap_from_options(
+  pub fn bootstrap_from_options<Fs: deno_fs::FileSystem + 'static>(
     name: String,
     permissions: PermissionsContainer,
+    fs: Fs,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     let bootstrap_options = options.bootstrap.clone();
-    let (mut worker, handle) =
-      Self::from_options(name, permissions, main_module, worker_id, options);
+    let (mut worker, handle) = Self::from_options(
+      name,
+      permissions,
+      fs,
+      main_module,
+      worker_id,
+      options,
+    );
     worker.bootstrap(&bootstrap_options);
     (worker, handle)
   }
 
-  pub fn from_options(
+  pub fn from_options<Fs: deno_fs::FileSystem + 'static>(
     name: String,
     permissions: PermissionsContainer,
+    fs: Fs,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
     mut options: WebWorkerOptions,
@@ -441,7 +448,7 @@ impl WebWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
+      deno_fs::deno_fs::init_ops::<Fs, PermissionsContainer>(unstable, fs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
         options.node_fs,

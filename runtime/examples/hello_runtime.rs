@@ -66,6 +66,7 @@ async fn main() -> Result<(), AnyError> {
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
     permissions,
+    deno_fs::StdFs,
     options,
   );
   worker.execute_main_module(&main_module).await?;

@@ -2,6 +2,7 @@
 
 use crate::args::CaData;
 use crate::args::Flags;
+use crate::args::NodeModulesDirOption;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
@@ -38,6 +39,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 mod binary;
+mod file_system;
 mod virtual_fs;
 
 pub use binary::extract_standalone;
@@ -45,6 +47,8 @@ pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
 use self::binary::Metadata;
+use self::binary::NPM_VFS;
+use self::file_system::DenoCompileFileSystem;
 
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
@@ -87,6 +91,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let is_data_uri = get_source_from_data_url(module_specifier).ok();
+    eprintln!("LOADING: {}", module_specifier.as_str());
     let module = self
       .eszip
       .get_module(module_specifier.as_str())
@@ -141,6 +146,17 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
     log_level: metadata.log_level,
     ca_stores: metadata.ca_stores.clone(),
     ca_data: metadata.ca_data.clone().map(CaData::Bytes),
+    node_modules_dir: if metadata.node_modules_dir {
+      Some(NodeModulesDirOption::Path(NPM_VFS.root().to_path_buf()))
+    } else {
+      None
+    },
+    npm_cache_dir: if metadata.node_modules_dir {
+      None
+    } else {
+      Some(NPM_VFS.root().to_path_buf())
+    },
+    npm_snapshot: metadata.npm_snapshot.clone(),
     ..Default::default()
   }
 }
@@ -155,13 +171,16 @@ fn web_worker_callback() -> Arc<WorkerEventCb> {
 fn create_web_worker_callback(
   ps: &ProcState,
   module_loader: &Rc<EmbeddedModuleLoader>,
+  file_system: &DenoCompileFileSystem,
 ) -> Arc<CreateWebWorkerCb> {
   let ps = ps.clone();
   let module_loader = module_loader.as_ref().clone();
+  let file_system = file_system.clone();
   Arc::new(move |args| {
     let module_loader = Rc::new(module_loader.clone());
 
-    let create_web_worker_cb = create_web_worker_callback(&ps, &module_loader);
+    let create_web_worker_cb =
+      create_web_worker_callback(&ps, &module_loader, &file_system);
     let web_worker_cb = web_worker_callback();
 
     let options = WebWorkerOptions {
@@ -212,6 +231,7 @@ fn create_web_worker_callback(
     WebWorker::bootstrap_from_options(
       args.name,
       args.permissions,
+      file_system.clone(),
       args.main_module,
       args.worker_id,
       options,
@@ -225,7 +245,9 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
-  let ps = ProcState::from_flags(flags).await?;
+  let ps =
+    ProcState::from_flags_and_node_fs(flags, Arc::new(DenoCompileFileSystem))
+      .await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &metadata.permissions,
   )?);
@@ -246,7 +268,9 @@ pub async fn run(
       },
     ),
   });
-  let create_web_worker_cb = create_web_worker_callback(&ps, &module_loader);
+  let file_system = DenoCompileFileSystem;
+  let create_web_worker_cb =
+    create_web_worker_callback(&ps, &module_loader, &file_system);
   let web_worker_cb = web_worker_callback();
 
   v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
@@ -301,6 +325,7 @@ pub async fn run(
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
     permissions,
+    file_system,
     options,
   );
   worker.execute_main_module(main_module).await?;

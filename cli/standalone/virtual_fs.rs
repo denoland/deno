@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_runtime::deno_fs::FsStat;
 use serde::Deserialize;
 use serde::Serialize;
@@ -407,13 +408,24 @@ impl VfsRoot {
 }
 
 pub struct FileBackedVfs {
-  file: File,
+  file: Mutex<File>,
   fs_root: VfsRoot,
 }
 
 impl FileBackedVfs {
   pub fn new(file: File, fs_root: VfsRoot) -> Self {
-    Self { file, fs_root }
+    Self {
+      file: Mutex::new(file),
+      fs_root,
+    }
+  }
+
+  pub fn root(&self) -> &Path {
+    &self.fs_root.root
+  }
+
+  pub fn is_path_within(&self, path: &Path) -> bool {
+    path.starts_with(&self.fs_root.root)
   }
 
   pub fn symlink_metadata(&self, path: &Path) -> std::io::Result<FsStat> {
@@ -431,7 +443,7 @@ impl FileBackedVfs {
     Ok(path.to_path_buf())
   }
 
-  pub fn read_to_string(&mut self, path: &Path) -> std::io::Result<String> {
+  pub fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
     let (_, entry) = self.fs_root.find_entry(path)?;
     let file = match entry {
       VfsEntryRef::Dir(_) => {
@@ -443,11 +455,13 @@ impl FileBackedVfs {
       VfsEntryRef::Symlink(_) => unreachable!(),
       VfsEntryRef::File(file) => file,
     };
-    self.file.seek(SeekFrom::Start(
+    let mut fs_file = self.file.lock();
+    fs_file.seek(SeekFrom::Start(
       self.fs_root.start_file_offset + file.offset,
     ))?;
     let mut buf = vec![0; file.len as usize];
-    self.file.read_exact(&mut buf)?;
+    fs_file.read_exact(&mut buf)?;
+    drop(fs_file); // drop lock
     String::from_utf8(buf).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidData,

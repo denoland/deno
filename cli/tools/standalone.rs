@@ -2,7 +2,6 @@
 
 use crate::args::CompileFlags;
 use crate::args::Flags;
-use crate::graph_util::error_for_any_npm_specifier;
 use crate::standalone::is_standalone_binary;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;

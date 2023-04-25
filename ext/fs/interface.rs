@@ -154,7 +154,7 @@ pub trait File {
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: Clone {
-  type File: File;
+  type File: File + deno_core::Resource;
 
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
@@ -175,13 +175,13 @@ pub trait FileSystem: Clone {
   fn mkdir_sync(
     &self,
     path: impl AsRef<Path>,
-    recusive: bool,
+    recursive: bool,
     mode: u32,
   ) -> FsResult<()>;
   async fn mkdir_async(
     &self,
     path: PathBuf,
-    recusive: bool,
+    recursive: bool,
     mode: u32,
   ) -> FsResult<()>;
 
