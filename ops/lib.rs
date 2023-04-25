@@ -258,34 +258,6 @@ fn codegen_v8_async(
   let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, asyncness);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
-  let (_pre_result, mut _result_fut) = match asyncness {
-    true => (
-      quote! {},
-      quote! { Self::call::<#type_params>(#args_head #args_tail).await; },
-    ),
-    false => (
-      quote! { let result_fut = Self::call::<#type_params>(#args_head #args_tail); },
-      quote! { result_fut.await; },
-    ),
-  };
-  let _result_wrapper = match is_result(&f.sig.output) {
-    true => {
-      // Support `Result<impl Future<Output = Result<T, AnyError>> + 'static, AnyError>`
-      if !asyncness {
-        _result_fut = quote! { result_fut; };
-        quote! {
-          let result = match result {
-            Ok(fut) => fut.await,
-            Err(e) => return (realm_idx, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
-          };
-        }
-      } else {
-        quote! {}
-      }
-    }
-    false => quote! { let result = Ok(result); },
-  };
-
   let wrapper = match (asyncness, is_result(&f.sig.output)) {
     (true, true) => {
       quote! {
