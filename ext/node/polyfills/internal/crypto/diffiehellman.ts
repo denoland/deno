@@ -270,11 +270,8 @@ export class ECDH {
     let secretBuf = Buffer.alloc(32);
 
     if (this.ephemeral_secret) {
-      console.log("ephemeral curve: ", this.curve);
       ops.op_node_ecdh_compute_secret(this.curve, this.ephemeral_secret_resource, null, otherPublicKey, secretBuf);
     } else {
-      console.log("computeSecret/NOT ephemeral curve:", this.curve);
-      console.log(this.privbuf);
       ops.op_node_ecdh_compute_secret(this.curve, 0, this.privbuf, otherPublicKey, secretBuf);
     }
 
@@ -293,10 +290,8 @@ export class ECDH {
 
     this.pubbuf = pubbuf;
     if (this.ephemeral_secret) {
-      console.log("genKeys/ephemeral curve: ", this.curve);
       this.ephemeral_secret_resource = rid;
     } else {
-      console.log("genKeys/NOT ephemeral curve: ", this.curve);
       this.privbuf = privbuf;
     }
 

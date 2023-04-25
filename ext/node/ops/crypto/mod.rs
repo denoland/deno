@@ -955,15 +955,16 @@ pub fn op_node_ecdh_compute_secret(
   state: &mut OpState,
   curve: &str,
   resource_id: u32,
-  this_priv: Option<&mut [u8]>,
+  this_priv: Option<ZeroCopyBuf>,
   their_pub: &mut [u8],
   secret: &mut [u8],
 ) -> Result<(), AnyError> {
   match curve {
     "secp256k1" => {
-      let this_secret_key =
-        SecretKey::from_slice(this_priv.expect("no private key provided?"))
-          .unwrap();
+      let this_secret_key = SecretKey::from_slice(
+        this_priv.expect("no private key provided?").as_ref(),
+      )
+      .unwrap();
       let their_public_key =
         secp256k1::PublicKey::from_slice(their_pub).unwrap();
       let shared_secret =
