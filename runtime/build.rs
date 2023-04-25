@@ -122,10 +122,7 @@ mod startup_snapshot {
   }
 
   impl deno_node::NodePermissions for Permissions {
-    fn check_read(
-      &mut self,
-      _p: &Path,
-    ) -> Result<(), deno_core::error::AnyError> {
+    fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
   }

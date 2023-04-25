@@ -639,7 +639,7 @@ fn resolve_graph_specifier_types(
         let maybe_resolution = node_resolver.resolve_npm_reference(
           &module.nv_reference,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
@@ -679,7 +679,7 @@ fn resolve_non_graph_specifier_types(
           specifier,
           referrer,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )
         .ok()
         .flatten(),
@@ -692,7 +692,7 @@ fn resolve_non_graph_specifier_types(
     let maybe_resolution = node_resolver.resolve_npm_req_reference(
       &npm_ref,
       NodeResolutionMode::Types,
-      &mut PermissionsContainer::allow_all(),
+      &PermissionsContainer::allow_all(),
     )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,

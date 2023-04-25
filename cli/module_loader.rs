@@ -450,10 +450,10 @@ impl ModuleLoader for CliModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let mut permissions = if matches!(kind, ResolutionKind::DynamicImport) {
-      self.dynamic_permissions.clone()
+    let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
+      &self.dynamic_permissions
     } else {
-      self.root_permissions.clone()
+      &self.root_permissions
     };
 
     // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
@@ -469,7 +469,7 @@ impl ModuleLoader for CliModuleLoader {
             specifier,
             referrer,
             NodeResolutionMode::Execution,
-            &mut permissions,
+            permissions,
           ))
           .with_context(|| {
             format!("Could not resolve '{specifier}' from '{referrer}'.")
@@ -494,7 +494,7 @@ impl ModuleLoader for CliModuleLoader {
                 self.node_resolver.resolve_npm_reference(
                   &module.nv_reference,
                   NodeResolutionMode::Execution,
-                  &mut permissions,
+                  permissions,
                 ),
               )
               .with_context(|| {
@@ -556,7 +556,7 @@ impl ModuleLoader for CliModuleLoader {
               self.node_resolver.resolve_npm_req_reference(
                 &reference,
                 NodeResolutionMode::Execution,
-                &mut permissions,
+                permissions,
               ),
             )
             .with_context(|| format!("Could not resolve '{reference}'."));

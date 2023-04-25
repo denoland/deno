@@ -65,7 +65,7 @@ impl PackageJson {
   pub fn load(
     fs: &dyn NodeFs,
     resolver: &dyn NpmResolver,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;

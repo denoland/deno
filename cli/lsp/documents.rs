@@ -1074,7 +1074,7 @@ impl Documents {
                 &specifier,
                 referrer,
                 NodeResolutionMode::Types,
-                &mut PermissionsContainer::allow_all(),
+                &PermissionsContainer::allow_all(),
               )
               .ok()
               .flatten(),
@@ -1461,7 +1461,7 @@ fn node_resolve_npm_req_ref(
         .resolve_npm_req_reference(
           &npm_req_ref,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )
         .ok()
         .flatten(),

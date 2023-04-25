@@ -32,11 +32,8 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = {
-    let resolver = state.borrow::<Arc<dyn NpmResolver>>();
-    resolver.clone()
-  };
-  let permissions = state.borrow_mut::<P>();
+  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let permissions = state.borrow::<P>();
   resolver.ensure_read_permission(permissions, file_path)
 }
 
@@ -98,7 +95,7 @@ pub fn op_require_node_module_paths<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(
     &from,
@@ -267,7 +264,7 @@ where
 {
   let path = PathBuf::from(path);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
   if let Ok(metadata) = fs.metadata(&path) {
     if metadata.is_file {
       return Ok(0);
@@ -289,7 +286,7 @@ where
 {
   let path = PathBuf::from(request);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
   let mut canonicalized_path = fs.canonicalize(&path)?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
@@ -358,7 +355,7 @@ where
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
-      let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
+      let fs = state.borrow::<Arc<dyn NodeFs>>();
       if let Ok(cwd) = fs.current_dir() {
         ensure_read_permission::<Env::P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().to_string()));
@@ -381,8 +378,8 @@ where
     return Ok(None);
   }
 
-  let node_resolver = state.borrow::<Rc<NodeResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
   let pkg = node_resolver
     .get_package_scope_config(
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
@@ -441,7 +438,7 @@ where
 {
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<Env::P>(state, &file_path)?;
-  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
   Ok(fs.read_to_string(&file_path)?)
 }
 
@@ -469,10 +466,10 @@ fn op_require_resolve_exports<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let fs = state.borrow::<Arc<dyn NodeFs>>().clone();
-  let npm_resolver = state.borrow::<Arc<dyn NpmResolver>>().clone();
-  let node_resolver = state.borrow::<Rc<NodeResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
+  let npm_resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
 
   let pkg_path = if npm_resolver
     .in_npm_package_at_path(&PathBuf::from(&modules_path))
@@ -524,8 +521,8 @@ where
     state,
     PathBuf::from(&filename).parent().unwrap(),
   )?;
-  let node_resolver = state.borrow::<Rc<NodeResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
   node_resolver.get_closest_package_json(
     &Url::from_file_path(filename).unwrap(),
     permissions,
@@ -540,8 +537,8 @@ fn op_require_read_package_scope<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let node_resolver = state.borrow::<Rc<NodeResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
   let package_json_path = PathBuf::from(package_json_path);
   node_resolver
     .load_package_json(permissions, package_json_path)
@@ -559,8 +556,8 @@ where
 {
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<Env::P>(state, &parent_path)?;
-  let node_resolver = state.borrow::<Rc<NodeResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
   let pkg = node_resolver
     .load_package_json(permissions, parent_path.join("package.json"))?;
 
