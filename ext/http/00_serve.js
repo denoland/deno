@@ -331,11 +331,28 @@ function fastSyncResponseOrStream(req, respBody) {
 }
 
 async function asyncResponse(responseBodies, req, status, stream) {
+  const reader = stream.getReader();
+  // Optimize for streams that are done in zero or one packets. We will not
+  // have to allocate a resource in this case.
+  const { value: value1, done: done1 } = await reader.read();
+  if (done1) {
+    core.ops.op_set_promise_complete(req, status);
+    return;
+  }
+  const { value: value2, done: done2 } = await reader.read();
+  if (done2) {
+    core.ops.op_set_response_body_bytes(req, value1);
+    core.ops.op_set_promise_complete(req, status);
+    return;
+  }
+
   const responseRid = core.ops.op_set_response_body_stream(req);
   SetPrototypeAdd(responseBodies, responseRid);
-  const reader = stream.getReader();
   core.ops.op_set_promise_complete(req, status);
   try {
+    // Write our first packets
+    await core.writeAll(responseRid, value1);
+    await core.writeAll(responseRid, value2);
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
