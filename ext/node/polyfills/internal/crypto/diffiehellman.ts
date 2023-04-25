@@ -9,14 +9,15 @@ import {
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
-  validateString,
   validateOneOf,
+  validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import {
-  getDefaultEncoding,
+  EllipticCurve,
+  ellipticCurves,
   getCurves,
-  isCurveEphemeral,
+  getDefaultEncoding,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
 import type {
@@ -224,18 +225,21 @@ export class DiffieHellmanGroup {
 }
 
 export class ECDH {
-  curve: string; // the selected curve
+  curve: EllipticCurve; // the selected curve
   privbuf: Buffer; // the private key
   pubbuf: Buffer; // the public key
-  ephemeral_secret: boolean; // if true the secret is in the resource table
   ephemeral_secret_resource: number; // the resource id in the table
 
   constructor(curve: string) {
     validateString(curve, "curve");
     validateOneOf(curve, "curve", getCurves());
 
-    this.curve = curve;
-    this.ephemeral_secret = isCurveEphemeral(this.curve);
+    let c = ellipticCurves.find((x) => x.name == curve);
+    if (c == undefined) {
+      throw new Error("invalid curve");
+    }
+
+    this.curve = c;
   }
 
   static convertKey(
@@ -267,12 +271,24 @@ export class ECDH {
     _inputEncoding?: BinaryToTextEncoding,
     _outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    let secretBuf = Buffer.alloc(32);
+    let secretBuf = Buffer.alloc(this.curve.sharedSecretSize);
 
-    if (this.ephemeral_secret) {
-      ops.op_node_ecdh_compute_secret(this.curve, this.ephemeral_secret_resource, null, otherPublicKey, secretBuf);
+    if (this.curve.ephemeral) {
+      ops.op_node_ecdh_compute_secret(
+        this.curve.name,
+        this.ephemeral_secret_resource,
+        null,
+        otherPublicKey,
+        secretBuf,
+      );
     } else {
-      ops.op_node_ecdh_compute_secret(this.curve, 0, this.privbuf, otherPublicKey, secretBuf);
+      ops.op_node_ecdh_compute_secret(
+        this.curve.name,
+        0,
+        this.privbuf,
+        otherPublicKey,
+        secretBuf,
+      );
     }
 
     return secretBuf;
@@ -284,12 +300,12 @@ export class ECDH {
     _encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    let pubbuf = Buffer.alloc(65);
-    let privbuf = Buffer.alloc(32);
-    let rid = ops.op_node_ecdh_generate_keys(this.curve, pubbuf, privbuf);
+    let pubbuf = Buffer.alloc(this.curve.publicKeySize);
+    let privbuf = Buffer.alloc(this.curve.privateKeySize);
+    let rid = ops.op_node_ecdh_generate_keys(this.curve.name, pubbuf, privbuf);
 
     this.pubbuf = pubbuf;
-    if (this.ephemeral_secret) {
+    if (this.curve.ephemeral) {
       this.ephemeral_secret_resource = rid;
     } else {
       this.privbuf = privbuf;
@@ -319,14 +335,16 @@ export class ECDH {
     privateKey: ArrayBufferView | string,
     _encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    if (this.ephemeral_secret) {
-      throw new Error("Curve " + this.curve + " does not support setPrivateKey");
+    if (this.curve.ephemeral) {
+      throw new Error(
+        "Curve " + this.curve.name + " does not support setPrivateKey",
+      );
     }
 
     this.privbuf = privateKey;
-    let pubbuf = Buffer.alloc(65);
+    let pubbuf = Buffer.alloc(this.curve.publicKeySize);
 
-    ops.op_node_ecdh_compute_public_key(this.curve, this.privbuf, pubbuf);
+    ops.op_node_ecdh_compute_public_key(this.curve.name, this.privbuf, pubbuf);
     this.pubbuf = pubbuf;
 
     return this.pubbuf;

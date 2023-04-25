@@ -46,16 +46,44 @@ const digestAlgorithms = [
   "sha1",
 ];
 
-const ellipticCurves = [
-  "secp256k1", // Weierstrass-class EC used by Bitcoin
-  "prime256v1", // NIST P-256 EC
-  "secp256r1" // NIST P-256 EC (same as above)
-];
+export type EllipticCurve = {
+  name: string;
+  ephemeral: boolean;
+  privateKeySize: number;
+  publicKeySize: number;
+  sharedSecretSize: number;
+};
 
-const ephemeralEllipticCurves = [
-  "prime256v1",
-  "secp256r1"
-]
+export const ellipticCurves: Array<EllipticCurve> = [
+  {
+    name: "secp256k1",
+    ephemeral: false,
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // Weierstrass-class EC used by Bitcoin
+  {
+    name: "prime256v1",
+    ephemeral: true,
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC
+  {
+    name: "secp256r1",
+    ephemeral: true,
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC (same as above)
+  {
+    name: "secp384r1",
+    ephemeral: true,
+    privateKeySize: 48,
+    publicKeySize: 97,
+    sharedSecretSize: 48,
+  }, // NIST P-384 EC
+];
 
 // deno-fmt-ignore
 const supportedCiphers = [
@@ -126,11 +154,7 @@ export function getHashes(): readonly string[] {
 }
 
 export function getCurves(): readonly string[] {
-  return ellipticCurves;
-}
-
-export function isCurveEphemeral(curve: string): boolean {
-  return ephemeralEllipticCurves.includes(curve);
+  return ellipticCurves.map((x) => x.name);
 }
 
 export interface SecureHeapUsage {

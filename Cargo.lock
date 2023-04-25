@@ -899,7 +899,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "p256 0.11.1",
- "p384",
+ "p384 0.11.2",
  "rand",
  "ring",
  "rsa",
@@ -1170,6 +1170,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "p256 0.13.2",
+ "p384 0.13.0",
  "path-clean",
  "pbkdf2",
  "rand",
@@ -3232,6 +3233,18 @@ checksum = "dfc8c5bf642dde52bb9e87c0ecd8ca5a76faac2eeed98dedb7c717997e1080aa"
 dependencies = [
  "ecdsa 0.14.8",
  "elliptic-curve 0.12.3",
+ "sha2",
+]
+
+[[package]]
+name = "p384"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70786f51bcc69f6a4c0360e063a4cac5419ef7c5cd5b3c99ad70f3be5ba79209"
+dependencies = [
+ "ecdsa 0.16.6",
+ "elliptic-curve 0.13.4",
+ "primeorder",
  "sha2",
 ]
 
