@@ -56,8 +56,6 @@ impl op_void_async {
             &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
                 as *const deno_core::_ops::OpCtx)
         };
-        let op_id = ctx.id;
-        let realm_idx = ctx.realm_idx;
         let promise_id = args.get(0);
         let promise_id = deno_core::v8::Local::<
             deno_core::v8::Integer,
@@ -78,9 +76,7 @@ impl op_void_async {
             ctx,
             scope,
             false,
-            realm_idx,
             promise_id,
-            op_id,
             async move { Ok(Self::call().await) },
         );
         if let Some(response) = maybe_response {
@@ -107,9 +103,7 @@ fn op_void_async_fast_fn<'scope>(
     let result = op_void_async::call();
     let result = _ops::queue_fast_async_op(
         __ctx,
-        __ctx.realm_idx,
         __promise_id,
-        __ctx.id,
         async move { Ok(result.await) },
     );
     result

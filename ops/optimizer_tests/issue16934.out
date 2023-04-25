@@ -50,8 +50,6 @@ impl send_stdin {
             &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
                 as *const deno_core::_ops::OpCtx)
         };
-        let op_id = ctx.id;
-        let realm_idx = ctx.realm_idx;
         let promise_id = args.get(0);
         let promise_id = deno_core::v8::Local::<
             deno_core::v8::Integer,
@@ -83,9 +81,7 @@ impl send_stdin {
             ctx,
             scope,
             false,
-            realm_idx,
             promise_id,
-            op_id,
             Self::call(
                 compile_error!("mutable opstate is not supported in async ops"),
                 arg_0,

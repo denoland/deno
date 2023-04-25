@@ -265,9 +265,7 @@ fn codegen_v8_async(
           ctx,
           scope,
           #deferred,
-          realm_idx,
           promise_id,
-          op_id,
           Self::call::<#type_params>(#args_head #args_tail),
         );
       }
@@ -278,9 +276,7 @@ fn codegen_v8_async(
           ctx,
           scope,
           #deferred,
-          realm_idx,
           promise_id,
-          op_id,
           async move {
             Ok(Self::call::<#type_params>(#args_head #args_tail).await)
           },
@@ -294,9 +290,7 @@ fn codegen_v8_async(
           ctx,
           scope,
           #deferred,
-          realm_idx,
           promise_id,
-          op_id,
           async move {
             match result {
               Ok(fut) => fut.await,
@@ -313,9 +307,7 @@ fn codegen_v8_async(
           ctx,
           scope,
           #deferred,
-          realm_idx,
           promise_id,
-          op_id,
           async move {
             match result {
               Ok(fut) => Ok(fut.await),
@@ -334,8 +326,6 @@ fn codegen_v8_async(
       &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
       as *const #core::_ops::OpCtx)
     };
-    let op_id = ctx.id;
-    let realm_idx = ctx.realm_idx;
 
     let promise_id = args.get(0);
     let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
@@ -351,20 +341,6 @@ fn codegen_v8_async(
     };
 
     #arg_decls
-
-    // Track async call & get copy of get_error_class_fn
-    // let get_class = {
-    //   let state = ::std::cell::RefCell::borrow(&ctx.state);
-    //   state.tracker.track_async(op_id);
-    //   state.get_error_class_fn
-    // };
-
-    // #pre_result
-    // let maybe_response = #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
-    //   let result = #result_fut
-    //   #result_wrapper
-    //   (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
-    // });
     #wrapper
 
     if let Some(response) = maybe_response {

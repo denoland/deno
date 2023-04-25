@@ -247,23 +247,14 @@ pub(crate) fn generate(
   if optimizer.is_async {
     let queue_future = if optimizer.returns_result {
       q!({
-        let result = _ops::queue_fast_async_op(
-          __ctx,
-          __ctx.realm_idx,
-          __promise_id,
-          __ctx.id,
-          result,
-        );
+        let result = _ops::queue_fast_async_op(__ctx, __promise_id, result);
       })
     } else {
       q!({
-        let result = _ops::queue_fast_async_op(
-          __ctx,
-          __ctx.realm_idx,
-          __promise_id,
-          __ctx.id,
-          async move { Ok(result.await) },
-        );
+        let result =
+          _ops::queue_fast_async_op(__ctx, __promise_id, async move {
+            Ok(result.await)
+          });
       })
     };
 

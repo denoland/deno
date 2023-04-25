@@ -2363,9 +2363,7 @@ impl JsRuntime {
 #[inline]
 pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   ctx: &OpCtx,
-  realm_idx: RealmIdx,
   promise_id: PromiseId,
-  op_id: OpId,
   op: impl Future<Output = Result<R, Error>> + 'static,
 ) {
   let runtime_state = match ctx.runtime_state.upgrade() {
@@ -2375,7 +2373,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   };
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
-    state.tracker.track_async(op_id);
+    state.tracker.track_async(ctx.id);
     state.get_error_class_fn
   };
   let fut = op
@@ -2384,7 +2382,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   let mut state = runtime_state.borrow_mut();
   state
     .pending_ops
-    .push(OpCall::lazy(realm_idx, promise_id, op_id, fut));
+    .push(OpCall::lazy(ctx.realm_idx, promise_id, ctx.id, fut));
   state.have_unpolled_ops = true;
 }
 
@@ -2393,30 +2391,26 @@ pub fn queue_async_op<'s, R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,
   deferred: bool,
-  realm_idx: RealmIdx,
   promise_id: PromiseId,
-  op_id: OpId,
   op: impl Future<Output = Result<R, Error>> + 'static,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
-    state.tracker.track_async(op_id);
+    state.tracker.track_async(ctx.id);
     state.get_error_class_fn
   };
   let fut = op
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
 
-  do_queue_async_op(ctx, scope, deferred, realm_idx, promise_id, op_id, fut)
+  do_queue_async_op(ctx, scope, deferred, promise_id, fut)
 }
 
 fn do_queue_async_op<'s>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,
   deferred: bool,
-  realm_idx: RealmIdx,
   promise_id: PromiseId,
-  op_id: OpId,
   op: Pin<Box<dyn Future<Output = OpResult>>>,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
@@ -2434,17 +2428,17 @@ fn do_queue_async_op<'s>(
     Some(scope.get_current_context())
   );
 
-  match OpCall::eager(realm_idx, promise_id, op_id, op) {
+  match OpCall::eager(ctx.realm_idx, promise_id, ctx.id, op) {
     // If the result is ready we'll just return it straight to the caller, so
     // we don't have to invoke a JS callback to respond. // This works under the
     // assumption that `()` return value is serialized as `null`.
     EagerPollResult::Ready(mut op_result) if !deferred => {
       let resp = op_result.to_v8(scope).unwrap();
-      ctx.state.borrow_mut().tracker.track_async_completed(op_id);
+      ctx.state.borrow_mut().tracker.track_async_completed(ctx.id);
       return Some(resp);
     }
     EagerPollResult::Ready(op_result) => {
-      let ready = OpCall::ready(realm_idx, promise_id, op_id, op_result);
+      let ready = OpCall::ready(ctx.realm_idx, promise_id, ctx.id, op_result);
       let mut state = runtime_state.borrow_mut();
       state.pending_ops.push(ready);
       state.have_unpolled_ops = true;
