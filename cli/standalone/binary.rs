@@ -17,6 +17,7 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::permissions::PermissionsOptions;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -29,7 +30,7 @@ use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
-use crate::npm::NpmPackageResolver;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmResolution;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -250,7 +251,7 @@ pub struct DenoCompileBinaryWriter {
   file_fetcher: Arc<FileFetcher>,
   client: HttpClient,
   deno_dir: DenoDir,
-  npm_resolver: Arc<NpmPackageResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
   resolution: Arc<NpmResolution>,
 }
 
@@ -259,7 +260,7 @@ impl DenoCompileBinaryWriter {
     file_fetcher: Arc<FileFetcher>,
     client: HttpClient,
     deno_dir: DenoDir,
-    npm_resolver: Arc<NpmPackageResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
     resolution: Arc<NpmResolution>,
   ) -> Self {
     Self {

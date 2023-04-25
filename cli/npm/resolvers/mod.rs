@@ -241,7 +241,7 @@ impl NpmResolver for CliNpmResolver {
     pkg_nv: &NpmPackageNv,
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
-    self.resolve_pkg_folder_from_deno_module_at_pkg_id(&pkg_id)
+    self.resolve_pkg_folder_from_pkg_id(&pkg_id)
   }
 
   fn resolve_pkg_id_from_pkg_req(
