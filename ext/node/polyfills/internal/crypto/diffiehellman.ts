@@ -300,7 +300,6 @@ export class ECDH {
     encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    encoding = encoding ?? "__buffer";
     const pubbuf = Buffer.alloc(this.curve.publicKeySize);
     const privbuf = Buffer.alloc(this.curve.privateKeySize);
     const rid = ops.op_node_ecdh_generate_keys(
