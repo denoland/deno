@@ -182,23 +182,19 @@ impl Op {
 
       #[doc(hidden)]
       impl #name {
-        pub const fn name() -> &'static str {
+        pub fn name() -> &'static str {
           stringify!(#name)
         }
 
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        pub extern "C" fn v8_fn_ptr #generics (info: *const #core::v8::FunctionCallbackInfo) #where_clause {
-          let info = unsafe { &*info };
-          let scope = &mut unsafe { #core::v8::CallbackScope::new(info) };
-          let args = #core::v8::FunctionCallbackArguments::from_function_callback_info(info);
-          let rv = #core::v8::ReturnValue::from_function_callback_info(info);
-          Self::v8_func::<#type_params>(scope, args, rv);
+        pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
+          use #core::v8::MapFnTo;
+          Self::v8_func::<#type_params>.map_fn_to()
         }
 
-        pub const fn decl #generics () -> #core::OpDecl #where_clause {
+        pub fn decl #generics () -> #core::OpDecl #where_clause {
           #core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<#type_params> as _,
+            v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
             enabled: true,
             fast_fn: #decl,
             is_async: #is_async,

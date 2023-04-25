@@ -41,8 +41,8 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.69.0", default-features = false }
 deno_ast = { version = "0.26.0", features = ["transpiling"] }
+v8 = { version = "0.66.0", default-features = false }
 
 deno_core = { version = "0.181.0", path = "./core" }
 deno_ops = { version = "0.59.0", path = "./ops" }
