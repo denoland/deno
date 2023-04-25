@@ -52,9 +52,8 @@ impl OpCall {
   /// Wraps a future, and polls the inner future immediately.
   /// This should be the default choice for ops.
   pub fn eager(
-    realm_idx: RealmIdx,
+    op_ctx: &OpCtx,
     promise_id: PromiseId,
-    op_id: OpId,
     fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
   ) -> EagerPollResult {
     let mut inner = maybe_done(fut);
@@ -65,9 +64,9 @@ impl OpCall {
     match poll {
       Poll::Ready(_) => EagerPollResult::Ready(pinned.take_output().unwrap()),
       _ => EagerPollResult::Pending(Self {
-        realm_idx,
+        realm_idx: op_ctx.realm_idx,
+        op_id: op_ctx.id,
         promise_id,
-        op_id,
         fut: inner,
       }),
     }
@@ -75,32 +74,26 @@ impl OpCall {
 
   /// Wraps a future; the inner future is polled the usual way (lazily).
   pub fn lazy(
-    realm_idx: RealmIdx,
+    op_ctx: &OpCtx,
     promise_id: PromiseId,
-    op_id: OpId,
     fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
   ) -> Self {
     let inner = maybe_done(fut);
     Self {
-      realm_idx,
+      realm_idx: op_ctx.realm_idx,
+      op_id: op_ctx.id,
       promise_id,
-      op_id,
       fut: inner,
     }
   }
 
   /// Create a future by specifying its output. This is basically the same as
   /// `async { value }` or `futures::future::ready(value)`.
-  pub fn ready(
-    realm_idx: RealmIdx,
-    promise_id: PromiseId,
-    op_id: OpId,
-    value: OpResult,
-  ) -> Self {
+  pub fn ready(op_ctx: &OpCtx, promise_id: PromiseId, value: OpResult) -> Self {
     Self {
-      realm_idx,
+      realm_idx: op_ctx.realm_idx,
+      op_id: op_ctx.id,
       promise_id,
-      op_id,
       fut: MaybeDone::Done(value),
     }
   }

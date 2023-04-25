@@ -2380,9 +2380,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
-  state
-    .pending_ops
-    .push(OpCall::lazy(ctx.realm_idx, promise_id, ctx.id, fut));
+  state.pending_ops.push(OpCall::lazy(ctx, promise_id, fut));
   state.have_unpolled_ops = true;
 }
 
@@ -2428,7 +2426,7 @@ fn do_queue_async_op<'s>(
     Some(scope.get_current_context())
   );
 
-  match OpCall::eager(ctx.realm_idx, promise_id, ctx.id, op) {
+  match OpCall::eager(ctx, promise_id, op) {
     // If the result is ready we'll just return it straight to the caller, so
     // we don't have to invoke a JS callback to respond. // This works under the
     // assumption that `()` return value is serialized as `null`.
@@ -2438,7 +2436,7 @@ fn do_queue_async_op<'s>(
       return Some(resp);
     }
     EagerPollResult::Ready(op_result) => {
-      let ready = OpCall::ready(ctx.realm_idx, promise_id, ctx.id, op_result);
+      let ready = OpCall::ready(ctx, promise_id, op_result);
       let mut state = runtime_state.borrow_mut();
       state.pending_ops.push(ready);
       state.have_unpolled_ops = true;
