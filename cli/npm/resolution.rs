@@ -154,7 +154,7 @@ impl NpmResolution {
     Ok(())
   }
 
-  pub fn pkg_req_ref_to_nv_ref(
+  pub fn resolve_nv_ref_from_pkg_req_ref(
     &self,
     req_ref: &NpmPackageReqReference,
   ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {

@@ -11,9 +11,7 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
-use crate::node::CliNodeResolver;
-use crate::node::NodeCodeTranslator;
-use crate::node::NodeResolution;
+use crate::node::CliNodeCodeTranslator;
 use crate::proc_state::CjsResolutionStore;
 use crate::proc_state::FileWatcherReporter;
 use crate::proc_state::ProcState;
@@ -49,7 +47,10 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
@@ -241,8 +242,8 @@ pub struct CliModuleLoader {
   emitter: Arc<Emitter>,
   graph_container: Arc<ModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
-  node_code_translator: Arc<NodeCodeTranslator>,
-  node_resolver: Arc<CliNodeResolver>,
+  node_code_translator: Arc<CliNodeCodeTranslator>,
+  node_resolver: Arc<NodeResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliGraphResolver>,
 }
@@ -387,15 +388,14 @@ impl CliModuleLoader {
         // translate cjs to esm if it's cjs and inject node globals
         self.node_code_translator.translate_cjs_to_esm(
           specifier,
-          code,
-          MediaType::Cjs,
+          &code,
           &mut permissions,
         )?
       } else {
         // only inject node globals for esm
         self
           .node_code_translator
-          .esm_code_with_node_globals(specifier, code)?
+          .esm_code_with_node_globals(specifier, &code)?
       };
       ModuleCodeSource {
         code: code.into(),
@@ -427,7 +427,7 @@ impl CliModuleLoader {
 
   fn handle_node_resolve_result(
     &self,
-    result: Result<Option<node::NodeResolution>, AnyError>,
+    result: Result<Option<NodeResolution>, AnyError>,
   ) -> Result<ModuleSpecifier, AnyError> {
     let response = match result? {
       Some(response) => response,
@@ -437,7 +437,7 @@ impl CliModuleLoader {
       // remember that this was a common js resolution
       self.cjs_resolutions.insert(specifier.clone());
     } else if let NodeResolution::BuiltIn(specifier) = &response {
-      return node::resolve_builtin_node_module(specifier);
+      return deno_node::resolve_builtin_node_module(specifier);
     }
     Ok(response.into_url())
   }
@@ -450,10 +450,10 @@ impl ModuleLoader for CliModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let mut permissions = if matches!(kind, ResolutionKind::DynamicImport) {
-      self.dynamic_permissions.clone()
+    let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
+      &self.dynamic_permissions
     } else {
-      self.root_permissions.clone()
+      &self.root_permissions
     };
 
     // TODO(bartlomieju): ideally we shouldn't need to call `current_dir()` on each
@@ -469,7 +469,7 @@ impl ModuleLoader for CliModuleLoader {
             specifier,
             referrer,
             NodeResolutionMode::Execution,
-            &mut permissions,
+            permissions,
           ))
           .with_context(|| {
             format!("Could not resolve '{specifier}' from '{referrer}'.")
@@ -494,14 +494,14 @@ impl ModuleLoader for CliModuleLoader {
                 self.node_resolver.resolve_npm_reference(
                   &module.nv_reference,
                   NodeResolutionMode::Execution,
-                  &mut permissions,
+                  permissions,
                 ),
               )
               .with_context(|| {
                 format!("Could not resolve '{}'.", module.nv_reference)
               }),
             Some(Module::Node(module)) => {
-              node::resolve_builtin_node_module(&module.module_name)
+              deno_node::resolve_builtin_node_module(&module.module_name)
             }
             Some(Module::Esm(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
@@ -523,7 +523,7 @@ impl ModuleLoader for CliModuleLoader {
 
     // Built-in Node modules
     if let Some(module_name) = specifier.strip_prefix("node:") {
-      return node::resolve_builtin_node_module(module_name);
+      return deno_node::resolve_builtin_node_module(module_name);
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
@@ -555,8 +555,8 @@ impl ModuleLoader for CliModuleLoader {
             .handle_node_resolve_result(
               self.node_resolver.resolve_npm_req_reference(
                 &reference,
-                deno_runtime::deno_node::NodeResolutionMode::Execution,
-                &mut permissions,
+                NodeResolutionMode::Execution,
+                permissions,
               ),
             )
             .with_context(|| format!("Could not resolve '{reference}'."));
