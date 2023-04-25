@@ -5,11 +5,14 @@ use crate::args::Flags;
 use crate::args::NodeModulesDirOption;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
+use crate::module_loader::NpmModuleLoader;
+use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::util::v8::construct_v8_flags;
 use crate::version;
 use crate::CliGraphResolver;
+use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -22,6 +25,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
+use deno_runtime::deno_node;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
@@ -32,6 +36,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use log::Level;
 use std::pin::Pin;
@@ -54,6 +59,9 @@ use self::file_system::DenoCompileFileSystem;
 struct EmbeddedModuleLoader {
   eszip: Arc<eszip::EszipV2>,
   maybe_import_map_resolver: Option<Arc<CliGraphResolver>>,
+  npm_module_loader: Arc<NpmModuleLoader>,
+  root_permissions: PermissionsContainer,
+  dynamic_permissions: PermissionsContainer,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -61,7 +69,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
+    kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     // Try to follow redirects when resolving.
     let referrer = match self.eszip.get_module(referrer) {
@@ -73,6 +81,26 @@ impl ModuleLoader for EmbeddedModuleLoader {
         deno_core::resolve_url_or_path(referrer, &cwd)?
       }
     };
+
+    let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
+      &self.dynamic_permissions
+    } else {
+      &self.root_permissions
+    };
+
+    if let Some(result) = self.npm_module_loader.resolve_if_in_npm_package(
+      specifier,
+      &referrer,
+      permissions,
+    ) {
+      return result;
+    }
+
+    if let Ok(reference) = NpmPackageReqReference::from_str(specifier) {
+      return self
+        .npm_module_loader
+        .resolve_for_req_reference(&reference, permissions);
+    }
 
     self
       .maybe_import_map_resolver
@@ -87,11 +115,37 @@ impl ModuleLoader for EmbeddedModuleLoader {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<&ModuleSpecifier>,
-    _is_dynamic: bool,
+    maybe_referrer: Option<&ModuleSpecifier>,
+    is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let is_data_uri = get_source_from_data_url(module_specifier).ok();
-    eprintln!("LOADING: {}", module_specifier.as_str());
+    let permissions = if is_dynamic {
+      &self.dynamic_permissions
+    } else {
+      &self.root_permissions
+    };
+
+    if let Some(result) = self.npm_module_loader.load_sync_if_in_npm_package(
+      &module_specifier,
+      maybe_referrer,
+      permissions,
+    ) {
+      return match result {
+        Ok(code_source) => Box::pin(deno_core::futures::future::ready(Ok(
+          deno_core::ModuleSource::new_with_redirect(
+            match code_source.media_type {
+              MediaType::Json => ModuleType::Json,
+              _ => ModuleType::JavaScript,
+            },
+            code_source.code,
+            &module_specifier,
+            &code_source.found_url,
+          ),
+        ))),
+        Err(err) => Box::pin(deno_core::futures::future::ready(Err(err))),
+      };
+    }
+
     let module = self
       .eszip
       .get_module(module_specifier.as_str())
@@ -170,17 +224,16 @@ fn web_worker_callback() -> Arc<WorkerEventCb> {
 
 fn create_web_worker_callback(
   ps: &ProcState,
-  module_loader: &Rc<EmbeddedModuleLoader>,
+  module_loader: &EmbeddedModuleLoader,
   file_system: &DenoCompileFileSystem,
 ) -> Arc<CreateWebWorkerCb> {
   let ps = ps.clone();
-  let module_loader = module_loader.as_ref().clone();
+  let module_loader = module_loader.clone();
   let file_system = file_system.clone();
   Arc::new(move |args| {
-    let module_loader = Rc::new(module_loader.clone());
-
     let create_web_worker_cb =
       create_web_worker_callback(&ps, &module_loader, &file_system);
+    let module_loader = Rc::new(module_loader.clone());
     let web_worker_cb = web_worker_callback();
 
     let options = WebWorkerOptions {
@@ -251,7 +304,7 @@ pub async fn run(
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &metadata.permissions,
   )?);
-  let module_loader = Rc::new(EmbeddedModuleLoader {
+  let module_loader = EmbeddedModuleLoader {
     eszip: Arc::new(eszip),
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
@@ -267,7 +320,16 @@ pub async fn run(
         ))
       },
     ),
-  });
+    npm_module_loader: Arc::new(NpmModuleLoader::new(
+      ps.cjs_resolutions.clone(),
+      ps.node_code_translator.clone(),
+      ps.node_fs.clone(),
+      ps.node_resolver.clone(),
+    )),
+    root_permissions: permissions.clone(),
+    // todo(THIS PR): seems wrong :)
+    dynamic_permissions: permissions.clone(),
+  };
   let file_system = DenoCompileFileSystem;
   let create_web_worker_cb =
     create_web_worker_callback(&ps, &module_loader, &file_system);
@@ -310,7 +372,7 @@ pub async fn run(
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     should_wait_for_inspector_session: false,
-    module_loader,
+    module_loader: Rc::new(module_loader),
     node_fs: Some(ps.node_fs.clone()),
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
@@ -328,7 +390,16 @@ pub async fn run(
     file_system,
     options,
   );
-  worker.execute_main_module(main_module).await?;
+
+  let id = worker.preload_main_module(main_module).await?;
+  if metadata.npm_snapshot.is_some() {
+    deno_node::initialize_runtime(
+      &mut worker.js_runtime,
+      metadata.node_modules_dir,
+      None,
+    )?;
+  }
+  worker.evaluate_module(id).await?;
   worker.dispatch_load_event(located_script_name!())?;
 
   loop {

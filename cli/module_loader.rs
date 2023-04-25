@@ -48,10 +48,12 @@ use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeFs;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -265,6 +267,7 @@ impl CliModuleLoader {
       npm_module_loader: NpmModuleLoader::new(
         ps.cjs_resolutions.clone(),
         ps.node_code_translator.clone(),
+        ps.node_fs.clone(),
         ps.node_resolver.clone(),
       ),
     })
@@ -288,6 +291,7 @@ impl CliModuleLoader {
       npm_module_loader: NpmModuleLoader::new(
         ps.cjs_resolutions.clone(),
         ps.node_code_translator.clone(),
+        ps.node_fs.clone(),
         ps.node_resolver.clone(),
       ),
     })
@@ -374,11 +378,11 @@ impl CliModuleLoader {
     } else {
       &self.root_permissions
     };
-    let code_source = if let Some(code_source) = self
+    let code_source = if let Some(result) = self
       .npm_module_loader
-      .load_sync(specifier, maybe_referrer, permissions)?
+      .load_sync_if_in_npm_package(specifier, maybe_referrer, permissions)
     {
-      code_source
+      result?
     } else {
       self.load_prepared_module(specifier, maybe_referrer)?
     };
@@ -445,7 +449,7 @@ impl ModuleLoader for CliModuleLoader {
           return match graph.get(specifier) {
             Some(Module::Npm(module)) => self
               .npm_module_loader
-              .resolve_npm_module(module, permissions),
+              .resolve_nv_ref(&module.nv_reference, permissions),
             Some(Module::Node(module)) => {
               deno_node::resolve_builtin_node_module(&module.module_name)
             }
@@ -499,7 +503,7 @@ impl ModuleLoader for CliModuleLoader {
         {
           return self
             .npm_module_loader
-            .resolve_for_repl(&reference, permissions);
+            .resolve_for_req_reference(&reference, permissions);
         }
       }
     }
@@ -601,6 +605,7 @@ impl SourceMapGetter for CliModuleLoader {
 pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
+  fs: Arc<dyn NodeFs>,
   node_resolver: Arc<NodeResolver>,
 }
 
@@ -608,11 +613,13 @@ impl NpmModuleLoader {
   pub fn new(
     cjs_resolutions: Arc<CjsResolutionStore>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
+    node_fs: Arc<dyn NodeFs>,
     node_resolver: Arc<NodeResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
       node_code_translator,
+      fs: node_fs,
       node_resolver,
     }
   }
@@ -642,21 +649,21 @@ impl NpmModuleLoader {
     }
   }
 
-  pub fn resolve_npm_module(
+  pub fn resolve_nv_ref(
     &self,
-    module: &deno_graph::NpmModule,
+    nv_ref: &NpmPackageNvReference,
     permissions: &PermissionsContainer,
   ) -> Result<ModuleSpecifier, AnyError> {
     self
       .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-        &module.nv_reference,
+        &nv_ref,
         NodeResolutionMode::Execution,
         permissions,
       ))
-      .with_context(|| format!("Could not resolve '{}'.", module.nv_reference))
+      .with_context(|| format!("Could not resolve '{}'.", nv_ref))
   }
 
-  pub fn resolve_for_repl(
+  pub fn resolve_for_req_reference(
     &self,
     reference: &NpmPackageReqReference,
     permissions: &PermissionsContainer,
@@ -682,17 +689,27 @@ impl NpmModuleLoader {
     }
   }
 
-  pub fn load_sync(
+  pub fn load_sync_if_in_npm_package(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     permissions: &PermissionsContainer,
-  ) -> Result<Option<ModuleCodeSource>, AnyError> {
-    if !self.node_resolver.in_npm_package(specifier) {
-      return Ok(None);
+  ) -> Option<Result<ModuleCodeSource, AnyError>> {
+    if self.node_resolver.in_npm_package(specifier) {
+      Some(self.load_sync(specifier, maybe_referrer, permissions))
+    } else {
+      None
     }
+  }
+
+  fn load_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+    permissions: &PermissionsContainer,
+  ) -> Result<ModuleCodeSource, AnyError> {
     let file_path = specifier.to_file_path().unwrap();
-    let code = std::fs::read_to_string(&file_path).with_context(|| {
+    let code = self.fs.read_to_string(&file_path).with_context(|| {
       let mut msg = "Unable to load ".to_string();
       msg.push_str(&file_path.to_string_lossy());
       if let Some(referrer) = &maybe_referrer {
@@ -715,11 +732,11 @@ impl NpmModuleLoader {
         .node_code_translator
         .esm_code_with_node_globals(specifier, &code)?
     };
-    Ok(Some(ModuleCodeSource {
+    Ok(ModuleCodeSource {
       code: code.into(),
       found_url: specifier.clone(),
       media_type: MediaType::from_specifier(specifier),
-    }))
+    })
   }
 
   fn handle_node_resolve_result(

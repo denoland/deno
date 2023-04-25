@@ -207,8 +207,6 @@ impl NpmResolver for CliGraphResolver {
     &self,
     package_name: &str,
   ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
-    eprintln!("LOADING NPM PACKAGE INFO: {}", package_name);
-
     if self.no_npm {
       // return it succeeded and error at the import site below
       return Box::pin(future::ready(Ok(())));

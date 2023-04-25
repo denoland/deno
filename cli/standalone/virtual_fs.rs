@@ -344,7 +344,6 @@ impl VfsRoot {
     path: &Path,
     seen: &mut HashSet<PathBuf>,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'file>)> {
-    eprintln!("PATH: {:?}", path.as_os_str().to_string_lossy());
     let relative_path = match path.strip_prefix(&self.root) {
       Ok(p) => p,
       Err(_) => {
