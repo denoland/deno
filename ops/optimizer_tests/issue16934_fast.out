@@ -77,7 +77,7 @@ impl send_stdin {
                 return deno_core::_ops::throw_type_error(scope, msg);
             }
         };
-        let maybe_response = deno_core::_ops::queue_async_op2(
+        let maybe_response = deno_core::_ops::queue_async_op(
             ctx,
             scope,
             false,

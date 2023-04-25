@@ -247,7 +247,7 @@ pub(crate) fn generate(
   if optimizer.is_async {
     let queue_future = if optimizer.returns_result {
       q!({
-        let result = _ops::queue_fast_async_op2(
+        let result = _ops::queue_fast_async_op(
           __ctx,
           __ctx.realm_idx,
           __promise_id,
@@ -257,7 +257,7 @@ pub(crate) fn generate(
       })
     } else {
       q!({
-        let result = _ops::queue_fast_async_op2(
+        let result = _ops::queue_fast_async_op(
           __ctx,
           __ctx.realm_idx,
           __promise_id,

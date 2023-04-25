@@ -74,7 +74,7 @@ impl op_void_async {
                 return;
             }
         };
-        let maybe_response = deno_core::_ops::queue_async_op2(
+        let maybe_response = deno_core::_ops::queue_async_op(
             ctx,
             scope,
             false,
@@ -105,7 +105,7 @@ fn op_void_async_fast_fn<'scope>(
     };
     let op_state = __ctx.state.clone();
     let result = op_void_async::call();
-    let result = _ops::queue_fast_async_op2(
+    let result = _ops::queue_fast_async_op(
         __ctx,
         __ctx.realm_idx,
         __promise_id,

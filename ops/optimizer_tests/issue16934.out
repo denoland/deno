@@ -79,7 +79,7 @@ impl send_stdin {
                 );
             }
         };
-        let maybe_response = deno_core::_ops::queue_async_op2(
+        let maybe_response = deno_core::_ops::queue_async_op(
             ctx,
             scope,
             false,

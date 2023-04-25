@@ -54,8 +54,6 @@ use std::task::Context;
 use std::task::Poll;
 use v8::OwnedIsolate;
 
-type PendingOpFuture = OpCall<(RealmIdx, PromiseId, OpId, OpResult)>;
-
 pub enum Snapshot {
   Static(&'static [u8]),
   JustCreated(v8::StartupData),
@@ -166,8 +164,7 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
-  pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) pending_ops2: FuturesUnordered<OpCall2>,
+  pub(crate) pending_ops: FuturesUnordered<OpCall>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -345,7 +342,6 @@ impl JsRuntime {
       source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
-      pending_ops2: FuturesUnordered::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -1433,8 +1429,7 @@ impl EventLoopPendingState {
     }
 
     EventLoopPendingState {
-      has_pending_refed_ops: state.pending_ops.len() + state.pending_ops2.len()
-        > num_unrefed_ops,
+      has_pending_refed_ops: state.pending_ops.len() > num_unrefed_ops,
       has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
       has_pending_dyn_module_evaluation: !state
         .pending_dyn_mod_evaluate
@@ -2217,12 +2212,6 @@ impl JsRuntime {
         state.op_state.borrow().tracker.track_async_completed(op_id);
         responses_per_realm[realm_idx].push((promise_id, resp));
       }
-      while let Poll::Ready(Some(item)) = state.pending_ops2.poll_next_unpin(cx)
-      {
-        let (realm_idx, promise_id, op_id, resp) = item;
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        responses_per_realm[realm_idx].push((promise_id, resp));
-      }
     }
 
     // Handle responses for each realm.
@@ -2338,23 +2327,6 @@ impl JsRuntime {
             .unwrap(),
         });
       }
-      while let Poll::Ready(Some(item)) = state.pending_ops2.poll_next_unpin(cx)
-      {
-        let (realm_idx, promise_id, op_id, mut resp) = item;
-        debug_assert_eq!(
-          state.known_realms[realm_idx],
-          state.global_realm.as_ref().unwrap().context()
-        );
-        realm_state.unrefed_ops.remove(&promise_id);
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id).into());
-        args.push(match resp.to_v8(scope) {
-          Ok(v) => v,
-          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
-            .to_v8(scope)
-            .unwrap(),
-        });
-      }
     }
 
     let has_tick_scheduled =
@@ -2389,23 +2361,7 @@ impl JsRuntime {
 }
 
 #[inline]
-pub fn queue_fast_async_op(
-  ctx: &OpCtx,
-  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
-) {
-  let runtime_state = match ctx.runtime_state.upgrade() {
-    Some(rc_state) => rc_state,
-    // atleast 1 Rc is held by the JsRuntime.
-    None => unreachable!(),
-  };
-
-  let mut state = runtime_state.borrow_mut();
-  state.pending_ops.push(OpCall::lazy(op));
-  state.have_unpolled_ops = true;
-}
-
-#[inline]
-pub fn queue_fast_async_op2<R: serde::Serialize + 'static>(
+pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   realm_idx: RealmIdx,
   promise_id: PromiseId,
@@ -2427,13 +2383,13 @@ pub fn queue_fast_async_op2<R: serde::Serialize + 'static>(
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
   state
-    .pending_ops2
-    .push(OpCall2::lazy(realm_idx, promise_id, op_id, fut));
+    .pending_ops
+    .push(OpCall::lazy(realm_idx, promise_id, op_id, fut));
   state.have_unpolled_ops = true;
 }
 
 #[inline]
-pub fn queue_async_op2<'s, R: serde::Serialize + 'static>(
+pub fn queue_async_op<'s, R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,
   deferred: bool,
@@ -2478,64 +2434,17 @@ fn do_queue_async_op<'s>(
     Some(scope.get_current_context())
   );
 
-  match OpCall2::eager(realm_idx, promise_id, op_id, op) {
+  match OpCall::eager(realm_idx, promise_id, op_id, op) {
     // If the result is ready we'll just return it straight to the caller, so
     // we don't have to invoke a JS callback to respond. // This works under the
     // assumption that `()` return value is serialized as `null`.
-    EagerPollResult2::Ready(mut op_result) if !deferred => {
+    EagerPollResult::Ready(mut op_result) if !deferred => {
       let resp = op_result.to_v8(scope).unwrap();
       ctx.state.borrow_mut().tracker.track_async_completed(op_id);
       return Some(resp);
     }
-    EagerPollResult2::Ready(op_result) => {
-      let ready = OpCall2::ready(realm_idx, promise_id, op_id, op_result);
-      let mut state = runtime_state.borrow_mut();
-      state.pending_ops2.push(ready);
-      state.have_unpolled_ops = true;
-    }
-    EagerPollResult2::Pending(op) => {
-      let mut state = runtime_state.borrow_mut();
-      state.pending_ops2.push(op);
-      state.have_unpolled_ops = true;
-    }
-  }
-
-  None
-}
-
-#[inline]
-pub fn queue_async_op<'s>(
-  ctx: &OpCtx,
-  scope: &'s mut v8::HandleScope,
-  deferred: bool,
-  op: impl Future<Output = (RealmIdx, PromiseId, OpId, OpResult)> + 'static,
-) -> Option<v8::Local<'s, v8::Value>> {
-  let runtime_state = match ctx.runtime_state.upgrade() {
-    Some(rc_state) => rc_state,
-    // atleast 1 Rc is held by the JsRuntime.
-    None => unreachable!(),
-  };
-
-  // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
-  // which it is invoked. Otherwise, we might have cross-realm object exposure.
-  // deno_core doesn't currently support such exposure, even though embedders
-  // can cause them, so we panic in debug mode (since the check is expensive).
-  debug_assert_eq!(
-    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
-    Some(scope.get_current_context())
-  );
-
-  match OpCall::eager(op) {
-    // If the result is ready we'll just return it straight to the caller, so
-    // we don't have to invoke a JS callback to respond. // This works under the
-    // assumption that `()` return value is serialized as `null`.
-    EagerPollResult::Ready((_, _, op_id, mut resp)) if !deferred => {
-      let resp = resp.to_v8(scope).unwrap();
-      ctx.state.borrow_mut().tracker.track_async_completed(op_id);
-      return Some(resp);
-    }
-    EagerPollResult::Ready(op) => {
-      let ready = OpCall::ready(op);
+    EagerPollResult::Ready(op_result) => {
+      let ready = OpCall::ready(realm_idx, promise_id, op_id, op_result);
       let mut state = runtime_state.borrow_mut();
       state.pending_ops.push(ready);
       state.have_unpolled_ops = true;

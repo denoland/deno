@@ -289,7 +289,7 @@ fn codegen_v8_async(
   let wrapper = match (asyncness, is_result(&f.sig.output)) {
     (true, true) => {
       quote! {
-        let maybe_response = #core::_ops::queue_async_op2(
+        let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,
@@ -302,7 +302,7 @@ fn codegen_v8_async(
     }
     (true, false) => {
       quote! {
-        let maybe_response = #core::_ops::queue_async_op2(
+        let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,
@@ -318,7 +318,7 @@ fn codegen_v8_async(
     (false, true) => {
       quote! {
         let result = Self::call::<#type_params>(#args_head #args_tail);
-        let maybe_response = #core::_ops::queue_async_op2(
+        let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,
@@ -337,7 +337,7 @@ fn codegen_v8_async(
     (false, false) => {
       quote! {
         let result = Self::call::<#type_params>(#args_head #args_tail);
-        let maybe_response = #core::_ops::queue_async_op2(
+        let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,

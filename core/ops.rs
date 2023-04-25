@@ -27,86 +27,28 @@ use std::task::Poll;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
+pub type RealmIdx = usize;
+pub type PromiseId = i32;
+pub type OpId = usize;
+
 /// Wrapper around a Future, which causes that Future to be polled immediately.
 ///
 /// Background: ops are stored in a `FuturesUnordered` structure which polls
 /// them, but without the `OpCall` wrapper this doesn't happen until the next
 /// turn of the event loop, which is too late for certain ops.
-pub struct OpCall<T>(MaybeDone<Pin<Box<dyn Future<Output = T>>>>);
-
-pub struct OpCall2 {
+pub struct OpCall {
   realm_idx: RealmIdx,
   promise_id: PromiseId,
   op_id: OpId,
   fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 }
 
-pub enum EagerPollResult<T> {
-  Ready(T),
-  Pending(OpCall<T>),
-}
-
-pub enum EagerPollResult2 {
+pub enum EagerPollResult {
   Ready(OpResult),
-  Pending(OpCall2),
+  Pending(OpCall),
 }
 
-impl<T> OpCall<T> {
-  /// Wraps a future, and polls the inner future immediately.
-  /// This should be the default choice for ops.
-  pub fn eager(fut: impl Future<Output = T> + 'static) -> EagerPollResult<T> {
-    let boxed = Box::pin(fut) as Pin<Box<dyn Future<Output = T>>>;
-    let mut inner = maybe_done(boxed);
-    let waker = noop_waker();
-    let mut cx = Context::from_waker(&waker);
-    let mut pinned = Pin::new(&mut inner);
-    let poll = pinned.as_mut().poll(&mut cx);
-    match poll {
-      Poll::Ready(_) => EagerPollResult::Ready(pinned.take_output().unwrap()),
-      _ => EagerPollResult::Pending(Self(inner)),
-    }
-  }
-
-  /// Wraps a future; the inner future is polled the usual way (lazily).
-  pub fn lazy(fut: impl Future<Output = T> + 'static) -> Self {
-    let boxed = Box::pin(fut) as Pin<Box<dyn Future<Output = T>>>;
-    let inner = maybe_done(boxed);
-    Self(inner)
-  }
-
-  /// Create a future by specifying its output. This is basically the same as
-  /// `async { value }` or `futures::future::ready(value)`.
-  pub fn ready(value: T) -> Self {
-    Self(MaybeDone::Done(value))
-  }
-}
-
-impl<T> Future for OpCall<T> {
-  type Output = T;
-
-  fn poll(
-    self: std::pin::Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    // TODO(piscisaureus): safety comment
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    let inner = unsafe { &mut self.get_unchecked_mut().0 };
-    let mut pinned = Pin::new(inner);
-    ready!(pinned.as_mut().poll(cx));
-    Poll::Ready(pinned.as_mut().take_output().unwrap())
-  }
-}
-
-impl<F> FusedFuture for OpCall<F>
-where
-  F: Future,
-{
-  fn is_terminated(&self) -> bool {
-    self.0.is_terminated()
-  }
-}
-
-impl OpCall2 {
+impl OpCall {
   /// Wraps a future, and polls the inner future immediately.
   /// This should be the default choice for ops.
   pub fn eager(
@@ -114,15 +56,15 @@ impl OpCall2 {
     promise_id: PromiseId,
     op_id: OpId,
     fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
-  ) -> EagerPollResult2 {
+  ) -> EagerPollResult {
     let mut inner = maybe_done(fut);
     let waker = noop_waker();
     let mut cx = Context::from_waker(&waker);
     let mut pinned = Pin::new(&mut inner);
     let poll = pinned.as_mut().poll(&mut cx);
     match poll {
-      Poll::Ready(_) => EagerPollResult2::Ready(pinned.take_output().unwrap()),
-      _ => EagerPollResult2::Pending(Self {
+      Poll::Ready(_) => EagerPollResult::Ready(pinned.take_output().unwrap()),
+      _ => EagerPollResult::Pending(Self {
         realm_idx,
         promise_id,
         op_id,
@@ -132,7 +74,6 @@ impl OpCall2 {
   }
 
   /// Wraps a future; the inner future is polled the usual way (lazily).
-  #[allow(dead_code)]
   pub fn lazy(
     realm_idx: RealmIdx,
     promise_id: PromiseId,
@@ -165,7 +106,7 @@ impl OpCall2 {
   }
 }
 
-impl Future for OpCall2 {
+impl Future for OpCall {
   type Output = (RealmIdx, PromiseId, OpId, OpResult);
 
   fn poll(
@@ -189,23 +130,10 @@ impl Future for OpCall2 {
   }
 }
 
-impl FusedFuture for OpCall2 {
+impl FusedFuture for OpCall {
   fn is_terminated(&self) -> bool {
     self.fut.is_terminated()
   }
-}
-
-pub type RealmIdx = usize;
-pub type PromiseId = i32;
-pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
-pub type OpFn =
-  fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue);
-pub type OpId = usize;
-
-pub enum Op {
-  Sync(OpResult),
-  Async(OpAsyncFuture),
-  NotFound,
 }
 
 pub enum OpResult {
