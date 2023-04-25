@@ -13,10 +13,19 @@ use tokio::io::ReadBuf;
 
 const MAX_PREFIX_SIZE: usize = 256;
 
+/// [`NetworkStreamPrefixCheck`] is used to differentiate a stream between two different modes, depending
+/// on whether the first bytes match a given prefix (or not).
+///
+/// IMPORTANT: This stream makes the assumption that the incoming bytes will never partially match the prefix
+/// and then "hang" waiting for a write. For this code not to hang, the incoming stream must:
+///
+///  * match the prefix fully and then request writes at a later time
+///  * not match the prefix, and then request writes after writing a byte that causes the prefix not to match
+///  * not match the prefix and then close
 pub struct NetworkStreamPrefixCheck<S: AsyncRead + Unpin> {
+  buffer: [MaybeUninit<u8>; MAX_PREFIX_SIZE * 2],
   io: S,
   prefix: &'static [u8],
-  buffer: [MaybeUninit<u8>; MAX_PREFIX_SIZE * 2],
 }
 
 impl<S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
@@ -29,7 +38,7 @@ impl<S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
     }
   }
 
-  // Returns a [`NetworkBufferedStream`], rewound with the bytes we read to determine what
+  // Returns a [`NetworkBufferedStream`] and a flag determining if we matched a prefix, rewound with the bytes we read to determine what
   // type of stream this is.
   pub async fn match_prefix(
     self,
@@ -95,15 +104,30 @@ impl<S: AsyncRead + Unpin> NetworkStreamPrefixCheck<S> {
   }
 }
 
+/// [`NetworkBufferedStream`] is a stream that allows us to efficiently search for an incoming prefix in another stream without
+/// reading too much data. If the stream detects that the prefix has definitely been matched, or definitely not been matched,
+/// it returns a flag and a rewound stream allowing later code to take another pass at that data.
+///
+/// [`NetworkBufferedStream`] is a custom wrapper around an asynchronous stream that implements AsyncRead
+/// and AsyncWrite. It is designed to provide additional buffering functionality to the wrapped stream.
+/// The primary use case for this struct is when you want to read a small amount of data from the beginning
+/// of a stream, process it, and then continue reading the rest of the stream.
+///
+/// While the bounds for the class are limited to [`AsyncRead`] for easier testing, it is far more useful to use
+/// with interactive duplex streams that have a prefix determining which mode to operate in. For example, this class
+/// can determine whether an incoming stream is HTTP/2 or non-HTTP/2 and allow downstream code to make that determination.
 pub struct NetworkBufferedStream<S: AsyncRead + Unpin> {
+  prefix: [MaybeUninit<u8>; MAX_PREFIX_SIZE * 2],
   io: S,
   initialized_len: usize,
   prefix_offset: usize,
-  prefix: [MaybeUninit<u8>; MAX_PREFIX_SIZE * 2],
+  /// Have the prefix bytes been completely read out?
   prefix_read: bool,
 }
 
 impl<S: AsyncRead + Unpin> NetworkBufferedStream<S> {
+  /// This constructor is private, because passing partically initialized data between the [`NetworkStreamPrefixCheck`] and
+  /// this [`NetworkBufferedStream`] is challenging without the introduction of extra copies.
   fn new(
     io: S,
     prefix: [MaybeUninit<u8>; MAX_PREFIX_SIZE * 2],
