@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2924
+Total: 2923
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -504,7 +504,6 @@ Total: 2924
 - [parallel/test-crypto-scrypt.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-scrypt.js)
 - [parallel/test-crypto-secure-heap.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-secure-heap.js)
 - [parallel/test-crypto-sign-verify.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-sign-verify.js)
-- [parallel/test-crypto-stream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-stream.js)
 - [parallel/test-crypto-subtle-zero-length.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-subtle-zero-length.js)
 - [parallel/test-crypto-verify-failure.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-verify-failure.js)
 - [parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js)
