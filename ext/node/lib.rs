@@ -170,13 +170,9 @@ pub trait NpmResolver: std::fmt::Debug + Send + Sync {
 }
 
 pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
-  let now = std::time::SystemTime::now();
-  let seconds = now
-    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-    .unwrap()
-    .as_secs();
+  let crate_version = env!("CARGO_PKG_VERSION").replace(".", "_");
   // use a changing variable name to make it hard to depend on this
-  format!("__DENO_NODE_GLOBAL_THIS_{seconds}__")
+  format!("__DENO_NODE_GLOBAL_THIS_{crate_version}__")
 });
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
