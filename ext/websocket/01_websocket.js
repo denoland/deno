@@ -345,10 +345,7 @@ class WebSocket extends EventTarget {
         sendTypedArray(data, TypedArrayPrototypeGetByteLength(data));
       }
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      sendTypedArray(
-        new DataView(data),
-        ArrayBufferPrototypeGetByteLength(data),
-      );
+      sendTypedArray(data, ArrayBufferPrototypeGetByteLength(data));
     } else {
       const string = String(data);
       const d = core.encode(string);
