@@ -28,6 +28,7 @@ import {
 import {
   Deferred,
   getReadableStreamResourceBacking,
+  readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
@@ -331,24 +332,97 @@ function fastSyncResponseOrStream(req, respBody) {
 }
 
 async function asyncResponse(responseBodies, req, status, stream) {
-  const responseRid = core.ops.op_set_response_body_stream(req);
-  SetPrototypeAdd(responseBodies, responseRid);
   const reader = stream.getReader();
-  core.ops.op_set_promise_complete(req, status);
+  let responseRid;
+  let closed = false;
+  let timeout;
+
   try {
+    // IMPORTANT: We get a performance boost from this optimization, but V8 is very
+    // sensitive to the order and structure. Benchmark any changes to this code.
+
+    // Optimize for streams that are done in zero or one packets. We will not
+    // have to allocate a resource in this case.
+    const { value: value1, done: done1 } = await reader.read();
+    if (done1) {
+      closed = true;
+      // Exit 1: no response body at all, extreme fast path
+      // Reader will be closed by finally block
+      return;
+    }
+
+    // The second value cannot block indefinitely, as someone may be waiting on a response
+    // of the first packet that may influence this packet. We set this timeout arbitrarily to 250ms
+    // and we race it.
+    let timeoutPromise;
+    timeout = setTimeout(() => {
+      responseRid = core.ops.op_set_response_body_stream(req);
+      SetPrototypeAdd(responseBodies, responseRid);
+      core.ops.op_set_promise_complete(req, status);
+      timeoutPromise = core.writeAll(responseRid, value1);
+    }, 250);
+    const { value: value2, done: done2 } = await reader.read();
+
+    if (timeoutPromise) {
+      await timeoutPromise;
+      if (done2) {
+        closed = true;
+        // Exit 2(a): read 2 is EOS, and timeout resolved.
+        // Reader will be closed by finally block
+        // Response stream will be closed by finally block.
+        return;
+      }
+
+      // Timeout resolved, value1 written but read2 is not EOS. Carry value2 forward.
+    } else {
+      clearTimeout(timeout);
+      timeout = undefined;
+
+      if (done2) {
+        // Exit 2(b): read 2 is EOS, and timeout did not resolve as we read fast enough.
+        // Reader will be closed by finally block
+        // No response stream
+        closed = true;
+        core.ops.op_set_response_body_bytes(req, value1);
+        return;
+      }
+
+      responseRid = core.ops.op_set_response_body_stream(req);
+      SetPrototypeAdd(responseBodies, responseRid);
+      core.ops.op_set_promise_complete(req, status);
+      // Write our first packet
+      await core.writeAll(responseRid, value1);
+    }
+
+    await core.writeAll(responseRid, value2);
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
+        closed = true;
         break;
       }
       await core.writeAll(responseRid, value);
     }
   } catch (error) {
-    await reader.cancel(error);
+    closed = true;
+    try {
+      await reader.cancel(error);
+    } catch {
+      // Pass
+    }
   } finally {
-    core.tryClose(responseRid);
-    SetPrototypeDelete(responseBodies, responseRid);
-    reader.releaseLock();
+    if (!closed) {
+      readableStreamClose(reader);
+    }
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    if (responseRid) {
+      core.tryClose(responseRid);
+      SetPrototypeDelete(responseBodies, responseRid);
+    } else {
+      core.ops.op_set_promise_complete(req, status);
+    }
   }
 }
 
