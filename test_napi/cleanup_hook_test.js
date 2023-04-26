@@ -12,6 +12,7 @@ if (import.meta.main) {
     const { stdout, stderr, code } = await new Deno.Command(Deno.execPath(), {
       args: [
         "run",
+        "--enable-testing-features-do-not-use",
         "--allow-read",
         "--allow-run",
         "--allow-ffi",
