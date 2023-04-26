@@ -64,7 +64,6 @@ const {
 } = primordials;
 
 const connErrorSymbol = Symbol("connError");
-const streamRid = Symbol("streamRid");
 const _deferred = Symbol("upgradeHttpDeferred");
 
 class HttpConn {
