@@ -171,7 +171,6 @@ const denoNsUnstable = {
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   upgradeHttp: http.upgradeHttp,
-  upgradeHttpRaw: http.upgradeHttpRaw,
   serve: http.serve,
   openKv: kv.openKv,
   Kv: kv.Kv,

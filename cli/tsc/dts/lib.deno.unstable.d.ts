@@ -1519,32 +1519,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Allows "hijacking" the connection that the request is associated with.
-   * This can be used to implement protocols that build on top of HTTP (eg.
-   * {@linkcode WebSocket}).
-   *
-   * This method can only be called on requests originating the
-   * {@linkcode Deno.serve} server.
-   *
-   * @category HTTP Server
-   */
-  export function upgradeHttpRaw(request: Request): HttpUpgrade;
-
-  /** The object that is returned from a {@linkcode Deno.upgradeHttp} or {@linkcode Deno.upgradeHttpRaw}
-   * request.
-   *
-   * @category Web Sockets */
-  export interface HttpUpgrade {
-    /** The response object that represents the HTTP response to the client,
-     * which should be used to the {@linkcode RequestEvent} `.respondWith()` for
-     * the upgrade to be successful. */
-    response: Response;
-    /** The socket interface to communicate to the client via. */
-    conn: Deno.Conn;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that

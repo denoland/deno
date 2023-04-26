@@ -41,7 +41,7 @@ use hyper1::server::conn::http2;
 use hyper1::service::service_fn;
 use hyper1::service::HttpService;
 use hyper1::upgrade::OnUpgrade;
-use hyper1::upgrade::Upgraded;
+
 use hyper1::StatusCode;
 use pin_project::pin_project;
 use pin_project::pinned_drop;
@@ -55,10 +55,10 @@ use std::net::SocketAddr;
 use std::net::SocketAddrV4;
 use std::pin::Pin;
 use std::rc::Rc;
-use tokio::io::AsyncRead;
+
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::io::ReadBuf;
+
 use tokio::task::spawn_local;
 use tokio::task::JoinHandle;
 
@@ -250,11 +250,13 @@ pub fn op_upgrade_raw(
   })?;
 
   let (read, write) = tokio::io::duplex(1024);
-  let (mut read_rx, mut write_tx) = tokio::io::split(read);
+  let (read_rx, write_tx) = tokio::io::split(read);
   let (mut write_rx, mut read_tx) = tokio::io::split(write);
 
   spawn_local(async move {
     let mut upgrade_stream = WebSocketUpgrade::<ResponseBytes>::default();
+
+    // Stage 2: Extract the Upgraded connection
     let mut buf = [0; 1024];
     let upgraded = loop {
       let read = Pin::new(&mut write_rx).read(&mut buf).await?;
@@ -271,6 +273,7 @@ pub fn op_upgrade_raw(
       }
     };
 
+    // Stage 3: Pump the data
     let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
 
     spawn_local(async move {

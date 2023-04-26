@@ -17,6 +17,11 @@ import {
 } from "./test_util.ts";
 import { consoleSize } from "../../../runtime/js/40_tty.js";
 
+const {
+  upgradeHttpRaw,
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.internal];
+
 function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
   return (err) => {
     console.error(err);
@@ -810,7 +815,7 @@ Deno.test(
     const listeningPromise = deferred();
     const server = Deno.serve({
       handler: async (request) => {
-        const { conn, response } = Deno.upgradeHttpRaw(request);
+        const { conn, response } = upgradeHttpRaw(request);
         const buf = new Uint8Array(1024);
         let read;
 

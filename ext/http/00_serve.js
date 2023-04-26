@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const core = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
+const internals = globalThis.__bootstrap.internals;
 
 const { BadResourcePrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -10,7 +11,7 @@ import {
   newInnerResponse,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import { fromInnerRequest } from "ext:deno_fetch/23_request.js";
+import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
@@ -83,6 +84,14 @@ const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
   "immutable",
 );
 
+function upgradeHttpRaw(req, conn) {
+  const inner = toInnerRequest(req);
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttpRaw", conn);
+  }
+  throw new TypeError("upgradeHttpRaw may only be used with Deno.serve");
+}
+
 class InnerRequest {
   #slabId;
   #context;
@@ -126,6 +135,7 @@ class InnerRequest {
     // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
       const slabId = this.#slabId;
+      const underlyingConn = originalArgs[0];
 
       this.url();
       this.headerList;
@@ -135,8 +145,11 @@ class InnerRequest {
 
       const upgradeRid = core.ops.op_upgrade_raw(slabId);
 
-      // TODO(mmastrac): remoteAddr
-      const conn = new TcpConn(upgradeRid, null, null);
+      const conn = new TcpConn(
+        upgradeRid,
+        underlyingConn?.remoteAddr,
+        underlyingConn?.localAddr,
+      );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };
     }
@@ -625,5 +638,7 @@ async function serve(arg1, arg2) {
     core.tryClose(streamRid);
   }
 }
+
+internals.upgradeHttpRaw = upgradeHttpRaw;
 
 export { serve };
