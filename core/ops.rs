@@ -28,11 +28,6 @@ pub type RealmIdx = usize;
 pub type PromiseId = i32;
 pub type OpId = usize;
 
-/// Wrapper around a Future, which causes that Future to be polled immediately.
-///
-/// Background: ops are stored in a `FuturesUnordered` structure which polls
-/// them, but without the `OpCall` wrapper this doesn't happen until the next
-/// turn of the event loop, which is too late for certain ops.
 pub struct OpCall {
   realm_idx: RealmIdx,
   promise_id: PromiseId,
@@ -74,20 +69,16 @@ impl Future for OpCall {
     self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    let realm_idx = self.realm_idx;
-    let promise_id = self.promise_id;
-    let op_id = self.op_id;
     // TODO(piscisaureus): safety comment
     #[allow(clippy::undocumented_unsafe_blocks)]
-    let inner = unsafe { &mut self.get_unchecked_mut().fut };
-    let mut pinned = Pin::new(inner);
-    ready!(pinned.as_mut().poll(cx));
-    Poll::Ready((
-      realm_idx,
-      promise_id,
-      op_id,
-      pinned.as_mut().take_output().unwrap(),
-    ))
+    let inner = unsafe { self.get_unchecked_mut() };
+    // TODO(bartlomieju): meh... maybe we could get rid of this pinning
+    // if we had our own enum for Result/Future?
+    let mut pinned = Pin::new(&mut inner.fut);
+    let pinned_mut = pinned.as_mut();
+    ready!(pinned_mut.poll(cx));
+    let output = pinned.as_mut().take_output().unwrap();
+    Poll::Ready((inner.realm_idx, inner.promise_id, inner.op_id, output))
   }
 }
 
