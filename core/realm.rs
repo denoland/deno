@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::BuildHasherDefault;
 use std::hash::Hasher;
-use std::marker::PhantomData;
 use std::option::Option;
 use std::rc::Rc;
 use v8::HandleScope;
@@ -19,7 +18,7 @@ use v8::Local;
 // Hasher used for `unrefed_ops`. Since these are rolling i32, there's no
 // need to actually hash them.
 #[derive(Default)]
-pub(crate) struct IdentityHasher(u64, PhantomData<i32>);
+pub(crate) struct IdentityHasher(u64);
 
 impl Hasher for IdentityHasher {
   fn write_i32(&mut self, i: i32) {

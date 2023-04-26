@@ -12,16 +12,9 @@ use crate::CliGraphResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures::io::AllowStdIo;
 use deno_core::futures::task::LocalFutureObj;
-use deno_core::futures::AsyncReadExt;
-use deno_core::futures::AsyncSeekExt;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -33,7 +26,6 @@ use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -41,93 +33,17 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use import_map::parse_from_json;
 use log::Level;
-use std::env::current_exe;
-use std::io::SeekFrom;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-#[derive(Deserialize, Serialize)]
-pub struct Metadata {
-  pub argv: Vec<String>,
-  pub unstable: bool,
-  pub seed: Option<u64>,
-  pub permissions: PermissionsOptions,
-  pub location: Option<Url>,
-  pub v8_flags: Vec<String>,
-  pub log_level: Option<Level>,
-  pub ca_stores: Option<Vec<String>>,
-  pub ca_data: Option<Vec<u8>>,
-  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub maybe_import_map: Option<(Url, String)>,
-  pub entrypoint: ModuleSpecifier,
-}
+mod binary;
 
-pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
+pub use binary::extract_standalone;
+pub use binary::is_standalone_binary;
+pub use binary::DenoCompileBinaryWriter;
 
-/// This function will try to run this binary as a standalone binary
-/// produced by `deno compile`. It determines if this is a standalone
-/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-24.
-/// The magic trailer is followed by:
-/// - a u64 pointer to the JS bundle embedded in the binary
-/// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
-/// These are dereferenced, and the bundle is executed under the configuration
-/// specified by the metadata. If no magic trailer is present, this function
-/// exits with `Ok(None)`.
-pub async fn extract_standalone(
-  args: Vec<String>,
-) -> Result<Option<(Metadata, eszip::EszipV2)>, AnyError> {
-  let current_exe_path = current_exe()?;
-
-  let file = std::fs::File::open(current_exe_path)?;
-
-  let mut bufreader =
-    deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
-
-  let trailer_pos = bufreader.seek(SeekFrom::End(-24)).await?;
-  let mut trailer = [0; 24];
-  bufreader.read_exact(&mut trailer).await?;
-  let (magic_trailer, rest) = trailer.split_at(8);
-  if magic_trailer != MAGIC_TRAILER {
-    return Ok(None);
-  }
-
-  let (eszip_archive_pos, rest) = rest.split_at(8);
-  let metadata_pos = rest;
-  let eszip_archive_pos = u64_from_bytes(eszip_archive_pos)?;
-  let metadata_pos = u64_from_bytes(metadata_pos)?;
-  let metadata_len = trailer_pos - metadata_pos;
-
-  bufreader.seek(SeekFrom::Start(eszip_archive_pos)).await?;
-
-  let (eszip, loader) = eszip::EszipV2::parse(bufreader)
-    .await
-    .context("Failed to parse eszip header")?;
-
-  let mut bufreader = loader.await.context("Failed to parse eszip archive")?;
-
-  bufreader.seek(SeekFrom::Start(metadata_pos)).await?;
-
-  let mut metadata = String::new();
-
-  bufreader
-    .take(metadata_len)
-    .read_to_string(&mut metadata)
-    .await
-    .context("Failed to read metadata from the current executable")?;
-
-  let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
-  metadata.argv.append(&mut args[1..].to_vec());
-
-  Ok(Some((metadata, eszip)))
-}
-
-fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
-  let fixed_arr: &[u8; 8] = arr
-    .try_into()
-    .context("Failed to convert the buffer into a fixed-size array")?;
-  Ok(u64::from_be_bytes(*fixed_arr))
-}
+use self::binary::Metadata;
 
 #[derive(Clone)]
 struct EmbeddedModuleLoader {
@@ -274,6 +190,7 @@ fn create_web_worker_callback(
       root_cert_store: Some(ps.root_cert_store.clone()),
       seed: ps.options.seed(),
       module_loader,
+      node_fs: Some(ps.node_fs.clone()),
       npm_resolver: None, // not currently supported
       create_web_worker_cb,
       preload_module_cb: web_worker_cb.clone(),
@@ -369,6 +286,7 @@ pub async fn run(
     should_break_on_first_statement: false,
     should_wait_for_inspector_session: false,
     module_loader,
+    node_fs: Some(ps.node_fs.clone()),
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
     cache_storage_dir: None,

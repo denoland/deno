@@ -18,12 +18,15 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
-use deno_runtime::deno_node::RequireNpmResolver;
 use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
@@ -45,13 +48,13 @@ pub struct NpmProcessState {
 }
 
 /// Brings together the npm resolution with the file system.
-pub struct NpmPackageResolver {
+pub struct CliNpmResolver {
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
-impl std::fmt::Debug for NpmPackageResolver {
+impl std::fmt::Debug for CliNpmResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
       .field("fs_resolver", &"<omitted>")
@@ -61,7 +64,7 @@ impl std::fmt::Debug for NpmPackageResolver {
   }
 }
 
-impl NpmPackageResolver {
+impl CliNpmResolver {
   pub fn new(
     resolution: Arc<NpmResolution>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
@@ -85,15 +88,6 @@ impl NpmPackageResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
-  /// Resolves an npm package folder path from a Deno module.
-  pub fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &NpmPackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
-    self.resolve_pkg_folder_from_deno_module_at_pkg_id(&pkg_id)
-  }
-
   fn resolve_pkg_folder_from_deno_module_at_pkg_id(
     &self,
     pkg_id: &NpmPackageId,
@@ -105,20 +99,6 @@ impl NpmPackageResolver {
       pkg_id.as_serialized(),
       path.display()
     );
-    Ok(path)
-  }
-
-  /// Resolves an npm package folder path from an npm package referrer.
-  pub fn resolve_package_folder_from_package(
-    &self,
-    name: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<PathBuf, AnyError> {
-    let path = self
-      .fs_resolver
-      .resolve_package_folder_from_package(name, referrer, mode)?;
-    log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
 
@@ -228,28 +208,20 @@ impl NpmPackageResolver {
     self.fs_resolver.cache_packages().await?;
     Ok(())
   }
-
-  pub fn as_require_npm_resolver(
-    self: &Arc<Self>,
-  ) -> RequireNpmPackageResolver {
-    RequireNpmPackageResolver(self.clone())
-  }
 }
 
-#[derive(Debug)]
-pub struct RequireNpmPackageResolver(Arc<NpmPackageResolver>);
-
-impl RequireNpmResolver for RequireNpmPackageResolver {
+impl NpmResolver for CliNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
-    specifier: &str,
-    referrer: &std::path::Path,
+    name: &str,
+    referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
-    let referrer = path_to_specifier(referrer)?;
-    self
-      .0
-      .resolve_package_folder_from_package(specifier, &referrer, mode)
+    let path = self
+      .fs_resolver
+      .resolve_package_folder_from_package(name, referrer, mode)?;
+    log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
+    Ok(path)
   }
 
   fn resolve_package_folder_from_path(
@@ -257,31 +229,48 @@ impl RequireNpmResolver for RequireNpmPackageResolver {
     path: &Path,
   ) -> Result<PathBuf, AnyError> {
     let specifier = path_to_specifier(path)?;
-    self.0.resolve_package_folder_from_specifier(&specifier)
+    self.resolve_package_folder_from_specifier(&specifier)
   }
 
-  fn in_npm_package(&self, path: &Path) -> bool {
-    let specifier =
-      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
-        Ok(p) => p,
-        Err(_) => return false,
-      };
+  fn resolve_package_folder_from_deno_module(
+    &self,
+    pkg_nv: &NpmPackageNv,
+  ) -> Result<PathBuf, AnyError> {
+    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
+    self.resolve_pkg_folder_from_deno_module_at_pkg_id(&pkg_id)
+  }
+
+  fn resolve_pkg_id_from_pkg_req(
+    &self,
+    req: &NpmPackageReq,
+  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
+    self.resolution.resolve_pkg_id_from_pkg_req(req)
+  }
+
+  fn resolve_nv_ref_from_pkg_req_ref(
+    &self,
+    req_ref: &NpmPackageReqReference,
+  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
+    self.resolution.resolve_nv_ref_from_pkg_req_ref(req_ref)
+  }
+
+  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self
-      .0
-      .resolve_package_folder_from_specifier(&specifier)
+      .resolve_package_folder_from_specifier(specifier)
       .is_ok()
   }
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
-    self.0.fs_resolver.ensure_read_permission(permissions, path)
+    self.fs_resolver.ensure_read_permission(permissions, path)
   }
 }
 
 pub fn create_npm_fs_resolver(
+  fs: Arc<dyn deno_node::NodeFs>,
   cache: Arc<NpmCache>,
   progress_bar: &ProgressBar,
   registry_url: Url,
@@ -290,6 +279,7 @@ pub fn create_npm_fs_resolver(
 ) -> Arc<dyn NpmPackageFsResolver> {
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
+      fs,
       cache,
       progress_bar.clone(),
       registry_url,

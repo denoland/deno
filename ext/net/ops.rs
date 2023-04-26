@@ -52,7 +52,7 @@ pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -780,6 +780,7 @@ fn rdata_to_return_record(
 mod tests {
   use super::*;
   use crate::UnstableChecker;
+  use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use socket2::SockRef;
@@ -1034,11 +1035,13 @@ mod tests {
   ) {
     let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
-    tokio::spawn(async move {
-      let listener = TcpListener::bind(addr).await.unwrap();
-      let socket = listener.accept().await.unwrap();
+    let listener = TcpListener::bind(addr).await.unwrap();
+    let accept_fut = listener.accept().boxed_local();
+    let store_fut = async move {
+      let socket = accept_fut.await.unwrap();
       sockets.lock().unwrap().push(socket);
-    });
+    }
+    .boxed_local();
 
     deno_core::extension!(
       test_ext,
@@ -1061,9 +1064,23 @@ mod tests {
       port: server_addr[1].parse().unwrap(),
     };
 
-    let connect_fut =
-      op_net_connect_tcp::call::<TestPermission>(conn_state, ip_addr);
-    let (rid, _, _) = connect_fut.await.unwrap();
+    let mut connect_fut =
+      op_net_connect_tcp::call::<TestPermission>(conn_state, ip_addr)
+        .boxed_local();
+    let mut rid = None;
+
+    tokio::select! {
+      _ = store_fut => {
+        let result = connect_fut.await;
+        let vals = result.unwrap();
+        rid = rid.or(Some(vals.0));
+      },
+      result = &mut connect_fut => {
+        let vals = result.unwrap();
+        rid = rid.or(Some(vals.0));
+      }
+    };
+    let rid = rid.unwrap();
 
     let state = runtime.op_state();
     set_sockopt_fn(&mut state.borrow_mut(), rid);

@@ -228,6 +228,8 @@ fn x509name_to_string(
   name: &X509Name,
   oid_registry: &oid_registry::OidRegistry,
 ) -> Result<String, x509_parser::error::X509Error> {
+  // Lifted from https://github.com/rusticata/x509-parser/blob/4d618c2ed6b1fc102df16797545895f7c67ee0fe/src/x509.rs#L543-L566
+  // since it's a private function (Copyright 2017 Pierre Chifflier)
   name.iter_rdn().fold(Ok(String::new()), |acc, rdn| {
     acc.and_then(|mut _vec| {
       rdn
@@ -244,13 +246,13 @@ fn x509name_to_string(
             let rdn = format!("{}={}", abbrev, val_str);
             match _vec2.len() {
               0 => Ok(rdn),
-              _ => Ok(_vec2 + " + " + &rdn),
+              _ => Ok(_vec2 + " + " + rdn.as_str()),
             }
           })
         })
         .map(|v| match _vec.len() {
           0 => v,
-          _ => _vec + "\n" + &v,
+          _ => _vec + "\n" + v.as_str(),
         })
     })
   })

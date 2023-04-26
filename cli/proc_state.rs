@@ -17,12 +17,12 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::node::CliNodeResolver;
-use crate::node::NodeCodeTranslator;
+use crate::node::CliCjsEsmCodeAnalyzer;
+use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -37,6 +37,9 @@ use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
 
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -75,11 +78,12 @@ pub struct Inner {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub module_graph_builder: Arc<ModuleGraphBuilder>,
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
-  pub node_code_translator: Arc<NodeCodeTranslator>,
-  pub node_resolver: Arc<CliNodeResolver>,
+  pub node_code_translator: Arc<CliNodeCodeTranslator>,
+  pub node_fs: Arc<dyn deno_node::NodeFs>,
+  pub node_resolver: Arc<NodeResolver>,
   pub npm_api: Arc<CliNpmRegistryApi>,
   pub npm_cache: Arc<NpmCache>,
-  pub npm_resolver: Arc<NpmPackageResolver>,
+  pub npm_resolver: Arc<CliNpmResolver>,
   pub npm_resolution: Arc<NpmResolution>,
   pub package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   pub cjs_resolutions: Arc<CjsResolutionStore>,
@@ -147,6 +151,7 @@ impl ProcState {
       module_graph_builder: self.module_graph_builder.clone(),
       module_load_preparer: self.module_load_preparer.clone(),
       node_code_translator: self.node_code_translator.clone(),
+      node_fs: self.node_fs.clone(),
       node_resolver: self.node_resolver.clone(),
       npm_api: self.npm_api.clone(),
       npm_cache: self.npm_cache.clone(),
@@ -242,14 +247,16 @@ impl ProcState {
       npm_snapshot,
       lockfile.as_ref().cloned(),
     ));
+    let node_fs = Arc::new(deno_node::RealFs);
     let npm_fs_resolver = create_npm_fs_resolver(
+      node_fs.clone(),
       npm_cache,
       &progress_bar,
       npm_registry_url,
       npm_resolution.clone(),
       cli_options.node_modules_dir_path(),
     );
-    let npm_resolver = Arc::new(NpmPackageResolver::new(
+    let npm_resolver = Arc::new(CliNpmResolver::new(
       npm_resolution.clone(),
       npm_fs_resolver,
       lockfile.as_ref().cloned(),
@@ -304,13 +311,13 @@ impl ProcState {
     let file_fetcher = Arc::new(file_fetcher);
     let node_analysis_cache =
       NodeAnalysisCache::new(caches.node_analysis_db(&dir));
+    let cjs_esm_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
+    let node_resolver =
+      Arc::new(NodeResolver::new(node_fs.clone(), npm_resolver.clone()));
     let node_code_translator = Arc::new(NodeCodeTranslator::new(
-      node_analysis_cache,
-      file_fetcher.clone(),
-      npm_resolver.clone(),
-    ));
-    let node_resolver = Arc::new(CliNodeResolver::new(
-      npm_resolution.clone(),
+      cjs_esm_analyzer,
+      node_fs.clone(),
+      node_resolver.clone(),
       npm_resolver.clone(),
     ));
     let type_checker = Arc::new(TypeChecker::new(
@@ -365,6 +372,7 @@ impl ProcState {
       maybe_file_watcher_reporter,
       module_graph_builder,
       node_code_translator,
+      node_fs,
       node_resolver,
       npm_api,
       npm_cache,

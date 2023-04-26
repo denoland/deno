@@ -4,8 +4,7 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
-use crate::node::CliNodeResolver;
-use crate::npm::NpmPackageResolver;
+use crate::npm::CliNpmResolver;
 use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
@@ -13,6 +12,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
@@ -234,8 +234,8 @@ impl ShellCommand for NpmPackageBinCommand {
 }
 
 fn resolve_npm_commands(
-  npm_resolver: &NpmPackageResolver,
-  node_resolver: &CliNodeResolver,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &NodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   let snapshot = npm_resolver.snapshot();

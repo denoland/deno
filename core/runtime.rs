@@ -15,8 +15,6 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::op_void_async;
-use crate::op_void_sync;
 use crate::ops::*;
 use crate::realm::ContextState;
 use crate::realm::JsRealm;
@@ -772,16 +770,6 @@ impl JsRuntime {
       .map(|d| OpDecl {
         name: d.name,
         ..macroware(d)
-      })
-      .map(|op| match op.enabled {
-        true => op,
-        false => OpDecl {
-          v8_fn_ptr: match op.is_async {
-            true => op_void_async::v8_fn_ptr as _,
-            false => op_void_sync::v8_fn_ptr as _,
-          },
-          ..op
-        },
       })
       .collect()
   }
@@ -3177,7 +3165,7 @@ pub mod tests {
   #[test]
   fn test_heap_limits() {
     let create_params =
-      v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
+      v8::Isolate::create_params().heap_limits(0, 5 * 1024 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       create_params: Some(create_params),
       ..Default::default()
@@ -3221,7 +3209,7 @@ pub mod tests {
   #[test]
   fn test_heap_limit_cb_multiple() {
     let create_params =
-      v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
+      v8::Isolate::create_params().heap_limits(0, 5 * 1024 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       create_params: Some(create_params),
       ..Default::default()
@@ -4223,11 +4211,12 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
-    let r = runtime
+    let err = runtime
       .execute_script_static("test.js", "Deno.core.ops.op_foo()")
-      .unwrap();
-    let scope = &mut runtime.handle_scope();
-    assert!(r.open(scope).is_undefined());
+      .unwrap_err();
+    assert!(err
+      .to_string()
+      .contains("TypeError: Deno.core.ops.op_foo is not a function"));
   }
 
   #[test]
@@ -4327,7 +4316,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         if (Deno.core.ops.op_foo() !== 42) {
           throw new Error("Exptected op_foo() === 42");
         }
-        if (Deno.core.ops.op_bar() !== undefined) {
+        if (typeof Deno.core.ops.op_bar !== "undefined") {
           throw new Error("Expected op_bar to be disabled")
         }
       "#,
@@ -4642,6 +4631,21 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         "#,
       )
       .unwrap();
+  }
+
+  #[test]
+  fn test_non_existent_async_op_error() {
+    // Verify that "resizable ArrayBuffer" is disabled
+    let mut runtime = JsRuntime::new(Default::default());
+    let err = runtime
+      .execute_script_static(
+        "test_rab.js",
+        r#"Deno.core.opAsync("this_op_doesnt_exist");"#,
+      )
+      .unwrap_err();
+    assert!(err
+      .to_string()
+      .contains("this_op_doesnt_exist is not a registered op"));
   }
 
   #[tokio::test]

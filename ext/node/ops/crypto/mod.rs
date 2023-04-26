@@ -10,8 +10,10 @@ use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
+use num_traits::FromPrimitive;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
+use rand::thread_rng;
 use rand::Rng;
 use std::future::Future;
 use std::rc::Rc;
@@ -24,6 +26,7 @@ use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
 
 mod cipher;
+mod dh;
 mod digest;
 mod primes;
 pub mod x509;
@@ -530,6 +533,275 @@ pub async fn op_node_hkdf_async(
     let mut okm = vec![0u8; okm_len];
     hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
     Ok(okm.into())
+  })
+  .await?
+}
+
+use rsa::pkcs1::EncodeRsaPrivateKey;
+use rsa::pkcs1::EncodeRsaPublicKey;
+
+use self::primes::Prime;
+
+fn generate_rsa(
+  modulus_length: usize,
+  public_exponent: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let mut rng = rand::thread_rng();
+  let private_key = RsaPrivateKey::new_with_exp(
+    &mut rng,
+    modulus_length,
+    &rsa::BigUint::from_usize(public_exponent).unwrap(),
+  )?;
+  let public_key = private_key.to_public_key();
+  let private_key_der = private_key.to_pkcs1_der()?.as_bytes().to_vec();
+  let public_key_der = public_key.to_pkcs1_der()?.to_vec();
+
+  Ok((private_key_der.into(), public_key_der.into()))
+}
+
+#[op]
+pub fn op_node_generate_rsa(
+  modulus_length: usize,
+  public_exponent: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  generate_rsa(modulus_length, public_exponent)
+}
+
+#[op]
+pub async fn op_node_generate_rsa_async(
+  modulus_length: usize,
+  public_exponent: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || {
+    generate_rsa(modulus_length, public_exponent)
+  })
+  .await?
+}
+
+fn dsa_generate(
+  modulus_length: usize,
+  divisor_length: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let mut rng = rand::thread_rng();
+  use dsa::pkcs8::EncodePrivateKey;
+  use dsa::pkcs8::EncodePublicKey;
+  use dsa::Components;
+  use dsa::KeySize;
+  use dsa::SigningKey;
+
+  let key_size = match (modulus_length, divisor_length) {
+    #[allow(deprecated)]
+    (1024, 160) => KeySize::DSA_1024_160,
+    (2048, 224) => KeySize::DSA_2048_224,
+    (2048, 256) => KeySize::DSA_2048_256,
+    (3072, 256) => KeySize::DSA_3072_256,
+    _ => return Err(type_error("Invalid modulus_length or divisor_length")),
+  };
+  let components = Components::generate(&mut rng, key_size);
+  let signing_key = SigningKey::generate(&mut rng, components);
+  let verifying_key = signing_key.verifying_key();
+
+  Ok((
+    signing_key
+      .to_pkcs8_der()
+      .map_err(|_| type_error("Not valid pkcs8"))?
+      .as_bytes()
+      .to_vec()
+      .into(),
+    verifying_key
+      .to_public_key_der()
+      .map_err(|_| type_error("Not valid spki"))?
+      .to_vec()
+      .into(),
+  ))
+}
+
+#[op]
+pub fn op_node_dsa_generate(
+  modulus_length: usize,
+  divisor_length: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  dsa_generate(modulus_length, divisor_length)
+}
+
+#[op]
+pub async fn op_node_dsa_generate_async(
+  modulus_length: usize,
+  divisor_length: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || {
+    dsa_generate(modulus_length, divisor_length)
+  })
+  .await?
+}
+
+fn ec_generate(
+  named_curve: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  use ring::signature::EcdsaKeyPair;
+  use ring::signature::KeyPair;
+
+  let curve = match named_curve {
+    "P-256" => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+    "P-384" => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
+    _ => return Err(type_error("Unsupported named curve")),
+  };
+
+  let rng = ring::rand::SystemRandom::new();
+
+  let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
+    .map_err(|_| type_error("Failed to generate EC key"))?;
+
+  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref())
+    .map_err(|_| type_error("Failed to generate EC key"))?
+    .public_key()
+    .as_ref()
+    .to_vec();
+  Ok((pkcs8.as_ref().to_vec().into(), public_key.into()))
+}
+
+#[op]
+pub fn op_node_ec_generate(
+  named_curve: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  ec_generate(named_curve)
+}
+
+#[op]
+pub async fn op_node_ec_generate_async(
+  named_curve: String,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || ec_generate(&named_curve)).await?
+}
+
+fn ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  use ring::signature::Ed25519KeyPair;
+  use ring::signature::KeyPair;
+
+  let mut rng = thread_rng();
+  let mut seed = vec![0u8; 32];
+  rng.fill(seed.as_mut_slice());
+
+  let pair = Ed25519KeyPair::from_seed_unchecked(&seed)
+    .map_err(|_| type_error("Failed to generate Ed25519 key"))?;
+
+  let public_key = pair.public_key().as_ref().to_vec();
+  Ok((seed.into(), public_key.into()))
+}
+
+#[op]
+pub fn op_node_ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
+{
+  ed25519_generate()
+}
+
+#[op]
+pub async fn op_node_ed25519_generate_async(
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(ed25519_generate).await?
+}
+
+fn x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  // u-coordinate of the base point.
+  const X25519_BASEPOINT_BYTES: [u8; 32] = [
+    9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0,
+  ];
+
+  let mut pkey = [0; 32];
+
+  let mut rng = thread_rng();
+  rng.fill(pkey.as_mut_slice());
+
+  let pkey_copy = pkey.to_vec();
+  // https://www.rfc-editor.org/rfc/rfc7748#section-6.1
+  // pubkey = x25519(a, 9) which is constant-time Montgomery ladder.
+  //   https://eprint.iacr.org/2014/140.pdf page 4
+  //   https://eprint.iacr.org/2017/212.pdf algorithm 8
+  // pubkey is in LE order.
+  let pubkey = x25519_dalek::x25519(pkey, X25519_BASEPOINT_BYTES);
+
+  Ok((pkey_copy.into(), pubkey.to_vec().into()))
+}
+
+#[op]
+pub fn op_node_x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
+{
+  x25519_generate()
+}
+
+#[op]
+pub async fn op_node_x25519_generate_async(
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(x25519_generate).await?
+}
+
+fn dh_generate_group(
+  group_name: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let dh = match group_name {
+    "modp5" => dh::DiffieHellman::group::<dh::Modp1536>(),
+    "modp14" => dh::DiffieHellman::group::<dh::Modp2048>(),
+    "modp15" => dh::DiffieHellman::group::<dh::Modp3072>(),
+    "modp16" => dh::DiffieHellman::group::<dh::Modp4096>(),
+    "modp17" => dh::DiffieHellman::group::<dh::Modp6144>(),
+    "modp18" => dh::DiffieHellman::group::<dh::Modp8192>(),
+    _ => return Err(type_error("Unsupported group name")),
+  };
+
+  Ok((
+    dh.private_key.into_vec().into(),
+    dh.public_key.into_vec().into(),
+  ))
+}
+
+#[op]
+pub fn op_node_dh_generate_group(
+  group_name: &str,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  dh_generate_group(group_name)
+}
+
+#[op]
+pub async fn op_node_dh_generate_group_async(
+  group_name: String,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || dh_generate_group(&group_name)).await?
+}
+
+fn dh_generate(
+  prime: Option<&[u8]>,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  let prime = prime
+    .map(|p| p.into())
+    .unwrap_or_else(|| Prime::generate(prime_len));
+  let dh = dh::DiffieHellman::new(prime, generator);
+
+  Ok((
+    dh.private_key.into_vec().into(),
+    dh.public_key.into_vec().into(),
+  ))
+}
+
+#[op]
+pub fn op_node_dh_generate(
+  prime: Option<&[u8]>,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  dh_generate(prime, prime_len, generator)
+}
+
+#[op]
+pub async fn op_node_dh_generate_async(
+  prime: Option<ZeroCopyBuf>,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  tokio::task::spawn_blocking(move || {
+    dh_generate(prime.as_deref(), prime_len, generator)
   })
   .await?
 }

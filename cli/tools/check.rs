@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
+use deno_runtime::deno_node::NodeResolver;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -21,8 +22,7 @@ use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
-use crate::node::CliNodeResolver;
-use crate::npm::NpmPackageResolver;
+use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::version;
 
@@ -42,8 +42,8 @@ pub struct TypeChecker {
   deno_dir: DenoDir,
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
-  node_resolver: Arc<CliNodeResolver>,
-  npm_resolver: Arc<NpmPackageResolver>,
+  node_resolver: Arc<NodeResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
 }
 
 impl TypeChecker {
@@ -51,8 +51,8 @@ impl TypeChecker {
     deno_dir: DenoDir,
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
-    node_resolver: Arc<CliNodeResolver>,
-    npm_resolver: Arc<NpmPackageResolver>,
+    node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
   ) -> Self {
     Self {
       deno_dir,

@@ -4,6 +4,8 @@
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
+const { core } = globalThis.__bootstrap;
+
 export class Script {
   code: string;
   constructor(code: string, _options = {}) {
@@ -11,7 +13,11 @@ export class Script {
   }
 
   runInThisContext(_options: any) {
-    return eval.call(globalThis, this.code);
+    const [result, error] = core.evalContext(this.code, "data:");
+    if (error) {
+      throw error.thrown;
+    }
+    return result;
   }
 
   runInContext(_contextifiedObject: any, _options: any) {
