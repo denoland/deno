@@ -3,7 +3,7 @@
   "servers": [
     {
       "agent": "deno_websocket",
-      "url": "ws://localhost:8080"
+      "url": "ws://localhost:6969"
     }
   ],
   "cases": [
