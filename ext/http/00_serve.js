@@ -525,7 +525,7 @@ async function serve(arg1, arg2) {
     const rid = context.serverRid;
     let req;
     try {
-      req = await core.opAsync("op_http_wait", rid);
+      req = await core.opAsync2("op_http_wait", rid);
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
         break;
