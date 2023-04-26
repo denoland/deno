@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -14,7 +13,6 @@ use deno_core::ModuleId;
 use deno_runtime::colors;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::RealFs;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
@@ -259,15 +257,13 @@ pub async fn create_custom_worker(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
-    let node_resolution = ps
-      .node_resolver
-      .resolve_binary_export::<RealFs>(&package_ref)?;
+    let node_resolution =
+      ps.node_resolver.resolve_binary_export(&package_ref)?;
     let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
   } else if ps.options.is_npm_main() {
-    let node_resolution = ps
-      .node_resolver
-      .url_to_node_resolution::<RealFs>(main_module)?;
+    let node_resolution =
+      ps.node_resolver.url_to_node_resolution(main_module)?;
     let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
   } else {
@@ -345,7 +341,8 @@ pub async fn create_custom_worker(
     should_break_on_first_statement: ps.options.inspect_brk().is_some(),
     should_wait_for_inspector_session: ps.options.inspect_wait().is_some(),
     module_loader,
-    npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
+    node_fs: Some(ps.node_fs.clone()),
+    npm_resolver: Some(ps.npm_resolver.clone()),
     get_error_class_fn: Some(&errors::get_error_class_name),
     cache_storage_dir,
     origin_storage_dir,
@@ -468,7 +465,8 @@ fn create_web_worker_callback(
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(module_loader.clone())),
       module_loader,
-      npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
+      node_fs: Some(ps.node_fs.clone()),
+      npm_resolver: Some(ps.npm_resolver.clone()),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),
@@ -492,6 +490,8 @@ fn create_web_worker_callback(
 
 #[cfg(test)]
 mod tests {
+  use std::rc::Rc;
+
   use super::*;
   use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
@@ -520,6 +520,7 @@ mod tests {
       should_break_on_first_statement: false,
       should_wait_for_inspector_session: false,
       module_loader: Rc::new(FsModuleLoader),
+      node_fs: Some(Arc::new(deno_node::RealFs)),
       npm_resolver: None,
       get_error_class_fn: None,
       cache_storage_dir: None,

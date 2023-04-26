@@ -18,6 +18,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
@@ -261,7 +262,7 @@ impl NpmResolver for CliNpmResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     self.fs_resolver.ensure_read_permission(permissions, path)
@@ -269,6 +270,7 @@ impl NpmResolver for CliNpmResolver {
 }
 
 pub fn create_npm_fs_resolver(
+  fs: Arc<dyn deno_node::NodeFs>,
   cache: Arc<NpmCache>,
   progress_bar: &ProgressBar,
   registry_url: Url,
@@ -277,6 +279,7 @@ pub fn create_npm_fs_resolver(
 ) -> Arc<dyn NpmPackageFsResolver> {
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
+      fs,
       cache,
       progress_bar.clone(),
       registry_url,

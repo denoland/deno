@@ -406,27 +406,29 @@ pub async fn op_ws_send_text(
 }
 
 #[op]
-pub async fn op_ws_send(
+pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  value: SendValue,
 ) -> Result<(), AnyError> {
-  let msg = match value {
-    SendValue::Text(text) => {
-      Frame::new(true, OpCode::Text, None, text.into_bytes())
-    }
-    SendValue::Binary(buf) => {
-      Frame::new(true, OpCode::Binary, None, buf.to_vec())
-    }
-    SendValue::Pong => Frame::new(true, OpCode::Pong, None, vec![]),
-    SendValue::Ping => Frame::new(true, OpCode::Ping, None, vec![]),
-  };
-
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  resource.write_frame(msg).await
+  resource
+    .write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    .await
+}
+
+#[op]
+pub async fn op_ws_send_pong(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  resource.write_frame(Frame::pong(vec![])).await
 }
 
 #[op(deferred)]
@@ -521,11 +523,12 @@ deno_core::extension!(deno_websocket,
   ops = [
     op_ws_check_permission_and_cancel_handle<P>,
     op_ws_create<P>,
-    op_ws_send,
     op_ws_close,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    op_ws_send_ping,
+    op_ws_send_pong,
     op_ws_server_create,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
