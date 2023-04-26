@@ -532,21 +532,45 @@ Deno.test(
   },
 );
 
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerStreamResponse() {
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
-    writer.write(new TextEncoder().encode("hello "));
-    writer.write(new TextEncoder().encode("world"));
-    writer.close();
+function createStreamTest(count: number, delay: number, action: string) {
+  function doAction(controller: ReadableStreamDefaultController, i: number) {
+    if (i == count) {
+      if (action == "Throw") {
+        controller.error(new Error("Expected error!"));
+      } else {
+        console.log("close");
+        controller.close();
+      }
+    } else {
+      console.log(i);
+      controller.enqueue(`a${i}`);
 
-    const listeningPromise = deferred();
+      if (delay == 0) {
+        doAction(controller, i + 1);
+      } else {
+        setTimeout(() => doAction(controller, i + 1), delay);
+      }
+    }
+  }
+
+  function makeStream(count: number, delay: number): ReadableStream {
+    return new ReadableStream({
+      start(controller) {
+        if (delay == 0) {
+          doAction(controller, 0);
+        } else {
+          setTimeout(() => doAction(controller, 0), delay);
+        }
+      },
+    }).pipeThrough(new TextEncoderStream());
+  }
+
+  Deno.test(`httpServerStreamCount${count}Delay${delay}${action}`, async () => {
     const ac = new AbortController();
+    const listeningPromise = deferred();
     const server = Deno.serve({
-      handler: (request) => {
-        assert(!request.body);
-        return new Response(stream.readable);
+      handler: async (request) => {
+        return new Response(makeStream(count, delay));
       },
       port: 4501,
       signal: ac.signal,
@@ -556,12 +580,27 @@ Deno.test(
 
     await listeningPromise;
     const resp = await fetch("http://127.0.0.1:4501/");
-    const respBody = await resp.text();
-    assertEquals("hello world", respBody);
+
     ac.abort();
     await server;
-  },
-);
+    let expected = "";
+    for (let i = 0; i < count; i++) {
+      expected += `${i}`;
+    }
+
+    assertEquals(await resp.text(), expected);
+  });
+}
+
+for (let count of [0, 1, 2, 3]) {
+  for (let delay of [0, 1, 1000]) {
+    // Creating a stream that errors in start will throw
+    if (delay > 0) {
+      createStreamTest(count, delay, "Throw");
+    }
+    createStreamTest(count, delay, "Close");
+  }
+}
 
 Deno.test(
   { permissions: { net: true } },
