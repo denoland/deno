@@ -361,7 +361,7 @@ impl JsRuntime {
       .into_iter()
       .enumerate()
       .map(|(id, decl)| {
-        OpCtx::new(id, 0, Rc::new(decl), op_state.clone(), weak.clone())
+        OpCtx::new(id as u16, 0, Rc::new(decl), op_state.clone(), weak.clone())
       })
       .collect::<Vec<_>>()
       .into_boxed_slice();
@@ -591,7 +591,7 @@ impl JsRuntime {
   /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
-      let realm_idx = self.state.borrow().known_realms.len();
+      let realm_idx = self.state.borrow().known_realms.len() as u16;
 
       let op_ctxs: Box<[OpCtx]> = self
         .global_realm()
@@ -2212,7 +2212,7 @@ impl JsRuntime {
       {
         let (realm_idx, promise_id, op_id, resp) = item;
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        responses_per_realm[realm_idx].push((promise_id, resp));
+        responses_per_realm[realm_idx as usize].push((promise_id, resp));
       }
     }
 
@@ -2316,7 +2316,7 @@ impl JsRuntime {
       {
         let (realm_idx, promise_id, op_id, mut resp) = item;
         debug_assert_eq!(
-          state.known_realms[realm_idx],
+          state.known_realms[realm_idx as usize],
           state.global_realm.as_ref().unwrap().context()
         );
         realm_state.unrefed_ops.remove(&promise_id);
@@ -2475,7 +2475,7 @@ pub fn queue_async_op<'s>(
   // deno_core doesn't currently support such exposure, even though embedders
   // can cause them, so we panic in debug mode (since the check is expensive).
   debug_assert_eq!(
-    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
+    runtime_state.borrow().known_realms[ctx.realm_idx as usize].to_local(scope),
     Some(scope.get_current_context())
   );
 
@@ -2506,33 +2506,10 @@ pub fn queue_async_op<'s>(
 
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
-  do_queue_async_op(ctx, scope, op_call);
-  None
-}
-
-fn do_queue_async_op(
-  ctx: &OpCtx,
-  scope: &mut v8::HandleScope,
-  op_call: OpCall,
-) {
-  let runtime_state = match ctx.runtime_state.upgrade() {
-    Some(rc_state) => rc_state,
-    // atleast 1 Rc is held by the JsRuntime.
-    None => unreachable!(),
-  };
-
-  // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
-  // which it is invoked. Otherwise, we might have cross-realm object exposure.
-  // deno_core doesn't currently support such exposure, even though embedders
-  // can cause them, so we panic in debug mode (since the check is expensive).
-  debug_assert_eq!(
-    runtime_state.borrow().known_realms[ctx.realm_idx].to_local(scope),
-    Some(scope.get_current_context())
-  );
-
   let mut state = runtime_state.borrow_mut();
   state.pending_ops.push(op_call);
   state.have_unpolled_ops = true;
+  None
 }
 
 #[cfg(test)]

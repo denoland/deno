@@ -23,9 +23,9 @@ use std::rc::Weak;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
-pub type RealmIdx = usize;
+pub type RealmIdx = u16;
 pub type PromiseId = i32;
-pub type OpId = usize;
+pub type OpId = u16;
 
 #[pin_project]
 pub struct OpCall {
