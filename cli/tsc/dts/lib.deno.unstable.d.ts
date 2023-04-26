@@ -1847,19 +1847,19 @@ declare namespace Deno {
     mutate(...mutations: KvMutation[]): this;
     /**
      * Shortcut for creating a `sum` mutation. This method wraps `n` in a
-     * {@linkcode Deno.KvU64}, so the value of `n` should be in the range
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
      * `[0, 2^64-1]`.
      */
     sum(key: KvKey, n: bigint): this;
     /**
      * Shortcut for creating a `min` mutation. This method wraps `n` in a
-     * {@linkcode Deno.KvU64}, so the value of `n` should be in the range
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
      * `[0, 2^64-1]`.
      */
     min(key: KvKey, n: bigint): this;
     /**
      * Shortcut for creating a `max` mutation. This method wraps `n` in a
-     * {@linkcode Deno.KvU64}, so the value of `n` should be in the range
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
      * `[0, 2^64-1]`.
      */
     max(key: KvKey, n: bigint): this;
