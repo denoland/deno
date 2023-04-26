@@ -228,7 +228,7 @@ export class ECDH {
   #curve: EllipticCurve; // the selected curve
   #privbuf: Buffer; // the private key
   #pubbuf: Buffer; // the public key
-  #ephemeral_secret_resource: number; // the resource id in the table
+  #ephemeralSecretResource: number; // the resource id in the table
 
   constructor(curve: string) {
     validateString(curve, "curve");
@@ -276,7 +276,7 @@ export class ECDH {
     if (this.#curve.ephemeral) {
       ops.op_node_ecdh_compute_secret(
         this.#curve.name,
-        this.#ephemeral_secret_resource,
+        this.#ephemeralSecretResource,
         null,
         otherPublicKey,
         secretBuf,
@@ -310,7 +310,7 @@ export class ECDH {
 
     this.#pubbuf = pubbuf;
     if (this.#curve.ephemeral) {
-      this.#ephemeral_secret_resource = rid;
+      this.#ephemeralSecretResource = rid;
     } else {
       this.#privbuf = privbuf;
     }
