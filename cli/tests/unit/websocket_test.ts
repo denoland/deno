@@ -147,3 +147,25 @@ Deno.test({
   };
   await Promise.all([promise, server]);
 });
+
+Deno.test(
+  { sanitizeOps: false },
+  function websocketConstructorWithPrototypePollusion() {
+    const originalSymbolIterator = Array.prototype[Symbol.iterator];
+    try {
+      Array.prototype[Symbol.iterator] = () => {
+        throw Error("unreachable");
+      };
+      assertThrows(() => {
+        new WebSocket(
+          new URL("ws://localhost:4242/"),
+          // Allow `Symbol.iterator` to be called in WebIDL conversion to `sequence<DOMString>`
+          // deno-lint-ignore no-explicit-any
+          ["soap", "soap"].values() as any,
+        );
+      }, DOMException);
+    } finally {
+      Array.prototype[Symbol.iterator] = originalSymbolIterator;
+    }
+  },
+);

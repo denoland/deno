@@ -1,0 +1,26 @@
+{
+  "outdir": "./reports/servers",
+  "servers": [
+    {
+      "agent": "deno_websocket",
+      "url": "ws://localhost:6969"
+    }
+  ],
+  "cases": [
+    "1.*",
+    "2.*",
+    "3.*",
+    "4.*",
+    "5.*",
+    "6.*",
+    "7.*",
+    "9.*",
+    "10.*"
+  ],
+  "exclude-cases": [
+    "11.*",
+    "12.*",
+    "13.*"
+  ],
+  "exclude-agent-cases": {}
+}
