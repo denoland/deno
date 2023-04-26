@@ -27,7 +27,6 @@ mod package_json;
 mod path;
 mod polyfill;
 mod resolution;
-mod resolver;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -35,32 +34,23 @@ pub use polyfill::is_builtin_node_module;
 pub use polyfill::resolve_builtin_node_module;
 pub use polyfill::NodeModulePolyfill;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
-pub use resolution::get_closest_package_json;
-pub use resolution::get_package_scope_config;
-pub use resolution::legacy_main_resolve;
-pub use resolution::package_exports_resolve;
-pub use resolution::package_imports_resolve;
-pub use resolution::package_resolve;
-pub use resolution::path_to_declaration_path;
 pub use resolution::NodeModuleKind;
+pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
-pub use resolution::DEFAULT_CONDITIONS;
-pub use resolver::NodeResolution;
-pub use resolver::NodeResolver;
+pub use resolution::NodeResolver;
 
 pub trait NodeEnv {
   type P: NodePermissions;
-  type Fs: NodeFs;
 }
 
 pub trait NodePermissions {
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
-  fn check_read(&mut self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -71,24 +61,26 @@ pub struct NodeFsMetadata {
   pub is_dir: bool,
 }
 
-pub trait NodeFs {
-  fn current_dir() -> io::Result<PathBuf>;
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata>;
-  fn is_file<P: AsRef<Path>>(path: P) -> bool;
-  fn is_dir<P: AsRef<Path>>(path: P) -> bool;
-  fn exists<P: AsRef<Path>>(path: P) -> bool;
-  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
-  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf>;
+pub trait NodeFs: std::fmt::Debug + Send + Sync {
+  fn current_dir(&self) -> io::Result<PathBuf>;
+  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata>;
+  fn is_file(&self, path: &Path) -> bool;
+  fn is_dir(&self, path: &Path) -> bool;
+  fn exists(&self, path: &Path) -> bool;
+  fn read_to_string(&self, path: &Path) -> io::Result<String>;
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
 
+#[derive(Debug)]
 pub struct RealFs;
+
 impl NodeFs for RealFs {
-  fn current_dir() -> io::Result<PathBuf> {
+  fn current_dir(&self) -> io::Result<PathBuf> {
     #[allow(clippy::disallowed_methods)]
     std::env::current_dir()
   }
 
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata> {
+  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata> {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).map(|metadata| {
       // on most systems, calling is_file() and is_dir() is cheap
@@ -100,35 +92,35 @@ impl NodeFs for RealFs {
     })
   }
 
-  fn exists<P: AsRef<Path>>(path: P) -> bool {
+  fn exists(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).is_ok()
   }
 
-  fn is_file<P: AsRef<Path>>(path: P) -> bool {
+  fn is_file(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path)
       .map(|m| m.is_file())
       .unwrap_or(false)
   }
 
-  fn is_dir<P: AsRef<Path>>(path: P) -> bool {
+  fn is_dir(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
   }
 
-  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+  fn read_to_string(&self, path: &Path) -> io::Result<String> {
     #[allow(clippy::disallowed_methods)]
     std::fs::read_to_string(path)
   }
 
-  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
     #[allow(clippy::disallowed_methods)]
-    std::path::Path::canonicalize(path.as_ref())
+    std::path::Path::canonicalize(path)
   }
 }
 
-pub trait NpmResolver {
+pub trait NpmResolver: std::fmt::Debug + Send + Sync {
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -172,60 +164,9 @@ pub trait NpmResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
-}
-
-impl<T: NpmResolver + ?Sized> NpmResolver for Arc<T> {
-  fn resolve_package_folder_from_package(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_package(specifier, referrer, mode)
-  }
-
-  fn resolve_package_folder_from_path(
-    &self,
-    path: &Path,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_path(path)
-  }
-
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &NpmPackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_deno_module(pkg_nv)
-  }
-
-  fn resolve_pkg_id_from_pkg_req(
-    &self,
-    req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
-    (**self).resolve_pkg_id_from_pkg_req(req)
-  }
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    (**self).resolve_nv_ref_from_pkg_req_ref(req_ref)
-  }
-
-  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    (**self).in_npm_package(specifier)
-  }
-
-  fn ensure_read_permission(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
-    (**self).ensure_read_permission(permissions, path)
-  }
 }
 
 pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
@@ -582,11 +523,18 @@ deno_core::extension!(deno_node,
     "zlib.ts",
   ],
   options = {
-    maybe_npm_resolver: Option<Rc<dyn NpmResolver>>,
+    maybe_npm_resolver: Option<Arc<dyn NpmResolver>>,
+    fs: Option<Arc<dyn NodeFs>>,
   },
   state = |state, options| {
+    let fs = options.fs.unwrap_or_else(|| Arc::new(RealFs));
+    state.put(fs.clone());
     if let Some(npm_resolver) = options.maybe_npm_resolver {
-      state.put(npm_resolver);
+      state.put(npm_resolver.clone());
+      state.put(Rc::new(NodeResolver::new(
+        fs,
+        npm_resolver,
+      )))
     }
   },
 );

@@ -478,7 +478,7 @@ class WebSocket extends EventTarget {
           this[_serverHandleIdleTimeout]();
           break;
         }
-        case 5: {
+        case 3: {
           /* error */
           this[_readyState] = CLOSED;
 
@@ -490,10 +490,6 @@ class WebSocket extends EventTarget {
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
           core.tryClose(this[_rid]);
-          break;
-        }
-        case 3: {
-          /* ping */
           break;
         }
         default: {
@@ -534,13 +530,7 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await core.opAsync(
-            "op_ws_send",
-            this[_rid],
-            {
-              kind: "ping",
-            },
-          );
+          await core.opAsync("op_ws_send_ping", this[_rid]);
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;

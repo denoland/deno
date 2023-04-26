@@ -211,14 +211,6 @@ class AtomicOperation {
     return this;
   }
 
-  sum(key: Deno.KvKey, n: bigint): this {
-    return this.mutate({
-      type: "sum",
-      key,
-      value: new KvU64(n),
-    });
-  }
-
   mutate(...mutations: Deno.KvMutation[]): this {
     for (const mutation of mutations) {
       const key = mutation.key;
@@ -246,6 +238,21 @@ class AtomicOperation {
       }
       this.#mutations.push([key, type, value]);
     }
+    return this;
+  }
+
+  sum(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "sum", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  min(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "min", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  max(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "max", serializeValue(new KvU64(n))]);
     return this;
   }
 
@@ -278,8 +285,8 @@ class AtomicOperation {
   }
 }
 
-const MIN_U64 = 0n;
-const MAX_U64 = 0xffffffffffffffffn;
+const MIN_U64 = BigInt("0");
+const MAX_U64 = BigInt("0xffffffffffffffff");
 
 class KvU64 {
   readonly value: bigint;
