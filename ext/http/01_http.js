@@ -482,14 +482,11 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
-async function upgradeHttpRaw(req, tcpConn) {
+function upgradeHttpRaw(req, tcpConn) {
   const inner = toInnerRequest(req);
   if (inner._wantsUpgrade) {
     return inner._wantsUpgrade("upgradeHttpRaw", arguments);
   }
-
-  const res = await core.opAsync("op_http_upgrade_early", inner[streamRid]);
-  return new TcpConn(res, tcpConn.remoteAddr, tcpConn.localAddr);
 }
 
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);

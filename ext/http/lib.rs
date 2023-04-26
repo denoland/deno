@@ -972,7 +972,7 @@ struct EarlyUpgradeSocket(AsyncRefCell<EarlyUpgradeSocketInner>, CancelHandle);
 enum EarlyUpgradeSocketInner {
   PreResponse(
     Rc<HttpStreamResource>,
-    WebSocketUpgrade,
+    WebSocketUpgrade<Body>,
     // Readers need to block in this state, so they can wait here for the broadcast.
     tokio::sync::broadcast::Sender<
       Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,

@@ -1514,7 +1514,8 @@ declare namespace Deno {
    */
   export function upgradeHttp(
     request: Request,
-  ): Promise<[Deno.Conn, Uint8Array]>;
+    headers?: HeadersInit,
+  ): HttpUpgrade;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1522,18 +1523,25 @@ declare namespace Deno {
    * This can be used to implement protocols that build on top of HTTP (eg.
    * {@linkcode WebSocket}).
    *
-   * Unlike {@linkcode Deno.upgradeHttp} this function does not require that you
-   * respond to the request with a {@linkcode Response} object. Instead this
-   * function returns the underlying connection and first packet received
-   * immediately, and then the caller is responsible for writing the response to
-   * the connection.
-   *
    * This method can only be called on requests originating the
    * {@linkcode Deno.serve} server.
    *
    * @category HTTP Server
    */
-  export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
+  export function upgradeHttpRaw(request: Request): HttpUpgrade;
+
+  /** The object that is returned from a {@linkcode Deno.upgradeHttp} or {@linkcode Deno.upgradeHttpRaw}
+   * request.
+   *
+   * @category Web Sockets */
+  export interface HttpUpgrade {
+    /** The response object that represents the HTTP response to the client,
+     * which should be used to the {@linkcode RequestEvent} `.respondWith()` for
+     * the upgrade to be successful. */
+    response: Response;
+    /** The socket interface to communicate to the client via. */
+    conn: Deno.Conn;
+  }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

@@ -32,6 +32,7 @@ import {
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
+import { TcpConn } from "ext:deno_net/01_net.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
@@ -122,10 +123,22 @@ class InnerRequest {
       throw "upgradeHttp is unavailable in Deno.serve at this time";
     }
 
-    // upgradeHttpRaw is async
-    // TODO(mmastrac)
+    // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
-      throw "upgradeHttp is unavailable in Deno.serve at this time";
+      const slabId = this.#slabId;
+
+      this.url();
+      this.headerList;
+      this.close();
+
+      this.#upgraded = () => {};
+
+      const upgradeRid = core.ops.op_upgrade_raw(slabId);
+
+      // TODO(mmastrac): remoteAddr
+      const conn = new TcpConn(upgradeRid, null, null);
+
+      return { response: UPGRADE_RESPONSE_SENTINEL, conn };
     }
 
     // upgradeWebSocket is sync
