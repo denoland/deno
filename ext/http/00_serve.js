@@ -435,16 +435,26 @@ async function asyncResponse(responseBodies, req, status, stream) {
  */
 function mapToCallback(responseBodies, context, signal, callback, onError) {
   return async function (req) {
-    const innerRequest = new InnerRequest(req, context);
-    const request = fromInnerRequest(innerRequest, signal, "immutable");
-
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
+    let innerRequest;
     let response;
     try {
-      response = await callback(request, {
-        remoteAddr: innerRequest.remoteAddr,
-      });
+      if (callback.length > 0) {
+        innerRequest = new InnerRequest(req, context);
+        const request = fromInnerRequest(innerRequest, signal, "immutable");
+        if (callback.length === 1) {
+          response = await callback(request);
+        } else {
+          response = await callback(request, {
+            get remoteAddr() {
+              return innerRequest.remoteAddr;
+            },
+          });
+        }
+      } else {
+        response = await callback();
+      }
     } catch (error) {
       try {
         response = await onError(error);
@@ -455,19 +465,19 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
     }
 
     const inner = toInnerResponse(response);
-    if (innerRequest[_upgraded]) {
+    if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
-      innerRequest[_upgraded]();
+      innerRequest?.[_upgraded]();
       return;
     }
 
     // Did everything shut down while we were waiting?
     if (context.closed) {
-      innerRequest.close();
+      innerRequest?.close();
       return;
     }
 
@@ -490,7 +500,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
       core.ops.op_set_promise_complete(req, status);
     }
 
-    innerRequest.close();
+    innerRequest?.close();
   };
 }
 
