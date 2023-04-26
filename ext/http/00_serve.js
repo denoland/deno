@@ -641,4 +641,4 @@ async function serve(arg1, arg2) {
 
 internals.upgradeHttpRaw = upgradeHttpRaw;
 
-export { serve };
+export { serve, upgradeHttpRaw };

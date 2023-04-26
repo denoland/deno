@@ -908,6 +908,7 @@ pub async fn op_http_wait(
 struct UpgradeStream {
   read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
   write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+  cancel_handle: CancelHandle,
 }
 
 impl UpgradeStream {
@@ -918,19 +919,30 @@ impl UpgradeStream {
     Self {
       read: AsyncRefCell::new(read),
       write: AsyncRefCell::new(write),
+      cancel_handle: CancelHandle::new(),
     }
   }
 
   async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
-    let read = RcRef::map(self, |this| &this.read);
-    let mut read = read.borrow_mut().await;
-    Ok(Pin::new(&mut *read).read(buf).await?)
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let read = RcRef::map(self, |this| &this.read);
+      let mut read = read.borrow_mut().await;
+      Ok(Pin::new(&mut *read).read(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
   }
 
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
-    let write = RcRef::map(self, |this| &this.write);
-    let mut write = write.borrow_mut().await;
-    Ok(Pin::new(&mut *write).write(buf).await?)
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let write = RcRef::map(self, |this| &this.write);
+      let mut write = write.borrow_mut().await;
+      Ok(Pin::new(&mut *write).write(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
   }
 }
 
@@ -941,4 +953,8 @@ impl Resource for UpgradeStream {
 
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
 }
