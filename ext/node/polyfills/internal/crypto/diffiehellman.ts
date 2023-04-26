@@ -225,10 +225,10 @@ export class DiffieHellmanGroup {
 }
 
 export class ECDH {
-  curve: EllipticCurve; // the selected curve
-  privbuf: Buffer; // the private key
-  pubbuf: Buffer; // the public key
-  ephemeral_secret_resource: number; // the resource id in the table
+  #curve: EllipticCurve; // the selected curve
+  #privbuf: Buffer; // the private key
+  #pubbuf: Buffer; // the public key
+  #ephemeral_secret_resource: number; // the resource id in the table
 
   constructor(curve: string) {
     validateString(curve, "curve");
@@ -239,7 +239,7 @@ export class ECDH {
       throw new Error("invalid curve");
     }
 
-    this.curve = c;
+    this.#curve = c;
   }
 
   static convertKey(
@@ -271,21 +271,21 @@ export class ECDH {
     _inputEncoding?: BinaryToTextEncoding,
     _outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    const secretBuf = Buffer.alloc(this.curve.sharedSecretSize);
+    const secretBuf = Buffer.alloc(this.#curve.sharedSecretSize);
 
-    if (this.curve.ephemeral) {
+    if (this.#curve.ephemeral) {
       ops.op_node_ecdh_compute_secret(
-        this.curve.name,
-        this.ephemeral_secret_resource,
+        this.#curve.name,
+        this.#ephemeral_secret_resource,
         null,
         otherPublicKey,
         secretBuf,
       );
     } else {
       ops.op_node_ecdh_compute_secret(
-        this.curve.name,
+        this.#curve.name,
         0,
-        this.privbuf,
+        this.#privbuf,
         otherPublicKey,
         secretBuf,
       );
@@ -300,19 +300,19 @@ export class ECDH {
     encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    const pubbuf = Buffer.alloc(this.curve.publicKeySize);
-    const privbuf = Buffer.alloc(this.curve.privateKeySize);
+    const pubbuf = Buffer.alloc(this.#curve.publicKeySize);
+    const privbuf = Buffer.alloc(this.#curve.privateKeySize);
     const rid = ops.op_node_ecdh_generate_keys(
-      this.curve.name,
+      this.#curve.name,
       pubbuf,
       privbuf,
     );
 
-    this.pubbuf = pubbuf;
-    if (this.curve.ephemeral) {
-      this.ephemeral_secret_resource = rid;
+    this.#pubbuf = pubbuf;
+    if (this.#curve.ephemeral) {
+      this.#ephemeral_secret_resource = rid;
     } else {
-      this.privbuf = privbuf;
+      this.#privbuf = privbuf;
     }
 
     if (encoding !== undefined) {
@@ -324,16 +324,16 @@ export class ECDH {
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (this.curve.ephemeral) {
+    if (this.#curve.ephemeral) {
       throw new Error(
         "Curves that use ephemeral ECDH cannot be queried for their private key",
       );
     }
 
     if (encoding !== undefined) {
-      return this.privbuf.toString(encoding);
+      return this.#privbuf.toString(encoding);
     }
-    return this.privbuf;
+    return this.#privbuf;
   }
 
   getPublicKey(): Buffer;
@@ -343,9 +343,9 @@ export class ECDH {
     _format?: ECDHKeyFormat,
   ): Buffer | string {
     if (encoding !== undefined) {
-      return this.pubbuf.toString(encoding);
+      return this.#pubbuf.toString(encoding);
     }
-    return this.pubbuf;
+    return this.#pubbuf;
   }
 
   setPrivateKey(privateKey: ArrayBufferView): void;
@@ -354,22 +354,22 @@ export class ECDH {
     privateKey: ArrayBufferView | string,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    if (this.curve.ephemeral) {
+    if (this.#curve.ephemeral) {
       throw new Error(
-        "Curve " + this.curve.name + " does not support setPrivateKey",
+        "Curve " + this.#curve.name + " does not support setPrivateKey",
       );
     }
 
-    this.privbuf = privateKey;
-    const pubbuf = Buffer.alloc(this.curve.publicKeySize);
+    this.#privbuf = privateKey;
+    const pubbuf = Buffer.alloc(this.#curve.publicKeySize);
 
-    ops.op_node_ecdh_compute_public_key(this.curve.name, this.privbuf, pubbuf);
-    this.pubbuf = pubbuf;
+    ops.op_node_ecdh_compute_public_key(this.#curve.name, this.#privbuf, pubbuf);
+    this.#pubbuf = pubbuf;
 
     if (encoding !== undefined) {
-      return this.pubbuf.toString(encoding);
+      return this.#pubbuf.toString(encoding);
     }
-    return this.pubbuf;
+    return this.#pubbuf;
   }
 }
 
