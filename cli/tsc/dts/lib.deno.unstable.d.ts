@@ -1514,8 +1514,7 @@ declare namespace Deno {
    */
   export function upgradeHttp(
     request: Request,
-    headers?: HeadersInit,
-  ): HttpUpgrade;
+  ): Promise<[Deno.Conn, Uint8Array]>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
