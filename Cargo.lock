@@ -846,6 +846,7 @@ dependencies = [
  "deno_ast",
  "deno_ops",
  "futures",
+ "futures-buffered",
  "indexmap",
  "libc",
  "log",
@@ -1948,6 +1949,17 @@ dependencies = [
  "futures-sink",
  "futures-task",
  "futures-util",
+]
+
+[[package]]
+name = "futures-buffered"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de8419e65098e54c06f5ae8a130a79e8ba2e391ff995d260ca5d77ea72ab2fe3"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project-lite",
 ]
 
 [[package]]

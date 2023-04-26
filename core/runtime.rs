@@ -35,9 +35,9 @@ use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::Future;
 use futures::future::FutureExt;
-use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use futures_buffered::FuturesUnorderedBounded;
 use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
@@ -165,7 +165,7 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
-  pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) pending_ops: FuturesUnorderedBounded<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -342,7 +342,9 @@ impl JsRuntime {
       has_tick_scheduled: false,
       source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
-      pending_ops: FuturesUnordered::new(),
+      // NOTE(bartlomieju): this number was chosen rather arbitrarily and might
+      // have to be adjusted.
+      pending_ops: FuturesUnorderedBounded::new(4096),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
