@@ -226,7 +226,6 @@ impl TestRun {
       Permissions::from_options(&ps.options.permissions_options())?;
     test::check_specifiers(
       &ps,
-      permissions.clone(),
       self
         .queue
         .iter()

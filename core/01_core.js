@@ -453,7 +453,6 @@
     BadResourcePrototype,
     Interrupted,
     InterruptedPrototype,
-    enableOpCallTracing,
     isOpCallTracingEnabled,
     opCallTraces,
     refOp,
@@ -507,8 +506,11 @@
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
-  const internals = {};
-  ObjectAssign(globalThis.__bootstrap, { internals });
+  ObjectAssign(globalThis.__bootstrap, {
+    internals: {
+      enableOpCallTracing,
+    },
+  });
   ObjectAssign(globalThis.Deno, { core });
 
   // Direct bindings on `globalThis`

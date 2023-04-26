@@ -227,8 +227,8 @@ impl ProcState {
     let lockfile = cli_options.maybe_lock_file();
 
     let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
-    let npm_cache = Arc::new(NpmCache::from_deno_dir(
-      &dir,
+    let npm_cache = Arc::new(NpmCache::new(
+      dir.npm_folder_path(),
       cli_options.cache_setting(),
       http_client.clone(),
       progress_bar.clone(),
@@ -250,7 +250,7 @@ impl ProcState {
     let node_fs = Arc::new(deno_node::RealFs);
     let npm_fs_resolver = create_npm_fs_resolver(
       node_fs.clone(),
-      npm_cache,
+      npm_cache.clone(),
       &progress_bar,
       npm_registry_url,
       npm_resolution.clone(),
@@ -301,12 +301,6 @@ impl ProcState {
       emit_cache.clone(),
       parsed_source_cache.clone(),
       emit_options,
-    ));
-    let npm_cache = Arc::new(NpmCache::from_deno_dir(
-      &dir,
-      cli_options.cache_setting(),
-      http_client.clone(),
-      progress_bar.clone(),
     ));
     let file_fetcher = Arc::new(file_fetcher);
     let node_analysis_cache =
