@@ -478,7 +478,7 @@ class WebSocket extends EventTarget {
           this[_serverHandleIdleTimeout]();
           break;
         }
-        case 5: {
+        case 3: {
           /* error */
           this[_readyState] = CLOSED;
 
@@ -490,10 +490,6 @@ class WebSocket extends EventTarget {
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
           core.tryClose(this[_rid]);
-          break;
-        }
-        case 3: {
-          /* ping */
           break;
         }
         default: {
