@@ -4,6 +4,7 @@
 
 const core = globalThis.Deno.core;
 const { opAsync, opAsync2 } = core;
+// deno-lint-ignore camelcase
 const op_ws_check_permission_and_cancel_handle =
   core.ops.op_ws_check_permission_and_cancel_handle;
 import { URL } from "ext:deno_url/00_url.js";
