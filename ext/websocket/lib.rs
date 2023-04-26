@@ -448,58 +448,55 @@ pub async fn op_ws_next_event(
     .get::<ServerWebSocket>(rid)?;
 
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-  let val = match ws.read_frame().await {
-    Ok(val) => val,
-    Err(err) => {
-      // No message was received, socket closed while we waited.
-      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
-      if resource.closed.get() {
-        let _ = state.borrow_mut().resource_table.close(rid);
+  loop {
+    let val = match ws.read_frame().await {
+      Ok(val) => val,
+      Err(err) => {
+        // No message was received, socket closed while we waited.
+        // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+        if resource.closed.get() {
+          let _ = state.borrow_mut().resource_table.close(rid);
+          return Ok((
+            MessageKind::Closed as u16,
+            StringOrBuffer::Buffer(vec![].into()),
+          ));
+        }
+
         return Ok((
-          MessageKind::Closed as u16,
-          StringOrBuffer::Buffer(vec![].into()),
+          MessageKind::Error as u16,
+          StringOrBuffer::String(err.to_string()),
         ));
       }
+    };
 
-      return Ok((
-        MessageKind::Error as u16,
-        StringOrBuffer::String(err.to_string()),
-      ));
-    }
-  };
+    break Ok(match val.opcode {
+      OpCode::Text => (
+        MessageKind::Text as u16,
+        StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
+      ),
+      OpCode::Binary => (
+        MessageKind::Binary as u16,
+        StringOrBuffer::Buffer(val.payload.into()),
+      ),
+      OpCode::Close => {
+        if val.payload.len() < 2 {
+          return Ok((1005, StringOrBuffer::String("".to_string())));
+        }
 
-  let res = match val.opcode {
-    OpCode::Text => (
-      MessageKind::Text as u16,
-      StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
-    ),
-    OpCode::Binary => (
-      MessageKind::Binary as u16,
-      StringOrBuffer::Buffer(val.payload.into()),
-    ),
-    OpCode::Close => {
-      if val.payload.len() < 2 {
-        return Ok((1005, StringOrBuffer::String("".to_string())));
+        let close_code =
+          CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
+        let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
+        (close_code.into(), StringOrBuffer::String(reason))
       }
-
-      let close_code =
-        CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
-      let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
-      (close_code.into(), StringOrBuffer::String(reason))
-    }
-    OpCode::Ping => (
-      MessageKind::Ping as u16,
-      StringOrBuffer::Buffer(vec![].into()),
-    ),
-    OpCode::Pong => (
-      MessageKind::Pong as u16,
-      StringOrBuffer::Buffer(vec![].into()),
-    ),
-    OpCode::Continuation => {
-      return Err(type_error("Unexpected continuation frame"))
-    }
-  };
-  Ok(res)
+      OpCode::Pong => (
+        MessageKind::Pong as u16,
+        StringOrBuffer::Buffer(vec![].into()),
+      ),
+      OpCode::Continuation | OpCode::Ping => {
+        continue;
+      }
+    });
+  }
 }
 
 deno_core::extension!(deno_websocket,
