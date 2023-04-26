@@ -925,6 +925,27 @@ impl JsRuntime {
     )
   }
 
+  /// Call a function. If it returns a promise, run the event loop until that
+  /// promise is settled. If the promise rejects or there is an uncaught error
+  /// in the event loop, return `Err(error)`. Or return `Ok(<await returned>)`.
+  pub async fn call_and_await(
+    &mut self,
+    function: &v8::Global<v8::Function>,
+  ) -> Result<v8::Global<v8::Value>, Error> {
+    let promise = {
+      let scope = &mut self.handle_scope();
+      let cb = function.open(scope);
+      let this = v8::undefined(scope).into();
+      let promise = cb.call(scope, this, &[]);
+      if promise.is_none() || scope.is_execution_terminating() {
+        let undefined = v8::undefined(scope).into();
+        return exception_to_err_result(scope, undefined, false);
+      }
+      v8::Global::new(scope, promise.unwrap())
+    };
+    self.resolve_value(promise).await
+  }
+
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
@@ -2551,7 +2572,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
         var p1 = Deno.core.opAsync("op_test", 42);
         var p2 = Deno.core.opAsync("op_test", 42);
@@ -2607,7 +2628,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        
+
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2626,7 +2647,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2643,7 +2664,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2658,7 +2679,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync2("op_test", null, zero_copy_a);
         "#,
@@ -3820,7 +3841,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .execute_script_static(
         "macrotasks_and_nextticks.js",
         r#"
-        
+
         (async function () {
           const results = [];
           Deno.core.setMacrotaskCallback(() => {
@@ -4058,7 +4079,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           "",
           format!(
             r#"
-              
+
               globalThis.rejectValue = undefined;
               Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
@@ -4496,7 +4517,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           runtime.v8_isolate(),
           "",
           r#"
-            
+
             (async function () {
               const buf = await Deno.core.opAsync("op_test", false);
               let err;
@@ -4549,7 +4570,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           runtime.v8_isolate(),
           "",
           r#"
-            
+
             var promise = Deno.core.opAsync("op_pending");
           "#,
         )
@@ -4559,7 +4580,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           runtime.v8_isolate(),
           "",
           r#"
-            
+
             var promise = Deno.core.opAsync("op_pending");
           "#,
         )

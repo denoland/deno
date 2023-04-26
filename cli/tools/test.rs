@@ -997,14 +997,7 @@ pub async fn test_specifier(
     }
     sender.send(TestEvent::Wait(desc.id))?;
     let earlier = SystemTime::now();
-    let promise = {
-      let scope = &mut worker.js_runtime.handle_scope();
-      let cb = function.open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    let result = match worker.js_runtime.resolve_value(promise).await {
+    let result = match worker.js_runtime.call_and_await(&function).await {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
