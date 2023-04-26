@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file
 
-import { $ } from "https://deno.land/x/dax/mod.ts";
+import { $ } from "https://deno.land/x/dax@0.31.0/mod.ts";
 
 const pwd = new URL(".", import.meta.url).pathname;
 
