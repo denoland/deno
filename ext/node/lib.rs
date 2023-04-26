@@ -170,7 +170,7 @@ pub trait NpmResolver: std::fmt::Debug + Send + Sync {
 }
 
 pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
-  let crate_version = env!("CARGO_PKG_VERSION").replace(".", "_");
+  let crate_version = env!("CARGO_PKG_VERSION").replace('.', "_");
   // use a changing variable name to make it hard to depend on this
   format!("__DENO_NODE_GLOBAL_THIS_{crate_version}__")
 });
