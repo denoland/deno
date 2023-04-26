@@ -1015,12 +1015,15 @@ Deno.test(
     const promise = deferred();
     const ac = new AbortController();
 
-    const server = Deno.serve((request) => {
-      assert(request.body);
+    const server = Deno.serve(
+      { port: 2333, signal: ac.signal },
+      (request) => {
+        assert(request.body);
 
-      promise.resolve();
-      return new Response(request.body);
-    }, { port: 2333, signal: ac.signal });
+        promise.resolve();
+        return new Response(request.body);
+      },
+    );
 
     const ts = new TransformStream();
     const writable = ts.writable.getWriter();
@@ -2716,8 +2719,8 @@ Deno.test(
   async function httpServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
-      () => new Response("hello world!"),
       { signal: ac.signal },
+      () => new Response("hello world!"),
     );
 
     assertEquals(
@@ -2747,12 +2750,12 @@ Deno.test(
   async function httpsServeCurlH2C() {
     const ac = new AbortController();
     const server = Deno.serve(
-      () => new Response("hello world!"),
       {
         signal: ac.signal,
         cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
         key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
       },
+      () => new Response("hello world!"),
     );
 
     assertEquals(
