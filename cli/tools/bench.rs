@@ -931,7 +931,10 @@ mod mitata {
       sysctl.arg("-n");
       sysctl.arg("machdep.cpu.brand_string");
       return std::str::from_utf8(
-        &sysctl.output().map_or(Vec::from("unknown"), |x| x.stdout),
+        &sysctl
+          .output()
+          .map(|x| x.stdout)
+          .unwrap_or(Vec::from("unknown")),
       )
       .unwrap()
       .trim()

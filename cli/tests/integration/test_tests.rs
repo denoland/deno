@@ -216,7 +216,7 @@ itest!(ops_sanitizer_timeout_failure {
 });
 
 itest!(ops_sanitizer_multiple_timeout_tests {
-  args: "test --trace-ops test/ops_sanitizer_multiple_timeout_tests.ts",
+  args: "test --trace-ops --enable-testing-features-do-not-use test/ops_sanitizer_multiple_timeout_tests.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_multiple_timeout_tests.out",
 });
@@ -390,7 +390,7 @@ fn recursive_permissions_pledge() {
   let context = TestContext::default();
   let output = context
     .new_command()
-    .args("test test/recursive_permissions_pledge.js")
+    .args("test --enable-testing-features-do-not-use test/recursive_permissions_pledge.js")
     .run();
   output.assert_exit_code(1);
   assert_contains!(
