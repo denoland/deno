@@ -901,3 +901,13 @@ pub async fn op_node_scrypt_async(
   })
   .await?
 }
+
+fn gen_prime(size: usize) -> ZeroCopyBuf {
+  primes::Prime::generate(size).0.to_bytes_be().into()
+}
+
+#[op]
+pub fn op_node_gen_prime(size: usize) -> ZeroCopyBuf {}
+
+#[op]
+pub async fn op_node_gen_prime_async(size: usize) -> ZeroCopyBuf {}
