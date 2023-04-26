@@ -169,11 +169,7 @@ pub trait NpmResolver: std::fmt::Debug + Send + Sync {
   ) -> Result<(), AnyError>;
 }
 
-pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
-  let crate_version = env!("CARGO_PKG_VERSION").replace('.', "_");
-  // use a changing variable name to make it hard to depend on this
-  format!("__DENO_NODE_GLOBAL_THIS_{crate_version}__")
-});
+pub const NODE_GLOBAL_THIS_NAME: &str = env!("NODE_GLOBAL_THIS_NAME");
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
@@ -553,9 +549,7 @@ pub fn initialize_runtime(
         argv0
       );
     }})('{}', {}, {});"#,
-    NODE_GLOBAL_THIS_NAME.as_str(),
-    uses_local_node_modules_dir,
-    argv0
+    NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
   );
 
   js_runtime.execute_script(located_script_name!(), source_code.into())?;
