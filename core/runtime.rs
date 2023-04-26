@@ -344,7 +344,7 @@ impl JsRuntime {
       source_map_cache: Default::default(),
       // NOTE(bartlomieju): this number was chosen rather arbitrarily and might
       // have to be adjusted.
-      pending_ops: FuturesUnorderedBounded::new(4096),
+      pending_ops: FuturesUnorderedBounded::new(16_384),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
