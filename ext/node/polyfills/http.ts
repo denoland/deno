@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { _normalizeArgs, ListenOptions, Socket } from "ext:deno_node/net.ts";
