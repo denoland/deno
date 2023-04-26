@@ -10,40 +10,40 @@ pub enum Error {
   Message(String),
 
   #[error("serde_v8 error: invalid type; expected: boolean, got: {0}")]
-  ExpectedBoolean(String),
+  ExpectedBoolean(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: integer, got: {0}")]
-  ExpectedInteger(String),
+  ExpectedInteger(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: number, got: {0}")]
-  ExpectedNumber(String),
+  ExpectedNumber(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: string, got: {0}")]
-  ExpectedString(String),
+  ExpectedString(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: array, got: {0}")]
-  ExpectedArray(String),
+  ExpectedArray(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: map, got: {0}")]
-  ExpectedMap(String),
+  ExpectedMap(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: enum, got: {0}")]
-  ExpectedEnum(String),
+  ExpectedEnum(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: object, got: {0}")]
-  ExpectedObject(String),
+  ExpectedObject(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: buffer, got: {0}")]
-  ExpectedBuffer(String),
+  ExpectedBuffer(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: detachable, got: {0}")]
-  ExpectedDetachable(String),
+  ExpectedDetachable(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: external, got: {0}")]
-  ExpectedExternal(String),
+  ExpectedExternal(&'static str),
 
   #[error("serde_v8 error: invalid type; expected: bigint, got: {0}")]
-  ExpectedBigInt(String),
+  ExpectedBigInt(&'static str),
 
   #[error("serde_v8 error: invalid type, expected: utf8")]
   ExpectedUtf8,
@@ -69,8 +69,8 @@ impl serde::de::Error for Error {
   }
 }
 
-pub(crate) fn value_to_type_str(value: v8::Local<v8::Value>) -> String {
-  let s = if value.is_module_namespace_object() {
+pub(crate) fn value_to_type_str(value: v8::Local<v8::Value>) -> &'static str {
+  if value.is_module_namespace_object() {
     "Module"
   } else if value.is_wasm_module_object() {
     "WASM module"
@@ -152,6 +152,5 @@ pub(crate) fn value_to_type_str(value: v8::Local<v8::Value>) -> String {
     "undefined"
   } else {
     "unknown"
-  };
-  s.to_string()
+  }
 }
