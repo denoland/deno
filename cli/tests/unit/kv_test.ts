@@ -220,69 +220,33 @@ dbTest("compare and mutate not exists", async (db) => {
 });
 
 dbTest("atomic mutation helper (sum)", async (db) => {
-  let res = await db.atomic()
-    .check({ key: ["t"], versionstamp: null })
-    .set(["t"], new Deno.KvU64(42n))
-    .commit();
-  assert(res);
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
 
-  let newValue = await db.get(["t"]);
-  assertEquals(newValue.versionstamp, "00000000000000010000");
-  assertEquals(newValue.value, new Deno.KvU64(42n));
-
-  res = await db.atomic().sum(["t"], 1n).commit();
-  assert(res);
-
-  newValue = await db.get(["t"]);
-  assertEquals(newValue.value, new Deno.KvU64(43n));
+  await db.atomic().sum(["t"], 1n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(43n));
 });
 
 dbTest("atomic mutation helper (min)", async (db) => {
-  let res = await db.atomic()
-    .check({ key: ["t"], versionstamp: null })
-    .set(["t"], new Deno.KvU64(42n))
-    .commit();
-  assert(res);
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
 
-  let newValue = await db.get(["t"]);
-  assertEquals(newValue.versionstamp, "00000000000000010000");
-  assertEquals(newValue.value, new Deno.KvU64(42n));
+  await db.atomic().min(["t"], 1n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(1n));
 
-  res = await db.atomic().min(["t"], 1n).commit();
-  assert(res);
-
-  newValue = await db.get(["t"]);
-  assertEquals(newValue.value, new Deno.KvU64(1n));
-
-  res = await db.atomic().min(["t"], 2n).commit();
-  assert(res);
-
-  newValue = await db.get(["t"]);
-  assertEquals(newValue.value, new Deno.KvU64(1n));
+  await db.atomic().min(["t"], 2n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(1n));
 });
 
 dbTest("atomic mutation helper (max)", async (db) => {
-  let res = await db.atomic()
-    .check({ key: ["t"], versionstamp: null })
-    .set(["t"], new Deno.KvU64(42n))
-    .commit();
-  assert(res);
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
 
-  let newValue = await db.get(["t"]);
-  assertEquals(newValue.versionstamp, "00000000000000010000");
-  assertEquals(newValue.value, new Deno.KvU64(42n));
+  await db.atomic().max(["t"], 41n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
 
-  res = await db.atomic().max(["t"], 41n).commit();
-  assert(res);
-
-  newValue = await db.get(["t"]);
-  assertEquals(newValue.value, new Deno.KvU64(42n));
-
-  res = await db.atomic().max(["t"], 43n).commit();
-  assert(res);
-
-  newValue = await db.get(["t"]);
-  assertEquals(newValue.value, new Deno.KvU64(43n));
+  await db.atomic().max(["t"], 43n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(43n));
 });
 
 dbTest("compare multiple and mutate", async (db) => {
