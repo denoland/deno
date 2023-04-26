@@ -361,16 +361,25 @@ async function asyncResponse(responseBodies, req, status, stream) {
  */
 function mapToCallback(responseBodies, context, signal, callback, onError) {
   return async function (req) {
-    const innerRequest = new InnerRequest(req, context);
-    const request = fromInnerRequest(innerRequest, signal, "immutable");
-
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let response;
     try {
-      response = await callback(request, {
-        remoteAddr: innerRequest.remoteAddr,
-      });
+      if (callback.length > 0) {
+        const innerRequest = new InnerRequest(req, context);
+        const request = fromInnerRequest(innerRequest, signal, "immutable");
+        if (callback.length === 1) {
+          response = await callback(request);
+        } else {
+          response = await callback(request, {
+            get remoteAddr() {
+              return innerRequest.remoteAddr;
+            },
+          });
+        }
+      } else {
+        response = await callback();
+      }
     } catch (error) {
       try {
         response = await onError(error);
