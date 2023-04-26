@@ -31,6 +31,7 @@ fn napi_tests() {
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")
+    .arg("--enable-testing-features-do-not-use")
     .spawn()
     .unwrap()
     .wait_with_output()
