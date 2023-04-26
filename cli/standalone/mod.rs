@@ -160,21 +160,21 @@ struct SharedWorkerState {
 }
 
 fn create_web_worker_callback(
-  shared_state: &Arc<SharedWorkerState>,
+  shared: &Arc<SharedWorkerState>,
   module_loader: &EmbeddedModuleLoader,
 ) -> Arc<CreateWebWorkerCb> {
-  let shared_state = shared_state.clone();
+  let shared = shared.clone();
   let module_loader = module_loader.clone();
   Arc::new(move |args| {
     let module_loader = Rc::new(module_loader.clone());
 
     let create_web_worker_cb =
-      create_web_worker_callback(&shared_state, &module_loader);
+      create_web_worker_callback(&shared, &module_loader);
     let web_worker_cb = web_worker_callback();
 
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
-        args: shared_state.argv.clone(),
+        args: shared.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
@@ -186,19 +186,19 @@ fn create_web_worker_callback(
         is_tty: colors::is_tty(),
         runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
-        unstable: shared_state.unstable,
+        unstable: shared.unstable,
         user_agent: version::get_user_agent().to_string(),
         inspect: false,
       },
-      extensions: ops::cli_exts(shared_state.npm_resolver.clone()),
+      extensions: ops::cli_exts(shared.npm_resolver.clone()),
       startup_snapshot: Some(crate::js::deno_isolate_init()),
-      unsafely_ignore_certificate_errors: shared_state
+      unsafely_ignore_certificate_errors: shared
         .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store: Some(shared_state.root_cert_store.clone()),
-      seed: shared_state.seed,
+      root_cert_store: Some(shared.root_cert_store.clone()),
+      seed: shared.seed,
       module_loader,
-      node_fs: Some(shared_state.node_fs.clone()),
+      node_fs: Some(shared.node_fs.clone()),
       npm_resolver: None, // not currently supported
       create_web_worker_cb,
       preload_module_cb: web_worker_cb.clone(),
@@ -208,13 +208,11 @@ fn create_web_worker_callback(
       worker_type: args.worker_type,
       maybe_inspector_server: None,
       get_error_class_fn: Some(&get_error_class_name),
-      blob_store: shared_state.blob_store.clone(),
-      broadcast_channel: shared_state.broadcast_channel.clone(),
-      shared_array_buffer_store: Some(
-        shared_state.shared_array_buffer_store.clone(),
-      ),
+      blob_store: shared.blob_store.clone(),
+      broadcast_channel: shared.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(
-        shared_state.compiled_wasm_module_store.clone(),
+        shared.compiled_wasm_module_store.clone(),
       ),
       cache_storage_dir: None,
       stdio: Default::default(),
