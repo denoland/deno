@@ -427,7 +427,7 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[op(deferred)]
+#[op(fast)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
