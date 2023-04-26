@@ -28,9 +28,9 @@ import {
 import {
   Deferred,
   getReadableStreamResourceBacking,
+  readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-  readableStreamClose
 } from "ext:deno_web/06_streams.js";
 const {
   ObjectPrototypeIsPrototypeOf,
@@ -334,17 +334,18 @@ function fastSyncResponseOrStream(req, respBody) {
 async function asyncResponse(responseBodies, req, status, stream) {
   const reader = stream.getReader();
   let responseRid;
-  try{
+  let closed = false;
+  try {
     // IMPORTANT: We get a performance boost from this optimization, but V8 is very
-    // sensitive to the order and structure. Benchmark any changes to this code as it
-    // can easily halve performance!
+    // sensitive to the order and structure. Benchmark any changes to this code.
 
     // Optimize for streams that are done in zero or one packets. We will not
-    // have to allocate a resource in this case. 
+    // have to allocate a resource in this case.
     const { value: value1, done: done1 } = await reader.read();
     if (done1) {
-      core.ops.op_set_promise_complete(req, status);
-      readableStreamClose(reader);
+      closed = true;
+      // Exit 1: no response body at all, extreme fast path
+      // Reader will be closed by finally block
       return;
     }
 
@@ -363,18 +364,23 @@ async function asyncResponse(responseBodies, req, status, stream) {
     if (timeoutPromise) {
       await timeoutPromise;
       if (done2) {
-        reader.releaseLock();
-        core.tryClose(responseRid);
-        SetPrototypeDelete(responseBodies, responseRid);
+        closed = true;
+        // Exit 2(a): read 2 is EOS, and timeout resolved.
+        // Reader will be closed by finally block
+        // Response stream will be closed by finally block.
         return;
       }
+
+      // Timeout resolved, value1 written but read2 is not EOS. Carry value2 forward.
     } else {
       clearTimeout(timeout);
 
       if (done2) {
+        // Exit 2(b): read 2 is EOS, and timeout did not resolve as we read fast enough.
+        // Reader will be closed by finally block
+        // No response stream
+        closed = true;
         core.ops.op_set_response_body_bytes(req, value1);
-        core.ops.op_set_promise_complete(req, status);
-        // reader.releaseLock();
         return;
       }
 
@@ -389,18 +395,29 @@ async function asyncResponse(responseBodies, req, status, stream) {
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
+        closed = true;
         break;
       }
       await core.writeAll(responseRid, value);
     }
   } catch (error) {
-    console.log(error);
-    await reader.cancel(error);
-  }
-  reader.releaseLock();
-  if (responseRid) {
-    core.tryClose(responseRid);
-    SetPrototypeDelete(responseBodies, responseRid);
+    console.trace(error);
+    closed = true;
+    try {
+      await reader.cancel(error);
+    } catch {
+      // Pass
+    }
+  } finally {
+    if (!closed) {
+      readableStreamClose(reader);
+    }
+    if (responseRid) {
+      core.tryClose(responseRid);
+      SetPrototypeDelete(responseBodies, responseRid);
+    } else {
+      core.ops.op_set_promise_complete(req, status);
+    }
   }
 }
 
