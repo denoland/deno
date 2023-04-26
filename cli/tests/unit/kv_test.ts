@@ -219,6 +219,24 @@ dbTest("compare and mutate not exists", async (db) => {
   assertEquals(res, null);
 });
 
+dbTest("sum helper", async (db) => {
+  let res = await db.atomic()
+    .check({ key: ["t"], versionstamp: null })
+    .set(["t"], new KvU64(42n))
+    .commit();
+  assert(res);
+
+  const newValue = await db.get(["t"]);
+  assertEquals(newValue.versionstamp, "00000000000000010000");
+  assertEquals(newValue.value, new KvU64(42n));
+
+  res = await db.atomic().sum(["t"], 1n).commit();
+  assert(res);
+
+  const newValue = await db.get(["t"]);
+  assertEquals(newValue.value, new KvU64(43n));
+});
+
 dbTest("compare multiple and mutate", async (db) => {
   await db.set(["t1"], "1");
   await db.set(["t2"], "2");
