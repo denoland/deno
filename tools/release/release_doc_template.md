@@ -170,8 +170,7 @@ verify on GitHub that everything looks correct.
   <details>
      <summary>Failure Steps</summary>
 
-  1. Update https://github.com/denoland/dotcom/blob/main/versions.json
-     manually.
+  1. Update https://github.com/denoland/dotcom/blob/main/versions.json manually.
   2. Open a PR and merge.
   </details>
 
