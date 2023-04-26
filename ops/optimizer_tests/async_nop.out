@@ -72,12 +72,13 @@ impl op_void_async {
                 return;
             }
         };
+        let fut = deno_core::_ops::map_async_op2(ctx, Self::call());
         let maybe_response = deno_core::_ops::queue_async_op(
             ctx,
             scope,
             false,
             promise_id,
-            async move { Ok(Self::call().await) },
+            fut,
         );
         if let Some(response) = maybe_response {
             rv.set(response);
