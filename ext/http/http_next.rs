@@ -794,7 +794,7 @@ pub async fn op_http_wait(
 
   // Do we have a request?
   if let Some(req) = next {
-    return Ok(req as u32);
+    return Ok(req);
   }
 
   // No - we're shutting down
