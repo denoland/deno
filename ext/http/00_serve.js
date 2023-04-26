@@ -335,6 +335,8 @@ async function asyncResponse(responseBodies, req, status, stream) {
   const reader = stream.getReader();
   let responseRid;
   let closed = false;
+  let timeout;
+
   try {
     // IMPORTANT: We get a performance boost from this optimization, but V8 is very
     // sensitive to the order and structure. Benchmark any changes to this code.
@@ -353,7 +355,7 @@ async function asyncResponse(responseBodies, req, status, stream) {
     // of the first packet that may influence this packet. We set this timeout arbitrarily to 250ms
     // and we race it.
     let timeoutPromise;
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       responseRid = core.ops.op_set_response_body_stream(req);
       SetPrototypeAdd(responseBodies, responseRid);
       core.ops.op_set_promise_complete(req, status);
@@ -374,6 +376,7 @@ async function asyncResponse(responseBodies, req, status, stream) {
       // Timeout resolved, value1 written but read2 is not EOS. Carry value2 forward.
     } else {
       clearTimeout(timeout);
+      timeout = undefined;
 
       if (done2) {
         // Exit 2(b): read 2 is EOS, and timeout did not resolve as we read fast enough.
@@ -401,7 +404,6 @@ async function asyncResponse(responseBodies, req, status, stream) {
       await core.writeAll(responseRid, value);
     }
   } catch (error) {
-    console.trace(error);
     closed = true;
     try {
       await reader.cancel(error);
@@ -411,6 +413,9 @@ async function asyncResponse(responseBodies, req, status, stream) {
   } finally {
     if (!closed) {
       readableStreamClose(reader);
+    }
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
     }
     if (responseRid) {
       core.tryClose(responseRid);
