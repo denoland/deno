@@ -18,6 +18,7 @@ mod startup_snapshot {
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
   use deno_core::ModuleCode;
+  use deno_fs::StdFs;
   use std::path::Path;
 
   fn transpile_ts_for_snapshotting(
@@ -121,10 +122,7 @@ mod startup_snapshot {
   }
 
   impl deno_node::NodePermissions for Permissions {
-    fn check_read(
-      &mut self,
-      _p: &Path,
-    ) -> Result<(), deno_core::error::AnyError> {
+    fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -164,6 +162,10 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
+    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
     fn check_read_blind(
       &mut self,
       _path: &Path,
@@ -181,11 +183,16 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
-    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
 
-    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+    fn check_write_blind(
+      &mut self,
+      _path: &Path,
+      _display: &str,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -212,7 +219,6 @@ mod startup_snapshot {
 
   impl deno_node::NodeEnv for SnapshotNodeEnv {
     type P = Permissions;
-    type Fs = deno_node::RealFs;
   }
 
   deno_core::extension!(runtime,
@@ -310,11 +316,11 @@ mod startup_snapshot {
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
+      deno_fs::deno_fs::init_ops_and_esm::<_, Permissions>(false, StdFs),
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node::init_ops_and_esm::<SnapshotNodeEnv>(None),
+      deno_node::deno_node::init_ops_and_esm::<SnapshotNodeEnv>(None, None),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];

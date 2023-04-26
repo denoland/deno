@@ -219,6 +219,36 @@ dbTest("compare and mutate not exists", async (db) => {
   assertEquals(res, null);
 });
 
+dbTest("atomic mutation helper (sum)", async (db) => {
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().sum(["t"], 1n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(43n));
+});
+
+dbTest("atomic mutation helper (min)", async (db) => {
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().min(["t"], 1n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(1n));
+
+  await db.atomic().min(["t"], 2n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(1n));
+});
+
+dbTest("atomic mutation helper (max)", async (db) => {
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().max(["t"], 41n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().max(["t"], 43n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(43n));
+});
+
 dbTest("compare multiple and mutate", async (db) => {
   await db.set(["t1"], "1");
   await db.set(["t2"], "2");
@@ -1135,6 +1165,51 @@ dbTest("operation size limit", async (db) => {
     },
     TypeError,
     "too many mutations (max 10)",
+  );
+});
+
+dbTest("keys must be arrays", async (db) => {
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.get("a"),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.getMany(["a"]),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.set("a", 1),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.delete("a"),
+    TypeError,
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic()
+        // @ts-expect-error invalid type
+        .mutate({ key: "a", type: "set", value: 1 } satisfies Deno.KvMutation)
+        .commit(),
+    TypeError,
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic()
+        // @ts-expect-error invalid type
+        .check({ key: "a", versionstamp: null })
+        .set(["a"], 1)
+        .commit(),
+    TypeError,
   );
 });
 

@@ -213,7 +213,7 @@ itest!(_038_checkjs {
 });
 
 itest!(_042_dyn_import_evalcontext {
-  args: "run --quiet --allow-read --reload run/042_dyn_import_evalcontext.ts",
+  args: "run --quiet --allow-read --reload --enable-testing-features-do-not-use run/042_dyn_import_evalcontext.ts",
   output: "run/042_dyn_import_evalcontext.ts.out",
 });
 
@@ -1161,25 +1161,25 @@ itest!(exit_error42 {
 });
 
 itest!(set_exit_code_0 {
-  args: "run --no-check --unstable run/set_exit_code_0.ts",
+  args: "run --no-check --unstable --enable-testing-features-do-not-use run/set_exit_code_0.ts",
   output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(set_exit_code_1 {
-  args: "run --no-check --unstable run/set_exit_code_1.ts",
+  args: "run --no-check --unstable --enable-testing-features-do-not-use run/set_exit_code_1.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(set_exit_code_2 {
-  args: "run --no-check --unstable run/set_exit_code_2.ts",
+  args: "run --no-check --unstable --enable-testing-features-do-not-use run/set_exit_code_2.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(op_exit_op_set_exit_code_in_worker {
-  args: "run --no-check --unstable --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
+  args: "run --no-check --unstable --allow-read --enable-testing-features-do-not-use run/op_exit_op_set_exit_code_in_worker.ts",
   exit_code: 21,
   output_str: Some(""),
 });
@@ -1197,7 +1197,7 @@ itest!(heapstats {
 
 itest!(finalization_registry {
   args:
-    "run --quiet --unstable --v8-flags=--expose-gc run/finalization_registry.js",
+    "run --quiet --unstable --enable-testing-features-do-not-use --v8-flags=--expose-gc run/finalization_registry.js",
   output: "run/finalization_registry.js.out",
 });
 
@@ -2661,6 +2661,11 @@ mod permissions {
       });
   }
 
+  itest!(dynamic_import_static_analysis_no_permissions {
+    args: "run --quiet --reload --no-prompt dynamic_import/static_analysis_no_permissions.ts",
+    output: "dynamic_import/static_analysis_no_permissions.ts.out",
+  });
+
   itest!(dynamic_import_permissions_remote_remote {
     args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",
@@ -2755,7 +2760,7 @@ itest!(long_data_url_formatting {
 });
 
 itest!(eval_context_throw_dom_exception {
-  args: "run run/eval_context_throw_dom_exception.js",
+  args: "run --enable-testing-features-do-not-use run/eval_context_throw_dom_exception.js",
   output: "run/eval_context_throw_dom_exception.js.out",
 });
 
@@ -3117,115 +3122,115 @@ itest!(fetch_async_error_stack {
 });
 
 itest!(unstable_ffi_1 {
-  args: "run run/ffi/unstable_ffi_1.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_1.js",
   output: "run/ffi/unstable_ffi_1.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_2 {
-  args: "run run/ffi/unstable_ffi_2.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_2.js",
   output: "run/ffi/unstable_ffi_2.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_3 {
-  args: "run run/ffi/unstable_ffi_3.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_3.js",
   output: "run/ffi/unstable_ffi_3.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_4 {
-  args: "run run/ffi/unstable_ffi_4.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_4.js",
   output: "run/ffi/unstable_ffi_4.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_5 {
-  args: "run run/ffi/unstable_ffi_5.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_5.js",
   output: "run/ffi/unstable_ffi_5.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_6 {
-  args: "run run/ffi/unstable_ffi_6.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_6.js",
   output: "run/ffi/unstable_ffi_6.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_7 {
-  args: "run run/ffi/unstable_ffi_7.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_7.js",
   output: "run/ffi/unstable_ffi_7.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_8 {
-  args: "run run/ffi/unstable_ffi_8.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_8.js",
   output: "run/ffi/unstable_ffi_8.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_9 {
-  args: "run run/ffi/unstable_ffi_9.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_9.js",
   output: "run/ffi/unstable_ffi_9.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_10 {
-  args: "run run/ffi/unstable_ffi_10.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_10.js",
   output: "run/ffi/unstable_ffi_10.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_11 {
-  args: "run run/ffi/unstable_ffi_11.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_11.js",
   output: "run/ffi/unstable_ffi_11.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_12 {
-  args: "run run/ffi/unstable_ffi_12.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_12.js",
   output: "run/ffi/unstable_ffi_12.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_13 {
-  args: "run run/ffi/unstable_ffi_13.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_13.js",
   output: "run/ffi/unstable_ffi_13.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_14 {
-  args: "run run/ffi/unstable_ffi_14.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_14.js",
   output: "run/ffi/unstable_ffi_14.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_15 {
-  args: "run run/ffi/unstable_ffi_15.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_15.js",
   output: "run/ffi/unstable_ffi_15.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_16 {
-  args: "run run/ffi/unstable_ffi_16.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_16.js",
   output: "run/ffi/unstable_ffi_16.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_17 {
-  args: "run run/ffi/unstable_ffi_17.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_17.js",
   output: "run/ffi/unstable_ffi_17.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_18 {
-  args: "run run/ffi/unstable_ffi_18.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_18.js",
   output: "run/ffi/unstable_ffi_18.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_19 {
-  args: "run run/ffi/unstable_ffi_19.js",
+  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_19.js",
   output: "run/ffi/unstable_ffi_19.js.out",
   exit_code: 70,
 });
@@ -3248,7 +3253,7 @@ itest!(event_listener_error_handled {
 
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit {
-  args: "run --quiet run/event_listener_error_immediate_exit.ts",
+  args: "run --quiet --enable-testing-features-do-not-use run/event_listener_error_immediate_exit.ts",
   output: "run/event_listener_error_immediate_exit.ts.out",
   exit_code: 1,
 });
@@ -3256,7 +3261,7 @@ itest!(event_listener_error_immediate_exit {
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit_worker {
   args:
-    "run --quiet --unstable -A run/event_listener_error_immediate_exit_worker.ts",
+    "run --quiet --unstable -A --enable-testing-features-do-not-use run/event_listener_error_immediate_exit_worker.ts",
   output: "run/event_listener_error_immediate_exit_worker.ts.out",
   exit_code: 1,
 });
@@ -4088,14 +4093,46 @@ fn websocketstream() {
   assert!(status.success());
 }
 
-#[test]
-fn websocketstream_ping() {
-  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+#[tokio::test(flavor = "multi_thread")]
+async fn websocketstream_ping() {
   let _g = util::http_server();
 
   let script = util::testdata_path().join("run/websocketstream_ping_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let mut child = util::deno_cmd()
+
+  let srv_fn = hyper::service::service_fn(|mut req| async move {
+    let (response, upgrade_fut) =
+      fastwebsockets::upgrade::upgrade(&mut req).unwrap();
+    tokio::spawn(async move {
+      let mut ws = upgrade_fut.await.unwrap();
+
+      ws.write_frame(fastwebsockets::Frame::text("A".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::new(
+        true,
+        fastwebsockets::OpCode::Ping,
+        None,
+        vec![],
+      ))
+      .await
+      .unwrap();
+      ws.write_frame(fastwebsockets::Frame::text("B".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      let message = ws.read_frame().await.unwrap();
+      assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
+      ws.write_frame(fastwebsockets::Frame::text("C".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+        .await
+        .unwrap();
+    });
+    Ok::<_, std::convert::Infallible>(response)
+  });
+
+  let child = util::deno_cmd()
     .arg("test")
     .arg("--unstable")
     .arg("--allow-net")
@@ -4105,31 +4142,38 @@ fn websocketstream_ping() {
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap();
+  let server = tokio::net::TcpListener::bind("127.0.0.1:4513")
+    .await
+    .unwrap();
+  tokio::spawn(async move {
+    let (stream, _) = server.accept().await.unwrap();
+    let conn_fut = hyper::server::conn::Http::new()
+      .serve_connection(stream, srv_fn)
+      .with_upgrades();
 
-  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
-  let (stream, _) = server.accept().unwrap();
-  let mut socket = tungstenite::accept(stream).unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("A")))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Ping(vec![]))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("B")))
-    .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, tungstenite::Message::Pong(vec![]));
-  socket
-    .write_message(tungstenite::Message::Text(String::from("C")))
-    .unwrap();
-  socket.close(None).unwrap();
+    if let Err(e) = conn_fut.await {
+      eprintln!("websocket server error: {e:?}");
+    }
+  });
 
-  assert!(child.wait().unwrap().success());
+  let r = child.wait_with_output().unwrap();
+  assert!(r.status.success());
 }
 
-#[test]
-fn websocket_server_multi_field_connection_header() {
+struct SpawnExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+where
+  Fut: std::future::Future + Send + 'static,
+  Fut::Output: Send + 'static,
+{
+  fn execute(&self, fut: Fut) {
+    tokio::task::spawn(fut);
+  }
+}
+
+#[tokio::test]
+async fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("run/websocket_server_multi_field_connection_header_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4151,25 +4195,41 @@ fn websocket_server_multi_field_connection_header() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .header(http::header::CONNECTION, "keep-alive, Upgrade")
-    .uri("ws://localhost:4319")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4319")
+    .await
     .unwrap();
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4319")
+    .body(hyper::Body::empty())
+    .unwrap();
+
   let (mut socket, _) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
-  socket.close(None).unwrap();
+
+  let message = socket.read_frame().await.unwrap();
+  assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
+  assert!(message.payload.is_empty());
+  socket
+    .write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .await
+    .unwrap();
   assert!(child.wait().unwrap().success());
 }
 
 // TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
 // test hangs then. https://github.com/denoland/deno/issues/14283
-#[test]
+#[tokio::test]
 #[ignore]
-fn websocket_server_idletimeout() {
+async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4191,12 +4251,24 @@ fn websocket_server_idletimeout() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .uri("ws://localhost:4509")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4509")
+    .await
     .unwrap();
-  let (_ws, _request) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4509")
+    .body(hyper::Body::empty())
+    .unwrap();
+
+  let (_socket, _) =
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
 
   assert!(child.wait().unwrap().success());
@@ -4296,22 +4368,24 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     )
   });
 
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
-    console.expect("undefined");
-    console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
-    console.expect("undefined");
+  util::with_pty(
+    &["repl", "--enable-testing-features-do-not-use"],
+    |mut console| {
+      console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
+      console.expect("undefined");
+      console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
+      console.expect("undefined");
+      console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
+      console.expect("undefined");
+      console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
+      console.expect("undefined");
+      console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
+      console.expect("undefined");
+      console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
+      console.expect("undefined");
 
-    console.write_line_raw(
-      r#"Deno[Deno.internal].core.ops.op_spawn_child({
+      console.write_line_raw(
+        r#"Deno[Deno.internal].core.ops.op_spawn_child({
     cmd: "cat",
     args: ["file.txt"],
     clearEnv: false,
@@ -4325,10 +4399,11 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     signal: undefined,
     windowsRawArguments: false,
 }, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
-    );
+      );
 
-    console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
-  });
+      console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
+    },
+  );
 }
 
 itest!(node_builtin_modules_ts {
@@ -4349,6 +4424,12 @@ itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
+  exit_code: 1,
+});
+
+itest!(dynamic_import_syntax_error {
+  args: "run -A run/dynamic_import_syntax_error.js",
+  output: "run/dynamic_import_syntax_error.js.out",
   exit_code: 1,
 });
 

@@ -18,6 +18,7 @@ import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import * as denoHttp from "ext:deno_http/01_http.js";
 import * as httpRuntime from "ext:runtime/40_http.js";
+import { connResetException } from "ext:deno_node/internal/errors.ts";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -259,16 +260,21 @@ class ClientRequest extends NodeWritable {
       method: this.opts.method,
       client,
       headers: this.opts.headers,
+      signal: this.opts.signal ?? undefined,
     };
     const mayResponse = fetch(this._createUrlStrFromOptions(this.opts), opts)
       .catch((e) => {
         if (e.message.includes("connection closed before message completed")) {
           // Node.js seems ignoring this error
+        } else if (e.message.includes("The signal has been aborted")) {
+          // Remap this error
+          this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", e);
         }
         return undefined;
       });
+
     const res = new IncomingMessageForClient(
       await mayResponse,
       this._createSocket(),
@@ -278,6 +284,10 @@ class ClientRequest extends NodeWritable {
       res.on("end", () => {
         client.close();
       });
+    }
+    if (this.opts.timeout != undefined) {
+      clearTimeout(this.opts.timeout);
+      this.opts.timeout = undefined;
     }
     this.cb?.(res);
   }
@@ -340,8 +350,19 @@ class ClientRequest extends NodeWritable {
     }${path}`;
   }
 
-  setTimeout() {
-    console.log("not implemented: ClientRequest.setTimeout");
+  setTimeout(timeout: number, callback?: () => void) {
+    const controller = new AbortController();
+    this.opts.signal = controller.signal;
+
+    this.opts.timeout = setTimeout(() => {
+      controller.abort();
+
+      this.emit("timeout");
+
+      if (callback !== undefined) {
+        callback();
+      }
+    }, timeout);
   }
 }
 
@@ -485,7 +506,7 @@ export class ServerResponse extends NodeWritable {
     return this.#headers.has(name);
   }
 
-  writeHead(status: number, headers: Record<string, string>) {
+  writeHead(status: number, headers: Record<string, string> = {}) {
     this.statusCode = status;
     for (const k in headers) {
       if (Object.hasOwn(headers, k)) {
@@ -540,6 +561,11 @@ export class ServerResponse extends NodeWritable {
     // @ts-expect-error The signature for cb is stricter than the one implemented here
     return super.end(chunk, encoding, cb);
   }
+
+  // Undocumented API used by `npm:compression`.
+  _implicitHeader() {
+    this.writeHead(this.statusCode);
+  }
 }
 
 // TODO(@AaronO): optimize
@@ -547,8 +573,11 @@ export class IncomingMessageForServer extends NodeReadable {
   #req: Request;
   url: string;
   method: string;
+  // Polyfills part of net.Socket object.
+  // These properties are used by `npm:forwarded` for example.
+  socket: { remoteAddress: string; remotePort: number };
 
-  constructor(req: Request) {
+  constructor(req: Request, conn: Deno.Conn) {
     // Check if no body (GET/HEAD/OPTIONS/...)
     const reader = req.body?.getReader();
     super({
@@ -575,6 +604,10 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
+    this.socket = {
+      remoteAddress: conn.remoteAddr.hostname,
+      remotePort: conn.remoteAddr.port,
+    };
     this.#req = req;
   }
 
@@ -595,6 +628,11 @@ export class IncomingMessageForServer extends NodeReadable {
       this.#req.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         this.#req.headers.get("upgrade"),
     );
+  }
+
+  // connection is deprecated, but still tested in unit test.
+  get connection() {
+    return this.socket;
   }
 }
 
@@ -664,7 +702,7 @@ class ServerImpl extends EventEmitter {
           if (reqEvent === null) {
             break;
           }
-          const req = new IncomingMessageForServer(reqEvent.request);
+          const req = new IncomingMessageForServer(reqEvent.request, tcpConn);
           if (req.upgrade && this.listenerCount("upgrade") > 0) {
             const conn = await denoHttp.upgradeHttpRaw(
               reqEvent.request,

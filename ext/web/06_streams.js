@@ -34,7 +34,6 @@ const {
   DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
-  FinalizationRegistry,
   Int8Array,
   Int16Array,
   Int32Array,
@@ -56,7 +55,9 @@ const {
   queueMicrotask,
   RangeError,
   ReflectHas,
+  SafeFinalizationRegistry,
   SafePromiseAll,
+  SafeWeakMap,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
   Symbol,
@@ -73,7 +74,6 @@ const {
   Uint16Array,
   Uint32Array,
   Uint8ClampedArray,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
   WeakMapPrototypeSet,
@@ -508,7 +508,7 @@ function extractSizeAlgorithm(strategy) {
       [chunk],
       undefined,
       webidl.converters["unrestricted double"],
-      { prefix: "Failed to call `sizeAlgorithm`" },
+      "Failed to call `sizeAlgorithm`",
     );
 }
 
@@ -695,7 +695,7 @@ function isReadableStreamDisturbed(stream) {
 const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
 // A finalization registry to clean up underlying resources that are GC'ed.
-const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
   core.tryClose(rid);
 });
 
@@ -3315,10 +3315,7 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
-        },
+        "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
       );
   }
   if (underlyingSourceDict.pull !== undefined) {
@@ -3328,11 +3325,8 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
+        true,
       );
   }
   if (underlyingSourceDict.cancel !== undefined) {
@@ -3342,11 +3336,8 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [reason],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
+        true,
       );
   }
   const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
@@ -3437,10 +3428,7 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
-        },
+        "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
       );
   }
   if (underlyingSourceDict.pull !== undefined) {
@@ -3450,11 +3438,8 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSourceDict.cancel !== undefined) {
@@ -3464,11 +3449,8 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [reason],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
+        true,
       );
   }
   setUpReadableStreamDefaultController(
@@ -3569,11 +3551,8 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         [chunk, controller],
         transformer,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
+        true,
       );
   }
   if (transformerDict.flush !== undefined) {
@@ -3583,11 +3562,8 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         [controller],
         transformer,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
+        true,
       );
   }
   setUpTransformStreamDefaultController(
@@ -3679,10 +3655,7 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [controller],
         underlyingSink,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
-        },
+        "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
       );
   }
   if (underlyingSinkDict.write !== undefined) {
@@ -3692,11 +3665,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [chunk, controller],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSinkDict.close !== undefined) {
@@ -3706,11 +3676,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSinkDict.abort !== undefined) {
@@ -3720,11 +3687,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [reason],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   setUpWritableStreamDefaultController(
@@ -4701,7 +4665,7 @@ class ByteLengthQueuingStrategy {
   /** @param {{ highWaterMark: number }} init */
   constructor(init) {
     const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, {
       prefix,
       context: "Argument 1",
@@ -4743,7 +4707,7 @@ webidl.configurePrototype(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
-const byteSizeFunctionWeakMap = new WeakMap();
+const byteSizeFunctionWeakMap = new SafeWeakMap();
 
 function initializeByteLengthSizeFunction(globalObject) {
   if (WeakMapPrototypeHas(byteSizeFunctionWeakMap, globalObject)) {
@@ -4758,7 +4722,7 @@ class CountQueuingStrategy {
   /** @param {{ highWaterMark: number }} init */
   constructor(init) {
     const prefix = "Failed to construct 'CountQueuingStrategy'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     init = webidl.converters.QueuingStrategyInit(init, {
       prefix,
       context: "Argument 1",
@@ -4800,7 +4764,7 @@ webidl.configurePrototype(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
-const countSizeFunctionWeakMap = new WeakMap();
+const countSizeFunctionWeakMap = new SafeWeakMap();
 
 /** @param {typeof globalThis} globalObject */
 function initializeCountSizeFunction(globalObject) {
@@ -4950,7 +4914,7 @@ class ReadableStream {
   pipeThrough(transform, options = {}) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     transform = webidl.converters.ReadableWritablePair(transform, {
       prefix,
       context: "Argument 1",
@@ -4988,7 +4952,7 @@ class ReadableStream {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
+      webidl.requiredArguments(arguments.length, 1, prefix);
       destination = webidl.converters.WritableStream(destination, {
         prefix,
         context: "Argument 1",
@@ -5079,7 +5043,7 @@ class ReadableStreamDefaultReader {
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, {
       prefix,
       context: "Argument 1",
@@ -5179,7 +5143,7 @@ class ReadableStreamBYOBReader {
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamBYOBReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.ReadableStream(stream, {
       prefix,
       context: "Argument 1",
@@ -5321,7 +5285,7 @@ class ReadableStreamBYOBRequest {
   respond(bytesWritten) {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     const prefix = "Failed to execute 'respond' on 'ReadableStreamBYOBRequest'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     bytesWritten = webidl.converters["unsigned long long"](bytesWritten, {
       enforceRange: true,
       prefix,
@@ -5354,7 +5318,7 @@ class ReadableStreamBYOBRequest {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     const prefix =
       "Failed to execute 'respondWithNewView' on 'ReadableStreamBYOBRequest'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     view = webidl.converters.ArrayBufferView(view, {
       prefix,
       context: "Argument 1",
@@ -5448,7 +5412,7 @@ class ReadableByteStreamController {
     webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
     const prefix =
       "Failed to execute 'enqueue' on 'ReadableByteStreamController'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     const arg1 = "Argument 1";
     chunk = webidl.converters.ArrayBufferView(chunk, {
       prefix,
@@ -5467,16 +5431,19 @@ class ReadableByteStreamController {
       );
     }
     if (byteLength === 0) {
-      throw webidl.makeException(TypeError, "length must be non-zero", {
+      throw webidl.makeException(
+        TypeError,
+        "length must be non-zero",
         prefix,
-        context: arg1,
-      });
+        arg1,
+      );
     }
     if (getArrayBufferByteLength(buffer) === 0) {
       throw webidl.makeException(
         TypeError,
         "buffer length must be non-zero",
-        { prefix, context: arg1 },
+        prefix,
+        arg1,
       );
     }
     if (this[_closeRequested] === true) {
@@ -5790,10 +5757,7 @@ class TransformStream {
           [this[_controller]],
           transformer,
           webidl.converters.any,
-          {
-            prefix:
-              "Failed to call 'start' on 'TransformStreamDefaultController'",
-          },
+          "Failed to call 'start' on 'TransformStreamDefaultController'",
         ),
       );
     } else {
@@ -6038,7 +6002,7 @@ class WritableStreamDefaultWriter {
    */
   constructor(stream) {
     const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     stream = webidl.converters.WritableStream(stream, {
       prefix,
       context: "Argument 1",

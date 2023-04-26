@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Read;
-use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -35,7 +34,7 @@ To grant permissions, set them before the script argument. For example:
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
@@ -56,7 +55,7 @@ To grant permissions, set them before the script argument. For example:
 }
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let main_module = ps.options.resolve_main_module()?;
 
   let mut worker = create_main_worker(
@@ -90,10 +89,10 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
-  let flags = Arc::new(flags);
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
   let mut ps =
-    ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
+    ProcState::from_flags_for_file_watcher(flags, sender.clone()).await?;
+  let clear_screen = !ps.options.no_clear_screen();
   let main_module = ps.options.resolve_main_module()?;
 
   let operation = |main_module: ModuleSpecifier| {
@@ -116,7 +115,7 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
     main_module,
     util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
-      clear_screen: !flags.no_clear_screen,
+      clear_screen,
     },
   )
   .await?;
@@ -128,7 +127,7 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::from_flags(flags).await?;
   let main_module = ps.options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
