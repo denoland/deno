@@ -27,7 +27,6 @@ use http::Method;
 use http::Request;
 use http::Uri;
 use hyper::Body;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::Cell;
