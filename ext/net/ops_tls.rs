@@ -61,6 +61,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::io::ErrorKind;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -115,12 +116,26 @@ impl TlsStream {
     Self::new(tcp, Connection::Client(tls))
   }
 
+  pub fn new_client_side_from(
+    tcp: TcpStream,
+    connection: ClientConnection,
+  ) -> Self {
+    Self::new(tcp, Connection::Client(connection))
+  }
+
   pub fn new_server_side(
     tcp: TcpStream,
     tls_config: Arc<ServerConfig>,
   ) -> Self {
     let tls = ServerConnection::new(tls_config).unwrap();
     Self::new(tcp, Connection::Server(tls))
+  }
+
+  pub fn new_server_side_from(
+    tcp: TcpStream,
+    connection: ServerConnection,
+  ) -> Self {
+    Self::new(tcp, Connection::Server(connection))
   }
 
   pub fn into_split(self) -> (ReadHalf, WriteHalf) {
@@ -130,6 +145,16 @@ impl TlsStream {
     };
     let wr = WriteHalf { shared };
     (rd, wr)
+  }
+
+  /// Convenience method to match [`TcpStream`].
+  pub fn peer_addr(&self) -> Result<SocketAddr, io::Error> {
+    self.0.as_ref().unwrap().tcp.peer_addr()
+  }
+
+  /// Convenience method to match [`TcpStream`].
+  pub fn local_addr(&self) -> Result<SocketAddr, io::Error> {
+    self.0.as_ref().unwrap().tcp.local_addr()
   }
 
   /// Tokio-rustls compatibility: returns a reference to the underlying TCP
@@ -954,8 +979,8 @@ fn load_private_keys_from_file(
 }
 
 pub struct TlsListenerResource {
-  tcp_listener: AsyncRefCell<TcpListener>,
-  tls_config: Arc<ServerConfig>,
+  pub(crate) tcp_listener: AsyncRefCell<TcpListener>,
+  pub(crate) tls_config: Arc<ServerConfig>,
   cancel_handle: CancelHandle,
 }
 

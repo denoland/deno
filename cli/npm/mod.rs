@@ -13,5 +13,5 @@ pub use installer::PackageJsonDepsInstaller;
 pub use registry::CliNpmRegistryApi;
 pub use resolution::NpmResolution;
 pub use resolvers::create_npm_fs_resolver;
-pub use resolvers::NpmPackageResolver;
+pub use resolvers::CliNpmResolver;
 pub use resolvers::NpmProcessState;

@@ -32,8 +32,8 @@ pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
   })
 }
 
-struct UnixListenerResource {
-  listener: AsyncRefCell<UnixListener>,
+pub(crate) struct UnixListenerResource {
+  pub listener: AsyncRefCell<UnixListener>,
   cancel: CancelHandle,
 }
 

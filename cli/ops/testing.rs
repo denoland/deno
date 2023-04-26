@@ -100,7 +100,9 @@ struct TestInfo<'s> {
   #[serde(rename = "fn")]
   function: serde_v8::Value<'s>,
   name: String,
+  #[serde(default)]
   ignore: bool,
+  #[serde(default)]
   only: bool,
   location: TestLocation,
 }
