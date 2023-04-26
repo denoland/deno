@@ -2661,6 +2661,11 @@ mod permissions {
       });
   }
 
+  itest!(dynamic_import_static_analysis_no_permissions {
+    args: "run --quiet --reload --no-prompt dynamic_import/static_analysis_no_permissions.ts",
+    output: "dynamic_import/static_analysis_no_permissions.ts.out",
+  });
+
   itest!(dynamic_import_permissions_remote_remote {
     args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",

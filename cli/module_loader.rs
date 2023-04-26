@@ -109,15 +109,12 @@ impl ModuleLoadPreparer {
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: TsTypeLib,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> Result<(), AnyError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
-    let mut cache = self
-      .module_graph_builder
-      .create_fetch_cacher(root_permissions, dynamic_permissions);
+    let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
     let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
@@ -215,7 +212,6 @@ impl ModuleLoadPreparer {
         specifiers,
         false,
         lib,
-        PermissionsContainer::allow_all(),
         PermissionsContainer::allow_all(),
       )
       .await
@@ -537,7 +533,6 @@ impl ModuleLoader for CliModuleLoader {
     let specifier = specifier.clone();
     let module_load_preparer = self.module_load_preparer.clone();
 
-    let dynamic_permissions = self.dynamic_permissions.clone();
     let root_permissions = if is_dynamic {
       self.dynamic_permissions.clone()
     } else {
@@ -547,13 +542,7 @@ impl ModuleLoader for CliModuleLoader {
 
     async move {
       module_load_preparer
-        .prepare_module_load(
-          vec![specifier],
-          is_dynamic,
-          lib,
-          root_permissions,
-          dynamic_permissions,
-        )
+        .prepare_module_load(vec![specifier], is_dynamic, lib, root_permissions)
         .await
     }
     .boxed_local()
