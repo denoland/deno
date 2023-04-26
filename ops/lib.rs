@@ -261,59 +261,49 @@ fn codegen_v8_async(
   let wrapper = match (asyncness, is_result(&f.sig.output)) {
     (true, true) => {
       quote! {
+        let fut = #core::_ops::map_async_op1(ctx, Self::call::<#type_params>(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,
           promise_id,
-          Self::call::<#type_params>(#args_head #args_tail),
+          fut,
         );
       }
     }
     (true, false) => {
       quote! {
+        let fut = #core::_ops::map_async_op2(ctx, Self::call::<#type_params>(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,
           promise_id,
-          async move {
-            Ok(Self::call::<#type_params>(#args_head #args_tail).await)
-          },
+          fut,
         );
       }
     }
     (false, true) => {
       quote! {
-        let result = Self::call::<#type_params>(#args_head #args_tail);
+        let fut = #core::_ops::map_async_op3(ctx, Self::call::<#type_params>(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,
           promise_id,
-          async move {
-            match result {
-              Ok(fut) => fut.await,
-              Err(e) => Err(e),
-            }
-          },
+          fut,
         );
       }
     }
     (false, false) => {
       quote! {
-        let result = Self::call::<#type_params>(#args_head #args_tail);
+        let fut = #core::_ops::map_async_op4(ctx, Self::call::<#type_params>(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
           #deferred,
           promise_id,
-          async move {
-            match result {
-              Ok(fut) => Ok(fut.await),
-              Err(e) => Err(e),
-            }
-          },
+          fut,
         );
       }
     }

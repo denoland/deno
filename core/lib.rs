@@ -132,6 +132,10 @@ pub mod _ops {
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
   pub use super::ops::OpResult;
+  pub use super::runtime::map_async_op1;
+  pub use super::runtime::map_async_op2;
+  pub use super::runtime::map_async_op3;
+  pub use super::runtime::map_async_op4;
   pub use super::runtime::queue_async_op;
   pub use super::runtime::queue_fast_async_op;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;

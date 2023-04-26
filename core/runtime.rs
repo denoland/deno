@@ -35,6 +35,7 @@ use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::Future;
 use futures::future::FutureExt;
+use futures::future::MaybeDone;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::noop_waker;
@@ -46,6 +47,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::option::Option;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -2387,12 +2389,80 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
 }
 
 #[inline]
-pub fn queue_async_op<'s, R: serde::Serialize + 'static>(
+pub fn map_async_op1<R: serde::Serialize + 'static>(
+  ctx: &OpCtx,
+  op: impl Future<Output = Result<R, Error>> + 'static,
+) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+  let get_class = {
+    let state = RefCell::borrow(&ctx.state);
+    state.tracker.track_async(ctx.id);
+    state.get_error_class_fn
+  };
+
+  let fut = op
+    .map(|result| crate::_ops::to_op_result(get_class, result))
+    .boxed_local();
+  MaybeDone::Future(fut)
+}
+
+#[inline]
+pub fn map_async_op2<R: serde::Serialize + 'static>(
+  ctx: &OpCtx,
+  op: impl Future<Output = R> + 'static,
+) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+  let state = RefCell::borrow(&ctx.state);
+  state.tracker.track_async(ctx.id);
+
+  let fut = op.map(|result| OpResult::Ok(result.into())).boxed_local();
+  MaybeDone::Future(fut)
+}
+
+#[inline]
+pub fn map_async_op3<R: serde::Serialize + 'static>(
+  ctx: &OpCtx,
+  op: Result<impl Future<Output = Result<R, Error>> + 'static, Error>,
+) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+  let get_class = {
+    let state = RefCell::borrow(&ctx.state);
+    state.tracker.track_async(ctx.id);
+    state.get_error_class_fn
+  };
+
+  match op {
+    Err(err) => MaybeDone::Done(OpResult::Err(OpError::new(get_class, err))),
+    Ok(fut) => MaybeDone::Future(
+      fut
+        .map(|result| crate::_ops::to_op_result(get_class, result))
+        .boxed_local(),
+    ),
+  }
+}
+
+#[inline]
+pub fn map_async_op4<R: serde::Serialize + 'static>(
+  ctx: &OpCtx,
+  op: Result<impl Future<Output = R> + 'static, Error>,
+) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+  let get_class = {
+    let state = RefCell::borrow(&ctx.state);
+    state.tracker.track_async(ctx.id);
+    state.get_error_class_fn
+  };
+
+  match op {
+    Err(err) => MaybeDone::Done(OpResult::Err(OpError::new(get_class, err))),
+    Ok(fut) => MaybeDone::Future(
+      fut.map(|result| OpResult::Ok(result.into())).boxed_local(),
+    ),
+  }
+}
+
+pub fn queue_async_op<'s>(
   ctx: &OpCtx,
   scope: &'s mut v8::HandleScope,
   deferred: bool,
   promise_id: PromiseId,
-  op: impl Future<Output = Result<R, Error>> + 'static,
+  mut op: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 ) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
@@ -2409,32 +2479,29 @@ pub fn queue_async_op<'s, R: serde::Serialize + 'static>(
     Some(scope.get_current_context())
   );
 
-  let get_class = {
-    let state = RefCell::borrow(&ctx.state);
-    state.tracker.track_async(ctx.id);
-    state.get_error_class_fn
-  };
-
-  let mut fut = op
-    .map(|result| crate::_ops::to_op_result(get_class, result))
-    .boxed_local();
-
   // All ops are polled immediately
   let waker = noop_waker();
   let mut cx = Context::from_waker(&waker);
-  let poll_result = fut.as_mut().poll(&mut cx);
-  // If the op is ready and is not marked as deferred we can immediately return
-  // the result.
-  if !deferred {
-    if let Poll::Ready(mut op_result) = poll_result {
-      let resp = op_result.to_v8(scope).unwrap();
-      ctx.state.borrow_mut().tracker.track_async_completed(ctx.id);
-      return Some(resp);
+
+  // Note that MaybeDone returns () from the future
+  let op_call = match op.poll_unpin(&mut cx) {
+    Poll::Pending => {
+      let MaybeDone::Future(fut) = op else {
+        unreachable!()
+      };
+      OpCall::pending(ctx, promise_id, fut)
     }
-  }
-  let op_call = match poll_result {
-    Poll::Pending => OpCall::pending(ctx, promise_id, fut),
-    Poll::Ready(op_result) => OpCall::ready(ctx, promise_id, op_result),
+    Poll::Ready(_) => {
+      let mut op_result = Pin::new(&mut op).take_output().unwrap();
+      // If the op is ready and is not marked as deferred we can immediately return
+      // the result.
+      if !deferred {
+        ctx.state.borrow_mut().tracker.track_async_completed(ctx.id);
+        return Some(op_result.to_v8(scope).unwrap());
+      }
+
+      OpCall::ready(ctx, promise_id, op_result)
+    }
   };
 
   // Otherwise we will push it to the `pending_ops` and let it be polled again
