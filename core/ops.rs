@@ -8,10 +8,10 @@ use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
-use futures::future::FusedFuture;
 use futures::future::MaybeDone;
-use futures::ready;
 use futures::Future;
+use futures::FutureExt;
+use pin_project::pin_project;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::ops::Deref;
@@ -20,7 +20,6 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
-use std::task::Poll;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
@@ -28,10 +27,13 @@ pub type RealmIdx = usize;
 pub type PromiseId = i32;
 pub type OpId = usize;
 
+#[pin_project]
 pub struct OpCall {
   realm_idx: RealmIdx,
   promise_id: PromiseId,
   op_id: OpId,
+  /// Future is not necessarily Unpin, so we need to pin_project.
+  #[pin]
   fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 }
 
@@ -69,22 +71,24 @@ impl Future for OpCall {
     self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    // TODO(piscisaureus): safety comment
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    let inner = unsafe { self.get_unchecked_mut() };
-    // TODO(bartlomieju): meh... maybe we could get rid of this pinning
-    // if we had our own enum for Result/Future?
-    let mut pinned = Pin::new(&mut inner.fut);
-    let pinned_mut = pinned.as_mut();
-    ready!(pinned_mut.poll(cx));
-    let output = pinned.as_mut().take_output().unwrap();
-    Poll::Ready((inner.realm_idx, inner.promise_id, inner.op_id, output))
-  }
-}
-
-impl FusedFuture for OpCall {
-  fn is_terminated(&self) -> bool {
-    self.fut.is_terminated()
+    let realm_idx = self.realm_idx;
+    let promise_id = self.promise_id;
+    let op_id = self.op_id;
+    let fut = &mut *self.project().fut;
+    match fut {
+      MaybeDone::Done(_) => {
+        // Let's avoid using take_output as it keeps our Pin::box
+        let res = std::mem::replace(fut, MaybeDone::Gone);
+        let MaybeDone::Done(res) = res
+        else {
+          unreachable!()
+        };
+        std::task::Poll::Ready(res)
+      }
+      MaybeDone::Future(f) => f.poll_unpin(cx),
+      MaybeDone::Gone => std::task::Poll::Pending,
+    }
+    .map(move |res| (realm_idx, promise_id, op_id, res))
   }
 }
 
