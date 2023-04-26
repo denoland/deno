@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use deno_ast::swc::common::SyntaxContext;
 use deno_ast::view::Node;
@@ -15,15 +14,11 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_node::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use deno_runtime::deno_node::analyze::CjsEsmCodeAnalyzer;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
-use deno_runtime::deno_node::NodeResolver;
 
 use crate::cache::NodeAnalysisCache;
-use crate::npm::CliNpmResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
-pub type CliNodeCodeTranslator =
-  NodeCodeTranslator<CliCjsEsmCodeAnalyzer, Arc<CliNpmResolver>>;
-pub type CliNodeResolver = NodeResolver<Arc<CliNpmResolver>>;
+pub type CliNodeCodeTranslator = NodeCodeTranslator<CliCjsEsmCodeAnalyzer>;
 
 /// Resolves a specifier that is pointing into a node_modules folder.
 ///

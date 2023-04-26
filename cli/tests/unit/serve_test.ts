@@ -15,6 +15,7 @@ import {
   deferred,
   fail,
 } from "./test_util.ts";
+import { consoleSize } from "../../../runtime/js/40_tty.js";
 
 function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
   return (err) => {
@@ -247,7 +248,12 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
   const promise = deferred();
   const listeningPromise = deferred();
 
-  const server = Deno.serve(async (request) => {
+  const server = Deno.serve({
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  }, async (request) => {
     // FIXME(bartlomieju):
     // make sure that request can be inspected
     console.log(request);
@@ -255,11 +261,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
     assertEquals(await request.text(), "");
     promise.resolve();
     return new Response("Hello World", { headers: { "foo": "bar" } });
-  }, {
-    port: 4501,
-    signal: ac.signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
   });
 
   await listeningPromise;
@@ -1014,12 +1015,15 @@ Deno.test(
     const promise = deferred();
     const ac = new AbortController();
 
-    const server = Deno.serve((request) => {
-      assert(request.body);
+    const server = Deno.serve(
+      { port: 2333, signal: ac.signal },
+      (request) => {
+        assert(request.body);
 
-      promise.resolve();
-      return new Response(request.body);
-    }, { port: 2333, signal: ac.signal });
+        promise.resolve();
+        return new Response(request.body);
+      },
+    );
 
     const ts = new TransformStream();
     const writable = ts.writable.getWriter();
@@ -2483,10 +2487,7 @@ Deno.test(
     const ac = new AbortController();
     const promise = deferred();
     let count = 0;
-    const server = Deno.serve(() => {
-      count++;
-      return new Response(`hello world ${count}`);
-    }, {
+    const server = Deno.serve({
       async onListen({ port }: { port: number }) {
         const res1 = await fetch(`http://localhost:${port}/`);
         assertEquals(await res1.text(), "hello world 1");
@@ -2498,6 +2499,9 @@ Deno.test(
         ac.abort();
       },
       signal: ac.signal,
+    }, () => {
+      count++;
+      return new Response(`hello world ${count}`);
     });
 
     await promise;
@@ -2551,7 +2555,16 @@ Deno.test(
   async function testIssue16567() {
     const ac = new AbortController();
     const promise = deferred();
-    const server = Deno.serve(() =>
+    const server = Deno.serve({
+      async onListen({ port }) {
+        const res1 = await fetch(`http://localhost:${port}/`);
+        assertEquals((await res1.text()).length, 40 * 50_000);
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    }, () =>
       new Response(
         new ReadableStream({
           start(c) {
@@ -2562,16 +2575,7 @@ Deno.test(
             c.close();
           },
         }),
-      ), {
-      async onListen({ port }) {
-        const res1 = await fetch(`http://localhost:${port}/`);
-        assertEquals((await res1.text()).length, 40 * 50_000);
-
-        promise.resolve();
-        ac.abort();
-      },
-      signal: ac.signal,
-    });
+      ));
 
     await promise;
     await server;
@@ -2708,4 +2712,81 @@ function parseTrailer(field: string | null): Headers | undefined {
 function isProhibitedForTrailer(key: string): boolean {
   const s = new Set(["transfer-encoding", "content-length", "trailer"]);
   return s.has(key.toLowerCase());
+}
+
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function httpServeCurlH2C() {
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { signal: ac.signal },
+      () => new Response("hello world!"),
+    );
+
+    assertEquals(
+      "hello world!",
+      await curlRequest(["http://localhost:8000/path"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest(["http://localhost:8000/path", "--http2"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        "http://localhost:8000/path",
+        "--http2",
+        "--http2-prior-knowledge",
+      ]),
+    );
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  async function httpsServeCurlH2C() {
+    const ac = new AbortController();
+    const server = Deno.serve(
+      {
+        signal: ac.signal,
+        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+      },
+      () => new Response("hello world!"),
+    );
+
+    assertEquals(
+      "hello world!",
+      await curlRequest(["https://localhost:9000/path", "-k"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest(["https://localhost:9000/path", "-k", "--http2"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        "https://localhost:9000/path",
+        "-k",
+        "--http2",
+        "--http2-prior-knowledge",
+      ]),
+    );
+
+    ac.abort();
+    await server;
+  },
+);
+
+async function curlRequest(args: string[]) {
+  const { success, stdout } = await new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "null",
+  }).output();
+  assert(success);
+  return new TextDecoder().decode(stdout);
 }

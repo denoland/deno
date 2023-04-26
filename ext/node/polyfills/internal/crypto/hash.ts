@@ -66,7 +66,7 @@ export class Hash extends Transform {
         callback();
       },
       flush(callback: () => void) {
-        this.push(context.digest(undefined));
+        this.push(this.digest(undefined));
         callback();
       },
     });

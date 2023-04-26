@@ -425,7 +425,6 @@ async function serve(arg1, arg2) {
   let handler = undefined;
   if (typeof arg1 === "function") {
     handler = arg1;
-    options = arg2;
   } else if (typeof arg2 === "function") {
     handler = arg2;
     options = arg1;
@@ -515,7 +514,7 @@ async function serve(arg1, arg2) {
     const rid = context.serverRid;
     let req;
     try {
-      req = await core.opAsync("op_http_wait", rid);
+      req = await core.opAsync2("op_http_wait", rid);
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
         break;
