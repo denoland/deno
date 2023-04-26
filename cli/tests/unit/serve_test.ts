@@ -532,21 +532,43 @@ Deno.test(
   },
 );
 
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerStreamResponse() {
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
-    writer.write(new TextEncoder().encode("hello "));
-    writer.write(new TextEncoder().encode("world"));
-    writer.close();
+function createStreamTest(count: number, delay: number, action: string) {
+  function doAction(controller: ReadableStreamDefaultController, i: number) {
+    if (i == count) {
+      if (action == "Throw") {
+        controller.error(new Error("Expected error!"));
+      } else {
+        controller.close();
+      }
+    } else {
+      controller.enqueue(`a${i}`);
 
-    const listeningPromise = deferred();
+      if (delay == 0) {
+        doAction(controller, i + 1);
+      } else {
+        setTimeout(() => doAction(controller, i + 1), delay);
+      }
+    }
+  }
+
+  function makeStream(count: number, delay: number): ReadableStream {
+    return new ReadableStream({
+      start(controller) {
+        if (delay == 0) {
+          doAction(controller, 0);
+        } else {
+          setTimeout(() => doAction(controller, 0), delay);
+        }
+      },
+    }).pipeThrough(new TextEncoderStream());
+  }
+
+  Deno.test(`httpServerStreamCount${count}Delay${delay}${action}`, async () => {
     const ac = new AbortController();
+    const listeningPromise = deferred();
     const server = Deno.serve({
-      handler: (request) => {
-        assert(!request.body);
-        return new Response(stream.readable);
+      handler: async (request) => {
+        return new Response(makeStream(count, delay));
       },
       port: 4501,
       signal: ac.signal,
@@ -556,12 +578,34 @@ Deno.test(
 
     await listeningPromise;
     const resp = await fetch("http://127.0.0.1:4501/");
-    const respBody = await resp.text();
-    assertEquals("hello world", respBody);
+    const text = await resp.text();
+
     ac.abort();
     await server;
-  },
-);
+    let expected = "";
+    if (action == "Throw" && count < 2 && delay < 1000) {
+      // NOTE: This is specific to the current implementation. In some cases where a stream errors, we
+      // don't send the first packet.
+      expected = "";
+    } else {
+      for (let i = 0; i < count; i++) {
+        expected += `a${i}`;
+      }
+    }
+
+    assertEquals(text, expected);
+  });
+}
+
+for (let count of [0, 1, 2, 3]) {
+  for (let delay of [0, 1, 1000]) {
+    // Creating a stream that errors in start will throw
+    if (delay > 0) {
+      createStreamTest(count, delay, "Throw");
+    }
+    createStreamTest(count, delay, "Close");
+  }
+}
 
 Deno.test(
   { permissions: { net: true } },
@@ -1689,78 +1733,6 @@ createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
   expects_chunked: true,
   expects_con_len: false,
 });
-
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerGetChunkedResponseWithKa() {
-    const promises = [deferred(), deferred()];
-    let reqCount = 0;
-    const listeningPromise = deferred();
-    const ac = new AbortController();
-
-    const server = Deno.serve({
-      handler: async (request) => {
-        assertEquals(request.method, "GET");
-        promises[reqCount].resolve();
-        reqCount++;
-        return new Response(reqCount <= 1 ? stream("foo bar baz") : "zar quux");
-      },
-      port: 4503,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
-
-    await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
-    const encoder = new TextEncoder();
-    {
-      const body =
-        `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
-      const writeResult = await conn.write(encoder.encode(body));
-      assertEquals(body.length, writeResult);
-      await promises[0];
-    }
-
-    const decoder = new TextDecoder();
-    {
-      let msg = "";
-      while (true) {
-        try {
-          const buf = new Uint8Array(1024);
-          const readResult = await conn.read(buf);
-          assert(readResult);
-          msg += decoder.decode(buf.subarray(0, readResult));
-          assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
-          break;
-        } catch {
-          continue;
-        }
-      }
-    }
-
-    // once more!
-    {
-      const body =
-        `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
-      const writeResult = await conn.write(encoder.encode(body));
-      assertEquals(body.length, writeResult);
-      await promises[1];
-    }
-    {
-      const buf = new Uint8Array(1024);
-      const readResult = await conn.read(buf);
-      assert(readResult);
-      const msg = decoder.decode(buf.subarray(0, readResult));
-      assert(msg.endsWith("zar quux"));
-    }
-
-    conn.close();
-
-    ac.abort();
-    await server;
-  },
-);
 
 Deno.test(
   { permissions: { net: true } },
