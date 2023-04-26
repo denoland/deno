@@ -8,13 +8,13 @@ const AUTOBAHN_TESTSUITE_DOCKER =
 
 const self = Deno.execPath();
 $`${self} run -A --unstable ${pwd}/autobahn_server.js`.spawn();
+await $`docker run --name fuzzingserver	-v ${pwd}/fuzzingclient.json:/fuzzingclient.json:ro	-v ${pwd}/reports:/reports -p 9001:9001	--net=host --rm	${AUTOBAHN_TESTSUITE_DOCKER} wstest -m fuzzingclient -s fuzzingclient.json`
+  .cwd(pwd);
 
-await $`docker run --name fuzzingserver	-v ${pwd}/fuzzingclient.json:/fuzzingclient.json:ro	-v ${pwd}/reports:/reports -p 9001:9001	--net=host --rm	${AUTOBAHN_TESTSUITE_DOCKER} wstest -m fuzzingclient -s fuzzingclient.json`.cwd(pwd);
-
-const { fastwebsockets } = JSON.parse(
+const { deno_websocket } = JSON.parse(
   Deno.readTextFileSync(`${pwd}/reports/servers/index.json`),
 );
-const result = Object.values(fastwebsockets);
+const result = Object.values(deno_websocket);
 
 function failed(name) {
   return name != "OK" && name != "INFORMATIONAL" && name != "NON-STRICT";

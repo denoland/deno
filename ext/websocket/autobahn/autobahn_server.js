@@ -4,7 +4,7 @@ import { parse } from "../../../test_util/std/flags/mod.ts";
 const { port } = parse(Deno.args, {
   number: ["port"],
   default: {
-    port: 9001,
+    port: 8080,
   },
 });
 

@@ -224,8 +224,9 @@ function handleMatrixItems(items: {
       if (typeof item.skip_pr === "string") {
         text += removeSurroundingExpression(item.skip_pr.toString()) + " && ";
       }
-      text += `'${Runners.ubuntu}' || ${removeSurroundingExpression(item.os)
-        } }}`;
+      text += `'${Runners.ubuntu}' || ${
+        removeSurroundingExpression(item.os)
+      } }}`;
 
       // deno-lint-ignore no-explicit-any
       (item as any).runner = text;
@@ -647,7 +648,8 @@ const ci = {
             "matrix.job == 'test' && matrix.profile == 'release' &&",
             "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
           ].join("\n"),
-          run: "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js"
+          run:
+            "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test debug",
