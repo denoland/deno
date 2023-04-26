@@ -2230,7 +2230,7 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.
-  
+
 Alternatively, the 'deno check' subcommand can be used.",
     )
   } else {
@@ -2745,7 +2745,8 @@ fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.config_flag = matches
     .remove_one::<String>("config")
-    .map_or(ConfigFlag::Discover, ConfigFlag::Path);
+    .map(ConfigFlag::Path)
+    .unwrap_or(ConfigFlag::Discover);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),

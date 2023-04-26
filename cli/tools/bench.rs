@@ -418,7 +418,6 @@ impl BenchReporter for ConsoleReporter {
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
   ps: &ProcState,
-  permissions: Permissions,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -428,10 +427,8 @@ async fn check_specifiers(
       false,
       lib,
       PermissionsContainer::allow_all(),
-      PermissionsContainer::new(permissions),
     )
     .await?;
-
   Ok(())
 }
 
@@ -654,7 +651,7 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
+  check_specifiers(&ps, specifiers.clone()).await?;
 
   if bench_options.no_run {
     return Ok(());
@@ -813,7 +810,7 @@ pub async fn run_benchmarks_with_watch(
           .filter(|specifier| modules_to_reload.contains(specifier))
           .collect::<Vec<ModuleSpecifier>>();
 
-      check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
+      check_specifiers(&ps, specifiers.clone()).await?;
 
       if bench_options.no_run {
         return Ok(());
@@ -931,7 +928,10 @@ mod mitata {
       sysctl.arg("-n");
       sysctl.arg("machdep.cpu.brand_string");
       return std::str::from_utf8(
-        &sysctl.output().map_or(Vec::from("unknown"), |x| x.stdout),
+        &sysctl
+          .output()
+          .map(|x| x.stdout)
+          .unwrap_or(Vec::from("unknown")),
       )
       .unwrap()
       .trim()

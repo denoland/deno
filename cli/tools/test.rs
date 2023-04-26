@@ -954,7 +954,7 @@ pub async fn test_specifier(
   if ps.options.trace_ops() {
     worker.js_runtime.execute_script_static(
       located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
+      "Deno[Deno.internal].enableOpCallTracing();",
     )?;
   }
   worker.dispatch_load_event(located_script_name!())?;
@@ -1230,7 +1230,6 @@ async fn fetch_inline_files(
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
   ps: &ProcState,
-  permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -1265,7 +1264,6 @@ pub async fn check_specifiers(
         false,
         lib,
         PermissionsContainer::new(Permissions::allow_all()),
-        PermissionsContainer::new(permissions.clone()),
       )
       .await?;
   }
@@ -1287,7 +1285,6 @@ pub async fn check_specifiers(
       false,
       lib,
       PermissionsContainer::allow_all(),
-      PermissionsContainer::new(permissions),
     )
     .await?;
 
@@ -1648,8 +1645,7 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
-    .await?;
+  check_specifiers(&ps, specifiers_with_mode.clone()).await?;
 
   if test_options.no_run {
     return Ok(());
@@ -1821,8 +1817,7 @@ pub async fn run_tests_with_watch(
       .filter(|(specifier, _)| modules_to_reload.contains(specifier))
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
-        .await?;
+      check_specifiers(&ps, specifiers_with_mode.clone()).await?;
 
       if test_options.no_run {
         return Ok(());
