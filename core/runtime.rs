@@ -1506,6 +1506,10 @@ pub(crate) fn exception_to_err_result<T>(
   let state_rc = JsRuntime::state(scope);
 
   let was_terminating_execution = scope.is_execution_terminating();
+  // Disable running microtasks for a moment. When upgrading to V8 v11.4
+  // we discovered that canceling termination here will cause the queued
+  // microtasks to run which breaks some tests.
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
   // If TerminateExecution was called, cancel isolate termination so that the
   // exception can be created. Note that `scope.is_execution_terminating()` may
   // have returned false if TerminateExecution was indeed called but there was
@@ -1544,6 +1548,7 @@ pub(crate) fn exception_to_err_result<T>(
     // Resume exception termination.
     scope.terminate_execution();
   }
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
 
   Err(js_error.into())
 }
