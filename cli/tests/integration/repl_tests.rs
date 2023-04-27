@@ -784,13 +784,41 @@ fn pty_tab_handler() {
 }
 
 #[test]
+fn repl_error() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log(1);");
+    console.expect_all(&["1", "undefined"]);
+    console.write_line(r#"throw new Error("foo");"#);
+    console.expect("Uncaught Error: foo");
+    console.expect("    at <anonymous>");
+    console.write_line("console.log(2);");
+    console.expect("2");
+  });
+}
+
+#[test]
+fn repl_reject() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log(1);");
+    console.expect_all(&["1", "undefined"]);
+    console.write_line(r#"Promise.reject(new Error("foo"));"#);
+    console.expect("Promise { <rejected> Error: foo");
+    console.expect("Uncaught (in promise) Error: foo");
+    console.expect("    at <anonymous>");
+    console.write_line("console.log(2);");
+    console.expect("2");
+  });
+}
+
+#[test]
 fn repl_report_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
     console.expect_all(&["1", "undefined"]);
-    // TODO(nayeemrmn): The REPL should report event errors and rejections.
     console.write_line(r#"reportError(new Error("foo"));"#);
     console.expect("undefined");
+    console.expect("Uncaught Error: foo");
+    console.expect("    at <anonymous>");
     console.write_line("console.log(2);");
     console.expect("2");
   });

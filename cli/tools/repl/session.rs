@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::CliOptions;
@@ -128,12 +130,9 @@ pub struct ReplSession {
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
+  pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
   has_initialized_node_runtime: bool,
   referrer: ModuleSpecifier,
-  // FIXME(bartlomieju): this field should be used to listen
-  // for "exceptionThrown" notifications
-  #[allow(dead_code)]
-  notification_rx: UnboundedReceiver<Value>,
 }
 
 impl ReplSession {
@@ -193,7 +192,7 @@ impl ReplSession {
       language_server,
       has_initialized_node_runtime: false,
       referrer,
-      notification_rx,
+      notifications: Rc::new(RefCell::new(notification_rx)),
     };
 
     // inject prelude
