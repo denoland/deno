@@ -66,6 +66,7 @@ dbTest("basic read-write-delete and versionstamps", async (db) => {
   assertEquals(result1.versionstamp, null);
 
   const setRes = await db.set(["a"], "b");
+  assert(setRes.ok);
   assertEquals(setRes.versionstamp, "00000000000000010000");
   const result2 = await db.get(["a"]);
   assertEquals(result2.key, ["a"]);
@@ -194,7 +195,7 @@ dbTest("compare and mutate", async (db) => {
     .check({ key: ["t"], versionstamp: currentValue.versionstamp })
     .set(currentValue.key, "3")
     .commit();
-    assert(!res.ok);
+  assert(!res.ok);
 
   const newValue2 = await db.get(["t"]);
   assertEquals(newValue2.versionstamp, "00000000000000020000");
