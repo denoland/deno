@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -8,12 +9,20 @@ use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::url::Url;
+use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::ModuleId;
+use deno_core::SharedArrayBufferStore;
 use deno_runtime::colors;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
+use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
 use deno_runtime::permissions::PermissionsContainer;
@@ -24,21 +33,56 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_semver::npm::NpmPackageReqReference;
 
-use crate::args::DenoSubcommand;
+use crate::args::StorageKeyResolver;
 use crate::errors;
-use crate::module_loader::CliModuleLoader;
+use crate::graph_util::ModuleGraphContainer;
+use crate::module_loader::CliModuleLoaderFactory;
+use crate::npm::CliNpmResolver;
 use crate::ops;
-use crate::proc_state::ProcState;
 use crate::tools;
 use crate::tools::coverage::CoverageCollector;
 use crate::util::checksum;
 use crate::version;
 
+pub struct CliMainWorkerOptions {
+  pub argv: Vec<String>,
+  pub debug: bool,
+  pub coverage_dir: Option<String>,
+  pub enable_testing_features: bool,
+  pub has_node_modules_dir: bool,
+  pub inspect_brk: bool,
+  pub inspect_wait: bool,
+  pub is_inspecting: bool,
+  pub is_npm_main: bool,
+  pub location: Option<Url>,
+  pub maybe_binary_npm_command_name: Option<String>,
+  pub origin_data_folder_path: PathBuf,
+  pub seed: Option<u64>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub unstable: bool,
+}
+
+struct SharedWorkerState {
+  pub options: CliMainWorkerOptions,
+  pub storage_key_resolver: StorageKeyResolver,
+  pub npm_resolver: Arc<CliNpmResolver>,
+  pub node_resolver: Arc<NodeResolver>,
+  pub graph_container: Arc<ModuleGraphContainer>,
+  pub blob_store: BlobStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
+  pub shared_array_buffer_store: SharedArrayBufferStore,
+  pub compiled_wasm_module_store: CompiledWasmModuleStore,
+  pub module_loader_factory: CliModuleLoaderFactory,
+  pub root_cert_store: RootCertStore,
+  pub node_fs: Arc<dyn deno_node::NodeFs>,
+  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+}
+
 pub struct CliMainWorker {
   main_module: ModuleSpecifier,
   is_main_cjs: bool,
   worker: MainWorker,
-  ps: ProcState,
+  shared: Arc<SharedWorkerState>,
 }
 
 impl CliMainWorker {
@@ -62,7 +106,7 @@ impl CliMainWorker {
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
         true,
-        self.ps.options.inspect_brk().is_some(),
+        self.shared.options.inspect_brk,
       )?;
     } else {
       self.execute_main_module_possibly_with_npm().await?;
@@ -183,8 +227,8 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.ps.npm_resolver.has_packages()
-      || self.ps.graph_container.graph().has_node_specifier
+    if self.shared.npm_resolver.has_packages()
+      || self.shared.graph_container.graph().has_node_specifier
     {
       self.initialize_main_module_for_node()?;
     }
@@ -192,24 +236,10 @@ impl CliMainWorker {
   }
 
   fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
-    let mut maybe_binary_command_name = None;
-
-    if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
-      if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
-        // if the user ran a binary command, we'll need to set process.argv[0]
-        // to be the name of the binary command instead of deno
-        let binary_name = pkg_ref
-          .sub_path
-          .as_deref()
-          .unwrap_or(pkg_ref.req.name.as_str());
-        maybe_binary_command_name = Some(binary_name.to_string());
-      }
-    }
-
     deno_node::initialize_runtime(
       &mut self.worker.js_runtime,
-      self.ps.options.has_node_modules_dir(),
-      maybe_binary_command_name,
+      self.shared.options.has_node_modules_dir,
+      self.shared.options.maybe_binary_npm_command_name.as_deref(),
     )?;
 
     Ok(())
@@ -218,7 +248,7 @@ impl CliMainWorker {
   pub async fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<CoverageCollector>, AnyError> {
-    if let Some(ref coverage_dir) = self.ps.options.coverage_dir() {
+    if let Some(coverage_dir) = &self.shared.options.coverage_dir {
       let session = self.worker.create_inspector_session().await;
 
       let coverage_dir = PathBuf::from(coverage_dir);
@@ -235,142 +265,188 @@ impl CliMainWorker {
   }
 }
 
-pub async fn create_main_worker(
-  ps: &ProcState,
-  main_module: ModuleSpecifier,
-  permissions: PermissionsContainer,
-) -> Result<CliMainWorker, AnyError> {
-  create_custom_worker(ps, main_module, permissions, vec![], Default::default())
-    .await
+pub struct CliMainWorkerFactory {
+  shared: Arc<SharedWorkerState>,
 }
 
-pub async fn create_custom_worker(
-  ps: &ProcState,
-  main_module: ModuleSpecifier,
-  permissions: PermissionsContainer,
-  mut custom_extensions: Vec<Extension>,
-  stdio: deno_runtime::deno_io::Stdio,
-) -> Result<CliMainWorker, AnyError> {
-  let (main_module, is_main_cjs) = if let Ok(package_ref) =
-    NpmPackageReqReference::from_specifier(&main_module)
-  {
-    ps.npm_resolver
-      .add_package_reqs(vec![package_ref.req.clone()])
-      .await?;
-    let node_resolution =
-      ps.node_resolver.resolve_binary_export(&package_ref)?;
-    let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
-    (node_resolution.into_url(), is_main_cjs)
-  } else if ps.options.is_npm_main() {
-    let node_resolution =
-      ps.node_resolver.url_to_node_resolution(main_module)?;
-    let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
-    (node_resolution.into_url(), is_main_cjs)
-  } else {
-    (main_module, false)
-  };
+impl CliMainWorkerFactory {
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    storage_key_resolver: StorageKeyResolver,
+    npm_resolver: Arc<CliNpmResolver>,
+    node_resolver: Arc<NodeResolver>,
+    graph_container: Arc<ModuleGraphContainer>,
+    blob_store: BlobStore,
+    module_loader_factory: CliModuleLoaderFactory,
+    root_cert_store: RootCertStore,
+    node_fs: Arc<dyn deno_node::NodeFs>,
+    maybe_inspector_server: Option<Arc<InspectorServer>>,
+    options: CliMainWorkerOptions,
+  ) -> Self {
+    Self {
+      shared: Arc::new(SharedWorkerState {
+        options,
+        storage_key_resolver,
+        npm_resolver,
+        node_resolver,
+        graph_container,
+        blob_store,
+        broadcast_channel: Default::default(),
+        shared_array_buffer_store: Default::default(),
+        compiled_wasm_module_store: Default::default(),
+        module_loader_factory,
+        root_cert_store,
+        node_fs,
+        maybe_inspector_server,
+      }),
+    }
+  }
 
-  let module_loader = CliModuleLoader::new(
-    ps.clone(),
-    PermissionsContainer::allow_all(),
-    permissions.clone(),
-  );
+  pub async fn create_main_worker(
+    &self,
+    main_module: ModuleSpecifier,
+    permissions: PermissionsContainer,
+  ) -> Result<CliMainWorker, AnyError> {
+    self
+      .create_custom_worker(
+        main_module,
+        permissions,
+        vec![],
+        Default::default(),
+      )
+      .await
+  }
 
-  let maybe_inspector_server = ps.maybe_inspector_server.clone();
+  pub async fn create_custom_worker(
+    &self,
+    main_module: ModuleSpecifier,
+    permissions: PermissionsContainer,
+    mut custom_extensions: Vec<Extension>,
+    stdio: deno_runtime::deno_io::Stdio,
+  ) -> Result<CliMainWorker, AnyError> {
+    let shared = &self.shared;
+    let (main_module, is_main_cjs) = if let Ok(package_ref) =
+      NpmPackageReqReference::from_specifier(&main_module)
+    {
+      shared
+        .npm_resolver
+        .add_package_reqs(vec![package_ref.req.clone()])
+        .await?;
+      let node_resolution =
+        shared.node_resolver.resolve_binary_export(&package_ref)?;
+      let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
+      (node_resolution.into_url(), is_main_cjs)
+    } else if shared.options.is_npm_main {
+      let node_resolution =
+        shared.node_resolver.url_to_node_resolution(main_module)?;
+      let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
+      (node_resolution.into_url(), is_main_cjs)
+    } else {
+      (main_module, false)
+    };
 
-  let create_web_worker_cb =
-    create_web_worker_callback(ps.clone(), stdio.clone());
-  let web_worker_preload_module_cb =
-    create_web_worker_preload_module_callback(ps.clone());
-  let web_worker_pre_execute_module_cb =
-    create_web_worker_pre_execute_module_callback(ps.clone());
+    let module_loader =
+      Rc::new(shared.module_loader_factory.create_for_main(
+        PermissionsContainer::allow_all(),
+        permissions.clone(),
+      ));
+    let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-  let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
-  let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
-    ps.dir
-      .origin_data_folder_path()
-      .join(checksum::gen(&[key.as_bytes()]))
-  });
-  let cache_storage_dir = maybe_storage_key.map(|key| {
-    // TODO(@satyarohith): storage quota management
-    // Note: we currently use temp_dir() to avoid managing storage size.
-    std::env::temp_dir()
-      .join("deno_cache")
-      .join(checksum::gen(&[key.as_bytes()]))
-  });
+    let create_web_worker_cb =
+      create_web_worker_callback(shared.clone(), stdio.clone());
+    let web_worker_preload_module_cb =
+      create_web_worker_preload_module_callback(shared);
+    let web_worker_pre_execute_module_cb =
+      create_web_worker_pre_execute_module_callback(shared.clone());
 
-  let mut extensions = ops::cli_exts(ps.npm_resolver.clone());
-  extensions.append(&mut custom_extensions);
-
-  let options = WorkerOptions {
-    bootstrap: BootstrapOptions {
-      args: ps.options.argv().clone(),
-      cpu_count: std::thread::available_parallelism()
-        .map(|p| p.get())
-        .unwrap_or(1),
-      debug_flag: ps
+    let maybe_storage_key = shared
+      .storage_key_resolver
+      .resolve_storage_key(&main_module);
+    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
+      shared
         .options
-        .log_level()
-        .map(|l| l == log::Level::Debug)
-        .unwrap_or(false),
-      enable_testing_features: ps.options.enable_testing_features(),
-      locale: deno_core::v8::icu::get_language_tag(),
-      location: ps.options.location_flag().clone(),
-      no_color: !colors::use_color(),
-      is_tty: colors::is_tty(),
-      runtime_version: version::deno().to_string(),
-      ts_version: version::TYPESCRIPT.to_string(),
-      unstable: ps.options.unstable(),
-      user_agent: version::get_user_agent().to_string(),
-      inspect: ps.options.is_inspecting(),
-    },
-    extensions,
-    startup_snapshot: Some(crate::js::deno_isolate_init()),
-    unsafely_ignore_certificate_errors: ps
-      .options
-      .unsafely_ignore_certificate_errors()
-      .clone(),
-    root_cert_store: Some(ps.root_cert_store.clone()),
-    seed: ps.options.seed(),
-    source_map_getter: Some(Box::new(module_loader.clone())),
-    format_js_error_fn: Some(Arc::new(format_js_error)),
-    create_web_worker_cb,
-    web_worker_preload_module_cb,
-    web_worker_pre_execute_module_cb,
-    maybe_inspector_server,
-    should_break_on_first_statement: ps.options.inspect_brk().is_some(),
-    should_wait_for_inspector_session: ps.options.inspect_wait().is_some(),
-    module_loader,
-    node_fs: Some(ps.node_fs.clone()),
-    npm_resolver: Some(ps.npm_resolver.clone()),
-    get_error_class_fn: Some(&errors::get_error_class_name),
-    cache_storage_dir,
-    origin_storage_dir,
-    blob_store: ps.blob_store.clone(),
-    broadcast_channel: ps.broadcast_channel.clone(),
-    shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
-    compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-    stdio,
-  };
+        .origin_data_folder_path
+        .join(checksum::gen(&[key.as_bytes()]))
+    });
+    let cache_storage_dir = maybe_storage_key.map(|key| {
+      // TODO(@satyarohith): storage quota management
+      // Note: we currently use temp_dir() to avoid managing storage size.
+      std::env::temp_dir()
+        .join("deno_cache")
+        .join(checksum::gen(&[key.as_bytes()]))
+    });
 
-  let worker = MainWorker::bootstrap_from_options(
-    main_module.clone(),
-    permissions,
-    options,
-  );
+    let mut extensions = ops::cli_exts(shared.npm_resolver.clone());
+    extensions.append(&mut custom_extensions);
 
-  Ok(CliMainWorker {
-    main_module,
-    is_main_cjs,
-    worker,
-    ps: ps.clone(),
-  })
+    let options = WorkerOptions {
+      bootstrap: BootstrapOptions {
+        args: shared.options.argv.clone(),
+        cpu_count: std::thread::available_parallelism()
+          .map(|p| p.get())
+          .unwrap_or(1),
+        debug_flag: shared.options.debug,
+        enable_testing_features: shared.options.enable_testing_features,
+        locale: deno_core::v8::icu::get_language_tag(),
+        location: shared.options.location.clone(),
+        no_color: !colors::use_color(),
+        is_tty: colors::is_tty(),
+        runtime_version: version::deno().to_string(),
+        ts_version: version::TYPESCRIPT.to_string(),
+        unstable: shared.options.unstable,
+        user_agent: version::get_user_agent().to_string(),
+        inspect: shared.options.is_inspecting,
+      },
+      extensions,
+      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      unsafely_ignore_certificate_errors: shared
+        .options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      root_cert_store: Some(shared.root_cert_store.clone()),
+      seed: shared.options.seed,
+      source_map_getter: Some(Box::new(module_loader.clone())),
+      format_js_error_fn: Some(Arc::new(format_js_error)),
+      create_web_worker_cb,
+      web_worker_preload_module_cb,
+      web_worker_pre_execute_module_cb,
+      maybe_inspector_server,
+      should_break_on_first_statement: shared.options.inspect_brk,
+      should_wait_for_inspector_session: shared.options.inspect_wait,
+      module_loader,
+      node_fs: Some(shared.node_fs.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone()),
+      get_error_class_fn: Some(&errors::get_error_class_name),
+      cache_storage_dir,
+      origin_storage_dir,
+      blob_store: shared.blob_store.clone(),
+      broadcast_channel: shared.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(
+        shared.compiled_wasm_module_store.clone(),
+      ),
+      stdio,
+    };
+
+    let worker = MainWorker::bootstrap_from_options(
+      main_module.clone(),
+      permissions,
+      options,
+    );
+
+    Ok(CliMainWorker {
+      main_module,
+      is_main_cjs,
+      worker,
+      shared: shared.clone(),
+    })
+  }
 }
 
 // TODO(bartlomieju): this callback could have default value
 // and not be required
 fn create_web_worker_preload_module_callback(
-  _ps: ProcState,
+  _shared: &Arc<SharedWorkerState>,
 ) -> Arc<WorkerEventCb> {
   Arc::new(move |worker| {
     let fut = async move { Ok(worker) };
@@ -379,16 +455,16 @@ fn create_web_worker_preload_module_callback(
 }
 
 fn create_web_worker_pre_execute_module_callback(
-  ps: ProcState,
+  shared: Arc<SharedWorkerState>,
 ) -> Arc<WorkerEventCb> {
   Arc::new(move |mut worker| {
-    let ps = ps.clone();
+    let shared = shared.clone();
     let fut = async move {
       // this will be up to date after pre-load
-      if ps.npm_resolver.has_packages() {
+      if shared.npm_resolver.has_packages() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
-          ps.options.has_node_modules_dir(),
+          shared.options.has_node_modules_dir,
           None,
         )?;
       }
@@ -400,27 +476,28 @@ fn create_web_worker_pre_execute_module_callback(
 }
 
 fn create_web_worker_callback(
-  ps: ProcState,
+  shared: Arc<SharedWorkerState>,
   stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
-    let maybe_inspector_server = ps.maybe_inspector_server.clone();
+    let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let module_loader = CliModuleLoader::new_for_worker(
-      ps.clone(),
-      args.parent_permissions.clone(),
-      args.permissions.clone(),
-    );
+    let module_loader =
+      Rc::new(shared.module_loader_factory.create_for_worker(
+        args.parent_permissions.clone(),
+        args.permissions.clone(),
+      ));
     let create_web_worker_cb =
-      create_web_worker_callback(ps.clone(), stdio.clone());
-    let preload_module_cb =
-      create_web_worker_preload_module_callback(ps.clone());
+      create_web_worker_callback(shared.clone(), stdio.clone());
+    let preload_module_cb = create_web_worker_preload_module_callback(&shared);
     let pre_execute_module_cb =
-      create_web_worker_pre_execute_module_callback(ps.clone());
+      create_web_worker_pre_execute_module_callback(shared.clone());
 
-    let extensions = ops::cli_exts(ps.npm_resolver.clone());
+    let extensions = ops::cli_exts(shared.npm_resolver.clone());
 
-    let maybe_storage_key = ps.options.resolve_storage_key(&args.main_module);
+    let maybe_storage_key = shared
+      .storage_key_resolver
+      .resolve_storage_key(&args.main_module);
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
       // Note: we currently use temp_dir() to avoid managing storage size.
@@ -431,49 +508,47 @@ fn create_web_worker_callback(
 
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
-        args: ps.options.argv().clone(),
+        args: shared.options.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
-        debug_flag: ps
-          .options
-          .log_level()
-          .map(|l| l == log::Level::Debug)
-          .unwrap_or(false),
-        enable_testing_features: ps.options.enable_testing_features(),
+        debug_flag: shared.options.debug,
+        enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),
         runtime_version: version::deno().to_string(),
         ts_version: version::TYPESCRIPT.to_string(),
-        unstable: ps.options.unstable(),
+        unstable: shared.options.unstable,
         user_agent: version::get_user_agent().to_string(),
-        inspect: ps.options.is_inspecting(),
+        inspect: shared.options.is_inspecting,
       },
       extensions,
       startup_snapshot: Some(crate::js::deno_isolate_init()),
-      unsafely_ignore_certificate_errors: ps
+      unsafely_ignore_certificate_errors: shared
         .options
-        .unsafely_ignore_certificate_errors()
+        .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store: Some(ps.root_cert_store.clone()),
-      seed: ps.options.seed(),
+      root_cert_store: Some(shared.root_cert_store.clone()),
+      seed: shared.options.seed,
       create_web_worker_cb,
       preload_module_cb,
       pre_execute_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(module_loader.clone())),
       module_loader,
-      node_fs: Some(ps.node_fs.clone()),
-      npm_resolver: Some(ps.npm_resolver.clone()),
+      node_fs: Some(shared.node_fs.clone()),
+      npm_resolver: Some(shared.npm_resolver.clone()),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),
-      blob_store: ps.blob_store.clone(),
-      broadcast_channel: ps.broadcast_channel.clone(),
-      shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
-      compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
+      blob_store: shared.blob_store.clone(),
+      broadcast_channel: shared.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(
+        shared.compiled_wasm_module_store.clone(),
+      ),
       stdio: stdio.clone(),
       cache_storage_dir,
     };

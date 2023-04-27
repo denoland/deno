@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
+use crate::args::CliOptions;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::ProcState;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CliGraphResolver;
 
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
@@ -117,7 +121,9 @@ struct TsEvaluateResponse {
 }
 
 pub struct ReplSession {
-  proc_state: ProcState,
+  has_node_modules_dir: bool,
+  npm_resolver: Arc<CliNpmResolver>,
+  resolver: Arc<CliGraphResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
@@ -132,7 +138,9 @@ pub struct ReplSession {
 
 impl ReplSession {
   pub async fn initialize(
-    proc_state: ProcState,
+    cli_options: &CliOptions,
+    npm_resolver: Arc<CliNpmResolver>,
+    resolver: Arc<CliGraphResolver>,
     mut worker: MainWorker,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
@@ -171,14 +179,14 @@ impl ReplSession {
     }
     assert_ne!(context_id, 0);
 
-    let referrer = deno_core::resolve_path(
-      "./$deno$repl.ts",
-      proc_state.options.initial_cwd(),
-    )
-    .unwrap();
+    let referrer =
+      deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
+        .unwrap();
 
     let mut repl_session = ReplSession {
-      proc_state,
+      has_node_modules_dir: cli_options.has_node_modules_dir(),
+      npm_resolver,
+      resolver,
       worker,
       session,
       context_id,
@@ -487,7 +495,6 @@ impl ReplSession {
       .iter()
       .flat_map(|i| {
         self
-          .proc_state
           .resolver
           .resolve(i, &self.referrer)
           .ok()
@@ -506,22 +513,17 @@ impl ReplSession {
       if !self.has_initialized_node_runtime {
         deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
-          self.proc_state.options.has_node_modules_dir(),
+          self.has_node_modules_dir,
           None,
         )?;
         self.has_initialized_node_runtime = true;
       }
 
-      self
-        .proc_state
-        .npm_resolver
-        .add_package_reqs(npm_imports)
-        .await?;
+      self.npm_resolver.add_package_reqs(npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
         self
-          .proc_state
           .npm_resolver
           .inject_synthetic_types_node_package()
           .await?;
