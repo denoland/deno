@@ -4,6 +4,7 @@ use crate::bindings;
 use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
 use crate::runtime::exception_to_err_result;
+use crate::JsRuntime;
 use anyhow::Error;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -288,6 +289,15 @@ impl<'s> JsRealmLocal<'s> {
     drop(context_state);
 
     let exception = v8::Local::new(scope, handle);
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow();
+    if let Some(inspector) = &state.inspector {
+      let inspector = inspector.borrow();
+      inspector.exception_thrown(scope, exception, true);
+      if inspector.has_blocking_sessions() {
+        return Ok(());
+      }
+    }
     exception_to_err_result(scope, exception, true)
   }
 }

@@ -7,6 +7,7 @@ use crate::colors;
 use crate::file_fetcher::FileFetcher;
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
@@ -30,8 +31,11 @@ async fn read_line_and_poll(
   message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
+  #![allow(clippy::await_holding_refcell_ref)]
   let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
   let mut poll_worker = true;
+  let notifications_rc = repl_session.notifications.clone();
+  let mut notifications = notifications_rc.borrow_mut();
 
   loop {
     tokio::select! {
@@ -57,7 +61,20 @@ async fn read_line_and_poll(
         }
 
         poll_worker = true;
-      },
+      }
+      message = notifications.next() => {
+        if let Some(message) = message {
+          let method = message.get("method").unwrap().as_str().unwrap();
+          if method == "Runtime.exceptionThrown" {
+            let params = message.get("params").unwrap().as_object().unwrap();
+            let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
+            let text = exception_details.get("text").unwrap().as_str().unwrap();
+            let exception = exception_details.get("exception").unwrap().as_object().unwrap();
+            let description = exception.get("description").unwrap().as_str().unwrap();
+            println!("{text} {description}");
+          }
+        }
+      }
       _ = repl_session.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }
