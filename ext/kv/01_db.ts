@@ -116,7 +116,7 @@ class Kv {
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
-    return { versionstamp };
+    return { ok: true, versionstamp };
   }
 
   async delete(key: Deno.KvKey) {
