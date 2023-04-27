@@ -136,7 +136,7 @@ impl ReplSession {
     mut worker: MainWorker,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
-    let mut session = worker.create_inspector_session().await;
+    let mut session = worker.create_inspector_session(true).await;
 
     worker
       .with_event_loop(

@@ -722,12 +722,12 @@ fn op_dispatch_exception(
     return;
   }
 
-  // FIXME(bartlomieju): I'm not sure if this assumption is valid... Maybe when
-  // inspector is polling on pause?
-  if state.inspector().try_borrow().is_ok() {
-    scope.terminate_execution();
-  } else {
+  match state.inspector().try_borrow() {
+    Ok(inspector) if !inspector.has_blocking_sessions() => {
+      scope.terminate_execution();
+    }
     // If the inspector is borrowed at this time, assume an inspector is active.
+    _ => {}
   }
 }
 
