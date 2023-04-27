@@ -213,7 +213,7 @@ itest!(_038_checkjs {
 });
 
 itest!(_042_dyn_import_evalcontext {
-  args: "run --quiet --allow-read --reload --enable-testing-features-do-not-use run/042_dyn_import_evalcontext.ts",
+  args: "run --quiet --allow-read --reload run/042_dyn_import_evalcontext.ts",
   output: "run/042_dyn_import_evalcontext.ts.out",
 });
 
@@ -1161,25 +1161,25 @@ itest!(exit_error42 {
 });
 
 itest!(set_exit_code_0 {
-  args: "run --no-check --unstable --enable-testing-features-do-not-use run/set_exit_code_0.ts",
+  args: "run --no-check --unstable run/set_exit_code_0.ts",
   output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(set_exit_code_1 {
-  args: "run --no-check --unstable --enable-testing-features-do-not-use run/set_exit_code_1.ts",
+  args: "run --no-check --unstable run/set_exit_code_1.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(set_exit_code_2 {
-  args: "run --no-check --unstable --enable-testing-features-do-not-use run/set_exit_code_2.ts",
+  args: "run --no-check --unstable run/set_exit_code_2.ts",
   output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(op_exit_op_set_exit_code_in_worker {
-  args: "run --no-check --unstable --allow-read --enable-testing-features-do-not-use run/op_exit_op_set_exit_code_in_worker.ts",
+  args: "run --no-check --unstable --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
   exit_code: 21,
   output_str: Some(""),
 });
@@ -1197,7 +1197,7 @@ itest!(heapstats {
 
 itest!(finalization_registry {
   args:
-    "run --quiet --unstable --enable-testing-features-do-not-use --v8-flags=--expose-gc run/finalization_registry.js",
+    "run --quiet --unstable --v8-flags=--expose-gc run/finalization_registry.js",
   output: "run/finalization_registry.js.out",
 });
 
@@ -2760,7 +2760,7 @@ itest!(long_data_url_formatting {
 });
 
 itest!(eval_context_throw_dom_exception {
-  args: "run --enable-testing-features-do-not-use run/eval_context_throw_dom_exception.js",
+  args: "run run/eval_context_throw_dom_exception.js",
   output: "run/eval_context_throw_dom_exception.js.out",
 });
 
@@ -3122,115 +3122,115 @@ itest!(fetch_async_error_stack {
 });
 
 itest!(unstable_ffi_1 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_1.js",
+  args: "run run/ffi/unstable_ffi_1.js",
   output: "run/ffi/unstable_ffi_1.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_2 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_2.js",
+  args: "run run/ffi/unstable_ffi_2.js",
   output: "run/ffi/unstable_ffi_2.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_3 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_3.js",
+  args: "run run/ffi/unstable_ffi_3.js",
   output: "run/ffi/unstable_ffi_3.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_4 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_4.js",
+  args: "run run/ffi/unstable_ffi_4.js",
   output: "run/ffi/unstable_ffi_4.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_5 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_5.js",
+  args: "run run/ffi/unstable_ffi_5.js",
   output: "run/ffi/unstable_ffi_5.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_6 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_6.js",
+  args: "run run/ffi/unstable_ffi_6.js",
   output: "run/ffi/unstable_ffi_6.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_7 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_7.js",
+  args: "run run/ffi/unstable_ffi_7.js",
   output: "run/ffi/unstable_ffi_7.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_8 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_8.js",
+  args: "run run/ffi/unstable_ffi_8.js",
   output: "run/ffi/unstable_ffi_8.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_9 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_9.js",
+  args: "run run/ffi/unstable_ffi_9.js",
   output: "run/ffi/unstable_ffi_9.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_10 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_10.js",
+  args: "run run/ffi/unstable_ffi_10.js",
   output: "run/ffi/unstable_ffi_10.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_11 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_11.js",
+  args: "run run/ffi/unstable_ffi_11.js",
   output: "run/ffi/unstable_ffi_11.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_12 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_12.js",
+  args: "run run/ffi/unstable_ffi_12.js",
   output: "run/ffi/unstable_ffi_12.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_13 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_13.js",
+  args: "run run/ffi/unstable_ffi_13.js",
   output: "run/ffi/unstable_ffi_13.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_14 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_14.js",
+  args: "run run/ffi/unstable_ffi_14.js",
   output: "run/ffi/unstable_ffi_14.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_15 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_15.js",
+  args: "run run/ffi/unstable_ffi_15.js",
   output: "run/ffi/unstable_ffi_15.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_16 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_16.js",
+  args: "run run/ffi/unstable_ffi_16.js",
   output: "run/ffi/unstable_ffi_16.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_17 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_17.js",
+  args: "run run/ffi/unstable_ffi_17.js",
   output: "run/ffi/unstable_ffi_17.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_18 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_18.js",
+  args: "run run/ffi/unstable_ffi_18.js",
   output: "run/ffi/unstable_ffi_18.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_19 {
-  args: "run --enable-testing-features-do-not-use run/ffi/unstable_ffi_19.js",
+  args: "run run/ffi/unstable_ffi_19.js",
   output: "run/ffi/unstable_ffi_19.js.out",
   exit_code: 70,
 });
@@ -3253,7 +3253,7 @@ itest!(event_listener_error_handled {
 
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit {
-  args: "run --quiet --enable-testing-features-do-not-use run/event_listener_error_immediate_exit.ts",
+  args: "run --quiet run/event_listener_error_immediate_exit.ts",
   output: "run/event_listener_error_immediate_exit.ts.out",
   exit_code: 1,
 });
@@ -3261,7 +3261,7 @@ itest!(event_listener_error_immediate_exit {
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit_worker {
   args:
-    "run --quiet --unstable -A --enable-testing-features-do-not-use run/event_listener_error_immediate_exit_worker.ts",
+    "run --quiet --unstable -A run/event_listener_error_immediate_exit_worker.ts",
   output: "run/event_listener_error_immediate_exit_worker.ts.out",
   exit_code: 1,
 });
@@ -4368,24 +4368,22 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     )
   });
 
-  util::with_pty(
-    &["repl", "--enable-testing-features-do-not-use"],
-    |mut console| {
-      console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
-      console.expect("undefined");
-      console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
-      console.expect("undefined");
-      console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
-      console.expect("undefined");
-      console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
-      console.expect("undefined");
-      console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
-      console.expect("undefined");
-      console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
-      console.expect("undefined");
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line_raw(r#"const boldANSI = "\u001b[1m";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const unboldANSI = "\u001b[22m";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const prompt = `┌ ⚠️  ${boldANSI}Deno requests run access to "echo"${unboldANSI}\n ├ Requested by \`Deno.Command().output()`"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const moveANSIUp = "\u001b[1A";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const clearANSI = "\u001b[2K";"#);
+    console.expect("undefined");
+    console.write_line_raw(r#"const moveANSIStart = "\u001b[1000D";"#);
+    console.expect("undefined");
 
-      console.write_line_raw(
-        r#"Deno[Deno.internal].core.ops.op_spawn_child({
+    console.write_line_raw(
+      r#"Deno[Deno.internal].core.ops.op_spawn_child({
     cmd: "cat",
     args: ["file.txt"],
     clearEnv: false,
@@ -4399,11 +4397,10 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     signal: undefined,
     windowsRawArguments: false,
 }, moveANSIUp + clearANSI + moveANSIStart + prompt)"#,
-      );
+    );
 
-      console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
-    },
-  );
+    console.expect(r#"┌ ⚠️  Deno requests run access to "cat""#);
+  });
 }
 
 itest!(node_builtin_modules_ts {
