@@ -37,11 +37,8 @@ use crate::worker::CliMainWorkerOptions;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
-use deno_core::SharedArrayBufferStore;
 
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -76,9 +73,6 @@ pub struct Inner {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub root_cert_store: RootCertStore,
   pub blob_store: BlobStore,
-  pub broadcast_channel: InMemoryBroadcastChannel,
-  pub shared_array_buffer_store: SharedArrayBufferStore,
-  pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: Arc<ParsedSourceCache>,
   pub resolver: Arc<CliGraphResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
@@ -148,9 +142,6 @@ impl ProcState {
       maybe_inspector_server: self.maybe_inspector_server.clone(),
       root_cert_store: self.root_cert_store.clone(),
       blob_store: self.blob_store.clone(),
-      broadcast_channel: Default::default(),
-      shared_array_buffer_store: Default::default(),
-      compiled_wasm_module_store: Default::default(),
       parsed_source_cache: self.parsed_source_cache.clone(),
       resolver: self.resolver.clone(),
       maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
@@ -209,9 +200,6 @@ impl ProcState {
       _ => {}
     }
     let blob_store = BlobStore::default();
-    let broadcast_channel = InMemoryBroadcastChannel::default();
-    let shared_array_buffer_store = SharedArrayBufferStore::default();
-    let compiled_wasm_module_store = CompiledWasmModuleStore::default();
     let deps_cache_location = dir.deps_folder_path();
     let http_cache = HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
@@ -364,9 +352,6 @@ impl ProcState {
       maybe_inspector_server,
       root_cert_store,
       blob_store,
-      broadcast_channel,
-      shared_array_buffer_store,
-      compiled_wasm_module_store,
       parsed_source_cache,
       resolver,
       maybe_file_watcher_reporter,
@@ -394,9 +379,6 @@ impl ProcState {
       self.node_resolver.clone(),
       self.graph_container.clone(),
       self.blob_store.clone(),
-      self.broadcast_channel.clone(),
-      self.shared_array_buffer_store.clone(),
-      self.compiled_wasm_module_store.clone(),
       CliModuleLoaderFactory::new(
         &self.options,
         self.emitter.clone(),
