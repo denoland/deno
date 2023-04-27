@@ -72,6 +72,49 @@ struct IsolateAllocations {
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
 
+mod custom_allocator {
+  use std::ffi::c_void;
+
+  pub struct RustAllocator;
+
+  pub unsafe extern "C" fn allocate(
+    _alloc: &RustAllocator,
+    n: usize,
+  ) -> *mut c_void {
+    let layout = std::alloc::Layout::array::<u8>(n).unwrap();
+    std::alloc::alloc_zeroed(layout) as *mut c_void
+  }
+
+  pub unsafe extern "C" fn allocate_uninitialized(
+    _alloc: &RustAllocator,
+    n: usize,
+  ) -> *mut c_void {
+    let layout = std::alloc::Layout::array::<u8>(n).unwrap();
+    std::alloc::alloc(layout) as *mut c_void
+  }
+
+  pub unsafe extern "C" fn free(
+    _alloc: &RustAllocator,
+    data: *mut c_void,
+    n: usize,
+  ) {
+    let layout = std::alloc::Layout::array::<u8>(n).unwrap();
+    std::alloc::dealloc(data as *mut u8, layout);
+  }
+
+  pub unsafe extern "C" fn reallocate(
+    _alloc: &RustAllocator,
+    prev: *mut c_void,
+    oldlen: usize,
+    newlen: usize,
+  ) -> *mut c_void {
+    let layout = std::alloc::Layout::array::<u8>(oldlen).unwrap();
+    std::alloc::realloc(prev as *mut u8, layout, newlen) as *mut c_void
+  }
+
+  pub unsafe extern "C" fn drop(_alloc: *const RustAllocator) {}
+}
+
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. A JsRuntime is a Future that can be used with
 /// an event loop (Tokio, async_std).
@@ -393,6 +436,17 @@ impl JsRuntime {
       }
       (isolate, snapshot_options)
     } else {
+      let vtable: &'static v8::RustAllocatorVtable<
+        custom_allocator::RustAllocator,
+      > = &v8::RustAllocatorVtable {
+        allocate: custom_allocator::allocate,
+        allocate_uninitialized: custom_allocator::allocate_uninitialized,
+        free: custom_allocator::free,
+        reallocate: custom_allocator::reallocate,
+        drop: custom_allocator::drop,
+      };
+      let allocator = Arc::new(custom_allocator::RustAllocator);
+
       let mut params = options
         .create_params
         .take()
@@ -401,6 +455,9 @@ impl JsRuntime {
             V8_WRAPPER_TYPE_INDEX,
             V8_WRAPPER_OBJECT_INDEX,
           )
+        })
+        .array_buffer_allocator(unsafe {
+          v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
         })
         .external_references(&**refs);
 
