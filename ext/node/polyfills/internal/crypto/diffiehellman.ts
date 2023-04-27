@@ -15,7 +15,6 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   EllipticCurve,
   ellipticCurves,
-  getCurves,
   getDefaultEncoding,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
