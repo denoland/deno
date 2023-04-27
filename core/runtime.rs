@@ -44,7 +44,6 @@ use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::option::Option;
 use std::pin::Pin;
@@ -176,7 +175,7 @@ pub struct JsRuntimeState {
   /// instead of any other exceptions.
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
-  pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
+  pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
 }
@@ -349,7 +348,7 @@ impl JsRuntime {
       op_state: op_state.clone(),
       waker: AtomicWaker::new(),
       have_unpolled_ops: false,
-      dispatched_exceptions: Default::default(),
+      dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
       global_realm: None,
@@ -1216,7 +1215,7 @@ impl JsRuntime {
 
     if has_inspector {
       // We poll the inspector first.
-      let _ = self.inspector().borrow_mut().poll_unpin(cx);
+      let _ = self.inspector().borrow().poll_sessions(Some(cx)).unwrap();
     }
 
     self.pump_v8_message_loop()?;
@@ -1539,19 +1538,14 @@ pub(crate) fn exception_to_err_result<T>(
     // to use the exception that was passed to it rather than the exception that
     // was passed to this function.
     let state = state_rc.borrow();
-    exception = state
-      .dispatched_exceptions
-      .back()
-      .map(|exception| v8::Local::new(scope, exception.clone()))
-      .unwrap_or_else(|| {
-        // Maybe make a new exception object.
-        if was_terminating_execution && exception.is_null_or_undefined() {
-          let message = v8::String::new(scope, "execution terminated").unwrap();
-          v8::Exception::error(scope, message)
-        } else {
-          exception
-        }
-      });
+    exception = if let Some(exception) = &state.dispatched_exception {
+      v8::Local::new(scope, exception.clone())
+    } else if was_terminating_execution && exception.is_null_or_undefined() {
+      let message = v8::String::new(scope, "execution terminated").unwrap();
+      v8::Exception::error(scope, message)
+    } else {
+      exception
+    };
   }
 
   let mut js_error = JsError::from_v8_exception(scope, exception);
@@ -1759,7 +1753,7 @@ impl JsRuntime {
     status = module.get_status();
 
     let has_dispatched_exception =
-      !state_rc.borrow_mut().dispatched_exceptions.is_empty();
+      state_rc.borrow_mut().dispatched_exception.is_some();
     if has_dispatched_exception {
       // This will be overrided in `exception_to_err_result()`.
       let exception = v8::undefined(tc_scope).into();

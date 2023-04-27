@@ -11,7 +11,6 @@ use crate::futures::channel::mpsc::UnboundedSender;
 use crate::futures::channel::oneshot;
 use crate::futures::future::select;
 use crate::futures::future::Either;
-use crate::futures::future::Future;
 use crate::futures::prelude::*;
 use crate::futures::stream::SelectAll;
 use crate::futures::stream::StreamExt;
@@ -82,6 +81,7 @@ pub struct JsRuntimeInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   deregister_tx: Option<oneshot::Sender<()>>,
+  is_dispatching_message: RefCell<bool>,
 }
 
 impl Drop for JsRuntimeInspector {
@@ -141,18 +141,6 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 }
 
-/// Polling `JsRuntimeInspector` allows inspector to accept new incoming
-/// connections and "pump" messages in different sessions.
-///
-/// It should be polled on tick of event loop, ie. in `JsRuntime::poll_event_loop`
-/// function.
-impl Future for JsRuntimeInspector {
-  type Output = ();
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
-    self.poll_sessions(Some(cx)).unwrap()
-  }
-}
-
 impl JsRuntimeInspector {
   /// Currently Deno supports only a single context in `JsRuntime`
   /// and thus it's id is provided as an associated contant.
@@ -182,6 +170,7 @@ impl JsRuntimeInspector {
       flags: Default::default(),
       waker,
       deregister_tx: None,
+      is_dispatching_message: Default::default(),
     }));
     let mut self_ = self__.borrow_mut();
     self_.v8_inspector = Rc::new(RefCell::new(
@@ -224,6 +213,10 @@ impl JsRuntimeInspector {
     self__
   }
 
+  pub fn is_dispatching_message(&self) -> bool {
+    *self.is_dispatching_message.borrow()
+  }
+
   pub fn context_destroyed(
     &mut self,
     scope: &mut HandleScope,
@@ -246,7 +239,7 @@ impl JsRuntimeInspector {
     self.sessions.borrow().has_blocking_sessions()
   }
 
-  fn poll_sessions(
+  pub fn poll_sessions(
     &self,
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
@@ -304,7 +297,9 @@ impl JsRuntimeInspector {
         match sessions.established.poll_next_unpin(cx) {
           Poll::Ready(Some(session_stream_item)) => {
             let (v8_session_ptr, msg) = session_stream_item;
+            *self.is_dispatching_message.borrow_mut() = true;
             InspectorSession::dispatch_message(v8_session_ptr, msg);
+            *self.is_dispatching_message.borrow_mut() = false;
             continue;
           }
           Poll::Ready(None) => break,
