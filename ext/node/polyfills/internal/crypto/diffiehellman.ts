@@ -330,7 +330,11 @@ export class ECDH {
     this.#privbuf = privateKey;
     this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
 
-    ops.op_node_ecdh_compute_public_key(this.#curve.name, this.#privbuf, this.#pubbuf);
+    ops.op_node_ecdh_compute_public_key(
+      this.#curve.name,
+      this.#privbuf,
+      this.#pubbuf,
+    );
 
     if (encoding !== undefined) {
       return this.#pubbuf.toString(encoding);
