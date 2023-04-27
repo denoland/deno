@@ -164,7 +164,13 @@ Deno.test(
     const bytes = new Uint8Array(kStringMaxLengthPlusOne);
     const filePath = "cli/tests/testdata/too_big_a_file.txt";
 
-    Deno.writeFileSync(filePath, bytes);
+    try {
+      Deno.writeFileSync(filePath, bytes);
+    } catch (e) {
+      // NOTE(bartlomieju): writing a 0.5Gb file might be too much for CI,
+      // so skip running if writing fails.
+      return;
+    }
 
     assertThrows(
       () => {
@@ -185,7 +191,13 @@ Deno.test(
     const bytes = new Uint8Array(kStringMaxLengthPlusOne);
     const filePath = "cli/tests/testdata/too_big_a_file_2.txt";
 
-    await Deno.writeFile(filePath, bytes);
+    try {
+      await Deno.writeFile(filePath, bytes);
+    } catch (e) {
+      // NOTE(bartlomieju): writing a 0.5Gb file might be too much for CI,
+      // so skip running if writing fails.
+      return;
+    }
 
     await assertRejects(
       async () => {
