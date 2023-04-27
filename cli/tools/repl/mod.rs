@@ -1,10 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::ReplFlags;
 use crate::colors;
+use crate::file_fetcher::FileFetcher;
 use crate::proc_state::ProcState;
-use crate::worker::create_main_worker;
 use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -65,14 +66,14 @@ async fn read_line_and_poll(
 }
 
 async fn read_eval_file(
-  ps: &ProcState,
+  cli_options: &CliOptions,
+  file_fetcher: &FileFetcher,
   eval_file: &str,
 ) -> Result<String, AnyError> {
   let specifier =
-    deno_core::resolve_url_or_path(eval_file, ps.options.initial_cwd())?;
+    deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
-  let file = ps
-    .file_fetcher
+  let file = file_fetcher
     .fetch(&specifier, PermissionsContainer::allow_all())
     .await?;
 
@@ -82,17 +83,24 @@ async fn read_eval_file(
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let ps = ProcState::from_flags(flags).await?;
   let main_module = ps.options.resolve_main_module()?;
-  let mut worker = create_main_worker(
-    &ps,
-    main_module,
-    PermissionsContainer::new(Permissions::from_options(
-      &ps.options.permissions_options(),
-    )?),
-  )
-  .await?;
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &ps.options.permissions_options(),
+  )?);
+  let cli_options = ps.options.clone();
+  let npm_resolver = ps.npm_resolver.clone();
+  let resolver = ps.resolver.clone();
+  let dir = ps.dir.clone();
+  let file_fetcher = ps.file_fetcher.clone();
+  let worker_factory = ps.into_cli_main_worker_factory();
+
+  let mut worker = worker_factory
+    .create_main_worker(main_module, permissions)
+    .await?;
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
-  let mut repl_session = ReplSession::initialize(ps.clone(), worker).await?;
+  let mut repl_session =
+    ReplSession::initialize(&cli_options, npm_resolver, resolver, worker)
+      .await?;
   let mut rustyline_channel = rustyline_channel();
 
   let helper = EditorHelper {
@@ -100,12 +108,12 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     sync_sender: rustyline_channel.0,
   };
 
-  let history_file_path = ps.dir.repl_history_file_path();
+  let history_file_path = dir.repl_history_file_path();
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   if let Some(eval_files) = repl_flags.eval_files {
     for eval_file in eval_files {
-      match read_eval_file(&ps, &eval_file).await {
+      match read_eval_file(&cli_options, &file_fetcher, &eval_file).await {
         Ok(eval_source) => {
           let output = repl_session
             .evaluate_line_and_get_output(&eval_source)
@@ -132,7 +140,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
 
   // Doing this manually, instead of using `log::info!` because these messages
   // are supposed to go to stdout, not stderr.
-  if !ps.options.is_quiet() {
+  if !cli_options.is_quiet() {
     println!("Deno {}", crate::version::deno());
     println!("exit using ctrl+d, ctrl+c, or close()");
     if repl_flags.is_default_command {

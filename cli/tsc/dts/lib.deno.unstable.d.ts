@@ -1545,6 +1545,10 @@ declare namespace Deno {
    * relative significance of the types can be found in documentation for the
    * {@linkcode Deno.KvKeyPart} type.
    *
+   * Keys have a maximum size of 2048 bytes serialized. If the size of the key
+   * exceeds this limit, an error will be thrown on the operation that this key
+   * was passed to.
+   *
    * @category KV
    */
   export type KvKey = readonly KvKeyPart[];
@@ -1758,8 +1762,14 @@ declare namespace Deno {
 
   /** @category KV */
   export interface KvCommitResult {
+    ok: true;
     /** The versionstamp of the value committed to KV. */
     versionstamp: string;
+  }
+
+  /** @category KV */
+  export interface KvCommitError {
+    ok: false;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1803,11 +1813,13 @@ declare namespace Deno {
    *
    * The `commit` method of an atomic operation returns a value indicating
    * whether checks passed and mutations were performed. If the operation failed
-   * because of a failed check, the return value will be `null`. If the
+   * because of a failed check, the return value will be a
+   * {@linkcode Deno.KvCommitError} with an `ok: false` property. If the
    * operation failed for any other reason (storage error, invalid value, etc.),
    * an exception will be thrown. If the operation succeeded, the return value
-   * will be a {@linkcode Deno.KvCommitResult} object containing the
-   * versionstamp of the value committed to KV.
+   * will be a {@linkcode Deno.KvCommitResult} object with a `ok: true` property
+   * and the versionstamp of the value committed to KV.
+
    *
    * @category KV
    */
@@ -1857,17 +1869,19 @@ declare namespace Deno {
     /**
      * Commit the operation to the KV store. Returns a value indicating whether
      * checks passed and mutations were performed. If the operation failed
-     * because of a failed check, the return value will be `null`. If the
-     * operation failed for any other reason (storage error, invalid value,
-     * etc.), an exception will be thrown. If the operation succeeded, the
-     * return value will be a {@linkcode Deno.KvCommitResult} object containing
-     * the versionstamp of the value committed to KV.
+     * because of a failed check, the return value will be a {@linkcode
+     * Deno.KvCommitError} with an `ok: false` property. If the operation failed
+     * for any other reason (storage error, invalid value, etc.), an exception
+     * will be thrown. If the operation succeeded, the return value will be a
+     * {@linkcode Deno.KvCommitResult} object with a `ok: true` property and the
+     * versionstamp of the value committed to KV.
      *
-     * If the commit returns `null`, one may create a new atomic operation with
-     * updated checks and mutations and attempt to commit it again. See the note
-     * on optimistic locking in the documentation for {@linkcode Deno.AtomicOperation}.
+     * If the commit returns `ok: false`, one may create a new atomic operation
+     * with updated checks and mutations and attempt to commit it again. See the
+     * note on optimistic locking in the documentation for
+     * {@linkcode Deno.AtomicOperation}.
      */
-    commit(): Promise<KvCommitResult | null>;
+    commit(): Promise<KvCommitResult | KvCommitError>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1901,7 +1915,8 @@ declare namespace Deno {
    * maximum length of 64 KiB after serialization. Serialization of both keys
    * and values is somewhat opaque, but one can usually assume that the
    * serialization of any value is about the same length as the resulting string
-   * of a JSON serialization of that same value.
+   * of a JSON serialization of that same value. If theses limits are exceeded,
+   * an exception will be thrown.
    *
    * @category KV
    */
