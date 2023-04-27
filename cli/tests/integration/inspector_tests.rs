@@ -307,7 +307,6 @@ async fn inspector_break_on_first_line() {
   let child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
-    .arg("--enable-testing-features-do-not-use")
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
