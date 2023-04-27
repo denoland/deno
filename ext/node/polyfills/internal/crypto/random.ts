@@ -152,6 +152,11 @@ export function generatePrime(
   callback?: (err: Error | null, prime: ArrayBuffer | bigint) => void,
 ) {
   validateInt32(size, "size", 1);
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+  validateFunction(callback, "callback");
   const {
     bigint,
   } = validateRandomPrimeJob(size, options);

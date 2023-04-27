@@ -902,12 +902,19 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
+#[inline]
 fn gen_prime(size: usize) -> ZeroCopyBuf {
   primes::Prime::generate(size).0.to_bytes_be().into()
 }
 
 #[op]
-pub fn op_node_gen_prime(size: usize) -> ZeroCopyBuf {}
+pub fn op_node_gen_prime(size: usize) -> ZeroCopyBuf {
+  gen_prime(size)
+}
 
 #[op]
-pub async fn op_node_gen_prime_async(size: usize) -> ZeroCopyBuf {}
+pub async fn op_node_gen_prime_async(
+  size: usize,
+) -> Result<ZeroCopyBuf, AnyError> {
+  Ok(tokio::task::spawn_blocking(move || gen_prime(size)).await?)
+}
