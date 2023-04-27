@@ -53,6 +53,9 @@ deno_semver.workspace = true
 deno_task_shell = "0.11.0"
 napi_sym.workspace = true
 
+# [target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.5"
+
 async-trait.workspace = true
 atty.workspace = true
 base32 = "=0.4.0"
