@@ -18,12 +18,18 @@ use rand::Rng;
 use std::future::Future;
 use std::rc::Rc;
 
+use p224::NistP224;
+use p256::NistP256;
+use p384::NistP384;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use secp256k1::ecdh::SharedSecret;
+use secp256k1::Secp256k1;
+use secp256k1::SecretKey;
 
 mod cipher;
 mod dh;
@@ -900,6 +906,165 @@ pub async fn op_node_scrypt_async(
     }
   })
   .await?
+}
+
+#[op]
+pub fn op_node_ecdh_generate_keys(
+  curve: &str,
+  pubbuf: &mut [u8],
+  privbuf: &mut [u8],
+) -> Result<ResourceId, AnyError> {
+  let mut rng = rand::thread_rng();
+  match curve {
+    "secp256k1" => {
+      let secp = Secp256k1::new();
+      let (privkey, pubkey) = secp.generate_keypair(&mut rng);
+      pubbuf.copy_from_slice(&pubkey.serialize_uncompressed());
+      privbuf.copy_from_slice(&privkey.secret_bytes());
+
+      Ok(0)
+    }
+    "prime256v1" | "secp256r1" => {
+      let privkey = elliptic_curve::SecretKey::<NistP256>::random(&mut rng);
+      let pubkey = privkey.public_key();
+      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+      Ok(0)
+    }
+    "secp384r1" => {
+      let privkey = elliptic_curve::SecretKey::<NistP384>::random(&mut rng);
+      let pubkey = privkey.public_key();
+      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+      Ok(0)
+    }
+    "secp224r1" => {
+      let privkey = elliptic_curve::SecretKey::<NistP224>::random(&mut rng);
+      let pubkey = privkey.public_key();
+      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+      Ok(0)
+    }
+    &_ => todo!(),
+  }
+}
+
+#[op]
+pub fn op_node_ecdh_compute_secret(
+  curve: &str,
+  this_priv: Option<ZeroCopyBuf>,
+  their_pub: &mut [u8],
+  secret: &mut [u8],
+) -> Result<(), AnyError> {
+  match curve {
+    "secp256k1" => {
+      let this_secret_key = SecretKey::from_slice(
+        this_priv.expect("no private key provided?").as_ref(),
+      )
+      .unwrap();
+      let their_public_key =
+        secp256k1::PublicKey::from_slice(their_pub).unwrap();
+      let shared_secret =
+        SharedSecret::new(&their_public_key, &this_secret_key);
+
+      secret.copy_from_slice(&shared_secret.secret_bytes());
+      Ok(())
+    }
+    "prime256v1" | "secp256r1" => {
+      let their_public_key =
+        elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(their_pub)
+          .expect("bad public key");
+      let this_private_key = elliptic_curve::SecretKey::<NistP256>::from_slice(
+        &this_priv.expect("must supply private key"),
+      )
+      .expect("bad private key");
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
+      secret.copy_from_slice(shared_secret.raw_secret_bytes());
+
+      Ok(())
+    }
+    "secp384r1" => {
+      let their_public_key =
+        elliptic_curve::PublicKey::<NistP384>::from_sec1_bytes(their_pub)
+          .expect("bad public key");
+      let this_private_key = elliptic_curve::SecretKey::<NistP384>::from_slice(
+        &this_priv.expect("must supply private key"),
+      )
+      .expect("bad private key");
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
+      secret.copy_from_slice(shared_secret.raw_secret_bytes());
+
+      Ok(())
+    }
+    "secp224r1" => {
+      let their_public_key =
+        elliptic_curve::PublicKey::<NistP224>::from_sec1_bytes(their_pub)
+          .expect("bad public key");
+      let this_private_key = elliptic_curve::SecretKey::<NistP224>::from_slice(
+        &this_priv.expect("must supply private key"),
+      )
+      .expect("bad private key");
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
+      secret.copy_from_slice(shared_secret.raw_secret_bytes());
+
+      Ok(())
+    }
+    &_ => todo!(),
+  }
+}
+
+#[op]
+pub fn op_node_ecdh_compute_public_key(
+  curve: &str,
+  privkey: &[u8],
+  pubkey: &mut [u8],
+) -> Result<(), AnyError> {
+  match curve {
+    "secp256k1" => {
+      let secp = Secp256k1::new();
+      let secret_key = SecretKey::from_slice(privkey).unwrap();
+      let public_key =
+        secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
+
+      pubkey.copy_from_slice(&public_key.serialize_uncompressed());
+
+      Ok(())
+    }
+    "prime256v1" | "secp256r1" => {
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP256>::from_slice(privkey)
+          .expect("bad private key");
+      let public_key = this_private_key.public_key();
+      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      Ok(())
+    }
+    "secp384r1" => {
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP384>::from_slice(privkey)
+          .expect("bad private key");
+      let public_key = this_private_key.public_key();
+      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      Ok(())
+    }
+    "secp224r1" => {
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP224>::from_slice(privkey)
+          .expect("bad private key");
+      let public_key = this_private_key.public_key();
+      pubkey.copy_from_slice(public_key.to_sec1_bytes().as_ref());
+      Ok(())
+    }
+    &_ => todo!(),
+  }
 }
 
 #[inline]
