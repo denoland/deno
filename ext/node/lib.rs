@@ -534,10 +534,10 @@ deno_core::extension!(deno_node,
 pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<String>,
+  maybe_binary_command_name: Option<&str>,
 ) -> Result<(), AnyError> {
   let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name.as_str())?
+    serde_json::to_string(binary_command_name)?
   } else {
     "undefined".to_string()
   };
