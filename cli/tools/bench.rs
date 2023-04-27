@@ -489,14 +489,7 @@ async fn bench_specifier(
   }))?;
   for (desc, function) in benchmarks {
     sender.send(BenchEvent::Wait(desc.id))?;
-    let promise = {
-      let scope = &mut worker.js_runtime.handle_scope();
-      let cb = function.open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    let result = worker.js_runtime.resolve_value(promise).await?;
+    let result = worker.js_runtime.call_and_await(&function).await?;
     let scope = &mut worker.js_runtime.handle_scope();
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<BenchResult>(scope, result)?;

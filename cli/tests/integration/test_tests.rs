@@ -425,6 +425,12 @@ itest!(uncaught_errors {
   exit_code: 1,
 });
 
+itest!(report_error {
+  args: "test --quiet test/report_error.ts",
+  output: "test/report_error.out",
+  exit_code: 1,
+});
+
 itest!(check_local_by_default {
   args: "test --quiet test/check_local_by_default.ts",
   output: "test/check_local_by_default.out",
