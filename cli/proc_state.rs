@@ -329,7 +329,7 @@ impl ProcState {
 
   // todo(dsherret): this is a transitory method as we separate out
   // ProcState from more code
-  pub fn as_cli_main_worker_factory(&self) -> CliMainWorkerFactory {
+  pub fn create_cli_main_worker_factory(&self) -> CliMainWorkerFactory {
     CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       self.npm_resolver.clone(),

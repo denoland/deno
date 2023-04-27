@@ -47,7 +47,7 @@ To grant permissions, set them before the script argument. For example:
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);
-  let worker_factory = ps.as_cli_main_worker_factory();
+  let worker_factory = ps.create_cli_main_worker_factory();
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
@@ -78,7 +78,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   // to allow module access by TS compiler
   ps.file_fetcher.insert_cached(source_file);
 
-  let worker_factory = ps.as_cli_main_worker_factory();
+  let worker_factory = ps.create_cli_main_worker_factory();
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
@@ -100,7 +100,7 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
     let permissions = PermissionsContainer::new(Permissions::from_options(
       &ps.options.permissions_options(),
     )?);
-    let worker_factory = ps.as_cli_main_worker_factory();
+    let worker_factory = ps.create_cli_main_worker_factory();
 
     Ok(async move {
       let worker = worker_factory
@@ -157,7 +157,7 @@ pub async fn eval_command(
   ps.file_fetcher.insert_cached(file);
 
   let mut worker = ps
-    .as_cli_main_worker_factory()
+    .create_cli_main_worker_factory()
     .create_main_worker(main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
