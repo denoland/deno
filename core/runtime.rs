@@ -196,7 +196,6 @@ fn v8_init(
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-change-array-by-copy",
-    " --no-harmony-rab-gsab",
   );
 
   if predictable {
@@ -471,26 +470,6 @@ impl JsRuntime {
       #[cfg(feature = "include_js_files_for_snapshotting")]
       if snapshot_options != snapshot_util::SnapshotOptions::None {
         for source in &esm_sources {
-          use crate::ExtensionFileSourceCode;
-          if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-            &source.code
-          {
-            println!("cargo:rerun-if-changed={}", path.display())
-          }
-        }
-      }
-      // Cache bust plain JS (non-ES modules as well)
-      #[cfg(feature = "include_js_files_for_snapshotting")]
-      if snapshot_options != snapshot_util::SnapshotOptions::None {
-        let js_sources = options
-          .extensions
-          .iter()
-          .flat_map(|ext| match ext.get_js_sources() {
-            Some(s) => s.to_owned(),
-            None => vec![],
-          })
-          .collect::<Vec<ExtensionFileSource>>();
-        for source in js_sources {
           use crate::ExtensionFileSourceCode;
           if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
             &source.code
@@ -1527,6 +1506,10 @@ pub(crate) fn exception_to_err_result<T>(
   let state_rc = JsRuntime::state(scope);
 
   let was_terminating_execution = scope.is_execution_terminating();
+  // Disable running microtasks for a moment. When upgrading to V8 v11.4
+  // we discovered that canceling termination here will cause the queued
+  // microtasks to run which breaks some tests.
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
   // If TerminateExecution was called, cancel isolate termination so that the
   // exception can be created. Note that `scope.is_execution_terminating()` may
   // have returned false if TerminateExecution was indeed called but there was
@@ -1560,6 +1543,7 @@ pub(crate) fn exception_to_err_result<T>(
     // Resume exception termination.
     scope.terminate_execution();
   }
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
 
   Err(js_error.into())
 }
@@ -4735,25 +4719,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
-  }
-
-  #[test]
-  fn test_resizable_array_buffer() {
-    // Verify that "resizable ArrayBuffer" is disabled
-    let mut runtime = JsRuntime::new(Default::default());
-    runtime
-      .execute_script_static(
-        "test_rab.js",
-        r#"const a = new ArrayBuffer(100, {maxByteLength: 200});
-        if (a.byteLength !== 100) {
-          throw new Error('wrong byte length');
-        }
-        if (a.maxByteLength !== undefined) {
-          throw new Error("ArrayBuffer shouldn't have maxByteLength");
-        }
-        "#,
-      )
-      .unwrap();
   }
 
   #[test]

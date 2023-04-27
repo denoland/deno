@@ -231,6 +231,35 @@ impl JsRuntimeInspector {
       .context_destroyed(context);
   }
 
+  pub fn exception_thrown(
+    &self,
+    scope: &mut HandleScope,
+    exception: v8::Local<'_, v8::Value>,
+    in_promise: bool,
+  ) {
+    let context = scope.get_current_context();
+    let message = v8::Exception::create_message(scope, exception);
+    let stack_trace = message.get_stack_trace(scope).unwrap();
+    let mut v8_inspector_ref = self.v8_inspector.borrow_mut();
+    let v8_inspector = v8_inspector_ref.as_mut().unwrap();
+    let stack_trace = v8_inspector.create_stack_trace(stack_trace);
+    v8_inspector.exception_thrown(
+      context,
+      if in_promise {
+        v8::inspector::StringView::from("Uncaught (in promise)".as_bytes())
+      } else {
+        v8::inspector::StringView::from("Uncaught".as_bytes())
+      },
+      exception,
+      v8::inspector::StringView::from("".as_bytes()),
+      v8::inspector::StringView::from("".as_bytes()),
+      0,
+      0,
+      stack_trace,
+      0,
+    );
+  }
+
   pub fn has_active_sessions(&self) -> bool {
     self.sessions.borrow().has_active_sessions()
   }

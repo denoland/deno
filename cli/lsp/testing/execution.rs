@@ -257,10 +257,11 @@ impl TestRun {
     let tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>> =
       Arc::new(RwLock::new(IndexMap::new()));
     let mut test_steps = IndexMap::new();
+    let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
 
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
-      let ps = ps.clone();
+      let worker_factory = worker_factory.clone();
       let permissions = permissions.clone();
       let mut sender = sender.clone();
       let fail_fast_tracker = fail_fast_tracker.clone();
@@ -288,12 +289,16 @@ impl TestRun {
           Ok(())
         } else {
           run_local(test::test_specifier(
-            &ps,
+            &worker_factory,
             permissions,
             specifier,
             sender.clone(),
             fail_fast_tracker,
-            filter,
+            &test::TestSpecifierOptions {
+              filter,
+              shuffle: None,
+              trace_ops: false,
+            },
           ))
         };
         if let Err(error) = file_result {

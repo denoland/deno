@@ -28,7 +28,6 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("--no-prompt")
-    .arg("--enable-testing-features-do-not-use")
     .arg("-A")
     .arg(util::tests_path().join("unit"))
     .spawn()

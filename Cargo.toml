@@ -41,7 +41,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.70.0", default-features = false }
+v8 = { version = "0.71.0", default-features = false }
 deno_ast = { version = "0.26.0", features = ["transpiling"] }
 
 deno_core = { version = "0.181.0", path = "./core" }
@@ -139,6 +139,10 @@ tower-lsp = { version = "=0.17.0", features = ["proposed"] }
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 zstd = "=0.11.2"
+elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
+p224 = { version = "0.13.0", features = ["ecdh"] }
+p256 = { version = "0.13.2", features = ["ecdh"] }
+p384 = { version = "0.13.0", features = ["ecdh"] }
 
 # crypto
 rsa = { version = "0.7.0", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
