@@ -266,7 +266,7 @@ class AtomicOperation {
     return this;
   }
 
-  async commit(): Promise<Deno.KvCommitResult | null> {
+  async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
@@ -274,8 +274,8 @@ class AtomicOperation {
       this.#mutations,
       [], // TODO(@losfair): enqueue
     );
-    if (versionstamp === null) return null;
-    return { versionstamp };
+    if (versionstamp === null) return { ok: false };
+    return { ok: true, versionstamp };
   }
 
   then() {
