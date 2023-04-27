@@ -5,7 +5,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::OpState;
-use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
@@ -16,12 +15,10 @@ use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
-use std::borrow::Cow;
 use std::future::Future;
 use std::rc::Rc;
 
 use p224::NistP224;
-use p256::elliptic_curve::ecdh::EphemeralSecret;
 use p256::NistP256;
 use p384::NistP384;
 use rsa::padding::PaddingScheme;
@@ -911,31 +908,8 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
-struct NodeCryptoWrapper<T: elliptic_curve::CurveArithmetic> {
-  secret: EphemeralSecret<T>,
-}
-
-impl Resource for NodeCryptoWrapper<NistP256> {
-  fn name(&self) -> Cow<str> {
-    "node-crypto-secret-nist-p256".into()
-  }
-}
-
-impl Resource for NodeCryptoWrapper<NistP384> {
-  fn name(&self) -> Cow<str> {
-    "node-crypto-secret-nist-p384".into()
-  }
-}
-
-impl Resource for NodeCryptoWrapper<NistP224> {
-  fn name(&self) -> Cow<str> {
-    "node-crypto-secret-nist-p224".into()
-  }
-}
-
 #[op]
 pub fn op_node_ecdh_generate_keys(
-  state: &mut OpState,
   curve: &str,
   pubbuf: &mut [u8],
   privbuf: &mut [u8],
@@ -951,34 +925,25 @@ pub fn op_node_ecdh_generate_keys(
       Ok(0)
     }
     "prime256v1" | "secp256r1" => {
-      let privkey = p256::ecdh::EphemeralSecret::random(&mut rng);
+      let privkey = elliptic_curve::SecretKey::<NistP256>::random(&mut rng);
       let pubkey = privkey.public_key();
       pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
-      let rid = state
-        .resource_table
-        .add(NodeCryptoWrapper::<NistP256> { secret: privkey });
-
-      Ok(rid)
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+      Ok(0)
     }
     "secp384r1" => {
-      let privkey = p384::ecdh::EphemeralSecret::random(&mut rng);
+      let privkey = elliptic_curve::SecretKey::<NistP384>::random(&mut rng);
       let pubkey = privkey.public_key();
       pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
-      let rid = state
-        .resource_table
-        .add(NodeCryptoWrapper::<NistP384> { secret: privkey });
-
-      Ok(rid)
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+      Ok(0)
     }
     "secp224r1" => {
-      let privkey = p224::ecdh::EphemeralSecret::random(&mut rng);
+      let privkey = elliptic_curve::SecretKey::<NistP224>::random(&mut rng);
       let pubkey = privkey.public_key();
       pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
-      let rid = state
-        .resource_table
-        .add(NodeCryptoWrapper::<NistP224> { secret: privkey });
-
-      Ok(rid)
+      privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
+      Ok(0)
     }
     &_ => todo!(),
   }
@@ -986,9 +951,7 @@ pub fn op_node_ecdh_generate_keys(
 
 #[op]
 pub fn op_node_ecdh_compute_secret(
-  state: &mut OpState,
   curve: &str,
-  resource_id: u32,
   this_priv: Option<ZeroCopyBuf>,
   their_pub: &mut [u8],
   secret: &mut [u8],
@@ -1008,39 +971,51 @@ pub fn op_node_ecdh_compute_secret(
       Ok(())
     }
     "prime256v1" | "secp256r1" => {
-      let ncp = state
-        .resource_table
-        .get::<NodeCryptoWrapper<NistP256>>(resource_id)
-        .expect("Invalid resource id");
-      let es = &ncp.secret;
-      let public_key =
-        p256::PublicKey::from_sec1_bytes(their_pub).expect("bad public key");
-      let shared_secret = es.diffie_hellman(&public_key);
+      let their_public_key =
+        elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(their_pub)
+          .expect("bad public key");
+      let this_private_key = elliptic_curve::SecretKey::<NistP256>::from_slice(
+        &this_priv.expect("must supply private key"),
+      )
+      .expect("bad private key");
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
       secret.copy_from_slice(shared_secret.raw_secret_bytes());
+
       Ok(())
     }
     "secp384r1" => {
-      let ncp = state
-        .resource_table
-        .get::<NodeCryptoWrapper<NistP384>>(resource_id)
-        .expect("Invalid resource id");
-      let es = &ncp.secret;
-      let public_key =
-        p384::PublicKey::from_sec1_bytes(their_pub).expect("bad public key");
-      let shared_secret = es.diffie_hellman(&public_key);
+      let their_public_key =
+        elliptic_curve::PublicKey::<NistP384>::from_sec1_bytes(their_pub)
+          .expect("bad public key");
+      let this_private_key = elliptic_curve::SecretKey::<NistP384>::from_slice(
+        &this_priv.expect("must supply private key"),
+      )
+      .expect("bad private key");
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
       secret.copy_from_slice(shared_secret.raw_secret_bytes());
+
       Ok(())
     }
     "secp224r1" => {
-      let ncp = state
-        .resource_table
-        .get::<NodeCryptoWrapper<NistP224>>(resource_id)
-        .expect("Invalid resource id");
-      let es = &ncp.secret;
-      let public_key =
-        p224::PublicKey::from_sec1_bytes(their_pub).expect("bad public key");
-      let shared_secret = es.diffie_hellman(&public_key);
+      let their_public_key =
+        elliptic_curve::PublicKey::<NistP224>::from_sec1_bytes(their_pub)
+          .expect("bad public key");
+      let this_private_key = elliptic_curve::SecretKey::<NistP224>::from_slice(
+        &this_priv.expect("must supply private key"),
+      )
+      .expect("bad private key");
+      let shared_secret = elliptic_curve::ecdh::diffie_hellman(
+        this_private_key.to_nonzero_scalar(),
+        their_public_key.as_affine(),
+      );
       secret.copy_from_slice(shared_secret.raw_secret_bytes());
+
       Ok(())
     }
     &_ => todo!(),

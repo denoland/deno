@@ -24,7 +24,7 @@ deno_semver.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true
-elliptic-curve = { version = "0.13.4", features = ["alloc"] }
+elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh"] }
 hex.workspace = true
 hkdf.workspace = true
 idna = "0.3.0"

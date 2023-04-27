@@ -57,39 +57,34 @@ export type EllipticCurve = {
 export const ellipticCurves: Array<EllipticCurve> = [
   {
     name: "secp256k1",
-    ephemeral: false,
     privateKeySize: 32,
     publicKeySize: 65,
     sharedSecretSize: 32,
   }, // Weierstrass-class EC used by Bitcoin
   {
     name: "prime256v1",
-    ephemeral: true,
     privateKeySize: 32,
     publicKeySize: 65,
     sharedSecretSize: 32,
   }, // NIST P-256 EC
   {
     name: "secp256r1",
-    ephemeral: true,
     privateKeySize: 32,
     publicKeySize: 65,
     sharedSecretSize: 32,
   }, // NIST P-256 EC (same as above)
   {
     name: "secp384r1",
-    ephemeral: true,
     privateKeySize: 48,
     publicKeySize: 97,
     sharedSecretSize: 48,
   }, // NIST P-384 EC
   {
     name: "secp224r1",
-    ephemeral: true,
     privateKeySize: 28,
     publicKeySize: 57,
     sharedSecretSize: 28,
-  }, // NIST P-224 EC
+  } // NIST P-224 EC
 ];
 
 // deno-fmt-ignore

@@ -228,7 +228,6 @@ export class ECDH {
   #curve: EllipticCurve; // the selected curve
   #privbuf: Buffer; // the private key
   #pubbuf: Buffer; // the public key
-  #ephemeralSecretResource: number; // the resource id in the table
 
   constructor(curve: string) {
     validateString(curve, "curve");
@@ -273,23 +272,12 @@ export class ECDH {
   ): Buffer | string {
     const secretBuf = Buffer.alloc(this.#curve.sharedSecretSize);
 
-    if (this.#curve.ephemeral) {
-      ops.op_node_ecdh_compute_secret(
-        this.#curve.name,
-        this.#ephemeralSecretResource,
-        null,
-        otherPublicKey,
-        secretBuf,
-      );
-    } else {
-      ops.op_node_ecdh_compute_secret(
-        this.#curve.name,
-        0,
-        this.#privbuf,
-        otherPublicKey,
-        secretBuf,
-      );
-    }
+    ops.op_node_ecdh_compute_secret(
+      this.#curve.name,
+      this.#privbuf,
+      otherPublicKey,
+      secretBuf,
+    );
 
     return secretBuf;
   }
@@ -309,11 +297,7 @@ export class ECDH {
     );
 
     this.#pubbuf = pubbuf;
-    if (this.#curve.ephemeral) {
-      this.#ephemeralSecretResource = rid;
-    } else {
-      this.#privbuf = privbuf;
-    }
+    this.#privbuf = privbuf;
 
     if (encoding !== undefined) {
       return pubbuf.toString(encoding);
@@ -324,12 +308,6 @@ export class ECDH {
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (this.#curve.ephemeral) {
-      throw new Error(
-        "Curves that use ephemeral ECDH cannot be queried for their private key",
-      );
-    }
-
     if (encoding !== undefined) {
       return this.#privbuf.toString(encoding);
     }
@@ -354,12 +332,6 @@ export class ECDH {
     privateKey: ArrayBufferView | string,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    if (this.#curve.ephemeral) {
-      throw new Error(
-        "Curve " + this.#curve.name + " does not support setPrivateKey",
-      );
-    }
-
     this.#privbuf = privateKey;
     const pubbuf = Buffer.alloc(this.#curve.publicKeySize);
 
