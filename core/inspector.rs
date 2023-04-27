@@ -412,7 +412,7 @@ impl JsRuntimeInspector {
 
   /// Create a local inspector session that can be used on
   /// the same thread as the isolate.
-  pub fn create_local_session(&self, blocking: bool) -> LocalInspectorSession {
+  pub fn create_local_session(&self) -> LocalInspectorSession {
     // The 'outbound' channel carries messages sent to the session.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
@@ -427,7 +427,7 @@ impl JsRuntimeInspector {
     // InspectorSessions for a local session is added directly to the "established"
     // sessions, so it doesn't need to go through the session sender.
     let inspector_session =
-      InspectorSession::new(self.v8_inspector.clone(), proxy, blocking);
+      InspectorSession::new(self.v8_inspector.clone(), proxy, true);
     self
       .sessions
       .borrow_mut()
