@@ -14,7 +14,6 @@ use crate::node;
 use crate::node::CliNodeCodeTranslator;
 use crate::proc_state::CjsResolutionStore;
 use crate::proc_state::FileWatcherReporter;
-use crate::proc_state::ProcState;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
@@ -224,6 +223,88 @@ pub struct ModuleCodeSource {
   pub media_type: MediaType,
 }
 
+struct SharedCliModuleLoaderState {
+  lib_window: TsTypeLib,
+  lib_worker: TsTypeLib,
+  is_inspecting: bool,
+  is_repl: bool,
+  emitter: Arc<Emitter>,
+  graph_container: Arc<ModuleGraphContainer>,
+  module_load_preparer: Arc<ModuleLoadPreparer>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  resolver: Arc<CliGraphResolver>,
+  npm_module_loader: NpmModuleLoader,
+}
+
+pub struct CliModuleLoaderFactory {
+  state: Arc<SharedCliModuleLoaderState>,
+}
+
+impl CliModuleLoaderFactory {
+  pub fn new(
+    options: &CliOptions,
+    emitter: Arc<Emitter>,
+    graph_container: Arc<ModuleGraphContainer>,
+    module_load_preparer: Arc<ModuleLoadPreparer>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+    resolver: Arc<CliGraphResolver>,
+    npm_module_loader: NpmModuleLoader,
+  ) -> Self {
+    Self {
+      state: Arc::new(SharedCliModuleLoaderState {
+        lib_window: options.ts_type_lib_window(),
+        lib_worker: options.ts_type_lib_worker(),
+        is_inspecting: options.is_inspecting(),
+        is_repl: matches!(options.sub_command(), DenoSubcommand::Repl(_)),
+        emitter,
+        graph_container,
+        module_load_preparer,
+        parsed_source_cache,
+        resolver,
+        npm_module_loader,
+      }),
+    }
+  }
+
+  pub fn create_for_main(
+    &self,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> CliModuleLoader {
+    self.create_with_lib(
+      self.state.lib_window,
+      root_permissions,
+      dynamic_permissions,
+    )
+  }
+
+  pub fn create_for_worker(
+    &self,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> CliModuleLoader {
+    self.create_with_lib(
+      self.state.lib_worker,
+      root_permissions,
+      dynamic_permissions,
+    )
+  }
+
+  fn create_with_lib(
+    &self,
+    lib: TsTypeLib,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> CliModuleLoader {
+    CliModuleLoader {
+      lib,
+      root_permissions,
+      dynamic_permissions,
+      shared: self.state.clone(),
+    }
+  }
+}
+
 pub struct CliModuleLoader {
   lib: TsTypeLib,
   /// The initial set of permissions used to resolve the static imports in the
@@ -233,62 +314,10 @@ pub struct CliModuleLoader {
   /// Permissions used to resolve dynamic imports, these get passed as
   /// "root permissions" for Web Worker.
   dynamic_permissions: PermissionsContainer,
-  cli_options: Arc<CliOptions>,
-  emitter: Arc<Emitter>,
-  graph_container: Arc<ModuleGraphContainer>,
-  module_load_preparer: Arc<ModuleLoadPreparer>,
-  parsed_source_cache: Arc<ParsedSourceCache>,
-  resolver: Arc<CliGraphResolver>,
-  npm_module_loader: NpmModuleLoader,
+  shared: Arc<SharedCliModuleLoaderState>,
 }
 
 impl CliModuleLoader {
-  pub fn new(
-    ps: ProcState,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> Rc<Self> {
-    Rc::new(CliModuleLoader {
-      lib: ps.options.ts_type_lib_window(),
-      root_permissions,
-      dynamic_permissions,
-      cli_options: ps.options.clone(),
-      emitter: ps.emitter.clone(),
-      graph_container: ps.graph_container.clone(),
-      module_load_preparer: ps.module_load_preparer.clone(),
-      parsed_source_cache: ps.parsed_source_cache.clone(),
-      resolver: ps.resolver.clone(),
-      npm_module_loader: NpmModuleLoader::new(
-        ps.cjs_resolutions.clone(),
-        ps.node_code_translator.clone(),
-        ps.node_resolver.clone(),
-      ),
-    })
-  }
-
-  pub fn new_for_worker(
-    ps: ProcState,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> Rc<Self> {
-    Rc::new(CliModuleLoader {
-      lib: ps.options.ts_type_lib_worker(),
-      root_permissions,
-      dynamic_permissions,
-      cli_options: ps.options.clone(),
-      emitter: ps.emitter.clone(),
-      graph_container: ps.graph_container.clone(),
-      module_load_preparer: ps.module_load_preparer.clone(),
-      parsed_source_cache: ps.parsed_source_cache.clone(),
-      resolver: ps.resolver.clone(),
-      npm_module_loader: NpmModuleLoader::new(
-        ps.cjs_resolutions.clone(),
-        ps.node_code_translator.clone(),
-        ps.node_resolver.clone(),
-      ),
-    })
-  }
-
   fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -298,7 +327,7 @@ impl CliModuleLoader {
       unreachable!(); // Node built-in modules should be handled internally.
     }
 
-    let graph = self.graph_container.graph();
+    let graph = self.shared.graph_container.graph();
     match graph.get(specifier) {
       Some(deno_graph::Module::Json(JsonModule {
         source,
@@ -331,9 +360,11 @@ impl CliModuleLoader {
           | MediaType::Jsx
           | MediaType::Tsx => {
             // get emit text
-            self
-              .emitter
-              .emit_parsed_source(specifier, *media_type, source)?
+            self.shared.emitter.emit_parsed_source(
+              specifier,
+              *media_type,
+              source,
+            )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
             panic!("Unexpected media type {media_type} for {specifier}")
@@ -341,7 +372,7 @@ impl CliModuleLoader {
         };
 
         // at this point, we no longer need the parsed source in memory, so free it
-        self.parsed_source_cache.free(specifier);
+        self.shared.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeSource {
           code,
@@ -370,15 +401,17 @@ impl CliModuleLoader {
     } else {
       &self.root_permissions
     };
-    let code_source = if let Some(code_source) = self
-      .npm_module_loader
-      .load_sync(specifier, maybe_referrer, permissions)?
-    {
+    let code_source = if let Some(code_source) =
+      self.shared.npm_module_loader.load_sync(
+        specifier,
+        maybe_referrer,
+        permissions,
+      )? {
       code_source
     } else {
       self.load_prepared_module(specifier, maybe_referrer)?
     };
-    let code = if self.cli_options.is_inspecting() {
+    let code = if self.shared.is_inspecting {
       // we need the code with the source map in order for
       // it to work with --inspect or --inspect-brk
       code_source.code
@@ -418,15 +451,15 @@ impl ModuleLoader for CliModuleLoader {
     let referrer_result = deno_core::resolve_url_or_path(referrer, &cwd);
 
     if let Ok(referrer) = referrer_result.as_ref() {
-      if let Some(result) = self.npm_module_loader.resolve_if_in_npm_package(
-        specifier,
-        referrer,
-        permissions,
-      ) {
+      if let Some(result) = self
+        .shared
+        .npm_module_loader
+        .resolve_if_in_npm_package(specifier, referrer, permissions)
+      {
         return result;
       }
 
-      let graph = self.graph_container.graph();
+      let graph = self.shared.graph_container.graph();
       let maybe_resolved = match graph.get(referrer) {
         Some(Module::Esm(module)) => {
           module.dependencies.get(specifier).map(|d| &d.maybe_code)
@@ -440,6 +473,7 @@ impl ModuleLoader for CliModuleLoader {
 
           return match graph.get(specifier) {
             Some(Module::Npm(module)) => self
+              .shared
               .npm_module_loader
               .resolve_npm_module(module, permissions),
             Some(Module::Node(module)) => {
@@ -471,9 +505,7 @@ impl ModuleLoader for CliModuleLoader {
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
-    let is_repl =
-      matches!(self.cli_options.sub_command(), DenoSubcommand::Repl(_));
-    let referrer = if referrer.is_empty() && is_repl {
+    let referrer = if referrer.is_empty() && self.shared.is_repl {
       deno_core::resolve_path("./$deno$repl.ts", &cwd)?
     } else {
       referrer_result?
@@ -481,9 +513,9 @@ impl ModuleLoader for CliModuleLoader {
 
     // FIXME(bartlomieju): this is another hack way to provide NPM specifier
     // support in REPL. This should be fixed.
-    let resolution = self.resolver.resolve(specifier, &referrer);
+    let resolution = self.shared.resolver.resolve(specifier, &referrer);
 
-    if is_repl {
+    if self.shared.is_repl {
       let specifier = resolution
         .as_ref()
         .ok()
@@ -494,6 +526,7 @@ impl ModuleLoader for CliModuleLoader {
           NpmPackageReqReference::from_specifier(&specifier)
         {
           return self
+            .shared
             .npm_module_loader
             .resolve_for_repl(&reference, permissions);
         }
@@ -526,12 +559,14 @@ impl ModuleLoader for CliModuleLoader {
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    if let Some(result) = self.npm_module_loader.maybe_prepare_load(specifier) {
+    if let Some(result) =
+      self.shared.npm_module_loader.maybe_prepare_load(specifier)
+    {
       return Box::pin(deno_core::futures::future::ready(result));
     }
 
     let specifier = specifier.clone();
-    let module_load_preparer = self.module_load_preparer.clone();
+    let module_load_preparer = self.shared.module_load_preparer.clone();
 
     let root_permissions = if is_dynamic {
       self.dynamic_permissions.clone()
@@ -567,7 +602,7 @@ impl SourceMapGetter for CliModuleLoader {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    let graph = self.graph_container.graph();
+    let graph = self.shared.graph_container.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
       Some(deno_graph::Module::Esm(module)) => &module.source,
       Some(deno_graph::Module::Json(module)) => &module.source,

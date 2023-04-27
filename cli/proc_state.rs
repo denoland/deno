@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::Lockfile;
+use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
 use crate::cache::DenoDir;
@@ -16,7 +17,9 @@ use crate::file_fetcher::FileFetcher;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
+use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::module_loader::NpmModuleLoader;
 use crate::node::CliCjsEsmCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
@@ -29,6 +32,8 @@ use crate::resolver::CliGraphResolver;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use crate::worker::CliMainWorkerFactory;
+use crate::worker::CliMainWorkerOptions;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -43,6 +48,7 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
@@ -377,6 +383,76 @@ impl ProcState {
       module_load_preparer,
       progress_bar,
     })))
+  }
+
+  // todo(dsherret): this is a transitory method as we separate out
+  // ProcState from more code
+  pub fn into_cli_main_worker_factory(self) -> CliMainWorkerFactory {
+    CliMainWorkerFactory::new(
+      StorageKeyResolver::from_options(&self.options),
+      self.npm_resolver.clone(),
+      self.node_resolver.clone(),
+      self.graph_container.clone(),
+      self.blob_store.clone(),
+      self.broadcast_channel.clone(),
+      self.shared_array_buffer_store.clone(),
+      self.compiled_wasm_module_store.clone(),
+      CliModuleLoaderFactory::new(
+        &self.options,
+        self.emitter.clone(),
+        self.graph_container.clone(),
+        self.module_load_preparer.clone(),
+        self.parsed_source_cache.clone(),
+        self.resolver.clone(),
+        NpmModuleLoader::new(
+          self.cjs_resolutions.clone(),
+          self.node_code_translator.clone(),
+          self.node_resolver.clone(),
+        ),
+      ),
+      self.root_cert_store.clone(),
+      self.node_fs.clone(),
+      self.maybe_inspector_server.clone(),
+      CliMainWorkerOptions {
+        argv: self.options.argv().clone(),
+        debug: self
+          .options
+          .log_level()
+          .map(|l| l == log::Level::Debug)
+          .unwrap_or(false),
+        coverage_dir: self.options.coverage_dir(),
+        enable_testing_features: self.options.enable_testing_features(),
+        has_node_modules_dir: self.options.has_node_modules_dir(),
+        inspect_brk: self.options.inspect_brk().is_some(),
+        inspect_wait: self.options.inspect_wait().is_some(),
+        is_inspecting: self.options.is_inspecting(),
+        is_npm_main: self.options.is_npm_main(),
+        location: self.options.location_flag().clone(),
+        maybe_binary_npm_command_name: {
+          let mut maybe_binary_command_name = None;
+          if let DenoSubcommand::Run(flags) = self.options.sub_command() {
+            if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script)
+            {
+              // if the user ran a binary command, we'll need to set process.argv[0]
+              // to be the name of the binary command instead of deno
+              let binary_name = pkg_ref
+                .sub_path
+                .as_deref()
+                .unwrap_or(pkg_ref.req.name.as_str());
+              maybe_binary_command_name = Some(binary_name.to_string());
+            }
+          }
+          maybe_binary_command_name
+        },
+        origin_data_folder_path: self.dir.origin_data_folder_path(),
+        seed: self.options.seed(),
+        unsafely_ignore_certificate_errors: self
+          .options
+          .unsafely_ignore_certificate_errors()
+          .clone(),
+        unstable: self.options.unstable(),
+      },
+    )
   }
 }
 
