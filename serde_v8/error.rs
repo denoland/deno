@@ -55,6 +55,9 @@ pub enum Error {
 
   #[error("serde_v8 error: length mismatch, got: {0}, expected: {1}")]
   LengthMismatch(usize, usize),
+
+  #[error("serde_v8 error: can't create slice from resizable ArrayBuffer")]
+  ResizableBackingStoreNotSupported,
 }
 
 impl serde::ser::Error for Error {

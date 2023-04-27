@@ -265,6 +265,16 @@ fn de_buffers() {
       assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
     },
   );
+
+  dedo("(new ArrayBuffer(4))", |scope, v| {
+    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(&*buf, &[0x0, 0x0, 0x0, 0x0]);
+  });
+
+  dedo("(new ArrayBuffer(8, { maxByteLength: 16}))", |scope, v| {
+    let result: Result<ZeroCopyBuf, Error> = serde_v8::from_v8(scope, v);
+    matches!(result, Err(Error::ResizableBackingStoreNotSupported));
+  });
 }
 
 // Structs

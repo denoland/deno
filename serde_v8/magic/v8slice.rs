@@ -91,9 +91,16 @@ impl FromV8 for V8Slice {
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    to_ranged_buffer(scope, value)
-      .and_then(|(b, r)| Self::from_buffer(b, r))
-      .map_err(|_| crate::Error::ExpectedBuffer(value_to_type_str(value)))
+    match to_ranged_buffer(scope, value) {
+      Ok((b, r)) => {
+        if b.get_backing_store().is_resizable_by_user_javascript() {
+          return Err(crate::Error::ResizableBackingStoreNotSupported);
+        }
+        Self::from_buffer(b, r)
+          .map_err(|_| crate::Error::ExpectedBuffer(value_to_type_str(value)))
+      }
+      Err(_) => Err(crate::Error::ExpectedBuffer(value_to_type_str(value))),
+    }
   }
 }
 

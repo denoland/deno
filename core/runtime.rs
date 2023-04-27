@@ -197,7 +197,6 @@ fn v8_init(
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-change-array-by-copy",
-    " --no-harmony-rab-gsab",
   );
 
   if predictable {
@@ -4720,25 +4719,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
-  }
-
-  #[test]
-  fn test_resizable_array_buffer() {
-    // Verify that "resizable ArrayBuffer" is disabled
-    let mut runtime = JsRuntime::new(Default::default());
-    runtime
-      .execute_script_static(
-        "test_rab.js",
-        r#"const a = new ArrayBuffer(100, {maxByteLength: 200});
-        if (a.byteLength !== 100) {
-          throw new Error('wrong byte length');
-        }
-        if (a.maxByteLength !== undefined) {
-          throw new Error("ArrayBuffer shouldn't have maxByteLength");
-        }
-        "#,
-      )
-      .unwrap();
   }
 
   #[test]
