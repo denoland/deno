@@ -8,6 +8,7 @@ use super::transl8::FromV8;
 use super::transl8::ToV8;
 use super::v8slice::to_ranged_buffer;
 use super::v8slice::V8Slice;
+use crate::error::value_to_type_str;
 use crate::magic::transl8::impl_magic;
 
 // A buffer that detaches when deserialized from JS
@@ -57,10 +58,10 @@ impl FromV8 for DetachedBuffer {
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    let (b, range) =
-      to_ranged_buffer(scope, value).or(Err(crate::Error::ExpectedBuffer))?;
+    let (b, range) = to_ranged_buffer(scope, value)
+      .map_err(|_| crate::Error::ExpectedBuffer(value_to_type_str(value)))?;
     if !b.is_detachable() {
-      return Err(crate::Error::ExpectedDetachable);
+      return Err(crate::Error::ExpectedDetachable(value_to_type_str(value)));
     }
     let store = b.get_backing_store();
     b.detach(None); // Detach
