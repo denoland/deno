@@ -9,7 +9,6 @@ import {
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
-  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
@@ -231,7 +230,6 @@ export class ECDH {
 
   constructor(curve: string) {
     validateString(curve, "curve");
-    validateOneOf(curve, "curve", getCurves());
 
     const c = ellipticCurves.find((x) => x.name == curve);
     if (c == undefined) {
@@ -239,6 +237,8 @@ export class ECDH {
     }
 
     this.#curve = c;
+    this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
+    this.#privbuf = Buffer.alloc(this.#curve.privateKeySize);
   }
 
   static convertKey(
@@ -288,21 +288,16 @@ export class ECDH {
     encoding?: BinaryToTextEncoding,
     _format?: ECDHKeyFormat,
   ): Buffer | string {
-    const pubbuf = Buffer.alloc(this.#curve.publicKeySize);
-    const privbuf = Buffer.alloc(this.#curve.privateKeySize);
-    const rid = ops.op_node_ecdh_generate_keys(
+    ops.op_node_ecdh_generate_keys(
       this.#curve.name,
-      pubbuf,
-      privbuf,
+      this.#pubbuf,
+      this.#privbuf,
     );
 
-    this.#pubbuf = pubbuf;
-    this.#privbuf = privbuf;
-
     if (encoding !== undefined) {
-      return pubbuf.toString(encoding);
+      return this.#pubbuf.toString(encoding);
     }
-    return pubbuf;
+    return this.#pubbuf;
   }
 
   getPrivateKey(): Buffer;
@@ -333,10 +328,9 @@ export class ECDH {
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
     this.#privbuf = privateKey;
-    const pubbuf = Buffer.alloc(this.#curve.publicKeySize);
+    this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
 
-    ops.op_node_ecdh_compute_public_key(this.#curve.name, this.#privbuf, pubbuf);
-    this.#pubbuf = pubbuf;
+    ops.op_node_ecdh_compute_public_key(this.#curve.name, this.#privbuf, this.#pubbuf);
 
     if (encoding !== undefined) {
       return this.#pubbuf.toString(encoding);

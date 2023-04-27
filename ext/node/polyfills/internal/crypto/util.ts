@@ -155,8 +155,9 @@ export function getHashes(): readonly string[] {
   return digestAlgorithms;
 }
 
+const curveNames = ellipticCurves.map((x) => x.name);
 export function getCurves(): readonly string[] {
-  return ellipticCurves.map((x) => x.name);
+  return curveNames;
 }
 
 export interface SecureHeapUsage {
