@@ -341,7 +341,7 @@ fn esm_code_from_top_level_decls(
   }
 
   let mut result = String::new();
-  let global_this_expr = NODE_GLOBAL_THIS_NAME.as_str();
+  let global_this_expr = NODE_GLOBAL_THIS_NAME;
   let global_this_expr = if has_global_this {
     global_this_expr
   } else {
@@ -506,10 +506,9 @@ mod tests {
       "export const x = 1;",
       &HashSet::from(["x".to_string()]),
     );
-    assert!(r.contains(&format!(
-      "var globalThis = {};",
-      NODE_GLOBAL_THIS_NAME.as_str()
-    )));
+    assert!(
+      r.contains(&format!("var globalThis = {};", NODE_GLOBAL_THIS_NAME,))
+    );
     assert!(r.contains("var process = globalThis.process;"));
     assert!(r.contains("export const x = 1;"));
   }
@@ -533,7 +532,7 @@ mod tests {
           "var setTimeout = globalThis.setTimeout;\n",
           "export const x = 1;"
         ),
-        NODE_GLOBAL_THIS_NAME.as_str(),
+        NODE_GLOBAL_THIS_NAME,
       )
     );
   }

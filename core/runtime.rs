@@ -4385,7 +4385,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
             let sum = Deno.core.ops.op_sum_take(w32.subarray(0, 2));
             return false;
           } catch(e) {
-            return e.message.includes('invalid type, expected: detachable');
+            return e.message.includes('invalid type; expected: detachable');
           }
         });
         if (!assertWasmThrow()) {

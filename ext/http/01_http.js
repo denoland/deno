@@ -64,7 +64,6 @@ const {
 } = primordials;
 
 const connErrorSymbol = Symbol("connError");
-const streamRid = Symbol("streamRid");
 const _deferred = Symbol("upgradeHttpDeferred");
 
 class HttpConn {
@@ -482,16 +481,6 @@ function upgradeHttp(req) {
   return req[_deferred].promise;
 }
 
-async function upgradeHttpRaw(req, tcpConn) {
-  const inner = toInnerRequest(req);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttpRaw", arguments);
-  }
-
-  const res = await core.opAsync("op_http_upgrade_early", inner[streamRid]);
-  return new TcpConn(res, tcpConn.remoteAddr, tcpConn.localAddr);
-}
-
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
 const tabCharCode = StringPrototypeCharCodeAt("\t", 0);
 const commaCharCode = StringPrototypeCharCodeAt(",", 0);
@@ -566,4 +555,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, HttpConn, serve, upgradeHttp, upgradeHttpRaw, upgradeWebSocket };
+export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };
