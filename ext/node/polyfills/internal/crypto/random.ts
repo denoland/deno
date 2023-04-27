@@ -148,7 +148,7 @@ export interface GeneratePrimeOptions {
 
 export function generatePrime(
   size: number,
-  options?: GeneratePrimeOptions,
+  options: GeneratePrimeOptions = {},
   callback?: (err: Error | null, prime: ArrayBuffer | bigint) => void,
 ) {
   validateInt32(size, "size", 1);
@@ -169,7 +169,7 @@ export function generatePrime(
 
 export function generatePrimeSync(
   size: number,
-  options?: GeneratePrimeOptions,
+  options: GeneratePrimeOptions = {},
 ): ArrayBuffer | bigint {
   const {
     bigint,
@@ -182,7 +182,7 @@ export function generatePrimeSync(
 
 function validateRandomPrimeJob(
   size: number,
-  options?: GeneratePrimeOptions,
+  options: GeneratePrimeOptions,
 ): GeneratePrimeOptions {
   validateInt32(size, "size", 1);
   validateObject(options, "options");

@@ -259,7 +259,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_valid_from,
     ops::crypto::x509::op_node_x509_get_valid_to,
     ops::crypto::x509::op_node_x509_get_serial_number,
-    ops::crypto::x509::op_node_x509_key_usage,A
+    ops::crypto::x509::op_node_x509_key_usage,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,

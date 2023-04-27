@@ -36,129 +36,129 @@ assert(
       checks: 10
     }));
 
-// (async function() {
-//   const prime = await pgeneratePrime(36);
-//   assert(await pCheckPrime(prime));
-// })().then(common.mustCall());
+(async function() {
+  const prime = await pgeneratePrime(36);
+  assert(await pCheckPrime(prime));
+})().then(common.mustCall());
 
-// assert.throws(() => {
-//   generatePrimeSync(32, { bigint: '' });
-// }, { code: 'ERR_INVALID_ARG_TYPE' });
+assert.throws(() => {
+  generatePrimeSync(32, { bigint: '' });
+}, { code: 'ERR_INVALID_ARG_TYPE' });
 
-// assert.throws(() => {
-//   generatePrime(32, { bigint: '' }, common.mustNotCall());
-// }, { code: 'ERR_INVALID_ARG_TYPE' });
+assert.throws(() => {
+  generatePrime(32, { bigint: '' }, common.mustNotCall());
+}, { code: 'ERR_INVALID_ARG_TYPE' });
 
-// {
-//   const prime = generatePrimeSync(3, { bigint: true });
-//   assert.strictEqual(typeof prime, 'bigint');
-//   assert.strictEqual(prime, 7n);
-//   assert(checkPrimeSync(prime));
-//   checkPrime(prime, common.mustSucceed(assert));
-// }
+{
+  const prime = generatePrimeSync(3, { bigint: true });
+  assert.strictEqual(typeof prime, 'bigint');
+  assert.strictEqual(prime, 7n);
+  assert(checkPrimeSync(prime));
+  checkPrime(prime, common.mustSucceed(assert));
+}
 
-// {
-//   generatePrime(3, { bigint: true }, common.mustSucceed((prime) => {
-//     assert.strictEqual(typeof prime, 'bigint');
-//     assert.strictEqual(prime, 7n);
-//     assert(checkPrimeSync(prime));
-//     checkPrime(prime, common.mustSucceed(assert));
-//   }));
-// }
+{
+  generatePrime(3, { bigint: true }, common.mustSucceed((prime) => {
+    assert.strictEqual(typeof prime, 'bigint');
+    assert.strictEqual(prime, 7n);
+    assert(checkPrimeSync(prime));
+    checkPrime(prime, common.mustSucceed(assert));
+  }));
+}
 
 
-// ['hello', false, {}, []].forEach((i) => {
-//   assert.throws(() => generatePrime(i), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-//   assert.throws(() => generatePrimeSync(i), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-// });
+['hello', false, {}, []].forEach((i) => {
+  assert.throws(() => generatePrime(i), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+  assert.throws(() => generatePrimeSync(i), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+});
 
-// ['hello', false, 123].forEach((i) => {
-//   assert.throws(() => generatePrime(80, i, common.mustNotCall()), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-//   assert.throws(() => generatePrimeSync(80, i), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-// });
+['hello', false, 123].forEach((i) => {
+  assert.throws(() => generatePrime(80, i, common.mustNotCall()), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+  assert.throws(() => generatePrimeSync(80, i), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+});
 
-// ['hello', false, 123].forEach((i) => {
-//   assert.throws(() => generatePrime(80, {}), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-// });
+['hello', false, 123].forEach((i) => {
+  assert.throws(() => generatePrime(80, {}), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+});
 
-// [-1, 0, 2 ** 31, 2 ** 31 + 1, 2 ** 32 - 1, 2 ** 32].forEach((size) => {
-//   assert.throws(() => generatePrime(size, common.mustNotCall()), {
-//     code: 'ERR_OUT_OF_RANGE',
-//     message: />= 1 && <= 2147483647/
-//   });
-//   assert.throws(() => generatePrimeSync(size), {
-//     code: 'ERR_OUT_OF_RANGE',
-//     message: />= 1 && <= 2147483647/
-//   });
-// });
+[-1, 0, 2 ** 31, 2 ** 31 + 1, 2 ** 32 - 1, 2 ** 32].forEach((size) => {
+  assert.throws(() => generatePrime(size, common.mustNotCall()), {
+    code: 'ERR_OUT_OF_RANGE',
+    message: />= 1 && <= 2147483647/
+  });
+  assert.throws(() => generatePrimeSync(size), {
+    code: 'ERR_OUT_OF_RANGE',
+    message: />= 1 && <= 2147483647/
+  });
+});
 
-// ['test', -1, {}, []].forEach((i) => {
-//   assert.throws(() => generatePrime(8, { safe: i }, common.mustNotCall()), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-//   assert.throws(() => generatePrime(8, { rem: i }, common.mustNotCall()), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-//   assert.throws(() => generatePrime(8, { add: i }, common.mustNotCall()), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-//   assert.throws(() => generatePrimeSync(8, { safe: i }), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-//   assert.throws(() => generatePrimeSync(8, { rem: i }), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-//   assert.throws(() => generatePrimeSync(8, { add: i }), {
-//     code: 'ERR_INVALID_ARG_TYPE'
-//   });
-// });
+['test', -1, {}, []].forEach((i) => {
+  assert.throws(() => generatePrime(8, { safe: i }, common.mustNotCall()), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+  assert.throws(() => generatePrime(8, { rem: i }, common.mustNotCall()), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+  assert.throws(() => generatePrime(8, { add: i }, common.mustNotCall()), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+  assert.throws(() => generatePrimeSync(8, { safe: i }), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+  assert.throws(() => generatePrimeSync(8, { rem: i }), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+  assert.throws(() => generatePrimeSync(8, { add: i }), {
+    code: 'ERR_INVALID_ARG_TYPE'
+  });
+});
 
-// {
-//   // Negative BigInts should not be converted to 0 silently.
+{
+  // Negative BigInts should not be converted to 0 silently.
 
-//   assert.throws(() => generatePrime(20, { add: -1n }, common.mustNotCall()), {
-//     code: 'ERR_OUT_OF_RANGE',
-//     message: 'The value of "options.add" is out of range. It must be >= 0. ' +
-//              'Received -1n'
-//   });
+  assert.throws(() => generatePrime(20, { add: -1n }, common.mustNotCall()), {
+    code: 'ERR_OUT_OF_RANGE',
+    message: 'The value of "options.add" is out of range. It must be >= 0. ' +
+      'Received -1n'
+  });
 
-//   assert.throws(() => generatePrime(20, { rem: -1n }, common.mustNotCall()), {
-//     code: 'ERR_OUT_OF_RANGE',
-//     message: 'The value of "options.rem" is out of range. It must be >= 0. ' +
-//              'Received -1n'
-//   });
+  assert.throws(() => generatePrime(20, { rem: -1n }, common.mustNotCall()), {
+    code: 'ERR_OUT_OF_RANGE',
+    message: 'The value of "options.rem" is out of range. It must be >= 0. ' +
+      'Received -1n'
+  });
 
-//   assert.throws(() => checkPrime(-1n, common.mustNotCall()), {
-//     code: 'ERR_OUT_OF_RANGE',
-//     message: 'The value of "candidate" is out of range. It must be >= 0. ' +
-//              'Received -1n'
-//   });
-// }
+  // assert.throws(() => checkPrime(-1n, common.mustNotCall()), {
+  //   code: 'ERR_OUT_OF_RANGE',
+  //   message: 'The value of "candidate" is out of range. It must be >= 0. ' +
+  //     'Received -1n'
+  // });
+}
 
-// generatePrime(80, common.mustSucceed((prime) => {
-//   assert(checkPrimeSync(prime));
-//   checkPrime(prime, common.mustSucceed((result) => {
-//     assert(result);
-//   }));
-// }));
+generatePrime(80, common.mustSucceed((prime) => {
+  assert(checkPrimeSync(prime));
+  checkPrime(prime, common.mustSucceed((result) => {
+    assert(result);
+  }));
+}));
 
-// assert(checkPrimeSync(generatePrimeSync(80)));
+assert(checkPrimeSync(generatePrimeSync(80)));
 
-// generatePrime(80, {}, common.mustSucceed((prime) => {
-//   assert(checkPrimeSync(prime));
-// }));
+generatePrime(80, {}, common.mustSucceed((prime) => {
+  assert(checkPrimeSync(prime));
+}));
 
-// assert(checkPrimeSync(generatePrimeSync(80, {})));
+assert(checkPrimeSync(generatePrimeSync(80, {})));
 
 // generatePrime(32, { safe: true }, common.mustSucceed((prime) => {
 //   assert(checkPrimeSync(prime));
