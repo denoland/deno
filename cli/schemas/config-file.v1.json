@@ -340,6 +340,40 @@
             }
           }
         },
+        "useTabs": {
+          "description": "Whether to use tabs (true) or spaces (false) for indentation.",
+          "type": "boolean",
+          "default": false
+        },
+        "lineWidth": {
+          "description": "The width of a line the printer will try to stay under. Note that the printer may exceed this width in certain cases.",
+          "type": "number",
+          "default": 80
+        },
+        "indentWidth": {
+          "description": "The number of characters for an indent.",
+          "type": "number",
+          "default": 2
+        },
+        "singleQuote": {
+          "type": "boolean",
+          "description": "Whether to use single quote (true) or double quote (false) for quotation.",
+          "default": false
+        },
+        "proseWrap": {
+          "description": "Define how prose should be wrapped in Markdown files.",
+          "default": "always",
+          "enum": [
+            "always",
+            "never",
+            "preserve"
+          ]
+        },
+        "semiColons": {
+          "description": "Whether to prefer using semicolons.",
+          "type": "boolean",
+          "default": true
+        },
         "options": {
           "type": "object",
           "properties": {
