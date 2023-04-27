@@ -657,7 +657,7 @@ pub async fn run_benchmarks(
   }
 
   let log_level = ps.options.log_level();
-  let worker_factory = Arc::new(ps.as_cli_main_worker_factory());
+  let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
   bench_specifiers(
     worker_factory,
     &permissions,
@@ -803,7 +803,7 @@ pub async fn run_benchmarks_with_watch(
     ps.reset_for_file_watcher();
     let module_load_preparer = ps.module_load_preparer.clone();
     let cli_options = ps.options.clone();
-    let worker_factory = Arc::new(ps.as_cli_main_worker_factory());
+    let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
 
     async move {
       let specifiers =

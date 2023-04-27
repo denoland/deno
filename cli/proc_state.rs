@@ -34,6 +34,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use crate::worker::HasNodeSpecifierChecker;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -329,14 +330,14 @@ impl ProcState {
 
   // todo(dsherret): this is a transitory method as we separate out
   // ProcState from more code
-  pub fn as_cli_main_worker_factory(&self) -> CliMainWorkerFactory {
+  pub fn create_cli_main_worker_factory(&self) -> CliMainWorkerFactory {
     CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       self.npm_resolver.clone(),
       self.node_resolver.clone(),
-      self.graph_container.clone(),
+      Box::new(CliHasNodeSpecifierChecker(self.graph_container.clone())),
       self.blob_store.clone(),
-      CliModuleLoaderFactory::new(
+      Box::new(CliModuleLoaderFactory::new(
         &self.options,
         self.emitter.clone(),
         self.graph_container.clone(),
@@ -348,7 +349,7 @@ impl ProcState {
           self.node_code_translator.clone(),
           self.node_resolver.clone(),
         ),
-      ),
+      )),
       self.root_cert_store.clone(),
       self.node_fs.clone(),
       self.maybe_inspector_server.clone(),
@@ -383,7 +384,7 @@ impl ProcState {
           }
           maybe_binary_command_name
         },
-        origin_data_folder_path: self.dir.origin_data_folder_path(),
+        origin_data_folder_path: Some(self.dir.origin_data_folder_path()),
         seed: self.options.seed(),
         unsafely_ignore_certificate_errors: self
           .options
@@ -392,6 +393,14 @@ impl ProcState {
         unstable: self.options.unstable(),
       },
     )
+  }
+}
+
+struct CliHasNodeSpecifierChecker(Arc<ModuleGraphContainer>);
+
+impl HasNodeSpecifierChecker for CliHasNodeSpecifierChecker {
+  fn has_node_specifier(&self) -> bool {
+    self.0.graph().has_node_specifier
   }
 }
 

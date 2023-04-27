@@ -1660,7 +1660,7 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  let worker_factory = Arc::new(ps.as_cli_main_worker_factory());
+  let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
 
   test_specifiers(
     worker_factory,
@@ -1822,7 +1822,7 @@ pub async fn run_tests_with_watch(
     let cli_options = ps.options.clone();
     let file_fetcher = ps.file_fetcher.clone();
     let module_load_preparer = ps.module_load_preparer.clone();
-    let worker_factory = Arc::new(ps.as_cli_main_worker_factory());
+    let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
