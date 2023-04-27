@@ -1,0 +1,3 @@
+Warning: "options" configuration is deprecated. Please use "flat" options instead.
+Warning: "files" configuration is deprecated. Please use "include" and "exclude" instead.
+Checked 2 files

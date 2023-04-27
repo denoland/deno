@@ -408,7 +408,7 @@ detest!(
 );
 
 defail!(defail_struct, MathOp, "123", |e| e
-  == Err(Error::ExpectedObject));
+  == Err(Error::ExpectedObject("Number")));
 
 #[derive(Eq, PartialEq, Debug, Deserialize)]
 pub struct SomeThing {

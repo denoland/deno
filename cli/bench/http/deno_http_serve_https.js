@@ -15,4 +15,4 @@ function handler() {
   return new Response("Hello World");
 }
 
-serve(handler, { hostname, port, reusePort: true, cert: CERT, key: KEY });
+serve({ hostname, port, reusePort: true, cert: CERT, key: KEY }, handler);

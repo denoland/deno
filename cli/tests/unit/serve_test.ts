@@ -17,6 +17,11 @@ import {
 } from "./test_util.ts";
 import { consoleSize } from "../../../runtime/js/40_tty.js";
 
+const {
+  upgradeHttpRaw,
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.internal];
+
 function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
   return (err) => {
     console.error(err);
@@ -802,6 +807,85 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   ac.abort();
   await server;
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketRaw() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const server = Deno.serve({
+      handler: async (request) => {
+        const { conn, response } = upgradeHttpRaw(request);
+        const buf = new Uint8Array(1024);
+        let read;
+
+        // Write our fake HTTP upgrade
+        await conn.write(
+          new TextEncoder().encode(
+            "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgraded\r\n\r\nExtra",
+          ),
+        );
+
+        // Upgrade data
+        read = await conn.read(buf);
+        assertEquals(
+          new TextDecoder().decode(buf.subarray(0, read!)),
+          "Upgrade data",
+        );
+        // Read the packet to echo
+        read = await conn.read(buf);
+        // Echo
+        await conn.write(buf.subarray(0, read!));
+
+        conn.close();
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+
+    const conn = await Deno.connect({ port: 4501 });
+    await conn.write(
+      new TextEncoder().encode(
+        "GET / HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nUpgrade data",
+      ),
+    );
+    const buf = new Uint8Array(1024);
+    let len;
+
+    // Headers
+    let headers = "";
+    for (let i = 0; i < 2; i++) {
+      len = await conn.read(buf);
+      headers += new TextDecoder().decode(buf.subarray(0, len!));
+      if (headers.endsWith("Extra")) {
+        break;
+      }
+    }
+    assertMatch(
+      headers,
+      /HTTP\/1\.1 101 Switching Protocols[ ,.A-Za-z:0-9\r\n]*Extra/im,
+    );
+
+    // Data to echo
+    await conn.write(new TextEncoder().encode("buffer data"));
+
+    // Echo
+    len = await conn.read(buf);
+    assertEquals(
+      new TextDecoder().decode(buf.subarray(0, len!)),
+      "buffer data",
+    );
+
+    conn.close();
+    ac.abort();
+    await server;
+  },
+);
 
 Deno.test(
   { permissions: { net: true } },

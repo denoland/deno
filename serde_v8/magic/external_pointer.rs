@@ -2,6 +2,8 @@
 
 use std::ffi::c_void;
 
+use crate::error::value_to_type_str;
+
 use super::transl8::impl_magic;
 use super::transl8::FromV8;
 use super::transl8::ToV8;
@@ -38,7 +40,7 @@ impl FromV8 for ExternalPointer {
     } else if let Ok(external) = v8::Local::<v8::External>::try_from(value) {
       Ok(ExternalPointer(external.value()))
     } else {
-      Err(crate::Error::ExpectedExternal)
+      Err(crate::Error::ExpectedExternal(value_to_type_str(value)))
     }
   }
 }

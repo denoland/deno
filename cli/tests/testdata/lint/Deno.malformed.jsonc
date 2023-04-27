@@ -1,9 +1,7 @@
 {
   "lint": {
-    "files": {
-      "include": ["with_config/"],
-      "exclude": ["with_config/b.ts"]
-    },
+    "include": ["with_config/"],
+    "exclude": ["with_config/b.ts"],
     "dont_know_this_field": {},
     "rules": {
       "tags": ["recommended"],
