@@ -591,6 +591,18 @@ dependencies = [
 
 [[package]]
 name = "crypto-bigint"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef2b4b23cddf68b89b8f8069890e8c270d54e2d5fe1b143820234805e4cb17ef"
+dependencies = [
+ "generic-array 0.14.6",
+ "rand_core 0.6.4",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "crypto-bigint"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf4c2f4e1afd912bc40bfd6fed5d9dc1f288e0ba01bfcc835cc5bc3eb13efe15"
@@ -883,11 +895,11 @@ dependencies = [
  "curve25519-dalek 2.1.3",
  "deno_core",
  "deno_web",
- "elliptic-curve",
+ "elliptic-curve 0.12.3",
  "num-traits",
  "once_cell",
- "p256",
- "p384",
+ "p256 0.11.1",
+ "p384 0.11.2",
  "rand",
  "ring",
  "rsa",
@@ -1143,7 +1155,7 @@ dependencies = [
  "digest 0.10.6",
  "dsa",
  "ecb",
- "elliptic-curve",
+ "elliptic-curve 0.13.4",
  "hex",
  "hkdf",
  "idna 0.3.0",
@@ -1158,8 +1170,8 @@ dependencies = [
  "num-traits",
  "once_cell",
  "p224",
- "p256",
- "p384",
+ "p256 0.13.2",
+ "p384 0.13.0",
  "path-clean",
  "pbkdf2",
  "rand",
@@ -1586,7 +1598,7 @@ dependencies = [
  "num-bigint-dig",
  "num-traits",
  "pkcs8 0.10.2",
- "rfc6979",
+ "rfc6979 0.4.0",
  "sha2",
  "signature 2.1.0",
  "zeroize",
@@ -1635,14 +1647,26 @@ dependencies = [
 
 [[package]]
 name = "ecdsa"
+version = "0.14.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413301934810f597c1d19ca71c8710e99a3f1ba28a0d2ebc01551a2daeea3c5c"
+dependencies = [
+ "der 0.6.1",
+ "elliptic-curve 0.12.3",
+ "rfc6979 0.3.1",
+ "signature 1.6.4",
+]
+
+[[package]]
+name = "ecdsa"
 version = "0.16.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a48e5d537b8a30c0b023116d981b16334be1485af7ca68db3a2b7024cbc957fd"
 dependencies = [
  "der 0.7.3",
  "digest 0.10.6",
- "elliptic-curve",
- "rfc6979",
+ "elliptic-curve 0.13.4",
+ "rfc6979 0.4.0",
  "signature 2.1.0",
 ]
 
@@ -1654,16 +1678,38 @@ checksum = "7fcaabb2fef8c910e7f4c7ce9f67a1283a1715879a7c230ca9d6d1ae31f16d91"
 
 [[package]]
 name = "elliptic-curve"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7bb888ab5300a19b8e5bceef25ac745ad065f3c9f7efc6de1b91958110891d3"
+dependencies = [
+ "base16ct 0.1.1",
+ "crypto-bigint 0.4.9",
+ "der 0.6.1",
+ "digest 0.10.6",
+ "ff 0.12.1",
+ "generic-array 0.14.6",
+ "group 0.12.1",
+ "hkdf",
+ "pem-rfc7468 0.6.0",
+ "pkcs8 0.9.0",
+ "rand_core 0.6.4",
+ "sec1 0.3.0",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "elliptic-curve"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75c71eaa367f2e5d556414a8eea812bc62985c879748d6403edabd9cb03f16e7"
 dependencies = [
  "base16ct 0.2.0",
- "crypto-bigint",
+ "crypto-bigint 0.5.2",
  "digest 0.10.6",
- "ff",
+ "ff 0.13.0",
  "generic-array 0.14.6",
- "group",
+ "group 0.13.0",
  "hkdf",
  "pem-rfc7468 0.7.0",
  "pkcs8 0.10.2",
@@ -1828,6 +1874,16 @@ dependencies = [
  "cfg-if",
  "rustix",
  "windows-sys 0.45.0",
+]
+
+[[package]]
+name = "ff"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d013fc25338cc558c5c2cfbad646908fb23591e2404481826742b651c9af7160"
+dependencies = [
+ "rand_core 0.6.4",
+ "subtle",
 ]
 
 [[package]]
@@ -2115,11 +2171,22 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
 name = "group"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dfbfb3a6cfbd390d5c9564ab283a0349b9b9fcd46a706c1eb10e0db70bfbac7"
+dependencies = [
+ "ff 0.12.1",
+ "rand_core 0.6.4",
+ "subtle",
+]
+
+[[package]]
+name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
 dependencies = [
- "ff",
+ "ff 0.13.0",
  "rand_core 0.6.4",
  "subtle",
 ]
@@ -3142,9 +3209,20 @@ version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30c06436d66652bc2f01ade021592c80a2aad401570a18aa18b82e440d2b9aa1"
 dependencies = [
- "ecdsa",
- "elliptic-curve",
+ "ecdsa 0.16.6",
+ "elliptic-curve 0.13.4",
  "primeorder",
+ "sha2",
+]
+
+[[package]]
+name = "p256"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51f44edd08f51e2ade572f141051021c5af22677e42b7dd28a88155151c33594"
+dependencies = [
+ "ecdsa 0.14.8",
+ "elliptic-curve 0.12.3",
  "sha2",
 ]
 
@@ -3154,9 +3232,20 @@ version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9863ad85fa8f4460f9c48cb909d38a0d689dba1f6f6988a5e3e0d31071bcd4b"
 dependencies = [
- "ecdsa",
- "elliptic-curve",
+ "ecdsa 0.16.6",
+ "elliptic-curve 0.13.4",
  "primeorder",
+ "sha2",
+]
+
+[[package]]
+name = "p384"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfc8c5bf642dde52bb9e87c0ecd8ca5a76faac2eeed98dedb7c717997e1080aa"
+dependencies = [
+ "ecdsa 0.14.8",
+ "elliptic-curve 0.12.3",
  "sha2",
 ]
 
@@ -3166,8 +3255,8 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70786f51bcc69f6a4c0360e063a4cac5419ef7c5cd5b3c99ad70f3be5ba79209"
 dependencies = [
- "ecdsa",
- "elliptic-curve",
+ "ecdsa 0.16.6",
+ "elliptic-curve 0.13.4",
  "primeorder",
  "sha2",
 ]
@@ -3473,7 +3562,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8d3875361e28f7753baefef104386e7aa47642c93023356d97fdef4003bfb5"
 dependencies = [
- "elliptic-curve",
+ "elliptic-curve 0.13.4",
 ]
 
 [[package]]
@@ -3726,6 +3815,17 @@ checksum = "52e44394d2086d010551b14b53b1f24e31647570cd1deb0379e2c21b329aba00"
 dependencies = [
  "hostname",
  "quick-error",
+]
+
+[[package]]
+name = "rfc6979"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7743f17af12fa0b03b803ba12cd6a8d9483a587e89c69445e3909655c0b9fabb"
+dependencies = [
+ "crypto-bigint 0.4.9",
+ "hmac",
+ "zeroize",
 ]
 
 [[package]]
@@ -3992,6 +4092,9 @@ dependencies = [
  "base16ct 0.1.1",
  "der 0.6.1",
  "generic-array 0.14.6",
+ "pkcs8 0.9.0",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
