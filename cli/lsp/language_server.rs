@@ -430,8 +430,8 @@ fn create_lsp_structs(
 ) {
   let registry_url = CliNpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let npm_cache = Arc::new(NpmCache::from_deno_dir(
-    dir,
+  let npm_cache = Arc::new(NpmCache::new(
+    dir.npm_folder_path(),
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
     // the cache from being filled with lots of packages while

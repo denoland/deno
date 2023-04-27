@@ -279,7 +279,7 @@ impl Serialize for TsConfig {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct LintRulesConfig {
   pub tags: Option<Vec<String>>,
@@ -287,7 +287,7 @@ pub struct LintRulesConfig {
   pub exclude: Option<Vec<String>>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedFilesConfig {
   pub include: Vec<String>,
@@ -319,6 +319,10 @@ impl SerializedFilesConfig {
         .collect::<Result<Vec<_>, _>>()?,
     })
   }
+
+  pub fn is_empty(&self) -> bool {
+    self.include.is_empty() && self.exclude.is_empty()
+  }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -346,11 +350,57 @@ impl FilesConfig {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+/// Choose between flat and nested files configuration.
+///
+/// `files` has precedence over `deprecated_files`.
+/// when `deprecated_files` is present, a warning is logged.
+///
+/// caveat: due to default values, it's not possible to distinguish between
+/// an empty configuration and a configuration with default values.
+/// `{ "files": {} }` is equivalent to `{ "files": { "include": [], "exclude": [] } }`
+/// and it wouldn't be able to emit warning for `{ "files": {}, "exclude": [] }`.
+///
+/// # Arguments
+///
+/// * `files` - Flat configuration.
+/// * `deprecated_files` - Nested configuration. ("Files")
+fn choose_files(
+  files: SerializedFilesConfig,
+  deprecated_files: SerializedFilesConfig,
+) -> SerializedFilesConfig {
+  const DEPRECATED_FILES: &str =
+    "Warning: \"files\" configuration is deprecated";
+  const FLAT_CONFIG: &str = "\"include\" and \"exclude\"";
+
+  let (files_nonempty, deprecated_files_nonempty) =
+    (!files.is_empty(), !deprecated_files.is_empty());
+
+  match (files_nonempty, deprecated_files_nonempty) {
+    (true, true) => {
+      log::warn!("{DEPRECATED_FILES} and ignored by {FLAT_CONFIG}.");
+      files
+    }
+    (true, false) => files,
+    (false, true) => {
+      log::warn!("{DEPRECATED_FILES}. Please use {FLAT_CONFIG} instead.");
+      deprecated_files
+    }
+    (false, false) => SerializedFilesConfig::default(),
+  }
+}
+
+/// `lint` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedLintConfig {
   pub rules: LintRulesConfig,
-  pub files: SerializedFilesConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
   pub report: Option<String>,
 }
 
@@ -359,22 +409,26 @@ impl SerializedLintConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<LintConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+
     Ok(LintConfig {
       rules: self.rules,
-      files: self.files.into_resolved(config_file_specifier)?,
+      files: choose_files(files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
       report: self.report,
     })
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
   pub report: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum ProseWrap {
   Always,
@@ -382,7 +436,7 @@ pub enum ProseWrap {
   Preserve,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
   pub use_tabs: Option<bool>,
@@ -393,11 +447,75 @@ pub struct FmtOptionsConfig {
   pub semi_colons: Option<bool>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+impl FmtOptionsConfig {
+  pub fn is_empty(&self) -> bool {
+    self.use_tabs.is_none()
+      && self.line_width.is_none()
+      && self.indent_width.is_none()
+      && self.single_quote.is_none()
+      && self.prose_wrap.is_none()
+      && self.semi_colons.is_none()
+  }
+}
+
+/// Choose between flat and nested fmt options.
+///
+/// `options` has precedence over `deprecated_options`.
+/// when `deprecated_options` is present, a warning is logged.
+///
+/// caveat: due to default values, it's not possible to distinguish between
+/// an empty configuration and a configuration with default values.
+/// `{ "fmt": {} } is equivalent to `{ "fmt": { "options": {} } }`
+/// and it wouldn't be able to emit warning for `{ "fmt": { "options": {}, "semiColons": "false" } }`.
+///
+/// # Arguments
+///
+/// * `options` - Flat options.
+/// * `deprecated_options` - Nested files configuration ("option").
+fn choose_fmt_options(
+  options: FmtOptionsConfig,
+  deprecated_options: FmtOptionsConfig,
+) -> FmtOptionsConfig {
+  const DEPRECATED_OPTIONS: &str =
+    "Warning: \"options\" configuration is deprecated";
+  const FLAT_OPTION: &str = "\"flat\" options";
+
+  let (options_nonempty, deprecated_options_nonempty) =
+    (!options.is_empty(), !deprecated_options.is_empty());
+
+  match (options_nonempty, deprecated_options_nonempty) {
+    (true, true) => {
+      log::warn!("{DEPRECATED_OPTIONS} and ignored by {FLAT_OPTION}.");
+      options
+    }
+    (true, false) => options,
+    (false, true) => {
+      log::warn!("{DEPRECATED_OPTIONS}. Please use {FLAT_OPTION} instead.");
+      deprecated_options
+    }
+    (false, false) => FmtOptionsConfig::default(),
+  }
+}
+
+/// `fmt` config representation for serde
+///
+/// fields from `use_tabs`..`semi_colons` are expanded from [FmtOptionsConfig].
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 struct SerializedFmtConfig {
-  pub options: FmtOptionsConfig,
-  pub files: SerializedFilesConfig,
+  pub use_tabs: Option<bool>,
+  pub line_width: Option<u32>,
+  pub indent_width: Option<u8>,
+  pub single_quote: Option<bool>,
+  pub prose_wrap: Option<ProseWrap>,
+  pub semi_colons: Option<bool>,
+  #[serde(rename = "options")]
+  pub deprecated_options: FmtOptionsConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
 }
 
 impl SerializedFmtConfig {
@@ -405,23 +523,41 @@ impl SerializedFmtConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<FmtConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+    let options = FmtOptionsConfig {
+      use_tabs: self.use_tabs,
+      line_width: self.line_width,
+      indent_width: self.indent_width,
+      single_quote: self.single_quote,
+      prose_wrap: self.prose_wrap,
+      semi_colons: self.semi_colons,
+    };
+
     Ok(FmtConfig {
-      options: self.options,
-      files: self.files.into_resolved(config_file_specifier)?,
+      options: choose_fmt_options(options, self.deprecated_options),
+      files: choose_files(files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
     })
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct FmtConfig {
   pub options: FmtOptionsConfig,
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+/// `test` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedTestConfig {
-  pub files: SerializedFilesConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
 }
 
 impl SerializedTestConfig {
@@ -429,21 +565,31 @@ impl SerializedTestConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<TestConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+
     Ok(TestConfig {
-      files: self.files.into_resolved(config_file_specifier)?,
+      files: choose_files(files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
     })
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TestConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+/// `bench` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedBenchConfig {
-  pub files: SerializedFilesConfig,
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  #[serde(rename = "files")]
+  pub deprecated_files: SerializedFilesConfig,
 }
 
 impl SerializedBenchConfig {
@@ -451,18 +597,22 @@ impl SerializedBenchConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<BenchConfig, AnyError> {
+    let (include, exclude) = (self.include, self.exclude);
+    let files = SerializedFilesConfig { include, exclude };
+
     Ok(BenchConfig {
-      files: self.files.into_resolved(config_file_specifier)?,
+      files: choose_files(files, self.deprecated_files)
+        .into_resolved(config_file_specifier)?,
     })
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct BenchConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum LockConfig {
   Bool(bool),
@@ -999,6 +1149,12 @@ mod tests {
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
 
+  fn unpack_object<T>(result: Result<Option<T>, AnyError>, name: &str) -> T {
+    result
+      .unwrap_or_else(|err| panic!("error parsing {name} object but got {err}"))
+      .unwrap_or_else(|| panic!("{name} object should be defined"))
+  }
+
   #[test]
   fn read_config_file_absolute() {
     let path = test_util::testdata_path().join("module_graph/tsconfig.json");
@@ -1043,27 +1199,21 @@ mod tests {
         "strict": true
       },
       "lint": {
-        "files": {
-          "include": ["src/"],
-          "exclude": ["src/testdata/"]
-        },
+        "include": ["src/"],
+        "exclude": ["src/testdata/"],
         "rules": {
           "tags": ["recommended"],
           "include": ["ban-untagged-todo"]
         }
       },
       "fmt": {
-        "files": {
-          "include": ["src/"],
-          "exclude": ["src/testdata/"]
-        },
-        "options": {
-          "useTabs": true,
-          "lineWidth": 80,
-          "indentWidth": 4,
-          "singleQuote": true,
-          "proseWrap": "preserve"
-        }
+        "include": ["src/"],
+        "exclude": ["src/testdata/"],
+        "useTabs": true,
+        "lineWidth": 80,
+        "indentWidth": 4,
+        "singleQuote": true,
+        "proseWrap": "preserve"
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -1087,38 +1237,38 @@ mod tests {
       }),
     );
 
-    let lint_config = config_file
-      .to_lint_config()
-      .expect("error parsing lint object")
-      .expect("lint object should be defined");
-    assert_eq!(lint_config.files.include, vec![PathBuf::from("/deno/src/")]);
     assert_eq!(
-      lint_config.files.exclude,
-      vec![PathBuf::from("/deno/src/testdata/")]
+      unpack_object(config_file.to_lint_config(), "lint"),
+      LintConfig {
+        files: FilesConfig {
+          include: vec![PathBuf::from("/deno/src/")],
+          exclude: vec![PathBuf::from("/deno/src/testdata/")],
+        },
+        rules: LintRulesConfig {
+          include: Some(vec!["ban-untagged-todo".to_string()]),
+          exclude: None,
+          tags: Some(vec!["recommended".to_string()]),
+        },
+        ..Default::default()
+      }
     );
     assert_eq!(
-      lint_config.rules.include,
-      Some(vec!["ban-untagged-todo".to_string()])
+      unpack_object(config_file.to_fmt_config(), "fmt"),
+      FmtConfig {
+        files: FilesConfig {
+          include: vec![PathBuf::from("/deno/src/")],
+          exclude: vec![PathBuf::from("/deno/src/testdata/")],
+        },
+        options: FmtOptionsConfig {
+          use_tabs: Some(true),
+          line_width: Some(80),
+          indent_width: Some(4),
+          single_quote: Some(true),
+          prose_wrap: Some(ProseWrap::Preserve),
+          ..Default::default()
+        },
+      }
     );
-    assert_eq!(
-      lint_config.rules.tags,
-      Some(vec!["recommended".to_string()])
-    );
-    assert!(lint_config.rules.exclude.is_none());
-
-    let fmt_config = config_file
-      .to_fmt_config()
-      .expect("error parsing fmt object")
-      .expect("fmt object should be defined");
-    assert_eq!(fmt_config.files.include, vec![PathBuf::from("/deno/src/")]);
-    assert_eq!(
-      fmt_config.files.exclude,
-      vec![PathBuf::from("/deno/src/testdata/")],
-    );
-    assert_eq!(fmt_config.options.use_tabs, Some(true));
-    assert_eq!(fmt_config.options.line_width, Some(80));
-    assert_eq!(fmt_config.options.indent_width, Some(4));
-    assert_eq!(fmt_config.options.single_quote, Some(true));
 
     let tasks_config = config_file.to_tasks_config().unwrap().unwrap();
     assert_eq!(
@@ -1129,6 +1279,128 @@ mod tests {
       tasks_config["server"],
       "deno run --allow-net --allow-read server.ts"
     );
+  }
+
+  /// if either "include" or "exclude" is specified, "files" is ignored
+  #[test]
+  fn test_parse_config_with_deprecated_files_field() {
+    let config_text = r#"{
+      "lint": {
+        "files": { "include": ["foo/"], "exclude": ["bar/"] },
+        "include": ["src/"]
+      },
+      "fmt": {
+        "files": { "include": ["foo/"], "exclude": ["bar/"] },
+        "exclude": ["dist/"]
+      },
+      "bench": {
+        "files": { "include": ["foo/"] },
+        "include": ["src/"]
+      },
+      "test": {
+        "files": { "include": ["foo/"] },
+        "include": ["src/"]
+      }
+    }"#;
+    let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
+    let config_specifier = config_dir.join("tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+
+    let lint_files = unpack_object(config_file.to_lint_config(), "lint").files;
+    assert_eq!(
+      lint_files,
+      FilesConfig {
+        include: vec![PathBuf::from("/deno/src/")],
+        exclude: vec![],
+      }
+    );
+
+    let fmt_files = unpack_object(config_file.to_fmt_config(), "fmt").files;
+    assert_eq!(
+      fmt_files,
+      FilesConfig {
+        exclude: vec![PathBuf::from("/deno/dist/")],
+        include: vec![],
+      }
+    );
+
+    let test_include = unpack_object(config_file.to_test_config(), "test")
+      .files
+      .include;
+    assert_eq!(test_include, vec![PathBuf::from("/deno/src/")]);
+
+    let bench_include = unpack_object(config_file.to_bench_config(), "bench")
+      .files
+      .include;
+    assert_eq!(bench_include, vec![PathBuf::from("/deno/src/")]);
+  }
+
+  #[test]
+  fn test_parse_config_with_deprecated_files_field_only() {
+    let config_text = r#"{
+      "lint": { "files": { "include": ["src/"] } },
+      "fmt": { "files": { "include": ["src/"] } },
+      "test": { "files": { "exclude": ["dist/"] } },
+      "bench": { "files": { "exclude": ["dist/"] } }
+    }"#;
+    let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
+    let config_specifier = config_dir.join("tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+
+    let lint_include = unpack_object(config_file.to_lint_config(), "lint")
+      .files
+      .include;
+    assert_eq!(lint_include, vec![PathBuf::from("/deno/src/")]);
+
+    let fmt_include = unpack_object(config_file.to_fmt_config(), "fmt")
+      .files
+      .include;
+    assert_eq!(fmt_include, vec![PathBuf::from("/deno/src/")]);
+
+    let test_exclude = unpack_object(config_file.to_test_config(), "test")
+      .files
+      .exclude;
+    assert_eq!(test_exclude, vec![PathBuf::from("/deno/dist/")]);
+
+    let bench_exclude = unpack_object(config_file.to_bench_config(), "bench")
+      .files
+      .exclude;
+    assert_eq!(bench_exclude, vec![PathBuf::from("/deno/dist/")]);
+  }
+
+  #[test]
+  fn test_parse_config_with_deprecated_fmt_options() {
+    let config_text_both = r#"{
+      "fmt": {
+        "options": {
+          "semiColons": true
+        },
+        "semiColons": false
+      }
+    }"#;
+    let config_text_deprecated = r#"{
+      "fmt": {
+        "options": {
+          "semiColons": true
+        }
+      }
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    let config_file_both =
+      ConfigFile::new(config_text_both, &config_specifier).unwrap();
+    let config_file_deprecated =
+      ConfigFile::new(config_text_deprecated, &config_specifier).unwrap();
+
+    fn unpack_options(config_file: ConfigFile) -> FmtOptionsConfig {
+      unpack_object(config_file.to_fmt_config(), "fmt").options
+    }
+
+    let fmt_options_both = unpack_options(config_file_both);
+    assert_eq!(fmt_options_both.semi_colons, Some(false));
+
+    let fmt_options_deprecated = unpack_options(config_file_deprecated);
+    assert_eq!(fmt_options_deprecated.semi_colons, Some(true));
   }
 
   #[test]
