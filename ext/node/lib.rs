@@ -194,7 +194,6 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [Env: NodeEnv],
   ops = [
-<<<<<<< HEAD
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
