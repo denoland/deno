@@ -412,27 +412,30 @@ function inspectIterable(
   }
 
   const entries = [];
-  let iter;
   let valueIsTypedArray = false;
   let entriesLength;
+  let iter, next;
 
   switch (options.typeName) {
     case "Map":
-      iter = MapPrototypeEntries(value);
       entriesLength = MapPrototypeGetSize(value);
+      iter = MapPrototypeEntries(value);
+      next = MapIteratorPrototypeNext;
       break;
     case "Set":
-      iter = SetPrototypeEntries(value);
       entriesLength = SetPrototypeGetSize(value);
+      iter = SetPrototypeEntries(value);
+      next = SetIteratorPrototypeNext;
       break;
     case "Array":
       entriesLength = value.length;
       break;
     default:
       if (isTypedArray(value)) {
+        valueIsTypedArray = true;
         entriesLength = TypedArrayPrototypeGetLength(value);
         iter = ArrayPrototypeEntries(value);
-        valueIsTypedArray = true;
+        next = ArrayIteratorPrototypeNext;
       } else {
         throw new TypeError("unreachable");
       }
@@ -464,21 +467,7 @@ function inspectIterable(
     while (true) {
       let el;
       try {
-        let res;
-        switch (options.typeName) {
-          case "Map":
-            res = MapIteratorPrototypeNext(iter);
-            break;
-          case "Set":
-            res = SetIteratorPrototypeNext(iter);
-            break;
-          default:
-            if (valueIsTypedArray) {
-              res = ArrayIteratorPrototypeNext(iter);
-            } else {
-              throw new TypeError("unreachable");
-            }
-        }
+        const res = next(iter);
         if (res.done) {
           break;
         }
