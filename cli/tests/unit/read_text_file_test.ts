@@ -166,7 +166,7 @@ Deno.test(
 
     try {
       Deno.writeFileSync(filePath, bytes);
-    } catch (e) {
+    } catch {
       // NOTE(bartlomieju): writing a 0.5Gb file might be too much for CI,
       // so skip running if writing fails.
       return;
@@ -193,7 +193,7 @@ Deno.test(
 
     try {
       await Deno.writeFile(filePath, bytes);
-    } catch (e) {
+    } catch {
       // NOTE(bartlomieju): writing a 0.5Gb file might be too much for CI,
       // so skip running if writing fails.
       return;
