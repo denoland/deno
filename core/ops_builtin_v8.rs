@@ -715,8 +715,7 @@ fn op_dispatch_exception(
   let mut state = state_rc.borrow_mut();
   if let Some(inspector) = &state.inspector {
     let inspector = inspector.borrow();
-    // TODO(nayeemrmn): Send exception message to inspector sessions here.
-
+    inspector.exception_thrown(scope, exception.v8_value, false);
     // This indicates that the op is being called from a REPL. Skip termination.
     if inspector.is_dispatching_message() {
       return;
