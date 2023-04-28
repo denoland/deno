@@ -144,6 +144,8 @@ impl Op {
               is_unstable: #is_unstable,
               is_v8: #is_v8,
               force_registration: false,
+              // TODO(mmastrac)
+              arg_count: 0,
             }
           }
 
@@ -158,8 +160,8 @@ impl Op {
 
     let has_fallible_fast_call = active && optimizer.returns_result;
 
-    let v8_body = if is_async {
-      let deferred = attrs.deferred;
+    let (v8_body, arg_count) = if is_async {
+      let deferred: bool = attrs.deferred;
       codegen_v8_async(
         &core,
         &item,
@@ -205,6 +207,7 @@ impl Op {
             is_unstable: #is_unstable,
             is_v8: #is_v8,
             force_registration: false,
+            arg_count: #arg_count as u8,
           }
         }
 
@@ -241,7 +244,7 @@ fn codegen_v8_async(
   margs: Attributes,
   asyncness: bool,
   deferred: bool,
-) -> TokenStream2 {
+) -> (TokenStream2, usize) {
   let Attributes { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -309,7 +312,7 @@ fn codegen_v8_async(
     }
   };
 
-  quote! {
+  let token_stream = quote! {
     use #core::futures::FutureExt;
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
@@ -336,7 +339,10 @@ fn codegen_v8_async(
     if let Some(response) = maybe_response {
       rv.set(response);
     }
-  }
+  };
+
+  // +1 arg for the promise ID
+  (token_stream, 1 + f.sig.inputs.len() - rust_i0)
 }
 
 fn scope_arg(arg: &FnArg) -> Option<TokenStream2> {
@@ -373,7 +379,7 @@ fn codegen_v8_sync(
   f: &syn::ItemFn,
   margs: Attributes,
   has_fallible_fast_call: bool,
-) -> TokenStream2 {
+) -> (TokenStream2, usize) {
   let Attributes { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -404,7 +410,7 @@ fn codegen_v8_sync(
     quote! {}
   };
 
-  quote! {
+  let token_stream = quote! {
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
       &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
@@ -421,7 +427,9 @@ fn codegen_v8_sync(
     op_state.tracker.track_sync(ctx.id);
 
     #ret
-  }
+  };
+
+  (token_stream, f.sig.inputs.len() - rust_i0)
 }
 
 /// (full declarations, idents, v8 argument count)
