@@ -34,13 +34,13 @@ Deno.test(function urlParsing() {
 
 Deno.test(function emptyUrl() {
   assertThrows(
-    // @ts-ignore
+    // @ts-ignore for test
     () => new URL(),
     TypeError,
     "1 argument required, but only 0 present",
   );
   assertThrows(
-    // @ts-ignore
+    // @ts-ignore for test
     () => URL.canParse(),
     TypeError,
     "1 argument required, but only 0 present",
