@@ -10,8 +10,9 @@ use deno_runtime::permissions::PermissionsContainer;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
+use crate::factory::CliFactory;
+use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
-use crate::proc_state::ProcState;
 use crate::util;
 
 pub async fn run_script(flags: Flags) -> Result<i32, AnyError> {
@@ -31,23 +32,25 @@ To grant permissions, set them before the script argument. For example:
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
-  // map specified and bare specifier is used on the command line - this should
-  // probably call `ProcState::resolve` instead
-  let ps = ProcState::from_flags(flags).await?;
+  // map specified and bare specifier is used on the command line
+  let factory = CliFactory::from_flags(flags).await?;
+  let deno_dir = factory.deno_dir()?;
+  let http_client = factory.http_client()?;
+  let cli_options = factory.cli_options();
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
   super::upgrade::check_for_upgrades(
-    ps.http_client.clone(),
-    ps.dir.upgrade_check_file_path(),
+    http_client.clone(),
+    deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = ps.options.resolve_main_module()?;
+  let main_module = cli_options.resolve_main_module()?;
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &ps.options.permissions_options(),
+    &cli_options.permissions_options(),
   )?);
-  let worker_factory = ps.create_cli_main_worker_factory();
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
@@ -57,11 +60,14 @@ To grant permissions, set them before the script argument. For example:
 }
 
 pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let ps = ProcState::from_flags(flags).await?;
-  let main_module = ps.options.resolve_main_module()?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let main_module = cli_options.resolve_main_module()?;
+  let file_fetcher = factory.file_fetcher()?;
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &ps.options.permissions_options(),
+    &cli_options.permissions_options(),
   )?);
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -76,9 +82,8 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
-  ps.file_fetcher.insert_cached(source_file);
+  file_fetcher.insert_cached(source_file);
 
-  let worker_factory = ps.create_cli_main_worker_factory();
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
@@ -90,20 +95,26 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // code properly.
 async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-  let ps =
-    ProcState::from_flags_for_file_watcher(flags, sender.clone()).await?;
-  let clear_screen = !ps.options.no_clear_screen();
-  let main_module = ps.options.resolve_main_module()?;
+  let factory = CliFactoryBuilder::new()
+    .with_watcher(sender.clone())
+    .build_from_flags(flags)
+    .await?;
+  let file_watcher = factory.file_watcher()?;
+  let cli_options = factory.cli_options();
+  let clear_screen = !cli_options.no_clear_screen();
+  let main_module = cli_options.resolve_main_module()?;
+  let create_cli_main_worker_factory =
+    factory.create_cli_main_worker_factory_func().await?;
 
   let operation = |main_module: ModuleSpecifier| {
-    ps.reset_for_file_watcher();
+    file_watcher.reset();
     let permissions = PermissionsContainer::new(Permissions::from_options(
-      &ps.options.permissions_options(),
+      &cli_options.permissions_options(),
     )?);
-    let worker_factory = ps.create_cli_main_worker_factory();
+    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
 
     Ok(async move {
-      let worker = worker_factory
+      let worker = create_cli_main_worker_factory()
         .create_main_worker(main_module, permissions)
         .await?;
       worker.run_for_watcher().await?;
@@ -130,10 +141,14 @@ pub async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::from_flags(flags).await?;
-  let main_module = ps.options.resolve_main_module()?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let file_fetcher = factory.file_fetcher()?;
+  let main_worker_factory = factory.create_cli_main_worker_factory().await?;
+
+  let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &ps.options.permissions_options(),
+    &cli_options.permissions_options(),
   )?);
   // Create a dummy source file.
   let source_code = if eval_flags.print {
@@ -154,10 +169,9 @@ pub async fn eval_command(
 
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
-  ps.file_fetcher.insert_cached(file);
+  file_fetcher.insert_cached(file);
 
-  let mut worker = ps
-    .create_cli_main_worker_factory()
+  let mut worker = main_worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;

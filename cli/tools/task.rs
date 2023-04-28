@@ -4,8 +4,8 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
+use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
-use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -26,9 +26,10 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::from_flags(flags).await?;
-  let tasks_config = ps.options.resolve_tasks_config()?;
-  let maybe_package_json = ps.options.maybe_package_json();
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let tasks_config = cli_options.resolve_tasks_config()?;
+  let maybe_package_json = cli_options.maybe_package_json();
   let package_json_scripts = maybe_package_json
     .as_ref()
     .and_then(|p| p.scripts.clone())
@@ -43,7 +44,7 @@ pub async fn execute_script(
   };
 
   if let Some(script) = tasks_config.get(task_name) {
-    let config_file_url = ps.options.maybe_config_file_specifier().unwrap();
+    let config_file_url = cli_options.maybe_config_file_specifier().unwrap();
     let config_file_path = if config_file_url.scheme() == "file" {
       config_file_url.to_file_path().unwrap()
     } else {
@@ -53,7 +54,7 @@ pub async fn execute_script(
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
       None => config_file_path.parent().unwrap().to_owned(),
     };
-    let script = get_script_with_args(script, &ps.options);
+    let script = get_script_with_args(script, cli_options);
     output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
@@ -63,7 +64,12 @@ pub async fn execute_script(
         .await;
     Ok(exit_code)
   } else if let Some(script) = package_json_scripts.get(task_name) {
-    if let Some(package_deps) = ps.package_json_deps_installer.package_deps() {
+    let package_json_deps_installer =
+      factory.package_json_deps_installer().await?;
+    let npm_resolver = factory.npm_resolver().await?;
+    let node_resolver = factory.node_resolver().await?;
+
+    if let Some(package_deps) = package_json_deps_installer.package_deps() {
       for (key, value) in package_deps {
         if let Err(err) = value {
           log::info!(
@@ -75,10 +81,8 @@ pub async fn execute_script(
         }
       }
     }
-    ps.package_json_deps_installer
-      .ensure_top_level_install()
-      .await?;
-    ps.npm_resolver.resolve_pending().await?;
+
+    npm_resolver.resolve_pending().await?;
 
     log::info!(
       "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
@@ -95,12 +99,11 @@ pub async fn execute_script(
         .unwrap()
         .to_owned(),
     };
-    let script = get_script_with_args(script, &ps.options);
+    let script = get_script_with_args(script, cli_options);
     output_task(task_name, &script);
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
-    let npx_commands =
-      resolve_npm_commands(&ps.npm_resolver, &ps.node_resolver)?;
+    let npx_commands = resolve_npm_commands(npm_resolver, node_resolver)?;
     let env_vars = collect_env_vars();
     let exit_code =
       deno_task_shell::execute(seq_list, env_vars, &cwd, npx_commands).await;
