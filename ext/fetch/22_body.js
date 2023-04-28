@@ -38,7 +38,6 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
-  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
   ArrayPrototypeMap,
   DataViewPrototypeGetBuffer,
