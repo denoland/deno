@@ -406,6 +406,20 @@ pub async fn op_ws_send_pong(
   resource.write_frame(Frame::pong(vec![])).await
 }
 
+#[op]
+pub async fn op_ws_send_ping(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  resource
+    .write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    .await
+}
+
 #[op(deferred)]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
@@ -499,6 +513,7 @@ deno_core::extension!(deno_websocket,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    op_ws_send_ping,
     op_ws_send_pong,
     op_ws_server_create,
   ],

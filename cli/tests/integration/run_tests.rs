@@ -4228,7 +4228,6 @@ async fn websocket_server_multi_field_connection_header() {
 // TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
 // test hangs then. https://github.com/denoland/deno/issues/14283
 #[tokio::test]
-#[ignore]
 async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
