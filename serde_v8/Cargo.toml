@@ -2,11 +2,7 @@
 
 [package]
 name = "serde_v8"
-<<<<<<< HEAD
-version = "0.93.0"
-=======
 version = "0.94.0"
->>>>>>> d5f52ef7a (1.33.1 (#18895))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

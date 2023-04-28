@@ -2,11 +2,7 @@
 
 [package]
 name = "deno_webidl"
-<<<<<<< HEAD
-version = "0.100.0"
-=======
 version = "0.101.0"
->>>>>>> d5f52ef7a (1.33.1 (#18895))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

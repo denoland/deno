@@ -163,8 +163,6 @@ verify on GitHub that everything looks correct.
 - [ ] Publish the release on Github
 
 - [ ] Run the
-<<<<<<< HEAD
-=======
       https://github.com/denoland/dotland/actions/workflows/update_versions.yml
       workflow.
   - [ ] This should open a PR. Review and merge it.
@@ -178,7 +176,6 @@ verify on GitHub that everything looks correct.
   </details>
 
 - [ ] Run the
->>>>>>> d5f52ef7a (1.33.1 (#18895))
       https://github.com/denoland/dotcom/actions/workflows/update_versions.yml
       workflow.
   - [ ] This should open a PR. Review and merge it.
