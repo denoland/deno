@@ -528,7 +528,7 @@ class WebSocket extends EventTarget {
   [_serverHandleIdleTimeout]() {
     if (this[_idleTimeoutDuration]) {
       clearTimeout(this[_idleTimeoutTimeout]);
-      this[_idleTimeoutTimeout] = setTimeout(async () => {
+      this[_idleTimeoutTimeout] = setTimeout(() => {
         if (this[_readyState] === OPEN) {
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {

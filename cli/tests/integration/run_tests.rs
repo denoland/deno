@@ -4233,7 +4233,7 @@ async fn websocket_server_idletimeout() {
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
-    .arg("run")
+    .arg("test")
     .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
