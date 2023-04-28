@@ -528,8 +528,9 @@ class WebSocket extends EventTarget {
   [_serverHandleIdleTimeout]() {
     if (this[_idleTimeoutDuration]) {
       clearTimeout(this[_idleTimeoutTimeout]);
-      this[_idleTimeoutTimeout] = setTimeout(() => {
+      this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
+          await opAsync("op_ws_send_ping", this[_rid]);
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
