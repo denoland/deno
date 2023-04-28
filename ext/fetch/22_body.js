@@ -394,44 +394,27 @@ function extractBody(object) {
     }
   } else if (ArrayBufferIsView(object)) {
     const tag = TypedArrayPrototypeGetSymbolToStringTag(object);
-    if (tag === "Uint8Array") {
-      // Fast(er) path for common case of Uint8Array
-      const copy = TypedArrayPrototypeSlice(
-        object,
-        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (object)),
-        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (object)),
-      );
-      source = copy;
-    } else if (tag !== undefined) {
+    if (tag !== undefined) {
       // TypedArray
-      const copy = TypedArrayPrototypeSlice(
-        new Uint8Array(
+      if (tag !== "Uint8Array") {
+        // TypedArray, unless it's Uint8Array
+        object = new Uint8Array(
           TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (object)),
           TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (object)),
           TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (object)),
-        ),
-      );
-      source = copy;
+        );
+      }
     } else {
       // DataView
-      const copy = TypedArrayPrototypeSlice(
-        new Uint8Array(
-          DataViewPrototypeGetBuffer(/** @type {DataView} */ (object)),
-          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (object)),
-          DataViewPrototypeGetByteLength(/** @type {DataView} */ (object)),
-        ),
+      object = new Uint8Array(
+        DataViewPrototypeGetBuffer(/** @type {DataView} */ (object)),
+        DataViewPrototypeGetByteOffset(/** @type {DataView} */ (object)),
+        DataViewPrototypeGetByteLength(/** @type {DataView} */ (object)),
       );
-      source = copy;
     }
+    source = TypedArrayPrototypeSlice(object);
   } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
-    const copy = TypedArrayPrototypeSlice(
-      new Uint8Array(
-        object,
-        0,
-        ArrayBufferPrototypeGetByteLength(object),
-      ),
-    );
-    source = copy;
+    source = TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
     stream = res.stream();
