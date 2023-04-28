@@ -33,10 +33,18 @@ Deno.test(function urlParsing() {
 });
 
 Deno.test(function emptyUrl() {
-  // @ts-ignore
-  assertThrows(() => new URL(), TypeError, "1 argument required, but only 0 present");
-  // @ts-ignore
-  assertThrows(() => URL.canParse(), TypeError, "1 argument required, but only 0 present");
+  assertThrows(
+    // @ts-ignore
+    () => new URL(),
+    TypeError,
+    "1 argument required, but only 0 present",
+  );
+  assertThrows(
+    // @ts-ignore
+    () => URL.canParse(),
+    TypeError,
+    "1 argument required, but only 0 present",
+  );
 });
 
 Deno.test(function urlProtocolParsing() {
