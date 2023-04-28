@@ -260,7 +260,7 @@ impl ReplSession {
             let description = match exception_details.exception {
               Some(exception) => exception
                 .description
-                .unwrap_or_else(|| "Unknown exception".to_string()),
+                .unwrap_or_else(|| "undefined".to_string()),
               None => "Unknown exception".to_string(),
             };
             EvaluationOutput::Error(format!(
