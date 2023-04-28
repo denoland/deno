@@ -98,7 +98,7 @@ futures = "0.3.21"
 hex = "0.4"
 http = "0.2.9"
 httparse = "1.8.0"
-hyper = "0.14.26"
+hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.17"
