@@ -70,7 +70,7 @@ async fn read_line_and_poll(
             let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
             let text = exception_details.get("text").unwrap().as_str().unwrap();
             let exception = exception_details.get("exception").unwrap().as_object().unwrap();
-            let description = exception.get("description").unwrap().as_str().unwrap();
+            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
             println!("{text} {description}");
           }
         }

@@ -825,6 +825,20 @@ fn repl_report_error() {
 }
 
 #[test]
+fn repl_error_undefined() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(r#"throw undefined;"#);
+    console.expect("Uncaught undefined");
+    console.write_line(r#"Promise.reject();"#);
+    console.expect("Promise { <rejected> undefined }");
+    console.expect("Uncaught (in promise) undefined");
+    console.write_line(r#"reportError(undefined);"#);
+    console.expect("undefined");
+    console.expect("Uncaught undefined");
+  });
+}
+
+#[test]
 fn pty_aggregate_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("await Promise.any([])");
