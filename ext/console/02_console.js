@@ -534,7 +534,10 @@ const meta = [
 // https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
 const isUndetectableObject = (v) => typeof v === "undefined" && v !== undefined;
 
-const strEscapeSequencesReplacer = new SafeRegExp("[\x00-\x1f\x27\x5c\x7f-\x9f]", "g");
+const strEscapeSequencesReplacer = new SafeRegExp(
+  "[\x00-\x1f\x27\x5c\x7f-\x9f]",
+  "g",
+);
 
 const keyStrRegExp = new SafeRegExp("^[a-zA-Z_][a-zA-Z_0-9]*$");
 const numberRegExp = new SafeRegExp("^(0|[1-9][0-9]*)$");
@@ -738,7 +741,10 @@ function getClassBase(value, constructor, tag) {
   return `[${base}]`;
 }
 
-const stripCommentsRegExp = new SafeRegExp("(\\/\\/.*?\\n)|(\\/\\*(.|\\n)*?\\*\\/)", "g");
+const stripCommentsRegExp = new SafeRegExp(
+  "(\\/\\/.*?\\n)|(\\/\\*(.|\\n)*?\\*\\/)",
+  "g",
+);
 const classRegExp = new SafeRegExp("^(\\s+[^(]*?)\\s*{");
 
 function getFunctionBase(value, constructor, tag) {
@@ -1461,7 +1467,6 @@ function getIteratorBraces(type, tag) {
   }
   return [`[${tag}] {`, "}"];
 }
-
 
 const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
