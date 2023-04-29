@@ -913,7 +913,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "[Module: null prototype] {");
-    assert_contains!(out, "Chalk: [Class: Chalk],");
+    assert_contains!(out, "Chalk: [class Chalk],");
     assert!(err.is_empty());
   }
 
