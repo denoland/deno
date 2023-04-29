@@ -123,6 +123,36 @@ dbTest("set and get recursive object", async (db) => {
   assert(resultValue.a === resultValue);
 });
 
+// invalid values (as per structured clone algorithm with _for storage_, NOT JSON)
+const INVALID_VALUE_CASES = [
+  { name: "function", value: () => {} },
+  { name: "symbol", value: Symbol() },
+  { name: "WeakMap", value: new WeakMap() },
+  { name: "WeakSet", value: new WeakSet() },
+  {
+    name: "WebAssembly.Module",
+    value: new WebAssembly.Module(
+      new Uint8Array([0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00]),
+    ),
+  },
+  {
+    name: "SharedArrayBuffer",
+    value: new SharedArrayBuffer(3),
+  },
+];
+
+for (const { name, value } of INVALID_VALUE_CASES) {
+  dbTest(`set and get ${name} value (invalid)`, async (db) => {
+    await assertRejects(
+      async () => await db.set(["a"], value),
+      Error,
+    );
+    const res = await db.get(["a"]);
+    assertEquals(res.key, ["a"]);
+    assertEquals(res.value, null);
+  });
+}
+
 const keys = [
   ["a"],
   ["a", "b"],

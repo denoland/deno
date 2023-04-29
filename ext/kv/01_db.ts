@@ -312,7 +312,7 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value),
+        value: core.deserialize(value, { forStorage: true }),
       };
     case "bytes":
       return {
@@ -343,7 +343,7 @@ function serializeValue(value: unknown): RawValue {
   } else {
     return {
       kind: "v8",
-      value: core.serialize(value),
+      value: core.serialize(value, { forStorage: true }),
     };
   }
 }
