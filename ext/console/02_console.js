@@ -23,8 +23,14 @@ const {
   MapPrototypeEntries,
   SetPrototypeGetSize,
   StringPrototypeRepeat,
+  StringPrototypeEndsWith,
+  StringPrototypeIndexOf,
+  RegExpPrototypeExec,
+  RegExpPrototypeSymbolReplace,
   StringPrototypeReplace,
   StringPrototypeReplaceAll,
+  ObjectPrototype,
+  FunctionPrototypeCall,
   StringPrototypeSplit,
   StringPrototypeSlice,
   StringPrototypeCharCodeAt,
@@ -75,6 +81,7 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeReduce,
+  ObjectSetPrototypeOf,
   ArrayPrototypePush,
   ArrayPrototypeIncludes,
   ArrayPrototypeFill,
@@ -279,7 +286,14 @@ export function isArrayBuffer(value) {
 export function isAsyncFunction(value) {
   return (
     typeof value === "function" &&
-    value[SymbolToStringTag] === "AsyncFunction"
+    (value[SymbolToStringTag] === "AsyncFunction")
+  );
+}
+
+export function isAsyncGeneratorFunction(value) {
+  return (
+    typeof value === "function" &&
+    (value[SymbolToStringTag] === "AsyncGeneratorFunction")
   );
 }
 
@@ -534,6 +548,65 @@ function stylizeNoColor(str) {
   return str;
 }
 
+// node custom inspect symbol
+const nodeCustomInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
+
+// This non-unique symbol is used to support op_crates, ie.
+// in extensions/web we don't want to depend on public
+// Symbol.for("Deno.customInspect") symbol defined in the public API.
+// Internal only, shouldn't be used by users.
+const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
+
+function getUserOptions(ctx, isCrossContext) {
+  const ret = {
+    stylize: ctx.stylize,
+    showHidden: ctx.showHidden,
+    depth: ctx.depth,
+    colors: ctx.colors,
+    customInspect: ctx.customInspect,
+    showProxy: ctx.showProxy,
+    maxArrayLength: ctx.maxArrayLength,
+    maxStringLength: ctx.maxStringLength,
+    breakLength: ctx.breakLength,
+    compact: ctx.compact,
+    sorted: ctx.sorted,
+    getters: ctx.getters,
+    numericSeparator: ctx.numericSeparator,
+    ...ctx.userOptions,
+  };
+
+  // Typically, the target value will be an instance of `Object`. If that is
+  // *not* the case, the object may come from another vm.Context, and we want
+  // to avoid passing it objects from this Context in that case, so we remove
+  // the prototype from the returned object itself + the `stylize()` function,
+  // and remove all other non-primitives, including non-primitive user options.
+  if (isCrossContext) {
+    ObjectSetPrototypeOf(ret, null);
+    for (const key of new SafeArrayIterator(ObjectKeys(ret))) {
+      if (
+        (typeof ret[key] === "object" || typeof ret[key] === "function") &&
+        ret[key] !== null
+      ) {
+        delete ret[key];
+      }
+    }
+    ret.stylize = ObjectSetPrototypeOf((value, flavour) => {
+      let stylized;
+      try {
+        stylized = `${ctx.stylize(value, flavour)}`;
+      } catch {
+        // Continue regardless of error.
+      }
+
+      if (typeof stylized !== "string") return value;
+      // `stylized` is a string as it should be, which is safe to pass along.
+      return stylized;
+    }, null);
+  }
+
+  return ret;
+}
+
 // Note: using `formatValue` directly requires the indentation level to be
 // corrected by setting `ctx.indentationLvL += diff` and then to decrease the
 // value afterwards again.
@@ -555,6 +628,8 @@ function formatValue(
     return ctx.stylize("null", "null");
   }
 
+  // Memorize the context for custom inspection on proxies.
+  const context = value;
   // Always check for proxies to prevent side effects and to prevent triggering
   // any proxy handlers.
   // TODO(wafuwafu13): Set Proxy
@@ -566,6 +641,63 @@ function formatValue(
   //   }
   //   value = proxy;
   // }
+
+  // Provide a hook for user-specified inspect functions.
+  // Check that value is an object with an inspect function on it.
+  if (ctx.customInspect) {
+    if (
+      ReflectHas(value, customInspect) &&
+      typeof value[customInspect] === "function"
+    ) {
+      return String(value[customInspect](inspect, ctx));
+    } else if (
+      ReflectHas(value, privateCustomInspect) &&
+      typeof value[privateCustomInspect] === "function"
+    ) {
+      // TODO(nayeemrmn): `inspect` is passed as an argument because custom
+      // inspect implementations in `extensions` need it, but may not have access
+      // to the `Deno` namespace in web workers. Remove when the `Deno`
+      // namespace is always enabled.
+      return String(value[privateCustomInspect](inspect, ctx));
+    } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
+      const maybeCustom = value[nodeCustomInspectSymbol];
+      if (
+        typeof maybeCustom === "function" &&
+        // Filter out the util module, its inspect function is special.
+        maybeCustom !== ctx.inspect &&
+        // Also filter out any prototype objects using the circular check.
+        !(value.constructor && value.constructor.prototype === value)
+      ) {
+        // This makes sure the recurseTimes are reported as before while using
+        // a counter internally.
+        const depth = ctx.depth === null ? null : ctx.depth - recurseTimes;
+        // TODO(@crowlKats): proxy handling
+        const isCrossContext = !ObjectPrototypeIsPrototypeOf(
+          ObjectPrototype,
+          context,
+        );
+        const ret = FunctionPrototypeCall(
+          maybeCustom,
+          context,
+          depth,
+          getUserOptions(ctx, isCrossContext),
+          ctx.inspect,
+        );
+        // If the custom inspection method returned `this`, don't go into
+        // infinite recursion.
+        if (ret !== context) {
+          if (typeof ret !== "string") {
+            return formatValue(ctx, ret, recurseTimes);
+          }
+          return StringPrototypeReplaceAll(
+            ret,
+            "\n",
+            `\n${StringPrototypeRepeat(" ", ctx.indentationLvl)}`,
+          );
+        }
+      }
+    }
+  }
 
   // Using an array here is actually better for the average case than using
   // a Set. `seen` will only check for the depth and will never grow too large.
@@ -584,53 +716,83 @@ function formatValue(
     return ctx.stylize(`[Circular *${index}]`, "special");
   }
 
-  // Provide a hook for user-specified inspect functions.
-  // Check that value is an object with an inspect function on it.
-  if (ctx.customInspect) {
-    if (
-      ReflectHas(value, customInspect) &&
-      typeof value[customInspect] === "function"
-    ) {
-      return String(value[customInspect](inspect, ctx));
-    }
-    // This non-unique symbol is used to support op_crates, ie.
-    // in extensions/web we don't want to depend on public
-    // Symbol.for("Deno.customInspect") symbol defined in the public API.
-    // Internal only, shouldn't be used by users.
-    const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
-    if (
-      ReflectHas(value, privateCustomInspect) &&
-      typeof value[privateCustomInspect] === "function"
-    ) {
-      // TODO(nayeemrmn): `inspect` is passed as an argument because custom
-      // inspect implementations in `extensions` need it, but may not have access
-      // to the `Deno` namespace in web workers. Remove when the `Deno`
-      // namespace is always enabled.
-      return String(value[privateCustomInspect](inspect, ctx));
-    }
-  }
-
   return formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails);
 }
 
-function getClassInstanceName(instance) {
-  if (typeof instance != "object") {
-    return "";
+function getClassBase(value, constructor, tag) {
+  const hasName = ObjectPrototypeHasOwnProperty(value, "name");
+  const name = (hasName && value.name) || "(anonymous)";
+  let base = `class ${name}`;
+  if (constructor !== "Function" && constructor !== null) {
+    base += ` [${constructor}]`;
   }
-  const constructor = instance?.constructor;
-  if (typeof constructor == "function") {
-    return constructor.name ?? "";
+  if (tag !== "" && constructor !== tag) {
+    base += ` [${tag}]`;
   }
-  return "";
+  if (constructor !== null) {
+    const superName = ObjectGetPrototypeOf(value).name;
+    if (superName) {
+      base += ` extends ${superName}`;
+    }
+  } else {
+    base += " extends [null prototype]";
+  }
+  return `[${base}]`;
 }
 
-function getDisplayName(value) {
-  const name = getClassInstanceName(value);
-  if (name && name !== "Object" && name !== "anonymous") {
-    return name;
-  } else {
-    return undefined;
+const stripCommentsRegExp = /(\/\/.*?\n)|(\/\*(.|\n)*?\*\/)/g;
+const classRegExp = /^(\s+[^(]*?)\s*{/;
+
+function getFunctionBase(value, constructor, tag) {
+  const stringified = FunctionPrototypeToString(value);
+  if (
+    StringPrototypeStartsWith(stringified, "class") &&
+    StringPrototypeEndsWith(stringified, "}")
+  ) {
+    const slice = StringPrototypeSlice(stringified, 5, -1);
+    const bracketIndex = StringPrototypeIndexOf(slice, "{");
+    if (
+      bracketIndex !== -1 &&
+      (!StringPrototypeIncludes(
+        StringPrototypeSlice(slice, 0, bracketIndex),
+        "(",
+      ) ||
+        // Slow path to guarantee that it's indeed a class.
+        RegExpPrototypeExec(
+            classRegExp,
+            RegExpPrototypeSymbolReplace(stripCommentsRegExp, slice),
+          ) !== null)
+    ) {
+      return getClassBase(value, constructor, tag);
+    }
   }
+  let type = "Function";
+  if (isGeneratorFunction(value)) {
+    type = `Generator${type}`;
+  }
+  if (isAsyncFunction(value)) {
+    type = `Async${type}`;
+  }
+  if (isAsyncGeneratorFunction(value)) {
+    type = `AsyncGenerator${type}`;
+  }
+  let base = `[${type}`;
+  if (constructor === null) {
+    base += " (null prototype)";
+  }
+  if (value.name === "") {
+    base += " (anonymous)";
+  } else {
+    base += `: ${value.name}`;
+  }
+  base += "]";
+  if (constructor !== type && constructor !== null) {
+    base += ` ${constructor}`;
+  }
+  if (tag !== "" && constructor !== tag) {
+    base += ` [${tag}]`;
+  }
+  return base;
 }
 
 function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
@@ -753,19 +915,16 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
       keys = getKeys(value, ctx.showHidden);
       braces = ["{", "}"];
       if (constructor === "Object") {
-        const displayName = getDisplayName(value);
         if (isArgumentsObject(value)) {
           braces[0] = "[Arguments] {";
         } else if (tag !== "") {
           braces[0] = `${getPrefix(constructor, tag, "Object")}{`;
-        } else if (displayName !== undefined) {
-          braces[0] = `${displayName} {`;
         }
         if (keys.length === 0 && protoProps === undefined) {
           return `${braces[0]}}`;
         }
       } else if (typeof value === "function") {
-        base = inspectFunction(value, ctx);
+        base = getFunctionBase(value, constructor, tag);
         if (keys.length === 0 && protoProps === undefined) {
           return ctx.stylize(base, "special");
         }
@@ -789,7 +948,10 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         if (isNaN(DatePrototypeGetTime(date))) {
           return ctx.stylize("Invalid Date", "date");
         } else {
-          return ctx.stylize(DatePrototypeToISOString(date), "date");
+          base = DatePrototypeToISOString(date);
+          if (keys.length === 0 && protoProps === undefined) {
+            return ctx.stylize(base, "date");
+          }
         }
       } else if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
         base = inspectError(value, ctx);
@@ -1020,6 +1182,14 @@ function addPrototypeProperties(
   } while (++depth !== 3);
 }
 
+function isInstanceof(proto, object) {
+  try {
+    return ObjectPrototypeIsPrototypeOf(proto, object);
+  } catch {
+    return false;
+  }
+}
+
 function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   let firstProto;
   const tmp = obj;
@@ -1029,7 +1199,7 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
       descriptor !== undefined &&
       typeof descriptor.value === "function" &&
       descriptor.value.name !== "" &&
-      ObjectPrototypeIsPrototypeOf(descriptor.value.prototype, tmp)
+      isInstanceof(descriptor.value.prototype, tmp)
     ) {
       if (
         protoProps !== undefined &&
@@ -1305,33 +1475,6 @@ function formatIterator(braces, ctx, value, recurseTimes) {
   return formatSetIterInner(ctx, recurseTimes, entries, kIterator);
 }
 
-function inspectFunction(value, ctx) {
-  if (
-    ReflectHas(value, customInspect) &&
-    typeof value[customInspect] === "function"
-  ) {
-    return String(value[customInspect](inspect, ctx));
-  }
-  // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
-  let cstrName = ObjectGetPrototypeOf(value)?.constructor?.name;
-  if (!cstrName) {
-    // If prototype is removed or broken,
-    // use generic 'Function' instead.
-    cstrName = "Function";
-  }
-  const stringValue = FunctionPrototypeToString(value);
-  // Might be Class
-  if (StringPrototypeStartsWith(stringValue, "class")) {
-    cstrName = "Class";
-  }
-
-  if (value.name && value.name !== "anonymous") {
-    // from MDN spec
-    return `[${cstrName}: ${value.name}]`;
-  }
-  return `[${cstrName} (anonymous)]`;
-}
-
 function handleCircular(value, ctx) {
   let index = 1;
   if (ctx.circular === undefined) {
@@ -1413,9 +1556,13 @@ function inspectError(value, ctx) {
     finalMessage += "\n";
     finalMessage += ArrayPrototypeJoin(stackLines, "\n");
   } else {
-    finalMessage += value.stack;
+    const stack = value.stack;
+    if (stack?.includes("\n    at")) {
+      finalMessage += stack;
+    } else {
+      finalMessage += `[${stack || value.toString()}]`;
+    }
   }
-
   finalMessage += ArrayPrototypeJoin(
     ArrayPrototypeMap(
       causes,
@@ -2267,6 +2414,8 @@ const denoInspectDefaultOptions = {
   quotes: ['"', "'", "`"],
   iterableLimit: 100, // similar to node's maxArrayLength, but doesn't only apply to arrays
   trailingComma: false,
+
+  inspect,
 
   // TODO(@crowlKats): merge into indentationLvl
   indentLevel: 0,

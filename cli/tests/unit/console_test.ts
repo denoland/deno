@@ -236,8 +236,8 @@ Deno.test(function consoleTestStringifyCircular() {
   nu: null,
   arrowFunc: [Function: arrowFunc],
   extendedClass: Extended { a: 1, b: 2 },
-  nFunc: [Function (anonymous)],
-  extendedCstr: [Class: Extended],
+  nFunc: [Function: anonymous],
+  extendedCstr: [class Extended extends Base],
   o: {
     num: 2,
     bool: false,
@@ -375,16 +375,16 @@ Deno.test(function consoleTestStringifyMultipleCircular() {
 Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
   const f = function f() {};
   Reflect.setPrototypeOf(f, null);
-  assertEquals(stringify(f), "[Function: f]");
+  assertEquals(stringify(f), "[Function (null prototype): f]");
   const af = async function af() {};
   Reflect.setPrototypeOf(af, null);
-  assertEquals(stringify(af), "[Function: af]");
+  assertEquals(stringify(af), "[Function (null prototype): af]");
   const gf = function* gf() {};
   Reflect.setPrototypeOf(gf, null);
-  assertEquals(stringify(gf), "[Function: gf]");
+  assertEquals(stringify(gf), "[Function (null prototype): gf]");
   const agf = async function* agf() {};
   Reflect.setPrototypeOf(agf, null);
-  assertEquals(stringify(agf), "[Function: agf]");
+  assertEquals(stringify(agf), "[Function (null prototype): agf]");
 });
 
 Deno.test(function consoleTestStringifyFunctionWithProperties() {
@@ -1889,7 +1889,7 @@ Deno.test(function inspectGetters() {
 
 Deno.test(function inspectPrototype() {
   class A {}
-  assertEquals(Deno.inspect(A.prototype), "A {}");
+  assertEquals(Deno.inspect(A.prototype), "{}");
 });
 
 Deno.test(function inspectSorted() {
