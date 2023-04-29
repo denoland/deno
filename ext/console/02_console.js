@@ -67,7 +67,6 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectIs,
   Uint8Array,
-  Set,
   isNaN,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeGetLength,
@@ -114,6 +113,7 @@ const {
   FunctionPrototypeToString,
   StringPrototypeStartsWith,
   SetPrototypeValues,
+  SafeSet,
   SafeSetIterator,
   TypedArrayPrototypeGetByteLength,
   SafeMapIterator,
@@ -534,11 +534,10 @@ const meta = [
 // https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
 const isUndetectableObject = (v) => typeof v === "undefined" && v !== undefined;
 
-// deno-lint-ignore no-control-regex
-const strEscapeSequencesReplacer = /[\x00-\x1f\x27\x5c\x7f-\x9f]/g;
+const strEscapeSequencesReplacer = new SafeRegExp("[\x00-\x1f\x27\x5c\x7f-\x9f]", "g");
 
-const keyStrRegExp = /^[a-zA-Z_][a-zA-Z_0-9]*$/;
-const numberRegExp = /^(0|[1-9][0-9]*)$/;
+const keyStrRegExp = new SafeRegExp("^[a-zA-Z_][a-zA-Z_0-9]*$");
+const numberRegExp = new SafeRegExp("^(0|[1-9][0-9]*)$");
 
 // TODO(wafuwafu13): Figure out
 const escapeFn = (str) => meta[str.charCodeAt(0)];
@@ -739,8 +738,8 @@ function getClassBase(value, constructor, tag) {
   return `[${base}]`;
 }
 
-const stripCommentsRegExp = /(\/\/.*?\n)|(\/\*(.|\n)*?\*\/)/g;
-const classRegExp = /^(\s+[^(]*?)\s*{/;
+const stripCommentsRegExp = new SafeRegExp("(\\/\\/.*?\\n)|(\\/\\*(.|\\n)*?\\*\\/)", "g");
+const classRegExp = new SafeRegExp("^(\\s+[^(]*?)\\s*{");
 
 function getFunctionBase(value, constructor, tag) {
   const stringified = FunctionPrototypeToString(value);
@@ -1102,9 +1101,10 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   return res;
 }
 
-const builtInObjects = new Set(
+const builtInObjectsRegExp = new SafeRegExp("^[A-Z][a-zA-Z0-9]+$");
+const builtInObjects = new SafeSet(
   ObjectGetOwnPropertyNames(globalThis).filter((e) =>
-    /^[A-Z][a-zA-Z0-9]+$/.test(e)
+    builtInObjectsRegExp.test(e)
   ),
 );
 
@@ -1137,7 +1137,7 @@ function addPrototypeProperties(
     }
 
     if (depth === 0) {
-      keySet = new Set();
+      keySet = new SafeSet();
     } else {
       Array.prototype.forEach.call(keys, (key) => keySet.add(key));
     }
@@ -1252,6 +1252,7 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   return `${res} <${protoConstr}>`;
 }
 
+const formatPrimitiveRegExp = new SafeRegExp("(?<=\n)");
 function formatPrimitive(fn, value, ctx) {
   if (typeof value === "string") {
     let trailer = "";
@@ -1268,7 +1269,7 @@ function formatPrimitive(fn, value, ctx) {
       value.length > ctx.breakLength - ctx.indentationLvl - 4
     ) {
       return value
-        .split(/(?<=\n)/)
+        .split(formatPrimitiveRegExp)
         .map((line) => fn(quoteString(line, ctx), "string"))
         .join(` +\n${" ".repeat(ctx.indentationLvl + 2)}`) + trailer;
     }
@@ -1461,13 +1462,15 @@ function getIteratorBraces(type, tag) {
   return [`[${tag}] {`, "}"];
 }
 
+
+const iteratorRegExp = new SafeRegExp(" Iterator] {$");
 function formatIterator(braces, ctx, value, recurseTimes) {
   // TODO(wafuwafu13): Implement
   // const { 0: entries, 1: isKeyValue } = previewEntries(value, true);
   const { 0: entries, 1: isKeyValue } = value;
   if (isKeyValue) {
     // Mark entry iterators as such.
-    braces[0] = braces[0].replace(/ Iterator] {$/, " Entries] {");
+    braces[0] = braces[0].replace(iteratorRegExp, " Entries] {");
     return formatMapIterInner(ctx, recurseTimes, entries, kMapEntries);
   }
 
@@ -1602,6 +1605,7 @@ function hexSlice(buf, start, end) {
   return out;
 }
 
+const arrayBufferRegExp = new SafeRegExp("(.{2})", "g");
 function formatArrayBuffer(ctx, value) {
   let buffer;
   try {
@@ -1610,7 +1614,7 @@ function formatArrayBuffer(ctx, value) {
     return [ctx.stylize("(detached)", "special")];
   }
   let str = hexSlice(buffer, 0, MathMin(ctx.maxArrayLength, buffer.length))
-    .replace(/(.{2})/g, "$1 ").trim();
+    .replace(arrayBufferRegExp, "$1 ").trim();
 
   const remaining = buffer.length - ctx.maxArrayLength;
   if (remaining > 0) {
@@ -1760,8 +1764,7 @@ function handleMaxCallStackSize(
   // assert.fail(err.stack);
 }
 
-// deno-lint-ignore no-control-regex
-const colorRegExp = /\u001b\[\d\d?m/g;
+const colorRegExp = new SafeRegExp("\u001b\\[\\d\\d?m", "g");
 function removeColors(str) {
   return str.replace(colorRegExp, "");
 }
@@ -2483,8 +2486,7 @@ const ESCAPE_MAP = ObjectFreeze({
   "\v": "\\v",
 });
 
-// deno-lint-ignore no-control-regex
-const ESCAPE_PATTERN2 = new SafeRegExp(/[\x00-\x1f\x7f-\x9f]/g);
+const ESCAPE_PATTERN2 = new SafeRegExp("[\x00-\x1f\x7f-\x9f]", "g");
 
 // Replace escape sequences that can modify output.
 function replaceEscapeSequences(string) {
