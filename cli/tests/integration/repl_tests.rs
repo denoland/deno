@@ -32,7 +32,13 @@ fn pty_multiline() {
     console.write_line("/\\[/");
     console.expect("/\\[/");
     console.write_line("console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));");
-    console.expect("[ \"{test1}\", \"test1\" ]");
+    console.expect("[");
+    console.expect("  \"{test1}\",");
+    console.expect("  \"test1\",");
+    console.expect("  index: 0,");
+    console.expect("  input: \"{test1} abc {test2} def {{test3}}\",");
+    console.expect("  groups: undefined");
+    console.expect("]");
   });
 }
 
@@ -90,7 +96,7 @@ fn pty_complete_declarations() {
     console.write_line("class MyClass {}");
     console.expect("undefined");
     console.write_line_raw("My\t");
-    console.expect("[Class: MyClass]");
+    console.expect("[class MyClass]");
     console.write_line("let myVar = 2 + 3;");
     console.expect("undefined");
     console.write_line_raw("myV\t");
@@ -349,7 +355,7 @@ fn typescript_decorators() {
       .write_line("function dec(target) { target.prototype.test = () => 2; }");
     console.expect("undefined");
     console.write_line("@dec class Test {}");
-    console.expect("[Class: Test]");
+    console.expect("[class Test]");
     console.write_line("new Test().test()");
     console.expect("2");
   });
@@ -802,7 +808,8 @@ fn repl_reject() {
     console.write_line("console.log(1);");
     console.expect_all(&["1", "undefined"]);
     console.write_line(r#"Promise.reject(new Error("foo"));"#);
-    console.expect("Promise { <rejected> Error: foo");
+    console.expect("Promise {");
+    console.expect("  <rejected> Error: foo");
     console.expect("Uncaught (in promise) Error: foo");
     console.expect("    at <anonymous>");
     console.write_line("console.log(2);");
