@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const core = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
+const internals = globalThis.__bootstrap.internals;
 
 const { BadResourcePrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -10,7 +11,7 @@ import {
   newInnerResponse,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import { fromInnerRequest } from "ext:deno_fetch/23_request.js";
+import { fromInnerRequest, toInnerRequest } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
@@ -28,9 +29,11 @@ import {
 import {
   Deferred,
   getReadableStreamResourceBacking,
+  readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
+import { TcpConn } from "ext:deno_net/01_net.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
@@ -81,6 +84,14 @@ const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
   "immutable",
 );
 
+function upgradeHttpRaw(req, conn) {
+  const inner = toInnerRequest(req);
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttpRaw", conn);
+  }
+  throw new TypeError("upgradeHttpRaw may only be used with Deno.serve");
+}
+
 class InnerRequest {
   #slabId;
   #context;
@@ -121,10 +132,26 @@ class InnerRequest {
       throw "upgradeHttp is unavailable in Deno.serve at this time";
     }
 
-    // upgradeHttpRaw is async
-    // TODO(mmastrac)
+    // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
-      throw "upgradeHttp is unavailable in Deno.serve at this time";
+      const slabId = this.#slabId;
+      const underlyingConn = originalArgs[0];
+
+      this.url();
+      this.headerList;
+      this.close();
+
+      this.#upgraded = () => {};
+
+      const upgradeRid = core.ops.op_upgrade_raw(slabId);
+
+      const conn = new TcpConn(
+        upgradeRid,
+        underlyingConn?.remoteAddr,
+        underlyingConn?.localAddr,
+      );
+
+      return { response: UPGRADE_RESPONSE_SENTINEL, conn };
     }
 
     // upgradeWebSocket is sync
@@ -331,24 +358,97 @@ function fastSyncResponseOrStream(req, respBody) {
 }
 
 async function asyncResponse(responseBodies, req, status, stream) {
-  const responseRid = core.ops.op_set_response_body_stream(req);
-  SetPrototypeAdd(responseBodies, responseRid);
   const reader = stream.getReader();
-  core.ops.op_set_promise_complete(req, status);
+  let responseRid;
+  let closed = false;
+  let timeout;
+
   try {
+    // IMPORTANT: We get a performance boost from this optimization, but V8 is very
+    // sensitive to the order and structure. Benchmark any changes to this code.
+
+    // Optimize for streams that are done in zero or one packets. We will not
+    // have to allocate a resource in this case.
+    const { value: value1, done: done1 } = await reader.read();
+    if (done1) {
+      closed = true;
+      // Exit 1: no response body at all, extreme fast path
+      // Reader will be closed by finally block
+      return;
+    }
+
+    // The second value cannot block indefinitely, as someone may be waiting on a response
+    // of the first packet that may influence this packet. We set this timeout arbitrarily to 250ms
+    // and we race it.
+    let timeoutPromise;
+    timeout = setTimeout(() => {
+      responseRid = core.ops.op_set_response_body_stream(req);
+      SetPrototypeAdd(responseBodies, responseRid);
+      core.ops.op_set_promise_complete(req, status);
+      timeoutPromise = core.writeAll(responseRid, value1);
+    }, 250);
+    const { value: value2, done: done2 } = await reader.read();
+
+    if (timeoutPromise) {
+      await timeoutPromise;
+      if (done2) {
+        closed = true;
+        // Exit 2(a): read 2 is EOS, and timeout resolved.
+        // Reader will be closed by finally block
+        // Response stream will be closed by finally block.
+        return;
+      }
+
+      // Timeout resolved, value1 written but read2 is not EOS. Carry value2 forward.
+    } else {
+      clearTimeout(timeout);
+      timeout = undefined;
+
+      if (done2) {
+        // Exit 2(b): read 2 is EOS, and timeout did not resolve as we read fast enough.
+        // Reader will be closed by finally block
+        // No response stream
+        closed = true;
+        core.ops.op_set_response_body_bytes(req, value1);
+        return;
+      }
+
+      responseRid = core.ops.op_set_response_body_stream(req);
+      SetPrototypeAdd(responseBodies, responseRid);
+      core.ops.op_set_promise_complete(req, status);
+      // Write our first packet
+      await core.writeAll(responseRid, value1);
+    }
+
+    await core.writeAll(responseRid, value2);
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
+        closed = true;
         break;
       }
       await core.writeAll(responseRid, value);
     }
   } catch (error) {
-    await reader.cancel(error);
+    closed = true;
+    try {
+      await reader.cancel(error);
+    } catch {
+      // Pass
+    }
   } finally {
-    core.tryClose(responseRid);
-    SetPrototypeDelete(responseBodies, responseRid);
-    reader.releaseLock();
+    if (!closed) {
+      readableStreamClose(reader);
+    }
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    if (responseRid) {
+      core.tryClose(responseRid);
+      SetPrototypeDelete(responseBodies, responseRid);
+    } else {
+      core.ops.op_set_promise_complete(req, status);
+    }
   }
 }
 
@@ -361,16 +461,26 @@ async function asyncResponse(responseBodies, req, status, stream) {
  */
 function mapToCallback(responseBodies, context, signal, callback, onError) {
   return async function (req) {
-    const innerRequest = new InnerRequest(req, context);
-    const request = fromInnerRequest(innerRequest, signal, "immutable");
-
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
+    let innerRequest;
     let response;
     try {
-      response = await callback(request, {
-        remoteAddr: innerRequest.remoteAddr,
-      });
+      if (callback.length > 0) {
+        innerRequest = new InnerRequest(req, context);
+        const request = fromInnerRequest(innerRequest, signal, "immutable");
+        if (callback.length === 1) {
+          response = await callback(request);
+        } else {
+          response = await callback(request, {
+            get remoteAddr() {
+              return innerRequest.remoteAddr;
+            },
+          });
+        }
+      } else {
+        response = await callback();
+      }
     } catch (error) {
       try {
         response = await onError(error);
@@ -381,19 +491,19 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
     }
 
     const inner = toInnerResponse(response);
-    if (innerRequest[_upgraded]) {
+    if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
         console.error("Upgrade response was not returned from callback");
         context.close();
       }
-      innerRequest[_upgraded]();
+      innerRequest?.[_upgraded]();
       return;
     }
 
     // Did everything shut down while we were waiting?
     if (context.closed) {
-      innerRequest.close();
+      innerRequest?.close();
       return;
     }
 
@@ -416,7 +526,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
       core.ops.op_set_promise_complete(req, status);
     }
 
-    innerRequest.close();
+    innerRequest?.close();
   };
 }
 
@@ -425,7 +535,6 @@ async function serve(arg1, arg2) {
   let handler = undefined;
   if (typeof arg1 === "function") {
     handler = arg1;
-    options = arg2;
   } else if (typeof arg2 === "function") {
     handler = arg2;
     options = arg1;
@@ -515,7 +624,7 @@ async function serve(arg1, arg2) {
     const rid = context.serverRid;
     let req;
     try {
-      req = await core.opAsync("op_http_wait", rid);
+      req = await core.opAsync2("op_http_wait", rid);
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
         break;
@@ -540,4 +649,6 @@ async function serve(arg1, arg2) {
   }
 }
 
-export { serve };
+internals.upgradeHttpRaw = upgradeHttpRaw;
+
+export { serve, upgradeHttpRaw };

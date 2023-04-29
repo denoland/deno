@@ -557,15 +557,21 @@ Module._findPath = function (request, paths, isMain, parentPath) {
       }
     }
 
-    const isDenoDirPackage = ops.op_require_is_deno_dir_package(
-      curPath,
-    );
-    const isRelative = ops.op_require_is_request_relative(
-      request,
-    );
-    const basePath = (isDenoDirPackage && !isRelative)
-      ? pathResolve(curPath, packageSpecifierSubPath(request))
-      : pathResolve(curPath, request);
+    let basePath;
+
+    if (usesLocalNodeModulesDir) {
+      basePath = pathResolve(curPath, request);
+    } else {
+      const isDenoDirPackage = ops.op_require_is_deno_dir_package(
+        curPath,
+      );
+      const isRelative = ops.op_require_is_request_relative(
+        request,
+      );
+      basePath = (isDenoDirPackage && !isRelative)
+        ? pathResolve(curPath, packageSpecifierSubPath(request))
+        : pathResolve(curPath, request);
+    }
     let filename;
 
     const rc = stat(basePath);
@@ -615,7 +621,9 @@ Module._resolveLookupPaths = function (request, parent) {
     return paths;
   }
 
-  if (parent?.filename && parent.filename.length > 0) {
+  if (
+    !usesLocalNodeModulesDir && parent?.filename && parent.filename.length > 0
+  ) {
     const denoDirPath = ops.op_require_resolve_deno_dir(
       request,
       parent.filename,

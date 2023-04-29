@@ -773,22 +773,16 @@ fn op_dispatch_exception(
 ) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  state
-    .dispatched_exceptions
-    .push_front(v8::Global::new(scope, exception.v8_value));
-  // Only terminate execution if there are no inspector sessions.
-  if state.inspector.is_none() {
-    scope.terminate_execution();
-    return;
+  if let Some(inspector) = &state.inspector {
+    let inspector = inspector.borrow();
+    inspector.exception_thrown(scope, exception.v8_value, false);
+    // This indicates that the op is being called from a REPL. Skip termination.
+    if inspector.is_dispatching_message() {
+      return;
+    }
   }
-
-  // FIXME(bartlomieju): I'm not sure if this assumption is valid... Maybe when
-  // inspector is polling on pause?
-  if state.inspector().try_borrow().is_ok() {
-    scope.terminate_execution();
-  } else {
-    // If the inspector is borrowed at this time, assume an inspector is active.
-  }
+  state.dispatched_exception = Some(v8::Global::new(scope, exception.v8_value));
+  scope.terminate_execution();
 }
 
 #[op(v8)]

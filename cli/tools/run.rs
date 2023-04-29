@@ -13,7 +13,6 @@ use crate::args::Flags;
 use crate::file_fetcher::File;
 use crate::proc_state::ProcState;
 use crate::util;
-use crate::worker::create_main_worker;
 
 pub async fn run_script(flags: Flags) -> Result<i32, AnyError> {
   if !flags.has_permission() && flags.has_permission_in_argv() {
@@ -48,7 +47,10 @@ To grant permissions, set them before the script argument. For example:
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);
-  let mut worker = create_main_worker(&ps, main_module, permissions).await?;
+  let worker_factory = ps.into_cli_main_worker_factory();
+  let mut worker = worker_factory
+    .create_main_worker(main_module, permissions)
+    .await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -58,15 +60,9 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::from_flags(flags).await?;
   let main_module = ps.options.resolve_main_module()?;
 
-  let mut worker = create_main_worker(
-    &ps,
-    main_module.clone(),
-    PermissionsContainer::new(Permissions::from_options(
-      &ps.options.permissions_options(),
-    )?),
-  )
-  .await?;
-
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &ps.options.permissions_options(),
+  )?);
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
   // Create a dummy source file.
@@ -75,13 +71,17 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     maybe_types: None,
     media_type: MediaType::TypeScript,
     source: String::from_utf8(source)?.into(),
-    specifier: main_module,
+    specifier: main_module.clone(),
     maybe_headers: None,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
   ps.file_fetcher.insert_cached(source_file);
 
+  let worker_factory = ps.into_cli_main_worker_factory();
+  let mut worker = worker_factory
+    .create_main_worker(main_module, permissions)
+    .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
 }
@@ -102,7 +102,10 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
       let permissions = PermissionsContainer::new(Permissions::from_options(
         &ps.options.permissions_options(),
       )?);
-      let worker = create_main_worker(&ps, main_module, permissions).await?;
+      let worker_factory = ps.into_cli_main_worker_factory();
+      let worker = worker_factory
+        .create_main_worker(main_module, permissions)
+        .await?;
       worker.run_for_watcher().await?;
 
       Ok(())
@@ -132,8 +135,6 @@ pub async fn eval_command(
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);
-  let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions).await?;
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -147,13 +148,18 @@ pub async fn eval_command(
     maybe_types: None,
     media_type: MediaType::Unknown,
     source: String::from_utf8(source_code)?.into(),
-    specifier: main_module,
+    specifier: main_module.clone(),
     maybe_headers: None,
   };
 
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler.
   ps.file_fetcher.insert_cached(file);
+
+  let mut worker = ps
+    .into_cli_main_worker_factory()
+    .create_main_worker(main_module, permissions)
+    .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
 }

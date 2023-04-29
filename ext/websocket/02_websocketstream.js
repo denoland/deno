@@ -207,17 +207,11 @@ class WebSocketStream {
             const writable = new WritableStream({
               write: async (chunk) => {
                 if (typeof chunk === "string") {
-                  await core.opAsync("op_ws_send", this[_rid], {
-                    kind: "text",
-                    value: chunk,
-                  });
+                  await core.opAsync2("op_ws_send_text", this[_rid], chunk);
                 } else if (
                   ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
                 ) {
-                  await core.opAsync("op_ws_send", this[_rid], {
-                    kind: "binary",
-                    value: chunk,
-                  }, chunk);
+                  await core.opAsync2("op_ws_send_binary", this[_rid], chunk);
                 } else {
                   throw new TypeError(
                     "A chunk may only be either a string or an Uint8Array",
@@ -242,7 +236,7 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
-              const { 0: kind, 1: value } = await core.opAsync(
+              const { 0: kind, 1: value } = await core.opAsync2(
                 "op_ws_next_event",
                 this[_rid],
               );
@@ -255,7 +249,11 @@ class WebSocketStream {
                   controller.enqueue(value);
                   break;
                 }
-                case 5: {
+                case 2: {
+                  /* pong */
+                  break;
+                }
+                case 3: {
                   /* error */
                   const err = new Error(value);
                   this[_closed].reject(err);
@@ -263,19 +261,7 @@ class WebSocketStream {
                   core.tryClose(this[_rid]);
                   break;
                 }
-                case 3: {
-                  /* ping */
-                  await core.opAsync("op_ws_send", this[_rid], {
-                    kind: "pong",
-                  });
-                  await pull(controller);
-                  break;
-                }
-                case 2: {
-                  /* pong */
-                  break;
-                }
-                case 6: {
+                case 4: {
                   /* closed */
                   this[_closed].resolve(undefined);
                   core.tryClose(this[_rid]);

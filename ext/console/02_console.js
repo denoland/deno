@@ -58,7 +58,6 @@ const {
   ArrayPrototypeUnshift,
   DatePrototypeGetTime,
   DatePrototypeToISOString,
-  SafeSet,
   SafeRegExp,
   SetPrototype,
   Symbol,
@@ -3305,7 +3304,7 @@ class Console {
     const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
     if (isSet) {
-      resultData = [...new SafeSet(data)];
+      resultData = [...new SafeSetIterator(data)];
     } else if (isMap) {
       let idx = 0;
       resultData = {};

@@ -56,8 +56,6 @@ impl op_void_async {
             &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
                 as *const deno_core::_ops::OpCtx)
         };
-        let op_id = ctx.id;
-        let realm_idx = ctx.realm_idx;
         let promise_id = args.get(0);
         let promise_id = deno_core::v8::Local::<
             deno_core::v8::Integer,
@@ -74,25 +72,13 @@ impl op_void_async {
                 return;
             }
         };
-        let get_class = {
-            let state = ::std::cell::RefCell::borrow(&ctx.state);
-            state.tracker.track_async(op_id);
-            state.get_error_class_fn
-        };
+        let fut = deno_core::_ops::map_async_op2(ctx, Self::call());
         let maybe_response = deno_core::_ops::queue_async_op(
             ctx,
             scope,
             false,
-            async move {
-                let result = Self::call().await;
-                let result = Ok(result);
-                (
-                    realm_idx,
-                    promise_id,
-                    op_id,
-                    deno_core::_ops::to_op_result(get_class, result),
-                )
-            },
+            promise_id,
+            fut,
         );
         if let Some(response) = maybe_response {
             rv.set(response);
@@ -116,16 +102,10 @@ fn op_void_async_fast_fn<'scope>(
     };
     let op_state = __ctx.state.clone();
     let result = op_void_async::call();
-    let __op_id = __ctx.id;
-    let __state = ::std::cell::RefCell::borrow(&__ctx.state);
-    __state.tracker.track_async(__op_id);
-    let realm_idx = __ctx.realm_idx;
     let result = _ops::queue_fast_async_op(
         __ctx,
-        async move {
-            let result = result.await;
-            (realm_idx, __promise_id, __op_id, _ops::OpResult::Ok(result.into()))
-        },
+        __promise_id,
+        async move { Ok(result.await) },
     );
     result
 }

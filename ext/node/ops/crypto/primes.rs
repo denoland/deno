@@ -8,7 +8,7 @@ use num_traits::Zero;
 use rand::Rng;
 use std::ops::Deref;
 
-pub struct Prime(num_bigint_dig::BigUint);
+pub struct Prime(pub num_bigint_dig::BigUint);
 
 impl Prime {
   pub fn generate(n: usize) -> Self {

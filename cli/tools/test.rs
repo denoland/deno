@@ -17,7 +17,7 @@ use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
 use crate::util::path::mapped_specifier_for_tsc;
-use crate::worker::create_custom_worker;
+use crate::worker::CliMainWorkerFactory;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -336,10 +336,18 @@ pub struct TestSummary {
 }
 
 #[derive(Debug, Clone)]
-struct TestSpecifierOptions {
+struct TestSpecifiersOptions {
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
-  filter: TestFilter,
+  log_level: Option<log::Level>,
+  specifier: TestSpecifierOptions,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestSpecifierOptions {
+  pub shuffle: Option<u64>,
+  pub filter: TestFilter,
+  pub trace_ops: bool,
 }
 
 impl TestSummary {
@@ -907,30 +915,30 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 pub async fn test_specifier(
-  ps: &ProcState,
+  worker_factory: &CliMainWorkerFactory,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mut sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
-  filter: TestFilter,
+  options: &TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
   let stdout = StdioPipe::File(sender.stdout());
   let stderr = StdioPipe::File(sender.stderr());
-  let mut worker = create_custom_worker(
-    ps,
-    specifier.clone(),
-    PermissionsContainer::new(permissions),
-    vec![ops::testing::deno_test::init_ops(sender.clone())],
-    Stdio {
-      stdin: StdioPipe::Inherit,
-      stdout,
-      stderr,
-    },
-  )
-  .await?;
+  let mut worker = worker_factory
+    .create_custom_worker(
+      specifier.clone(),
+      PermissionsContainer::new(permissions),
+      vec![ops::testing::deno_test::init_ops(sender.clone())],
+      Stdio {
+        stdin: StdioPipe::Inherit,
+        stdout,
+        stderr,
+      },
+    )
+    .await?;
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
@@ -951,7 +959,7 @@ pub async fn test_specifier(
   }
 
   let mut worker = worker.into_main_worker();
-  if ps.options.trace_ops() {
+  if options.trace_ops {
     worker.js_runtime.execute_script_static(
       located_script_name!(),
       "Deno[Deno.internal].core.enableOpCallTracing();",
@@ -971,9 +979,9 @@ pub async fn test_specifier(
   let tests = if used_only { only } else { no_only };
   let mut tests = tests
     .into_iter()
-    .filter(|(d, _)| filter.includes(&d.name))
+    .filter(|(d, _)| options.filter.includes(&d.name))
     .collect::<Vec<_>>();
-  if let Some(seed) = ps.options.shuffle_tests() {
+  if let Some(seed) = options.shuffle {
     tests.shuffle(&mut SmallRng::seed_from_u64(seed));
   }
   sender.send(TestEvent::Plan(TestPlan {
@@ -997,14 +1005,7 @@ pub async fn test_specifier(
     }
     sender.send(TestEvent::Wait(desc.id))?;
     let earlier = SystemTime::now();
-    let promise = {
-      let scope = &mut worker.js_runtime.handle_scope();
-      let cb = function.open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    let result = match worker.js_runtime.resolve_value(promise).await {
+    let result = match worker.js_runtime.call_and_await(&function).await {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
@@ -1230,7 +1231,6 @@ async fn fetch_inline_files(
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
   ps: &ProcState,
-  permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
@@ -1265,7 +1265,6 @@ pub async fn check_specifiers(
         false,
         lib,
         PermissionsContainer::new(Permissions::allow_all()),
-        PermissionsContainer::new(permissions.clone()),
       )
       .await?;
   }
@@ -1287,7 +1286,6 @@ pub async fn check_specifiers(
       false,
       lib,
       PermissionsContainer::allow_all(),
-      PermissionsContainer::new(permissions),
     )
     .await?;
 
@@ -1298,13 +1296,12 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  ps: &ProcState,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
-  options: TestSpecifierOptions,
+  options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.options.log_level();
-  let specifiers = if let Some(seed) = ps.options.shuffle_tests() {
+  let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers = specifiers;
     specifiers.sort();
@@ -1326,19 +1323,19 @@ async fn test_specifiers(
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
-    let ps = ps.clone();
+    let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
-    let options = options.clone();
     let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
+    let specifier_options = options.specifier.clone();
     tokio::task::spawn_blocking(move || {
       run_local(test_specifier(
-        &ps,
+        &worker_factory,
         permissions,
         specifier,
         sender.clone(),
         fail_fast_tracker,
-        options.filter,
+        &specifier_options,
       ))
     })
   });
@@ -1349,7 +1346,7 @@ async fn test_specifiers(
 
   let mut reporter = Box::new(PrettyTestReporter::new(
     concurrent_jobs.get() > 1,
-    log_level != Some(Level::Error),
+    options.log_level != Some(Level::Error),
   ));
 
   let handler = {
@@ -1636,6 +1633,7 @@ pub async fn run_tests(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
+  let log_level = ps.options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
@@ -1648,15 +1646,16 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
-    .await?;
+  check_specifiers(&ps, specifiers_with_mode.clone()).await?;
 
   if test_options.no_run {
     return Ok(());
   }
 
+  let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
+
   test_specifiers(
-    &ps,
+    worker_factory,
     &permissions,
     specifiers_with_mode
       .into_iter()
@@ -1665,10 +1664,15 @@ pub async fn run_tests(
         _ => Some(s),
       })
       .collect(),
-    TestSpecifierOptions {
+    TestSpecifiersOptions {
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
-      filter: TestFilter::from_flag(&test_options.filter),
+      log_level,
+      specifier: TestSpecifierOptions {
+        filter: TestFilter::from_flag(&test_options.filter),
+        shuffle: test_options.shuffle,
+        trace_ops: test_options.trace_ops,
+      },
     },
   )
   .await?;
@@ -1687,6 +1691,7 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
+  let log_level = ps.options.log_level();
 
   let ps = RefCell::new(ps);
 
@@ -1821,15 +1826,16 @@ pub async fn run_tests_with_watch(
       .filter(|(specifier, _)| modules_to_reload.contains(specifier))
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
-        .await?;
+      check_specifiers(&ps, specifiers_with_mode.clone()).await?;
 
       if test_options.no_run {
         return Ok(());
       }
 
+      let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
+
       test_specifiers(
-        &ps,
+        worker_factory,
         permissions,
         specifiers_with_mode
           .into_iter()
@@ -1838,10 +1844,15 @@ pub async fn run_tests_with_watch(
             _ => Some(s),
           })
           .collect(),
-        TestSpecifierOptions {
+        TestSpecifiersOptions {
           concurrent_jobs: test_options.concurrent_jobs,
           fail_fast: test_options.fail_fast,
-          filter: TestFilter::from_flag(&test_options.filter),
+          log_level,
+          specifier: TestSpecifierOptions {
+            filter: TestFilter::from_flag(&test_options.filter),
+            shuffle: test_options.shuffle,
+            trace_ops: test_options.trace_ops,
+          },
         },
       )
       .await?;

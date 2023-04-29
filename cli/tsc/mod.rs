@@ -4,7 +4,6 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
-use crate::node::CliNodeResolver;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -35,7 +34,7 @@ use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::RealFs;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
@@ -307,7 +306,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: u64,
-  pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -331,7 +330,7 @@ struct State {
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
-  maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  maybe_node_resolver: Option<Arc<NodeResolver>>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
@@ -341,7 +340,7 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: u64,
-    maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+    maybe_node_resolver: Option<Arc<NodeResolver>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
@@ -637,10 +636,10 @@ fn resolve_graph_specifier_types(
     }
     Some(Module::Npm(module)) => {
       if let Some(node_resolver) = &state.maybe_node_resolver {
-        let maybe_resolution = node_resolver.resolve_npm_reference::<RealFs>(
+        let maybe_resolution = node_resolver.resolve_npm_reference(
           &module.nv_reference,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
@@ -655,9 +654,7 @@ fn resolve_graph_specifier_types(
         let specifier =
           node::resolve_specifier_into_node_modules(&module.specifier);
         NodeResolution::into_specifier_and_media_type(
-          node_resolver
-            .url_to_node_resolution::<RealFs>(specifier)
-            .ok(),
+          node_resolver.url_to_node_resolution(specifier).ok(),
         )
       }))
     }
@@ -678,11 +675,11 @@ fn resolve_non_graph_specifier_types(
     // we're in an npm package, so use node resolution
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       node_resolver
-        .resolve::<RealFs>(
+        .resolve(
           specifier,
           referrer,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )
         .ok()
         .flatten(),
@@ -692,10 +689,10 @@ fn resolve_non_graph_specifier_types(
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let maybe_resolution = node_resolver.resolve_npm_req_reference::<RealFs>(
+    let maybe_resolution = node_resolver.resolve_npm_req_reference(
       &npm_ref,
       NodeResolutionMode::Types,
-      &mut PermissionsContainer::allow_all(),
+      &PermissionsContainer::allow_all(),
     )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,

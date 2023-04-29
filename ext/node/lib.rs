@@ -21,18 +21,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub mod analyze;
-mod crypto;
 pub mod errors;
-mod idna;
 mod ops;
 mod package_json;
 mod path;
 mod polyfill;
 mod resolution;
-mod resolver;
-mod v8;
-mod winerror;
-mod zlib;
 
 pub use package_json::PackageJson;
 pub use path::PathClean;
@@ -40,32 +34,23 @@ pub use polyfill::is_builtin_node_module;
 pub use polyfill::resolve_builtin_node_module;
 pub use polyfill::NodeModulePolyfill;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
-pub use resolution::get_closest_package_json;
-pub use resolution::get_package_scope_config;
-pub use resolution::legacy_main_resolve;
-pub use resolution::package_exports_resolve;
-pub use resolution::package_imports_resolve;
-pub use resolution::package_resolve;
-pub use resolution::path_to_declaration_path;
 pub use resolution::NodeModuleKind;
+pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
-pub use resolution::DEFAULT_CONDITIONS;
-pub use resolver::NodeResolution;
-pub use resolver::NodeResolver;
+pub use resolution::NodeResolver;
 
 pub trait NodeEnv {
   type P: NodePermissions;
-  type Fs: NodeFs;
 }
 
 pub trait NodePermissions {
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+  fn check_read(&self, path: &Path) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
-  fn check_read(&mut self, _path: &Path) -> Result<(), AnyError> {
+  fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -76,24 +61,26 @@ pub struct NodeFsMetadata {
   pub is_dir: bool,
 }
 
-pub trait NodeFs {
-  fn current_dir() -> io::Result<PathBuf>;
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata>;
-  fn is_file<P: AsRef<Path>>(path: P) -> bool;
-  fn is_dir<P: AsRef<Path>>(path: P) -> bool;
-  fn exists<P: AsRef<Path>>(path: P) -> bool;
-  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String>;
-  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf>;
+pub trait NodeFs: std::fmt::Debug + Send + Sync {
+  fn current_dir(&self) -> io::Result<PathBuf>;
+  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata>;
+  fn is_file(&self, path: &Path) -> bool;
+  fn is_dir(&self, path: &Path) -> bool;
+  fn exists(&self, path: &Path) -> bool;
+  fn read_to_string(&self, path: &Path) -> io::Result<String>;
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
 
+#[derive(Debug)]
 pub struct RealFs;
+
 impl NodeFs for RealFs {
-  fn current_dir() -> io::Result<PathBuf> {
+  fn current_dir(&self) -> io::Result<PathBuf> {
     #[allow(clippy::disallowed_methods)]
     std::env::current_dir()
   }
 
-  fn metadata<P: AsRef<Path>>(path: P) -> io::Result<NodeFsMetadata> {
+  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata> {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).map(|metadata| {
       // on most systems, calling is_file() and is_dir() is cheap
@@ -105,35 +92,35 @@ impl NodeFs for RealFs {
     })
   }
 
-  fn exists<P: AsRef<Path>>(path: P) -> bool {
+  fn exists(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).is_ok()
   }
 
-  fn is_file<P: AsRef<Path>>(path: P) -> bool {
+  fn is_file(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path)
       .map(|m| m.is_file())
       .unwrap_or(false)
   }
 
-  fn is_dir<P: AsRef<Path>>(path: P) -> bool {
+  fn is_dir(&self, path: &Path) -> bool {
     #[allow(clippy::disallowed_methods)]
     std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
   }
 
-  fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+  fn read_to_string(&self, path: &Path) -> io::Result<String> {
     #[allow(clippy::disallowed_methods)]
     std::fs::read_to_string(path)
   }
 
-  fn canonicalize<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
     #[allow(clippy::disallowed_methods)]
-    std::path::Path::canonicalize(path.as_ref())
+    std::path::Path::canonicalize(path)
   }
 }
 
-pub trait NpmResolver {
+pub trait NpmResolver: std::fmt::Debug + Send + Sync {
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -177,71 +164,12 @@ pub trait NpmResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
 
-impl<T: NpmResolver + ?Sized> NpmResolver for Arc<T> {
-  fn resolve_package_folder_from_package(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_package(specifier, referrer, mode)
-  }
-
-  fn resolve_package_folder_from_path(
-    &self,
-    path: &Path,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_path(path)
-  }
-
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    pkg_nv: &NpmPackageNv,
-  ) -> Result<PathBuf, AnyError> {
-    (**self).resolve_package_folder_from_deno_module(pkg_nv)
-  }
-
-  fn resolve_pkg_id_from_pkg_req(
-    &self,
-    req: &NpmPackageReq,
-  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
-    (**self).resolve_pkg_id_from_pkg_req(req)
-  }
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    (**self).resolve_nv_ref_from_pkg_req_ref(req_ref)
-  }
-
-  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    (**self).in_npm_package(specifier)
-  }
-
-  fn ensure_read_permission(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &Path,
-  ) -> Result<(), AnyError> {
-    (**self).ensure_read_permission(permissions, path)
-  }
-}
-
-pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
-  let now = std::time::SystemTime::now();
-  let seconds = now
-    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-    .unwrap()
-    .as_secs();
-  // use a changing variable name to make it hard to depend on this
-  format!("__DENO_NODE_GLOBAL_THIS_{seconds}__")
-});
+pub const NODE_GLOBAL_THIS_NAME: &str = env!("NODE_GLOBAL_THIS_NAME");
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
@@ -266,100 +194,104 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [Env: NodeEnv],
   ops = [
-    crypto::op_node_create_decipheriv,
-    crypto::op_node_cipheriv_encrypt,
-    crypto::op_node_cipheriv_final,
-    crypto::op_node_create_cipheriv,
-    crypto::op_node_create_hash,
-    crypto::op_node_decipheriv_decrypt,
-    crypto::op_node_decipheriv_final,
-    crypto::op_node_hash_update,
-    crypto::op_node_hash_update_str,
-    crypto::op_node_hash_digest,
-    crypto::op_node_hash_digest_hex,
-    crypto::op_node_hash_clone,
-    crypto::op_node_private_encrypt,
-    crypto::op_node_private_decrypt,
-    crypto::op_node_public_encrypt,
-    crypto::op_node_check_prime,
-    crypto::op_node_check_prime_async,
-    crypto::op_node_check_prime_bytes,
-    crypto::op_node_check_prime_bytes_async,
-    crypto::op_node_pbkdf2,
-    crypto::op_node_pbkdf2_async,
-    crypto::op_node_hkdf,
-    crypto::op_node_hkdf_async,
-    crypto::op_node_generate_secret,
-    crypto::op_node_generate_secret_async,
-    crypto::op_node_sign,
-    crypto::op_node_generate_rsa,
-    crypto::op_node_generate_rsa_async,
-    crypto::op_node_dsa_generate,
-    crypto::op_node_dsa_generate_async,
-    crypto::op_node_ec_generate,
-    crypto::op_node_ec_generate_async,
-    crypto::op_node_ed25519_generate,
-    crypto::op_node_ed25519_generate_async,
-    crypto::op_node_x25519_generate,
-    crypto::op_node_x25519_generate_async,
-    crypto::op_node_dh_generate_group,
-    crypto::op_node_dh_generate_group_async,
-    crypto::op_node_dh_generate,
-    crypto::op_node_dh_generate_async,
-    crypto::op_node_verify,
-    crypto::op_node_random_int,
-    crypto::op_node_scrypt_sync,
-    crypto::op_node_scrypt_async,
-    crypto::x509::op_node_x509_parse,
-    crypto::x509::op_node_x509_ca,
-    crypto::x509::op_node_x509_check_email,
-    crypto::x509::op_node_x509_fingerprint,
-    crypto::x509::op_node_x509_fingerprint256,
-    crypto::x509::op_node_x509_fingerprint512,
-    crypto::x509::op_node_x509_get_issuer,
-    crypto::x509::op_node_x509_get_subject,
-    crypto::x509::op_node_x509_get_valid_from,
-    crypto::x509::op_node_x509_get_valid_to,
-    crypto::x509::op_node_x509_get_serial_number,
-    crypto::x509::op_node_x509_key_usage,
-    winerror::op_node_sys_to_uv_error,
-    v8::op_v8_cached_data_version_tag,
-    v8::op_v8_get_heap_statistics,
-    idna::op_node_idna_domain_to_ascii,
-    idna::op_node_idna_domain_to_unicode,
-    idna::op_node_idna_punycode_decode,
-    idna::op_node_idna_punycode_encode,
-    zlib::op_zlib_new,
-    zlib::op_zlib_close,
-    zlib::op_zlib_close_if_pending,
-    zlib::op_zlib_write,
-    zlib::op_zlib_write_async,
-    zlib::op_zlib_init,
-    zlib::op_zlib_reset,
+    ops::crypto::op_node_create_decipheriv,
+    ops::crypto::op_node_cipheriv_encrypt,
+    ops::crypto::op_node_cipheriv_final,
+    ops::crypto::op_node_create_cipheriv,
+    ops::crypto::op_node_create_hash,
+    ops::crypto::op_node_decipheriv_decrypt,
+    ops::crypto::op_node_decipheriv_final,
+    ops::crypto::op_node_hash_update,
+    ops::crypto::op_node_hash_update_str,
+    ops::crypto::op_node_hash_digest,
+    ops::crypto::op_node_hash_digest_hex,
+    ops::crypto::op_node_hash_clone,
+    ops::crypto::op_node_private_encrypt,
+    ops::crypto::op_node_private_decrypt,
+    ops::crypto::op_node_public_encrypt,
+    ops::crypto::op_node_check_prime,
+    ops::crypto::op_node_check_prime_async,
+    ops::crypto::op_node_check_prime_bytes,
+    ops::crypto::op_node_check_prime_bytes_async,
+    ops::crypto::op_node_gen_prime,
+    ops::crypto::op_node_gen_prime_async,
+    ops::crypto::op_node_pbkdf2,
+    ops::crypto::op_node_pbkdf2_async,
+    ops::crypto::op_node_hkdf,
+    ops::crypto::op_node_hkdf_async,
+    ops::crypto::op_node_generate_secret,
+    ops::crypto::op_node_generate_secret_async,
+    ops::crypto::op_node_sign,
+    ops::crypto::op_node_generate_rsa,
+    ops::crypto::op_node_generate_rsa_async,
+    ops::crypto::op_node_dsa_generate,
+    ops::crypto::op_node_dsa_generate_async,
+    ops::crypto::op_node_ec_generate,
+    ops::crypto::op_node_ec_generate_async,
+    ops::crypto::op_node_ed25519_generate,
+    ops::crypto::op_node_ed25519_generate_async,
+    ops::crypto::op_node_x25519_generate,
+    ops::crypto::op_node_x25519_generate_async,
+    ops::crypto::op_node_dh_generate_group,
+    ops::crypto::op_node_dh_generate_group_async,
+    ops::crypto::op_node_dh_generate,
+    ops::crypto::op_node_dh_generate_async,
+    ops::crypto::op_node_verify,
+    ops::crypto::op_node_random_int,
+    ops::crypto::op_node_scrypt_sync,
+    ops::crypto::op_node_scrypt_async,
+    ops::crypto::op_node_ecdh_generate_keys,
+    ops::crypto::op_node_ecdh_compute_secret,
+    ops::crypto::op_node_ecdh_compute_public_key,
+    ops::crypto::x509::op_node_x509_parse,
+    ops::crypto::x509::op_node_x509_ca,
+    ops::crypto::x509::op_node_x509_check_email,
+    ops::crypto::x509::op_node_x509_fingerprint,
+    ops::crypto::x509::op_node_x509_fingerprint256,
+    ops::crypto::x509::op_node_x509_fingerprint512,
+    ops::crypto::x509::op_node_x509_get_issuer,
+    ops::crypto::x509::op_node_x509_get_subject,
+    ops::crypto::x509::op_node_x509_get_valid_from,
+    ops::crypto::x509::op_node_x509_get_valid_to,
+    ops::crypto::x509::op_node_x509_get_serial_number,
+    ops::crypto::x509::op_node_x509_key_usage,
+    ops::winerror::op_node_sys_to_uv_error,
+    ops::v8::op_v8_cached_data_version_tag,
+    ops::v8::op_v8_get_heap_statistics,
+    ops::idna::op_node_idna_domain_to_ascii,
+    ops::idna::op_node_idna_domain_to_unicode,
+    ops::idna::op_node_idna_punycode_decode,
+    ops::idna::op_node_idna_punycode_encode,
+    ops::zlib::op_zlib_new,
+    ops::zlib::op_zlib_close,
+    ops::zlib::op_zlib_close_if_pending,
+    ops::zlib::op_zlib_write,
+    ops::zlib::op_zlib_write_async,
+    ops::zlib::op_zlib_init,
+    ops::zlib::op_zlib_reset,
     op_node_build_os,
-
-    ops::op_require_init_paths,
-    ops::op_require_node_module_paths<Env>,
-    ops::op_require_proxy_path,
-    ops::op_require_is_deno_dir_package,
-    ops::op_require_resolve_deno_dir,
-    ops::op_require_is_request_relative,
-    ops::op_require_resolve_lookup_paths,
-    ops::op_require_try_self_parent_path<Env>,
-    ops::op_require_try_self<Env>,
-    ops::op_require_real_path<Env>,
-    ops::op_require_path_is_absolute,
-    ops::op_require_path_dirname,
-    ops::op_require_stat<Env>,
-    ops::op_require_path_resolve,
-    ops::op_require_path_basename,
-    ops::op_require_read_file<Env>,
-    ops::op_require_as_file_path,
-    ops::op_require_resolve_exports<Env>,
-    ops::op_require_read_closest_package_json<Env>,
-    ops::op_require_read_package_scope<Env>,
-    ops::op_require_package_imports_resolve<Env>,
-    ops::op_require_break_on_next_statement,
+    ops::require::op_require_init_paths,
+    ops::require::op_require_node_module_paths<Env>,
+    ops::require::op_require_proxy_path,
+    ops::require::op_require_is_deno_dir_package,
+    ops::require::op_require_resolve_deno_dir,
+    ops::require::op_require_is_request_relative,
+    ops::require::op_require_resolve_lookup_paths,
+    ops::require::op_require_try_self_parent_path<Env>,
+    ops::require::op_require_try_self<Env>,
+    ops::require::op_require_real_path<Env>,
+    ops::require::op_require_path_is_absolute,
+    ops::require::op_require_path_dirname,
+    ops::require::op_require_stat<Env>,
+    ops::require::op_require_path_resolve,
+    ops::require::op_require_path_basename,
+    ops::require::op_require_read_file<Env>,
+    ops::require::op_require_as_file_path,
+    ops::require::op_require_resolve_exports<Env>,
+    ops::require::op_require_read_closest_package_json<Env>,
+    ops::require::op_require_read_package_scope<Env>,
+    ops::require::op_require_package_imports_resolve<Env>,
+    ops::require::op_require_break_on_next_statement,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -587,11 +519,18 @@ deno_core::extension!(deno_node,
     "zlib.ts",
   ],
   options = {
-    maybe_npm_resolver: Option<Rc<dyn NpmResolver>>,
+    maybe_npm_resolver: Option<Arc<dyn NpmResolver>>,
+    fs: Option<Arc<dyn NodeFs>>,
   },
   state = |state, options| {
+    let fs = options.fs.unwrap_or_else(|| Arc::new(RealFs));
+    state.put(fs.clone());
     if let Some(npm_resolver) = options.maybe_npm_resolver {
-      state.put(npm_resolver);
+      state.put(npm_resolver.clone());
+      state.put(Rc::new(NodeResolver::new(
+        fs,
+        npm_resolver,
+      )))
     }
   },
 );
@@ -599,10 +538,10 @@ deno_core::extension!(deno_node,
 pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<String>,
+  maybe_binary_command_name: Option<&str>,
 ) -> Result<(), AnyError> {
   let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name.as_str())?
+    serde_json::to_string(binary_command_name)?
   } else {
     "undefined".to_string()
   };
@@ -614,9 +553,7 @@ pub fn initialize_runtime(
         argv0
       );
     }})('{}', {}, {});"#,
-    NODE_GLOBAL_THIS_NAME.as_str(),
-    uses_local_node_modules_dir,
-    argv0
+    NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
   );
 
   js_runtime.execute_script(located_script_name!(), source_code.into())?;

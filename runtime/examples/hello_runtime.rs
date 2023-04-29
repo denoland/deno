@@ -43,6 +43,7 @@ async fn main() -> Result<(), AnyError> {
     should_break_on_first_statement: false,
     should_wait_for_inspector_session: false,
     module_loader,
+    node_fs: None,
     npm_resolver: None,
     get_error_class_fn: Some(&get_error_class_name),
     cache_storage_dir: None,

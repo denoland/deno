@@ -13,16 +13,17 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
+use crate::resolution;
 use crate::NodeEnv;
 use crate::NodeFs;
-
-use super::resolution;
-use super::NodeModuleKind;
-use super::NodePermissions;
-use super::NodeResolutionMode;
-use super::NpmResolver;
-use super::PackageJson;
+use crate::NodeModuleKind;
+use crate::NodePermissions;
+use crate::NodeResolutionMode;
+use crate::NodeResolver;
+use crate::NpmResolver;
+use crate::PackageJson;
 
 fn ensure_read_permission<P>(
   state: &mut OpState,
@@ -31,11 +32,8 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = {
-    let resolver = state.borrow::<Rc<dyn NpmResolver>>();
-    resolver.clone()
-  };
-  let permissions = state.borrow_mut::<P>();
+  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let permissions = state.borrow::<P>();
   resolver.ensure_read_permission(permissions, file_path)
 }
 
@@ -97,10 +95,11 @@ pub fn op_require_node_module_paths<Env>(
 where
   Env: NodeEnv + 'static,
 {
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(
     &from,
-    &(Env::Fs::current_dir()).context("Unable to get CWD")?,
+    &(fs.current_dir()).context("Unable to get CWD")?,
   )
   .unwrap()
   .to_file_path()
@@ -192,7 +191,7 @@ fn op_require_resolve_deno_dir(
   request: String,
   parent_filename: String,
 ) -> Option<String> {
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>();
+  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
   resolver
     .resolve_package_folder_from_package(
       &request,
@@ -205,7 +204,7 @@ fn op_require_resolve_deno_dir(
 
 #[op]
 fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>();
+  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
   resolver.in_npm_package_at_path(&PathBuf::from(path))
 }
 
@@ -265,7 +264,8 @@ where
 {
   let path = PathBuf::from(path);
   ensure_read_permission::<Env::P>(state, &path)?;
-  if let Ok(metadata) = Env::Fs::metadata(&path) {
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
+  if let Ok(metadata) = fs.metadata(&path) {
     if metadata.is_file {
       return Ok(0);
     } else {
@@ -286,7 +286,8 @@ where
 {
   let path = PathBuf::from(request);
   ensure_read_permission::<Env::P>(state, &path)?;
-  let mut canonicalized_path = Env::Fs::canonicalize(&path)?;
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
+  let mut canonicalized_path = fs.canonicalize(&path)?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
       canonicalized_path
@@ -354,7 +355,8 @@ where
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
-      if let Ok(cwd) = Env::Fs::current_dir() {
+      let fs = state.borrow::<Arc<dyn NodeFs>>();
+      if let Ok(cwd) = fs.current_dir() {
         ensure_read_permission::<Env::P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().to_string()));
       }
@@ -376,14 +378,14 @@ where
     return Ok(None);
   }
 
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
-  let pkg = resolution::get_package_scope_config::<Env::Fs>(
-    &Url::from_file_path(parent_path.unwrap()).unwrap(),
-    &*resolver,
-    permissions,
-  )
-  .ok();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
+  let pkg = node_resolver
+    .get_package_scope_config(
+      &Url::from_file_path(parent_path.unwrap()).unwrap(),
+      permissions,
+    )
+    .ok();
   if pkg.is_none() {
     return Ok(None);
   }
@@ -409,18 +411,18 @@ where
 
   let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
-    resolution::package_exports_resolve::<Env::Fs>(
-      &pkg.path,
-      expansion,
-      exports,
-      &referrer,
-      NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
-      &*resolver,
-      permissions,
-    )
-    .map(|r| Some(r.to_string_lossy().to_string()))
+    node_resolver
+      .package_exports_resolve(
+        &pkg.path,
+        expansion,
+        exports,
+        &referrer,
+        NodeModuleKind::Cjs,
+        resolution::REQUIRE_CONDITIONS,
+        NodeResolutionMode::Execution,
+        permissions,
+      )
+      .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
     Ok(None)
   }
@@ -436,7 +438,8 @@ where
 {
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<Env::P>(state, &file_path)?;
-  Ok(Env::Fs::read_to_string(file_path)?)
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
+  Ok(fs.read_to_string(&file_path)?)
 }
 
 #[op]
@@ -463,10 +466,12 @@ fn op_require_resolve_exports<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
+  let fs = state.borrow::<Arc<dyn NodeFs>>();
+  let npm_resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
 
-  let pkg_path = if resolver
+  let pkg_path = if npm_resolver
     .in_npm_package_at_path(&PathBuf::from(&modules_path))
     && !uses_local_node_modules_dir
   {
@@ -474,32 +479,31 @@ where
   } else {
     let orignal = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
-    if Env::Fs::is_dir(&mod_dir) {
+    if fs.is_dir(Path::new(&mod_dir)) {
       mod_dir
     } else {
       orignal
     }
   };
-  let pkg = PackageJson::load::<Env::Fs>(
-    &*resolver,
+  let pkg = node_resolver.load_package_json(
     permissions,
     PathBuf::from(&pkg_path).join("package.json"),
   )?;
 
   if let Some(exports) = &pkg.exports {
     let referrer = Url::from_file_path(parent_path).unwrap();
-    resolution::package_exports_resolve::<Env::Fs>(
-      &pkg.path,
-      format!(".{expansion}"),
-      exports,
-      &referrer,
-      NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
-      &*resolver,
-      permissions,
-    )
-    .map(|r| Some(r.to_string_lossy().to_string()))
+    node_resolver
+      .package_exports_resolve(
+        &pkg.path,
+        format!(".{expansion}"),
+        exports,
+        &referrer,
+        NodeModuleKind::Cjs,
+        resolution::REQUIRE_CONDITIONS,
+        NodeResolutionMode::Execution,
+        permissions,
+      )
+      .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
     Ok(None)
   }
@@ -517,11 +521,10 @@ where
     state,
     PathBuf::from(&filename).parent().unwrap(),
   )?;
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
-  resolution::get_closest_package_json::<Env::Fs>(
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
+  node_resolver.get_closest_package_json(
     &Url::from_file_path(filename).unwrap(),
-    &*resolver,
     permissions,
   )
 }
@@ -534,10 +537,12 @@ fn op_require_read_package_scope<Env>(
 where
   Env: NodeEnv + 'static,
 {
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
   let package_json_path = PathBuf::from(package_json_path);
-  PackageJson::load::<Env::Fs>(&*resolver, permissions, package_json_path).ok()
+  node_resolver
+    .load_package_json(permissions, package_json_path)
+    .ok()
 }
 
 #[op]
@@ -551,29 +556,24 @@ where
 {
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<Env::P>(state, &parent_path)?;
-  let resolver = state.borrow::<Rc<dyn NpmResolver>>().clone();
-  let permissions = state.borrow_mut::<Env::P>();
-  let pkg = PackageJson::load::<Env::Fs>(
-    &*resolver,
-    permissions,
-    parent_path.join("package.json"),
-  )?;
+  let node_resolver = state.borrow::<Rc<NodeResolver>>();
+  let permissions = state.borrow::<Env::P>();
+  let pkg = node_resolver
+    .load_package_json(permissions, parent_path.join("package.json"))?;
 
   if pkg.imports.is_some() {
     let referrer =
       deno_core::url::Url::from_file_path(&parent_filename).unwrap();
-    let r = resolution::package_imports_resolve::<Env::Fs>(
-      &request,
-      &referrer,
-      NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
-      &*resolver,
-      permissions,
-    )
-    .map(|r| Some(Url::from_file_path(r).unwrap().to_string()));
-    state.put(resolver);
-    r
+    node_resolver
+      .package_imports_resolve(
+        &request,
+        &referrer,
+        NodeModuleKind::Cjs,
+        resolution::REQUIRE_CONDITIONS,
+        NodeResolutionMode::Execution,
+        permissions,
+      )
+      .map(|r| Some(Url::from_file_path(r).unwrap().to_string()))
   } else {
     Ok(None)
   }
