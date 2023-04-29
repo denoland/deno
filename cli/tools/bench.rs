@@ -497,12 +497,7 @@ async fn bench_specifier(
     sender.send(BenchEvent::Result(desc.id, result))?;
   }
 
-  loop {
-    if !worker.dispatch_beforeunload_event(located_script_name!())? {
-      break;
-    }
-    worker.run_event_loop(false).await?;
-  }
+  worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
   Ok(())
 }
