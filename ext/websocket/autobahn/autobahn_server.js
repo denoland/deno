@@ -11,10 +11,10 @@ const { port } = parse(Deno.args, {
 const { serve } = Deno;
 
 // A message-based WebSocket echo server.
-serve((request) => {
+serve({ port }, (request) => {
   const { socket, response } = Deno.upgradeWebSocket(request);
   socket.onmessage = (event) => {
     socket.send(event.data);
   };
   return response;
-}, { port });
+});
