@@ -331,6 +331,16 @@ class Process extends EventEmitter {
     super();
   }
 
+  /** https://nodejs.org/api/process.html#processrelease */
+  get release() {
+    return {
+      name: "deno",
+      sourceUrl: `https://github.com/denoland/deno/archive/refs/tags/v${Deno.version.deno}.tar.gz`,
+      // Deno doesn't publish source header files so we'll reuse the sourceUrl
+      headersUrl: `https://github.com/denoland/deno/archive/refs/tags/v${Deno.version.deno}.tar.gz` 
+    }
+  }
+
   /** https://nodejs.org/api/process.html#process_process_arch */
   get arch() {
     if (!arch) {
