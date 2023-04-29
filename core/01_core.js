@@ -24,6 +24,7 @@
     RangeError,
     ReferenceError,
     ReflectHas,
+    ReflectApply,
     SafeArrayIterator,
     SafeMap,
     SafePromisePrototypeFinally,
@@ -305,7 +306,7 @@ for (let i = 0; i < 10; i++) {
   // This function is called once per async stub
   function asyncStub(opName, args) {
     setUpAsyncStub(opName);
-    return ops[opName].apply(undefined, args);
+    return ReflectApply(ops[opName], undefined, args);
   }
 
   function setUpAsyncStub(opName) {
