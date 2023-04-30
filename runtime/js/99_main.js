@@ -51,7 +51,7 @@ import {
   wrapConsole,
   setNoColor,
   getNoColor,
-} from "ext:deno_console/02_console.js";
+} from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
