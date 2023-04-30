@@ -614,6 +614,66 @@ fn op_get_proxy_details<'a>(
   Some((target.into(), handler.into()))
 }
 
+#[op(v8)]
+fn op_get_non_index_property_names<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  obj: serde_v8::Value<'a>,
+  filter: u32,
+) -> Option<serde_v8::Value<'a>> {
+  let obj = match v8::Local::<v8::Object>::try_from(obj.v8_value) {
+    Ok(proxy) => proxy,
+    Err(_) => return None,
+  };
+
+  let mut property_filter = v8::ALL_PROPERTIES;
+  if filter & 1 == 1 {
+    property_filter = property_filter | v8::ONLY_WRITABLE
+  }
+  if filter & 2 == 2 {
+    property_filter = property_filter | v8::ONLY_ENUMERABLE
+  }
+  if filter & 4 == 4 {
+    property_filter = property_filter | v8::ONLY_CONFIGURABLE
+  }
+  if filter & 8 == 8 {
+    property_filter = property_filter | v8::SKIP_STRINGS
+  }
+  if filter & 16 == 16 {
+    property_filter = property_filter | v8::SKIP_SYMBOLS
+  }
+
+  let maybe_names = obj.get_property_names(
+    scope,
+    v8::GetPropertyNamesArgs {
+      mode: v8::KeyCollectionMode::OwnOnly,
+      property_filter,
+      index_filter: v8::IndexFilter::SkipIndices,
+      ..Default::default()
+    },
+  );
+
+  if let Some(names) = maybe_names {
+    let names_val: v8::Local<v8::Value> = names.into();
+    Some(names_val.into())
+  } else {
+    None
+  }
+}
+
+#[op(v8)]
+fn op_get_constructor_name<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  obj: serde_v8::Value<'a>,
+) -> Option<String> {
+  let obj = match v8::Local::<v8::Object>::try_from(obj.v8_value) {
+    Ok(proxy) => proxy,
+    Err(_) => return None,
+  };
+
+  let name = obj.get_constructor_name().to_rust_string_lossy(scope);
+  Some(name)
+}
+
 // HeapStats stores values from a isolate.get_heap_statistics() call
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

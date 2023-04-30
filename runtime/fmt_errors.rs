@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 /// Compares all properties of JsError, except for JsError::cause.
 /// This function is used to detect that 2 JsError objects in a JsError::cause
 /// chain are identical, ie. there is a recursive cause.
-/// 02_console.js, which also detects recursive causes, can use JS object
+/// 01_console.js, which also detects recursive causes, can use JS object
 /// comparisons to compare errors. We don't have access to JS object identity in
 /// format_js_error().
 fn errors_are_equal_without_cause(a: &JsError, b: &JsError) -> bool {
