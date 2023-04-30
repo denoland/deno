@@ -44,13 +44,14 @@ import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
-import * as colors from "ext:deno_console/01_colors.js";
 import {
   getDefaultInspectOptions,
+  getNoColor,
   inspectArgs,
   quoteString,
+  setNoColor,
   wrapConsole,
-} from "ext:deno_console/02_console.js";
+} from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
@@ -220,11 +221,11 @@ function formatException(error) {
   } else if (typeof error == "string") {
     return `Uncaught ${
       inspectArgs([quoteString(error, getDefaultInspectOptions())], {
-        colors: !colors.getNoColor(),
+        colors: !getNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !colors.getNoColor() })}`;
+    return `Uncaught ${inspectArgs([error], { colors: !getNoColor() })}`;
   }
 }
 
@@ -313,7 +314,7 @@ function runtimeStart(
   );
   core.setBuildInfo(target);
   util.setLogDebug(debugFlag, source);
-  colors.setNoColor(noColor || !isTty);
+  setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }
