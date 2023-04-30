@@ -809,7 +809,12 @@ function createDictionaryConverter(name, ...dictionaries) {
           context ? ` (${context})` : ""
         }`;
         const converter = member.converter;
-        const idlMemberValue = converter(esMemberValue, prefix, memberContext, opts);
+        const idlMemberValue = converter(
+          esMemberValue,
+          prefix,
+          memberContext,
+          opts,
+        );
         idlDict[key] = idlMemberValue;
       } else if (member.required) {
         throw makeException(
