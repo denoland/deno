@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use log::debug;
+use std::fmt::Write;
 use std::option::Option;
 use std::os::raw::c_void;
-
-use log::debug;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
@@ -98,6 +98,23 @@ pub fn module_origin<'a>(
   )
 }
 
+fn get<'s, T>(
+  scope: &mut v8::HandleScope<'s>,
+  from: v8::Local<v8::Object>,
+  key: &'static [u8],
+  path: &'static str,
+) -> T
+where
+  v8::Local<'s, v8::Value>: TryInto<T>,
+{
+  let key = v8::String::new_external_onebyte_static(scope, key).unwrap();
+  from
+    .get(scope, key.into())
+    .unwrap_or_else(|| panic!("{path} exists"))
+    .try_into()
+    .unwrap_or_else(|_| panic!("unable to convert"))
+}
+
 pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
@@ -108,135 +125,92 @@ pub(crate) fn initialize_context<'s>(
 
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  let deno_str =
-    v8::String::new_external_onebyte_static(scope, b"Deno").unwrap();
-  let core_str =
-    v8::String::new_external_onebyte_static(scope, b"core").unwrap();
-  let ops_str = v8::String::new_external_onebyte_static(scope, b"ops").unwrap();
+  let mut codegen = String::with_capacity(op_ctxs.len() * 200);
+  codegen.push_str(include_str!("bindings.js"));
+  _ = writeln!(
+    codegen,
+    "Deno.__op__ = function(opFns, callConsole, console) {{"
+  );
+  if !snapshot_options.loaded() {
+    _ = writeln!(codegen, "Deno.__op__console(callConsole, console);");
+  }
+  for op_ctx in op_ctxs {
+    if op_ctx.decl.enabled {
+      // If we're loading from a snapshot, we can skip registration for most ops
+      if matches!(snapshot_options, SnapshotOptions::Load)
+        && !op_ctx.decl.force_registration
+      {
+        continue;
+      }
+      _ = writeln!(
+        codegen,
+        "Deno.__op__registerOp({}, opFns[{}], \"{}\");",
+        op_ctx.decl.is_async, op_ctx.id, op_ctx.decl.name
+      );
+    } else {
+      _ = writeln!(
+        codegen,
+        "Deno.__op__unregisterOp({}, \"{}\");",
+        op_ctx.decl.is_async, op_ctx.decl.name
+      );
+    }
+  }
+  codegen.push_str("Deno.__op__cleanup();");
+  _ = writeln!(codegen, "}}");
 
-  let ops_obj = if snapshot_options.loaded() {
-    // Snapshot already registered `Deno.core.ops` but
-    // extensions may provide ops that aren't part of the snapshot.
-    // Grab the Deno.core.ops object & init it
-    let deno_obj: v8::Local<v8::Object> = global
-      .get(scope, deno_str.into())
-      .unwrap()
-      .try_into()
-      .unwrap();
-    let core_obj: v8::Local<v8::Object> = deno_obj
-      .get(scope, core_str.into())
-      .unwrap()
-      .try_into()
-      .unwrap();
-    let ops_obj: v8::Local<v8::Object> = core_obj
-      .get(scope, ops_str.into())
-      .expect("Deno.core.ops to exist")
-      .try_into()
-      .unwrap();
-    ops_obj
+  let script = v8::String::new_from_one_byte(
+    scope,
+    codegen.as_bytes(),
+    v8::NewStringType::Normal,
+  )
+  .unwrap();
+  let script = v8::Script::compile(scope, script, None).unwrap();
+  script.run(scope);
+
+  let deno = get(scope, global, b"Deno", "Deno");
+  let op_fn: v8::Local<v8::Function> =
+    get(scope, deno, b"__op__", "Deno.__op__");
+  let recv = v8::undefined(scope);
+  let op_fns = v8::Array::new(scope, op_ctxs.len() as i32);
+  for op_ctx in op_ctxs {
+    let op_fn = op_ctx_function(scope, op_ctx);
+    op_fns.set_index(scope, op_ctx.id as u32, op_fn.into());
+  }
+  if snapshot_options.loaded() {
+    op_fn.call(scope, recv.into(), &[op_fns.into()]);
   } else {
-    // globalThis.Deno = { core: { } };
-    let deno_obj = v8::Object::new(scope);
-    global.set(scope, deno_str.into(), deno_obj.into());
-
-    let core_obj = v8::Object::new(scope);
-    deno_obj.set(scope, core_str.into(), core_obj.into());
-
     // Bind functions to Deno.core.*
-    set_func(scope, core_obj, "callConsole", call_console);
+    let call_console_fn = v8::Function::new(scope, call_console).unwrap();
 
     // Bind v8 console object to Deno.core.console
     let extra_binding_obj = context.get_extras_binding_object(scope);
-    let console_str =
-      v8::String::new_external_onebyte_static(scope, b"console").unwrap();
-    let console_obj = extra_binding_obj.get(scope, console_str.into()).unwrap();
-    core_obj.set(scope, console_str.into(), console_obj);
+    let console_obj: v8::Local<v8::Object> = get(
+      scope,
+      extra_binding_obj,
+      b"console",
+      "ExtrasBindingObject.console",
+    );
 
-    // Bind functions to Deno.core.ops.*
-    let ops_obj = v8::Object::new(scope);
-    core_obj.set(scope, ops_str.into(), ops_obj.into());
-    ops_obj
-  };
-
-  if matches!(snapshot_options, SnapshotOptions::Load) {
-    // Only register ops that have `force_registration` flag set to true,
-    // the remaining ones should already be in the snapshot. Ignore ops that
-    // are disabled.
-    for op_ctx in op_ctxs {
-      if op_ctx.decl.enabled {
-        if op_ctx.decl.force_registration {
-          add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
-        }
-      } else {
-        delete_op_from_deno_core_ops(scope, ops_obj, op_ctx)
-      }
-    }
-  } else if matches!(snapshot_options, SnapshotOptions::CreateFromExisting) {
-    // Register all enabled ops, probing for which ones are already registered.
-    for op_ctx in op_ctxs {
-      let key = v8::String::new_external_onebyte_static(
-        scope,
-        op_ctx.decl.name.as_bytes(),
-      )
-      .unwrap();
-
-      if op_ctx.decl.enabled {
-        if ops_obj.get(scope, key.into()).is_some() {
-          continue;
-        }
-        add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
-      } else {
-        delete_op_from_deno_core_ops(scope, ops_obj, op_ctx)
-      }
-    }
-  } else {
-    // In other cases register all ops enabled unconditionally.
-    for op_ctx in op_ctxs {
-      if op_ctx.decl.enabled {
-        add_op_to_deno_core_ops(scope, ops_obj, op_ctx);
-      }
-    }
+    op_fn.call(
+      scope,
+      recv.into(),
+      &[op_fns.into(), call_console_fn.into(), console_obj.into()],
+    );
   }
 
   context
 }
 
-fn set_func(
-  scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
-  name: &'static str,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let key =
-    v8::String::new_external_onebyte_static(scope, name.as_bytes()).unwrap();
-  let val = v8::Function::new(scope, callback).unwrap();
-  val.set_name(key);
-  obj.set(scope, key.into(), val.into());
-}
-
-fn delete_op_from_deno_core_ops(
-  scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
+fn op_ctx_function<'s>(
+  scope: &mut v8::HandleScope<'s>,
   op_ctx: &OpCtx,
-) {
-  let key =
-    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
-      .unwrap();
-  obj.delete(scope, key.into());
-}
-
-fn add_op_to_deno_core_ops(
-  scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
-  op_ctx: &OpCtx,
-) {
+) -> v8::Local<'s, v8::Function> {
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
-  let key =
-    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
-      .unwrap();
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
-  let builder = v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
-    .data(external.into());
+  let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
+    v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
+      .data(external.into())
+      .length(op_ctx.decl.arg_count as i32);
 
   let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
     builder.build_fast(
@@ -249,9 +223,7 @@ fn add_op_to_deno_core_ops(
   } else {
     builder.build(scope)
   };
-  let val = templ.get_function(scope).unwrap();
-  val.set_name(key);
-  obj.set(scope, key.into(), val.into());
+  templ.get_function(scope).unwrap()
 }
 
 pub extern "C" fn wasm_async_resolve_promise_callback(
