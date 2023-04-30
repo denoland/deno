@@ -805,11 +805,11 @@ function createDictionaryConverter(name, ...dictionaries) {
       }
 
       if (esMemberValue !== undefined) {
-        const context = `'${key}' of '${name}'${
+        const memberContext = `'${key}' of '${name}'${
           context ? ` (${context})` : ""
         }`;
         const converter = member.converter;
-        const idlMemberValue = converter(esMemberValue, prefix, context, opts);
+        const idlMemberValue = converter(esMemberValue, prefix, memberContext, opts);
         idlDict[key] = idlMemberValue;
       } else if (member.required) {
         throw makeException(
