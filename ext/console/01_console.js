@@ -135,7 +135,16 @@ const {
   WeakSetPrototypeHas,
   isNaN,
 } = primordials;
-import * as colors_ from "ext:deno_console/01_colors.js";
+
+let noColor = false;
+
+function setNoColor(value) {
+  noColor = value;
+}
+
+function getNoColor() {
+  return noColor;
+}
 
 // Don't use 'blue' not visible on cmd.exe
 const styles = {
@@ -3060,7 +3069,7 @@ function inspectArgs(args, inspectOptions = {}) {
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
 
-  const noColor = colors_.getNoColor();
+  const noColor = getNoColor();
   const first = args[0];
   let a = 0;
   let string = "";
@@ -3175,7 +3184,7 @@ const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 function getConsoleInspectOptions() {
-  const color = !colors_.getNoColor();
+  const color = !getNoColor();
   return {
     ...getDefaultInspectOptions(),
     colors: color,
@@ -3626,9 +3635,11 @@ export {
   formatNumber,
   formatValue,
   getDefaultInspectOptions,
+  getNoColor,
   inspect,
   inspectArgs,
   quoteString,
+  setNoColor,
   styles,
   wrapConsole,
 };

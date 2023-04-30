@@ -79,7 +79,7 @@ const {
   WeakMapPrototypeSet,
   queueMicrotask,
 } = primordials;
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
 
 /** @template T */
