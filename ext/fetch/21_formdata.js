@@ -103,26 +103,26 @@ class FormData {
     const prefix = "Failed to execute 'append' on 'FormData'";
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
-      valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["Blob"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
       if (filename !== undefined) {
-        filename = webidl.converters["USVString"](filename, {
+        filename = webidl.converters["USVString"](
+          filename,
           prefix,
-          context: "Argument 3",
-        });
+          "Argument 3",
+        );
       }
     } else {
-      valueOrBlobValue = webidl.converters["USVString"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["USVString"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     }
 
     const entry = createEntry(name, valueOrBlobValue, filename);
@@ -139,10 +139,7 @@ class FormData {
     const prefix = "Failed to execute 'name' on 'FormData'";
     webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const list = this[entryList];
     for (let i = 0; i < list.length; i++) {
@@ -162,10 +159,7 @@ class FormData {
     const prefix = "Failed to execute 'get' on 'FormData'";
     webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const entries = this[entryList];
     for (let i = 0; i < entries.length; ++i) {
@@ -184,10 +178,7 @@ class FormData {
     const prefix = "Failed to execute 'getAll' on 'FormData'";
     webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const returnList = [];
     const entries = this[entryList];
@@ -207,10 +198,7 @@ class FormData {
     const prefix = "Failed to execute 'has' on 'FormData'";
     webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const entries = this[entryList];
     for (let i = 0; i < entries.length; ++i) {
@@ -231,26 +219,26 @@ class FormData {
     const prefix = "Failed to execute 'set' on 'FormData'";
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
-      valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["Blob"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
       if (filename !== undefined) {
-        filename = webidl.converters["USVString"](filename, {
+        filename = webidl.converters["USVString"](
+          filename,
           prefix,
-          context: "Argument 3",
-        });
+          "Argument 3",
+        );
       }
     } else {
-      valueOrBlobValue = webidl.converters["USVString"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["USVString"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     }
 
     const entry = createEntry(name, valueOrBlobValue, filename);

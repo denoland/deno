@@ -23,10 +23,7 @@ const {
 function atob(data) {
   const prefix = "Failed to execute 'atob'";
   webidl.requiredArguments(arguments.length, 1, prefix);
-  data = webidl.converters.DOMString(data, {
-    prefix,
-    context: "Argument 1",
-  });
+  data = webidl.converters.DOMString(data, prefix, "Argument 1");
   try {
     return ops.op_base64_atob(data);
   } catch (e) {
@@ -47,10 +44,7 @@ function atob(data) {
 function btoa(data) {
   const prefix = "Failed to execute 'btoa'";
   webidl.requiredArguments(arguments.length, 1, prefix);
-  data = webidl.converters.DOMString(data, {
-    prefix,
-    context: "Argument 1",
-  });
+  data = webidl.converters.DOMString(data, prefix, "Argument 1");
   try {
     return ops.op_base64_btoa(data);
   } catch (e) {
