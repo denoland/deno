@@ -781,7 +781,7 @@ for (let i = 0; i < 10; i++) {
     setUpAsyncStub(opName);
   }
 
-  function ensureFastOps(/* opNames... */) {
+  function generateAsyncOpHandler(/* opNames... */) {
     const fastOps = {};
     for (const opName of new SafeArrayIterator(arguments)) {
       if (ops[opName] === undefined) {
@@ -806,7 +806,7 @@ for (let i = 0; i < 10; i++) {
     op_read_sync: readSync,
     op_write_sync: writeSync,
     op_shutdown: shutdown,
-  } = ensureFastOps(
+  } = generateAsyncOpHandler(
     "op_close",
     "op_try_close",
     "op_read",
@@ -821,7 +821,7 @@ for (let i = 0; i < 10; i++) {
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     asyncStub,
-    ensureFastOps,
+    generateAsyncOpHandler,
     opAsync,
     opAsync2,
     resources,
