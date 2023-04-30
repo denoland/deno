@@ -22,7 +22,7 @@
 
 import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { createStylizeWithColor, formatValue, formatNumber, formatBigInt, styles, colors } from "ext:deno_console/02_console.js";
+import { createStylizeWithColor, formatValue, formatNumber, formatBigInt, styles, colors } from "ext:deno_console/01_console.js";
 
 
 
