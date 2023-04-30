@@ -1527,6 +1527,7 @@ export {
   CloseEvent,
   CustomEvent,
   defineEventHandler,
+  dispatch,
   ErrorEvent,
   Event,
   EventTarget,
