@@ -2163,7 +2163,7 @@ function formatMapIterInner(
   const len = entries.length / 2;
   const remaining = len - maxArrayLength;
   const maxLength = MathMin(maxArrayLength, len);
-  let output = new Array(maxLength);
+  const output = new Array(maxLength);
   let i = 0;
   ctx.indentationLvl += 2;
   if (state === kWeak) {
