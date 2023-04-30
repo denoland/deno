@@ -1192,155 +1192,161 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    if has_inspector {
-      // We poll the inspector first.
-      let _ = self.inspector().borrow().poll_sessions(Some(cx)).unwrap();
-    }
-
-    self.pump_v8_message_loop()?;
-
-    // Dynamic module loading - ie. modules loaded using "import()"
-    {
-      // Run in a loop so that dynamic imports that only depend on another
-      // dynamic import can be resolved in this event loop iteration.
-      //
-      // For example, a dynamically imported module like the following can be
-      // immediately resolved after `dependency.ts` is fully evaluated, but it
-      // wouldn't if not for this loop.
-      //
-      //    await delay(1000);
-      //    await import("./dependency.ts");
-      //    console.log("test")
-      //
-      loop {
-        let poll_imports = self.prepare_dyn_imports(cx)?;
-        assert!(poll_imports.is_ready());
-
-        let poll_imports = self.poll_dyn_imports(cx)?;
-        assert!(poll_imports.is_ready());
-
-        if !self.evaluate_dyn_imports() {
-          break;
-        }
-      }
-    }
-
-    // Resolve async ops, run all next tick callbacks and macrotasks callbacks
-    // and only then check for any promise exceptions (`unhandledrejection`
-    // handlers are run in macrotasks callbacks so we need to let them run
-    // first).
-    self.do_js_event_loop_tick(cx)?;
-    self.check_promise_rejections()?;
-
-    // Event loop middlewares
-    let mut maybe_scheduling = false;
-    {
-      let op_state = self.state.borrow().op_state.clone();
-      for f in &self.event_loop_middlewares {
-        if f(op_state.clone(), cx) {
-          maybe_scheduling = true;
-        }
-      }
-    }
-
-    // Top level module
-    self.evaluate_pending_module();
-
-    let pending_state = self.event_loop_pending_state();
-    if !pending_state.is_pending() && !maybe_scheduling {
+    loop {
       if has_inspector {
-        let inspector = self.inspector();
-        let has_active_sessions = inspector.borrow().has_active_sessions();
-        let has_blocking_sessions = inspector.borrow().has_blocking_sessions();
+        // We poll the inspector first.
+        let _ = self.inspector().borrow().poll_sessions(Some(cx)).unwrap();
+      }
 
-        if wait_for_inspector && has_active_sessions {
-          // If there are no blocking sessions (eg. REPL) we can now notify
-          // debugger that the program has finished running and we're ready
-          // to exit the process once debugger disconnects.
-          if !has_blocking_sessions {
-            let context = self.global_context();
-            let scope = &mut self.handle_scope();
-            inspector.borrow_mut().context_destroyed(scope, context);
-            println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+      self.pump_v8_message_loop()?;
+
+      // Dynamic module loading - ie. modules loaded using "import()"
+      {
+        // Run in a loop so that dynamic imports that only depend on another
+        // dynamic import can be resolved in this event loop iteration.
+        //
+        // For example, a dynamically imported module like the following can be
+        // immediately resolved after `dependency.ts` is fully evaluated, but it
+        // wouldn't if not for this loop.
+        //
+        //    await delay(1000);
+        //    await import("./dependency.ts");
+        //    console.log("test")
+        //
+        loop {
+          let poll_imports = self.prepare_dyn_imports(cx)?;
+          assert!(poll_imports.is_ready());
+
+          let poll_imports = self.poll_dyn_imports(cx)?;
+          assert!(poll_imports.is_ready());
+
+          if !self.evaluate_dyn_imports() {
+            break;
           }
-
-          return Poll::Pending;
         }
       }
 
-      return Poll::Ready(Ok(()));
-    }
+      // Resolve async ops, run all next tick callbacks and macrotasks callbacks
+      // and only then check for any promise exceptions (`unhandledrejection`
+      // handlers are run in macrotasks callbacks so we need to let them run
+      // first).
+      self.do_js_event_loop_tick(cx)?;
+      self.check_promise_rejections()?;
 
-    let state = self.state.borrow();
+      // Event loop middlewares
+      let mut maybe_scheduling = false;
+      {
+        let op_state = self.state.borrow().op_state.clone();
+        for f in &self.event_loop_middlewares {
+          if f(op_state.clone(), cx) {
+            maybe_scheduling = true;
+          }
+        }
+      }
 
-    // Check if more async ops have been dispatched
-    // during this turn of event loop.
-    // If there are any pending background tasks, we also wake the runtime to
-    // make sure we don't miss them.
-    // TODO(andreubotella) The event loop will spin as long as there are pending
-    // background tasks. We should look into having V8 notify us when a
-    // background task is done.
-    if state.have_unpolled_ops
-      || pending_state.has_pending_background_tasks
-      || pending_state.has_tick_scheduled
-      || maybe_scheduling
-    {
-      state.waker.wake();
-    }
+      // Top level module
+      self.evaluate_pending_module();
 
-    drop(state);
+      let pending_state = self.event_loop_pending_state();
+      if !pending_state.is_pending() && !maybe_scheduling {
+        if has_inspector {
+          let inspector = self.inspector();
+          let has_active_sessions = inspector.borrow().has_active_sessions();
+          let has_blocking_sessions =
+            inspector.borrow().has_blocking_sessions();
 
-    if pending_state.has_pending_module_evaluation {
-      if pending_state.has_pending_refed_ops
-        || pending_state.has_pending_dyn_imports
-        || pending_state.has_pending_dyn_module_evaluation
-        || pending_state.has_pending_background_tasks
+          if wait_for_inspector && has_active_sessions {
+            // If there are no blocking sessions (eg. REPL) we can now notify
+            // debugger that the program has finished running and we're ready
+            // to exit the process once debugger disconnects.
+            if !has_blocking_sessions {
+              let context = self.global_context();
+              let scope = &mut self.handle_scope();
+              inspector.borrow_mut().context_destroyed(scope, context);
+              println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+            }
+
+            return Poll::Pending;
+          }
+        }
+
+        return Poll::Ready(Ok(()));
+      }
+
+      let state = self.state.borrow();
+
+      // Check if more async ops have been dispatched during this turn of
+      // event loop. In such case immediately do another turn of the event loop.
+      if state.have_unpolled_ops {
+        continue;
+      }
+
+      // If there are any pending background tasks, we also wake the runtime to
+      // make sure we don't miss them.
+      // TODO(andreubotella) The event loop will spin as long as there are pending
+      // background tasks. We should look into having V8 notify us when a
+      // background task is done.
+      if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
         || maybe_scheduling
       {
-        // pass, will be polled again
-      } else {
-        let scope = &mut self.handle_scope();
-        let messages = find_stalled_top_level_await(scope);
-        // We are gonna print only a single message to provide a nice formatting
-        // with source line of offending promise shown. Once user fixed it, then
-        // they will get another error message for the next promise (but this
-        // situation is gonna be very rare, if ever happening).
-        assert!(!messages.is_empty());
-        let msg = v8::Local::new(scope, messages[0].clone());
-        let js_error = JsError::from_v8_message(scope, msg);
-        return Poll::Ready(Err(js_error.into()));
-      }
-    }
-
-    if pending_state.has_pending_dyn_module_evaluation {
-      if pending_state.has_pending_refed_ops
-        || pending_state.has_pending_dyn_imports
-        || pending_state.has_pending_background_tasks
-        || pending_state.has_tick_scheduled
-      {
-        // pass, will be polled again
-      } else if self.state.borrow().dyn_module_evaluate_idle_counter >= 1 {
-        let scope = &mut self.handle_scope();
-        let messages = find_stalled_top_level_await(scope);
-        // We are gonna print only a single message to provide a nice formatting
-        // with source line of offending promise shown. Once user fixed it, then
-        // they will get another error message for the next promise (but this
-        // situation is gonna be very rare, if ever happening).
-        assert!(!messages.is_empty());
-        let msg = v8::Local::new(scope, messages[0].clone());
-        let js_error = JsError::from_v8_message(scope, msg);
-        return Poll::Ready(Err(js_error.into()));
-      } else {
-        let mut state = self.state.borrow_mut();
-        // Delay the above error by one spin of the event loop. A dynamic import
-        // evaluation may complete during this, in which case the counter will
-        // reset.
-        state.dyn_module_evaluate_idle_counter += 1;
         state.waker.wake();
       }
-    }
 
+      drop(state);
+
+      if pending_state.has_pending_module_evaluation {
+        if pending_state.has_pending_refed_ops
+          || pending_state.has_pending_dyn_imports
+          || pending_state.has_pending_dyn_module_evaluation
+          || pending_state.has_pending_background_tasks
+          || pending_state.has_tick_scheduled
+          || maybe_scheduling
+        {
+          // pass, will be polled again
+        } else {
+          let scope = &mut self.handle_scope();
+          let messages = find_stalled_top_level_await(scope);
+          // We are gonna print only a single message to provide a nice formatting
+          // with source line of offending promise shown. Once user fixed it, then
+          // they will get another error message for the next promise (but this
+          // situation is gonna be very rare, if ever happening).
+          assert!(!messages.is_empty());
+          let msg = v8::Local::new(scope, messages[0].clone());
+          let js_error = JsError::from_v8_message(scope, msg);
+          return Poll::Ready(Err(js_error.into()));
+        }
+      }
+
+      if pending_state.has_pending_dyn_module_evaluation {
+        if pending_state.has_pending_refed_ops
+          || pending_state.has_pending_dyn_imports
+          || pending_state.has_pending_background_tasks
+          || pending_state.has_tick_scheduled
+        {
+          // pass, will be polled again
+        } else if self.state.borrow().dyn_module_evaluate_idle_counter >= 1 {
+          let scope = &mut self.handle_scope();
+          let messages = find_stalled_top_level_await(scope);
+          // We are gonna print only a single message to provide a nice formatting
+          // with source line of offending promise shown. Once user fixed it, then
+          // they will get another error message for the next promise (but this
+          // situation is gonna be very rare, if ever happening).
+          assert!(!messages.is_empty());
+          let msg = v8::Local::new(scope, messages[0].clone());
+          let js_error = JsError::from_v8_message(scope, msg);
+          return Poll::Ready(Err(js_error.into()));
+        } else {
+          let mut state = self.state.borrow_mut();
+          // Delay the above error by one spin of the event loop. A dynamic import
+          // evaluation may complete during this, in which case the counter will
+          // reset.
+          state.dyn_module_evaluate_idle_counter += 1;
+          state.waker.wake();
+        }
+      }
+      break;
+    }
     Poll::Pending
   }
 
