@@ -3606,11 +3606,11 @@ export {
   formatNumber,
   formatValue,
   getDefaultInspectOptions,
+  getNoColor,
   inspect,
   inspectArgs,
   quoteString,
+  setNoColor,
   styles,
   wrapConsole,
-  setNoColor,
-  getNoColor,
 };

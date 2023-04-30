@@ -46,11 +46,11 @@ import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
   getDefaultInspectOptions,
+  getNoColor,
   inspectArgs,
   quoteString,
-  wrapConsole,
   setNoColor,
-  getNoColor,
+  wrapConsole,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
