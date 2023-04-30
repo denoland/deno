@@ -47,6 +47,7 @@ import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as colors from "ext:deno_console/01_colors.js";
 import {
+  getDefaultInspectOptions,
   inspectArgs,
   quoteString,
   wrapConsole,
@@ -221,7 +222,7 @@ function formatException(error) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
-      inspectArgs([quoteString(error)], {
+      inspectArgs([quoteString(error, getDefaultInspectOptions())], {
         colors: !colors.getNoColor(),
       })
     }`;
