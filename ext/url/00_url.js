@@ -371,6 +371,7 @@ class URL {
    */
   constructor(url, base = undefined) {
     const prefix = "Failed to construct 'URL'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
     if (base !== undefined) {
       base = webidl.converters.DOMString(base, {
@@ -390,6 +391,7 @@ class URL {
    */
   static canParse(url, base = undefined) {
     const prefix = "Failed to call 'URL.canParse'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
     if (base !== undefined) {
       base = webidl.converters.DOMString(base, {

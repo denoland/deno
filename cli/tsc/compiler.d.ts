@@ -46,6 +46,8 @@ declare global {
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     ops: Record<string, (...args: unknown[]) => any>;
+    // deno-lint-ignore no-explicit-any
+    asyncOps: Record<string, (...args: unknown[]) => any>;
     print(msg: string, stderr: boolean): void;
     registerErrorClass(
       name: string,

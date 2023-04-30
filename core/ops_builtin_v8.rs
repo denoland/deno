@@ -211,6 +211,7 @@ fn op_decode<'a>(
 struct SerializeDeserialize<'a> {
   host_objects: Option<v8::Local<'a, v8::Array>>,
   error_callback: Option<v8::Local<'a, v8::Function>>,
+  for_storage: bool,
 }
 
 impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
@@ -238,6 +239,9 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
   ) -> Option<u32> {
+    if self.for_storage {
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
@@ -254,6 +258,11 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'_>,
     module: v8::Local<v8::WasmModuleObject>,
   ) -> Option<u32> {
+    if self.for_storage {
+      let message = v8::String::new(scope, "Wasm modules cannot be stored")?;
+      self.throw_data_clone_error(scope, message);
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
@@ -293,6 +302,9 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     transfer_id: u32,
   ) -> Option<v8::Local<'s, v8::SharedArrayBuffer>> {
+    if self.for_storage {
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
@@ -310,6 +322,9 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     clone_id: u32,
   ) -> Option<v8::Local<'s, v8::WasmModuleObject>> {
+    if self.for_storage {
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
@@ -337,7 +352,7 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
       }
     }
 
-    let message =
+    let message: v8::Local<v8::String> =
       v8::String::new(scope, "Failed to deserialize host object").unwrap();
     let error = v8::Exception::error(scope, message);
     scope.throw_exception(error);
@@ -350,6 +365,8 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
 struct SerializeDeserializeOptions<'a> {
   host_objects: Option<serde_v8::Value<'a>>,
   transferred_array_buffers: Option<serde_v8::Value<'a>>,
+  #[serde(default)]
+  for_storage: bool,
 }
 
 #[op(v8)]
@@ -385,6 +402,7 @@ fn op_serialize(
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback,
+    for_storage: options.for_storage,
   });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
@@ -464,6 +482,7 @@ fn op_deserialize<'a>(
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback: None,
+    for_storage: options.for_storage,
   });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
@@ -595,6 +614,66 @@ fn op_get_proxy_details<'a>(
   Some((target.into(), handler.into()))
 }
 
+#[op(v8)]
+fn op_get_non_index_property_names<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  obj: serde_v8::Value<'a>,
+  filter: u32,
+) -> Option<serde_v8::Value<'a>> {
+  let obj = match v8::Local::<v8::Object>::try_from(obj.v8_value) {
+    Ok(proxy) => proxy,
+    Err(_) => return None,
+  };
+
+  let mut property_filter = v8::ALL_PROPERTIES;
+  if filter & 1 == 1 {
+    property_filter = property_filter | v8::ONLY_WRITABLE
+  }
+  if filter & 2 == 2 {
+    property_filter = property_filter | v8::ONLY_ENUMERABLE
+  }
+  if filter & 4 == 4 {
+    property_filter = property_filter | v8::ONLY_CONFIGURABLE
+  }
+  if filter & 8 == 8 {
+    property_filter = property_filter | v8::SKIP_STRINGS
+  }
+  if filter & 16 == 16 {
+    property_filter = property_filter | v8::SKIP_SYMBOLS
+  }
+
+  let maybe_names = obj.get_property_names(
+    scope,
+    v8::GetPropertyNamesArgs {
+      mode: v8::KeyCollectionMode::OwnOnly,
+      property_filter,
+      index_filter: v8::IndexFilter::SkipIndices,
+      ..Default::default()
+    },
+  );
+
+  if let Some(names) = maybe_names {
+    let names_val: v8::Local<v8::Value> = names.into();
+    Some(names_val.into())
+  } else {
+    None
+  }
+}
+
+#[op(v8)]
+fn op_get_constructor_name<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  obj: serde_v8::Value<'a>,
+) -> Option<String> {
+  let obj = match v8::Local::<v8::Object>::try_from(obj.v8_value) {
+    Ok(proxy) => proxy,
+    Err(_) => return None,
+  };
+
+  let name = obj.get_constructor_name().to_rust_string_lossy(scope);
+  Some(name)
+}
+
 // HeapStats stores values from a isolate.get_heap_statistics() call
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -715,8 +794,7 @@ fn op_dispatch_exception(
   let mut state = state_rc.borrow_mut();
   if let Some(inspector) = &state.inspector {
     let inspector = inspector.borrow();
-    // TODO(nayeemrmn): Send exception message to inspector sessions here.
-
+    inspector.exception_thrown(scope, exception.v8_value, false);
     // This indicates that the op is being called from a REPL. Skip termination.
     if inspector.is_dispatching_message() {
       return;

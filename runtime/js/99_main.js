@@ -44,12 +44,14 @@ import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
-import * as colors from "ext:deno_console/01_colors.js";
 import {
+  getDefaultInspectOptions,
+  getNoColor,
   inspectArgs,
   quoteString,
+  setNoColor,
   wrapConsole,
-} from "ext:deno_console/02_console.js";
+} from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
@@ -218,12 +220,12 @@ function formatException(error) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
-      inspectArgs([quoteString(error)], {
-        colors: !colors.getNoColor(),
+      inspectArgs([quoteString(error, getDefaultInspectOptions())], {
+        colors: !getNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !colors.getNoColor() })}`;
+    return `Uncaught ${inspectArgs([error], { colors: !getNoColor() })}`;
   }
 }
 
@@ -312,7 +314,7 @@ function runtimeStart(
   );
   core.setBuildInfo(target);
   util.setLogDebug(debugFlag, source);
-  colors.setNoColor(noColor || !isTty);
+  setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }
@@ -391,6 +393,12 @@ function promiseRejectMacrotaskCallback() {
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+// FIXME(bartlomieju): temporarily add whole `Deno.core` to
+// `Deno[Deno.internal]` namespace. It should be removed and only necessary
+// methods should be left there.
+ObjectAssign(internals, {
+  core,
+});
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -422,7 +430,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     13: v8Version,
     14: userAgent,
     15: inspectFlag,
-    16: enableTestingFeaturesFlag,
+    // 16: enableTestingFeaturesFlag
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -495,12 +503,6 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
-  }
-
-  // Add `Deno[Deno.internal].core` namespace if
-  // `--enable-testing-features-do-not-use` flag is set.
-  if (enableTestingFeaturesFlag) {
-    ObjectAssign(internals, { core });
   }
 
   // Setup `Deno` global - we're actually overriding already existing global
@@ -612,11 +614,6 @@ function bootstrapWorkerRuntime(
     noColor: util.readOnly(noColor),
     args: util.readOnly(ObjectFreeze(args)),
   });
-  // Add `Deno[Deno.internal].core` namespace if
-  // `--enable-testing-features-do-not-use` flag is set.
-  if (enableTestingFeaturesFlag) {
-    ObjectAssign(internals, { core });
-  }
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));

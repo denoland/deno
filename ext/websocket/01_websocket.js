@@ -15,6 +15,7 @@ import {
   _skipInternalInit,
   CloseEvent,
   defineEventHandler,
+  dispatch,
   ErrorEvent,
   Event,
   EventTarget,
@@ -451,7 +452,7 @@ class WebSocket extends EventTarget {
             data: value,
             origin: this[_url],
           });
-          this.dispatchEvent(event);
+          dispatch(this, event);
           break;
         }
         case 1: {
@@ -470,7 +471,7 @@ class WebSocket extends EventTarget {
             origin: this[_url],
             [_skipInternalInit]: true,
           });
-          this.dispatchEvent(event);
+          dispatch(this, event);
           break;
         }
         case 2: {

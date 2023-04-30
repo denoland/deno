@@ -198,7 +198,7 @@ fn recursive_permissions_pledge() {
   let context = TestContext::default();
   let output = context
     .new_command()
-    .args("bench --enable-testing-features-do-not-use bench/recursive_permissions_pledge.js")
+    .args("bench bench/recursive_permissions_pledge.js")
     .run();
   output.assert_exit_code(1);
   assert_contains!(
