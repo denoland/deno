@@ -6,6 +6,7 @@ use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
@@ -36,7 +37,6 @@ use indexmap::IndexSet;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -418,11 +418,12 @@ impl BenchReporter for ConsoleReporter {
 
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
-  ps: &ProcState,
+  cli_options: &CliOptions,
+  module_load_preparer: &ModuleLoadPreparer,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
-  let lib = ps.options.ts_type_lib_window();
-  ps.module_load_preparer
+  let lib = cli_options.ts_type_lib_window();
+  module_load_preparer
     .prepare_module_load(
       specifiers,
       false,
@@ -648,14 +649,15 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  check_specifiers(&ps, specifiers.clone()).await?;
+  check_specifiers(&ps.options, &ps.module_load_preparer, specifiers.clone())
+    .await?;
 
   if bench_options.no_run {
     return Ok(());
   }
 
   let log_level = ps.options.log_level();
-  let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
+  let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
   bench_specifiers(
     worker_factory,
     &permissions,
@@ -684,14 +686,13 @@ pub async fn run_benchmarks_with_watch(
     Permissions::from_options(&ps.options.permissions_options())?;
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
-  let ps = RefCell::new(ps);
-
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = bench_options.files.include.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let bench_options = &bench_options;
-    let ps = ps.borrow().clone();
+    let module_graph_builder = ps.module_graph_builder.clone();
+    let cli_options = ps.options.clone();
 
     async move {
       let bench_modules =
@@ -703,11 +704,10 @@ pub async fn run_benchmarks_with_watch(
       } else {
         bench_modules.clone()
       };
-      let graph = ps
-        .module_graph_builder
+      let graph = module_graph_builder
         .create_graph(bench_modules.clone())
         .await?;
-      graph_valid_with_cli_options(&graph, &bench_modules, &ps.options)?;
+      graph_valid_with_cli_options(&graph, &bench_modules, &cli_options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {
@@ -800,8 +800,10 @@ pub async fn run_benchmarks_with_watch(
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
     let bench_options = &bench_options;
-    ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow().clone();
+    ps.reset_for_file_watcher();
+    let module_load_preparer = ps.module_load_preparer.clone();
+    let cli_options = ps.options.clone();
+    let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
 
     async move {
       let specifiers =
@@ -810,14 +812,14 @@ pub async fn run_benchmarks_with_watch(
           .filter(|specifier| modules_to_reload.contains(specifier))
           .collect::<Vec<ModuleSpecifier>>();
 
-      check_specifiers(&ps, specifiers.clone()).await?;
+      check_specifiers(&cli_options, &module_load_preparer, specifiers.clone())
+        .await?;
 
       if bench_options.no_run {
         return Ok(());
       }
 
-      let log_level = ps.options.log_level();
-      let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
+      let log_level = cli_options.log_level();
       bench_specifiers(
         worker_factory,
         permissions,
@@ -834,7 +836,7 @@ pub async fn run_benchmarks_with_watch(
     }
   };
 
-  let clear_screen = !ps.borrow().options.no_clear_screen();
+  let clear_screen = !ps.options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,

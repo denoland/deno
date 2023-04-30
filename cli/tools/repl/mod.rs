@@ -108,7 +108,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let resolver = ps.resolver.clone();
   let dir = ps.dir.clone();
   let file_fetcher = ps.file_fetcher.clone();
-  let worker_factory = ps.into_cli_main_worker_factory();
+  let worker_factory = ps.create_cli_main_worker_factory();
 
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
