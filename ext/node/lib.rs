@@ -213,6 +213,8 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_check_prime_async,
     ops::crypto::op_node_check_prime_bytes,
     ops::crypto::op_node_check_prime_bytes_async,
+    ops::crypto::op_node_gen_prime,
+    ops::crypto::op_node_gen_prime_async,
     ops::crypto::op_node_pbkdf2,
     ops::crypto::op_node_pbkdf2_async,
     ops::crypto::op_node_hkdf,
@@ -238,6 +240,9 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_random_int,
     ops::crypto::op_node_scrypt_sync,
     ops::crypto::op_node_scrypt_async,
+    ops::crypto::op_node_ecdh_generate_keys,
+    ops::crypto::op_node_ecdh_compute_secret,
+    ops::crypto::op_node_ecdh_compute_public_key,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
@@ -265,7 +270,6 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
     op_node_build_os,
-
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<Env>,
     ops::require::op_require_proxy_path,
@@ -534,10 +538,10 @@ deno_core::extension!(deno_node,
 pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<String>,
+  maybe_binary_command_name: Option<&str>,
 ) -> Result<(), AnyError> {
   let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name.as_str())?
+    serde_json::to_string(binary_command_name)?
   } else {
     "undefined".to_string()
   };

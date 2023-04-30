@@ -211,6 +211,7 @@ fn op_decode<'a>(
 struct SerializeDeserialize<'a> {
   host_objects: Option<v8::Local<'a, v8::Array>>,
   error_callback: Option<v8::Local<'a, v8::Function>>,
+  for_storage: bool,
 }
 
 impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
@@ -238,6 +239,9 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
   ) -> Option<u32> {
+    if self.for_storage {
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
@@ -254,6 +258,11 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'_>,
     module: v8::Local<v8::WasmModuleObject>,
   ) -> Option<u32> {
+    if self.for_storage {
+      let message = v8::String::new(scope, "Wasm modules cannot be stored")?;
+      self.throw_data_clone_error(scope, message);
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
@@ -293,6 +302,9 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     transfer_id: u32,
   ) -> Option<v8::Local<'s, v8::SharedArrayBuffer>> {
+    if self.for_storage {
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
@@ -310,6 +322,9 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     clone_id: u32,
   ) -> Option<v8::Local<'s, v8::WasmModuleObject>> {
+    if self.for_storage {
+      return None;
+    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
@@ -337,7 +352,7 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
       }
     }
 
-    let message =
+    let message: v8::Local<v8::String> =
       v8::String::new(scope, "Failed to deserialize host object").unwrap();
     let error = v8::Exception::error(scope, message);
     scope.throw_exception(error);
@@ -350,6 +365,8 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
 struct SerializeDeserializeOptions<'a> {
   host_objects: Option<serde_v8::Value<'a>>,
   transferred_array_buffers: Option<serde_v8::Value<'a>>,
+  #[serde(default)]
+  for_storage: bool,
 }
 
 #[op(v8)]
@@ -385,6 +402,7 @@ fn op_serialize(
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback,
+    for_storage: options.for_storage,
   });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
@@ -464,6 +482,7 @@ fn op_deserialize<'a>(
   let serialize_deserialize = Box::new(SerializeDeserialize {
     host_objects,
     error_callback: None,
+    for_storage: options.for_storage,
   });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
@@ -713,22 +732,16 @@ fn op_dispatch_exception(
 ) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  state
-    .dispatched_exceptions
-    .push_front(v8::Global::new(scope, exception.v8_value));
-  // Only terminate execution if there are no inspector sessions.
-  if state.inspector.is_none() {
-    scope.terminate_execution();
-    return;
+  if let Some(inspector) = &state.inspector {
+    let inspector = inspector.borrow();
+    inspector.exception_thrown(scope, exception.v8_value, false);
+    // This indicates that the op is being called from a REPL. Skip termination.
+    if inspector.is_dispatching_message() {
+      return;
+    }
   }
-
-  // FIXME(bartlomieju): I'm not sure if this assumption is valid... Maybe when
-  // inspector is polling on pause?
-  if state.inspector().try_borrow().is_ok() {
-    scope.terminate_execution();
-  } else {
-    // If the inspector is borrowed at this time, assume an inspector is active.
-  }
+  state.dispatched_exception = Some(v8::Global::new(scope, exception.v8_value));
+  scope.terminate_execution();
 }
 
 #[op(v8)]

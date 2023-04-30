@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.36.0"
+version = "0.38.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,6 +24,7 @@ deno_semver.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true
+elliptic-curve.workspace = true
 hex.workspace = true
 hkdf.workspace = true
 idna = "0.3.0"
@@ -37,6 +38,9 @@ num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
 num-traits = "0.2.14"
 once_cell.workspace = true
+p224.workspace = true
+p256.workspace = true
+p384.workspace = true
 path-clean = "=0.1.0"
 pbkdf2 = "0.12.1"
 rand.workspace = true
@@ -45,6 +49,7 @@ ring.workspace = true
 ripemd = "0.1.3"
 rsa.workspace = true
 scrypt = "0.11.0"
+secp256k1 = { version = "0.27.0", features = ["rand-std"] }
 serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true

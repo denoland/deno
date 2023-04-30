@@ -394,6 +394,12 @@ function promiseRejectMacrotaskCallback() {
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+// FIXME(bartlomieju): temporarily add whole `Deno.core` to
+// `Deno[Deno.internal]` namespace. It should be removed and only necessary
+// methods should be left there.
+ObjectAssign(internals, {
+  core,
+});
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -425,7 +431,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     13: v8Version,
     14: userAgent,
     15: inspectFlag,
-    16: enableTestingFeaturesFlag,
+    // 16: enableTestingFeaturesFlag
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -498,12 +504,6 @@ function bootstrapMainRuntime(runtimeOptions) {
 
   if (unstableFlag) {
     ObjectAssign(finalDenoNs, denoNsUnstable);
-  }
-
-  // Add `Deno[Deno.internal].core` namespace if
-  // `--enable-testing-features-do-not-use` flag is set.
-  if (enableTestingFeaturesFlag) {
-    ObjectAssign(internals, { core });
   }
 
   // Setup `Deno` global - we're actually overriding already existing global
@@ -615,11 +615,6 @@ function bootstrapWorkerRuntime(
     noColor: util.readOnly(noColor),
     args: util.readOnly(ObjectFreeze(args)),
   });
-  // Add `Deno[Deno.internal].core` namespace if
-  // `--enable-testing-features-do-not-use` flag is set.
-  if (enableTestingFeaturesFlag) {
-    ObjectAssign(internals, { core });
-  }
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));

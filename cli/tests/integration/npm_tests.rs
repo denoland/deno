@@ -118,7 +118,7 @@ itest!(dual_cjs_esm {
 });
 
 itest!(child_process_fork_test {
-  args: "run -A --quiet --enable-testing-features-do-not-use npm/child_process_fork_test/main.ts",
+  args: "run -A --quiet npm/child_process_fork_test/main.ts",
   output: "npm/child_process_fork_test/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,

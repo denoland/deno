@@ -44,7 +44,6 @@ use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::option::Option;
 use std::pin::Pin;
@@ -176,7 +175,7 @@ pub struct JsRuntimeState {
   /// instead of any other exceptions.
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
-  pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
+  pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
 }
@@ -197,7 +196,6 @@ fn v8_init(
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-change-array-by-copy",
-    " --no-harmony-rab-gsab",
   );
 
   if predictable {
@@ -349,7 +347,7 @@ impl JsRuntime {
       op_state: op_state.clone(),
       waker: AtomicWaker::new(),
       have_unpolled_ops: false,
-      dispatched_exceptions: Default::default(),
+      dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
       global_realm: None,
@@ -472,26 +470,6 @@ impl JsRuntime {
       #[cfg(feature = "include_js_files_for_snapshotting")]
       if snapshot_options != snapshot_util::SnapshotOptions::None {
         for source in &esm_sources {
-          use crate::ExtensionFileSourceCode;
-          if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-            &source.code
-          {
-            println!("cargo:rerun-if-changed={}", path.display())
-          }
-        }
-      }
-      // Cache bust plain JS (non-ES modules as well)
-      #[cfg(feature = "include_js_files_for_snapshotting")]
-      if snapshot_options != snapshot_util::SnapshotOptions::None {
-        let js_sources = options
-          .extensions
-          .iter()
-          .flat_map(|ext| match ext.get_js_sources() {
-            Some(s) => s.to_owned(),
-            None => vec![],
-          })
-          .collect::<Vec<ExtensionFileSource>>();
-        for source in js_sources {
           use crate::ExtensionFileSourceCode;
           if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
             &source.code
@@ -946,6 +924,27 @@ impl JsRuntime {
     )
   }
 
+  /// Call a function. If it returns a promise, run the event loop until that
+  /// promise is settled. If the promise rejects or there is an uncaught error
+  /// in the event loop, return `Err(error)`. Or return `Ok(<await returned>)`.
+  pub async fn call_and_await(
+    &mut self,
+    function: &v8::Global<v8::Function>,
+  ) -> Result<v8::Global<v8::Value>, Error> {
+    let promise = {
+      let scope = &mut self.handle_scope();
+      let cb = function.open(scope);
+      let this = v8::undefined(scope).into();
+      let promise = cb.call(scope, this, &[]);
+      if promise.is_none() || scope.is_execution_terminating() {
+        let undefined = v8::undefined(scope).into();
+        return exception_to_err_result(scope, undefined, false);
+      }
+      v8::Global::new(scope, promise.unwrap())
+    };
+    self.resolve_value(promise).await
+  }
+
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
@@ -1195,7 +1194,7 @@ impl JsRuntime {
 
     if has_inspector {
       // We poll the inspector first.
-      let _ = self.inspector().borrow_mut().poll_unpin(cx);
+      let _ = self.inspector().borrow().poll_sessions(Some(cx)).unwrap();
     }
 
     self.pump_v8_message_loop()?;
@@ -1507,6 +1506,10 @@ pub(crate) fn exception_to_err_result<T>(
   let state_rc = JsRuntime::state(scope);
 
   let was_terminating_execution = scope.is_execution_terminating();
+  // Disable running microtasks for a moment. When upgrading to V8 v11.4
+  // we discovered that canceling termination here will cause the queued
+  // microtasks to run which breaks some tests.
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
   // If TerminateExecution was called, cancel isolate termination so that the
   // exception can be created. Note that `scope.is_execution_terminating()` may
   // have returned false if TerminateExecution was indeed called but there was
@@ -1518,19 +1521,14 @@ pub(crate) fn exception_to_err_result<T>(
     // to use the exception that was passed to it rather than the exception that
     // was passed to this function.
     let state = state_rc.borrow();
-    exception = state
-      .dispatched_exceptions
-      .back()
-      .map(|exception| v8::Local::new(scope, exception.clone()))
-      .unwrap_or_else(|| {
-        // Maybe make a new exception object.
-        if was_terminating_execution && exception.is_null_or_undefined() {
-          let message = v8::String::new(scope, "execution terminated").unwrap();
-          v8::Exception::error(scope, message)
-        } else {
-          exception
-        }
-      });
+    exception = if let Some(exception) = &state.dispatched_exception {
+      v8::Local::new(scope, exception.clone())
+    } else if was_terminating_execution && exception.is_null_or_undefined() {
+      let message = v8::String::new(scope, "execution terminated").unwrap();
+      v8::Exception::error(scope, message)
+    } else {
+      exception
+    };
   }
 
   let mut js_error = JsError::from_v8_exception(scope, exception);
@@ -1545,6 +1543,7 @@ pub(crate) fn exception_to_err_result<T>(
     // Resume exception termination.
     scope.terminate_execution();
   }
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
 
   Err(js_error.into())
 }
@@ -1738,7 +1737,7 @@ impl JsRuntime {
     status = module.get_status();
 
     let has_dispatched_exception =
-      !state_rc.borrow_mut().dispatched_exceptions.is_empty();
+      state_rc.borrow_mut().dispatched_exception.is_some();
     if has_dispatched_exception {
       // This will be overrided in `exception_to_err_result()`.
       let exception = v8::undefined(tc_scope).into();
@@ -2659,7 +2658,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
         var p1 = Deno.core.opAsync("op_test", 42);
         var p2 = Deno.core.opAsync("op_test", 42);
@@ -2715,7 +2714,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        
+
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2734,7 +2733,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2751,7 +2750,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2766,7 +2765,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        
+
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync2("op_test", null, zero_copy_a);
         "#,
@@ -3928,7 +3927,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .execute_script_static(
         "macrotasks_and_nextticks.js",
         r#"
-        
+
         (async function () {
           const results = [];
           Deno.core.setMacrotaskCallback(() => {
@@ -4166,7 +4165,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           "",
           format!(
             r#"
-              
+
               globalThis.rejectValue = undefined;
               Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
                 globalThis.rejectValue = `{realm_name}/${{reason}}`;
@@ -4604,7 +4603,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           runtime.v8_isolate(),
           "",
           r#"
-            
+
             (async function () {
               const buf = await Deno.core.opAsync("op_test", false);
               let err;
@@ -4657,7 +4656,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           runtime.v8_isolate(),
           "",
           r#"
-            
+
             var promise = Deno.core.opAsync("op_pending");
           "#,
         )
@@ -4667,7 +4666,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
           runtime.v8_isolate(),
           "",
           r#"
-            
+
             var promise = Deno.core.opAsync("op_pending");
           "#,
         )
@@ -4720,25 +4719,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
-  }
-
-  #[test]
-  fn test_resizable_array_buffer() {
-    // Verify that "resizable ArrayBuffer" is disabled
-    let mut runtime = JsRuntime::new(Default::default());
-    runtime
-      .execute_script_static(
-        "test_rab.js",
-        r#"const a = new ArrayBuffer(100, {maxByteLength: 200});
-        if (a.byteLength !== 100) {
-          throw new Error('wrong byte length');
-        }
-        if (a.maxByteLength !== undefined) {
-          throw new Error("ArrayBuffer shouldn't have maxByteLength");
-        }
-        "#,
-      )
-      .unwrap();
   }
 
   #[test]
