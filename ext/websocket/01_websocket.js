@@ -3,7 +3,6 @@
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
-const { opAsync, opAsync2 } = core;
 // deno-lint-ignore camelcase
 const op_ws_check_permission_and_cancel_handle =
   core.ops.op_ws_check_permission_and_cancel_handle;
@@ -50,6 +49,21 @@ const {
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
+const {
+  op_ws_create,
+  op_ws_close,
+  op_ws_send_binary,
+  op_ws_send_text,
+  op_ws_next_event,
+  op_ws_send_ping,
+} = core.generateAsyncOpHandler(
+  "op_ws_create",
+  "op_ws_close",
+  "op_ws_send_binary",
+  "op_ws_send_text",
+  "op_ws_next_event",
+  "op_ws_send_ping",
+);
 
 webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
   // Union for (sequence<DOMString> or DOMString)
@@ -250,8 +264,7 @@ class WebSocket extends EventTarget {
     }
 
     PromisePrototypeThen(
-      opAsync(
-        "op_ws_create",
+      op_ws_create(
         "new WebSocket()",
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
@@ -263,7 +276,7 @@ class WebSocket extends EventTarget {
 
         if (this[_readyState] === CLOSING) {
           PromisePrototypeThen(
-            opAsync("op_ws_close", this[_rid]),
+            op_ws_close(this[_rid]),
             () => {
               this[_readyState] = CLOSED;
 
@@ -319,8 +332,7 @@ class WebSocket extends EventTarget {
     const sendTypedArray = (view, byteLength) => {
       this[_bufferedAmount] += byteLength;
       PromisePrototypeThen(
-        opAsync2(
-          "op_ws_send_binary",
+        op_ws_send_binary(
           this[_rid],
           view,
         ),
@@ -354,8 +366,7 @@ class WebSocket extends EventTarget {
       const d = core.encode(string);
       this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(d);
       PromisePrototypeThen(
-        opAsync2(
-          "op_ws_send_text",
+        op_ws_send_text(
           this[_rid],
           string,
         ),
@@ -413,8 +424,7 @@ class WebSocket extends EventTarget {
       this[_readyState] = CLOSING;
 
       PromisePrototypeCatch(
-        opAsync(
-          "op_ws_close",
+        op_ws_close(
           this[_rid],
           code,
           reason,
@@ -438,10 +448,7 @@ class WebSocket extends EventTarget {
 
   async [_eventLoop]() {
     while (this[_readyState] !== CLOSED) {
-      const { 0: kind, 1: value } = await opAsync2(
-        "op_ws_next_event",
-        this[_rid],
-      );
+      const { 0: kind, 1: value } = await op_ws_next_event(this[_rid]);
 
       switch (kind) {
         case 0: {
@@ -501,8 +508,7 @@ class WebSocket extends EventTarget {
 
           if (prevState === OPEN) {
             try {
-              await opAsync(
-                "op_ws_close",
+              await op_ws_close(
                 this[_rid],
                 code,
                 value,
@@ -530,17 +536,12 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await opAsync("op_ws_send_ping", this[_rid]);
+          await op_ws_send_ping(this[_rid]);
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
               const reason = "No response from ping frame.";
-              await opAsync(
-                "op_ws_close",
-                this[_rid],
-                1001,
-                reason,
-              );
+              await op_ws_close(this[_rid], 1001, reason);
               this[_readyState] = CLOSED;
 
               const errEvent = new ErrorEvent("error", {
