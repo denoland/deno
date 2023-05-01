@@ -335,9 +335,11 @@ class Process extends EventEmitter {
   get release() {
     return {
       name: "node",
-      sourceUrl: `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
-      headersUrl: `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz` 
-    }
+      sourceUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
+      headersUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
+    };
   }
 
   /** https://nodejs.org/api/process.html#process_process_arch */
