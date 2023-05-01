@@ -56,15 +56,9 @@ class URLPattern {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'URLPattern'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    input = webidl.converters.URLPatternInput(input, {
-      prefix,
-      context: "Argument 1",
-    });
+    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
     if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, {
-        prefix,
-        context: "Argument 2",
-      });
+      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
     const components = ops.op_urlpattern_parse(input, baseURL);
@@ -134,15 +128,9 @@ class URLPattern {
     webidl.assertBranded(this, URLPatternPrototype);
     const prefix = "Failed to execute 'test' on 'URLPattern'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    input = webidl.converters.URLPatternInput(input, {
-      prefix,
-      context: "Argument 1",
-    });
+    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
     if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, {
-        prefix,
-        context: "Argument 2",
-      });
+      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
     const res = ops.op_urlpattern_process_match_input(
@@ -175,15 +163,9 @@ class URLPattern {
     webidl.assertBranded(this, URLPatternPrototype);
     const prefix = "Failed to execute 'exec' on 'URLPattern'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    input = webidl.converters.URLPatternInput(input, {
-      prefix,
-      context: "Argument 1",
-    });
+    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
     if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, {
-        prefix,
-        context: "Argument 2",
-      });
+      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
     const res = ops.op_urlpattern_process_match_input(
@@ -258,12 +240,12 @@ webidl.converters.URLPatternInit = webidl
     { key: "baseURL", converter: webidl.converters.USVString },
   ]);
 
-webidl.converters["URLPatternInput"] = (V, opts) => {
+webidl.converters["URLPatternInput"] = (V, prefix, context, opts) => {
   // Union for (URLPatternInit or USVString)
   if (typeof V == "object") {
-    return webidl.converters.URLPatternInit(V, opts);
+    return webidl.converters.URLPatternInit(V, prefix, context, opts);
   }
-  return webidl.converters.USVString(V, opts);
+  return webidl.converters.USVString(V, prefix, context, opts);
 };
 
 export { URLPattern };
