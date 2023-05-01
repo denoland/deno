@@ -184,7 +184,12 @@ where
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = url.parse()?;
-  let mut request = Request::builder().method(Method::GET).uri(&uri);
+  let mut request = Request::builder().method(Method::GET).uri(
+    uri
+      .path_and_query()
+      .ok_or(type_error("Missing path in url".to_string()))?
+      .as_str(),
+  );
 
   let authority = uri.authority().unwrap().as_str();
   let host = authority
@@ -195,7 +200,7 @@ where
     .header("User-Agent", user_agent)
     .header("Host", host)
     .header(UPGRADE, "websocket")
-    .header(CONNECTION, "upgrade")
+    .header(CONNECTION, "Upgrade")
     .header(
       "Sec-WebSocket-Key",
       fastwebsockets::handshake::generate_key(),
@@ -406,6 +411,20 @@ pub async fn op_ws_send_pong(
   resource.write_frame(Frame::pong(vec![])).await
 }
 
+#[op]
+pub async fn op_ws_send_ping(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  resource
+    .write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    .await
+}
+
 #[op(deferred)]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
@@ -499,6 +518,7 @@ deno_core::extension!(deno_websocket,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    op_ws_send_ping,
     op_ws_send_pong,
     op_ws_server_create,
   ],

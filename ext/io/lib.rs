@@ -461,13 +461,13 @@ impl StdFileResource {
     ) -> Result<TResult, E>,
   ) -> Option<Result<TResult, E>> {
     match self.cell.try_borrow_mut() {
-      Ok(mut cell) => {
+      Ok(mut cell) if cell.is_some() => {
         let mut file = cell.take().unwrap();
         let result = action(&mut file.inner, &file.meta_data);
         cell.replace(file);
         Some(result)
       }
-      Err(_) => None,
+      _ => None,
     }
   }
 
@@ -537,14 +537,14 @@ impl StdFileResource {
       .await
   }
 
-  fn read_byob_sync(&self, buf: &mut [u8]) -> Result<usize, AnyError> {
+  fn read_byob_sync(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
     self
       .with_inner_and_metadata(|inner, _| inner.read(buf))
       .ok_or_else(resource_unavailable)?
       .map_err(Into::into)
   }
 
-  fn write_sync(&self, data: &[u8]) -> Result<usize, AnyError> {
+  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     self
       .with_inner_and_metadata(|inner, _| inner.write_and_maybe_flush(data))
       .ok_or_else(resource_unavailable)?
@@ -694,12 +694,15 @@ impl Resource for StdFileResource {
     Box::pin(StdFileResource::write_all(self, view))
   }
 
-  fn write_sync(&self, data: &[u8]) -> Result<usize, deno_core::anyhow::Error> {
+  fn write_sync(
+    self: Rc<Self>,
+    data: &[u8],
+  ) -> Result<usize, deno_core::anyhow::Error> {
     StdFileResource::write_sync(self, data)
   }
 
   fn read_byob_sync(
-    &self,
+    self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, deno_core::anyhow::Error> {
     StdFileResource::read_byob_sync(self, data)

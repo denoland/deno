@@ -70,7 +70,7 @@ async fn read_line_and_poll(
             let exception_details = params.get("exceptionDetails").unwrap().as_object().unwrap();
             let text = exception_details.get("text").unwrap().as_str().unwrap();
             let exception = exception_details.get("exception").unwrap().as_object().unwrap();
-            let description = exception.get("description").unwrap().as_str().unwrap();
+            let description = exception.get("description").and_then(|d| d.as_str()).unwrap_or("undefined");
             println!("{text} {description}");
           }
         }
@@ -108,7 +108,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let resolver = ps.resolver.clone();
   let dir = ps.dir.clone();
   let file_fetcher = ps.file_fetcher.clone();
-  let worker_factory = ps.into_cli_main_worker_factory();
+  let worker_factory = ps.create_cli_main_worker_factory();
 
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)

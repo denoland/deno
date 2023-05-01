@@ -44,12 +44,14 @@ import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
-import * as colors from "ext:deno_console/01_colors.js";
 import {
+  getDefaultInspectOptions,
+  getNoColor,
   inspectArgs,
   quoteString,
+  setNoColor,
   wrapConsole,
-} from "ext:deno_console/02_console.js";
+} from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
@@ -99,7 +101,7 @@ function workerClose() {
 function postMessage(message, transferOrOptions = {}) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   message = webidl.converters.any(message);
   let options;
   if (
@@ -109,16 +111,15 @@ function postMessage(message, transferOrOptions = {}) {
   ) {
     const transfer = webidl.converters["sequence<object>"](
       transferOrOptions,
-      { prefix, context: "Argument 2" },
+      prefix,
+      "Argument 2",
     );
     options = { transfer };
   } else {
     options = webidl.converters.StructuredSerializeOptions(
       transferOrOptions,
-      {
-        prefix,
-        context: "Argument 2",
-      },
+      prefix,
+      "Argument 2",
     );
   }
   const { transfer } = options;
@@ -218,12 +219,12 @@ function formatException(error) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
-      inspectArgs([quoteString(error)], {
-        colors: !colors.getNoColor(),
+      inspectArgs([quoteString(error, getDefaultInspectOptions())], {
+        colors: !getNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !colors.getNoColor() })}`;
+    return `Uncaught ${inspectArgs([error], { colors: !getNoColor() })}`;
   }
 }
 
@@ -312,7 +313,7 @@ function runtimeStart(
   );
   core.setBuildInfo(target);
   util.setLogDebug(debugFlag, source);
-  colors.setNoColor(noColor || !isTty);
+  setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }

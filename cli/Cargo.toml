@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.32.5"
+version = "1.33.1"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -68,7 +68,7 @@ clap_complete_fig = "=4.1.2"
 console_static_text.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
-dprint-plugin-json = "=0.17.0"
+dprint-plugin-json = "=0.17.2"
 dprint-plugin-markdown = "=0.15.2"
 dprint-plugin-typescript = "=0.84.2"
 encoding_rs.workspace = true
@@ -82,7 +82,7 @@ http.workspace = true
 hyper.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
-jsonc-parser = { version = "=0.21.0", features = ["serde"] }
+jsonc-parser = { version = "=0.21.1", features = ["serde"] }
 lazy-regex.workspace = true
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }

@@ -3795,21 +3795,6 @@ assertEquals(1, notify_return_value);
   }
 
   #[test]
-  fn test_core_js_stack_frame() {
-    let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    // Call non-existent op so we get error from `core.js`
-    let error = runtime
-      .execute_script_static(
-        "core_js_stack_frame.js",
-        "Deno.core.opAsync('non_existent');",
-      )
-      .unwrap_err();
-    let error_string = error.to_string();
-    // Test that the script specifier is a URL: `ext:<repo-relative path>`.
-    assert!(error_string.contains("ext:core/01_core.js"));
-  }
-
-  #[test]
   fn test_v8_platform() {
     let options = RuntimeOptions {
       v8_platform: Some(v8::new_default_platform(0, false).make_shared()),
@@ -4776,21 +4761,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
-  }
-
-  #[test]
-  fn test_non_existent_async_op_error() {
-    // Verify that "resizable ArrayBuffer" is disabled
-    let mut runtime = JsRuntime::new(Default::default());
-    let err = runtime
-      .execute_script_static(
-        "test_rab.js",
-        r#"Deno.core.opAsync("this_op_doesnt_exist");"#,
-      )
-      .unwrap_err();
-    assert!(err
-      .to_string()
-      .contains("this_op_doesnt_exist is not a registered op"));
   }
 
   #[tokio::test]

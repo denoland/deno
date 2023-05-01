@@ -163,6 +163,19 @@ verify on GitHub that everything looks correct.
 - [ ] Publish the release on Github
 
 - [ ] Run the
+      https://github.com/denoland/dotland/actions/workflows/update_versions.yml
+      workflow.
+  - [ ] This should open a PR. Review and merge it.
+
+  <details>
+      <summary>Failure Steps</summary>
+
+  1. Update https://github.com/denoland/dotland/blob/main/versions.json
+     manually.
+  2. Open a PR and merge.
+  </details>
+
+- [ ] Run the
       https://github.com/denoland/dotcom/actions/workflows/update_versions.yml
       workflow.
   - [ ] This should open a PR. Review and merge it.

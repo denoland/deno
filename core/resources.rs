@@ -155,13 +155,13 @@ pub trait Resource: Any + 'static {
   }
 
   /// The same as [`read_byob()`][Resource::read_byob], but synchronous.
-  fn read_byob_sync(&self, data: &mut [u8]) -> Result<usize, Error> {
+  fn read_byob_sync(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
     _ = data;
     Err(not_supported())
   }
 
   /// The same as [`write()`][Resource::write], but synchronous.
-  fn write_sync(&self, data: &[u8]) -> Result<usize, Error> {
+  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
     _ = data;
     Err(not_supported())
   }

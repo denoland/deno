@@ -406,7 +406,7 @@ fn cached_only_after_first_run() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -451,7 +451,7 @@ fn cached_only_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert!(output.status.success());
   assert!(stderr.is_empty());
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
 }
 
 #[test]
@@ -476,7 +476,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -496,7 +496,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -516,7 +516,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -536,7 +536,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -556,7 +556,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert!(stderr.is_empty());
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 }
 
@@ -605,7 +605,7 @@ fn no_npm_after_first_run() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
