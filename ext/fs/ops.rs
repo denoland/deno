@@ -17,7 +17,6 @@ use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
-use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::ThreadRng;
@@ -28,11 +27,11 @@ use tokio::task::JoinError;
 
 use crate::check_unstable;
 use crate::check_unstable2;
+use crate::interface::FileResource;
 use crate::interface::FsDirEntry;
 use crate::interface::FsError;
 use crate::interface::FsFileType;
 use crate::interface::FsStat;
-use crate::File;
 use crate::FileSystem;
 use crate::FsPermissions;
 use crate::OpenOptions;
@@ -56,6 +55,69 @@ impl From<FsError> for AnyError {
       FsError::FileBusy => resource_unavailable(),
       FsError::NotSupported => not_supported(),
     }
+  }
+}
+
+#[derive(Clone)]
+struct BoxedFile(Rc<dyn FileResource>);
+
+impl deno_core::Resource for BoxedFile {
+  fn name(&self) -> Cow<str> {
+    self.0.name()
+  }
+
+  fn read(
+    self: Rc<Self>,
+    limit: usize,
+  ) -> deno_core::AsyncResult<deno_core::BufView> {
+    self.0.clone().read(limit)
+  }
+
+  fn read_byob(
+    self: Rc<Self>,
+    buf: deno_core::BufMutView,
+  ) -> deno_core::AsyncResult<(usize, deno_core::BufMutView)> {
+    self.0.clone().read_byob(buf)
+  }
+
+  fn write(
+    self: Rc<Self>,
+    buf: deno_core::BufView,
+  ) -> deno_core::AsyncResult<deno_core::WriteOutcome> {
+    self.0.clone().write(buf)
+  }
+
+  fn write_all(
+    self: Rc<Self>,
+    view: deno_core::BufView,
+  ) -> deno_core::AsyncResult<()> {
+    self.0.clone().write_all(view)
+  }
+
+  fn read_byob_sync(
+    self: Rc<Self>,
+    data: &mut [u8],
+  ) -> Result<usize, deno_core::anyhow::Error> {
+    self.0.clone().read_byob_sync(data)
+  }
+
+  fn write_sync(
+    self: Rc<Self>,
+    data: &[u8],
+  ) -> Result<usize, deno_core::anyhow::Error> {
+    self.0.clone().write_sync(data)
+  }
+
+  fn shutdown(self: Rc<Self>) -> deno_core::AsyncResult<()> {
+    self.0.clone().shutdown()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.0.clone().close()
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    self.0.size_hint()
   }
 }
 
@@ -102,7 +164,6 @@ fn op_open_sync<Fs, P>(
 ) -> Result<ResourceId, AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -114,7 +175,7 @@ where
   let fs = state.borrow::<Fs>();
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
 
-  let rid = state.resource_table.add(file);
+  let rid = state.resource_table.add(BoxedFile(file));
   Ok(rid)
 }
 
@@ -126,7 +187,6 @@ async fn op_open_async<Fs, P>(
 ) -> Result<ResourceId, AnyError>
 where
   Fs: FileSystem + 'static,
-  Fs::File: Resource,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -143,7 +203,7 @@ where
     .await
     .context_path("open", &path)?;
 
-  let rid = state.borrow_mut().resource_table.add(file);
+  let rid = state.borrow_mut().resource_table.add(BoxedFile(file));
   Ok(rid)
 }
 
@@ -1340,251 +1400,191 @@ fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {
 }
 
 #[op]
-fn op_seek_sync<Fs>(
+fn op_seek_sync(
   state: &mut OpState,
   rid: ResourceId,
   offset: i64,
   whence: i32,
-) -> Result<u64, AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
+) -> Result<u64, AnyError> {
   let pos = to_seek_from(offset, whence)?;
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  let cursor = file.seek_sync(pos)?;
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  let cursor = file.0.clone().seek_sync(pos)?;
   Ok(cursor)
 }
 
 #[op]
-async fn op_seek_async<Fs>(
+async fn op_seek_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   offset: i64,
   whence: i32,
-) -> Result<u64, AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
+) -> Result<u64, AnyError> {
   let pos = to_seek_from(offset, whence)?;
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
-  let cursor = file.seek_async(pos).await?;
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
+  let cursor = file.0.clone().seek_async(pos).await?;
   Ok(cursor)
 }
 
 #[op]
-fn op_fdatasync_sync<Fs>(
+fn op_fdatasync_sync(
   state: &mut OpState,
   rid: ResourceId,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  file.datasync_sync()?;
+) -> Result<(), AnyError> {
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().datasync_sync()?;
   Ok(())
 }
 
 #[op]
-async fn op_fdatasync_async<Fs>(
+async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
-  file.datasync_async().await?;
+) -> Result<(), AnyError> {
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().datasync_async().await?;
   Ok(())
 }
 
 #[op]
-fn op_fsync_sync<Fs>(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  file.sync_sync()?;
+fn op_fsync_sync(state: &mut OpState, rid: ResourceId) -> Result<(), AnyError> {
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().sync_sync()?;
   Ok(())
 }
 
 #[op]
-async fn op_fsync_async<Fs>(
+async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
-  file.sync_async().await?;
+) -> Result<(), AnyError> {
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().sync_async().await?;
   Ok(())
 }
 
 #[op]
-fn op_fstat_sync<Fs>(
+fn op_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
   stat_out_buf: &mut [u32],
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  let stat = file.stat_sync()?;
+) -> Result<(), AnyError> {
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  let stat = file.0.clone().stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
   Ok(())
 }
 
 #[op]
-async fn op_fstat_async<Fs>(
+async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<SerializableStat, AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
-  let stat = file.stat_async().await?;
+) -> Result<SerializableStat, AnyError> {
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
+  let stat = file.0.clone().stat_async().await?;
   Ok(stat.into())
 }
 
 #[op]
-fn op_flock_sync<Fs>(
+fn op_flock_sync(
   state: &mut OpState,
   rid: ResourceId,
   exclusive: bool,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
+) -> Result<(), AnyError> {
   check_unstable(state, "Deno.flockSync");
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  file.lock_sync(exclusive)?;
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().lock_sync(exclusive)?;
   Ok(())
 }
 
 #[op]
-async fn op_flock_async<Fs>(
+async fn op_flock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   exclusive: bool,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
+) -> Result<(), AnyError> {
   check_unstable2(&state, "Deno.flock");
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
-  file.lock_async(exclusive).await?;
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().lock_async(exclusive).await?;
   Ok(())
 }
 
 #[op]
-fn op_funlock_sync<Fs>(
+fn op_funlock_sync(
   state: &mut OpState,
   rid: ResourceId,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
+) -> Result<(), AnyError> {
   check_unstable(state, "Deno.funlockSync");
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  file.unlock_sync()?;
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().unlock_sync()?;
   Ok(())
 }
 
 #[op]
-async fn op_funlock_async<Fs>(
+async fn op_funlock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
+) -> Result<(), AnyError> {
   check_unstable2(&state, "Deno.funlock");
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
-  file.unlock_async().await?;
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().unlock_async().await?;
   Ok(())
 }
 
 #[op]
-fn op_ftruncate_sync<Fs>(
+fn op_ftruncate_sync(
   state: &mut OpState,
   rid: ResourceId,
   len: u64,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  file.truncate_sync(len)?;
+) -> Result<(), AnyError> {
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().truncate_sync(len)?;
   Ok(())
 }
 
 #[op]
-async fn op_ftruncate_async<Fs>(
+async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   len: u64,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
-  file.truncate_async(len).await?;
+) -> Result<(), AnyError> {
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().truncate_async(len).await?;
   Ok(())
 }
 
 #[op]
-fn op_futime_sync<Fs>(
+fn op_futime_sync(
   state: &mut OpState,
   rid: ResourceId,
   atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
   mtime_nanos: u32,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.resource_table.get::<Fs::File>(rid)?;
-  file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+) -> Result<(), AnyError> {
+  let file = state.resource_table.get::<BoxedFile>(rid)?;
+  file.0.clone().utime_sync(
+    atime_secs,
+    atime_nanos,
+    mtime_secs,
+    mtime_nanos,
+  )?;
   Ok(())
 }
 
 #[op]
-async fn op_futime_async<Fs>(
+async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
   mtime_nanos: u32,
-) -> Result<(), AnyError>
-where
-  Fs: FileSystem + 'static,
-  Fs::File: Resource,
-{
-  let file = state.borrow().resource_table.get::<Fs::File>(rid)?;
+) -> Result<(), AnyError> {
+  let file = state.borrow().resource_table.get::<BoxedFile>(rid)?;
   file
+    .0
+    .clone()
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
   Ok(())

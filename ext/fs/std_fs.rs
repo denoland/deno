@@ -16,6 +16,7 @@ use std::time::UNIX_EPOCH;
 use deno_io::StdFileResource;
 use fs3::FileExt;
 
+use crate::interface::FileResource;
 use crate::interface::FsDirEntry;
 use crate::interface::FsError;
 use crate::interface::FsFileType;
@@ -30,8 +31,6 @@ pub struct StdFs;
 
 #[async_trait::async_trait(?Send)]
 impl FileSystem for StdFs {
-  type File = StdFileResource;
-
   fn cwd(&self) -> FsResult<PathBuf> {
     std::env::current_dir().map_err(Into::into)
   }
@@ -80,20 +79,20 @@ impl FileSystem for StdFs {
     &self,
     path: impl AsRef<Path>,
     options: OpenOptions,
-  ) -> FsResult<Self::File> {
+  ) -> FsResult<Rc<dyn FileResource>> {
     let opts = open_options(options);
     let std_file = opts.open(path)?;
-    Ok(StdFileResource::fs_file(std_file))
+    Ok(Rc::new(StdFileResource::fs_file(std_file)))
   }
   async fn open_async(
     &self,
     path: PathBuf,
     options: OpenOptions,
-  ) -> FsResult<Self::File> {
+  ) -> FsResult<Rc<dyn FileResource>> {
     let opts = open_options(options);
     let std_file =
       tokio::task::spawn_blocking(move || opts.open(path)).await??;
-    Ok(StdFileResource::fs_file(std_file))
+    Ok(Rc::new(StdFileResource::fs_file(std_file)))
   }
 
   fn mkdir_sync(
@@ -786,6 +785,8 @@ async fn nonblocking<T: Send + 'static>(
   let res = resource.with_file_blocking_task2(f).await?;
   Ok(res)
 }
+
+impl FileResource for StdFileResource {}
 
 #[async_trait::async_trait(?Send)]
 impl File for StdFileResource {
