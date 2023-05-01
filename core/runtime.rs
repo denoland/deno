@@ -2765,9 +2765,9 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-
+        const { op_test } = Deno.core.generateAsyncOpHandler("op_test");
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.opAsync2("op_test", null, zero_copy_a);
+        op_test(null, zero_copy_a);
         "#,
       )
       .unwrap();

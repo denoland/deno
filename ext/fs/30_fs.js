@@ -1,7 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
+const {
+  op_chmod_async,
+  op_ftruncate_async,
+  op_truncate_async,
+  op_link_async,
+  op_flock_async,
+} = Deno.core.generateAsyncOpHandler(
+  "op_chmod_async",
+  "op_ftruncate_async",
+  "op_truncate_async",
+  "op_link_async",
+  "op_flock_async",
+);
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -34,7 +49,7 @@ function chmodSync(path, mode) {
 }
 
 async function chmod(path, mode) {
-  await core.opAsync2("op_chmod_async", pathFromURL(path), mode);
+  await op_chmod_async(pathFromURL(path), mode);
 }
 
 function chownSync(
@@ -347,7 +362,7 @@ function ftruncateSync(rid, len) {
 }
 
 async function ftruncate(rid, len) {
-  await core.opAsync2("op_ftruncate_async", rid, coerceLen(len));
+  await op_ftruncate_async(rid, coerceLen(len));
 }
 
 function truncateSync(path, len) {
@@ -355,7 +370,7 @@ function truncateSync(path, len) {
 }
 
 async function truncate(path, len) {
-  await core.opAsync2("op_truncate_async", path, coerceLen(len));
+  await op_truncate_async(path, coerceLen(len));
 }
 
 function umask(mask) {
@@ -367,7 +382,7 @@ function linkSync(oldpath, newpath) {
 }
 
 async function link(oldpath, newpath) {
-  await core.opAsync2("op_link_async", oldpath, newpath);
+  await op_link_async(oldpath, newpath);
 }
 
 function toUnixTimeFromEpoch(value) {
@@ -497,7 +512,7 @@ function flockSync(rid, exclusive) {
 }
 
 async function flock(rid, exclusive) {
-  await core.opAsync2("op_flock_async", rid, exclusive === true);
+  await op_flock_async(rid, exclusive === true);
 }
 
 function funlockSync(rid) {
