@@ -3,6 +3,7 @@ const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+const { op_http_write } = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
@@ -320,7 +321,7 @@ function createRespondWith(
               break;
             }
             try {
-              await core.opAsync2("op_http_write", streamRid, value);
+              await op_http_write(streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (

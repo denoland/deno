@@ -31,6 +31,11 @@ export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.t
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
+const {
+  op_node_gen_prime_async,
+  op_node_check_prime_bytes_async,
+  op_node_check_prime_async,
+} = ops;
 
 export type LargeNumberLike =
   | ArrayBufferView
@@ -79,9 +84,9 @@ export function checkPrime(
 
   validateInt32(checks, "options.checks", 0);
 
-  let op = "op_node_check_prime_bytes_async";
+  let op = op_node_check_prime_bytes_async;
   if (typeof candidate === "bigint") {
-    op = "op_node_check_prime_async";
+    op = op_node_check_prime_async;
   } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
     throw new ERR_INVALID_ARG_TYPE(
       "candidate",
@@ -96,7 +101,7 @@ export function checkPrime(
     );
   }
 
-  core.opAsync2(op, candidate, checks).then(
+  op(candidate, checks).then(
     (result) => {
       callback?.(null, result);
     },
@@ -160,7 +165,7 @@ export function generatePrime(
   const {
     bigint,
   } = validateRandomPrimeJob(size, options);
-  core.opAsync2("op_node_gen_prime_async", size).then((prime: Uint8Array) =>
+  op_node_gen_prime_async(size).then((prime: Uint8Array) =>
     bigint ? arrayBufferToUnsignedBigInt(prime.buffer) : prime.buffer
   ).then((prime: ArrayBuffer | bigint) => {
     callback?.(null, prime);
