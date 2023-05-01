@@ -482,7 +482,7 @@ function getRoot(eventTarget) {
 function isNode(
   eventTarget,
 ) {
-  return Boolean(eventTarget && ReflectHas(eventTarget, "nodeType"));
+  return eventTarget?.nodeType !== undefined;
 }
 
 // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
@@ -734,8 +734,12 @@ function innerInvokeEventListeners(
     return found;
   }
 
+  let handlers = targetListeners[type];
+
   // Copy event listeners before iterating since the list can be modified during the iteration.
-  const handlers = ArrayPrototypeSlice(targetListeners[type]);
+  if (handlers.length > 1) {
+    handlers = ArrayPrototypeSlice(targetListeners[type]);
+  }
 
   for (let i = 0; i < handlers.length; i++) {
     const listener = handlers[i];
@@ -804,12 +808,19 @@ function innerInvokeEventListeners(
  * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
 function invokeEventListeners(tuple, eventImpl) {
   const path = getPath(eventImpl);
-  const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
-  for (let i = tupleIndex; i >= 0; i--) {
-    const t = path[i];
+  if (path.length === 1) {
+    const t = path[0];
     if (t.target) {
       setTarget(eventImpl, t.target);
-      break;
+    }
+  } else {
+    const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
+    for (let i = tupleIndex; i >= 0; i--) {
+      const t = path[i];
+      if (t.target) {
+        setTarget(eventImpl, t.target);
+        break;
+      }
     }
   }
 
