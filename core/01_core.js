@@ -192,7 +192,7 @@
 
         // If callback returned `undefined` then it has no work to do, we don't
         // need to perform microtask checkpoint.
-        if (res === true) {
+        if (res === undefined) {
           break;
         }
 

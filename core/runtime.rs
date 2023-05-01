@@ -554,7 +554,7 @@ impl JsRuntime {
     unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
     drop(module_map_rc);
   }
-
+  //
   #[inline]
   fn get_module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
     self.module_map.as_ref().unwrap()
