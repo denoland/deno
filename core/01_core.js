@@ -150,6 +150,7 @@
   }
 
   const macrotaskCallbacks = [];
+  let nextTickCallbacksEnabled = false;
   const nextTickCallbacks = [];
 
   function setMacrotaskCallback(cb) {
@@ -157,6 +158,7 @@
   }
 
   function setNextTickCallback(cb) {
+    nextTickCallbacksEnabled = true;
     ArrayPrototypePush(nextTickCallbacks, cb);
   }
 
@@ -172,13 +174,15 @@
       const promise = getPromise(promiseId);
       promise.resolve(res);
     }
-    // Drain nextTick queue if there's a tick scheduled.
-    if (arguments[arguments.length - 1]) {
-      for (let i = 0; i < nextTickCallbacks.length; i++) {
-        nextTickCallbacks[i]();
+    if (nextTickCallbacksEnabled) {
+      // Drain nextTick queue if there's a tick scheduled.
+      if (arguments[arguments.length - 1]) {
+        for (let i = 0; i < nextTickCallbacks.length; i++) {
+          nextTickCallbacks[i]();
+        }
+      } else {
+        ops.op_run_microtasks();
       }
-    } else {
-      ops.op_run_microtasks();
     }
     // Finally drain macrotask queue.
     for (let i = 0; i < macrotaskCallbacks.length; i++) {
@@ -186,6 +190,9 @@
       while (true) {
         const res = cb();
         ops.op_run_microtasks();
+
+        // If callback returned true then it has no more work to do, stop
+        // calling it then.
         if (res === true) {
           break;
         }
@@ -827,8 +834,14 @@ for (let i = 0; i < 10; i++) {
     print: (msg, isErr) => ops.op_print(msg, isErr),
     setMacrotaskCallback,
     setNextTickCallback,
+    // TODO(bartlomieju): remove when `Deno[Deno.internal].core` in no longer
+    // available.
     runMicrotasks: () => ops.op_run_microtasks(),
+    // TODO(bartlomieju): remove when `Deno[Deno.internal].core` in no longer
+    // available.
     hasTickScheduled: () => ops.op_has_tick_scheduled(),
+    // TODO(bartlomieju): remove when `Deno[Deno.internal].core` in no longer
+    // available.
     setHasTickScheduled: (bool) => ops.op_set_has_tick_scheduled(bool),
     evalContext: (
       source,
