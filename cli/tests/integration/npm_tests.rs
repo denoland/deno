@@ -156,6 +156,15 @@ itest!(mixed_case_package_name_local_dir {
   temp_cwd: true,
 });
 
+itest!(local_dir_resolves_symlinks {
+  args: "run -A $TESTDATA/npm/local_dir_resolves_symlinks/index.js",
+  output: "npm/local_dir_resolves_symlinks/index.out",
+  exit_code: 0,
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
