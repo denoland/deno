@@ -257,14 +257,8 @@ class Response {
    */
   static redirect(url, status = 302) {
     const prefix = "Failed to call 'Response.redirect'";
-    url = webidl.converters["USVString"](url, {
-      prefix,
-      context: "Argument 1",
-    });
-    status = webidl.converters["unsigned short"](status, {
-      prefix,
-      context: "Argument 2",
-    });
+    url = webidl.converters["USVString"](url, prefix, "Argument 1");
+    status = webidl.converters["unsigned short"](status, prefix, "Argument 2");
 
     const baseURL = getLocationHref();
     const parsedURL = new URL(url, baseURL);
@@ -291,10 +285,7 @@ class Response {
   static json(data = undefined, init = {}) {
     const prefix = "Failed to call 'Response.json'";
     data = webidl.converters.any(data);
-    init = webidl.converters["ResponseInit_fast"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
 
     const str = serializeJSValueToJSONString(data);
     const res = extractBody(str);
@@ -315,14 +306,8 @@ class Response {
    */
   constructor(body = null, init = undefined) {
     const prefix = "Failed to construct 'Response'";
-    body = webidl.converters["BodyInit_DOMString?"](body, {
-      prefix,
-      context: "Argument 1",
-    });
-    init = webidl.converters["ResponseInit_fast"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+    body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
+    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
 
     this[_response] = newInnerResponse();
     this[_headers] = headersFromHeaderList(
@@ -463,7 +448,12 @@ webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
     converter: webidl.converters["HeadersInit"],
   }],
 );
-webidl.converters["ResponseInit_fast"] = function (init, opts) {
+webidl.converters["ResponseInit_fast"] = function (
+  init,
+  prefix,
+  context,
+  opts,
+) {
   if (init === undefined || init === null) {
     return { status: 200, statusText: "", headers: undefined };
   }
@@ -482,7 +472,7 @@ webidl.converters["ResponseInit_fast"] = function (init, opts) {
     return { status, statusText, headers };
   }
   // Slow default path
-  return webidl.converters["ResponseInit"](init, opts);
+  return webidl.converters["ResponseInit"](init, prefix, context, opts);
 };
 
 /**

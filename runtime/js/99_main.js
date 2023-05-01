@@ -12,27 +12,28 @@ const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSplice,
-  ArrayPrototypeMap,
   DateNow,
   Error,
   ErrorPrototype,
-  FunctionPrototypeCall,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   ObjectAssign,
-  ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectDefineProperty,
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  PromisePrototypeThen,
   PromiseResolve,
+  SafeWeakMap,
   Symbol,
   SymbolIterator,
-  PromisePrototypeThen,
-  SafeWeakMap,
   TypeError,
   WeakMapPrototypeDelete,
   WeakMapPrototypeGet,
@@ -101,7 +102,7 @@ function workerClose() {
 function postMessage(message, transferOrOptions = {}) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   message = webidl.converters.any(message);
   let options;
   if (
@@ -111,16 +112,15 @@ function postMessage(message, transferOrOptions = {}) {
   ) {
     const transfer = webidl.converters["sequence<object>"](
       transferOrOptions,
-      { prefix, context: "Argument 2" },
+      prefix,
+      "Argument 2",
     );
     options = { transfer };
   } else {
     options = webidl.converters.StructuredSerializeOptions(
       transferOrOptions,
-      {
-        prefix,
-        context: "Argument 2",
-      },
+      prefix,
+      "Argument 2",
     );
   }
   const { transfer } = options;
@@ -148,8 +148,10 @@ async function pollForMessages() {
     const msgEvent = new event.MessageEvent("message", {
       cancelable: false,
       data: message,
-      ports: transferables.filter((t) =>
-        ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
+      ports: ArrayPrototypeFilter(
+        transferables,
+        (t) =>
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
       ),
     });
 
@@ -425,12 +427,11 @@ function bootstrapMainRuntime(runtimeOptions) {
     8: tsVersion,
     9: unstableFlag,
     10: pid,
-    11: ppid,
-    12: target,
-    13: v8Version,
-    14: userAgent,
-    15: inspectFlag,
-    // 16: enableTestingFeaturesFlag
+    11: target,
+    12: v8Version,
+    13: userAgent,
+    14: inspectFlag,
+    // 15: enableTestingFeaturesFlag
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -493,9 +494,16 @@ function bootstrapMainRuntime(runtimeOptions) {
   setUserAgent(userAgent);
   setLanguage(locale);
 
+  let ppid = undefined;
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
-    ppid: util.readOnly(ppid),
+    ppid: util.getterOnly(() => {
+      // lazy because it's expensive
+      if (ppid === undefined) {
+        ppid = ops.op_ppid();
+      }
+      return ppid;
+    }),
     noColor: util.readOnly(noColor),
     args: util.readOnly(ObjectFreeze(args)),
     mainModule: util.getterOnly(opMainModule),
@@ -533,12 +541,11 @@ function bootstrapWorkerRuntime(
     8: tsVersion,
     9: unstableFlag,
     10: pid,
-    // 11: ppid,
-    12: target,
-    13: v8Version,
-    // 14: userAgent,
-    // 15: inspectFlag,
-    16: enableTestingFeaturesFlag,
+    11: target,
+    12: v8Version,
+    // 13: userAgent,
+    // 14: inspectFlag,
+    15: enableTestingFeaturesFlag,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());

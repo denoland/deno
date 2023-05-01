@@ -523,10 +523,11 @@ function handleWasmStreaming(source, rid) {
   // This implements part of
   // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
   try {
-    const res = webidl.converters["Response"](source, {
-      prefix: "Failed to call 'WebAssembly.compileStreaming'",
-      context: "Argument 1",
-    });
+    const res = webidl.converters["Response"](
+      source,
+      "Failed to call 'WebAssembly.compileStreaming'",
+      "Argument 1",
+    );
 
     // 2.3.
     // The spec is ambiguous here, see

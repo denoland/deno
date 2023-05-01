@@ -85,10 +85,7 @@ class BroadcastChannel extends EventTarget {
     const prefix = "Failed to construct 'BroadcastChannel'";
     webidl.requiredArguments(arguments.length, 1, prefix);
 
-    this[_name] = webidl.converters["DOMString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    this[_name] = webidl.converters["DOMString"](name, prefix, "Argument 1");
 
     this[webidl.brand] = webidl.brand;
 

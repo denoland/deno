@@ -19,6 +19,7 @@ use deno_core::ZeroCopyBuf;
 use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
+use deno_tls::RootCertStoreProvider;
 use http::header::CONNECTION;
 use http::header::UPGRADE;
 use http::HeaderName;
@@ -54,7 +55,17 @@ use fastwebsockets::WebSocket;
 mod stream;
 
 #[derive(Clone)]
-pub struct WsRootStore(pub Option<RootCertStore>);
+pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
+
+impl WsRootStoreProvider {
+  pub fn get_or_try_init(&self) -> Result<Option<RootCertStore>, AnyError> {
+    Ok(match &self.0 {
+      Some(provider) => Some(provider.get_or_try_init()?.clone()),
+      None => None,
+    })
+  }
+}
+
 #[derive(Clone)]
 pub struct WsUserAgent(pub String);
 
@@ -181,7 +192,10 @@ where
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
-  let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
+  let root_cert_store = state
+    .borrow()
+    .borrow::<WsRootStoreProvider>()
+    .get_or_try_init()?;
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(
@@ -525,7 +539,7 @@ deno_core::extension!(deno_websocket,
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
     user_agent: String,
-    root_cert_store: Option<RootCertStore>,
+    root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>
   },
   state = |state, options| {
@@ -533,7 +547,7 @@ deno_core::extension!(deno_websocket,
     state.put(UnsafelyIgnoreCertificateErrors(
       options.unsafely_ignore_certificate_errors,
     ));
-    state.put::<WsRootStore>(WsRootStore(options.root_cert_store));
+    state.put::<WsRootStoreProvider>(WsRootStoreProvider(options.root_cert_store_provider));
   },
 );
 

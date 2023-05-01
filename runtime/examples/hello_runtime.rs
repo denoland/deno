@@ -32,7 +32,7 @@ async fn main() -> Result<(), AnyError> {
     extensions: vec![],
     startup_snapshot: None,
     unsafely_ignore_certificate_errors: None,
-    root_cert_store: None,
+    root_cert_store_provider: None,
     seed: None,
     source_map_getter: None,
     format_js_error_fn: None,

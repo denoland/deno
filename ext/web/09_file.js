@@ -218,14 +218,16 @@ class Blob {
    */
   constructor(blobParts = [], options = {}) {
     const prefix = "Failed to construct 'Blob'";
-    blobParts = webidl.converters["sequence<BlobPart>"](blobParts, {
-      context: "Argument 1",
+    blobParts = webidl.converters["sequence<BlobPart>"](
+      blobParts,
       prefix,
-    });
-    options = webidl.converters["BlobPropertyBag"](options, {
-      context: "Argument 2",
+      "Argument 1",
+    );
+    options = webidl.converters["BlobPropertyBag"](
+      options,
       prefix,
-    });
+      "Argument 2",
+    );
 
     this[webidl.brand] = webidl.brand;
 
@@ -261,24 +263,21 @@ class Blob {
     webidl.assertBranded(this, BlobPrototype);
     const prefix = "Failed to execute 'slice' on 'Blob'";
     if (start !== undefined) {
-      start = webidl.converters["long long"](start, {
+      start = webidl.converters["long long"](start, prefix, "Argument 1", {
         clamp: true,
-        context: "Argument 1",
-        prefix,
       });
     }
     if (end !== undefined) {
-      end = webidl.converters["long long"](end, {
+      end = webidl.converters["long long"](end, prefix, "Argument 2", {
         clamp: true,
-        context: "Argument 2",
-        prefix,
       });
     }
     if (contentType !== undefined) {
-      contentType = webidl.converters["DOMString"](contentType, {
-        context: "Argument 3",
+      contentType = webidl.converters["DOMString"](
+        contentType,
         prefix,
-      });
+        "Argument 3",
+      );
     }
 
     // deno-lint-ignore no-this-alias
@@ -430,27 +429,27 @@ webidl.converters["Blob"] = webidl.createInterfaceConverter(
   "Blob",
   Blob.prototype,
 );
-webidl.converters["BlobPart"] = (V, opts) => {
+webidl.converters["BlobPart"] = (V, prefix, context, opts) => {
   // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
   if (typeof V == "object") {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
-      return webidl.converters["Blob"](V, opts);
+      return webidl.converters["Blob"](V, prefix, context, opts);
     }
     if (
       ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
       // deno-lint-ignore prefer-primordials
       ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
     ) {
-      return webidl.converters["ArrayBuffer"](V, opts);
+      return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
-      return webidl.converters["ArrayBufferView"](V, opts);
+      return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
   }
   // BlobPart is passed to processBlobParts after conversion, which calls core.encode()
   // on the string.
   // core.encode() is equivalent to USVString normalization.
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["sequence<BlobPart>"] = webidl.createSequenceConverter(
   webidl.converters["BlobPart"],
@@ -494,18 +493,17 @@ class File extends Blob {
     const prefix = "Failed to construct 'File'";
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    fileBits = webidl.converters["sequence<BlobPart>"](fileBits, {
-      context: "Argument 1",
+    fileBits = webidl.converters["sequence<BlobPart>"](
+      fileBits,
       prefix,
-    });
-    fileName = webidl.converters["USVString"](fileName, {
-      context: "Argument 2",
+      "Argument 1",
+    );
+    fileName = webidl.converters["USVString"](fileName, prefix, "Argument 2");
+    options = webidl.converters["FilePropertyBag"](
+      options,
       prefix,
-    });
-    options = webidl.converters["FilePropertyBag"](options, {
-      context: "Argument 3",
-      prefix,
-    });
+      "Argument 3",
+    );
 
     super(fileBits, options);
 
