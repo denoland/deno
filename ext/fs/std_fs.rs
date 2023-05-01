@@ -370,14 +370,14 @@ fn chown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
 
 fn remove(path: &Path, recursive: bool) -> FsResult<()> {
   // TODO: this is racy. This should open fds, and then `unlink` those.
-  let metadata = fs::symlink_metadata(&path)?;
+  let metadata = fs::symlink_metadata(path)?;
 
   let file_type = metadata.file_type();
   let res = if file_type.is_dir() {
     if recursive {
-      fs::remove_dir_all(&path)
+      fs::remove_dir_all(path)
     } else {
-      fs::remove_dir(&path)
+      fs::remove_dir(path)
     }
   } else if file_type.is_symlink() {
     #[cfg(unix)]
@@ -389,13 +389,13 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
       use std::os::windows::prelude::MetadataExt;
       use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-        fs::remove_dir(&path)
+        fs::remove_dir(path)
       } else {
-        fs::remove_file(&path)
+        fs::remove_file(path)
       }
     }
   } else {
-    fs::remove_file(&path)
+    fs::remove_file(path)
   };
 
   res.map_err(Into::into)
@@ -679,7 +679,7 @@ fn symlink(
   let file_type = match file_type {
     Some(file_type) => file_type,
     None => {
-      let old_meta = fs::metadata(&oldpath);
+      let old_meta = fs::metadata(oldpath);
       match old_meta {
         Ok(metadata) => {
           if metadata.is_file() {
@@ -706,10 +706,10 @@ fn symlink(
 
   match file_type {
     FsFileType::File => {
-      std::os::windows::fs::symlink_file(&oldpath, &newpath)?;
+      std::os::windows::fs::symlink_file(oldpath, newpath)?;
     }
     FsFileType::Directory => {
-      std::os::windows::fs::symlink_dir(&oldpath, &newpath)?;
+      std::os::windows::fs::symlink_dir(oldpath, newpath)?;
     }
   };
 

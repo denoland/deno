@@ -154,7 +154,7 @@ pub trait File {
 pub trait FileResource: File + deno_core::Resource {}
 
 #[async_trait::async_trait(?Send)]
-pub trait FileSystem {
+pub trait FileSystem: Send + Sync {
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
   fn chdir(&self, path: &Path) -> FsResult<()>;
@@ -302,7 +302,7 @@ pub trait FileSystem {
   }
   async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
     let options = OpenOptions::read();
-    let file = self.clone().open_async(path, options).await?;
+    let file = self.open_async(path, options).await?;
     let buf = file.read_all_async().await?;
     Ok(buf)
   }

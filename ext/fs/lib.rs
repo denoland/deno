@@ -157,10 +157,10 @@ deno_core::extension!(deno_fs,
   esm = [ "30_fs.js" ],
   options = {
     unstable: bool,
-    fs: Arc<dyn FileSystem>,
+    fs: Option<Arc<dyn FileSystem>>,
   },
   state = |state, options| {
     state.put(UnstableChecker { unstable: options.unstable });
-    state.put(options.fs);
+    state.put(options.fs.unwrap_or_else(|| Arc::new(RealFs)));
   },
 );

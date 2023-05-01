@@ -31,7 +31,6 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
-use deno_fs::RealFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_tls::RootCertStoreProvider;
@@ -88,7 +87,7 @@ pub struct WorkerOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
-  pub fs: Arc<dyn FileSystem>,
+  pub fs: Option<Arc<dyn FileSystem>>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
@@ -151,7 +150,7 @@ impl Default for WorkerOptions {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
-      fs: Arc::new(RealFs),
+      fs: None,
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),

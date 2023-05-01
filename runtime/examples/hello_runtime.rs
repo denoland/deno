@@ -3,7 +3,6 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
-use deno_fs::RealFs;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
@@ -43,7 +42,7 @@ async fn main() -> Result<(), AnyError> {
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     should_wait_for_inspector_session: false,
-    fs: Rc::new(RealFs),
+    fs: None,
     module_loader,
     node_fs: None,
     npm_resolver: None,

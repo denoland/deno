@@ -142,7 +142,6 @@ struct CliFactoryServices {
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   resolver: Deferred<Arc<CliGraphResolver>>,
   file_watcher: Deferred<Arc<FileWatcher>>,
-  fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
@@ -291,10 +290,6 @@ impl CliFactory {
         )))
       })
       .await
-  }
-
-  pub fn fs(&self) -> &Arc<dyn deno_fs::FileSystem> {
-    self.services.fs.get_or_init(|| Arc::new(deno_fs::RealFs))
   }
 
   pub fn node_fs(&self) -> &Arc<dyn deno_node::NodeFs> {
@@ -559,6 +554,7 @@ impl CliFactory {
     let node_code_translator = self.node_code_translator().await?.clone();
     let options = self.cli_options().clone();
     let main_worker_options = self.create_cli_main_worker_options()?;
+    let fs = Arc::new(deno_fs::RealFs);
     let node_fs = self.node_fs().clone();
     let root_cert_store_provider = self.root_cert_store_provider().clone();
     let node_resolver = self.node_resolver().await?.clone();
@@ -585,6 +581,7 @@ impl CliFactory {
           ),
         )),
         root_cert_store_provider.clone(),
+        fs.clone(),
         node_fs.clone(),
         maybe_inspector_server.clone(),
         main_worker_options.clone(),
@@ -616,6 +613,7 @@ impl CliFactory {
         ),
       )),
       self.root_cert_store_provider().clone(),
+      Arc::new(deno_fs::RealFs),
       self.node_fs().clone(),
       self.maybe_inspector_server().clone(),
       self.create_cli_main_worker_options()?,
