@@ -427,12 +427,11 @@ function bootstrapMainRuntime(runtimeOptions) {
     8: tsVersion,
     9: unstableFlag,
     10: pid,
-    11: ppid,
-    12: target,
-    13: v8Version,
-    14: userAgent,
-    15: inspectFlag,
-    // 16: enableTestingFeaturesFlag
+    11: target,
+    12: v8Version,
+    13: userAgent,
+    14: inspectFlag,
+    // 15: enableTestingFeaturesFlag
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -495,9 +494,16 @@ function bootstrapMainRuntime(runtimeOptions) {
   setUserAgent(userAgent);
   setLanguage(locale);
 
+  let ppid = undefined;
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
-    ppid: util.readOnly(ppid),
+    ppid: util.getterOnly(() => {
+      // lazy because it's expensive
+      if (ppid === undefined) {
+        ppid = ops.op_ppid();
+      }
+      return ppid;
+    }),
     noColor: util.readOnly(noColor),
     args: util.readOnly(ObjectFreeze(args)),
     mainModule: util.getterOnly(opMainModule),
@@ -535,12 +541,11 @@ function bootstrapWorkerRuntime(
     8: tsVersion,
     9: unstableFlag,
     10: pid,
-    // 11: ppid,
-    12: target,
-    13: v8Version,
-    // 14: userAgent,
-    // 15: inspectFlag,
-    16: enableTestingFeaturesFlag,
+    11: target,
+    12: v8Version,
+    // 13: userAgent,
+    // 14: inspectFlag,
+    15: enableTestingFeaturesFlag,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
