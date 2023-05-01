@@ -813,14 +813,10 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  // TODO(@justinmchase): Ideally the certificate store is created once
-  // and not cloned. The store should be wrapped in Arc<T> to reduce
-  // copying memory unnecessarily.
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
 
   let resource_rc = state
     .borrow_mut()
@@ -912,8 +908,7 @@ where
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
   let hostname_dns = ServerName::try_from(&*addr.hostname)
     .map_err(|_| invalid_hostname(&addr.hostname))?;
   let connect_addr = resolve_addr(&addr.hostname, addr.port)
