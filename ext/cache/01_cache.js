@@ -4,9 +4,12 @@ const core = globalThis.Deno.core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypePush,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   Symbol,
   TypeError,
-  ObjectPrototypeIsPrototypeOf,
 } = primordials;
 import {
   Request,
@@ -101,10 +104,10 @@ class Cache {
     // Step 7.
     const varyHeader = getHeader(innerResponse.headerList, "vary");
     if (varyHeader) {
-      const fieldValues = varyHeader.split(",");
+      const fieldValues = StringPrototypeSplit(varyHeader, ",");
       for (let i = 0; i < fieldValues.length; ++i) {
         const field = fieldValues[i];
-        if (field.trim() === "*") {
+        if (StringPrototypeTrim(field) === "*") {
           throw new TypeError("Vary header must not contain '*'");
         }
       }
@@ -258,7 +261,7 @@ class Cache {
             statusText: meta.responseStatusText,
           },
         );
-        responses.push(response);
+        ArrayPrototypePush(responses, response);
       }
     }
     // Step 5.4-5.5: don't apply in this context.

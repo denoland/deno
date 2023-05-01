@@ -12,27 +12,28 @@ const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSplice,
-  ArrayPrototypeMap,
   DateNow,
   Error,
   ErrorPrototype,
-  FunctionPrototypeCall,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   ObjectAssign,
-  ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectDefineProperty,
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  PromisePrototypeThen,
   PromiseResolve,
+  SafeWeakMap,
   Symbol,
   SymbolIterator,
-  PromisePrototypeThen,
-  SafeWeakMap,
   TypeError,
   WeakMapPrototypeDelete,
   WeakMapPrototypeGet,
@@ -147,8 +148,10 @@ async function pollForMessages() {
     const msgEvent = new event.MessageEvent("message", {
       cancelable: false,
       data: message,
-      ports: transferables.filter((t) =>
-        ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
+      ports: ArrayPrototypeFilter(
+        transferables,
+        (t) =>
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
       ),
     });
 

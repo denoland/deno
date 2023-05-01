@@ -37,14 +37,15 @@ import {
 import { TcpConn } from "ext:deno_net/01_net.js";
 const {
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
   SafeSet,
   SafeSetIterator,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
   TypeError,
-  Uint8ArrayPrototype,
   Uint8Array,
+  Uint8ArrayPrototype,
 } = primordials;
 
 const {
@@ -63,7 +64,7 @@ const {
   op_set_response_headers,
   op_upgrade_raw,
   op_ws_server_create,
-} = Deno.core.generateAsyncOpHandler(
+} = core.generateAsyncOpHandler(
   "op_http_wait",
   "op_upgrade",
   "op_get_request_headers",
@@ -667,7 +668,7 @@ async function serve(arg1, arg2) {
     if (req === 0xffffffff) {
       break;
     }
-    callback(req).catch((error) => {
+    PromisePrototypeCatch(callback(req), (error) => {
       // Abnormal exit
       console.error(
         "Terminating Deno.serve loop due to unexpected error",
