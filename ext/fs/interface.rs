@@ -154,15 +154,15 @@ pub trait File {
 pub trait FileResource: File + deno_core::Resource {}
 
 #[async_trait::async_trait(?Send)]
-pub trait FileSystem: Clone {
+pub trait FileSystem {
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
-  fn chdir(&self, path: impl AsRef<Path>) -> FsResult<()>;
+  fn chdir(&self, path: &Path) -> FsResult<()>;
   fn umask(&self, mask: Option<u32>) -> FsResult<u32>;
 
   fn open_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn FileResource>>;
   async fn open_async(
@@ -171,12 +171,7 @@ pub trait FileSystem: Clone {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn FileResource>>;
 
-  fn mkdir_sync(
-    &self,
-    path: impl AsRef<Path>,
-    recusive: bool,
-    mode: u32,
-  ) -> FsResult<()>;
+  fn mkdir_sync(&self, path: &Path, recusive: bool, mode: u32) -> FsResult<()>;
   async fn mkdir_async(
     &self,
     path: PathBuf,
@@ -184,12 +179,12 @@ pub trait FileSystem: Clone {
     mode: u32,
   ) -> FsResult<()>;
 
-  fn chmod_sync(&self, path: impl AsRef<Path>, mode: u32) -> FsResult<()>;
+  fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()>;
   async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()>;
 
   fn chown_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()>;
@@ -200,52 +195,36 @@ pub trait FileSystem: Clone {
     gid: Option<u32>,
   ) -> FsResult<()>;
 
-  fn remove_sync(
-    &self,
-    path: impl AsRef<Path>,
-    recursive: bool,
-  ) -> FsResult<()>;
+  fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()>;
   async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()>;
 
-  fn copy_file_sync(
-    &self,
-    oldpath: impl AsRef<Path>,
-    newpath: impl AsRef<Path>,
-  ) -> FsResult<()>;
+  fn copy_file_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()>;
   async fn copy_file_async(
     &self,
     oldpath: PathBuf,
     newpath: PathBuf,
   ) -> FsResult<()>;
 
-  fn stat_sync(&self, path: impl AsRef<Path>) -> FsResult<FsStat>;
+  fn stat_sync(&self, path: &Path) -> FsResult<FsStat>;
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat>;
 
-  fn lstat_sync(&self, path: impl AsRef<Path>) -> FsResult<FsStat>;
+  fn lstat_sync(&self, path: &Path) -> FsResult<FsStat>;
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat>;
 
-  fn realpath_sync(&self, path: impl AsRef<Path>) -> FsResult<PathBuf>;
+  fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf>;
   async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf>;
 
-  fn read_dir_sync(&self, path: impl AsRef<Path>) -> FsResult<Vec<FsDirEntry>>;
+  fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>>;
   async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>>;
 
-  fn rename_sync(
-    &self,
-    oldpath: impl AsRef<Path>,
-    newpath: impl AsRef<Path>,
-  ) -> FsResult<()>;
+  fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()>;
   async fn rename_async(
     &self,
     oldpath: PathBuf,
     newpath: PathBuf,
   ) -> FsResult<()>;
 
-  fn link_sync(
-    &self,
-    oldpath: impl AsRef<Path>,
-    newpath: impl AsRef<Path>,
-  ) -> FsResult<()>;
+  fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()>;
   async fn link_async(
     &self,
     oldpath: PathBuf,
@@ -254,8 +233,8 @@ pub trait FileSystem: Clone {
 
   fn symlink_sync(
     &self,
-    oldpath: impl AsRef<Path>,
-    newpath: impl AsRef<Path>,
+    oldpath: &Path,
+    newpath: &Path,
     file_type: Option<FsFileType>,
   ) -> FsResult<()>;
   async fn symlink_async(
@@ -265,15 +244,15 @@ pub trait FileSystem: Clone {
     file_type: Option<FsFileType>,
   ) -> FsResult<()>;
 
-  fn read_link_sync(&self, path: impl AsRef<Path>) -> FsResult<PathBuf>;
+  fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf>;
   async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf>;
 
-  fn truncate_sync(&self, path: impl AsRef<Path>, len: u64) -> FsResult<()>;
+  fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()>;
   async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()>;
 
   fn utime_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -290,7 +269,7 @@ pub trait FileSystem: Clone {
 
   fn write_file_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     options: OpenOptions,
     data: &[u8],
   ) -> FsResult<()> {
@@ -315,7 +294,7 @@ pub trait FileSystem: Clone {
     Ok(())
   }
 
-  fn read_file_sync(&self, path: impl AsRef<Path>) -> FsResult<Vec<u8>> {
+  fn read_file_sync(&self, path: &Path) -> FsResult<Vec<u8>> {
     let options = OpenOptions::read();
     let file = self.open_sync(path, options)?;
     let buf = file.read_all_sync()?;

@@ -18,6 +18,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolver;
@@ -97,6 +98,7 @@ struct SharedWorkerState {
   compiled_wasm_module_store: CompiledWasmModuleStore,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store: RootCertStore,
+  fs: Arc<dyn deno_fs::FileSystem>,
   node_fs: Arc<dyn deno_node::NodeFs>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
@@ -308,6 +310,7 @@ impl CliMainWorkerFactory {
     blob_store: BlobStore,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store: RootCertStore,
+    fs: Arc<dyn deno_fs::FileSystem>,
     node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     options: CliMainWorkerOptions,
@@ -325,6 +328,7 @@ impl CliMainWorkerFactory {
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
         root_cert_store,
+        fs,
         node_fs,
         maybe_inspector_server,
       }),
@@ -445,6 +449,7 @@ impl CliMainWorkerFactory {
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       module_loader,
+      fs: Some(shared.fs.clone()),
       node_fs: Some(shared.node_fs.clone()),
       npm_resolver: Some(shared.npm_resolver.clone()),
       get_error_class_fn: Some(&errors::get_error_class_name),
@@ -570,6 +575,7 @@ fn create_web_worker_callback(
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: maybe_source_map_getter,
       module_loader,
+      fs: Some(shared.fs.clone()),
       node_fs: Some(shared.node_fs.clone()),
       npm_resolver: Some(shared.npm_resolver.clone()),
       worker_type: args.worker_type,
@@ -627,6 +633,7 @@ mod tests {
       should_break_on_first_statement: false,
       should_wait_for_inspector_session: false,
       module_loader: Rc::new(FsModuleLoader),
+      fs: Some(Rc::new(deno_fs::RealFs)),
       node_fs: Some(Arc::new(deno_node::RealFs)),
       npm_resolver: None,
       get_error_class_fn: None,

@@ -7,6 +7,7 @@ use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
@@ -122,12 +123,11 @@ impl deno_core::Resource for BoxedFile {
 }
 
 #[op]
-pub fn op_cwd<Fs, P>(state: &mut OpState) -> Result<String, AnyError>
+pub fn op_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let path = fs.cwd()?;
   state
     .borrow_mut::<P>()
@@ -137,33 +137,36 @@ where
 }
 
 #[op]
-fn op_chdir<Fs, P>(state: &mut OpState, directory: &str) -> Result<(), AnyError>
+fn op_chdir<P>(state: &mut OpState, directory: &str) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let d = PathBuf::from(&directory);
   state.borrow_mut::<P>().check_read(&d, "Deno.chdir()")?;
-  state.borrow::<Fs>().chdir(&d).context_path("chdir", &d)
+  state
+    .borrow::<Arc<dyn FileSystem>>()
+    .chdir(&d)
+    .context_path("chdir", &d)
 }
 
 #[op]
-fn op_umask<Fs>(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError>
+fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError>
 where
-  Fs: FileSystem + 'static,
 {
   check_unstable(state, "Deno.umask");
-  state.borrow::<Fs>().umask(mask).context("umask")
+  state
+    .borrow::<Arc<dyn FileSystem>>()
+    .umask(mask)
+    .context("umask")
 }
 
 #[op]
-fn op_open_sync<Fs, P>(
+fn op_open_sync<P>(
   state: &mut OpState,
   path: String,
   options: Option<OpenOptions>,
 ) -> Result<ResourceId, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -172,7 +175,7 @@ where
   let permissions = state.borrow_mut::<P>();
   permissions.check(&options, &path, "Deno.openSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
 
   let rid = state.resource_table.add(BoxedFile(file));
@@ -180,13 +183,12 @@ where
 }
 
 #[op]
-async fn op_open_async<Fs, P>(
+async fn op_open_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   options: Option<OpenOptions>,
 ) -> Result<ResourceId, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -196,7 +198,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions.check(&options, &path, "Deno.open()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   let file = fs
     .open_async(path.clone(), options)
@@ -208,14 +210,13 @@ where
 }
 
 #[op]
-fn op_mkdir_sync<Fs, P>(
+fn op_mkdir_sync<P>(
   state: &mut OpState,
   path: String,
   recursive: bool,
   mode: Option<u32>,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -226,7 +227,7 @@ where
     .borrow_mut::<P>()
     .check_write(&path, "Deno.mkdirSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.mkdir_sync(&path, recursive, mode)
     .context_path("mkdir", &path)?;
 
@@ -234,14 +235,13 @@ where
 }
 
 #[op]
-async fn op_mkdir_async<Fs, P>(
+async fn op_mkdir_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   recursive: bool,
   mode: Option<u32>,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -251,7 +251,7 @@ where
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.mkdir()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.mkdir_async(path.clone(), recursive, mode)
@@ -262,39 +262,37 @@ where
 }
 
 #[op]
-fn op_chmod_sync<Fs, P>(
+fn op_chmod_sync<P>(
   state: &mut OpState,
   path: String,
   mode: u32,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
   state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.chmodSync()")?;
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
   Ok(())
 }
 
 #[op]
-async fn op_chmod_async<Fs, P>(
+async fn op_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   mode: u32,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.chmod()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   fs.chmod_async(path.clone(), mode)
     .await
@@ -303,42 +301,40 @@ where
 }
 
 #[op]
-fn op_chown_sync<Fs, P>(
+fn op_chown_sync<P>(
   state: &mut OpState,
   path: String,
   uid: Option<u32>,
   gid: Option<u32>,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
   state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.chownSync()")?;
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.chown_sync(&path, uid, gid)
     .context_path("chown", &path)?;
   Ok(())
 }
 
 #[op]
-async fn op_chown_async<Fs, P>(
+async fn op_chown_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   uid: Option<u32>,
   gid: Option<u32>,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.chown()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   fs.chown_async(path.clone(), uid, gid)
     .await
@@ -347,13 +343,12 @@ where
 }
 
 #[op]
-fn op_remove_sync<Fs, P>(
+fn op_remove_sync<P>(
   state: &mut OpState,
   path: &str,
   recursive: bool,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -362,7 +357,7 @@ where
     .borrow_mut::<P>()
     .check_write(&path, "Deno.removeSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.remove_sync(&path, recursive)
     .context_path("remove", &path)?;
 
@@ -370,13 +365,12 @@ where
 }
 
 #[op]
-async fn op_remove_async<Fs, P>(
+async fn op_remove_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   recursive: bool,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -386,7 +380,7 @@ where
     state
       .borrow_mut::<P>()
       .check_write(&path, "Deno.remove()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.remove_async(path.clone(), recursive)
@@ -397,13 +391,12 @@ where
 }
 
 #[op]
-fn op_copy_file_sync<Fs, P>(
+fn op_copy_file_sync<P>(
   state: &mut OpState,
   from: &str,
   to: &str,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let from = PathBuf::from(from);
@@ -413,7 +406,7 @@ where
   permissions.check_read(&from, "Deno.copyFileSync()")?;
   permissions.check_write(&to, "Deno.copyFileSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.copy_file_sync(&from, &to)
     .context_two_path("copy", &from, &to)?;
 
@@ -421,13 +414,12 @@ where
 }
 
 #[op]
-async fn op_copy_file_async<Fs, P>(
+async fn op_copy_file_async<P>(
   state: Rc<RefCell<OpState>>,
   from: String,
   to: String,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let from = PathBuf::from(from);
@@ -438,7 +430,7 @@ where
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&from, "Deno.copyFile()")?;
     permissions.check_write(&to, "Deno.copyFile()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.copy_file_async(from.clone(), to.clone())
@@ -449,20 +441,19 @@ where
 }
 
 #[op]
-fn op_stat_sync<Fs, P>(
+fn op_stat_sync<P>(
   state: &mut OpState,
   path: String,
   stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
   state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.statSync()")?;
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let stat = fs.stat_sync(&path).context_path("stat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -470,12 +461,11 @@ where
 }
 
 #[op]
-async fn op_stat_async<Fs, P>(
+async fn op_stat_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<SerializableStat, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -483,7 +473,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&path, "Deno.stat()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   let stat = fs
     .stat_async(path.clone())
@@ -493,20 +483,19 @@ where
 }
 
 #[op]
-fn op_lstat_sync<Fs, P>(
+fn op_lstat_sync<P>(
   state: &mut OpState,
   path: String,
   stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
   state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.lstatSync()")?;
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let stat = fs.lstat_sync(&path).context_path("lstat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -514,12 +503,11 @@ where
 }
 
 #[op]
-async fn op_lstat_async<Fs, P>(
+async fn op_lstat_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<SerializableStat, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -527,7 +515,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&path, "Deno.lstat()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   let stat = fs
     .lstat_async(path.clone())
@@ -537,17 +525,16 @@ where
 }
 
 #[op]
-fn op_realpath_sync<Fs, P>(
+fn op_realpath_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
 
-  let fs = state.borrow::<Fs>().clone();
+  let fs = state.borrow::<Arc<dyn FileSystem>>().clone();
   let permissions = state.borrow_mut::<P>();
   permissions.check_read(&path, "Deno.realPathSync()")?;
   if path.is_relative() {
@@ -562,12 +549,11 @@ where
 }
 
 #[op]
-async fn op_realpath_async<Fs, P>(
+async fn op_realpath_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -575,7 +561,7 @@ where
   let fs;
   {
     let mut state = state.borrow_mut();
-    fs = state.borrow::<Fs>().clone();
+    fs = state.borrow::<Arc<dyn FileSystem>>().clone();
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&path, "Deno.realPath()")?;
     if path.is_relative() {
@@ -592,12 +578,11 @@ where
 }
 
 #[op]
-fn op_read_dir_sync<Fs, P>(
+fn op_read_dir_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<Vec<FsDirEntry>, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -606,19 +591,18 @@ where
     .borrow_mut::<P>()
     .check_read(&path, "Deno.readDirSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let entries = fs.read_dir_sync(&path).context_path("readdir", &path)?;
 
   Ok(entries)
 }
 
 #[op]
-async fn op_read_dir_async<Fs, P>(
+async fn op_read_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<Vec<FsDirEntry>, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -628,7 +612,7 @@ where
     state
       .borrow_mut::<P>()
       .check_read(&path, "Deno.readDir()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   let entries = fs
@@ -640,13 +624,12 @@ where
 }
 
 #[op]
-fn op_rename_sync<Fs, P>(
+fn op_rename_sync<P>(
   state: &mut OpState,
   oldpath: String,
   newpath: String,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let oldpath = PathBuf::from(oldpath);
@@ -657,7 +640,7 @@ where
   permissions.check_write(&oldpath, "Deno.renameSync()")?;
   permissions.check_write(&newpath, "Deno.renameSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.rename_sync(&oldpath, &newpath)
     .context_two_path("rename", &oldpath, &newpath)?;
 
@@ -665,13 +648,12 @@ where
 }
 
 #[op]
-async fn op_rename_async<Fs, P>(
+async fn op_rename_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let oldpath = PathBuf::from(oldpath);
@@ -683,7 +665,7 @@ where
     permissions.check_read(&oldpath, "Deno.rename()")?;
     permissions.check_write(&oldpath, "Deno.rename()")?;
     permissions.check_write(&newpath, "Deno.rename()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.rename_async(oldpath.clone(), newpath.clone())
@@ -694,13 +676,12 @@ where
 }
 
 #[op]
-fn op_link_sync<Fs, P>(
+fn op_link_sync<P>(
   state: &mut OpState,
   oldpath: &str,
   newpath: &str,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let oldpath = PathBuf::from(oldpath);
@@ -712,7 +693,7 @@ where
   permissions.check_read(&newpath, "Deno.linkSync()")?;
   permissions.check_write(&newpath, "Deno.linkSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.link_sync(&oldpath, &newpath)
     .context_two_path("link", &oldpath, &newpath)?;
 
@@ -720,13 +701,12 @@ where
 }
 
 #[op]
-async fn op_link_async<Fs, P>(
+async fn op_link_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let oldpath = PathBuf::from(&oldpath);
@@ -739,7 +719,7 @@ where
     permissions.check_write(&oldpath, "Deno.link()")?;
     permissions.check_read(&newpath, "Deno.link()")?;
     permissions.check_write(&newpath, "Deno.link()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.link_async(oldpath.clone(), newpath.clone())
@@ -750,14 +730,13 @@ where
 }
 
 #[op]
-fn op_symlink_sync<Fs, P>(
+fn op_symlink_sync<P>(
   state: &mut OpState,
   oldpath: &str,
   newpath: &str,
   file_type: Option<FsFileType>,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let oldpath = PathBuf::from(oldpath);
@@ -767,7 +746,7 @@ where
   permissions.check_write_all("Deno.symlinkSync()")?;
   permissions.check_read_all("Deno.symlinkSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.symlink_sync(&oldpath, &newpath, file_type)
     .context_two_path("symlink", &oldpath, &newpath)?;
 
@@ -775,14 +754,13 @@ where
 }
 
 #[op]
-async fn op_symlink_async<Fs, P>(
+async fn op_symlink_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
   file_type: Option<FsFileType>,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let oldpath = PathBuf::from(&oldpath);
@@ -793,7 +771,7 @@ where
     let permissions = state.borrow_mut::<P>();
     permissions.check_write_all("Deno.symlink()")?;
     permissions.check_read_all("Deno.symlink()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.symlink_async(oldpath.clone(), newpath.clone(), file_type)
@@ -804,12 +782,11 @@ where
 }
 
 #[op]
-fn op_read_link_sync<Fs, P>(
+fn op_read_link_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -818,7 +795,7 @@ where
     .borrow_mut::<P>()
     .check_read(&path, "Deno.readLink()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
 
   let target = fs.read_link_sync(&path).context_path("readlink", &path)?;
   let target_string = path_into_string(target.into_os_string())?;
@@ -826,12 +803,11 @@ where
 }
 
 #[op]
-async fn op_read_link_async<Fs, P>(
+async fn op_read_link_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -841,7 +817,7 @@ where
     state
       .borrow_mut::<P>()
       .check_read(&path, "Deno.readLink()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   let target = fs
@@ -853,13 +829,12 @@ where
 }
 
 #[op]
-fn op_truncate_sync<Fs, P>(
+fn op_truncate_sync<P>(
   state: &mut OpState,
   path: &str,
   len: u64,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -868,7 +843,7 @@ where
     .borrow_mut::<P>()
     .check_write(&path, "Deno.truncateSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.truncate_sync(&path, len)
     .context_path("truncate", &path)?;
 
@@ -876,13 +851,12 @@ where
 }
 
 #[op]
-async fn op_truncate_async<Fs, P>(
+async fn op_truncate_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   len: u64,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -892,7 +866,7 @@ where
     state
       .borrow_mut::<P>()
       .check_write(&path, "Deno.truncate()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.truncate_async(path.clone(), len)
@@ -903,7 +877,7 @@ where
 }
 
 #[op]
-fn op_utime_sync<Fs, P>(
+fn op_utime_sync<P>(
   state: &mut OpState,
   path: &str,
   atime_secs: i64,
@@ -912,14 +886,13 @@ fn op_utime_sync<Fs, P>(
   mtime_nanos: u32,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
 
   state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .context_path("utime", &path)?;
 
@@ -927,7 +900,7 @@ where
 }
 
 #[op]
-async fn op_utime_async<Fs, P>(
+async fn op_utime_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   atime_secs: i64,
@@ -936,7 +909,6 @@ async fn op_utime_async<Fs, P>(
   mtime_nanos: u32,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -944,7 +916,7 @@ where
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
-    state.borrow::<Fs>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.utime_async(
@@ -961,17 +933,16 @@ where
 }
 
 #[op]
-fn op_make_temp_dir_sync<Fs, P>(
+fn op_make_temp_dir_sync<P>(
   state: &mut OpState,
   dir: Option<String>,
   prefix: Option<String>,
   suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_sync::<Fs, P>(state, dir)?;
+  let (dir, fs) = make_temp_check_sync::<P>(state, dir)?;
 
   let mut rng = thread_rng();
 
@@ -995,17 +966,16 @@ where
 }
 
 #[op]
-async fn op_make_temp_dir_async<Fs, P>(
+async fn op_make_temp_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<String>,
   prefix: Option<String>,
   suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_async::<Fs, P>(state, dir)?;
+  let (dir, fs) = make_temp_check_async::<P>(state, dir)?;
 
   let mut rng = thread_rng();
 
@@ -1029,17 +999,16 @@ where
 }
 
 #[op]
-fn op_make_temp_file_sync<Fs, P>(
+fn op_make_temp_file_sync<P>(
   state: &mut OpState,
   dir: Option<String>,
   prefix: Option<String>,
   suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_sync::<Fs, P>(state, dir)?;
+  let (dir, fs) = make_temp_check_sync::<P>(state, dir)?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -1070,17 +1039,16 @@ where
 }
 
 #[op]
-async fn op_make_temp_file_async<Fs, P>(
+async fn op_make_temp_file_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<String>,
   prefix: Option<String>,
   suffix: Option<String>,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
-  let (dir, fs) = make_temp_check_async::<Fs, P>(state, dir)?;
+  let (dir, fs) = make_temp_check_async::<P>(state, dir)?;
 
   let open_opts = OpenOptions {
     write: true,
@@ -1109,15 +1077,14 @@ where
   .context("tmpfile")
 }
 
-fn make_temp_check_sync<Fs, P>(
+fn make_temp_check_sync<P>(
   state: &mut OpState,
   dir: Option<String>,
-) -> Result<(PathBuf, Fs), AnyError>
+) -> Result<(PathBuf, Arc<dyn FileSystem>), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
-  let fs = state.borrow::<Fs>().clone();
+  let fs = state.borrow::<Arc<dyn FileSystem>>().clone();
   let dir = match dir {
     Some(dir) => {
       let dir = PathBuf::from(dir);
@@ -1139,16 +1106,15 @@ where
   Ok((dir, fs))
 }
 
-fn make_temp_check_async<Fs, P>(
+fn make_temp_check_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<String>,
-) -> Result<(PathBuf, Fs), AnyError>
+) -> Result<(PathBuf, Arc<dyn FileSystem>), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let mut state = state.borrow_mut();
-  let fs = state.borrow::<Fs>().clone();
+  let fs = state.borrow::<Arc<dyn FileSystem>>().clone();
   let dir = match dir {
     Some(dir) => {
       let dir = PathBuf::from(dir);
@@ -1188,7 +1154,7 @@ fn tmp_name(
 }
 
 #[op]
-fn op_write_file_sync<Fs, P>(
+fn op_write_file_sync<P>(
   state: &mut OpState,
   path: String,
   mode: Option<u32>,
@@ -1198,7 +1164,6 @@ fn op_write_file_sync<Fs, P>(
   data: ZeroCopyBuf,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -1207,7 +1172,7 @@ where
   let options = OpenOptions::write(create, append, create_new, mode);
   permissions.check(&options, &path, "Deno.writeFileSync()")?;
 
-  let fs = state.borrow::<Fs>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
 
   fs.write_file_sync(&path, options, &data)
     .context_path("writefile", &path)?;
@@ -1216,7 +1181,7 @@ where
 }
 
 #[op]
-async fn op_write_file_async<Fs, P>(
+async fn op_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   mode: Option<u32>,
@@ -1227,7 +1192,6 @@ async fn op_write_file_async<Fs, P>(
   cancel_rid: Option<ResourceId>,
 ) -> Result<(), AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -1240,7 +1204,7 @@ where
     permissions.check(&options, &path, "Deno.writeFile()")?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<Fs>().clone(), cancel_handle)
+    (state.borrow::<Arc<dyn FileSystem>>().clone(), cancel_handle)
   };
 
   let fut = fs.write_file_async(path.clone(), options, data.to_vec());
@@ -1261,12 +1225,11 @@ where
 }
 
 #[op]
-fn op_read_file_sync<Fs, P>(
+fn op_read_file_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<ZeroCopyBuf, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -1274,20 +1237,19 @@ where
   let permissions = state.borrow_mut::<P>();
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
-  let fs = state.borrow::<Fs>();
-  let buf = fs.read_file_sync(path).context("readfile")?;
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
+  let buf = fs.read_file_sync(&path).context("readfile")?;
 
   Ok(buf.into())
 }
 
 #[op]
-async fn op_read_file_async<Fs, P>(
+async fn op_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
 ) -> Result<ZeroCopyBuf, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -1298,7 +1260,7 @@ where
     permissions.check_read(&path, "Deno.readFile()")?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<Fs>().clone(), cancel_handle)
+    (state.borrow::<Arc<dyn FileSystem>>().clone(), cancel_handle)
   };
 
   let fut = fs.read_file_async(path.clone());
@@ -1319,12 +1281,11 @@ where
 }
 
 #[op]
-fn op_read_file_text_sync<Fs, P>(
+fn op_read_file_text_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -1332,20 +1293,19 @@ where
   let permissions = state.borrow_mut::<P>();
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
-  let fs = state.borrow::<Fs>();
-  let buf = fs.read_file_sync(path).context("readfile")?;
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
+  let buf = fs.read_file_sync(&path).context("readfile")?;
 
   Ok(string_from_utf8_lossy(buf))
 }
 
 #[op]
-async fn op_read_file_text_async<Fs, P>(
+async fn op_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
 ) -> Result<String, AnyError>
 where
-  Fs: FileSystem + 'static,
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
@@ -1356,7 +1316,7 @@ where
     permissions.check_read(&path, "Deno.readFile()")?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<Fs>().clone(), cancel_handle)
+    (state.borrow::<Arc<dyn FileSystem>>().clone(), cancel_handle)
   };
 
   let fut = fs.read_file_async(path.clone());

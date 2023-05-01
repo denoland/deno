@@ -42,6 +42,7 @@ use crate::worker::HasNodeSpecifierChecker;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -141,6 +142,7 @@ struct CliFactoryServices {
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   resolver: Deferred<Arc<CliGraphResolver>>,
   file_watcher: Deferred<Arc<FileWatcher>>,
+  fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
@@ -289,6 +291,10 @@ impl CliFactory {
         )))
       })
       .await
+  }
+
+  pub fn fs(&self) -> &Arc<dyn deno_fs::FileSystem> {
+    self.services.fs.get_or_init(|| Arc::new(deno_fs::RealFs))
   }
 
   pub fn node_fs(&self) -> &Arc<dyn deno_node::NodeFs> {

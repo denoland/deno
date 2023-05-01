@@ -14,15 +14,15 @@ pub use crate::interface::FsStat;
 pub use crate::interface::OpenOptions;
 use crate::ops::*;
 
-pub use crate::std_fs::StdFs;
+pub use crate::std_fs::RealFs;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use deno_core::Resource;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub trait FsPermissions {
   fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
@@ -87,54 +87,54 @@ pub(crate) fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
 
 deno_core::extension!(deno_fs,
   deps = [ deno_web ],
-  parameters = [Fs: FileSystem, P: FsPermissions],
+  parameters = [P: FsPermissions],
   ops = [
-    op_cwd<Fs, P>,
-    op_umask<Fs>,
-    op_chdir<Fs, P>,
+    op_cwd<P>,
+    op_umask,
+    op_chdir<P>,
 
-    op_open_sync<Fs, P>,
-    op_open_async<Fs, P>,
-    op_mkdir_sync<Fs, P>,
-    op_mkdir_async<Fs, P>,
-    op_chmod_sync<Fs, P>,
-    op_chmod_async<Fs, P>,
-    op_chown_sync<Fs, P>,
-    op_chown_async<Fs, P>,
-    op_remove_sync<Fs, P>,
-    op_remove_async<Fs, P>,
-    op_copy_file_sync<Fs, P>,
-    op_copy_file_async<Fs, P>,
-    op_stat_sync<Fs, P>,
-    op_stat_async<Fs, P>,
-    op_lstat_sync<Fs, P>,
-    op_lstat_async<Fs, P>,
-    op_realpath_sync<Fs, P>,
-    op_realpath_async<Fs, P>,
-    op_read_dir_sync<Fs, P>,
-    op_read_dir_async<Fs, P>,
-    op_rename_sync<Fs, P>,
-    op_rename_async<Fs, P>,
-    op_link_sync<Fs, P>,
-    op_link_async<Fs, P>,
-    op_symlink_sync<Fs, P>,
-    op_symlink_async<Fs, P>,
-    op_read_link_sync<Fs, P>,
-    op_read_link_async<Fs, P>,
-    op_truncate_sync<Fs, P>,
-    op_truncate_async<Fs, P>,
-    op_utime_sync<Fs, P>,
-    op_utime_async<Fs, P>,
-    op_make_temp_dir_sync<Fs, P>,
-    op_make_temp_dir_async<Fs, P>,
-    op_make_temp_file_sync<Fs, P>,
-    op_make_temp_file_async<Fs, P>,
-    op_write_file_sync<Fs, P>,
-    op_write_file_async<Fs, P>,
-    op_read_file_sync<Fs, P>,
-    op_read_file_async<Fs, P>,
-    op_read_file_text_sync<Fs, P>,
-    op_read_file_text_async<Fs, P>,
+    op_open_sync<P>,
+    op_open_async<P>,
+    op_mkdir_sync<P>,
+    op_mkdir_async<P>,
+    op_chmod_sync<P>,
+    op_chmod_async<P>,
+    op_chown_sync<P>,
+    op_chown_async<P>,
+    op_remove_sync<P>,
+    op_remove_async<P>,
+    op_copy_file_sync<P>,
+    op_copy_file_async<P>,
+    op_stat_sync<P>,
+    op_stat_async<P>,
+    op_lstat_sync<P>,
+    op_lstat_async<P>,
+    op_realpath_sync<P>,
+    op_realpath_async<P>,
+    op_read_dir_sync<P>,
+    op_read_dir_async<P>,
+    op_rename_sync<P>,
+    op_rename_async<P>,
+    op_link_sync<P>,
+    op_link_async<P>,
+    op_symlink_sync<P>,
+    op_symlink_async<P>,
+    op_read_link_sync<P>,
+    op_read_link_async<P>,
+    op_truncate_sync<P>,
+    op_truncate_async<P>,
+    op_utime_sync<P>,
+    op_utime_async<P>,
+    op_make_temp_dir_sync<P>,
+    op_make_temp_dir_async<P>,
+    op_make_temp_file_sync<P>,
+    op_make_temp_file_async<P>,
+    op_write_file_sync<P>,
+    op_write_file_async<P>,
+    op_read_file_sync<P>,
+    op_read_file_async<P>,
+    op_read_file_text_sync<P>,
+    op_read_file_text_async<P>,
 
     op_seek_sync,
     op_seek_async,
@@ -157,7 +157,7 @@ deno_core::extension!(deno_fs,
   esm = [ "30_fs.js" ],
   options = {
     unstable: bool,
-    fs: Fs,
+    fs: Arc<dyn FileSystem>,
   },
   state = |state, options| {
     state.put(UnstableChecker { unstable: options.unstable });
