@@ -30,10 +30,7 @@ class CacheStorage {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'open' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    cacheName = webidl.converters["DOMString"](cacheName, {
-      prefix,
-      context: "Argument 1",
-    });
+    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
     const cache = webidl.createBranded(Cache);
     cache[_id] = cacheId;
@@ -44,10 +41,7 @@ class CacheStorage {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'has' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    cacheName = webidl.converters["DOMString"](cacheName, {
-      prefix,
-      context: "Argument 1",
-    });
+    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await core.opAsync("op_cache_storage_has", cacheName);
   }
 
@@ -55,10 +49,7 @@ class CacheStorage {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'delete' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    cacheName = webidl.converters["DOMString"](cacheName, {
-      prefix,
-      context: "Argument 1",
-    });
+    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await core.opAsync("op_cache_storage_delete", cacheName);
   }
 }
@@ -79,14 +70,12 @@ class Cache {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'put' on 'Cache'";
     webidl.requiredArguments(arguments.length, 2, prefix);
-    request = webidl.converters["RequestInfo_DOMString"](request, {
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
       prefix,
-      context: "Argument 1",
-    });
-    response = webidl.converters["Response"](response, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    response = webidl.converters["Response"](response, prefix, "Argument 2");
     // Step 1.
     let innerRequest = null;
     // Step 2.
@@ -169,10 +158,11 @@ class Cache {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'match' on 'Cache'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    request = webidl.converters["RequestInfo_DOMString"](request, {
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     const p = await this[_matchAll](request, options);
     if (p.length > 0) {
       return p[0];
@@ -186,10 +176,11 @@ class Cache {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'delete' on 'Cache'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    request = webidl.converters["RequestInfo_DOMString"](request, {
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     // Step 1.
     let r = null;
     // Step 2.

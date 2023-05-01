@@ -279,14 +279,12 @@ class Request {
   constructor(input, init = {}) {
     const prefix = "Failed to construct 'Request'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    input = webidl.converters["RequestInfo_DOMString"](input, {
+    input = webidl.converters["RequestInfo_DOMString"](
+      input,
       prefix,
-      context: "Argument 1",
-    });
-    init = webidl.converters["RequestInit"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
 
     this[webidl.brand] = webidl.brand;
 
@@ -506,15 +504,15 @@ webidl.converters["Request"] = webidl.createInterfaceConverter(
   "Request",
   RequestPrototype,
 );
-webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
+webidl.converters["RequestInfo_DOMString"] = (V, prefix, context, opts) => {
   // Union for (Request or USVString)
   if (typeof V == "object") {
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
-      return webidl.converters["Request"](V, opts);
+      return webidl.converters["Request"](V, prefix, context, opts);
     }
   }
   // Passed to new URL(...) which implicitly converts DOMString -> USVString
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
   "RequestRedirect",

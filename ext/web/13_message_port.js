@@ -110,16 +110,15 @@ class MessagePort extends EventTarget {
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        prefix,
+        "Argument 2",
       );
       options = { transfer };
     } else {
       options = webidl.converters.StructuredSerializeOptions(
         transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
+        prefix,
+        "Argument 2",
       );
     }
     const { transfer } = options;
@@ -330,10 +329,11 @@ webidl.converters.StructuredSerializeOptions = webidl
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
   webidl.requiredArguments(arguments.length, 1, prefix);
-  options = webidl.converters.StructuredSerializeOptions(options, {
+  options = webidl.converters.StructuredSerializeOptions(
+    options,
     prefix,
-    context: "Argument 2",
-  });
+    "Argument 2",
+  );
   const messageData = serializeJsMessageData(value, options.transfer);
   return deserializeJsMessageData(messageData)[0];
 }
