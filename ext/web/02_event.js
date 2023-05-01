@@ -122,7 +122,7 @@ const isTrusted = ObjectGetOwnPropertyDescriptor({
   },
 }, "isTrusted").get;
 
-const eventInitConverter = webidl.createDictionaryConverter("EventInit", [{
+webidl.converters.EventInit = webidl.createDictionaryConverter("EventInit", [{
   key: "bubbles",
   defaultValue: false,
   converter: webidl.converters.boolean,
@@ -167,14 +167,16 @@ class Event {
         1,
         "Failed to construct 'Event'",
       );
-      type = webidl.converters.DOMString(type, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 1",
-      });
-      const eventInit = eventInitConverter(eventInitDict, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 2",
-      });
+      type = webidl.converters.DOMString(
+        type,
+        "Failed to construct 'Event'",
+        "Argument 1",
+      );
+      const eventInit = webidl.converters.EventInit(
+        eventInitDict,
+        "Failed to construct 'Event'",
+        "Argument 2",
+      );
       this[_attributes] = {
         type,
         ...eventInit,
@@ -947,13 +949,13 @@ function lazyAddEventListenerOptionsConverter() {
   );
 }
 
-webidl.converters.AddEventListenerOptions = (V, opts) => {
+webidl.converters.AddEventListenerOptions = (V, prefix, context, opts) => {
   if (webidl.type(V) !== "Object" || V === null) {
     V = { capture: Boolean(V) };
   }
 
   lazyAddEventListenerOptionsConverter();
-  return addEventListenerOptionsConverter(V, opts);
+  return addEventListenerOptionsConverter(V, prefix, context, opts);
 };
 
 class EventTarget {
@@ -973,10 +975,11 @@ class EventTarget {
 
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    options = webidl.converters.AddEventListenerOptions(options, {
+    options = webidl.converters.AddEventListenerOptions(
+      options,
       prefix,
-      context: "Argument 3",
-    });
+      "Argument 3",
+    );
 
     if (callback === null) {
       return;
