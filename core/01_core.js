@@ -189,9 +189,16 @@
       const cb = macrotaskCallbacks[i];
       while (true) {
         const res = cb();
+
+        // If callback returned `undefined` then it has no work to do, we don't
+        // need to perform microtask checkpoint.
+        if (res === true) {
+          break;
+        }
+
         ops.op_run_microtasks();
 
-        // If callback returned true then it has no more work to do, stop
+        // If callback returned `true` then it has no more work to do, stop
         // calling it then.
         if (res === true) {
           break;

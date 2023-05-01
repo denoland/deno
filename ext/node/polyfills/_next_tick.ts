@@ -75,12 +75,10 @@ export function runNextTicks() {
   //   runMicrotasks();
   // if (!hasTickScheduled() && !hasRejectionToWarn())
   //   return;
-  if (!core.hasTickScheduled()) {
-    core.runMicrotasks();
-    return true;
+  if (core.hasTickScheduled()) {
+    processTicksAndRejections();
   }
 
-  processTicksAndRejections();
   return true;
 }
 

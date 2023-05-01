@@ -350,6 +350,12 @@ function promiseRejectCallback(type, promise, reason) {
 }
 
 function promiseRejectMacrotaskCallback() {
+  if (pendingRejections.length === 0) {
+    // We have no work to do, tell the runtime that we don't
+    // need to perform microtask checkpoint.
+    return undefined;
+  }
+
   while (pendingRejections.length > 0) {
     const promise = ArrayPrototypeShift(pendingRejections);
     const hasPendingException = ops.op_has_pending_promise_rejection(
