@@ -5,7 +5,6 @@ use deno_core::ModuleSpecifier;
 use std::thread;
 
 use crate::colors;
-use crate::ops::runtime::ppid;
 
 /// Common bootstrap options for MainWorker & WebWorker
 #[derive(Clone)]
@@ -143,17 +142,12 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::Integer::new(scope, ppid() as i32);
-      array.set_index(scope, 11, val.into());
-    }
-
-    {
       let val = v8::String::new_external_onebyte_static(
         scope,
         env!("TARGET").as_bytes(),
       )
       .unwrap();
-      array.set_index(scope, 12, val.into());
+      array.set_index(scope, 11, val.into());
     }
 
     {
@@ -163,7 +157,7 @@ impl BootstrapOptions {
         v8::NewStringType::Normal,
       )
       .unwrap();
-      array.set_index(scope, 13, val.into());
+      array.set_index(scope, 12, val.into());
     }
 
     {
@@ -173,17 +167,17 @@ impl BootstrapOptions {
         v8::NewStringType::Normal,
       )
       .unwrap();
-      array.set_index(scope, 14, val.into());
+      array.set_index(scope, 13, val.into());
     }
 
     {
       let val = v8::Boolean::new(scope, self.inspect);
-      array.set_index(scope, 15, val.into());
+      array.set_index(scope, 14, val.into());
     }
 
     {
       let val = v8::Boolean::new(scope, self.enable_testing_features);
-      array.set_index(scope, 16, val.into());
+      array.set_index(scope, 15, val.into());
     }
 
     array
