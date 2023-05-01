@@ -305,11 +305,11 @@ pub struct ServerWebSocket {
   closed: Rc<Cell<bool>>,
 }
 
-impl ServerWebSocket {
+impl<'frame> ServerWebSocket {
   #[inline]
   pub async fn write_frame(
     self: Rc<Self>,
-    frame: Frame,
+    frame: Frame<'frame>,
   ) -> Result<(), AnyError> {
     // SAFETY: fastwebsockets only needs a mutable reference to the WebSocket
     // to populate the write buffer. We encounter an await point when writing
@@ -379,8 +379,9 @@ pub async fn op_ws_send_binary(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
+  let data_slice = data.as_ref();
   resource
-    .write_frame(Frame::new(true, OpCode::Binary, None, data.to_vec()))
+    .write_frame(Frame::new(true, OpCode::Binary, None, data_slice.into()))
     .await
 }
 
@@ -395,7 +396,12 @@ pub async fn op_ws_send_text(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
   resource
-    .write_frame(Frame::new(true, OpCode::Text, None, data.into_bytes()))
+    .write_frame(Frame::new(
+      true,
+      OpCode::Text,
+      None,
+      data.into_bytes().into(),
+    ))
     .await
 }
 
@@ -408,7 +414,7 @@ pub async fn op_ws_send_pong(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  resource.write_frame(Frame::pong(vec![])).await
+  resource.write_frame(Frame::pong(vec![].into())).await
 }
 
 #[op]
@@ -421,7 +427,7 @@ pub async fn op_ws_send_ping(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
   resource
-    .write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    .write_frame(Frame::new(true, OpCode::Ping, None, vec![].into()))
     .await
 }
 
@@ -438,7 +444,7 @@ pub async fn op_ws_close(
     .get::<ServerWebSocket>(rid)?;
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
-    .unwrap_or_else(|| Frame::close_raw(vec![]));
+    .unwrap_or_else(|| Frame::close_raw(vec![].into()));
 
   let cell = Rc::clone(&resource.closed);
   cell.set(true);
@@ -481,11 +487,13 @@ pub async fn op_ws_next_event(
     break Ok(match val.opcode {
       OpCode::Text => (
         MessageKind::Text as u16,
-        StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
+        StringOrBuffer::String(
+          String::from_utf8(val.payload.to_vec()).unwrap(),
+        ),
       ),
       OpCode::Binary => (
         MessageKind::Binary as u16,
-        StringOrBuffer::Buffer(val.payload.into()),
+        StringOrBuffer::Buffer(val.payload.to_vec().into()),
       ),
       OpCode::Close => {
         if val.payload.len() < 2 {

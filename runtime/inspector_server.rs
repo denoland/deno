@@ -324,13 +324,13 @@ async fn pump_websocket_messages(
   'pump: loop {
     tokio::select! {
         Some(msg) = outbound_rx.next() => {
-            let msg = Frame::text(msg.content.into_bytes());
+            let msg = Frame::text(msg.content.into_bytes().into());
             let _ = websocket.write_frame(msg).await;
         }
         Ok(msg) = websocket.read_frame() => {
             match msg.opcode {
                 OpCode::Text => {
-                    if let Ok(s) = String::from_utf8(msg.payload) {
+                    if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
                       let _ = inbound_tx.unbounded_send(s);
                     }
                 }
