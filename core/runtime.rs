@@ -448,7 +448,8 @@ impl JsRuntime {
       #[cfg(not(target_env = "msvc"))]
       let allocator = Arc::new(custom_allocator::RustAllocator);
 
-      let params = options
+      #[allow(unused_mut)]
+      let mut params = options
         .create_params
         .take()
         .unwrap_or_else(|| {
@@ -461,7 +462,8 @@ impl JsRuntime {
 
       #[cfg(not(target_env = "msvc"))]
       // SAFETY: We are leaking the created `allocator` variable so we're sure
-      // it will outlive the created isolate.
+      // it will outlive the created isolate. We also made sure that the vtable
+      // is correct.
       let mut params = params.array_buffer_allocator(unsafe {
         v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
       });
