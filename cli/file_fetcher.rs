@@ -178,7 +178,7 @@ pub struct FileFetcher {
   cache: FileCache,
   cache_setting: CacheSetting,
   pub http_cache: HttpCache,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   blob_store: BlobStore,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -189,7 +189,7 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     blob_store: BlobStore,
     progress_bar: Option<ProgressBar>,
   ) -> Self {
@@ -660,7 +660,7 @@ async fn fetch_once<'a>(
   http_client: &HttpClient,
   args: FetchOnceArgs<'a>,
 ) -> Result<FetchOnceResult, AnyError> {
-  let mut request = http_client.get_no_redirect(args.url.clone());
+  let mut request = http_client.get_no_redirect(args.url.clone())?;
 
   if let Some(etag) = args.maybe_etag {
     let if_none_match_val = HeaderValue::from_str(&etag)?;
@@ -769,7 +769,7 @@ mod tests {
       HttpCache::new(&location),
       cache_setting,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       blob_store.clone(),
       None,
     );
@@ -1207,7 +1207,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::ReloadAll,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1232,7 +1232,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1257,7 +1257,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1398,7 +1398,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1426,7 +1426,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1525,7 +1525,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       false,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1550,7 +1550,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Only,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1558,7 +1558,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
