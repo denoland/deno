@@ -1,11 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
-// deno-lint-ignore camelcase
-const op_ws_check_permission_and_cancel_handle =
-  core.ops.op_ws_check_permission_and_cancel_handle;
 import { URL } from "ext:deno_url/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
@@ -50,6 +48,8 @@ const {
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
+const op_ws_check_permission_and_cancel_handle =
+  core.ops.op_ws_check_permission_and_cancel_handle;
 const {
   op_ws_create,
   op_ws_close,

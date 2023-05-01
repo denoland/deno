@@ -3,7 +3,16 @@
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
 
-const { op_listen, op_accept, op_read_socket } = Deno.core.ops;
+// deno-lint-ignore-file camelcase
+
+const { op_listen } = Deno.core.ops;
+const {
+  op_accept,
+  op_read_socket,
+} = core.generateAsyncOpHandler(
+  "op_accept",
+  "op_read_socket",
+);
 
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
