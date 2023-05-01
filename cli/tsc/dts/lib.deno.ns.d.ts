@@ -4011,7 +4011,7 @@ declare namespace Deno {
    * child.stdout.pipeTo(
    *   Deno.openSync("output", { write: true, create: true }).writable,
    * );
-   * 
+   *
    * // manually close stdin
    * child.stdin.close();
    * const status = await child.status;
