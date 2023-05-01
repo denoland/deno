@@ -12,6 +12,8 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
@@ -93,6 +95,14 @@ use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
+struct LspRootCertStoreProvider(RootCertStore);
+
+impl RootCertStoreProvider for LspRootCertStoreProvider {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+    Ok(&self.0)
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
@@ -124,7 +134,7 @@ pub struct Inner {
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   /// Handles module registries, which allow discovery of modules
   module_registries: ModuleRegistry,
   /// The path to the module registries cache
@@ -420,7 +430,7 @@ impl LanguageServer {
 
 fn create_lsp_structs(
   dir: &DenoDir,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
 ) -> (
   Arc<CliNpmRegistryApi>,
   Arc<NpmCache>,
@@ -469,10 +479,9 @@ impl Inner {
     let dir =
       DenoDir::new(maybe_custom_root).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
-    let http_client = HttpClient::new(None, None).unwrap();
+    let http_client = Arc::new(HttpClient::new(None, None));
     let module_registries =
-      ModuleRegistry::new(&module_registries_location, http_client.clone())
-        .unwrap();
+      ModuleRegistry::new(&module_registries_location, http_client.clone());
     let location = dir.deps_folder_path();
     let documents = Documents::new(&location, client.kind());
     let deps_http_cache = HttpCache::new(&location);
@@ -775,20 +784,22 @@ impl Inner {
       .root_uri
       .as_ref()
       .and_then(|uri| specifier_to_file_path(uri).ok());
-    let root_cert_store = Some(get_root_cert_store(
+    let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores,
       workspace_settings.tls_certificate.map(CaData::File),
-    )?);
-    let module_registries_location = dir.registries_folder_path();
-    self.http_client = HttpClient::new(
-      root_cert_store,
-      workspace_settings.unsafely_ignore_certificate_errors,
     )?;
+    let root_cert_store_provider =
+      Arc::new(LspRootCertStoreProvider(root_cert_store));
+    let module_registries_location = dir.registries_folder_path();
+    self.http_client = Arc::new(HttpClient::new(
+      Some(root_cert_store_provider),
+      workspace_settings.unsafely_ignore_certificate_errors,
+    ));
     self.module_registries = ModuleRegistry::new(
       &module_registries_location,
       self.http_client.clone(),
-    )?;
+    );
     self.module_registries_location = module_registries_location;
     (
       self.npm_api,

@@ -32,6 +32,8 @@ use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -161,22 +163,37 @@ impl HasNodeSpecifierChecker for StandaloneHasNodeSpecifierChecker {
   }
 }
 
+struct StandaloneRootCertStoreProvider {
+  ca_stores: Option<Vec<String>>,
+  ca_data: Option<CaData>,
+  cell: once_cell::sync::OnceCell<RootCertStore>,
+}
+
+impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+    self.cell.get_or_try_init(|| {
+      get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
+        .map_err(|err| err.into())
+    })
+  }
+}
+
 pub async fn run(
   eszip: eszip::EszipV2,
   metadata: Metadata,
 ) -> Result<(), AnyError> {
   let main_module = &metadata.entrypoint;
   let dir = DenoDir::new(None)?;
-  let root_cert_store = get_root_cert_store(
-    None,
-    metadata.ca_stores,
-    metadata.ca_data.map(CaData::Bytes),
-  )?;
+  let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
+    ca_stores: metadata.ca_stores,
+    ca_data: metadata.ca_data.map(CaData::Bytes),
+    cell: Default::default(),
+  });
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let http_client = HttpClient::new(
-    Some(root_cert_store.clone()),
+  let http_client = Arc::new(HttpClient::new(
+    Some(root_cert_store_provider.clone()),
     metadata.unsafely_ignore_certificate_errors.clone(),
-  )?;
+  ));
   let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
   let npm_cache = Arc::new(NpmCache::new(
     dir.npm_folder_path(),
@@ -235,7 +252,7 @@ pub async fn run(
     Box::new(StandaloneHasNodeSpecifierChecker),
     BlobStore::default(),
     Box::new(module_loader_factory),
-    root_cert_store,
+    root_cert_store_provider,
     node_fs,
     None,
     CliMainWorkerOptions {

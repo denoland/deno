@@ -26,6 +26,7 @@ use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::Duration;
 
 static ARCHIVE_NAME: Lazy<String> =
@@ -50,13 +51,13 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(http_client: HttpClient, cache_file_path: PathBuf) -> Self {
+  pub fn new(http_client: Arc<HttpClient>, cache_file_path: PathBuf) -> Self {
     Self {
       http_client,
       cache_file_path,
@@ -183,7 +184,10 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   }
 }
 
-pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
+pub fn check_for_upgrades(
+  http_client: Arc<HttpClient>,
+  cache_file_path: PathBuf,
+) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
   }
@@ -264,7 +268,7 @@ pub async fn upgrade(
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
-  let client = factory.http_client()?;
+  let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
   let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();

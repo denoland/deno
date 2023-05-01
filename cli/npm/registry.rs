@@ -63,7 +63,7 @@ impl CliNpmRegistryApi {
   pub fn new(
     base_url: Url,
     cache: Arc<NpmCache>,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
@@ -172,7 +172,7 @@ struct CliNpmRegistryApiInner {
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
 }
 
