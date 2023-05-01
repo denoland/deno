@@ -334,10 +334,9 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#processrelease */
   get release() {
     return {
-      name: "deno",
-      sourceUrl: `https://github.com/denoland/deno/archive/refs/tags/v${versions.deno}.tar.gz`,
-      // Deno doesn't publish source header files so we'll reuse the sourceUrl
-      headersUrl: `https://github.com/denoland/deno/archive/refs/tags/v${versions.deno}.tar.gz` 
+      name: "node",
+      sourceUrl: `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
+      headersUrl: `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz` 
     }
   }
 
