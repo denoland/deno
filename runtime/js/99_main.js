@@ -498,8 +498,9 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
     ppid: util.getterOnly(() => {
+      // lazy because it's expensive
       if (ppid === undefined) {
-        ppid = ops.op_ppid(); // expensive
+        ppid = ops.op_ppid();
       }
       return ppid;
     }),

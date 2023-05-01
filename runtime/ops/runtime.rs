@@ -31,6 +31,8 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   Ok(main_path)
 }
 
+/// This is an op instead of being done at initialization time because
+/// it's expensive to retreive the ppid on Windows.
 #[op]
 pub fn op_ppid() -> i64 {
   #[cfg(windows)]

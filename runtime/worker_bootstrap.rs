@@ -60,7 +60,7 @@ impl BootstrapOptions {
     &self,
     scope: &mut v8::HandleScope<'s>,
   ) -> v8::Local<'s, v8::Array> {
-    let array = v8::Array::new(scope, 17);
+    let array = v8::Array::new(scope, 16);
 
     {
       let args = v8::Array::new(scope, self.args.len() as i32);
