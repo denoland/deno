@@ -3,7 +3,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import { setExitHandler } from "ext:runtime/30_os.js";
-import { Console } from "ext:deno_console/02_console.js";
+import { Console } from "ext:deno_console/01_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;

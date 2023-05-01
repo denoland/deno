@@ -78,7 +78,7 @@ const {
   WeakMapPrototypeHas,
   WeakMapPrototypeSet,
 } = primordials;
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
 
 /** @template T */
@@ -4666,10 +4666,7 @@ class ByteLengthQueuingStrategy {
   constructor(init) {
     const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    init = webidl.converters.QueuingStrategyInit(init, {
-      prefix,
-      context: "Argument 1",
-    });
+    init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
@@ -4723,10 +4720,7 @@ class CountQueuingStrategy {
   constructor(init) {
     const prefix = "Failed to construct 'CountQueuingStrategy'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    init = webidl.converters.QueuingStrategyInit(init, {
-      prefix,
-      context: "Argument 1",
-    });
+    init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
@@ -4803,18 +4797,20 @@ class ReadableStream {
   constructor(underlyingSource = undefined, strategy = undefined) {
     const prefix = "Failed to construct 'ReadableStream'";
     if (underlyingSource !== undefined) {
-      underlyingSource = webidl.converters.object(underlyingSource, {
+      underlyingSource = webidl.converters.object(
+        underlyingSource,
         prefix,
-        context: "Argument 1",
-      });
+        "Argument 1",
+      );
     } else {
       underlyingSource = null;
     }
     if (strategy !== undefined) {
-      strategy = webidl.converters.QueuingStrategy(strategy, {
+      strategy = webidl.converters.QueuingStrategy(
+        strategy,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     } else {
       strategy = {};
     }
@@ -4823,7 +4819,8 @@ class ReadableStream {
     if (underlyingSource !== undefined) {
       underlyingSourceDict = webidl.converters.UnderlyingSource(
         underlyingSource,
-        { prefix, context: "underlyingSource" },
+        prefix,
+        "underlyingSource",
       );
     }
     initializeReadableStream(this);
@@ -4890,10 +4887,11 @@ class ReadableStream {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
     if (options !== undefined) {
-      options = webidl.converters.ReadableStreamGetReaderOptions(options, {
+      options = webidl.converters.ReadableStreamGetReaderOptions(
+        options,
         prefix,
-        context: "Argument 1",
-      });
+        "Argument 1",
+      );
     } else {
       options = {};
     }
@@ -4915,14 +4913,16 @@ class ReadableStream {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    transform = webidl.converters.ReadableWritablePair(transform, {
+    transform = webidl.converters.ReadableWritablePair(
+      transform,
       prefix,
-      context: "Argument 1",
-    });
-    options = webidl.converters.StreamPipeOptions(options, {
+      "Argument 1",
+    );
+    options = webidl.converters.StreamPipeOptions(
+      options,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
     const { readable, writable } = transform;
     const { preventClose, preventAbort, preventCancel, signal } = options;
     if (isReadableStreamLocked(this)) {
@@ -4953,14 +4953,16 @@ class ReadableStream {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
       webidl.requiredArguments(arguments.length, 1, prefix);
-      destination = webidl.converters.WritableStream(destination, {
+      destination = webidl.converters.WritableStream(
+        destination,
         prefix,
-        context: "Argument 1",
-      });
-      options = webidl.converters.StreamPipeOptions(options, {
+        "Argument 1",
+      );
+      options = webidl.converters.StreamPipeOptions(
+        options,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     } catch (err) {
       return PromiseReject(err);
     }
@@ -4999,10 +5001,11 @@ class ReadableStream {
   values(options = {}) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'values' on 'ReadableStream'";
-    options = webidl.converters.ReadableStreamIteratorOptions(options, {
+    options = webidl.converters.ReadableStreamIteratorOptions(
+      options,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     /** @type {AsyncIterableIterator<R>} */
     const iterator = ObjectCreate(readableStreamAsyncIteratorPrototype);
     const reader = acquireReadableStreamDefaultReader(this);
@@ -5044,10 +5047,7 @@ class ReadableStreamDefaultReader {
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    stream = webidl.converters.ReadableStream(stream, {
-      prefix,
-      context: "Argument 1",
-    });
+    stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     setUpReadableStreamDefaultReader(this, stream);
   }
@@ -5144,10 +5144,7 @@ class ReadableStreamBYOBReader {
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamBYOBReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    stream = webidl.converters.ReadableStream(stream, {
-      prefix,
-      context: "Argument 1",
-    });
+    stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     setUpReadableStreamBYOBReader(this, stream);
   }
@@ -5160,10 +5157,7 @@ class ReadableStreamBYOBReader {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
-      view = webidl.converters.ArrayBufferView(view, {
-        prefix,
-        context: "Argument 1",
-      });
+      view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
     } catch (err) {
       return PromiseReject(err);
     }
@@ -5286,11 +5280,14 @@ class ReadableStreamBYOBRequest {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     const prefix = "Failed to execute 'respond' on 'ReadableStreamBYOBRequest'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    bytesWritten = webidl.converters["unsigned long long"](bytesWritten, {
-      enforceRange: true,
+    bytesWritten = webidl.converters["unsigned long long"](
+      bytesWritten,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+      {
+        enforceRange: true,
+      },
+    );
 
     if (this[_controller] === undefined) {
       throw new TypeError("This BYOB request has been invalidated");
@@ -5319,10 +5316,7 @@ class ReadableStreamBYOBRequest {
     const prefix =
       "Failed to execute 'respondWithNewView' on 'ReadableStreamBYOBRequest'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    view = webidl.converters.ArrayBufferView(view, {
-      prefix,
-      context: "Argument 1",
-    });
+    view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
 
     if (this[_controller] === undefined) {
       throw new TypeError("This BYOB request has been invalidated");
@@ -5414,10 +5408,7 @@ class ReadableByteStreamController {
       "Failed to execute 'enqueue' on 'ReadableByteStreamController'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     const arg1 = "Argument 1";
-    chunk = webidl.converters.ArrayBufferView(chunk, {
-      prefix,
-      context: arg1,
-    });
+    chunk = webidl.converters.ArrayBufferView(chunk, prefix, arg1);
     let buffer, byteLength;
     if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
       buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
@@ -5700,27 +5691,27 @@ class TransformStream {
   ) {
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {
-      transformer = webidl.converters.object(transformer, {
-        prefix,
-        context: "Argument 1",
-      });
+      transformer = webidl.converters.object(transformer, prefix, "Argument 1");
     }
-    writableStrategy = webidl.converters.QueuingStrategy(writableStrategy, {
+    writableStrategy = webidl.converters.QueuingStrategy(
+      writableStrategy,
       prefix,
-      context: "Argument 2",
-    });
-    readableStrategy = webidl.converters.QueuingStrategy(readableStrategy, {
+      "Argument 2",
+    );
+    readableStrategy = webidl.converters.QueuingStrategy(
+      readableStrategy,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 3",
+    );
     this[webidl.brand] = webidl.brand;
     if (transformer === undefined) {
       transformer = null;
     }
-    const transformerDict = webidl.converters.Transformer(transformer, {
+    const transformerDict = webidl.converters.Transformer(
+      transformer,
       prefix,
-      context: "transformer",
-    });
+      "transformer",
+    );
     if (transformerDict.readableType !== undefined) {
       throw new RangeError(
         `${prefix}: readableType transformers not supported.`,
@@ -5887,22 +5878,25 @@ class WritableStream {
   constructor(underlyingSink = undefined, strategy = {}) {
     const prefix = "Failed to construct 'WritableStream'";
     if (underlyingSink !== undefined) {
-      underlyingSink = webidl.converters.object(underlyingSink, {
+      underlyingSink = webidl.converters.object(
+        underlyingSink,
         prefix,
-        context: "Argument 1",
-      });
+        "Argument 1",
+      );
     }
-    strategy = webidl.converters.QueuingStrategy(strategy, {
+    strategy = webidl.converters.QueuingStrategy(
+      strategy,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
     this[webidl.brand] = webidl.brand;
     if (underlyingSink === undefined) {
       underlyingSink = null;
     }
     const underlyingSinkDict = webidl.converters.UnderlyingSink(
       underlyingSink,
-      { prefix, context: "underlyingSink" },
+      prefix,
+      "underlyingSink",
     );
     if (underlyingSinkDict.type != null) {
       throw new RangeError(
@@ -6003,10 +5997,7 @@ class WritableStreamDefaultWriter {
   constructor(stream) {
     const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    stream = webidl.converters.WritableStream(stream, {
-      prefix,
-      context: "Argument 1",
-    });
+    stream = webidl.converters.WritableStream(stream, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     setUpWritableStreamDefaultWriter(this, stream);
   }
@@ -6251,8 +6242,8 @@ webidl.converters.UnderlyingSource = webidl
     },
     {
       key: "autoAllocateChunkSize",
-      converter: (V, opts) =>
-        webidl.converters["unsigned long long"](V, {
+      converter: (V, prefix, context, opts) =>
+        webidl.converters["unsigned long long"](V, prefix, context, {
           ...opts,
           enforceRange: true,
         }),

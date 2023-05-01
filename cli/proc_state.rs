@@ -49,17 +49,13 @@ use deno_semver::npm::NpmPackageReqReference;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// This structure represents state of single "deno" program.
-///
-/// It is shared by all created workers (thus V8 isolates).
-#[derive(Clone)]
-pub struct ProcState(Arc<Inner>);
-
-pub struct Inner {
+/// This structure used to represent state of single "deno" program
+/// that was shared by all created workers. It morphed into being the
+/// "factory" for all objects, but is being slowly phased out.
+pub struct ProcState {
   pub dir: DenoDir,
   pub caches: Arc<Caches>,
   pub file_fetcher: Arc<FileFetcher>,
@@ -87,14 +83,6 @@ pub struct Inner {
   pub npm_resolution: Arc<NpmResolution>,
   pub package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   pub cjs_resolutions: Arc<CjsResolutionStore>,
-  progress_bar: ProgressBar,
-}
-
-impl Deref for ProcState {
-  type Target = Arc<Inner>;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
 }
 
 impl ProcState {
@@ -123,48 +111,18 @@ impl ProcState {
 
   /// Reset all runtime state to its default. This should be used on file
   /// watcher restarts.
-  pub fn reset_for_file_watcher(&mut self) {
+  pub fn reset_for_file_watcher(&self) {
     self.cjs_resolutions.clear();
     self.parsed_source_cache.clear();
     self.graph_container.clear();
 
-    self.0 = Arc::new(Inner {
-      dir: self.dir.clone(),
-      caches: self.caches.clone(),
-      options: self.options.clone(),
-      emit_cache: self.emit_cache.clone(),
-      emitter: self.emitter.clone(),
-      file_fetcher: self.file_fetcher.clone(),
-      http_client: self.http_client.clone(),
-      graph_container: self.graph_container.clone(),
-      lockfile: self.lockfile.clone(),
-      maybe_import_map: self.maybe_import_map.clone(),
-      maybe_inspector_server: self.maybe_inspector_server.clone(),
-      root_cert_store: self.root_cert_store.clone(),
-      blob_store: self.blob_store.clone(),
-      parsed_source_cache: self.parsed_source_cache.clone(),
-      resolver: self.resolver.clone(),
-      maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
-      module_graph_builder: self.module_graph_builder.clone(),
-      module_load_preparer: self.module_load_preparer.clone(),
-      node_code_translator: self.node_code_translator.clone(),
-      node_fs: self.node_fs.clone(),
-      node_resolver: self.node_resolver.clone(),
-      npm_api: self.npm_api.clone(),
-      npm_cache: self.npm_cache.clone(),
-      npm_resolver: self.npm_resolver.clone(),
-      npm_resolution: self.npm_resolution.clone(),
-      package_json_deps_installer: self.package_json_deps_installer.clone(),
-      cjs_resolutions: self.cjs_resolutions.clone(),
-      progress_bar: self.progress_bar.clone(),
-    });
     self.init_watcher();
   }
 
   // Add invariant files like the import map and explicit watch flag list to
   // the watcher. Dedup for build_for_file_watcher and reset_for_file_watcher.
   fn init_watcher(&self) {
-    let files_to_watch_sender = match &self.0.maybe_file_watcher_reporter {
+    let files_to_watch_sender = match &self.maybe_file_watcher_reporter {
       Some(reporter) => &reporter.sender,
       None => return,
     };
@@ -338,7 +296,7 @@ impl ProcState {
       type_checker,
     ));
 
-    Ok(ProcState(Arc::new(Inner {
+    Ok(ProcState {
       dir,
       caches,
       options: cli_options,
@@ -366,13 +324,12 @@ impl ProcState {
       package_json_deps_installer,
       cjs_resolutions: Default::default(),
       module_load_preparer,
-      progress_bar,
-    })))
+    })
   }
 
   // todo(dsherret): this is a transitory method as we separate out
   // ProcState from more code
-  pub fn into_cli_main_worker_factory(self) -> CliMainWorkerFactory {
+  pub fn create_cli_main_worker_factory(&self) -> CliMainWorkerFactory {
     CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       self.npm_resolver.clone(),
