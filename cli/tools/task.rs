@@ -82,10 +82,13 @@ pub async fn execute_script(
       }
     }
 
+    package_json_deps_installer
+      .ensure_top_level_install()
+      .await?;
     npm_resolver.resolve_pending().await?;
 
     log::info!(
-      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in the upcoming release.",
+      "{} Currently only basic package.json `scripts` are supported. Programs like `rimraf` or `cross-env` will not work correctly. This will be fixed in an upcoming release.",
       colors::yellow("Warning"),
     );
 
