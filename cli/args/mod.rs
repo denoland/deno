@@ -1202,6 +1202,11 @@ impl StorageKeyResolver {
     })
   }
 
+  /// Creates a storage key resolver that will always resolve to being empty.
+  pub fn empty() -> Self {
+    Self(Some(None))
+  }
+
   /// Resolves the storage key to use based on the current flags, config, or main module.
   pub fn resolve_storage_key(
     &self,
@@ -1397,5 +1402,9 @@ mod test {
       resolver.resolve_storage_key(&specifier),
       Some("value".to_string())
     );
+
+    // test empty
+    let resolver = StorageKeyResolver::empty();
+    assert_eq!(resolver.resolve_storage_key(&specifier), None);
   }
 }

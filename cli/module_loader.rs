@@ -20,6 +20,7 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
+use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -223,102 +224,14 @@ pub struct ModuleCodeSource {
   pub media_type: MediaType,
 }
 
-struct SharedCliModuleLoaderState {
-  lib_window: TsTypeLib,
-  lib_worker: TsTypeLib,
-  is_inspecting: bool,
-  is_repl: bool,
+struct PreparedModuleLoader {
   emitter: Arc<Emitter>,
   graph_container: Arc<ModuleGraphContainer>,
-  module_load_preparer: Arc<ModuleLoadPreparer>,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  resolver: Arc<CliGraphResolver>,
-  npm_module_loader: NpmModuleLoader,
 }
 
-pub struct CliModuleLoaderFactory {
-  state: Arc<SharedCliModuleLoaderState>,
-}
-
-impl CliModuleLoaderFactory {
-  pub fn new(
-    options: &CliOptions,
-    emitter: Arc<Emitter>,
-    graph_container: Arc<ModuleGraphContainer>,
-    module_load_preparer: Arc<ModuleLoadPreparer>,
-    parsed_source_cache: Arc<ParsedSourceCache>,
-    resolver: Arc<CliGraphResolver>,
-    npm_module_loader: NpmModuleLoader,
-  ) -> Self {
-    Self {
-      state: Arc::new(SharedCliModuleLoaderState {
-        lib_window: options.ts_type_lib_window(),
-        lib_worker: options.ts_type_lib_worker(),
-        is_inspecting: options.is_inspecting(),
-        is_repl: matches!(options.sub_command(), DenoSubcommand::Repl(_)),
-        emitter,
-        graph_container,
-        module_load_preparer,
-        parsed_source_cache,
-        resolver,
-        npm_module_loader,
-      }),
-    }
-  }
-
-  pub fn create_for_main(
-    &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> CliModuleLoader {
-    self.create_with_lib(
-      self.state.lib_window,
-      root_permissions,
-      dynamic_permissions,
-    )
-  }
-
-  pub fn create_for_worker(
-    &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> CliModuleLoader {
-    self.create_with_lib(
-      self.state.lib_worker,
-      root_permissions,
-      dynamic_permissions,
-    )
-  }
-
-  fn create_with_lib(
-    &self,
-    lib: TsTypeLib,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
-  ) -> CliModuleLoader {
-    CliModuleLoader {
-      lib,
-      root_permissions,
-      dynamic_permissions,
-      shared: self.state.clone(),
-    }
-  }
-}
-
-pub struct CliModuleLoader {
-  lib: TsTypeLib,
-  /// The initial set of permissions used to resolve the static imports in the
-  /// worker. These are "allow all" for main worker, and parent thread
-  /// permissions for Web Worker.
-  root_permissions: PermissionsContainer,
-  /// Permissions used to resolve dynamic imports, these get passed as
-  /// "root permissions" for Web Worker.
-  dynamic_permissions: PermissionsContainer,
-  shared: Arc<SharedCliModuleLoaderState>,
-}
-
-impl CliModuleLoader {
-  fn load_prepared_module(
+impl PreparedModuleLoader {
+  pub fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
@@ -327,7 +240,7 @@ impl CliModuleLoader {
       unreachable!(); // Node built-in modules should be handled internally.
     }
 
-    let graph = self.shared.graph_container.graph();
+    let graph = self.graph_container.graph();
     match graph.get(specifier) {
       Some(deno_graph::Module::Json(JsonModule {
         source,
@@ -360,11 +273,9 @@ impl CliModuleLoader {
           | MediaType::Jsx
           | MediaType::Tsx => {
             // get emit text
-            self.shared.emitter.emit_parsed_source(
-              specifier,
-              *media_type,
-              source,
-            )?
+            self
+              .emitter
+              .emit_parsed_source(specifier, *media_type, source)?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
             panic!("Unexpected media type {media_type} for {specifier}")
@@ -372,7 +283,7 @@ impl CliModuleLoader {
         };
 
         // at this point, we no longer need the parsed source in memory, so free it
-        self.shared.parsed_source_cache.free(specifier);
+        self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeSource {
           code,
@@ -389,7 +300,113 @@ impl CliModuleLoader {
       }
     }
   }
+}
 
+struct SharedCliModuleLoaderState {
+  lib_window: TsTypeLib,
+  lib_worker: TsTypeLib,
+  is_inspecting: bool,
+  is_repl: bool,
+  graph_container: Arc<ModuleGraphContainer>,
+  module_load_preparer: Arc<ModuleLoadPreparer>,
+  prepared_module_loader: PreparedModuleLoader,
+  resolver: Arc<CliGraphResolver>,
+  npm_module_loader: NpmModuleLoader,
+}
+
+pub struct CliModuleLoaderFactory {
+  shared: Arc<SharedCliModuleLoaderState>,
+}
+
+impl CliModuleLoaderFactory {
+  pub fn new(
+    options: &CliOptions,
+    emitter: Arc<Emitter>,
+    graph_container: Arc<ModuleGraphContainer>,
+    module_load_preparer: Arc<ModuleLoadPreparer>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+    resolver: Arc<CliGraphResolver>,
+    npm_module_loader: NpmModuleLoader,
+  ) -> Self {
+    Self {
+      shared: Arc::new(SharedCliModuleLoaderState {
+        lib_window: options.ts_type_lib_window(),
+        lib_worker: options.ts_type_lib_worker(),
+        is_inspecting: options.is_inspecting(),
+        is_repl: matches!(options.sub_command(), DenoSubcommand::Repl(_)),
+        prepared_module_loader: PreparedModuleLoader {
+          emitter,
+          graph_container: graph_container.clone(),
+          parsed_source_cache,
+        },
+        graph_container,
+        module_load_preparer,
+        resolver,
+        npm_module_loader,
+      }),
+    }
+  }
+
+  fn create_with_lib(
+    &self,
+    lib: TsTypeLib,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> Rc<dyn ModuleLoader> {
+    Rc::new(CliModuleLoader {
+      lib,
+      root_permissions,
+      dynamic_permissions,
+      shared: self.shared.clone(),
+    })
+  }
+}
+
+impl ModuleLoaderFactory for CliModuleLoaderFactory {
+  fn create_for_main(
+    &self,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> Rc<dyn ModuleLoader> {
+    self.create_with_lib(
+      self.shared.lib_window,
+      root_permissions,
+      dynamic_permissions,
+    )
+  }
+
+  fn create_for_worker(
+    &self,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> Rc<dyn ModuleLoader> {
+    self.create_with_lib(
+      self.shared.lib_worker,
+      root_permissions,
+      dynamic_permissions,
+    )
+  }
+
+  fn create_source_map_getter(&self) -> Option<Box<dyn SourceMapGetter>> {
+    Some(Box::new(CliSourceMapGetter {
+      shared: self.shared.clone(),
+    }))
+  }
+}
+
+struct CliModuleLoader {
+  lib: TsTypeLib,
+  /// The initial set of permissions used to resolve the static imports in the
+  /// worker. These are "allow all" for main worker, and parent thread
+  /// permissions for Web Worker.
+  root_permissions: PermissionsContainer,
+  /// Permissions used to resolve dynamic imports, these get passed as
+  /// "root permissions" for Web Worker.
+  dynamic_permissions: PermissionsContainer,
+  shared: Arc<SharedCliModuleLoaderState>,
+}
+
+impl CliModuleLoader {
   fn load_sync(
     &self,
     specifier: &ModuleSpecifier,
@@ -409,7 +426,10 @@ impl CliModuleLoader {
       )? {
       code_source
     } else {
-      self.load_prepared_module(specifier, maybe_referrer)?
+      self
+        .shared
+        .prepared_module_loader
+        .load_prepared_module(specifier, maybe_referrer)?
     };
     let code = if self.shared.is_inspecting {
       // we need the code with the source map in order for
@@ -584,7 +604,11 @@ impl ModuleLoader for CliModuleLoader {
   }
 }
 
-impl SourceMapGetter for CliModuleLoader {
+struct CliSourceMapGetter {
+  shared: Arc<SharedCliModuleLoaderState>,
+}
+
+impl SourceMapGetter for CliSourceMapGetter {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
@@ -593,7 +617,11 @@ impl SourceMapGetter for CliModuleLoader {
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
-    let source = self.load_prepared_module(&specifier, None).ok()?;
+    let source = self
+      .shared
+      .prepared_module_loader
+      .load_prepared_module(&specifier, None)
+      .ok()?;
     source_map_from_code(&source.code)
   }
 
