@@ -15,8 +15,8 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
+use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
@@ -43,19 +43,20 @@ pub async fn vendor(
   let output_dir = resolve_from_cwd(&raw_output_dir)?;
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
   let graph = create_graph(
-    &ps.module_graph_builder,
+    factory.module_graph_builder().await?,
     &vendor_flags,
-    ps.options.initial_cwd(),
+    cli_options.initial_cwd(),
   )
   .await?;
   let vendored_count = build::build(
     graph,
-    &ps.parsed_source_cache,
+    factory.parsed_source_cache()?,
     &output_dir,
-    ps.maybe_import_map.as_deref(),
-    ps.lockfile.clone(),
+    factory.maybe_import_map().await?.as_deref(),
+    factory.maybe_lockfile().clone(),
     &build::RealVendorEnvironment,
   )?;
 
@@ -71,7 +72,7 @@ pub async fn vendor(
   );
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
-    if maybe_update_config_file(&output_dir, &ps.options) {
+    if maybe_update_config_file(&output_dir, cli_options) {
       log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",

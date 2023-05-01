@@ -66,6 +66,7 @@ pub trait HasNodeSpecifierChecker: Send + Sync {
   fn has_node_specifier(&self) -> bool;
 }
 
+#[derive(Clone)]
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub debug: bool,

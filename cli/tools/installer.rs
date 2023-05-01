@@ -6,8 +6,8 @@ use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
+use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
-use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 use deno_core::anyhow::Context;
@@ -233,9 +233,10 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  ProcState::from_flags(flags.clone())
+  CliFactory::from_flags(flags.clone())
     .await?
-    .module_load_preparer
+    .module_load_preparer()
+    .await?
     .load_and_type_check_files(&[install_flags.module_url.clone()])
     .await?;
 

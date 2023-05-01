@@ -5,8 +5,8 @@
 use crate::args::Flags;
 use crate::args::UpgradeFlags;
 use crate::colors;
+use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
-use crate::proc_state::ProcState;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::time;
@@ -263,7 +263,8 @@ pub async fn upgrade(
   flags: Flags,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let client = factory.http_client()?;
   let current_exe_path = std::env::current_exe()?;
   let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
@@ -284,8 +285,6 @@ pub async fn upgrade(
       "Otherwise run `deno upgrade` as root.",
     ), current_exe_path.display());
   }
-
-  let client = &ps.http_client;
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {

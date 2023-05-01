@@ -6,12 +6,12 @@ use crate::args::TestOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
+use crate::factory::CliFactory;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_valid_with_cli_options;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::proc_state::ProcState;
 use crate::util::checksum;
 use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
@@ -1629,16 +1629,19 @@ pub async fn run_tests(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let file_fetcher = factory.file_fetcher()?;
+  let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
-  let log_level = ps.options.log_level();
+    Permissions::from_options(&cli_options.permissions_options())?;
+  let log_level = cli_options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    &ps.file_fetcher,
+    file_fetcher,
     &test_options.files,
     &test_options.doc,
   )
@@ -1649,9 +1652,9 @@ pub async fn run_tests(
   }
 
   check_specifiers(
-    &ps.options,
-    &ps.file_fetcher,
-    &ps.module_load_preparer,
+    cli_options,
+    file_fetcher,
+    module_load_preparer,
     specifiers_with_mode.clone(),
   )
   .await?;
@@ -1660,7 +1663,8 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
 
   test_specifiers(
     worker_factory,
@@ -1692,22 +1696,27 @@ pub async fn run_tests_with_watch(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let module_graph_builder = factory.module_graph_builder().await?;
+  let module_load_preparer = factory.module_load_preparer().await?;
+  let file_fetcher = factory.file_fetcher()?;
+  let file_watcher = factory.file_watcher()?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
-  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
-  let log_level = ps.options.log_level();
+    Permissions::from_options(&cli_options.permissions_options())?;
+  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
+  let log_level = cli_options.log_level();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = test_options.files.include.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let test_options = &test_options;
-    let cli_options = ps.options.clone();
-    let module_graph_builder = ps.module_graph_builder.clone();
+    let cli_options = cli_options.clone();
+    let module_graph_builder = module_graph_builder.clone();
 
     async move {
       let test_modules = if test_options.doc {
@@ -1815,16 +1824,19 @@ pub async fn run_tests_with_watch(
     })
   };
 
+  let create_cli_main_worker_factory =
+    factory.create_cli_main_worker_factory_func().await?;
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
     let test_options = &test_options;
-    ps.reset_for_file_watcher();
-    let cli_options = ps.options.clone();
-    let file_fetcher = ps.file_fetcher.clone();
-    let module_load_preparer = ps.module_load_preparer.clone();
-    let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
+    file_watcher.reset();
+    let cli_options = cli_options.clone();
+    let file_fetcher = file_fetcher.clone();
+    let module_load_preparer = module_load_preparer.clone();
+    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
 
     async move {
+      let worker_factory = Arc::new(create_cli_main_worker_factory());
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
         &file_fetcher,
         &test_options.files,
@@ -1887,7 +1899,7 @@ pub async fn run_tests_with_watch(
     }
   });
 
-  let clear_screen = !ps.options.no_clear_screen();
+  let clear_screen = !cli_options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,
