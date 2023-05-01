@@ -32,9 +32,14 @@ const DH_GENERATOR = 2;
 
 export class DiffieHellman {
   verifyError!: number;
+  #prime: Buffer;
+  #primeLength: number;
+  #generator: Buffer;
+  #privateKey: Buffer;
+  #publicKey: Buffer;
 
   constructor(
-    sizeOrKey: unknown,
+    sizeOrKey: number | string | ArrayBufferView,
     keyEncoding?: unknown,
     generator?: unknown,
     genEncoding?: unknown,
@@ -71,11 +76,19 @@ export class DiffieHellman {
     genEncoding = genEncoding || encoding;
 
     if (typeof sizeOrKey !== "number") {
-      sizeOrKey = toBuf(sizeOrKey as string, keyEncoding as string);
+      this.#prime = toBuf(sizeOrKey as string, keyEncoding as string);
+    } else {
+      // The supplied parameter is our primeLength, generate a suitable prime.
+      this.#primeLength = sizeOrKey as number;
+      this.#prime = Buffer.from(
+        ops.op_node_gen_prime(this.#primeLength).buffer,
+      );
     }
 
     if (!generator) {
-      generator = DH_GENERATOR;
+      // While the commonly used cyclic group generators for DH are 2 and 5, we
+      // need this a buffer, because, well.. Node.
+      generator = Buffer.from([DH_GENERATOR]);
     } else if (typeof generator === "number") {
       validateInt32(generator, "generator");
     } else if (typeof generator === "string") {
@@ -88,7 +101,7 @@ export class DiffieHellman {
       );
     }
 
-    notImplemented("crypto.DiffieHellman");
+    this.#generator = generator;
   }
 
   computeSecret(otherPublicKey: ArrayBufferView): Buffer;
@@ -106,41 +119,71 @@ export class DiffieHellman {
     outputEncoding: BinaryToTextEncoding,
   ): string;
   computeSecret(
-    _otherPublicKey: ArrayBufferView | string,
+    otherPublicKey: ArrayBufferView | string,
     _inputEncoding?: BinaryToTextEncoding,
     _outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.computeSecret");
+    const sharedSecret = ops.op_node_dh_compute_secret(
+      this.#prime,
+      this.#privateKey,
+      Buffer.from(otherPublicKey.buffer),
+    );
+    return Buffer.from(sharedSecret.buffer);
   }
 
   generateKeys(): Buffer;
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.generateKeys");
+    const [privateKey, publicKey] = ops.op_node_dh_generate2(
+      this.#prime,
+      this.#primeLength,
+      2,
+    );
+
+    this.#privateKey = Buffer.from(privateKey.buffer);
+    this.#publicKey = Buffer.from(publicKey.buffer);
+
+    return this.#publicKey;
   }
 
   getGenerator(): Buffer;
   getGenerator(encoding: BinaryToTextEncoding): string;
-  getGenerator(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getGenerator");
+  getGenerator(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined) {
+      return this.#generator.toString(encoding);
+    }
+
+    return this.#generator;
   }
 
   getPrime(): Buffer;
   getPrime(encoding: BinaryToTextEncoding): string;
-  getPrime(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getPrime");
+  getPrime(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined) {
+      return this.#prime.toString(encoding);
+    }
+
+    return this.#prime;
   }
 
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
-  getPrivateKey(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getPrivateKey");
+  getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined) {
+      return this.#privateKey.toString(encoding);
+    }
+
+    return this.#privateKey;
   }
 
   getPublicKey(): Buffer;
   getPublicKey(encoding: BinaryToTextEncoding): string;
-  getPublicKey(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getPublicKey");
+  getPublicKey(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined) {
+      return this.#publicKey.toString(encoding);
+    }
+
+    return this.#publicKey;
   }
 
   setPrivateKey(privateKey: ArrayBufferView): void;
