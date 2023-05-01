@@ -39,7 +39,7 @@ sourcemap = "6.1"
 url.workspace = true
 v8.workspace = true
 
-# [target.'cfg(not(target_env = "msvc"))'.dependencies]
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemalloc-sys = "0.5"
 
 [[example]]

@@ -72,9 +72,11 @@ struct IsolateAllocations {
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
 
+/// A custom allocator for array buffers for V8. It uses `jemalloc` so it's
+/// not available on Windows.
+#[cfg(not(target_env = "msvc"))]
 mod custom_allocator {
   use std::ffi::c_void;
-  use tikv_jemalloc_sys;
 
   pub struct RustAllocator;
 
@@ -433,6 +435,7 @@ impl JsRuntime {
       }
       (isolate, snapshot_options)
     } else {
+      #[cfg(not(target_env = "msvc"))]
       let vtable: &'static v8::RustAllocatorVtable<
         custom_allocator::RustAllocator,
       > = &v8::RustAllocatorVtable {
@@ -442,9 +445,10 @@ impl JsRuntime {
         reallocate: custom_allocator::reallocate,
         drop: custom_allocator::drop,
       };
+      #[cfg(not(target_env = "msvc"))]
       let allocator = Arc::new(custom_allocator::RustAllocator);
 
-      let mut params = options
+      let params = options
         .create_params
         .take()
         .unwrap_or_else(|| {
@@ -453,10 +457,14 @@ impl JsRuntime {
             V8_WRAPPER_OBJECT_INDEX,
           )
         })
-        .array_buffer_allocator(unsafe {
-          v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
-        })
         .external_references(&**refs);
+
+      #[cfg(not(target_env = "msvc"))]
+      // SAFETY: We are leaking the created `allocator` variable so we're sure
+      // it will outlive the created isolate.
+      let mut params = params.array_buffer_allocator(unsafe {
+        v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
+      });
 
       if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
