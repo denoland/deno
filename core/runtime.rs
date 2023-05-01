@@ -74,6 +74,7 @@ struct IsolateAllocations {
 
 mod custom_allocator {
   use std::ffi::c_void;
+  use tikv_jemalloc_sys;
 
   pub struct RustAllocator;
 
@@ -81,35 +82,31 @@ mod custom_allocator {
     _alloc: &RustAllocator,
     n: usize,
   ) -> *mut c_void {
-    let layout = std::alloc::Layout::array::<u8>(n).unwrap();
-    std::alloc::alloc_zeroed(layout) as *mut c_void
+    tikv_jemalloc_sys::calloc(1, n)
   }
 
   pub unsafe extern "C" fn allocate_uninitialized(
     _alloc: &RustAllocator,
     n: usize,
   ) -> *mut c_void {
-    let layout = std::alloc::Layout::array::<u8>(n).unwrap();
-    std::alloc::alloc(layout) as *mut c_void
+    tikv_jemalloc_sys::malloc(n)
   }
 
   pub unsafe extern "C" fn free(
     _alloc: &RustAllocator,
     data: *mut c_void,
-    n: usize,
+    _n: usize,
   ) {
-    let layout = std::alloc::Layout::array::<u8>(n).unwrap();
-    std::alloc::dealloc(data as *mut u8, layout);
+    tikv_jemalloc_sys::free(data)
   }
 
   pub unsafe extern "C" fn reallocate(
     _alloc: &RustAllocator,
     prev: *mut c_void,
-    oldlen: usize,
+    _oldlen: usize,
     newlen: usize,
   ) -> *mut c_void {
-    let layout = std::alloc::Layout::array::<u8>(oldlen).unwrap();
-    std::alloc::realloc(prev as *mut u8, layout, newlen) as *mut c_void
+    tikv_jemalloc_sys::realloc(prev, newlen)
   }
 
   pub unsafe extern "C" fn drop(_alloc: *const RustAllocator) {}

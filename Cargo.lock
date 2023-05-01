@@ -876,6 +876,7 @@ dependencies = [
  "serde_v8",
  "smallvec",
  "sourcemap",
+ "tikv-jemalloc-sys",
  "tokio",
  "url",
  "v8",
