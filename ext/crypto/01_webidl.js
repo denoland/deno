@@ -14,23 +14,28 @@ const {
   SafeArrayIterator,
 } = primordials;
 
-webidl.converters.AlgorithmIdentifier = (V, opts) => {
+webidl.converters.AlgorithmIdentifier = (V, prefix, context, opts) => {
   // Union for (object or DOMString)
   if (webidl.type(V) == "Object") {
-    return webidl.converters.object(V, opts);
+    return webidl.converters.object(V, prefix, context, opts);
   }
-  return webidl.converters.DOMString(V, opts);
+  return webidl.converters.DOMString(V, prefix, context, opts);
 };
 
-webidl.converters["BufferSource or JsonWebKey"] = (V, opts) => {
+webidl.converters["BufferSource or JsonWebKey"] = (
+  V,
+  prefix,
+  context,
+  opts,
+) => {
   // Union for (BufferSource or JsonWebKey)
   if (
     ArrayBufferIsView(V) ||
     ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V)
   ) {
-    return webidl.converters.BufferSource(V, opts);
+    return webidl.converters.BufferSource(V, prefix, context, opts);
   }
-  return webidl.converters.JsonWebKey(V, opts);
+  return webidl.converters.JsonWebKey(V, prefix, context, opts);
 };
 
 webidl.converters.KeyType = webidl.createEnumConverter("KeyType", [
@@ -81,8 +86,11 @@ const dictRsaKeyGenParams = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
     key: "modulusLength",
-    converter: (V, opts) =>
-      webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
     required: true,
   },
   {
@@ -155,8 +163,11 @@ const dictAesKeyGenParams = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
     key: "length",
-    converter: (V, opts) =>
-      webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned short"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
     required: true,
   },
 ];
@@ -173,8 +184,11 @@ const dictHmacKeyGenParams = [
   },
   {
     key: "length",
-    converter: (V, opts) =>
-      webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
   },
 ];
 
@@ -185,8 +199,11 @@ const dictRsaPssParams = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
     key: "saltLength",
-    converter: (V, opts) =>
-      webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
     required: true,
   },
 ];
@@ -226,8 +243,11 @@ const dictHmacImportParams = [
   },
   {
     key: "length",
-    converter: (V, opts) =>
-      webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
   },
 ];
 
@@ -374,8 +394,11 @@ const dictPbkdf2Params = [
   },
   {
     key: "iterations",
-    converter: (V, opts) =>
-      webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
     required: true,
   },
   {
@@ -392,8 +415,11 @@ const dictAesDerivedKeyParams = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
     key: "length",
-    converter: (V, opts) =>
-      webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
     required: true,
   },
 ];
@@ -416,8 +442,11 @@ const dictAesGcmParams = [
   },
   {
     key: "tagLength",
-    converter: (V, opts) =>
-      webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
   },
   {
     key: "additionalData",
@@ -434,8 +463,11 @@ const dictAesCtrParams = [
   },
   {
     key: "length",
-    converter: (V, opts) =>
-      webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned short"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
     required: true,
   },
 ];

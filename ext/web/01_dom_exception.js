@@ -94,14 +94,16 @@ class DOMException {
 
   // https://webidl.spec.whatwg.org/#dom-domexception-domexception
   constructor(message = "", name = "Error") {
-    message = webidl.converters.DOMString(message, {
-      prefix: "Failed to construct 'DOMException'",
-      context: "Argument 1",
-    });
-    name = webidl.converters.DOMString(name, {
-      prefix: "Failed to construct 'DOMException'",
-      context: "Argument 2",
-    });
+    message = webidl.converters.DOMString(
+      message,
+      "Failed to construct 'DOMException'",
+      "Argument 1",
+    );
+    name = webidl.converters.DOMString(
+      name,
+      "Failed to construct 'DOMException'",
+      "Argument 2",
+    );
     const code = nameToCodeMapping[name] ?? 0;
 
     this[_message] = message;
