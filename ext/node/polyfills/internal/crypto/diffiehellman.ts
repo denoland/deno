@@ -88,20 +88,24 @@ export class DiffieHellman {
     if (!generator) {
       // While the commonly used cyclic group generators for DH are 2 and 5, we
       // need this a buffer, because, well.. Node.
-      generator = Buffer.from([DH_GENERATOR]);
+      this.#generator = Buffer.alloc(4);
+      this.#generator.writeUint32BE(DH_GENERATOR);
     } else if (typeof generator === "number") {
       validateInt32(generator, "generator");
+      this.#generator = Buffer.alloc(4);
+      this.#generator.writeUint32BE(generator);
     } else if (typeof generator === "string") {
       generator = toBuf(generator, genEncoding as string);
+      this.#generator = generator;
     } else if (!isArrayBufferView(generator) && !isAnyArrayBuffer(generator)) {
       throw new ERR_INVALID_ARG_TYPE(
         "generator",
         ["number", "string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
         generator,
       );
+    } else {
+      this.#generator = Buffer.from(generator);
     }
-
-    this.#generator = generator;
   }
 
   computeSecret(otherPublicKey: ArrayBufferView): Buffer;
@@ -134,10 +138,11 @@ export class DiffieHellman {
   generateKeys(): Buffer;
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
+    const generator = this.#generator.readUint32BE();
     const [privateKey, publicKey] = ops.op_node_dh_generate2(
       this.#prime,
       this.#primeLength,
-      2,
+      generator,
     );
 
     this.#privateKey = Buffer.from(privateKey.buffer);
