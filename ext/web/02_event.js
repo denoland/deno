@@ -482,7 +482,7 @@ function getRoot(eventTarget) {
 function isNode(
   eventTarget,
 ) {
-  return eventTarget && eventTarget.nodeType !== undefined;
+  return eventTarget?.nodeType !== undefined;
 }
 
 // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
