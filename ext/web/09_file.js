@@ -48,7 +48,7 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.

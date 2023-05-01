@@ -10,7 +10,7 @@
 /// <reference lib="esnext" />
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteUpperCase,
   HTTP_TOKEN_CODE_POINT_RE,

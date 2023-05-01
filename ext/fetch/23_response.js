@@ -12,7 +12,7 @@
 
 const core = globalThis.Deno.core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
