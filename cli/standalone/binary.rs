@@ -5,7 +5,6 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
-use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
@@ -150,17 +149,17 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
-pub struct DenoCompileBinaryWriter {
-  file_fetcher: Arc<FileFetcher>,
-  client: HttpClient,
-  deno_dir: DenoDir,
+pub struct DenoCompileBinaryWriter<'a> {
+  file_fetcher: &'a FileFetcher,
+  client: &'a HttpClient,
+  deno_dir: &'a DenoDir,
 }
 
-impl DenoCompileBinaryWriter {
+impl<'a> DenoCompileBinaryWriter<'a> {
   pub fn new(
-    file_fetcher: Arc<FileFetcher>,
-    client: HttpClient,
-    deno_dir: DenoDir,
+    file_fetcher: &'a FileFetcher,
+    client: &'a HttpClient,
+    deno_dir: &'a DenoDir,
   ) -> Self {
     Self {
       file_fetcher,
@@ -282,7 +281,7 @@ impl DenoCompileBinaryWriter {
       None => None,
     };
     let maybe_import_map = cli_options
-      .resolve_import_map(&self.file_fetcher)
+      .resolve_import_map(self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
     let metadata = Metadata {

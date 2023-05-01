@@ -753,7 +753,7 @@ impl CliOptions {
       return Ok(Some(state.snapshot.clone().into_valid()?));
     }
 
-    if let Some(lockfile) = self.maybe_lock_file() {
+    if let Some(lockfile) = self.maybe_lockfile() {
       if !lockfile.lock().overwrite {
         return Ok(Some(
           snapshot_from_lockfile(lockfile.clone(), api)
@@ -827,7 +827,7 @@ impl CliOptions {
       .map(|host| InspectorServer::new(host, version::get_user_agent()))
   }
 
-  pub fn maybe_lock_file(&self) -> Option<Arc<Mutex<Lockfile>>> {
+  pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
     self.maybe_lockfile.clone()
   }
 
