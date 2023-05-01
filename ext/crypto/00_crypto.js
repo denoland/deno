@@ -12,11 +12,12 @@ const primordials = globalThis.__bootstrap.primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
-  ArrayBufferPrototype,
-  ArrayBufferPrototypeSlice,
-  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
+  ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeSlice,
   ArrayPrototypeEvery,
+  ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeIncludes,
   DataViewPrototypeGetBuffer,
@@ -28,21 +29,21 @@ const {
   ObjectAssign,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
-  StringPrototypeToLowerCase,
-  StringPrototypeToUpperCase,
-  StringPrototypeCharCodeAt,
-  StringFromCharCode,
   SafeArrayIterator,
   SafeWeakMap,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolFor,
   SyntaxError,
-  TypedArrayPrototypeSlice,
+  TypeError,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetSymbolToStringTag,
-  TypeError,
+  TypedArrayPrototypeSlice,
   Uint8Array,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
@@ -388,7 +389,10 @@ function constructKey(type, extractable, usages, algorithm, handle) {
  * @returns
  */
 function usageIntersection(a, b) {
-  return a.filter((i) => b.includes(i));
+  return ArrayPrototypeFilter(
+    a,
+    (i) => ArrayPrototypeIncludes(b, i),
+  );
 }
 
 // TODO(lucacasonato): this should be moved to rust

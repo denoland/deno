@@ -259,7 +259,7 @@ function serializeJsMessageData(data, transferables) {
         );
       }
       j++;
-      transferredArrayBuffers.push(ab);
+      ArrayPrototypePush(transferredArrayBuffers, ab);
     }
   }
 

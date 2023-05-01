@@ -13,8 +13,9 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
-  ObjectKeys,
+  ArrayPrototypePop,
   ObjectFromEntries,
+  ObjectKeys,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeRegExp,
@@ -178,7 +179,7 @@ class URLPattern {
 
     const { 0: values, 1: inputs } = res;
     if (inputs[1] === null) {
-      inputs.pop();
+      ArrayPrototypePop(inputs);
     }
 
     /** @type {URLPatternResult} */
