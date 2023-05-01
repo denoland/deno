@@ -47,7 +47,7 @@ To grant permissions, set them before the script argument. For example:
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &ps.options.permissions_options(),
   )?);
-  let worker_factory = ps.into_cli_main_worker_factory();
+  let worker_factory = ps.create_cli_main_worker_factory();
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
@@ -78,7 +78,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   // to allow module access by TS compiler
   ps.file_fetcher.insert_cached(source_file);
 
-  let worker_factory = ps.into_cli_main_worker_factory();
+  let worker_factory = ps.create_cli_main_worker_factory();
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
@@ -90,19 +90,19 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // code properly.
 async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-  let mut ps =
+  let ps =
     ProcState::from_flags_for_file_watcher(flags, sender.clone()).await?;
   let clear_screen = !ps.options.no_clear_screen();
   let main_module = ps.options.resolve_main_module()?;
 
   let operation = |main_module: ModuleSpecifier| {
     ps.reset_for_file_watcher();
-    let ps = ps.clone();
+    let permissions = PermissionsContainer::new(Permissions::from_options(
+      &ps.options.permissions_options(),
+    )?);
+    let worker_factory = ps.create_cli_main_worker_factory();
+
     Ok(async move {
-      let permissions = PermissionsContainer::new(Permissions::from_options(
-        &ps.options.permissions_options(),
-      )?);
-      let worker_factory = ps.into_cli_main_worker_factory();
       let worker = worker_factory
         .create_main_worker(main_module, permissions)
         .await?;
@@ -157,7 +157,7 @@ pub async fn eval_command(
   ps.file_fetcher.insert_cached(file);
 
   let mut worker = ps
-    .into_cli_main_worker_factory()
+    .create_cli_main_worker_factory()
     .create_main_worker(main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
