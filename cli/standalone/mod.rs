@@ -4,9 +4,14 @@ use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::StorageKeyResolver;
+use crate::cache::Caches;
 use crate::cache::DenoDir;
+use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
+use crate::module_loader::CjsResolutionStore;
+use crate::module_loader::NpmModuleLoader;
+use crate::node::CliCjsEsmCodeAnalyzer;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
@@ -20,6 +25,7 @@ use crate::worker::CliMainWorkerOptions;
 use crate::worker::HasNodeSpecifierChecker;
 use crate::worker::ModuleLoaderFactory;
 use crate::CliGraphResolver;
+use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -31,10 +37,12 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
+use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -49,7 +57,6 @@ pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
 use self::binary::Metadata;
-use self::binary::NPM_VFS;
 use self::file_system::DenoCompileFileSystem;
 
 #[derive(Clone)]
@@ -244,7 +251,7 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let node_fs = Arc::new(deno_node::RealFs);
+  let node_fs = Arc::new(DenoCompileFileSystem);
   let npm_resolution =
     Arc::new(NpmResolution::from_serialized(npm_api.clone(), None, None));
   let npm_fs_resolver = create_npm_fs_resolver(
@@ -262,6 +269,19 @@ pub async fn run(
   ));
   let node_resolver =
     Arc::new(NodeResolver::new(node_fs.clone(), npm_resolver.clone()));
+  let cjs_resolutions = Arc::new(CjsResolutionStore::default());
+  let cache_db = Caches::new(dir.clone());
+  let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
+  let cjs_esm_code_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
+  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+    cjs_esm_code_analyzer,
+    node_fs.clone(),
+    node_resolver.clone(),
+    npm_resolver.clone(),
+  ));
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &metadata.permissions,
+  )?);
   let module_loader_factory = StandaloneModuleLoaderFactory {
     loader: EmbeddedModuleLoader {
       eszip: Arc::new(eszip),
@@ -279,9 +299,17 @@ pub async fn run(
           ))
         },
       ),
+      npm_module_loader: Arc::new(NpmModuleLoader::new(
+        cjs_resolutions,
+        node_code_translator,
+        node_fs.clone(),
+        node_resolver.clone(),
+      )),
+      root_permissions: permissions.clone(),
+      // todo(THIS PR): seems wrong :)
+      dynamic_permissions: permissions.clone(),
     },
   };
-  let file_system = DenoCompileFileSystem;
 
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
@@ -316,9 +344,6 @@ pub async fn run(
 
   v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &metadata.permissions,
-  )?);
   let mut worker = worker_factory
     .create_main_worker(main_module.clone(), permissions)
     .await?;

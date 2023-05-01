@@ -251,8 +251,8 @@ pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   client: &'a HttpClient,
   deno_dir: &'a DenoDir,
-  npm_resolver: Arc<CliNpmResolver>,
-  resolution: Arc<NpmResolution>,
+  npm_resolver: &'a CliNpmResolver,
+  resolution: &'a NpmResolution,
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
@@ -260,8 +260,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     file_fetcher: &'a FileFetcher,
     client: &'a HttpClient,
     deno_dir: &'a DenoDir,
-    npm_resolver: Arc<CliNpmResolver>,
-    resolution: Arc<NpmResolution>,
+    npm_resolver: &'a CliNpmResolver,
+    resolution: &'a NpmResolution,
   ) -> Self {
     Self {
       file_fetcher,

@@ -575,6 +575,7 @@ impl CliFactory {
           NpmModuleLoader::new(
             cjs_resolutions.clone(),
             node_code_translator.clone(),
+            node_fs.clone(),
             node_resolver.clone(),
           ),
         )),
@@ -590,6 +591,7 @@ impl CliFactory {
     &self,
   ) -> Result<CliMainWorkerFactory, AnyError> {
     let node_resolver = self.node_resolver().await?;
+    let node_fs = self.node_fs();
     Ok(CliMainWorkerFactory::new(
       StorageKeyResolver::from_options(&self.options),
       self.npm_resolver().await?.clone(),
@@ -606,11 +608,12 @@ impl CliFactory {
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
           self.node_code_translator().await?.clone(),
+          node_fs.clone(),
           node_resolver.clone(),
         ),
       )),
       self.root_cert_store()?.clone(),
-      self.node_fs().clone(),
+      node_fs.clone(),
       self.maybe_inspector_server().clone(),
       self.create_cli_main_worker_options()?,
     ))

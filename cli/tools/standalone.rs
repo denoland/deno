@@ -3,7 +3,6 @@
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
-use crate::graph_util::error_for_any_npm_specifier;
 use crate::standalone::is_standalone_binary;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;
@@ -30,9 +29,16 @@ pub async fn compile(
   let deno_dir = factory.deno_dir()?;
   let module_graph_builder = factory.module_graph_builder().await?;
   let parsed_source_cache = factory.parsed_source_cache()?;
+  let npm_resolver = factory.npm_resolver().await?;
+  let npm_resolution = factory.npm_resolution().await?;
 
-  let binary_writer =
-    DenoCompileBinaryWriter::new(file_fetcher, http_client, deno_dir);
+  let binary_writer = DenoCompileBinaryWriter::new(
+    file_fetcher,
+    http_client,
+    deno_dir,
+    npm_resolver,
+    npm_resolution,
+  );
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);

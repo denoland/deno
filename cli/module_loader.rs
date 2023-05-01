@@ -419,12 +419,11 @@ impl CliModuleLoader {
     } else {
       &self.root_permissions
     };
-    let code_source = if let Some(code_source) =
-      self.shared.npm_module_loader.load_sync(
-        specifier,
-        maybe_referrer,
-        permissions,
-      )? {
+    let code_source = if let Some(result) = self
+      .shared
+      .npm_module_loader
+      .load_sync_if_in_npm_package(specifier, maybe_referrer, permissions)
+    {
       result?
     } else {
       self

@@ -17,8 +17,8 @@ use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
 use deno_runtime::colors;
-use deno_runtime::deno_fs::StdFs;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_fs::StdFs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolver;
@@ -295,11 +295,12 @@ impl CliMainWorker {
   }
 }
 
-pub struct CliMainWorkerFactory {
+pub struct CliMainWorkerFactory<Fs: deno_runtime::deno_fs::FileSystem> {
   shared: Arc<SharedWorkerState>,
+  fs: Fs,
 }
 
-impl CliMainWorkerFactory {
+impl<Fs: deno_runtime::deno_fs::FileSystem> CliMainWorkerFactory<Fs> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
@@ -312,6 +313,7 @@ impl CliMainWorkerFactory {
     node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     options: CliMainWorkerOptions,
+    fs: Fs,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -329,6 +331,7 @@ impl CliMainWorkerFactory {
         node_fs,
         maybe_inspector_server,
       }),
+      fs,
     }
   }
 
@@ -460,12 +463,12 @@ impl CliMainWorkerFactory {
       stdio,
     };
 
-  let worker = MainWorker::bootstrap_from_options(
-    main_module.clone(),
-    permissions,
-    StdFs,
-    options,
-  );
+    let worker = MainWorker::bootstrap_from_options(
+      main_module.clone(),
+      permissions,
+      self.fs.clone(),
+      options,
+    );
 
     Ok(CliMainWorker {
       main_module,
