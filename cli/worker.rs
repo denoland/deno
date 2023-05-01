@@ -21,7 +21,7 @@ use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
@@ -96,7 +96,7 @@ struct SharedWorkerState {
   shared_array_buffer_store: SharedArrayBufferStore,
   compiled_wasm_module_store: CompiledWasmModuleStore,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
-  root_cert_store: RootCertStore,
+  root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   node_fs: Arc<dyn deno_node::NodeFs>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
@@ -307,7 +307,7 @@ impl CliMainWorkerFactory {
     has_node_specifier_checker: Box<dyn HasNodeSpecifierChecker>,
     blob_store: BlobStore,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
-    root_cert_store: RootCertStore,
+    root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     options: CliMainWorkerOptions,
@@ -324,7 +324,7 @@ impl CliMainWorkerFactory {
         shared_array_buffer_store: Default::default(),
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
-        root_cert_store,
+        root_cert_store_provider,
         node_fs,
         maybe_inspector_server,
       }),
@@ -434,7 +434,7 @@ impl CliMainWorkerFactory {
         .options
         .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store: Some(shared.root_cert_store.clone()),
+      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
       source_map_getter: maybe_source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
@@ -562,7 +562,7 @@ fn create_web_worker_callback(
         .options
         .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store: Some(shared.root_cert_store.clone()),
+      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
       create_web_worker_cb,
       preload_module_cb,
@@ -616,7 +616,7 @@ mod tests {
       extensions: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
-      root_cert_store: None,
+      root_cert_store_provider: None,
       seed: None,
       format_js_error_fn: None,
       source_map_getter: None,

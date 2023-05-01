@@ -13,6 +13,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
@@ -52,6 +53,7 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -61,6 +63,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use thiserror::Error;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
@@ -401,13 +404,62 @@ fn discover_package_json(
   Ok(None)
 }
 
+struct CliRootCertStoreProvider {
+  cell: OnceCell<RootCertStore>,
+  maybe_root_path: Option<PathBuf>,
+  maybe_ca_stores: Option<Vec<String>>,
+  maybe_ca_data: Option<CaData>,
+}
+
+impl CliRootCertStoreProvider {
+  pub fn new(
+    maybe_root_path: Option<PathBuf>,
+    maybe_ca_stores: Option<Vec<String>>,
+    maybe_ca_data: Option<CaData>,
+  ) -> Self {
+    Self {
+      cell: Default::default(),
+      maybe_root_path,
+      maybe_ca_stores,
+      maybe_ca_data,
+    }
+  }
+}
+
+impl RootCertStoreProvider for CliRootCertStoreProvider {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+    self
+      .cell
+      .get_or_try_init(|| {
+        get_root_cert_store(
+          self.maybe_root_path.clone(),
+          self.maybe_ca_stores.clone(),
+          self.maybe_ca_data.clone(),
+        )
+      })
+      .map_err(|e| e.into())
+  }
+}
+
+#[derive(Error, Debug, Clone)]
+pub enum RootCertStoreLoadError {
+  #[error(
+    "Unknown certificate store \"{0}\" specified (allowed: \"system,mozilla\")"
+  )]
+  UnknownStore(String),
+  #[error("Unable to add pem file to certificate store: {0}")]
+  FailedAddPemFile(String),
+  #[error("Failed opening CA file: {0}")]
+  CaFileOpenError(String),
+}
+
 /// Create and populate a root cert store based on the passed options and
 /// environment.
 pub fn get_root_cert_store(
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
   maybe_ca_data: Option<CaData>,
-) -> Result<RootCertStore, AnyError> {
+) -> Result<RootCertStore, RootCertStoreLoadError> {
   let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
     .or_else(|| {
@@ -444,7 +496,7 @@ pub fn get_root_cert_store(
         }
       }
       _ => {
-        return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
+        return Err(RootCertStoreLoadError::UnknownStore(store.clone()));
       }
     }
   }
@@ -459,7 +511,9 @@ pub fn get_root_cert_store(
         } else {
           PathBuf::from(ca_file)
         };
-        let certfile = std::fs::File::open(ca_file)?;
+        let certfile = std::fs::File::open(ca_file).map_err(|err| {
+          RootCertStoreLoadError::CaFileOpenError(err.to_string())
+        })?;
         let mut reader = BufReader::new(certfile);
         rustls_pemfile::certs(&mut reader)
       }
@@ -474,10 +528,7 @@ pub fn get_root_cert_store(
         root_cert_store.add_parsable_certificates(&certs);
       }
       Err(e) => {
-        return Err(anyhow!(
-          "Unable to add pem file to certificate store: {}",
-          e
-        ));
+        return Err(RootCertStoreLoadError::FailedAddPemFile(e.to_string()));
       }
     }
   }
@@ -799,12 +850,14 @@ impl CliOptions {
       .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
-  pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
-    get_root_cert_store(
+  pub fn resolve_root_cert_store_provider(
+    &self,
+  ) -> Arc<dyn RootCertStoreProvider> {
+    Arc::new(CliRootCertStoreProvider::new(
       None,
       self.flags.ca_stores.clone(),
       self.flags.ca_data.clone(),
-    )
+    ))
   }
 
   pub fn resolve_ts_config_for_emit(
