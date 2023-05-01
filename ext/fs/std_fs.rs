@@ -382,7 +382,7 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
   } else if file_type.is_symlink() {
     #[cfg(unix)]
     {
-      fs::remove_file(&path)
+      fs::remove_file(path)
     }
     #[cfg(not(unix))]
     {
