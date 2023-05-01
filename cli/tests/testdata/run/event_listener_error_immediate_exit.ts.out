@@ -3,8 +3,4 @@ error: Uncaught Error: bar
   throw new Error("bar");
         ^
     at [WILDCARD]/event_listener_error_immediate_exit.ts:4:9[WILDCARD]
-    at innerInvokeEventListeners (ext:deno_web/02_event.js:787:7)
-    at invokeEventListeners (ext:deno_web/02_event.js:827:5)
-    at dispatch (ext:deno_web/02_event.js:696:9)
-    at dispatchEvent (ext:deno_web/02_event.js:1089:12)
     at [WILDCARD]/event_listener_error_immediate_exit.ts:11:1

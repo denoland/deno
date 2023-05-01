@@ -225,7 +225,9 @@ impl TestRun {
     let permissions =
       Permissions::from_options(&ps.options.permissions_options())?;
     test::check_specifiers(
-      &ps,
+      &ps.options,
+      &ps.file_fetcher,
+      &ps.module_load_preparer,
       self
         .queue
         .iter()
@@ -257,7 +259,7 @@ impl TestRun {
     let tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>> =
       Arc::new(RwLock::new(IndexMap::new()));
     let mut test_steps = IndexMap::new();
-    let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
+    let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
 
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
