@@ -2,10 +2,11 @@
 
 use crate::args::CompileFlags;
 use crate::args::Flags;
+use crate::factory::CliFactory;
+use crate::graph_util::error_for_any_npm_specifier;
 use crate::standalone::is_standalone_binary;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;
-use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -22,38 +23,40 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_flags(flags).await?;
-  let binary_writer = DenoCompileBinaryWriter::new(
-    ps.file_fetcher.clone(),
-    ps.http_client.clone(),
-    ps.dir.clone(),
-    ps.npm_resolver.clone(),
-    ps.npm_resolution.clone(),
-  );
-  let module_specifier = ps.options.resolve_main_module()?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let file_fetcher = factory.file_fetcher()?;
+  let http_client = factory.http_client()?;
+  let deno_dir = factory.deno_dir()?;
+  let module_graph_builder = factory.module_graph_builder().await?;
+  let parsed_source_cache = factory.parsed_source_cache()?;
+
+  let binary_writer =
+    DenoCompileBinaryWriter::new(file_fetcher, http_client, deno_dir);
+  let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
     vec.push(module_specifier.clone());
     for side_module in &compile_flags.include {
-      vec.push(resolve_url_or_path(side_module, ps.options.initial_cwd())?);
+      vec.push(resolve_url_or_path(side_module, cli_options.initial_cwd())?);
     }
     vec
   };
 
   let output_path = resolve_compile_executable_output_path(
     &compile_flags,
-    ps.options.initial_cwd(),
+    cli_options.initial_cwd(),
   )
   .await?;
 
   let graph = Arc::try_unwrap(
-    ps.module_graph_builder
+    module_graph_builder
       .create_graph_and_maybe_check(module_roots)
       .await?,
   )
   .unwrap();
 
-  let parser = ps.parsed_source_cache.as_capturing_parser();
+  let parser = parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
 
   log::info!(
@@ -71,7 +74,7 @@ pub async fn compile(
       eszip,
       &module_specifier,
       &compile_flags,
-      &ps.options,
+      cli_options,
     )
     .await
     .with_context(|| format!("Writing {}", output_path.display()))?;

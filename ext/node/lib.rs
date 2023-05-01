@@ -169,15 +169,7 @@ pub trait NpmResolver: std::fmt::Debug + Send + Sync {
   ) -> Result<(), AnyError>;
 }
 
-pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
-  let now = std::time::SystemTime::now();
-  let seconds = now
-    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-    .unwrap()
-    .as_secs();
-  // use a changing variable name to make it hard to depend on this
-  format!("__DENO_NODE_GLOBAL_THIS_{seconds}__")
-});
+pub const NODE_GLOBAL_THIS_NAME: &str = env!("NODE_GLOBAL_THIS_NAME");
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
@@ -221,6 +213,8 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_check_prime_async,
     ops::crypto::op_node_check_prime_bytes,
     ops::crypto::op_node_check_prime_bytes_async,
+    ops::crypto::op_node_gen_prime,
+    ops::crypto::op_node_gen_prime_async,
     ops::crypto::op_node_pbkdf2,
     ops::crypto::op_node_pbkdf2_async,
     ops::crypto::op_node_hkdf,
@@ -246,6 +240,9 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_random_int,
     ops::crypto::op_node_scrypt_sync,
     ops::crypto::op_node_scrypt_async,
+    ops::crypto::op_node_ecdh_generate_keys,
+    ops::crypto::op_node_ecdh_compute_secret,
+    ops::crypto::op_node_ecdh_compute_public_key,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
@@ -273,7 +270,6 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
     op_node_build_os,
-
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<Env>,
     ops::require::op_require_proxy_path,
@@ -542,10 +538,10 @@ deno_core::extension!(deno_node,
 pub fn initialize_runtime(
   js_runtime: &mut JsRuntime,
   uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<String>,
+  maybe_binary_command_name: Option<&str>,
 ) -> Result<(), AnyError> {
   let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name.as_str())?
+    serde_json::to_string(binary_command_name)?
   } else {
     "undefined".to_string()
   };
@@ -557,9 +553,7 @@ pub fn initialize_runtime(
         argv0
       );
     }})('{}', {}, {});"#,
-    NODE_GLOBAL_THIS_NAME.as_str(),
-    uses_local_node_modules_dir,
-    argv0
+    NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
   );
 
   js_runtime.execute_script(located_script_name!(), source_code.into())?;

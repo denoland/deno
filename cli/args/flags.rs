@@ -1895,6 +1895,90 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
+static ALLOW_READ_HELP: &str = concat!(
+  "Allow file system read access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-read\n",
+  "  --allow-read=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_WRITE_HELP: &str = concat!(
+  "Allow file system write access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-write\n",
+  "  --allow-write=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_NET_HELP: &str = concat!(
+  "Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-net\n",
+  "  --allow-net=\"localhost:8080,deno.land\""
+);
+
+static ALLOW_ENV_HELP: &str = concat!(
+  "Allow access to system environment information. Optionally specify accessible environment variables.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-env\n",
+  "  --allow-env=\"PORT,HOME,PATH\""
+);
+
+static ALLOW_SYS_HELP: &str = concat!(
+  "Allow access to OS information. Optionally allow specific APIs by function name.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-sys\n",
+  "  --allow-sys=\"systemMemoryInfo,osRelease\""
+);
+
+static ALLOW_RUN_HELP: &str = concat!(
+  "Allow running subprocesses. Optionally specify allowed runnable program names.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-run\n",
+  "  --allow-run=\"whoami,ps\""
+);
+
+static ALLOW_FFI_HELP: &str = concat!(
+  "(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-ffi\n",
+  "  --allow-ffi=\"./libfoo.so\""
+);
+
+static ALLOW_HRTIME_HELP: &str = concat!(
+  "Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
+static ALLOW_ALL_HELP: &str = concat!(
+  "Allow all permissions. Learn more about permissions in Deno:\n",
+  "https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -1903,7 +1987,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system read access")
+        .value_name("PATH")
+        .help(ALLOW_READ_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1913,7 +1998,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system write access")
+        .value_name("PATH")
+        .help(ALLOW_WRITE_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1923,7 +2009,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow network access")
+        .value_name("IP_OR_HOSTNAME")
+        .help(ALLOW_NET_HELP)
         .value_parser(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
@@ -1933,7 +2020,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow environment access")
+        .value_name("VARIABLE_NAME")
+        .help(ALLOW_ENV_HELP)
         .value_parser(|key: &str| {
           if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
             return Err(format!("invalid key \"{key}\""));
@@ -1952,7 +2040,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow access to system info")
+        .value_name("API_NAME")
+        .help(ALLOW_SYS_HELP)
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
     )
     .arg(
@@ -1961,7 +2050,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow running subprocesses"),
+        .value_name("PROGRAM_NAME")
+        .help(ALLOW_RUN_HELP),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -1969,7 +2059,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow loading dynamic libraries")
+        .value_name("PATH")
+        .help(ALLOW_FFI_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1977,14 +2068,14 @@ fn permission_args(app: Command) -> Command {
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
-        .help("Allow high resolution time measurement"),
+        .help(ALLOW_HRTIME_HELP),
     )
     .arg(
       Arg::new("allow-all")
         .short('A')
         .long("allow-all")
         .action(ArgAction::SetTrue)
-        .help("Allow all permissions"),
+        .help(ALLOW_ALL_HELP),
     )
     .arg(
       Arg::new("prompt")
@@ -2758,7 +2849,8 @@ fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.config_flag = matches
     .remove_one::<String>("config")
-    .map_or(ConfigFlag::Discover, ConfigFlag::Path);
+    .map(ConfigFlag::Path)
+    .unwrap_or(ConfigFlag::Discover);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),

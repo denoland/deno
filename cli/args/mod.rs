@@ -760,7 +760,7 @@ impl CliOptions {
       return Ok(Some(snapshot.clone().into_valid()?));
     }
 
-    if let Some(lockfile) = self.maybe_lock_file() {
+    if let Some(lockfile) = self.maybe_lockfile() {
       if !lockfile.lock().overwrite {
         return Ok(Some(
           snapshot_from_lockfile(lockfile.clone(), api)
@@ -824,30 +824,6 @@ impl CliOptions {
     )
   }
 
-  /// Resolves the storage key to use based on the current flags, config, or main module.
-  pub fn resolve_storage_key(
-    &self,
-    main_module: &ModuleSpecifier,
-  ) -> Option<String> {
-    if let Some(location) = &self.flags.location {
-      // if a location is set, then the ascii serialization of the location is
-      // used, unless the origin is opaque, and then no storage origin is set, as
-      // we can't expect the origin to be reproducible
-      let storage_origin = location.origin();
-      if storage_origin.is_tuple() {
-        Some(storage_origin.ascii_serialization())
-      } else {
-        None
-      }
-    } else if let Some(config_file) = &self.maybe_config_file {
-      // otherwise we will use the path to the config file
-      Some(config_file.specifier.to_string())
-    } else {
-      // otherwise we will use the path to the main module
-      Some(main_module.to_string())
-    }
-  }
-
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
     let maybe_inspect_host = self
       .flags
@@ -858,7 +834,7 @@ impl CliOptions {
       .map(|host| InspectorServer::new(host, version::get_user_agent()))
   }
 
-  pub fn maybe_lock_file(&self) -> Option<Arc<Mutex<Lockfile>>> {
+  pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
     self.maybe_lockfile.clone()
   }
 
@@ -1096,20 +1072,6 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
-  pub fn trace_ops(&self) -> bool {
-    match self.sub_command() {
-      DenoSubcommand::Test(flags) => flags.trace_ops,
-      _ => false,
-    }
-  }
-
-  pub fn shuffle_tests(&self) -> Option<u64> {
-    match self.sub_command() {
-      DenoSubcommand::Test(flags) => flags.shuffle,
-      _ => None,
-    }
-  }
-
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
   }
@@ -1226,6 +1188,49 @@ fn resolve_import_map_specifier(
     }
   }
   Ok(None)
+}
+
+pub struct StorageKeyResolver(Option<Option<String>>);
+
+impl StorageKeyResolver {
+  pub fn from_options(options: &CliOptions) -> Self {
+    Self(if let Some(location) = &options.flags.location {
+      // if a location is set, then the ascii serialization of the location is
+      // used, unless the origin is opaque, and then no storage origin is set, as
+      // we can't expect the origin to be reproducible
+      let storage_origin = location.origin();
+      if storage_origin.is_tuple() {
+        Some(Some(storage_origin.ascii_serialization()))
+      } else {
+        Some(None)
+      }
+    } else {
+      // otherwise we will use the path to the config file or None to
+      // fall back to using the main module's path
+      options
+        .maybe_config_file
+        .as_ref()
+        .map(|config_file| Some(config_file.specifier.to_string()))
+    })
+  }
+
+  /// Creates a storage key resolver that will always resolve to being empty.
+  pub fn empty() -> Self {
+    Self(Some(None))
+  }
+
+  /// Resolves the storage key to use based on the current flags, config, or main module.
+  pub fn resolve_storage_key(
+    &self,
+    main_module: &ModuleSpecifier,
+  ) -> Option<String> {
+    // use the stored value or fall back to using the path of the main module.
+    if let Some(maybe_value) = &self.0 {
+      maybe_value.clone()
+    } else {
+      Some(main_module.to_string())
+    }
+  }
 }
 
 /// Collect included and ignored files. CLI flags take precedence
@@ -1392,5 +1397,26 @@ mod test {
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
+  }
+
+  #[test]
+  fn storage_key_resolver_test() {
+    let resolver = StorageKeyResolver(None);
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    assert_eq!(
+      resolver.resolve_storage_key(&specifier),
+      Some(specifier.to_string())
+    );
+    let resolver = StorageKeyResolver(Some(None));
+    assert_eq!(resolver.resolve_storage_key(&specifier), None);
+    let resolver = StorageKeyResolver(Some(Some("value".to_string())));
+    assert_eq!(
+      resolver.resolve_storage_key(&specifier),
+      Some("value".to_string())
+    );
+
+    // test empty
+    let resolver = StorageKeyResolver::empty();
+    assert_eq!(resolver.resolve_storage_key(&specifier), None);
   }
 }

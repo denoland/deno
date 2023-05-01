@@ -2661,6 +2661,11 @@ mod permissions {
       });
   }
 
+  itest!(dynamic_import_static_analysis_no_permissions {
+    args: "run --quiet --reload --no-prompt dynamic_import/static_analysis_no_permissions.ts",
+    output: "dynamic_import/static_analysis_no_permissions.ts.out",
+  });
+
   itest!(dynamic_import_permissions_remote_remote {
     args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",
@@ -4223,7 +4228,6 @@ async fn websocket_server_multi_field_connection_header() {
 // TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
 // test hangs then. https://github.com/denoland/deno/issues/14283
 #[tokio::test]
-#[ignore]
 async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");

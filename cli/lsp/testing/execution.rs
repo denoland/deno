@@ -6,11 +6,11 @@ use super::lsp_custom;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
+use crate::factory::CliFactory;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
-use crate::proc_state;
 use crate::tools::test;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestEventSender;
@@ -218,15 +218,16 @@ impl TestRun {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let ps = proc_state::ProcState::from_flags(flags).await?;
+    let factory = CliFactory::from_flags(flags).await?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&ps.options.permissions_options())?;
+      Permissions::from_options(&factory.cli_options().permissions_options())?;
     test::check_specifiers(
-      &ps,
-      permissions.clone(),
+      factory.cli_options(),
+      factory.file_fetcher()?,
+      factory.module_load_preparer().await?,
       self
         .queue
         .iter()
@@ -235,18 +236,19 @@ impl TestRun {
     )
     .await?;
 
-    let (concurrent_jobs, fail_fast) =
-      if let DenoSubcommand::Test(test_flags) = ps.options.sub_command() {
-        (
-          test_flags
-            .concurrent_jobs
-            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-            .into(),
-          test_flags.fail_fast,
-        )
-      } else {
-        unreachable!("Should always be Test subcommand.");
-      };
+    let (concurrent_jobs, fail_fast) = if let DenoSubcommand::Test(test_flags) =
+      factory.cli_options().sub_command()
+    {
+      (
+        test_flags
+          .concurrent_jobs
+          .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+          .into(),
+        test_flags.fail_fast,
+      )
+    } else {
+      unreachable!("Should always be Test subcommand.");
+    };
 
     let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
     let sender = TestEventSender::new(sender);
@@ -258,10 +260,12 @@ impl TestRun {
     let tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>> =
       Arc::new(RwLock::new(IndexMap::new()));
     let mut test_steps = IndexMap::new();
+    let worker_factory =
+      Arc::new(factory.create_cli_main_worker_factory().await?);
 
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
-      let ps = ps.clone();
+      let worker_factory = worker_factory.clone();
       let permissions = permissions.clone();
       let mut sender = sender.clone();
       let fail_fast_tracker = fail_fast_tracker.clone();
@@ -289,12 +293,16 @@ impl TestRun {
           Ok(())
         } else {
           run_local(test::test_specifier(
-            &ps,
+            &worker_factory,
             permissions,
             specifier,
             sender.clone(),
             fail_fast_tracker,
-            filter,
+            &test::TestSpecifierOptions {
+              filter,
+              shuffle: None,
+              trace_ops: false,
+            },
           ))
         };
         if let Err(error) = file_result {

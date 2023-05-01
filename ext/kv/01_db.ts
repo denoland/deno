@@ -116,7 +116,7 @@ class Kv {
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
-    return { versionstamp };
+    return { ok: true, versionstamp };
   }
 
   async delete(key: Deno.KvKey) {
@@ -211,14 +211,6 @@ class AtomicOperation {
     return this;
   }
 
-  sum(key: Deno.KvKey, n: bigint): this {
-    return this.mutate({
-      type: "sum",
-      key,
-      value: new KvU64(n),
-    });
-  }
-
   mutate(...mutations: Deno.KvMutation[]): this {
     for (const mutation of mutations) {
       const key = mutation.key;
@@ -249,6 +241,21 @@ class AtomicOperation {
     return this;
   }
 
+  sum(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "sum", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  min(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "min", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  max(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "max", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
   set(key: Deno.KvKey, value: unknown): this {
     this.#mutations.push([key, "set", serializeValue(value)]);
     return this;
@@ -259,7 +266,7 @@ class AtomicOperation {
     return this;
   }
 
-  async commit(): Promise<Deno.KvCommitResult | null> {
+  async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
@@ -267,8 +274,8 @@ class AtomicOperation {
       this.#mutations,
       [], // TODO(@losfair): enqueue
     );
-    if (versionstamp === null) return null;
-    return { versionstamp };
+    if (versionstamp === null) return { ok: false };
+    return { ok: true, versionstamp };
   }
 
   then() {
@@ -305,7 +312,7 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value),
+        value: core.deserialize(value, { forStorage: true }),
       };
     case "bytes":
       return {
@@ -336,7 +343,7 @@ function serializeValue(value: unknown): RawValue {
   } else {
     return {
       kind: "v8",
-      value: core.serialize(value),
+      value: core.serialize(value, { forStorage: true }),
     };
   }
 }

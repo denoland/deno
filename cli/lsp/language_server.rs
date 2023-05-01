@@ -76,6 +76,7 @@ use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::HttpCache;
+use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
@@ -85,7 +86,6 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
-use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
@@ -185,15 +185,14 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
-      // todo(dsherret): don't use ProcState here
-      let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.module_graph_builder.create_graph_loader();
+      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      let module_graph_builder = factory.module_graph_builder().await?;
+      let mut inner_loader = module_graph_builder.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
-      let graph = ps
-        .module_graph_builder
+      let graph = module_graph_builder
         .create_graph_with_loader(roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
