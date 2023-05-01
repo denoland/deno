@@ -643,6 +643,15 @@ const ci = {
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
         },
         {
+          name: "Autobahn testsuite",
+          if: [
+            "matrix.job == 'test' && matrix.profile == 'release' &&",
+            "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
+          ].join("\n"),
+          run:
+            "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
+        },
+        {
           name: "Test debug",
           if: [
             "matrix.job == 'test' && matrix.profile == 'debug' &&",

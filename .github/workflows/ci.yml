@@ -399,6 +399,11 @@ jobs:
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
+      - name: Autobahn testsuite
+        if: |-
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'release' &&
+          !startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu'))
+        run: target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js
       - name: Test debug
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&

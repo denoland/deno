@@ -13,7 +13,9 @@
     "associations": "**/*.rs",
     "rustfmt": "rustfmt --config imports_granularity=item"
   },
-  "includes": ["**/*.{ts,tsx,js,jsx,json,md,toml,rs}"],
+  "includes": [
+    "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
+  ],
   "excludes": [
     ".cargo_home",
     ".git",
@@ -48,7 +50,8 @@
     "tools/node_compat/TODO.md",
     "tools/node_compat/versions",
     "tools/wpt/expectation.json",
-    "tools/wpt/manifest.json"
+    "tools/wpt/manifest.json",
+    "ext/websocket/autobahn/reports"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.84.2.wasm",
