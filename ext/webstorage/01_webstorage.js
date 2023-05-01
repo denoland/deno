@@ -36,10 +36,7 @@ class Storage {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'key' on 'Storage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    index = webidl.converters["unsigned long"](index, {
-      prefix,
-      context: "Argument 1",
-    });
+    index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
 
     return ops.op_webstorage_key(index, this[_persistent]);
   }
@@ -48,14 +45,8 @@ class Storage {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'setItem' on 'Storage'";
     webidl.requiredArguments(arguments.length, 2, prefix);
-    key = webidl.converters.DOMString(key, {
-      prefix,
-      context: "Argument 1",
-    });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 2",
-    });
+    key = webidl.converters.DOMString(key, prefix, "Argument 1");
+    value = webidl.converters.DOMString(value, prefix, "Argument 2");
 
     ops.op_webstorage_set(key, value, this[_persistent]);
   }
@@ -64,10 +55,7 @@ class Storage {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'getItem' on 'Storage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    key = webidl.converters.DOMString(key, {
-      prefix,
-      context: "Argument 1",
-    });
+    key = webidl.converters.DOMString(key, prefix, "Argument 1");
 
     return ops.op_webstorage_get(key, this[_persistent]);
   }
@@ -76,10 +64,7 @@ class Storage {
     webidl.assertBranded(this, StoragePrototype);
     const prefix = "Failed to execute 'removeItem' on 'Storage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    key = webidl.converters.DOMString(key, {
-      prefix,
-      context: "Argument 1",
-    });
+    key = webidl.converters.DOMString(key, prefix, "Argument 1");
 
     ops.op_webstorage_remove(key, this[_persistent]);
   }

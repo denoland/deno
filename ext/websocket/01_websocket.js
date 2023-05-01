@@ -15,6 +15,7 @@ import {
   _skipInternalInit,
   CloseEvent,
   defineEventHandler,
+  dispatch,
   ErrorEvent,
   Event,
   EventTarget,
@@ -51,20 +52,25 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
+webidl.converters["sequence<DOMString> or DOMString"] = (
+  V,
+  prefix,
+  context,
+  opts,
+) => {
   // Union for (sequence<DOMString> or DOMString)
   if (webidl.type(V) === "Object" && V !== null) {
     if (V[SymbolIterator] !== undefined) {
-      return webidl.converters["sequence<DOMString>"](V, opts);
+      return webidl.converters["sequence<DOMString>"](V, prefix, context, opts);
     }
   }
-  return webidl.converters.DOMString(V, opts);
+  return webidl.converters.DOMString(V, prefix, context, opts);
 };
 
-webidl.converters["WebSocketSend"] = (V, opts) => {
+webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
   // Union for (Blob or ArrayBufferView or ArrayBuffer or USVString)
   if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
-    return webidl.converters["Blob"](V, opts);
+    return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
     if (
@@ -72,13 +78,13 @@ webidl.converters["WebSocketSend"] = (V, opts) => {
       // deno-lint-ignore prefer-primordials
       ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
     ) {
-      return webidl.converters["ArrayBuffer"](V, opts);
+      return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
-      return webidl.converters["ArrayBufferView"](V, opts);
+      return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
   }
-  return webidl.converters["USVString"](V, opts);
+  return webidl.converters["USVString"](V, prefix, context, opts);
 };
 
 /** role */
@@ -157,9 +163,10 @@ class WebSocket extends EventTarget {
   }
   set binaryType(value) {
     webidl.assertBranded(this, WebSocketPrototype);
-    value = webidl.converters.DOMString(value, {
-      prefix: "Failed to set 'binaryType' on 'WebSocket'",
-    });
+    value = webidl.converters.DOMString(
+      value,
+      "Failed to set 'binaryType' on 'WebSocket'",
+    );
     if (value === "blob" || value === "arraybuffer") {
       this[_binaryType] = value;
     }
@@ -176,16 +183,11 @@ class WebSocket extends EventTarget {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    url = webidl.converters.USVString(url, {
-      prefix,
-      context: "Argument 1",
-    });
+    url = webidl.converters.USVString(url, prefix, "Argument 1");
     protocols = webidl.converters["sequence<DOMString> or DOMString"](
       protocols,
-      {
-        prefix,
-        context: "Argument 2",
-      },
+      prefix,
+      "Argument 2",
     );
 
     let wsURL;
@@ -303,10 +305,7 @@ class WebSocket extends EventTarget {
     const prefix = "Failed to execute 'send' on 'WebSocket'";
 
     webidl.requiredArguments(arguments.length, 1, prefix);
-    data = webidl.converters.WebSocketSend(data, {
-      prefix,
-      context: "Argument 1",
-    });
+    data = webidl.converters.WebSocketSend(data, prefix, "Argument 1");
 
     if (this[_readyState] !== OPEN) {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
@@ -371,18 +370,13 @@ class WebSocket extends EventTarget {
     const prefix = "Failed to execute 'close' on 'WebSocket'";
 
     if (code !== undefined) {
-      code = webidl.converters["unsigned short"](code, {
-        prefix,
+      code = webidl.converters["unsigned short"](code, prefix, "Argument 1", {
         clamp: true,
-        context: "Argument 1",
       });
     }
 
     if (reason !== undefined) {
-      reason = webidl.converters.USVString(reason, {
-        prefix,
-        context: "Argument 2",
-      });
+      reason = webidl.converters.USVString(reason, prefix, "Argument 2");
     }
 
     if (!this[_server]) {
@@ -451,7 +445,7 @@ class WebSocket extends EventTarget {
             data: value,
             origin: this[_url],
           });
-          this.dispatchEvent(event);
+          dispatch(this, event);
           break;
         }
         case 1: {
@@ -470,7 +464,7 @@ class WebSocket extends EventTarget {
             origin: this[_url],
             [_skipInternalInit]: true,
           });
-          this.dispatchEvent(event);
+          dispatch(this, event);
           break;
         }
         case 2: {

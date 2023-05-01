@@ -116,7 +116,7 @@ class Kv {
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
-    return { versionstamp };
+    return { ok: true, versionstamp };
   }
 
   async delete(key: Deno.KvKey) {
@@ -266,7 +266,7 @@ class AtomicOperation {
     return this;
   }
 
-  async commit(): Promise<Deno.KvCommitResult | null> {
+  async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
@@ -274,8 +274,8 @@ class AtomicOperation {
       this.#mutations,
       [], // TODO(@losfair): enqueue
     );
-    if (versionstamp === null) return null;
-    return { versionstamp };
+    if (versionstamp === null) return { ok: false };
+    return { ok: true, versionstamp };
   }
 
   then() {
@@ -312,7 +312,7 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value),
+        value: core.deserialize(value, { forStorage: true }),
       };
     case "bytes":
       return {
@@ -343,7 +343,7 @@ function serializeValue(value: unknown): RawValue {
   } else {
     return {
       kind: "v8",
-      value: core.serialize(value),
+      value: core.serialize(value, { forStorage: true }),
     };
   }
 }

@@ -963,7 +963,7 @@ pub async fn test_specifier(
   if options.trace_ops {
     worker.js_runtime.execute_script_static(
       located_script_name!(),
-      "Deno[Deno.internal].enableOpCallTracing();",
+      "Deno[Deno.internal].core.enableOpCallTracing();",
     )?;
   }
   worker.dispatch_load_event(located_script_name!())?;

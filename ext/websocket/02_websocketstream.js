@@ -88,14 +88,12 @@ class WebSocketStream {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'WebSocketStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    url = webidl.converters.USVString(url, {
+    url = webidl.converters.USVString(url, prefix, "Argument 1");
+    options = webidl.converters.WebSocketStreamOptions(
+      options,
       prefix,
-      context: "Argument 1",
-    });
-    options = webidl.converters.WebSocketStreamOptions(options, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
 
     const wsURL = new URL(url);
 
@@ -366,10 +364,11 @@ class WebSocketStream {
 
   close(closeInfo) {
     webidl.assertBranded(this, WebSocketStreamPrototype);
-    closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
-      prefix: "Failed to execute 'close' on 'WebSocketStream'",
-      context: "Argument 1",
-    });
+    closeInfo = webidl.converters.WebSocketCloseInfo(
+      closeInfo,
+      "Failed to execute 'close' on 'WebSocketStream'",
+      "Argument 1",
+    );
 
     if (
       closeInfo.code &&
