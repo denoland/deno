@@ -54,8 +54,9 @@ const {
   SetPrototypeDelete,
   StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
-  StringPrototypeToLowerCase,
   StringPrototypeSplit,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -497,17 +498,20 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
       StringPrototypeToLowerCase(checkText),
       "",
     ),
-    (c) => [c.charCodeAt(0), c.toUpperCase().charCodeAt(0)],
+    (c) => [
+      StringPrototypeCharCodeAt(c, 0),
+      StringPrototypeCharCodeAt(StringPrototypeToUpperCase(c), 0),
+    ],
   );
   /** @type {number} */
   let i;
   /** @type {number} */
   let char;
 
-  /** @param value {string} */
+  /** @param {string} value */
   return function (value) {
     for (i = 0; i < value.length; i++) {
-      char = value.charCodeAt(i);
+      char = StringPrototypeCharCodeAt(value, i);
       skipWhitespace(value);
 
       if (hasWord(value)) {

@@ -17,6 +17,7 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  DateNow,
   Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
@@ -27,8 +28,8 @@ const {
   StringPrototypeToLowerCase,
   Symbol,
   SymbolFor,
-  TypedArrayPrototypeGetByteLength,
   TypeError,
+  TypedArrayPrototypeGetByteLength,
   Uint8ArrayPrototype,
 } = primordials;
 
@@ -281,7 +282,7 @@ class WebSocketStream {
                 this[_closed].state === "pending"
               ) {
                 if (
-                  new Date().getTime() - await this[_closeSent].promise <=
+                  DateNow() - await this[_closeSent].promise <=
                     CLOSE_RESPONSE_TIMEOUT
                 ) {
                   return pull(controller);
@@ -404,7 +405,7 @@ class WebSocketStream {
         core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
         () => {
           setTimeout(() => {
-            this[_closeSent].resolve(new Date().getTime());
+            this[_closeSent].resolve(DateNow());
           }, 0);
         },
         (err) => {

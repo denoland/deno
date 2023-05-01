@@ -19,9 +19,10 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
+  ArrayBufferIsView,
   ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
-  ArrayBufferIsView,
+  ArrayBufferPrototypeSlice,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -34,12 +35,12 @@ const {
   DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
-  Int8Array,
   Int16Array,
   Int32Array,
+  Int8Array,
+  MathMin,
   NumberIsInteger,
   NumberIsNaN,
-  MathMin,
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -52,14 +53,13 @@ const {
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
-  queueMicrotask,
   RangeError,
   ReflectHas,
   SafeFinalizationRegistry,
   SafePromiseAll,
   SafeWeakMap,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   Symbol,
   SymbolAsyncIterator,
   SymbolFor,
@@ -70,13 +70,14 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSlice,
-  Uint8Array,
   Uint16Array,
   Uint32Array,
+  Uint8Array,
   Uint8ClampedArray,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
   WeakMapPrototypeSet,
+  queueMicrotask,
 } = primordials;
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
@@ -1252,7 +1253,16 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
 ) {
   let cloneResult;
   try {
-    cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
+    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
+      cloneResult = ArrayBufferPrototypeSlice(
+        buffer,
+        byteOffset,
+        byteOffset + byteLength,
+      );
+    } else {
+      // TODO(lucacasonato): add SharedArrayBuffer to primordials
+      cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
+    }
   } catch (e) {
     readableByteStreamControllerError(controller, e);
   }
@@ -1864,7 +1874,7 @@ function readableByteStreamControllerPullInto(
       return;
     }
   }
-  controller[_pendingPullIntos].push(pullIntoDescriptor);
+  ArrayPrototypePush(controller[_pendingPullIntos], pullIntoDescriptor);
   readableStreamAddReadIntoRequest(stream, readIntoRequest);
   readableByteStreamControllerCallPullIfNeeded(controller);
 }
@@ -4481,7 +4491,7 @@ function writableStreamMarkCloseRequestInFlight(stream) {
 function writableStreamMarkFirstWriteRequestInFlight(stream) {
   assert(stream[_inFlightWriteRequest] === undefined);
   assert(stream[_writeRequests].length);
-  const writeRequest = stream[_writeRequests].shift();
+  const writeRequest = ArrayPrototypeShift(stream[_writeRequests]);
   stream[_inFlightWriteRequest] = writeRequest;
 }
 
