@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -295,7 +296,7 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
   /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<NpmPackageNv>>,
@@ -305,7 +306,7 @@ impl NpmCache {
   pub fn new(
     cache_dir_path: PathBuf,
     cache_setting: CacheSetting,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {

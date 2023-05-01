@@ -35,6 +35,7 @@ use log::error;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -425,16 +426,13 @@ impl Default for ModuleRegistry {
     // custom root.
     let dir = DenoDir::new(None).unwrap();
     let location = dir.registries_folder_path();
-    let http_client = HttpClient::new(None, None).unwrap();
-    Self::new(&location, http_client).unwrap()
+    let http_client = Arc::new(HttpClient::new(None, None));
+    Self::new(&location, http_client)
   }
 }
 
 impl ModuleRegistry {
-  pub fn new(
-    location: &Path,
-    http_client: HttpClient,
-  ) -> Result<Self, AnyError> {
+  pub fn new(location: &Path, http_client: Arc<HttpClient>) -> Self {
     let http_cache = HttpCache::new(location);
     let mut file_fetcher = FileFetcher::new(
       http_cache,
@@ -446,10 +444,10 @@ impl ModuleRegistry {
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
-    Ok(Self {
+    Self {
       origins: HashMap::new(),
       file_fetcher,
-    })
+    }
   }
 
   fn complete_literal(
@@ -1251,8 +1249,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1313,8 +1310,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1537,8 +1533,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1608,8 +1603,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1660,8 +1654,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1672,8 +1665,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

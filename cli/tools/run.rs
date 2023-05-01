@@ -35,7 +35,7 @@ To grant permissions, set them before the script argument. For example:
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags).await?;
   let deno_dir = factory.deno_dir()?;
-  let http_client = factory.http_client()?;
+  let http_client = factory.http_client();
   let cli_options = factory.cli_options();
 
   // Run a background task that checks for available upgrades. If an earlier

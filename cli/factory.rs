@@ -46,7 +46,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -130,14 +130,14 @@ struct CliFactoryServices {
   dir: Deferred<DenoDir>,
   caches: Deferred<Arc<Caches>>,
   file_fetcher: Deferred<Arc<FileFetcher>>,
-  http_client: Deferred<HttpClient>,
+  http_client: Deferred<Arc<HttpClient>>,
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
   graph_container: Deferred<Arc<ModuleGraphContainer>>,
   lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
-  root_cert_store: Deferred<RootCertStore>,
+  root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   blob_store: Deferred<BlobStore>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   resolver: Deferred<Arc<CliGraphResolver>>,
@@ -210,11 +210,11 @@ impl CliFactory {
     self.services.blob_store.get_or_init(BlobStore::default)
   }
 
-  pub fn root_cert_store(&self) -> Result<&RootCertStore, AnyError> {
+  pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {
     self
       .services
-      .root_cert_store
-      .get_or_try_init(|| self.options.resolve_root_cert_store())
+      .root_cert_store_provider
+      .get_or_init(|| self.options.resolve_root_cert_store_provider())
   }
 
   pub fn text_only_progress_bar(&self) -> &ProgressBar {
@@ -224,12 +224,12 @@ impl CliFactory {
       .get_or_init(|| ProgressBar::new(ProgressBarStyle::TextOnly))
   }
 
-  pub fn http_client(&self) -> Result<&HttpClient, AnyError> {
-    self.services.http_client.get_or_try_init(|| {
-      HttpClient::new(
-        Some(self.root_cert_store()?.clone()),
+  pub fn http_client(&self) -> &Arc<HttpClient> {
+    self.services.http_client.get_or_init(|| {
+      Arc::new(HttpClient::new(
+        Some(self.root_cert_store_provider().clone()),
         self.options.unsafely_ignore_certificate_errors().clone(),
-      )
+      ))
     })
   }
 
@@ -239,7 +239,7 @@ impl CliFactory {
         HttpCache::new(&self.deno_dir()?.deps_folder_path()),
         self.options.cache_setting(),
         !self.options.no_remote(),
-        self.http_client()?.clone(),
+        self.http_client().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
       )))
@@ -258,7 +258,7 @@ impl CliFactory {
       Ok(Arc::new(NpmCache::new(
         self.deno_dir()?.npm_folder_path(),
         self.options.cache_setting(),
-        self.http_client()?.clone(),
+        self.http_client().clone(),
         self.text_only_progress_bar().clone(),
       )))
     })
@@ -269,7 +269,7 @@ impl CliFactory {
       Ok(Arc::new(CliNpmRegistryApi::new(
         CliNpmRegistryApi::default_url().to_owned(),
         self.npm_cache()?.clone(),
-        self.http_client()?.clone(),
+        self.http_client().clone(),
         self.text_only_progress_bar().clone(),
       )))
     })
@@ -560,7 +560,7 @@ impl CliFactory {
     let options = self.cli_options().clone();
     let main_worker_options = self.create_cli_main_worker_options()?;
     let node_fs = self.node_fs().clone();
-    let root_cert_store = self.root_cert_store()?.clone();
+    let root_cert_store_provider = self.root_cert_store_provider().clone();
     let node_resolver = self.node_resolver().await?.clone();
     let npm_resolver = self.npm_resolver().await?.clone();
     let maybe_inspector_server = self.maybe_inspector_server().clone();
@@ -584,7 +584,7 @@ impl CliFactory {
             node_resolver.clone(),
           ),
         )),
-        root_cert_store.clone(),
+        root_cert_store_provider.clone(),
         node_fs.clone(),
         maybe_inspector_server.clone(),
         main_worker_options.clone(),
@@ -615,7 +615,7 @@ impl CliFactory {
           node_resolver.clone(),
         ),
       )),
-      self.root_cert_store()?.clone(),
+      self.root_cert_store_provider().clone(),
       self.node_fs().clone(),
       self.maybe_inspector_server().clone(),
       self.create_cli_main_worker_options()?,
