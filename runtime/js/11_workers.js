@@ -4,10 +4,11 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
   Error,
   ObjectPrototypeIsPrototypeOf,
-  StringPrototypeStartsWith,
   String,
+  StringPrototypeStartsWith,
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
@@ -192,8 +193,9 @@ class Worker extends EventTarget {
       const event = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) =>
-          ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
+        ports: ArrayPrototypeFilter(
+          transferables,
+          (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
         ),
       });
       this.dispatchEvent(event);
