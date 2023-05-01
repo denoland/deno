@@ -27,57 +27,61 @@ use deno_semver::npm::NpmPackageReqReference;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
+use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
 use crate::npm::CliNpmResolver;
-use crate::proc_state::ProcState;
 use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let ps = ProcState::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
   if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier, ps.options.initial_cwd())?;
-    let mut loader = ps.module_graph_builder.create_graph_loader();
+    let module_graph_builder = factory.module_graph_builder().await?;
+    let npm_resolver = factory.npm_resolver().await?;
+    let maybe_lockfile = factory.maybe_lockfile();
+    let specifier = resolve_url_or_path(&specifier, cli_options.initial_cwd())?;
+    let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
-    let graph = ps
-      .module_graph_builder
+    let graph = module_graph_builder
       .create_graph_with_loader(vec![specifier], &mut loader)
       .await?;
 
-    if let Some(lockfile) = &ps.lockfile {
+    if let Some(lockfile) = maybe_lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
     if info_flags.json {
       let mut json_graph = json!(graph);
-      add_npm_packages_to_json(&mut json_graph, &ps.npm_resolver);
+      add_npm_packages_to_json(&mut json_graph, npm_resolver);
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
-      GraphDisplayContext::write(&graph, &ps.npm_resolver, &mut output)?;
+      GraphDisplayContext::write(&graph, npm_resolver, &mut output)?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
     // If it was just "deno info" print location of caches and exit
     print_cache_info(
-      &ps,
+      &factory,
       info_flags.json,
-      ps.options.location_flag().as_ref(),
+      cli_options.location_flag().as_ref(),
     )?;
   }
   Ok(())
 }
 
 fn print_cache_info(
-  state: &ProcState,
+  factory: &CliFactory,
   json: bool,
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
-  let deno_dir = &state.dir.root_path_for_display();
-  let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
-  let typescript_cache = &state.dir.gen_cache.location;
-  let registry_cache = &state.dir.registries_folder_path();
-  let mut origin_dir = state.dir.origin_data_folder_path();
+  let dir = factory.deno_dir()?;
+  let modules_cache = factory.file_fetcher()?.get_http_cache_location();
+  let npm_cache = factory.npm_cache()?.as_readonly().get_cache_location();
+  let typescript_cache = &dir.gen_cache.location;
+  let registry_cache = dir.registries_folder_path();
+  let mut origin_dir = dir.origin_data_folder_path();
+  let deno_dir = dir.root_path_for_display().to_string();
 
   if let Some(location) = &location {
     origin_dir =
@@ -88,7 +92,7 @@ fn print_cache_info(
 
   if json {
     let mut output = json!({
-      "denoDir": deno_dir.to_string(),
+      "denoDir": deno_dir,
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
