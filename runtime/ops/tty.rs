@@ -7,45 +7,34 @@ use deno_io::StdFileResource;
 use std::io::Error;
 
 #[cfg(unix)]
+use deno_core::ResourceId;
+#[cfg(unix)]
+use nix::sys::termios;
+#[cfg(unix)]
+use std::cell::RefCell;
+#[cfg(unix)]
+use std::collections::HashMap;
+#[cfg(unix)]
+use std::rc::Rc;
+
+#[cfg(unix)]
 #[derive(Default, Clone)]
-struct TtyModeStore(
-  std::rc::Rc<
-    std::cell::RefCell<
-      std::collections::HashMap<
-        deno_core::ResourceId,
-        nix::sys::termios::Termios,
-      >,
-    >,
-  >,
-);
+struct TtyModeStore(Rc<RefCell<HashMap<ResourceId, termios::Termios>>>);
 
 #[cfg(unix)]
 impl TtyModeStore {
-  pub fn get(
-    &self,
-    id: deno_core::ResourceId,
-  ) -> Option<nix::sys::termios::Termios> {
+  pub fn get(&self, id: ResourceId) -> Option<termios::Termios> {
     self.0.borrow().get(&id).map(ToOwned::to_owned)
   }
 
-  pub fn take(
-    &self,
-    id: deno_core::ResourceId,
-  ) -> Option<nix::sys::termios::Termios> {
+  pub fn take(&self, id: ResourceId) -> Option<termios::Termios> {
     self.0.borrow_mut().remove(&id)
   }
 
-  pub fn set(
-    &self,
-    id: deno_core::ResourceId,
-    mode: nix::sys::termios::Termios,
-  ) {
+  pub fn set(&self, id: ResourceId, mode: termios::Termios) {
     self.0.borrow_mut().insert(id, mode);
   }
 }
-
-#[cfg(unix)]
-use nix::sys::termios;
 
 #[cfg(windows)]
 use deno_core::error::custom_error;
