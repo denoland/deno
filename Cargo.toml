@@ -133,6 +133,8 @@ tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "=1.0.38"
 tokio = { version = "1.25.0", features = ["full"] }
+tikv-jemallocator = "0.5.0"
+tikv-jemalloc-sys = "0.5.3"
 tokio-rustls = "0.23.3"
 tokio-util = "0.7.4"
 tower-lsp = { version = "=0.17.0", features = ["proposed"] }
