@@ -637,7 +637,6 @@ declare namespace __bootstrap {
     export const Object: typeof globalThis.Object;
     export const ObjectLength: typeof Object.length;
     export const ObjectName: typeof Object.name;
-    export const ObjectPrototype: typeof Object.prototype;
     export const ObjectAssign: typeof Object.assign;
     export const ObjectGetOwnPropertyDescriptor:
       typeof Object.getOwnPropertyDescriptor;
@@ -646,6 +645,7 @@ declare namespace __bootstrap {
     export const ObjectGetOwnPropertyNames: typeof Object.getOwnPropertyNames;
     export const ObjectGetOwnPropertySymbols:
       typeof Object.getOwnPropertySymbols;
+    export const ObjectHasOwn: typeof Object.hasOwn;
     export const ObjectIs: typeof Object.is;
     export const ObjectPreventExtensions: typeof Object.preventExtensions;
     export const ObjectSeal: typeof Object.seal;
@@ -662,6 +662,7 @@ declare namespace __bootstrap {
     export const ObjectEntries: typeof Object.entries;
     export const ObjectFromEntries: typeof Object.fromEntries;
     export const ObjectValues: typeof Object.values;
+    export const ObjectPrototype: typeof Object.prototype;
     export const ObjectPrototype__defineGetter__: UncurryThis<
       typeof Object.prototype.__defineGetter__
     >;
