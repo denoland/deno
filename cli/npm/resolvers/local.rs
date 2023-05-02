@@ -91,7 +91,11 @@ impl LocalNpmPackageResolver {
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
     match self.maybe_resolve_folder_for_specifier(specifier) {
-      Some(path) => Ok(path),
+      // Canonicalize the path so it's not pointing to the symlinked directory
+      // in `node_modules` directory of the referrer.
+      Some(path) => {
+        Ok(deno_core::strip_unc_prefix(self.fs.canonicalize(&path)?))
+      }
       None => bail!("could not find npm package for '{}'", specifier),
     }
   }

@@ -287,15 +287,7 @@ where
   let path = PathBuf::from(request);
   ensure_read_permission::<Env::P>(state, &path)?;
   let fs = state.borrow::<Arc<dyn NodeFs>>();
-  let mut canonicalized_path = fs.canonicalize(&path)?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
-  }
+  let canonicalized_path = deno_core::strip_unc_prefix(fs.canonicalize(&path)?);
   Ok(canonicalized_path.to_string_lossy().to_string())
 }
 
