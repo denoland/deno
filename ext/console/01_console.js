@@ -68,10 +68,10 @@ const {
   ObjectGetOwnPropertyNames,
   ObjectGetOwnPropertySymbols,
   ObjectGetPrototypeOf,
+  ObjectHasOwn,
   ObjectIs,
   ObjectKeys,
   ObjectPrototype,
-  ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectPrototypePropertyIsEnumerable,
   ObjectPrototypeToString,
@@ -710,7 +710,7 @@ function formatValue(
 }
 
 function getClassBase(value, constructor, tag) {
-  const hasName = ObjectPrototypeHasOwnProperty(value, "name");
+  const hasName = ObjectHasOwn(value, "name");
   const name = (hasName && value.name) || "(anonymous)";
   let base = `class ${name}`;
   if (constructor !== "Function" && constructor !== null) {
@@ -1148,7 +1148,7 @@ function addPrototypeProperties(
       // Ignore the `constructor` property and keys that exist on layers above.
       if (
         key === "constructor" ||
-        ObjectPrototypeHasOwnProperty(main, key) ||
+        ObjectHasOwn(main, key) ||
         (depth !== 0 && SetPrototypeHas(keySet, key))
       ) {
         continue;
@@ -1315,7 +1315,7 @@ function formatArray(ctx, value, recurseTimes) {
   const output = [];
   for (let i = 0; i < len; i++) {
     // Special handle sparse arrays.
-    if (!ObjectPrototypeHasOwnProperty(value, i)) {
+    if (!ObjectHasOwn(value, i)) {
       return formatSpecialArray(ctx, value, recurseTimes, len, output, i);
     }
     ArrayPrototypePush(
@@ -2291,7 +2291,7 @@ function hasOwnProperty(obj, v) {
   if (obj == null) {
     return false;
   }
-  return ObjectPrototypeHasOwnProperty(obj, v);
+  return ObjectHasOwn(obj, v);
 }
 
 // Copyright Joyent, Inc. and other Node contributors. MIT license.
@@ -3603,7 +3603,7 @@ function wrapConsole(consoleFromDeno, consoleFromV8) {
   const keys = ObjectKeys(consoleFromV8);
   for (let i = 0; i < keys.length; ++i) {
     const key = keys[i];
-    if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
+    if (ObjectHasOwn(consoleFromDeno, key)) {
       consoleFromDeno[key] = FunctionPrototypeBind(
         callConsole,
         consoleFromDeno,
