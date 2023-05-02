@@ -151,9 +151,11 @@ impl SnapshotOptions {
 pub(crate) struct SnapshottedData {
   pub module_map_data: v8::Global<v8::Array>,
   pub module_handles: Vec<v8::Global<v8::Module>>,
+  pub snapshotted_ops: v8::Global<v8::Array>,
 }
 
-static MODULE_MAP_CONTEXT_DATA_INDEX: usize = 0;
+static CONTEXT_DATA_INDEX_MODULE_MAP: usize = 0;
+static CONTEXT_DATA_INDEX_OP_NAMES: usize = 1;
 
 pub(crate) fn get_snapshotted_data(
   scope: &mut v8::HandleScope<()>,
@@ -165,7 +167,7 @@ pub(crate) fn get_snapshotted_data(
   // handles. We need to deserialize the "next_module_id" field from the
   // map to see how many module handles we expect.
   let result = scope.get_context_data_from_snapshot_once::<v8::Array>(
-    MODULE_MAP_CONTEXT_DATA_INDEX,
+    CONTEXT_DATA_INDEX_MODULE_MAP,
   );
 
   let val = match result {
@@ -173,16 +175,47 @@ pub(crate) fn get_snapshotted_data(
     Err(err) => data_error_to_panic(err),
   };
 
+  let result = scope.get_context_data_from_snapshot_once::<v8::Array>(
+    CONTEXT_DATA_INDEX_OP_NAMES,
+  );
+
+  let snapshotted_ops = match result {
+    Ok(v) => v,
+    Err(err) => data_error_to_panic(err),
+  };
+
+  // let snapshotted_ops = {
+  //   let len = op_names_val.length() as usize;
+  //   let mut op_names = Vec::with_capacity(len);
+
+  //   for i in 0..len {
+  //     let op_name: v8::Local<v8::String> = op_names_val
+  //       .get_index(&mut scope, i as u32)
+  //       .unwrap()
+  //       .try_into()
+  //       .unwrap();
+  //     op_names.push(op_name.to_rust_string_lossy(&mut scope));
+  //   }
+  //   op_names
+  // };
+
+  let module_handle_start_index = (CONTEXT_DATA_INDEX_MODULE_MAP + 1) as u32;
+
   let next_module_id = {
-    let info_data: v8::Local<v8::Array> =
-      val.get_index(&mut scope, 1).unwrap().try_into().unwrap();
+    let info_data: v8::Local<v8::Array> = val
+      .get_index(&mut scope, module_handle_start_index)
+      .unwrap()
+      .try_into()
+      .unwrap();
     info_data.length()
   };
 
   // Over allocate so executing a few scripts doesn't have to resize this vec.
   let mut module_handles = Vec::with_capacity(next_module_id as usize + 16);
   for i in 1..=next_module_id {
-    match scope.get_context_data_from_snapshot_once::<v8::Module>(i as usize) {
+    match scope.get_context_data_from_snapshot_once::<v8::Module>(
+      (i + module_handle_start_index) as usize,
+    ) {
       Ok(val) => {
         let module_global = v8::Global::new(&mut scope, val);
         module_handles.push(module_global);
@@ -194,6 +227,7 @@ pub(crate) fn get_snapshotted_data(
   SnapshottedData {
     module_map_data: v8::Global::new(&mut scope, val),
     module_handles,
+    snapshotted_ops: v8::Global::new(&mut scope, snapshotted_ops),
   }
 }
 
@@ -205,13 +239,19 @@ pub(crate) fn set_snapshotted_data(
   let local_context = v8::Local::new(scope, context);
   let local_data = v8::Local::new(scope, snapshotted_data.module_map_data);
   let offset = scope.add_context_data(local_context, local_data);
-  assert_eq!(offset, MODULE_MAP_CONTEXT_DATA_INDEX);
+  assert_eq!(offset, CONTEXT_DATA_INDEX_MODULE_MAP);
+
+  {
+    let local_data = v8::Local::new(scope, snapshotted_data.snapshotted_ops);
+    let offset = scope.add_context_data(local_context, local_data);
+    assert_eq!(offset, CONTEXT_DATA_INDEX_OP_NAMES);
+  }
 
   for (index, handle) in snapshotted_data.module_handles.into_iter().enumerate()
   {
     let module_handle = v8::Local::new(scope, handle);
     let offset = scope.add_context_data(local_context, module_handle);
-    assert_eq!(offset, index + 1);
+    assert_eq!(offset, index + 2);
   }
 }
 

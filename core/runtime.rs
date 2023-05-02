@@ -511,6 +511,27 @@ impl JsRuntime {
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
+      {
+        let op_names =
+          v8::Local::new(scope, snapshotted_data.snapshotted_ops.clone());
+        let len = op_names.length();
+
+        for i in 0..len - 1 {
+          let op_name_v8: v8::Local<v8::String> =
+            op_names.get_index(scope, i).unwrap().try_into().unwrap();
+          let op_name = op_name_v8.to_rust_string_lossy(scope);
+          match op_ctxs.get(i as usize) {
+            Some(op_ctx) => {
+              if op_ctx.decl.name != op_name {
+                panic!();
+              }
+            }
+            None => {
+              panic!()
+            }
+          }
+        }
+      }
       let mut module_map = module_map_rc.borrow_mut();
       module_map.update_with_snapshotted_data(scope, snapshotted_data);
     }
@@ -962,11 +983,26 @@ impl JsRuntime {
 
     // Serialize the module map and store its data in the snapshot.
     {
-      let snapshotted_data = {
+      let mut snapshotted_data = {
         let module_map_rc = self.module_map.take().unwrap();
         let module_map = module_map_rc.borrow();
         module_map.serialize_for_snapshotting(&mut self.handle_scope())
       };
+
+      {
+        let realm = self.global_realm();
+        let mut scope = self.handle_scope();
+        let context_state = realm.state(&mut scope);
+        let state = context_state.borrow();
+
+        let op_names = v8::Array::new(&mut scope, state.op_ctxs.len() as i32);
+        for (i, op_ctx) in state.op_ctxs.iter().enumerate() {
+          let op_name = v8::String::new(&mut scope, op_ctx.decl.name).unwrap();
+          op_names.set_index(&mut scope, i as u32, op_name.into());
+        }
+        snapshotted_data.snapshotted_ops =
+          v8::Global::new(&mut scope, op_names);
+      }
 
       let context = self.global_context();
       let mut scope = self.handle_scope();

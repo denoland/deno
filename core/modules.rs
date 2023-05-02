@@ -1215,9 +1215,14 @@ impl ModuleMap {
     let array_global = v8::Global::new(scope, array);
 
     let handles = self.handles.clone();
+
+    let snapshotted_ops_local = v8::Array::new(scope, 0);
+    let snapshotted_ops = v8::Global::new(scope, snapshotted_ops_local);
+
     SnapshottedData {
       module_map_data: array_global,
       module_handles: handles,
+      snapshotted_ops,
     }
   }
 
