@@ -515,19 +515,24 @@ impl JsRuntime {
         let op_names =
           v8::Local::new(scope, snapshotted_data.snapshotted_ops.clone());
         let len = op_names.length();
-
+        let global_realm = {
+          let state = state_rc.borrow();
+          state.global_realm.as_ref().unwrap().clone()
+        };
+        let realm_state_rc = global_realm.state(scope);
+        let realm_state = realm_state_rc.borrow();
         for i in 0..len - 1 {
           let op_name_v8: v8::Local<v8::String> =
             op_names.get_index(scope, i).unwrap().try_into().unwrap();
           let op_name = op_name_v8.to_rust_string_lossy(scope);
-          match op_ctxs.get(i as usize) {
+          match realm_state.op_ctxs.get(i as usize) {
             Some(op_ctx) => {
               if op_ctx.decl.name != op_name {
-                panic!();
+                panic!("Snapshotted op mismatch; expected \"{}\" at index {} but got \"{}\"", op_name, i, op_ctx.decl.name);
               }
             }
             None => {
-              panic!()
+              panic!("Snapshotted op mismatch; expected \"{}\" at index {} but got None", op_name, i);
             }
           }
         }
