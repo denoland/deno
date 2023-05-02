@@ -617,15 +617,7 @@ fn metadata_to_fsstat(metadata: fs::Metadata) -> FsStat {
 }
 
 fn realpath(path: &Path) -> FsResult<PathBuf> {
-  let canonicalized_path = path.canonicalize()?;
-  #[cfg(windows)]
-  let canonicalized_path = PathBuf::from(
-    canonicalized_path
-      .display()
-      .to_string()
-      .trim_start_matches("\\\\?\\"),
-  );
-  Ok(canonicalized_path)
+  Ok(deno_core::strip_unc_prefix(path.as_ref().canonicalize()?))
 }
 
 fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
