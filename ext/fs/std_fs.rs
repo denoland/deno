@@ -404,6 +404,7 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
     use libc::stat;
     use libc::unlink;
     use std::ffi::CString;
+    use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::prelude::OsStrExt;
