@@ -1,0 +1,7 @@
+{
+  "name": "foo",
+  "type": "module",
+  "dependencies": {
+    "define-properties": "^1.2.0"
+  }
+}
