@@ -94,9 +94,7 @@ impl StdioOrRid {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
-        FileResource::with_sync_file(state, *rid, |file| {
-          file.as_stdio().map(|err| err.into())
-        })
+        FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
       }
     }
   }

@@ -1,14 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_io::fs::FsResult;
-use deno_io::fs::FsStat;
 use serde::Deserialize;
 use serde::Serialize;
+
+use deno_io::fs::File;
+use deno_io::fs::FsResult;
+use deno_io::fs::FsStat;
 
 #[derive(Deserialize, Default, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -82,12 +83,12 @@ pub trait FileSystem: Send + Sync {
     &self,
     path: &Path,
     options: OpenOptions,
-  ) -> FsResult<Rc<dyn FileResource>>;
+  ) -> FsResult<Rc<dyn File>>;
   async fn open_async(
     &self,
     path: PathBuf,
     options: OpenOptions,
-  ) -> FsResult<Rc<dyn FileResource>>;
+  ) -> FsResult<Rc<dyn File>>;
 
   fn mkdir_sync(&self, path: &Path, recusive: bool, mode: u32) -> FsResult<()>;
   async fn mkdir_async(

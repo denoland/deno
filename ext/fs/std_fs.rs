@@ -4,17 +4,16 @@
 
 use std::fs;
 use std::io;
-use std::io::Read;
-use std::io::Seek;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
-use deno_io::StdFileResource;
-use fs3::FileExt;
+use deno_io::fs::File;
+use deno_io::fs::FsError;
+use deno_io::fs::FsResult;
+use deno_io::fs::FsStat;
+use deno_io::StdFileResourceInner;
 
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
@@ -74,20 +73,20 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     options: OpenOptions,
-  ) -> FsResult<Rc<dyn FileResource>> {
+  ) -> FsResult<Rc<dyn File>> {
     let opts = open_options(options);
     let std_file = opts.open(path)?;
-    Ok(Rc::new(StdFileResource::fs_file(std_file)))
+    Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
   async fn open_async(
     &self,
     path: PathBuf,
     options: OpenOptions,
-  ) -> FsResult<Rc<dyn FileResource>> {
+  ) -> FsResult<Rc<dyn File>> {
     let opts = open_options(options);
     let std_file =
       tokio::task::spawn_blocking(move || opts.open(path)).await??;
-    Ok(Rc::new(StdFileResource::fs_file(std_file)))
+    Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
 
   fn mkdir_sync(
@@ -471,13 +470,13 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
 #[cfg(not(windows))]
 fn stat(path: &Path) -> FsResult<FsStat> {
   let metadata = fs::metadata(path)?;
-  Ok(metadata_to_fsstat(metadata))
+  Ok(FsStat::from_std(metadata))
 }
 
 #[cfg(windows)]
 fn stat(path: &Path) -> FsResult<FsStat> {
   let metadata = fs::metadata(path)?;
-  let mut fsstat = metadata_to_fsstat(metadata);
+  let mut fsstat = FsStat::from_std(metadata);
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   let path = path.canonicalize()?;
   stat_extra(&mut fsstat, &path, FILE_FLAG_BACKUP_SEMANTICS)?;
@@ -487,15 +486,16 @@ fn stat(path: &Path) -> FsResult<FsStat> {
 #[cfg(not(windows))]
 fn lstat(path: &Path) -> FsResult<FsStat> {
   let metadata = fs::symlink_metadata(path)?;
-  Ok(metadata_to_fsstat(metadata))
+  Ok(FsStat::from_std(metadata))
 }
 
 #[cfg(windows)]
 fn lstat(path: &Path) -> FsResult<FsStat> {
-  let metadata = fs::symlink_metadata(path)?;
-  let mut fsstat = metadata_to_fsstat(metadata);
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
+
+  let metadata = fs::symlink_metadata(path)?;
+  let mut fsstat = FsStat::from_std(metadata);
   stat_extra(
     &mut fsstat,
     path,
@@ -565,59 +565,8 @@ fn stat_extra(
   }
 }
 
-#[inline(always)]
-fn metadata_to_fsstat(metadata: fs::Metadata) -> FsStat {
-  macro_rules! unix_or_zero {
-    ($member:ident) => {{
-      #[cfg(unix)]
-      {
-        use std::os::unix::fs::MetadataExt;
-        metadata.$member()
-      }
-      #[cfg(not(unix))]
-      {
-        0
-      }
-    }};
-  }
-
-  #[inline(always)]
-  fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<u64> {
-    match maybe_time {
-      Ok(time) => Some(
-        time
-          .duration_since(UNIX_EPOCH)
-          .map(|t| t.as_millis() as u64)
-          .unwrap_or_else(|err| err.duration().as_millis() as u64),
-      ),
-      Err(_) => None,
-    }
-  }
-
-  FsStat {
-    is_file: metadata.is_file(),
-    is_directory: metadata.is_dir(),
-    is_symlink: metadata.file_type().is_symlink(),
-    size: metadata.len(),
-
-    mtime: to_msec(metadata.modified()),
-    atime: to_msec(metadata.accessed()),
-    birthtime: to_msec(metadata.created()),
-
-    dev: unix_or_zero!(dev),
-    ino: unix_or_zero!(ino),
-    mode: unix_or_zero!(mode),
-    nlink: unix_or_zero!(nlink),
-    uid: unix_or_zero!(uid),
-    gid: unix_or_zero!(gid),
-    rdev: unix_or_zero!(rdev),
-    blksize: unix_or_zero!(blksize),
-    blocks: unix_or_zero!(blocks),
-  }
-}
-
 fn realpath(path: &Path) -> FsResult<PathBuf> {
-  Ok(deno_core::strip_unc_prefix(path.as_ref().canonicalize()?))
+  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
 }
 
 fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
@@ -729,165 +678,4 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options
-}
-
-fn sync<T>(
-  resource: Rc<StdFileResource>,
-  f: impl FnOnce(&mut fs::File) -> io::Result<T>,
-) -> FsResult<T> {
-  let res = resource
-    .with_file2(|file| f(file))
-    .ok_or(FsError::FileBusy)??;
-  Ok(res)
-}
-
-async fn nonblocking<T: Send + 'static>(
-  resource: Rc<StdFileResource>,
-  f: impl FnOnce(&mut fs::File) -> io::Result<T> + Send + 'static,
-) -> FsResult<T> {
-  let res = resource.with_file_blocking_task2(f).await?;
-  Ok(res)
-}
-
-impl FileResource for StdFileResource {}
-
-#[async_trait::async_trait(?Send)]
-impl File for StdFileResource {
-  fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()> {
-    sync(self, |file| file.write_all(buf))
-  }
-  async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()> {
-    nonblocking(self, move |file| file.write_all(&buf)).await
-  }
-
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    sync(self, |file| {
-      let mut buf = Vec::new();
-      file.read_to_end(&mut buf)?;
-      Ok(buf)
-    })
-  }
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    nonblocking(self, |file| {
-      let mut buf = Vec::new();
-      file.read_to_end(&mut buf)?;
-      Ok(buf)
-    })
-    .await
-  }
-
-  fn chmod_sync(self: Rc<Self>, _mode: u32) -> FsResult<()> {
-    #[cfg(unix)]
-    {
-      sync(self, |file| {
-        use std::os::unix::prelude::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(_mode))
-      })
-    }
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
-  }
-
-  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
-    #[cfg(unix)]
-    {
-      nonblocking(self, move |file| {
-        use std::os::unix::prelude::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(_mode))
-      })
-      .await
-    }
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
-  }
-
-  fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
-    sync(self, |file| file.seek(pos))
-  }
-  async fn seek_async(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
-    nonblocking(self, move |file| file.seek(pos)).await
-  }
-
-  fn datasync_sync(self: Rc<Self>) -> FsResult<()> {
-    sync(self, |file| file.sync_data())
-  }
-  async fn datasync_async(self: Rc<Self>) -> FsResult<()> {
-    nonblocking(self, |file| file.sync_data()).await
-  }
-
-  fn sync_sync(self: Rc<Self>) -> FsResult<()> {
-    sync(self, |file| file.sync_all())
-  }
-  async fn sync_async(self: Rc<Self>) -> FsResult<()> {
-    nonblocking(self, |file| file.sync_all()).await
-  }
-
-  fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
-    sync(self, |file| file.metadata().map(metadata_to_fsstat))
-  }
-  async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
-    nonblocking(self, |file| file.metadata().map(metadata_to_fsstat)).await
-  }
-
-  fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
-    sync(self, |file| {
-      if exclusive {
-        file.lock_exclusive()
-      } else {
-        file.lock_shared()
-      }
-    })
-  }
-  async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
-    nonblocking(self, move |file| {
-      if exclusive {
-        file.lock_exclusive()
-      } else {
-        file.lock_shared()
-      }
-    })
-    .await
-  }
-
-  fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    sync(self, |file| file.unlock())
-  }
-  async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
-    nonblocking(self, |file| file.unlock()).await
-  }
-
-  fn truncate_sync(self: Rc<Self>, len: u64) -> FsResult<()> {
-    sync(self, |file| file.set_len(len))
-  }
-  async fn truncate_async(self: Rc<Self>, len: u64) -> FsResult<()> {
-    nonblocking(self, move |file| file.set_len(len)).await
-  }
-
-  fn utime_sync(
-    self: Rc<Self>,
-    atime_secs: i64,
-    atime_nanos: u32,
-    mtime_secs: i64,
-    mtime_nanos: u32,
-  ) -> FsResult<()> {
-    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
-    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    sync(self, |file| {
-      filetime::set_file_handle_times(file, Some(atime), Some(mtime))
-    })
-  }
-  async fn utime_async(
-    self: Rc<Self>,
-    atime_secs: i64,
-    atime_nanos: u32,
-    mtime_secs: i64,
-    mtime_nanos: u32,
-  ) -> FsResult<()> {
-    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
-    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    nonblocking(self, move |file| {
-      filetime::set_file_handle_times(file, Some(atime), Some(mtime))
-    })
-    .await
-  }
 }

@@ -10,8 +10,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::error::custom_error;
-use deno_core::error::not_supported;
-use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -21,34 +19,20 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_io::fs::FileResource;
+use deno_io::fs::FsError;
+use deno_io::fs::FsStat;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
-use tokio::task::JoinError;
 
 use crate::check_unstable;
 use crate::check_unstable2;
-use crate::interface::FileResource;
 use crate::interface::FsDirEntry;
-use crate::interface::FsError;
 use crate::interface::FsFileType;
-use crate::interface::FsStat;
 use crate::FileSystem;
 use crate::FsPermissions;
 use crate::OpenOptions;
-
-impl From<JoinError> for FsError {
-  fn from(err: JoinError) -> Self {
-    if err.is_cancelled() {
-      todo!("async tasks must not be cancelled")
-    }
-    if err.is_panic() {
-      std::panic::resume_unwind(err.into_panic()); // resume the panic on the main thread
-    }
-    unreachable!()
-  }
-}
 
 #[op]
 pub fn op_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
@@ -106,7 +90,9 @@ where
   let fs = state.borrow::<Arc<dyn FileSystem>>();
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
 
-  let rid = state.resource_table.add(FileResource(file));
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
 }
 
@@ -133,7 +119,10 @@ where
     .await
     .context_path("open", &path)?;
 
-  let rid = state.borrow_mut().resource_table.add(FileResource(file));
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
 }
 
@@ -1295,8 +1284,8 @@ fn op_seek_sync(
   whence: i32,
 ) -> Result<u64, AnyError> {
   let pos = to_seek_from(offset, whence)?;
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  let cursor = file.0.clone().seek_sync(pos)?;
+  let file = FileResource::get_file(state, rid)?;
+  let cursor = file.seek_sync(pos)?;
   Ok(cursor)
 }
 
@@ -1308,8 +1297,8 @@ async fn op_seek_async(
   whence: i32,
 ) -> Result<u64, AnyError> {
   let pos = to_seek_from(offset, whence)?;
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
-  let cursor = file.0.clone().seek_async(pos).await?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  let cursor = file.seek_async(pos).await?;
   Ok(cursor)
 }
 
@@ -1318,8 +1307,8 @@ fn op_fdatasync_sync(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  file.0.clone().datasync_sync()?;
+  let file = FileResource::get_file(state, rid)?;
+  file.datasync_sync()?;
   Ok(())
 }
 
@@ -1328,15 +1317,15 @@ async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
-  file.0.clone().datasync_async().await?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.datasync_async().await?;
   Ok(())
 }
 
 #[op]
 fn op_fsync_sync(state: &mut OpState, rid: ResourceId) -> Result<(), AnyError> {
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  file.0.clone().sync_sync()?;
+  let file = FileResource::get_file(state, rid)?;
+  file.sync_sync()?;
   Ok(())
 }
 
@@ -1345,8 +1334,8 @@ async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
-  file.0.clone().sync_async().await?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.sync_async().await?;
   Ok(())
 }
 
@@ -1356,8 +1345,8 @@ fn op_fstat_sync(
   rid: ResourceId,
   stat_out_buf: &mut [u32],
 ) -> Result<(), AnyError> {
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  let stat = file.0.clone().stat_sync()?;
+  let file = FileResource::get_file(state, rid)?;
+  let stat = file.stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
   Ok(())
@@ -1368,8 +1357,8 @@ async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<SerializableStat, AnyError> {
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
-  let stat = file.0.clone().stat_async().await?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  let stat = file.stat_async().await?;
   Ok(stat.into())
 }
 
@@ -1380,8 +1369,8 @@ fn op_flock_sync(
   exclusive: bool,
 ) -> Result<(), AnyError> {
   check_unstable(state, "Deno.flockSync");
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  file.0.clone().lock_sync(exclusive)?;
+  let file = FileResource::get_file(state, rid)?;
+  file.lock_sync(exclusive)?;
   Ok(())
 }
 
@@ -1392,8 +1381,8 @@ async fn op_flock_async(
   exclusive: bool,
 ) -> Result<(), AnyError> {
   check_unstable2(&state, "Deno.flock");
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
-  file.0.clone().lock_async(exclusive).await?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.lock_async(exclusive).await?;
   Ok(())
 }
 
@@ -1403,8 +1392,8 @@ fn op_funlock_sync(
   rid: ResourceId,
 ) -> Result<(), AnyError> {
   check_unstable(state, "Deno.funlockSync");
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  file.0.clone().unlock_sync()?;
+  let file = FileResource::get_file(state, rid)?;
+  file.unlock_sync()?;
   Ok(())
 }
 
@@ -1414,8 +1403,8 @@ async fn op_funlock_async(
   rid: ResourceId,
 ) -> Result<(), AnyError> {
   check_unstable2(&state, "Deno.funlock");
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
-  file.0.clone().unlock_async().await?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.unlock_async().await?;
   Ok(())
 }
 
@@ -1425,8 +1414,8 @@ fn op_ftruncate_sync(
   rid: ResourceId,
   len: u64,
 ) -> Result<(), AnyError> {
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  file.0.clone().truncate_sync(len)?;
+  let file = FileResource::get_file(state, rid)?;
+  file.truncate_sync(len)?;
   Ok(())
 }
 
@@ -1436,8 +1425,8 @@ async fn op_ftruncate_async(
   rid: ResourceId,
   len: u64,
 ) -> Result<(), AnyError> {
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
-  file.0.clone().truncate_async(len).await?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.truncate_async(len).await?;
   Ok(())
 }
 
@@ -1450,13 +1439,8 @@ fn op_futime_sync(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  let file = state.resource_table.get::<FileResource>(rid)?;
-  file.0.clone().utime_sync(
-    atime_secs,
-    atime_nanos,
-    mtime_secs,
-    mtime_nanos,
-  )?;
+  let file = FileResource::get_file(state, rid)?;
+  file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
@@ -1469,10 +1453,8 @@ async fn op_futime_async(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  let file = state.borrow().resource_table.get::<FileResource>(rid)?;
+  let file = FileResource::get_file(&state.borrow(), rid)?;
   file
-    .0
-    .clone()
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
   Ok(())

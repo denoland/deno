@@ -1,13 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::io::Error;
+use std::rc::Rc;
+
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_io::fs::FileResource;
-use deno_io::StdFileResource;
-use std::io::Error;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -50,7 +51,6 @@ use winapi::um::wincon;
 fn get_fd_from_resource(
   resource: Rc<FileResource>,
 ) -> Result<std::os::windows::io::RawHandle, AnyError> {
-  use std::os::windows::io::AsRawHandle;
   use winapi::um::handleapi;
 
   let Some(handle) = resource.backing_fd() else {
@@ -121,10 +121,8 @@ fn op_stdin_set_raw(
   // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
-    use std::os::windows::io::AsRawHandle;
     use winapi::shared::minwindef::FALSE;
     use winapi::um::consoleapi;
-    use winapi::um::handleapi;
 
     if cbreak {
       return Err(deno_core::error::not_supported());
@@ -161,8 +159,8 @@ fn op_stdin_set_raw(
     let tty_mode_store = state.borrow::<TtyModeStore>().clone();
     let previous_mode = tty_mode_store.get(rid);
 
-    StdFileResource::with_file(state, rid, move |std_file| {
-      let raw_fd = std_file.as_raw_fd();
+    FileResource::with_resource(state, rid, move |resource| {
+      let raw_fd = get_fd_from_resource(resource)?;
 
       if is_raw {
         let mut raw = match previous_mode {
@@ -250,7 +248,7 @@ fn op_console_size(
     result: &mut [u32],
     rid: u32,
   ) -> Result<(), AnyError> {
-    FileResource::with_sync_file(state, rid, move |file| {
+    FileResource::with_resource(state, rid, move |resource| {
       let fd = get_fd_from_resource(resource)?;
       let size = console_size_from_fd(fd)?;
       result[0] = size.cols;

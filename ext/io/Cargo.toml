@@ -16,6 +16,8 @@ path = "lib.rs"
 [dependencies]
 async-trait.workspace = true
 deno_core.workspace = true
+filetime.workspace = true
+fs3.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
 

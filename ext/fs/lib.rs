@@ -4,13 +4,9 @@ mod interface;
 mod ops;
 mod std_fs;
 
-pub use crate::interface::File;
 pub use crate::interface::FileSystem;
 pub use crate::interface::FsDirEntry;
-pub use crate::interface::FsError;
 pub use crate::interface::FsFileType;
-pub use crate::interface::FsResult;
-pub use crate::interface::FsStat;
 pub use crate::interface::OpenOptions;
 use crate::ops::*;
 
