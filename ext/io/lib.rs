@@ -442,9 +442,6 @@ impl crate::fs::File for StdFileResourceInner {
       }
     }
   }
-  async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()> {
-    self.write_all_byob(buf.into()).await
-  }
   async fn write_all_byob(self: Rc<Self>, buf: BufView) -> FsResult<()> {
     match self.kind {
       StdFileResourceKind::File => {

@@ -130,7 +130,9 @@ pub trait File {
   fn write_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<usize>;
 
   fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()>;
-  async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()>;
+  async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()> {
+    self.write_all_byob(buf.into()).await
+  }
 
   fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>>;
   async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>>;
