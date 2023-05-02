@@ -1,11 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
+use crate::stream::WebSocketStream;
+use bytes::Bytes;
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::StringOrBuffer;
-
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -15,8 +14,12 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use deno_net::raw::take_network_stream_resource;
+use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
+use deno_tls::RootCertStoreProvider;
 use http::header::CONNECTION;
 use http::header::UPGRADE;
 use http::HeaderName;
@@ -24,10 +27,7 @@ use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
-use hyper::upgrade::Upgraded;
 use hyper::Body;
-use hyper::Response;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -38,11 +38,12 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::MaybeTlsStream;
 
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollector;
@@ -51,10 +52,20 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 
-pub use tokio_tungstenite; // Re-export tokio_tungstenite
+mod stream;
 
 #[derive(Clone)]
-pub struct WsRootStore(pub Option<RootCertStore>);
+pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
+
+impl WsRootStoreProvider {
+  pub fn get_or_try_init(&self) -> Result<Option<RootCertStore>, AnyError> {
+    Ok(match &self.0 {
+      Some(provider) => Some(provider.get_or_try_init()?.clone()),
+      None => None,
+    })
+  }
+}
+
 #[derive(Clone)]
 pub struct WsUserAgent(pub String);
 
@@ -82,15 +93,6 @@ impl Resource for WsCancelResource {
   fn close(self: Rc<Self>) {
     self.0.cancel()
   }
-}
-
-#[derive(Deserialize)]
-#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
-pub enum SendValue {
-  Text(String),
-  Binary(ZeroCopyBuf),
-  Pong,
-  Ping,
 }
 
 // This op is needed because creating a WS instance in JavaScript is a sync
@@ -128,6 +130,33 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
+  cancel_resource: Option<Rc<CancelHandle>>,
+  request: Request<Body>,
+  socket: S,
+) -> Result<(WebSocket<WebSocketStream>, http::Response<Body>), AnyError> {
+  let client =
+    fastwebsockets::handshake::client(&LocalExecutor, request, socket);
+
+  let (upgraded, response) = if let Some(cancel_resource) = cancel_resource {
+    client.or_cancel(cancel_resource).await?
+  } else {
+    client.await
+  }
+  .map_err(|err| {
+    DomExceptionNetworkError::new(&format!(
+      "failed to connect to WebSocket: {err}"
+    ))
+  })?;
+
+  let upgraded = upgraded.into_inner();
+  let stream =
+    WebSocketStream::new(stream::WsStreamKind::Upgraded(upgraded), None);
+  let stream = WebSocket::after_handshake(stream, Role::Client);
+
+  Ok((stream, response))
+}
+
 #[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
@@ -154,7 +183,7 @@ where
       .borrow_mut()
       .resource_table
       .get::<WsCancelResource>(cancel_rid)?;
-    Some(r)
+    Some(r.0.clone())
   } else {
     None
   };
@@ -163,10 +192,18 @@ where
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
-  let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
+  let root_cert_store = state
+    .borrow()
+    .borrow::<WsRootStoreProvider>()
+    .get_or_try_init()?;
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = url.parse()?;
-  let mut request = Request::builder().method(Method::GET).uri(&uri);
+  let mut request = Request::builder().method(Method::GET).uri(
+    uri
+      .path_and_query()
+      .ok_or(type_error("Missing path in url".to_string()))?
+      .as_str(),
+  );
 
   let authority = uri.authority().unwrap().as_str();
   let host = authority
@@ -177,7 +214,7 @@ where
     .header("User-Agent", user_agent)
     .header("Host", host)
     .header(UPGRADE, "websocket")
-    .header(CONNECTION, "upgrade")
+    .header(CONNECTION, "Upgrade")
     .header(
       "Sec-WebSocket-Key",
       fastwebsockets::handshake::generate_key(),
@@ -222,8 +259,8 @@ where
   let addr = format!("{domain}:{port}");
   let tcp_socket = TcpStream::connect(addr).await?;
 
-  let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
-    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
+  let (stream, response) = match uri.scheme_str() {
+    Some("ws") => handshake(cancel_resource, request, tcp_socket).await?,
     Some("wss") => {
       let tls_config = create_client_config(
         root_cert_store,
@@ -235,25 +272,10 @@ where
       let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      MaybeTlsStream::Rustls(tls_socket)
+      handshake(cancel_resource, request, tls_socket).await?
     }
     _ => unreachable!(),
   };
-
-  let client =
-    fastwebsockets::handshake::client(&LocalExecutor, request, socket);
-
-  let (stream, response): (WebSocket<Upgraded>, Response<Body>) =
-    if let Some(cancel_resource) = cancel_resource {
-      client.or_cancel(cancel_resource.0.to_owned()).await?
-    } else {
-      client.await
-    }
-    .map_err(|err| {
-      DomExceptionNetworkError::new(&format!(
-        "failed to connect to WebSocket: {err}"
-      ))
-    })?;
 
   if let Some(cancel_rid) = cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid).ok();
@@ -288,13 +310,12 @@ pub enum MessageKind {
   Text = 0,
   Binary = 1,
   Pong = 2,
-  Ping = 3,
-  Error = 5,
-  Closed = 6,
+  Error = 3,
+  Closed = 4,
 }
 
 pub struct ServerWebSocket {
-  ws: AsyncRefCell<FragmentCollector<Upgraded>>,
+  ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
   closed: Rc<Cell<bool>>,
 }
 
@@ -320,11 +341,19 @@ impl Resource for ServerWebSocket {
     "serverWebSocket".into()
   }
 }
-pub async fn ws_create_server_stream(
-  state: &Rc<RefCell<OpState>>,
-  transport: Upgraded,
+
+pub fn ws_create_server_stream(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
 ) -> Result<ResourceId, AnyError> {
-  let mut ws = WebSocket::after_handshake(transport, Role::Server);
+  let mut ws = WebSocket::after_handshake(
+    WebSocketStream::new(
+      stream::WsStreamKind::Network(transport),
+      Some(read_buf),
+    ),
+    Role::Server,
+  );
   ws.set_writev(true);
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
@@ -334,9 +363,24 @@ pub async fn ws_create_server_stream(
     closed: Rc::new(Cell::new(false)),
   };
 
-  let resource_table = &mut state.borrow_mut().resource_table;
-  let rid = resource_table.add(ws_resource);
+  let rid = state.resource_table.add(ws_resource);
   Ok(rid)
+}
+
+#[op]
+pub fn op_ws_server_create(
+  state: &mut OpState,
+  conn: ResourceId,
+  extra_bytes: &[u8],
+) -> Result<ResourceId, AnyError> {
+  let network_stream =
+    take_network_stream_resource(&mut state.resource_table, conn)?;
+  // Copying the extra bytes, but unlikely this will account for much
+  ws_create_server_stream(
+    state,
+    network_stream,
+    Bytes::from(extra_bytes.to_vec()),
+  )
 }
 
 #[op]
@@ -370,27 +414,29 @@ pub async fn op_ws_send_text(
 }
 
 #[op]
-pub async fn op_ws_send(
+pub async fn op_ws_send_pong(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  value: SendValue,
 ) -> Result<(), AnyError> {
-  let msg = match value {
-    SendValue::Text(text) => {
-      Frame::new(true, OpCode::Text, None, text.into_bytes())
-    }
-    SendValue::Binary(buf) => {
-      Frame::new(true, OpCode::Binary, None, buf.to_vec())
-    }
-    SendValue::Pong => Frame::new(true, OpCode::Pong, None, vec![]),
-    SendValue::Ping => Frame::new(true, OpCode::Ping, None, vec![]),
-  };
-
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  resource.write_frame(msg).await
+  resource.write_frame(Frame::pong(vec![])).await
+}
+
+#[op]
+pub async fn op_ws_send_ping(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  resource
+    .write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    .await
 }
 
 #[op(deferred)]
@@ -414,7 +460,7 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[op(deferred)]
+#[op(fast)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -425,58 +471,55 @@ pub async fn op_ws_next_event(
     .get::<ServerWebSocket>(rid)?;
 
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
-  let val = match ws.read_frame().await {
-    Ok(val) => val,
-    Err(err) => {
-      // No message was received, socket closed while we waited.
-      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
-      if resource.closed.get() {
-        let _ = state.borrow_mut().resource_table.close(rid);
+  loop {
+    let val = match ws.read_frame().await {
+      Ok(val) => val,
+      Err(err) => {
+        // No message was received, socket closed while we waited.
+        // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+        if resource.closed.get() {
+          let _ = state.borrow_mut().resource_table.close(rid);
+          return Ok((
+            MessageKind::Closed as u16,
+            StringOrBuffer::Buffer(vec![].into()),
+          ));
+        }
+
         return Ok((
-          MessageKind::Closed as u16,
-          StringOrBuffer::Buffer(vec![].into()),
+          MessageKind::Error as u16,
+          StringOrBuffer::String(err.to_string()),
         ));
       }
+    };
 
-      return Ok((
-        MessageKind::Error as u16,
-        StringOrBuffer::String(err.to_string()),
-      ));
-    }
-  };
+    break Ok(match val.opcode {
+      OpCode::Text => (
+        MessageKind::Text as u16,
+        StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
+      ),
+      OpCode::Binary => (
+        MessageKind::Binary as u16,
+        StringOrBuffer::Buffer(val.payload.into()),
+      ),
+      OpCode::Close => {
+        if val.payload.len() < 2 {
+          return Ok((1005, StringOrBuffer::String("".to_string())));
+        }
 
-  let res = match val.opcode {
-    OpCode::Text => (
-      MessageKind::Text as u16,
-      StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
-    ),
-    OpCode::Binary => (
-      MessageKind::Binary as u16,
-      StringOrBuffer::Buffer(val.payload.into()),
-    ),
-    OpCode::Close => {
-      if val.payload.len() < 2 {
-        return Ok((1005, StringOrBuffer::String("".to_string())));
+        let close_code =
+          CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
+        let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
+        (close_code.into(), StringOrBuffer::String(reason))
       }
-
-      let close_code =
-        CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
-      let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
-      (close_code.into(), StringOrBuffer::String(reason))
-    }
-    OpCode::Ping => (
-      MessageKind::Ping as u16,
-      StringOrBuffer::Buffer(vec![].into()),
-    ),
-    OpCode::Pong => (
-      MessageKind::Pong as u16,
-      StringOrBuffer::Buffer(vec![].into()),
-    ),
-    OpCode::Continuation => {
-      return Err(type_error("Unexpected continuation frame"))
-    }
-  };
-  Ok(res)
+      OpCode::Pong => (
+        MessageKind::Pong as u16,
+        StringOrBuffer::Buffer(vec![].into()),
+      ),
+      OpCode::Continuation | OpCode::Ping => {
+        continue;
+      }
+    });
+  }
 }
 
 deno_core::extension!(deno_websocket,
@@ -485,16 +528,18 @@ deno_core::extension!(deno_websocket,
   ops = [
     op_ws_check_permission_and_cancel_handle<P>,
     op_ws_create<P>,
-    op_ws_send,
     op_ws_close,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    op_ws_send_ping,
+    op_ws_send_pong,
+    op_ws_server_create,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
     user_agent: String,
-    root_cert_store: Option<RootCertStore>,
+    root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>
   },
   state = |state, options| {
@@ -502,7 +547,7 @@ deno_core::extension!(deno_websocket,
     state.put(UnsafelyIgnoreCertificateErrors(
       options.unsafely_ignore_certificate_errors,
     ));
-    state.put::<WsRootStore>(WsRootStore(options.root_cert_store));
+    state.put::<WsRootStoreProvider>(WsRootStoreProvider(options.root_cert_store_provider));
   },
 );
 

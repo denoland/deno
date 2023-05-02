@@ -9,9 +9,11 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use import_map::ImportMap;
 use log::error;
 use serde_json::from_value;
@@ -75,23 +77,30 @@ use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::HttpCache;
+use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
 use crate::lsp::urls::LspUrlKind;
-use crate::node::CliNodeResolver;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
-use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+
+struct LspRootCertStoreProvider(RootCertStore);
+
+impl RootCertStoreProvider for LspRootCertStoreProvider {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+    Ok(&self.0)
+  }
+}
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
@@ -103,7 +112,7 @@ pub struct StateSnapshot {
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
   pub maybe_npm_resolver: Option<Arc<CliNpmResolver>>,
 }
 
@@ -124,7 +133,7 @@ pub struct Inner {
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   /// Handles module registries, which allow discovery of modules
   module_registries: ModuleRegistry,
   /// The path to the module registries cache
@@ -185,15 +194,14 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
-      // todo(dsherret): don't use ProcState here
-      let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
-      let mut inner_loader = ps.module_graph_builder.create_graph_loader();
+      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      let module_graph_builder = factory.module_graph_builder().await?;
+      let mut inner_loader = module_graph_builder.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
-      let graph = ps
-        .module_graph_builder
+      let graph = module_graph_builder
         .create_graph_with_loader(roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
@@ -421,7 +429,7 @@ impl LanguageServer {
 
 fn create_lsp_structs(
   dir: &DenoDir,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
 ) -> (
   Arc<CliNpmRegistryApi>,
   Arc<NpmCache>,
@@ -430,8 +438,8 @@ fn create_lsp_structs(
 ) {
   let registry_url = CliNpmRegistryApi::default_url();
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let npm_cache = Arc::new(NpmCache::from_deno_dir(
-    dir,
+  let npm_cache = Arc::new(NpmCache::new(
+    dir.npm_folder_path(),
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
     // the cache from being filled with lots of packages while
@@ -449,6 +457,7 @@ fn create_lsp_structs(
   let resolution =
     Arc::new(NpmResolution::from_serialized(api.clone(), None, None));
   let fs_resolver = create_npm_fs_resolver(
+    Arc::new(deno_node::RealFs),
     npm_cache.clone(),
     &progress_bar,
     registry_url.clone(),
@@ -469,10 +478,9 @@ impl Inner {
     let dir =
       DenoDir::new(maybe_custom_root).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
-    let http_client = HttpClient::new(None, None).unwrap();
+    let http_client = Arc::new(HttpClient::new(None, None));
     let module_registries =
-      ModuleRegistry::new(&module_registries_location, http_client.clone())
-        .unwrap();
+      ModuleRegistry::new(&module_registries_location, http_client.clone());
     let location = dir.deps_folder_path();
     let documents = Documents::new(&location, client.kind());
     let deps_http_cache = HttpCache::new(&location);
@@ -700,9 +708,11 @@ impl Inner {
       self.npm_resolution.snapshot(),
       None,
     ));
+    let node_fs = Arc::new(deno_node::RealFs);
     let npm_resolver = Arc::new(CliNpmResolver::new(
       npm_resolution.clone(),
       create_npm_fs_resolver(
+        node_fs.clone(),
         self.npm_cache.clone(),
         &ProgressBar::new(ProgressBarStyle::TextOnly),
         self.npm_api.base_url().clone(),
@@ -711,7 +721,8 @@ impl Inner {
       ),
       None,
     ));
-    let node_resolver = Arc::new(NodeResolver::new(npm_resolver.clone()));
+    let node_resolver =
+      Arc::new(NodeResolver::new(node_fs, npm_resolver.clone()));
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
@@ -772,20 +783,22 @@ impl Inner {
       .root_uri
       .as_ref()
       .and_then(|uri| specifier_to_file_path(uri).ok());
-    let root_cert_store = Some(get_root_cert_store(
+    let root_cert_store = get_root_cert_store(
       maybe_root_path,
       workspace_settings.certificate_stores,
       workspace_settings.tls_certificate.map(CaData::File),
-    )?);
-    let module_registries_location = dir.registries_folder_path();
-    self.http_client = HttpClient::new(
-      root_cert_store,
-      workspace_settings.unsafely_ignore_certificate_errors,
     )?;
+    let root_cert_store_provider =
+      Arc::new(LspRootCertStoreProvider(root_cert_store));
+    let module_registries_location = dir.registries_folder_path();
+    self.http_client = Arc::new(HttpClient::new(
+      Some(root_cert_store_provider),
+      workspace_settings.unsafely_ignore_certificate_errors,
+    ));
     self.module_registries = ModuleRegistry::new(
       &module_registries_location,
       self.http_client.clone(),
-    )?;
+    );
     self.module_registries_location = module_registries_location;
     (
       self.npm_api,
@@ -849,7 +862,7 @@ impl Inner {
       cache_setting,
       true,
       self.http_client.clone(),
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());

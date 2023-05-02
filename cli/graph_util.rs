@@ -314,23 +314,18 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(
-      PermissionsContainer::allow_all(),
-      PermissionsContainer::allow_all(),
-    )
+    self.create_fetch_cacher(PermissionsContainer::allow_all())
   }
 
   pub fn create_fetch_cacher(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
-      root_permissions,
-      dynamic_permissions,
+      permissions,
       self.options.node_modules_dir_specifier(),
     )
   }

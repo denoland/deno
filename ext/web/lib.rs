@@ -28,6 +28,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::usize;
 
 use crate::blob::op_blob_create_object_url;
@@ -110,7 +111,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
   ],
   options = {
-    blob_store: BlobStore,
+    blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
   },
   state = |state, options| {

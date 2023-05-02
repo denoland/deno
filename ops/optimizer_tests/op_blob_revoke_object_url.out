@@ -31,13 +31,14 @@ impl op_blob_revoke_object_url {
             is_unstable: false,
             is_v8: false,
             force_registration: false,
+            arg_count: 1usize as u8,
         }
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
     pub fn call(state: &mut OpState, url: String) -> Result<(), AnyError> {
         let url = Url::parse(&url)?;
-        let blob_store = state.borrow::<BlobStore>();
+        let blob_store = state.borrow::<Arc<BlobStore>>();
         blob_store.remove_object_url(&url);
         Ok(())
     }

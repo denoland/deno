@@ -27,9 +27,12 @@ crate::extension!(
     op_wasm_streaming_feed,
     op_wasm_streaming_set_url,
     op_void_sync,
+    op_error_async,
+    op_error_async_deferred,
     op_void_async,
     op_void_async_deferred,
     op_add,
+    op_add_async,
     // TODO(@AaronO): track IO metrics for builtin streams
     op_read,
     op_read_all,
@@ -58,6 +61,8 @@ crate::extension!(
     ops_builtin_v8::op_set_promise_hooks,
     ops_builtin_v8::op_get_promise_details,
     ops_builtin_v8::op_get_proxy_details,
+    ops_builtin_v8::op_get_non_index_property_names,
+    ops_builtin_v8::op_get_constructor_name,
     ops_builtin_v8::op_memory_usage,
     ops_builtin_v8::op_set_wasm_streaming_callback,
     ops_builtin_v8::op_abort_wasm_streaming,
@@ -94,11 +99,26 @@ fn op_add(a: i32, b: i32) -> i32 {
   a + b
 }
 
+#[op]
+pub async fn op_add_async(a: i32, b: i32) -> i32 {
+  a + b
+}
+
 #[op(fast)]
 pub fn op_void_sync() {}
 
 #[op]
 pub async fn op_void_async() {}
+
+#[op]
+pub async fn op_error_async() -> Result<(), Error> {
+  Err(Error::msg("error"))
+}
+
+#[op(deferred)]
+pub async fn op_error_async_deferred() -> Result<(), Error> {
+  Err(Error::msg("error"))
+}
 
 #[op(deferred)]
 pub async fn op_void_async_deferred() {}

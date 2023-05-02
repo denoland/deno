@@ -1,12 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::marker::PhantomData;
+
 use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::AnyError;
 use httparse::Status;
 use hyper::http::HeaderName;
 use hyper::http::HeaderValue;
-use hyper::Body;
 use hyper::Response;
 use memmem::Searcher;
 use memmem::TwoWaySearcher;
@@ -15,14 +16,14 @@ use once_cell::sync::OnceCell;
 use crate::http_error;
 
 /// Given a buffer that ends in `\n\n` or `\r\n\r\n`, returns a parsed [`Request<Body>`].
-fn parse_response(
+fn parse_response<T: Default>(
   header_bytes: &[u8],
-) -> Result<(usize, Response<Body>), AnyError> {
+) -> Result<(usize, Response<T>), AnyError> {
   let mut headers = [httparse::EMPTY_HEADER; 16];
   let status = httparse::parse_headers(header_bytes, &mut headers)?;
   match status {
     Status::Complete((index, parsed)) => {
-      let mut resp = Response::builder().status(101).body(Body::empty())?;
+      let mut resp = Response::builder().status(101).body(T::default())?;
       for header in parsed.iter() {
         resp.headers_mut().append(
           HeaderName::from_bytes(header.name.as_bytes())?,
@@ -59,12 +60,13 @@ static HEADER_SEARCHER: OnceCell<TwoWaySearcher> = OnceCell::new();
 static HEADER_SEARCHER2: OnceCell<TwoWaySearcher> = OnceCell::new();
 
 #[derive(Default)]
-pub struct WebSocketUpgrade {
+pub struct WebSocketUpgrade<T: Default> {
   state: WebSocketUpgradeState,
   buf: BytesMut,
+  _t: PhantomData<T>,
 }
 
-impl WebSocketUpgrade {
+impl<T: Default> WebSocketUpgrade<T> {
   /// Ensures that the status line starts with "HTTP/1.1 101 " which matches all of the node.js
   /// WebSocket libraries that are known. We don't care about the trailing status text.
   fn validate_status(&self, status: &[u8]) -> Result<(), AnyError> {
@@ -80,7 +82,7 @@ impl WebSocketUpgrade {
   pub fn write(
     &mut self,
     bytes: &[u8],
-  ) -> Result<Option<(Response<Body>, Bytes)>, AnyError> {
+  ) -> Result<Option<(Response<T>, Bytes)>, AnyError> {
     use WebSocketUpgradeState::*;
 
     match self.state {
@@ -153,6 +155,7 @@ impl WebSocketUpgrade {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use hyper::Body;
 
   type ExpectedResponseAndHead = Option<(Response<Body>, &'static [u8])>;
 

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.107.0"
+version = "0.109.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -80,6 +80,7 @@ deno_web.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+fastwebsockets.workspace = true
 
 atty.workspace = true
 console_static_text.workspace = true

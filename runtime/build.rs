@@ -122,10 +122,7 @@ mod startup_snapshot {
   }
 
   impl deno_node::NodePermissions for Permissions {
-    fn check_read(
-      &mut self,
-      _p: &Path,
-    ) -> Result<(), deno_core::error::AnyError> {
+    fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -222,7 +219,6 @@ mod startup_snapshot {
 
   impl deno_node::NodeEnv for SnapshotNodeEnv {
     type P = Permissions;
-    type Fs = deno_node::RealFs;
   }
 
   deno_core::extension!(runtime,
@@ -289,7 +285,7 @@ mod startup_snapshot {
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
       deno_web::deno_web::init_ops_and_esm::<Permissions>(
-        deno_web::BlobStore::default(),
+        Default::default(),
         Default::default(),
       ),
       deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(
@@ -324,7 +320,7 @@ mod startup_snapshot {
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node::init_ops_and_esm::<SnapshotNodeEnv>(None),
+      deno_node::deno_node::init_ops_and_esm::<SnapshotNodeEnv>(None, None),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];

@@ -33,7 +33,6 @@ use deno_runtime::deno_fetch::reqwest::StatusCode;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
 use log::debug;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -173,8 +172,8 @@ pub struct FileFetcher {
   cache: FileCache,
   cache_setting: CacheSetting,
   pub http_cache: HttpCache,
-  http_client: HttpClient,
-  blob_store: BlobStore,
+  http_client: Arc<HttpClient>,
+  blob_store: Arc<BlobStore>,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
 }
@@ -184,8 +183,8 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    http_client: HttpClient,
-    blob_store: BlobStore,
+    http_client: Arc<HttpClient>,
+    blob_store: Arc<BlobStore>,
     progress_bar: Option<ProgressBar>,
   ) -> Self {
     Self {
@@ -318,17 +317,15 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
-    let blob = {
-      let blob_store = self.blob_store.borrow();
-      blob_store
-        .get_object_url(specifier.clone())
-        .ok_or_else(|| {
-          custom_error(
-            "NotFound",
-            format!("Blob URL not found: \"{specifier}\"."),
-          )
-        })?
-    };
+    let blob = self
+      .blob_store
+      .get_object_url(specifier.clone())
+      .ok_or_else(|| {
+        custom_error(
+          "NotFound",
+          format!("Blob URL not found: \"{specifier}\"."),
+        )
+      })?;
 
     let content_type = blob.media_type.clone();
     let bytes = blob.read_all().await?;
@@ -610,7 +607,7 @@ async fn fetch_once<'a>(
   http_client: &HttpClient,
   args: FetchOnceArgs<'a>,
 ) -> Result<FetchOnceResult, AnyError> {
-  let mut request = http_client.get_no_redirect(args.url.clone());
+  let mut request = http_client.get_no_redirect(args.url.clone())?;
 
   if let Some(etag) = args.maybe_etag {
     let if_none_match_val = HeaderValue::from_str(&etag)?;
@@ -711,15 +708,15 @@ mod tests {
   fn setup_with_blob_store(
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<TempDir>,
-  ) -> (FileFetcher, TempDir, BlobStore) {
+  ) -> (FileFetcher, TempDir, Arc<BlobStore>) {
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("deps");
-    let blob_store = BlobStore::default();
+    let blob_store: Arc<BlobStore> = Default::default();
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
       cache_setting,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       blob_store.clone(),
       None,
     );
@@ -1156,8 +1153,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::ReloadAll,
       true,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let result = file_fetcher
@@ -1181,8 +1178,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let specifier =
@@ -1206,8 +1203,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let result = file_fetcher_02
@@ -1347,8 +1344,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let specifier =
@@ -1375,8 +1372,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let result = file_fetcher_02
@@ -1474,8 +1471,8 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       false,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let specifier =
@@ -1499,16 +1496,16 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Only,
       true,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let file_fetcher_02 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
-      BlobStore::default(),
+      Arc::new(HttpClient::new(None, None)),
+      Default::default(),
       None,
     );
     let specifier =
@@ -1931,7 +1928,7 @@ mod tests {
   async fn test_fetch_with_default_certificate_store() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
-    let url = Url::parse("https://deno.land").unwrap();
+    let url = Url::parse("https://deno.land/x").unwrap();
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
@@ -1970,15 +1967,24 @@ mod tests {
   #[ignore] // https://github.com/denoland/deno/issues/12561
   async fn test_fetch_with_empty_certificate_store() {
     use deno_runtime::deno_tls::rustls::RootCertStore;
+    use deno_runtime::deno_tls::RootCertStoreProvider;
+
+    struct ValueRootCertStoreProvider(RootCertStore);
+
+    impl RootCertStoreProvider for ValueRootCertStoreProvider {
+      fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+        Ok(&self.0)
+      }
+    }
 
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
     let url = Url::parse("https://deno.land").unwrap();
     let client = HttpClient::new(
-      Some(RootCertStore::empty()), // no certs loaded at all
+      // no certs loaded at all
+      Some(Arc::new(ValueRootCertStoreProvider(RootCertStore::empty()))),
       None,
-    )
-    .unwrap();
+    );
 
     let result = fetch_once(
       &client,

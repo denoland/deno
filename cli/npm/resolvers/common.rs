@@ -47,7 +47,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -90,7 +90,7 @@ pub async fn cache_packages(
 }
 
 pub fn ensure_registry_read_permission(
-  permissions: &mut dyn NodePermissions,
+  permissions: &dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
 ) -> Result<(), AnyError> {
