@@ -861,9 +861,11 @@ Module.prototype.load = function (filename) {
     throw Error("Module already loaded");
   }
 
-  this.filename = filename;
+  // Canonicalize the path so it's not pointing to the symlinked directory
+  // in `node_modules` directory of the referrer.
+  this.filename = ops.op_require_real_path(filename);
   this.paths = Module._nodeModulePaths(
-    pathDirname(filename),
+    pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
   // allow .mjs to be overriden
