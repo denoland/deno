@@ -16,13 +16,8 @@ use std::time::UNIX_EPOCH;
 use deno_io::StdFileResource;
 use fs3::FileExt;
 
-use crate::interface::FileResource;
 use crate::interface::FsDirEntry;
-use crate::interface::FsError;
 use crate::interface::FsFileType;
-use crate::interface::FsResult;
-use crate::interface::FsStat;
-use crate::File;
 use crate::FileSystem;
 use crate::OpenOptions;
 

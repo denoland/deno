@@ -16,6 +16,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::TaskQueue;
+use fs::FileResource;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -41,6 +42,8 @@ use std::os::windows::io::FromRawHandle;
 use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
+
+pub mod fs;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd
@@ -630,32 +633,6 @@ impl StdFileResource {
       .with_inner_blocking_task(move |inner| inner.with_file(f))
       .await
   }
-
-  pub fn clone_file(
-    state: &mut OpState,
-    rid: ResourceId,
-  ) -> Result<StdFile, AnyError> {
-    Self::with_file(state, rid, move |std_file| {
-      std_file.try_clone().map_err(AnyError::from)
-    })
-  }
-
-  pub fn as_stdio(
-    state: &mut OpState,
-    rid: u32,
-  ) -> Result<std::process::Stdio, AnyError> {
-    Self::with_resource(state, rid, |resource| {
-      resource
-        .with_inner_and_metadata(|inner, _| match inner.kind {
-          StdFileResourceKind::File => {
-            let file = inner.file.try_clone()?;
-            Ok(file.into())
-          }
-          _ => Ok(std::process::Stdio::inherit()),
-        })
-        .ok_or_else(resource_unavailable)?
-    })
-  }
 }
 
 impl Resource for StdFileResource {
@@ -727,12 +704,7 @@ pub fn op_print(
   is_err: bool,
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };
-  StdFileResource::with_resource(state, rid, move |resource| {
-    resource
-      .with_inner_and_metadata(|inner, _| {
-        inner.write_all_and_maybe_flush(msg.as_bytes())?;
-        Ok(())
-      })
-      .ok_or_else(resource_unavailable)?
+  FileResource::with_sync_file(state, rid, move |file| {
+    Ok(file.write_all_sync(msg.as_bytes())?)
   })
 }

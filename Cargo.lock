@@ -1057,6 +1057,7 @@ dependencies = [
 name = "deno_io"
 version = "0.11.0"
 dependencies = [
+ "async-trait",
  "deno_core",
  "nix",
  "once_cell",

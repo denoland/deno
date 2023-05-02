@@ -5,6 +5,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_io::fs::FsResult;
+use deno_io::fs::FsStat;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -52,27 +54,6 @@ impl OpenOptions {
   }
 }
 
-pub struct FsStat {
-  pub is_file: bool,
-  pub is_directory: bool,
-  pub is_symlink: bool,
-  pub size: u64,
-
-  pub mtime: Option<u64>,
-  pub atime: Option<u64>,
-  pub birthtime: Option<u64>,
-
-  pub dev: u64,
-  pub ino: u64,
-  pub mode: u32,
-  pub nlink: u64,
-  pub uid: u32,
-  pub gid: u32,
-  pub rdev: u64,
-  pub blksize: u64,
-  pub blocks: u64,
-}
-
 #[derive(Deserialize)]
 pub enum FsFileType {
   #[serde(rename = "file")]
@@ -89,69 +70,6 @@ pub struct FsDirEntry {
   pub is_directory: bool,
   pub is_symlink: bool,
 }
-
-pub enum FsError {
-  Io(io::Error),
-  FileBusy,
-  NotSupported,
-}
-
-impl From<io::Error> for FsError {
-  fn from(err: io::Error) -> Self {
-    Self::Io(err)
-  }
-}
-
-pub type FsResult<T> = Result<T, FsError>;
-
-#[async_trait::async_trait(?Send)]
-pub trait File {
-  fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()>;
-  async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()>;
-
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>>;
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>>;
-
-  fn chmod_sync(self: Rc<Self>, pathmode: u32) -> FsResult<()>;
-  async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()>;
-
-  fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64>;
-  async fn seek_async(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64>;
-
-  fn datasync_sync(self: Rc<Self>) -> FsResult<()>;
-  async fn datasync_async(self: Rc<Self>) -> FsResult<()>;
-
-  fn sync_sync(self: Rc<Self>) -> FsResult<()>;
-  async fn sync_async(self: Rc<Self>) -> FsResult<()>;
-
-  fn stat_sync(self: Rc<Self>) -> FsResult<FsStat>;
-  async fn stat_async(self: Rc<Self>) -> FsResult<FsStat>;
-
-  fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
-  async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
-  fn unlock_sync(self: Rc<Self>) -> FsResult<()>;
-  async fn unlock_async(self: Rc<Self>) -> FsResult<()>;
-
-  fn truncate_sync(self: Rc<Self>, len: u64) -> FsResult<()>;
-  async fn truncate_async(self: Rc<Self>, len: u64) -> FsResult<()>;
-
-  fn utime_sync(
-    self: Rc<Self>,
-    atime_secs: i64,
-    atime_nanos: u32,
-    mtime_secs: i64,
-    mtime_nanos: u32,
-  ) -> FsResult<()>;
-  async fn utime_async(
-    self: Rc<Self>,
-    atime_secs: i64,
-    atime_nanos: u32,
-    mtime_secs: i64,
-    mtime_nanos: u32,
-  ) -> FsResult<()>;
-}
-
-pub trait FileResource: File + deno_core::Resource {}
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: Send + Sync {
