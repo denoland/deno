@@ -656,7 +656,7 @@ impl Resource for StdFileResource {
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
     use std::os::unix::io::AsRawFd;
     self
-      .with_inner_and_metadata(move |std_file, _| {
+      .with_inner(move |std_file| {
         Ok::<_, ()>(std_file.with_file(|f| f.as_raw_fd()))
       })?
       .ok()

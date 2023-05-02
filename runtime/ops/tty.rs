@@ -10,27 +10,24 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::rc::Rc;
 
+#[cfg(unix)]
 #[derive(Default, Clone)]
-struct TtyMetadata {
-  #[cfg(unix)]
-  pub mode: Option<nix::sys::termios::Termios>,
-}
+struct TtyModeStore(
+  Rc<RefCell<HashMap<ResourceId, nix::sys::termios::Termios>>>,
+);
 
-#[derive(Default, Clone)]
-struct TtyMetadataStore(Rc<RefCell<HashMap<ResourceId, TtyMetadata>>>);
-
-impl TtyMetadataStore {
-  pub fn get(&self, id: ResourceId) -> TtyMetadata {
-    self
-      .0
-      .borrow()
-      .get(&id)
-      .map(ToOwned::to_owned)
-      .unwrap_or_default()
+#[cfg(unix)]
+impl TtyModeStore {
+  pub fn get(&self, id: ResourceId) -> Option<nix::sys::termios::Termios> {
+    self.0.borrow().get(&id).map(ToOwned::to_owned)
   }
 
-  pub fn set(&self, id: ResourceId, metadata: TtyMetadata) {
-    self.0.borrow_mut().insert(id, metadata);
+  pub fn take(&self, id: ResourceId) -> Option<nix::sys::termios::Termios> {
+    self.0.borrow_mut().remove(&id)
+  }
+
+  pub fn set(&self, id: ResourceId, mode: nix::sys::termios::Termios) {
+    self.0.borrow_mut().insert(id, mode);
   }
 }
 
@@ -64,7 +61,8 @@ deno_core::extension!(
   deno_tty,
   ops = [op_stdin_set_raw, op_isatty, op_console_size],
   state = |state| {
-    state.put(TtyMetadataStore::default());
+    #[cfg(unix)]
+    state.put(TtyModeStore::default());
   },
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.force_op_registration();
@@ -149,22 +147,21 @@ fn op_stdin_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let store = state.borrow::<TtyMetadataStore>().clone();
-    let previous_metadata = store.get(rid);
+    let tty_mode_store = state.borrow::<TtyModeStore>().clone();
+    let previous_mode = tty_mode_store.get(rid);
 
     StdFileResource::with_file(state, rid, move |std_file| {
       let raw_fd = std_file.as_raw_fd();
 
       if is_raw {
-        let mut raw = {
-          let mut meta_data = meta_data.lock();
-          let maybe_tty_mode = &mut meta_data.tty.mode;
-          if maybe_tty_mode.is_none() {
+        let mut raw = match previous_mode {
+          Some(mode) => mode,
+          None => {
             // Save original mode.
             let original_mode = termios::tcgetattr(raw_fd)?;
-            maybe_tty_mode.replace(original_mode);
+            tty_mode_store.set(rid, original_mode.clone());
+            original_mode
           }
-          maybe_tty_mode.clone().unwrap()
         };
 
         raw.input_flags &= !(termios::InputFlags::BRKINT
@@ -186,7 +183,7 @@ fn op_stdin_set_raw(
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
       } else {
         // Try restore saved mode.
-        if let Some(mode) = meta_data.lock().tty.mode.take() {
+        if let Some(mode) = tty_mode_store.take(rid) {
           termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
         }
       }
