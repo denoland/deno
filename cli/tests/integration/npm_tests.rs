@@ -156,6 +156,16 @@ itest!(mixed_case_package_name_local_dir {
   temp_cwd: true,
 });
 
+itest!(local_dir_resolves_symlinks {
+  args: "run -A index.js",
+  output: "npm/local_dir_resolves_symlinks/index.out",
+  exit_code: 0,
+  envs: env_vars_for_npm_tests(),
+  cwd: Some("npm/local_dir_resolves_symlinks/"),
+  copy_temp_dir: Some("npm/local_dir_resolves_symlinks/"),
+  http_server: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
@@ -406,7 +416,7 @@ fn cached_only_after_first_run() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -451,7 +461,7 @@ fn cached_only_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert!(output.status.success());
   assert!(stderr.is_empty());
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
 }
 
 #[test]
@@ -476,7 +486,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -496,7 +506,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -516,7 +526,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -536,7 +546,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -556,7 +566,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert!(stderr.is_empty());
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 }
 
@@ -605,7 +615,7 @@ fn no_npm_after_first_run() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)

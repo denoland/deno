@@ -6,10 +6,12 @@ use crate::args::TestOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
+use crate::factory::CliFactory;
 use crate::file_fetcher::File;
+use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::proc_state::ProcState;
 use crate::util::checksum;
 use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
@@ -49,7 +51,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -1195,13 +1196,13 @@ fn extract_files_from_fenced_blocks(
 }
 
 async fn fetch_inline_files(
-  ps: &ProcState,
+  file_fetcher: &FileFetcher,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
     let fetch_permissions = PermissionsContainer::allow_all();
-    let file = ps.file_fetcher.fetch(&specifier, fetch_permissions).await?;
+    let file = file_fetcher.fetch(&specifier, fetch_permissions).await?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
@@ -1225,12 +1226,14 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
-  ps: &ProcState,
+  cli_options: &CliOptions,
+  file_fetcher: &FileFetcher,
+  module_load_preparer: &ModuleLoadPreparer,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
-  let lib = ps.options.ts_type_lib_window();
+  let lib = cli_options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
-    ps,
+    file_fetcher,
     specifiers
       .iter()
       .filter_map(|(specifier, mode)| {
@@ -1251,10 +1254,10 @@ pub async fn check_specifiers(
       .collect();
 
     for file in inline_files {
-      ps.file_fetcher.insert_cached(file);
+      file_fetcher.insert_cached(file);
     }
 
-    ps.module_load_preparer
+    module_load_preparer
       .prepare_module_load(
         specifiers,
         false,
@@ -1275,7 +1278,7 @@ pub async fn check_specifiers(
     })
     .collect();
 
-  ps.module_load_preparer
+  module_load_preparer
     .prepare_module_load(
       module_specifiers,
       false,
@@ -1596,15 +1599,14 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
-  ps: &ProcState,
+  file_fetcher: &FileFetcher,
   files: &FilesConfig,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
 
   for (specifier, mode) in &mut specifiers_with_mode {
-    let file = ps
-      .file_fetcher
+    let file = file_fetcher
       .fetch(specifier, PermissionsContainer::allow_all())
       .await?;
 
@@ -1622,16 +1624,19 @@ pub async fn run_tests(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let file_fetcher = factory.file_fetcher()?;
+  let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
-  let log_level = ps.options.log_level();
+    Permissions::from_options(&cli_options.permissions_options())?;
+  let log_level = cli_options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    &ps,
+    file_fetcher,
     &test_options.files,
     &test_options.doc,
   )
@@ -1641,13 +1646,20 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  check_specifiers(&ps, specifiers_with_mode.clone()).await?;
+  check_specifiers(
+    cli_options,
+    file_fetcher,
+    module_load_preparer,
+    specifiers_with_mode.clone(),
+  )
+  .await?;
 
   if test_options.no_run {
     return Ok(());
   }
 
-  let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
 
   test_specifiers(
     worker_factory,
@@ -1679,23 +1691,27 @@ pub async fn run_tests_with_watch(
   cli_options: CliOptions,
   test_options: TestOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let module_graph_builder = factory.module_graph_builder().await?;
+  let module_load_preparer = factory.module_load_preparer().await?;
+  let file_fetcher = factory.file_fetcher()?;
+  let file_watcher = factory.file_watcher()?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
-  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
-  let log_level = ps.options.log_level();
-
-  let ps = RefCell::new(ps);
+    Permissions::from_options(&cli_options.permissions_options())?;
+  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
+  let log_level = cli_options.log_level();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = test_options.files.include.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let test_options = &test_options;
-    let ps = ps.borrow().clone();
+    let cli_options = cli_options.clone();
+    let module_graph_builder = module_graph_builder.clone();
 
     async move {
       let test_modules = if test_options.doc {
@@ -1710,11 +1726,10 @@ pub async fn run_tests_with_watch(
       } else {
         test_modules.clone()
       };
-      let graph = ps
-        .module_graph_builder
+      let graph = module_graph_builder
         .create_graph(test_modules.clone())
         .await?;
-      graph_valid_with_cli_options(&graph, &test_modules, &ps.options)?;
+      graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1804,15 +1819,21 @@ pub async fn run_tests_with_watch(
     })
   };
 
+  let create_cli_main_worker_factory =
+    factory.create_cli_main_worker_factory_func().await?;
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
     let test_options = &test_options;
-    ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow().clone();
+    file_watcher.reset();
+    let cli_options = cli_options.clone();
+    let file_fetcher = file_fetcher.clone();
+    let module_load_preparer = module_load_preparer.clone();
+    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
 
     async move {
+      let worker_factory = Arc::new(create_cli_main_worker_factory());
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        &ps,
+        &file_fetcher,
         &test_options.files,
         &test_options.doc,
       )
@@ -1821,13 +1842,17 @@ pub async fn run_tests_with_watch(
       .filter(|(specifier, _)| modules_to_reload.contains(specifier))
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(&ps, specifiers_with_mode.clone()).await?;
+      check_specifiers(
+        &cli_options,
+        &file_fetcher,
+        &module_load_preparer,
+        specifiers_with_mode.clone(),
+      )
+      .await?;
 
       if test_options.no_run {
         return Ok(());
       }
-
-      let worker_factory = Arc::new(ps.into_cli_main_worker_factory());
 
       test_specifiers(
         worker_factory,
@@ -1869,7 +1894,7 @@ pub async fn run_tests_with_watch(
     }
   });
 
-  let clear_screen = !ps.borrow().options.no_clear_screen();
+  let clear_screen = !cli_options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,

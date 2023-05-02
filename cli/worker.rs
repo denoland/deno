@@ -13,13 +13,15 @@ use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::ModuleId;
+use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
@@ -35,8 +37,6 @@ use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::StorageKeyResolver;
 use crate::errors;
-use crate::graph_util::ModuleGraphContainer;
-use crate::module_loader::CliModuleLoaderFactory;
 use crate::npm::CliNpmResolver;
 use crate::ops;
 use crate::tools;
@@ -44,6 +44,29 @@ use crate::tools::coverage::CoverageCollector;
 use crate::util::checksum;
 use crate::version;
 
+pub trait ModuleLoaderFactory: Send + Sync {
+  fn create_for_main(
+    &self,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> Rc<dyn ModuleLoader>;
+
+  fn create_for_worker(
+    &self,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
+  ) -> Rc<dyn ModuleLoader>;
+
+  fn create_source_map_getter(&self) -> Option<Box<dyn SourceMapGetter>>;
+}
+
+// todo(dsherret): this is temporary and we should remove this
+// once we no longer conditionally initialize the node runtime
+pub trait HasNodeSpecifierChecker: Send + Sync {
+  fn has_node_specifier(&self) -> bool;
+}
+
+#[derive(Clone)]
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub debug: bool,
@@ -56,26 +79,34 @@ pub struct CliMainWorkerOptions {
   pub is_npm_main: bool,
   pub location: Option<Url>,
   pub maybe_binary_npm_command_name: Option<String>,
-  pub origin_data_folder_path: PathBuf,
+  pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
 }
 
 struct SharedWorkerState {
-  pub options: CliMainWorkerOptions,
-  pub storage_key_resolver: StorageKeyResolver,
-  pub npm_resolver: Arc<CliNpmResolver>,
-  pub node_resolver: Arc<NodeResolver>,
-  pub graph_container: Arc<ModuleGraphContainer>,
-  pub blob_store: BlobStore,
-  pub broadcast_channel: InMemoryBroadcastChannel,
-  pub shared_array_buffer_store: SharedArrayBufferStore,
-  pub compiled_wasm_module_store: CompiledWasmModuleStore,
-  pub module_loader_factory: CliModuleLoaderFactory,
-  pub root_cert_store: RootCertStore,
-  pub node_fs: Arc<dyn deno_node::NodeFs>,
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  options: CliMainWorkerOptions,
+  storage_key_resolver: StorageKeyResolver,
+  npm_resolver: Arc<CliNpmResolver>,
+  node_resolver: Arc<NodeResolver>,
+  has_node_specifier_checker: Box<dyn HasNodeSpecifierChecker>,
+  blob_store: BlobStore,
+  broadcast_channel: InMemoryBroadcastChannel,
+  shared_array_buffer_store: SharedArrayBufferStore,
+  compiled_wasm_module_store: CompiledWasmModuleStore,
+  module_loader_factory: Box<dyn ModuleLoaderFactory>,
+  root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
+  node_fs: Arc<dyn deno_node::NodeFs>,
+  maybe_inspector_server: Option<Arc<InspectorServer>>,
+}
+
+impl SharedWorkerState {
+  pub fn should_initialize_node_runtime(&self) -> bool {
+    self.npm_resolver.has_packages()
+      || self.has_node_specifier_checker.has_node_specifier()
+      || self.options.is_npm_main
+  }
 }
 
 pub struct CliMainWorker {
@@ -227,9 +258,7 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.shared.npm_resolver.has_packages()
-      || self.shared.graph_container.graph().has_node_specifier
-    {
+    if self.shared.should_initialize_node_runtime() {
       self.initialize_main_module_for_node()?;
     }
     self.worker.evaluate_module(id).await
@@ -275,10 +304,10 @@ impl CliMainWorkerFactory {
     storage_key_resolver: StorageKeyResolver,
     npm_resolver: Arc<CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
-    graph_container: Arc<ModuleGraphContainer>,
+    has_node_specifier_checker: Box<dyn HasNodeSpecifierChecker>,
     blob_store: BlobStore,
-    module_loader_factory: CliModuleLoaderFactory,
-    root_cert_store: RootCertStore,
+    module_loader_factory: Box<dyn ModuleLoaderFactory>,
+    root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     options: CliMainWorkerOptions,
@@ -289,13 +318,13 @@ impl CliMainWorkerFactory {
         storage_key_resolver,
         npm_resolver,
         node_resolver,
-        graph_container,
+        has_node_specifier_checker,
         blob_store,
         broadcast_channel: Default::default(),
         shared_array_buffer_store: Default::default(),
         compiled_wasm_module_store: Default::default(),
         module_loader_factory,
-        root_cert_store,
+        root_cert_store_provider,
         node_fs,
         maybe_inspector_server,
       }),
@@ -345,11 +374,11 @@ impl CliMainWorkerFactory {
       (main_module, false)
     };
 
-    let module_loader =
-      Rc::new(shared.module_loader_factory.create_for_main(
-        PermissionsContainer::allow_all(),
-        permissions.clone(),
-      ));
+    let module_loader = shared
+      .module_loader_factory
+      .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
+    let maybe_source_map_getter =
+      shared.module_loader_factory.create_source_map_getter();
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
@@ -366,6 +395,8 @@ impl CliMainWorkerFactory {
       shared
         .options
         .origin_data_folder_path
+        .as_ref()
+        .unwrap() // must be set if storage key resolver returns a value
         .join(checksum::gen(&[key.as_bytes()]))
     });
     let cache_storage_dir = maybe_storage_key.map(|key| {
@@ -403,9 +434,9 @@ impl CliMainWorkerFactory {
         .options
         .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store: Some(shared.root_cert_store.clone()),
+      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
-      source_map_getter: Some(Box::new(module_loader.clone())),
+      source_map_getter: maybe_source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
       web_worker_preload_module_cb,
@@ -461,7 +492,7 @@ fn create_web_worker_pre_execute_module_callback(
     let shared = shared.clone();
     let fut = async move {
       // this will be up to date after pre-load
-      if shared.npm_resolver.has_packages() {
+      if shared.should_initialize_node_runtime() {
         deno_node::initialize_runtime(
           &mut worker.js_runtime,
           shared.options.has_node_modules_dir,
@@ -482,11 +513,12 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let module_loader =
-      Rc::new(shared.module_loader_factory.create_for_worker(
-        args.parent_permissions.clone(),
-        args.permissions.clone(),
-      ));
+    let module_loader = shared.module_loader_factory.create_for_worker(
+      args.parent_permissions.clone(),
+      args.permissions.clone(),
+    );
+    let maybe_source_map_getter =
+      shared.module_loader_factory.create_source_map_getter();
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
     let preload_module_cb = create_web_worker_preload_module_callback(&shared);
@@ -530,13 +562,13 @@ fn create_web_worker_callback(
         .options
         .unsafely_ignore_certificate_errors
         .clone(),
-      root_cert_store: Some(shared.root_cert_store.clone()),
+      root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
       create_web_worker_cb,
       preload_module_cb,
       pre_execute_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      source_map_getter: Some(Box::new(module_loader.clone())),
+      source_map_getter: maybe_source_map_getter,
       module_loader,
       node_fs: Some(shared.node_fs.clone()),
       npm_resolver: Some(shared.npm_resolver.clone()),
@@ -584,7 +616,7 @@ mod tests {
       extensions: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
       unsafely_ignore_certificate_errors: None,
-      root_cert_store: None,
+      root_cert_store_provider: None,
       seed: None,
       format_js_error_fn: None,
       source_map_getter: None,

@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+const { op_http_write } = Deno.core.generateAsyncOpHandler("op_http_write");
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
@@ -54,8 +58,9 @@ const {
   SetPrototypeDelete,
   StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
-  StringPrototypeToLowerCase,
   StringPrototypeSplit,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -320,7 +325,7 @@ function createRespondWith(
               break;
             }
             try {
-              await core.opAsync2("op_http_write", streamRid, value);
+              await op_http_write(streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -497,17 +502,20 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
       StringPrototypeToLowerCase(checkText),
       "",
     ),
-    (c) => [c.charCodeAt(0), c.toUpperCase().charCodeAt(0)],
+    (c) => [
+      StringPrototypeCharCodeAt(c, 0),
+      StringPrototypeCharCodeAt(StringPrototypeToUpperCase(c), 0),
+    ],
   );
   /** @type {number} */
   let i;
   /** @type {number} */
   let char;
 
-  /** @param value {string} */
+  /** @param {string} value */
   return function (value) {
     for (i = 0; i < value.length; i++) {
-      char = value.charCodeAt(i);
+      char = StringPrototypeCharCodeAt(value, i);
       skipWhitespace(value);
 
       if (hasWord(value)) {

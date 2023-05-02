@@ -448,16 +448,16 @@ function extractBody(object) {
   return { body, contentType };
 }
 
-webidl.converters["BodyInit_DOMString"] = (V, opts) => {
+webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
-    return webidl.converters["ReadableStream"](V, opts);
+    return webidl.converters["ReadableStream"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
-    return webidl.converters["Blob"](V, opts);
+    return webidl.converters["Blob"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, V)) {
-    return webidl.converters["FormData"](V, opts);
+    return webidl.converters["FormData"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, V)) {
-    return webidl.converters["URLSearchParams"](V, opts);
+    return webidl.converters["URLSearchParams"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
     if (
@@ -465,16 +465,16 @@ webidl.converters["BodyInit_DOMString"] = (V, opts) => {
       // deno-lint-ignore prefer-primordials
       ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
     ) {
-      return webidl.converters["ArrayBuffer"](V, opts);
+      return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
-      return webidl.converters["ArrayBufferView"](V, opts);
+      return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
   }
   // BodyInit conversion is passed to extractBody(), which calls core.encode().
   // core.encode() will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
   // Therefore we can convert to DOMString instead of USVString and avoid a costly redundant conversion.
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
