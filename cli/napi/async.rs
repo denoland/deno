@@ -40,11 +40,8 @@ fn napi_cancel_async_work(
 /// Frees a previously allocated work object.
 #[napi_sym::napi_sym]
 fn napi_delete_async_work(_env: &mut Env, work: napi_async_work) -> Result {
-  eprintln!("before from_raw");
   let work = Box::from_raw(work as *mut AsyncWork);
-  eprintln!("after from_raw");
   drop(work);
-  eprintln!("after drop");
 
   Ok(())
 }
@@ -55,9 +52,7 @@ fn napi_queue_async_work(env_ptr: *mut Env, work: napi_async_work) -> Result {
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
 
   let fut = Box::new(move || {
-    eprintln!("before execute {:?}", work.data);
     (work.execute)(env_ptr as napi_env, work.data);
-    eprintln!("after execute {:?}", work.data);
     // Note: Must be called from the loop thread.
     (work.complete)(env_ptr as napi_env, napi_ok, work.data);
   });
