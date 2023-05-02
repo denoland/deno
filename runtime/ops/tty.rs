@@ -18,8 +18,6 @@ use nix::sys::termios;
 use std::cell::RefCell;
 #[cfg(unix)]
 use std::collections::HashMap;
-#[cfg(unix)]
-use std::rc::Rc;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -154,8 +152,6 @@ fn op_stdin_set_raw(
   }
   #[cfg(unix)]
   {
-    use std::os::unix::io::AsRawFd;
-
     let tty_mode_store = state.borrow::<TtyModeStore>().clone();
     let previous_mode = tty_mode_store.get(rid);
 

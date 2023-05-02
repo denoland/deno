@@ -563,7 +563,7 @@ impl crate::fs::File for StdFileResourceInner {
     {
       use std::os::unix::prelude::PermissionsExt;
       self
-        .with_inner_blocking_task(|file| {
+        .with_inner_blocking_task(move |file| {
           Ok(file.set_permissions(std::fs::Permissions::from_mode(_mode))?)
         })
         .await
