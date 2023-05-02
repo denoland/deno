@@ -4047,6 +4047,7 @@ declare namespace Deno {
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    *
+   * @tags allow-run
    * @category Sub Process
    */
   export class Command {
