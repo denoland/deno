@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_io::fs::File;
-use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_io::StdFileResourceInner;
@@ -19,6 +18,9 @@ use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FileSystem;
 use crate::OpenOptions;
+
+#[cfg(not(unix))]
+use deno_io::fs::FsError;
 
 #[derive(Clone)]
 pub struct RealFs;
