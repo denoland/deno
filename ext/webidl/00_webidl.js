@@ -47,7 +47,7 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectIs,
   PromisePrototypeThen,
@@ -920,7 +920,7 @@ function createRecordConverter(keyConverter, valueConverter) {
     // Fast path for common case (not a Proxy)
     if (!core.isProxy(V)) {
       for (const key in V) {
-        if (!ObjectPrototypeHasOwnProperty(V, key)) {
+        if (!ObjectHasOwn(V, key)) {
           continue;
         }
         const typedKey = keyConverter(key, prefix, context, opts);
@@ -1133,7 +1133,7 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
 function configurePrototype(prototype) {
   const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
   for (const key in descriptors) {
-    if (!ObjectPrototypeHasOwnProperty(descriptors, key)) {
+    if (!ObjectHasOwn(descriptors, key)) {
       continue;
     }
     if (key === "constructor") continue;

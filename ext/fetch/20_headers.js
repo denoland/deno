@@ -28,8 +28,8 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
   ArrayPrototypeFilter,
-  ObjectPrototypeHasOwnProperty,
   ObjectEntries,
+  ObjectHasOwn,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeRegExp,
@@ -79,7 +79,7 @@ function fillHeaders(headers, object) {
     }
   } else {
     for (const key in object) {
-      if (!ObjectPrototypeHasOwnProperty(object, key)) {
+      if (!ObjectHasOwn(object, key)) {
         continue;
       }
       appendHeader(headers, key, object[key]);
