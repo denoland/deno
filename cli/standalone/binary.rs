@@ -59,29 +59,29 @@ pub struct Metadata {
   pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
 }
 
-pub const NPM_VFS: Lazy<FileBackedVfs> = Lazy::new(|| {
+pub fn load_npm_vfs() -> Result<FileBackedVfs, AnyError> {
   let file_path = current_exe().unwrap();
   let name = file_path.file_name().unwrap().to_string_lossy();
   let root = std::env::temp_dir()
     .join(format!("deno-compile-{}", name))
     .join("node_modules");
-  let mut file = std::fs::File::open(file_path).unwrap();
-  let _trailer_pos = file.seek(SeekFrom::End(-40)).unwrap();
+  let mut file = std::fs::File::open(file_path)?;
+  let _trailer_pos = file.seek(SeekFrom::End(-40))?;
   let mut trailer = [0; 40];
-  file.read_exact(&mut trailer).unwrap();
-  let trailer = Trailer::parse(&trailer).unwrap().unwrap();
-  file.seek(SeekFrom::Start(trailer.npm_vfs_pos)).unwrap();
+  file.read_exact(&mut trailer)?;
+  let trailer = Trailer::parse(&trailer)?.unwrap();
+  file.seek(SeekFrom::Start(trailer.npm_vfs_pos))?;
   let mut vfs_data = vec![0; trailer.npm_vfs_len() as usize];
-  file.read_exact(&mut vfs_data).unwrap();
-  let dir: VirtualDirectory = serde_json::from_slice(&vfs_data).unwrap();
+  file.read_exact(&mut vfs_data)?;
+  let dir: VirtualDirectory = serde_json::from_slice(&vfs_data)?;
 
   let fs_root = VfsRoot {
     dir,
     root,
     start_file_offset: trailer.npm_files_pos,
   };
-  FileBackedVfs::new(file, fs_root)
-});
+  Ok(FileBackedVfs::new(file, fs_root))
+}
 
 fn write_binary_bytes(
   writer: &mut impl Write,

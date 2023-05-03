@@ -14,10 +14,16 @@ use deno_runtime::deno_node::NodeFs;
 use deno_runtime::deno_node::NodeFsMetadata;
 use deno_runtime::deno_node::RealFs as NodeRealFs;
 
-use crate::standalone::binary::NPM_VFS;
+use super::virtual_fs::FileBackedVfs;
 
-#[derive(Debug, Clone)]
-pub struct DenoCompileFileSystem;
+#[derive(Debug)]
+pub struct DenoCompileFileSystem(FileBackedVfs);
+
+impl DenoCompileFileSystem {
+  pub fn new(vfs: FileBackedVfs) -> Self {
+    Self(vfs)
+  }
+}
 
 #[async_trait::async_trait(?Send)]
 impl deno_fs::FileSystem for DenoCompileFileSystem {
@@ -222,8 +228,8 @@ impl NodeFs for DenoCompileFileSystem {
   }
 
   fn metadata(&self, path: &Path) -> std::io::Result<NodeFsMetadata> {
-    if NPM_VFS.is_path_within(path) {
-      NPM_VFS.metadata(path).map(|metadata| NodeFsMetadata {
+    if self.0.is_path_within(path) {
+      self.0.metadata(path).map(|metadata| NodeFsMetadata {
         is_file: metadata.is_file,
         is_dir: metadata.is_directory,
       })
@@ -245,16 +251,16 @@ impl NodeFs for DenoCompileFileSystem {
   }
 
   fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
-    if NPM_VFS.is_path_within(path) {
-      NPM_VFS.read_to_string(path)
+    if self.0.is_path_within(path) {
+      self.0.read_to_string(path)
     } else {
       NodeRealFs.read_to_string(path)
     }
   }
 
   fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
-    if NPM_VFS.is_path_within(path) {
-      NPM_VFS.canonicalize(path)
+    if self.0.is_path_within(path) {
+      self.0.canonicalize(path)
     } else {
       NodeRealFs.canonicalize(path)
     }

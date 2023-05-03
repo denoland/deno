@@ -292,6 +292,7 @@ impl VirtualSymlink {
   }
 }
 
+#[derive(Debug)]
 pub struct VfsRoot {
   pub dir: VirtualDirectory,
   pub root: PathBuf,
@@ -406,6 +407,7 @@ impl VfsRoot {
   }
 }
 
+#[derive(Debug)]
 pub struct FileBackedVfs {
   file: Mutex<File>,
   fs_root: VfsRoot,

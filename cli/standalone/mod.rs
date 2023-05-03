@@ -58,6 +58,7 @@ pub use binary::extract_standalone;
 pub use binary::is_standalone_binary;
 pub use binary::DenoCompileBinaryWriter;
 
+use self::binary::load_npm_vfs;
 use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
@@ -268,16 +269,24 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let node_fs = Arc::new(DenoCompileFileSystem);
-  let npm_resolution =
-    Arc::new(NpmResolution::from_serialized(npm_api.clone(), None, None));
+  let vfs = load_npm_vfs().context("Failed to load npm vfs.")?;
+  let node_fs = Arc::new(DenoCompileFileSystem::new(vfs));
+  let snapshot = match metadata.npm_snapshot {
+    Some(snapshot) => Some(snapshot.into_valid()?),
+    None => None,
+  };
+  let npm_resolution = Arc::new(NpmResolution::from_serialized(
+    npm_api.clone(),
+    snapshot,
+    None,
+  ));
   let npm_fs_resolver = create_npm_fs_resolver(
     node_fs.clone(),
     npm_cache,
     &progress_bar,
     npm_registry_url,
     npm_resolution.clone(),
-    None,
+    None, // todo: provide node_modules path here
   );
   let npm_resolver = Arc::new(CliNpmResolver::new(
     npm_resolution.clone(),
