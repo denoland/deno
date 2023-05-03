@@ -295,12 +295,11 @@ impl CliMainWorker {
   }
 }
 
-pub struct CliMainWorkerFactory<Fs: deno_runtime::deno_fs::FileSystem> {
+pub struct CliMainWorkerFactory {
   shared: Arc<SharedWorkerState>,
-  fs: Fs,
 }
 
-impl<Fs: deno_runtime::deno_fs::FileSystem> CliMainWorkerFactory<Fs> {
+impl CliMainWorkerFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     storage_key_resolver: StorageKeyResolver,
@@ -313,7 +312,6 @@ impl<Fs: deno_runtime::deno_fs::FileSystem> CliMainWorkerFactory<Fs> {
     node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     options: CliMainWorkerOptions,
-    fs: Fs,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -331,7 +329,6 @@ impl<Fs: deno_runtime::deno_fs::FileSystem> CliMainWorkerFactory<Fs> {
         node_fs,
         maybe_inspector_server,
       }),
-      fs,
     }
   }
 
@@ -466,7 +463,7 @@ impl<Fs: deno_runtime::deno_fs::FileSystem> CliMainWorkerFactory<Fs> {
     let worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
       permissions,
-      self.fs.clone(),
+      StdFs,
       options,
     );
 
