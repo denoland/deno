@@ -130,7 +130,7 @@ impl Default for ReadonlyNpmCache {
     // This only gets used when creating the tsc runtime and for testing, and so
     // it shouldn't ever actually access the DenoDir, so it doesn't support a
     // custom root.
-    Self::from_deno_dir(&DenoDir::new(None).unwrap())
+    Self::new(DenoDir::new(None).unwrap().npm_folder_path())
   }
 }
 
@@ -154,10 +154,6 @@ impl ReadonlyNpmCache {
       root_dir,
       root_dir_url,
     }
-  }
-
-  pub fn from_deno_dir(dir: &DenoDir) -> Self {
-    Self::new(dir.npm_folder_path())
   }
 
   pub fn root_dir_url(&self) -> &Url {
@@ -277,7 +273,7 @@ impl ReadonlyNpmCache {
     let name = parts.join("/");
     let (version, copy_index) =
       if let Some((version, copy_count)) = version_part.split_once('_') {
-        (version, copy_count.parse::<usize>().ok()?)
+        (version, copy_count.parse::<u8>().ok()?)
       } else {
         (version_part, 0)
       };
@@ -296,25 +292,25 @@ impl ReadonlyNpmCache {
 }
 
 /// Stores a single copy of npm packages in a cache.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
   /// ensures a package is only downloaded once per run
-  previously_reloaded_packages: Arc<Mutex<HashSet<NpmPackageNv>>>,
+  previously_reloaded_packages: Mutex<HashSet<NpmPackageNv>>,
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(
-    dir: &DenoDir,
+  pub fn new(
+    cache_dir_path: PathBuf,
     cache_setting: CacheSetting,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {
-      readonly: ReadonlyNpmCache::from_deno_dir(dir),
+      readonly: ReadonlyNpmCache::new(cache_dir_path),
       cache_setting,
       http_client,
       progress_bar,

@@ -3691,7 +3691,10 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
-  /** Options which can be used with {@linkcode Deno.run}.
+  /**
+   * @deprecated Use {@linkcode Deno.Command} instead.
+   *
+   * Options which can be used with {@linkcode Deno.run}.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -3749,7 +3752,10 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** The status resolved from the `.status()` method of a
+  /**
+   * @deprecated Use {@linkcode Deno.Command} instead.
+   *
+   * The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
    *
    * If `success` is `true`, then `code` will be `0`, but if `success` is
@@ -3769,6 +3775,8 @@ declare namespace Deno {
     };
 
   /**
+   * * @deprecated Use {@linkcode Deno.Command} instead.
+   *
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
    *
@@ -3925,7 +3933,10 @@ declare namespace Deno {
     handler: () => void,
   ): void;
 
-  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
+  /**
+   * @deprecated Use {@linkcode Deno.Command} instead.
+   *
+   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
@@ -3992,11 +4003,14 @@ declare namespace Deno {
    *     "console.log('Hello World')",
    *   ],
    *   stdin: "piped",
+   *   stdout: "piped",
    * });
    * const child = command.spawn();
    *
    * // open a file and pipe the subprocess output to it.
-   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   * child.stdout.pipeTo(
+   *   Deno.openSync("output", { write: true, create: true }).writable,
+   * );
    *
    * // manually close stdin
    * child.stdin.close();
@@ -4033,6 +4047,7 @@ declare namespace Deno {
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    *
+   * @tags allow-run
    * @category Sub Process
    */
   export class Command {

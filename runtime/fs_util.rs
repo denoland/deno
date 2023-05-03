@@ -10,16 +10,7 @@ use std::path::PathBuf;
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
-  }
-  Ok(canonicalized_path)
+  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
 }
 
 #[inline]
@@ -72,11 +63,11 @@ mod tests {
     }
   }
 
-  // TODO: Get a good expected value here for Windows.
-  #[cfg(not(windows))]
   #[test]
   fn resolve_from_cwd_absolute() {
-    let expected = Path::new("/a");
-    assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
+    let expected = Path::new("a");
+    let cwd = current_dir().unwrap();
+    let absolute_expected = cwd.join(expected);
+    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }
 }

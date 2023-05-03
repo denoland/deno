@@ -147,3 +147,8 @@ Deno.test(async function parentOnTextContext(t1) {
     });
   });
 });
+
+Deno.test("explicit undefined for boolean options", {
+  ignore: undefined,
+  only: undefined,
+}, () => {});

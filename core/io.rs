@@ -3,6 +3,7 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use bytes::Buf;
 use serde_v8::DetachedBuffer;
 use serde_v8::ZeroCopyBuf;
 
@@ -28,11 +29,11 @@ enum BufViewInner {
 }
 
 impl BufView {
-  fn from_inner(inner: BufViewInner) -> Self {
+  const fn from_inner(inner: BufViewInner) -> Self {
     Self { inner, cursor: 0 }
   }
 
-  pub fn empty() -> Self {
+  pub const fn empty() -> Self {
     Self::from_inner(BufViewInner::Empty)
   }
 
@@ -65,6 +66,20 @@ impl BufView {
     let old = self.cursor;
     self.cursor = 0;
     old
+  }
+}
+
+impl Buf for BufView {
+  fn remaining(&self) -> usize {
+    self.len()
+  }
+
+  fn chunk(&self) -> &[u8] {
+    self.deref()
+  }
+
+  fn advance(&mut self, cnt: usize) {
+    self.advance_cursor(cnt)
   }
 }
 
@@ -241,6 +256,20 @@ impl BufMutView {
         panic!("Cannot unwrap a Vec backed BufMutView into a DetachedBuffer");
       }
     }
+  }
+}
+
+impl Buf for BufMutView {
+  fn remaining(&self) -> usize {
+    self.len()
+  }
+
+  fn chunk(&self) -> &[u8] {
+    self.deref()
+  }
+
+  fn advance(&mut self, cnt: usize) {
+    self.advance_cursor(cnt)
   }
 }
 

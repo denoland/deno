@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 const internals = globalThis.__bootstrap.internals;
-import { core } from "ext:deno_node/_core.ts";
+const { core } = globalThis.__bootstrap;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
@@ -329,6 +329,17 @@ let execPath: string | null = null;
 class Process extends EventEmitter {
   constructor() {
     super();
+  }
+
+  /** https://nodejs.org/api/process.html#processrelease */
+  get release() {
+    return {
+      name: "node",
+      sourceUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
+      headersUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
+    };
   }
 
   /** https://nodejs.org/api/process.html#process_process_arch */

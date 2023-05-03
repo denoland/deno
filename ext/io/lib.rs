@@ -3,7 +3,6 @@
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -20,11 +19,11 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File as StdFile;
+use std::io;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
@@ -156,20 +155,6 @@ pub struct Stdio {
   pub stdin: StdioPipe,
   pub stdout: StdioPipe,
   pub stderr: StdioPipe,
-}
-
-#[cfg(unix)]
-use nix::sys::termios;
-
-#[derive(Default)]
-pub struct TtyMetadata {
-  #[cfg(unix)]
-  pub mode: Option<termios::Termios>,
-}
-
-#[derive(Default)]
-pub struct FileMetadata {
-  pub tty: TtyMetadata,
 }
 
 #[derive(Debug)]
@@ -404,26 +389,12 @@ impl Read for StdFileResourceInner {
   }
 }
 
-struct StdFileResourceCellValue {
-  inner: StdFileResourceInner,
-  meta_data: Arc<Mutex<FileMetadata>>,
-}
-
-impl StdFileResourceCellValue {
-  pub fn try_clone(&self) -> Result<Self, std::io::Error> {
-    Ok(Self {
-      inner: self.inner.try_clone()?,
-      meta_data: self.meta_data.clone(),
-    })
-  }
-}
-
 pub struct StdFileResource {
   name: String,
   // We can't use an AsyncRefCell here because we need to allow
   // access to the resource synchronously at any time and
   // asynchronously one at a time in order
-  cell: RefCell<Option<StdFileResourceCellValue>>,
+  cell: RefCell<Option<StdFileResourceInner>>,
   // Used to keep async actions in order and only allow one
   // to occur at a time
   cell_async_task_queue: TaskQueue,
@@ -432,10 +403,7 @@ pub struct StdFileResource {
 impl StdFileResource {
   fn stdio(inner: StdFileResourceInner, name: &str) -> Self {
     Self {
-      cell: RefCell::new(Some(StdFileResourceCellValue {
-        inner,
-        meta_data: Default::default(),
-      })),
+      cell: RefCell::new(Some(inner)),
       cell_async_task_queue: Default::default(),
       name: name.to_string(),
     }
@@ -443,30 +411,24 @@ impl StdFileResource {
 
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
-      cell: RefCell::new(Some(StdFileResourceCellValue {
-        inner: StdFileResourceInner::file(fs_file),
-        meta_data: Default::default(),
-      })),
+      cell: RefCell::new(Some(StdFileResourceInner::file(fs_file))),
       cell_async_task_queue: Default::default(),
       name: "fsFile".to_string(),
     }
   }
 
-  fn with_inner_and_metadata<TResult>(
+  fn with_inner<TResult, E>(
     &self,
-    action: impl FnOnce(
-      &mut StdFileResourceInner,
-      &Arc<Mutex<FileMetadata>>,
-    ) -> Result<TResult, AnyError>,
-  ) -> Result<TResult, AnyError> {
+    action: impl FnOnce(&mut StdFileResourceInner) -> Result<TResult, E>,
+  ) -> Option<Result<TResult, E>> {
     match self.cell.try_borrow_mut() {
-      Ok(mut cell) => {
+      Ok(mut cell) if cell.is_some() => {
         let mut file = cell.take().unwrap();
-        let result = action(&mut file.inner, &file.meta_data);
+        let result = action(&mut file);
         cell.replace(file);
-        result
+        Some(result)
       }
-      Err(_) => Err(resource_unavailable()),
+      _ => None,
     }
   }
 
@@ -490,7 +452,7 @@ impl StdFileResource {
       }
     };
     let (cell_value, result) = tokio::task::spawn_blocking(move || {
-      let result = action(&mut cell_value.inner);
+      let result = action(&mut cell_value);
       (cell_value, result)
     })
     .await
@@ -536,12 +498,17 @@ impl StdFileResource {
       .await
   }
 
-  fn read_byob_sync(&self, buf: &mut [u8]) -> Result<usize, AnyError> {
-    self.with_inner_and_metadata(|inner, _| inner.read(buf).map_err(Into::into))
+  fn read_byob_sync(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    self
+      .with_inner(|inner| inner.read(buf))
+      .ok_or_else(resource_unavailable)?
+      .map_err(Into::into)
   }
 
-  fn write_sync(&self, data: &[u8]) -> Result<usize, AnyError> {
-    self.with_inner_and_metadata(|inner, _| inner.write_and_maybe_flush(data))
+  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+    self
+      .with_inner(|inner| inner.write_and_maybe_flush(data))
+      .ok_or_else(resource_unavailable)?
   }
 
   fn with_resource<F, R>(
@@ -565,23 +532,17 @@ impl StdFileResource {
     F: FnOnce(&mut StdFile) -> Result<R, AnyError>,
   {
     Self::with_resource(state, rid, move |resource| {
-      resource.with_inner_and_metadata(move |inner, _| inner.with_file(f))
+      resource
+        .with_inner(move |inner| inner.with_file(f))
+        .ok_or_else(resource_unavailable)?
     })
   }
 
-  pub fn with_file_and_metadata<F, R>(
-    state: &mut OpState,
-    rid: ResourceId,
-    f: F,
-  ) -> Result<R, AnyError>
+  pub fn with_file2<F, R>(self: Rc<Self>, f: F) -> Option<Result<R, io::Error>>
   where
-    F: FnOnce(&mut StdFile, &Arc<Mutex<FileMetadata>>) -> Result<R, AnyError>,
+    F: FnOnce(&mut StdFile) -> Result<R, io::Error>,
   {
-    Self::with_resource(state, rid, move |resource| {
-      resource.with_inner_and_metadata(move |inner, metadata| {
-        inner.with_file(move |file| f(file, metadata))
-      })
-    })
+    self.with_inner(move |inner| inner.with_file(f))
   }
 
   pub async fn with_file_blocking_task<F, R: Send + 'static>(
@@ -602,6 +563,18 @@ impl StdFileResource {
       .await
   }
 
+  pub async fn with_file_blocking_task2<F, R: Send + 'static>(
+    self: Rc<Self>,
+    f: F,
+  ) -> Result<R, io::Error>
+  where
+    F: (FnOnce(&mut StdFile) -> Result<R, io::Error>) + Send + 'static,
+  {
+    self
+      .with_inner_blocking_task(move |inner| inner.with_file(f))
+      .await
+  }
+
   pub fn clone_file(
     state: &mut OpState,
     rid: ResourceId,
@@ -616,13 +589,15 @@ impl StdFileResource {
     rid: u32,
   ) -> Result<std::process::Stdio, AnyError> {
     Self::with_resource(state, rid, |resource| {
-      resource.with_inner_and_metadata(|inner, _| match inner.kind {
-        StdFileResourceKind::File => {
-          let file = inner.file.try_clone()?;
-          Ok(file.into())
-        }
-        _ => Ok(std::process::Stdio::inherit()),
-      })
+      resource
+        .with_inner(|inner| match inner.kind {
+          StdFileResourceKind::File => {
+            let file = inner.file.try_clone()?;
+            Ok(file.into())
+          }
+          _ => Ok(std::process::Stdio::inherit()),
+        })
+        .ok_or_else(resource_unavailable)?
     })
   }
 }
@@ -663,12 +638,15 @@ impl Resource for StdFileResource {
     Box::pin(StdFileResource::write_all(self, view))
   }
 
-  fn write_sync(&self, data: &[u8]) -> Result<usize, deno_core::anyhow::Error> {
+  fn write_sync(
+    self: Rc<Self>,
+    data: &[u8],
+  ) -> Result<usize, deno_core::anyhow::Error> {
     StdFileResource::write_sync(self, data)
   }
 
   fn read_byob_sync(
-    &self,
+    self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, deno_core::anyhow::Error> {
     StdFileResource::read_byob_sync(self, data)
@@ -678,9 +656,9 @@ impl Resource for StdFileResource {
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
     use std::os::unix::io::AsRawFd;
     self
-      .with_inner_and_metadata(move |std_file, _| {
-        Ok(std_file.with_file(|f| f.as_raw_fd()))
-      })
+      .with_inner(move |std_file| {
+        Ok::<_, ()>(std_file.with_file(|f| f.as_raw_fd()))
+      })?
       .ok()
   }
 }
@@ -694,9 +672,11 @@ pub fn op_print(
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };
   StdFileResource::with_resource(state, rid, move |resource| {
-    resource.with_inner_and_metadata(|inner, _| {
-      inner.write_all_and_maybe_flush(msg.as_bytes())?;
-      Ok(())
-    })
+    resource
+      .with_inner(|inner| {
+        inner.write_all_and_maybe_flush(msg.as_bytes())?;
+        Ok(())
+      })
+      .ok_or_else(resource_unavailable)?
   })
 }

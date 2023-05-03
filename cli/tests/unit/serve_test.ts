@@ -2,6 +2,7 @@
 
 // deno-lint-ignore-file
 
+import { assertMatch } from "https://deno.land/std@v0.42.0/testing/asserts.ts";
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
@@ -14,6 +15,12 @@ import {
   deferred,
   fail,
 } from "./test_util.ts";
+import { consoleSize } from "../../../runtime/js/40_tty.js";
+
+const {
+  upgradeHttpRaw,
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.internal];
 
 function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
   return (err) => {
@@ -30,6 +37,27 @@ function onListen<T>(
     p.resolve();
   };
 }
+
+Deno.test(async function httpServerShutsDownPortBeforeResolving() {
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+
+  const server = Deno.serve({
+    handler: (_req) => new Response("ok"),
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+  });
+
+  await listeningPromise;
+  assertThrows(() => Deno.listen({ port: 4501 }));
+
+  ac.abort();
+  await server;
+
+  const listener = Deno.listen({ port: 4501 });
+  listener!.close();
+});
 
 Deno.test(async function httpServerCanResolveHostnames() {
   const ac = new AbortController();
@@ -120,6 +148,71 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   await server;
 });
 
+Deno.test({ permissions: { net: true } }, async function httpServerOnError() {
+  const ac = new AbortController();
+  const promise = deferred();
+  const listeningPromise = deferred();
+  let requestStash: Request | null;
+
+  const server = Deno.serve({
+    handler: async (request: Request) => {
+      requestStash = request;
+      await new Promise((r) => setTimeout(r, 100));
+      throw "fail";
+    },
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: () => {
+      return new Response("failed: " + requestStash!.url, { status: 500 });
+    },
+  });
+
+  await listeningPromise;
+  const resp = await fetch("http://127.0.0.1:4501/", {
+    headers: { "connection": "close" },
+  });
+  const text = await resp.text();
+  ac.abort();
+  await server;
+
+  assertEquals(text, "failed: http://127.0.0.1:4501/");
+});
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerOnErrorFails() {
+    const ac = new AbortController();
+    const promise = deferred();
+    const listeningPromise = deferred();
+    let requestStash: Request | null;
+
+    const server = Deno.serve({
+      handler: async (request: Request) => {
+        requestStash = request;
+        await new Promise((r) => setTimeout(r, 100));
+        throw "fail";
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: () => {
+        throw "again";
+      },
+    });
+
+    await listeningPromise;
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      headers: { "connection": "close" },
+    });
+    const text = await resp.text();
+    ac.abort();
+    await server;
+
+    assertEquals(text, "Internal Server Error");
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const ac = new AbortController();
   const promise = deferred();
@@ -160,7 +253,12 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
   const promise = deferred();
   const listeningPromise = deferred();
 
-  const server = Deno.serve(async (request) => {
+  const server = Deno.serve({
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  }, async (request) => {
     // FIXME(bartlomieju):
     // make sure that request can be inspected
     console.log(request);
@@ -168,11 +266,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
     assertEquals(await request.text(), "");
     promise.resolve();
     return new Response("Hello World", { headers: { "foo": "bar" } });
-  }, {
-    port: 4501,
-    signal: ac.signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
   });
 
   await listeningPromise;
@@ -238,7 +331,7 @@ Deno.test(
     console.log = (msg) => {
       try {
         const match = msg.match(/Listening on http:\/\/localhost:(\d+)\//);
-        assert(!!match);
+        assert(!!match, `Didn't match ${msg}`);
         const port = +match[1];
         assert(port > 0 && port < 65536);
       } finally {
@@ -301,6 +394,109 @@ Deno.test(
   },
 );
 
+function createUrlTest(
+  name: string,
+  methodAndPath: string,
+  host: string | null,
+  expected: string,
+) {
+  Deno.test(`httpServerUrl${name}`, async () => {
+    const listeningPromise: Deferred<number> = deferred();
+    const urlPromise = deferred();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: async (request: Request) => {
+        urlPromise.resolve(request.url);
+        return new Response("");
+      },
+      port: 0,
+      signal: ac.signal,
+      onListen: ({ port }: { port: number }) => {
+        listeningPromise.resolve(port);
+      },
+      onError: createOnErrorCb(ac),
+    });
+
+    const port = await listeningPromise;
+    const conn = await Deno.connect({ port });
+
+    const encoder = new TextEncoder();
+    const body = `${methodAndPath} HTTP/1.1\r\n${
+      host ? ("Host: " + host + "\r\n") : ""
+    }Content-Length: 5\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    try {
+      const expectedResult = expected.replace("HOST", "localhost").replace(
+        "PORT",
+        `${port}`,
+      );
+      assertEquals(await urlPromise, expectedResult);
+    } finally {
+      ac.abort();
+      await server;
+      conn.close();
+    }
+  });
+}
+
+createUrlTest("WithPath", "GET /path", null, "http://HOST:PORT/path");
+createUrlTest(
+  "WithPathAndHost",
+  "GET /path",
+  "deno.land",
+  "http://deno.land/path",
+);
+createUrlTest(
+  "WithAbsolutePath",
+  "GET http://localhost/path",
+  null,
+  "http://localhost/path",
+);
+createUrlTest(
+  "WithAbsolutePathAndHost",
+  "GET http://localhost/path",
+  "deno.land",
+  "http://localhost/path",
+);
+createUrlTest(
+  "WithPortAbsolutePath",
+  "GET http://localhost:1234/path",
+  null,
+  "http://localhost:1234/path",
+);
+createUrlTest(
+  "WithPortAbsolutePathAndHost",
+  "GET http://localhost:1234/path",
+  "deno.land",
+  "http://localhost:1234/path",
+);
+createUrlTest(
+  "WithPortAbsolutePathAndHostWithPort",
+  "GET http://localhost:1234/path",
+  "deno.land:9999",
+  "http://localhost:1234/path",
+);
+
+createUrlTest("WithAsterisk", "OPTIONS *", null, "*");
+createUrlTest(
+  "WithAuthorityForm",
+  "CONNECT deno.land:80",
+  null,
+  "deno.land:80",
+);
+
+// TODO(mmastrac): These should probably be 400 errors
+createUrlTest("WithInvalidAsterisk", "GET *", null, "*");
+createUrlTest("WithInvalidNakedPath", "GET path", null, "path");
+createUrlTest(
+  "WithInvalidNakedAuthority",
+  "GET deno.land:1234",
+  null,
+  "deno.land:1234",
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerGetRequestBody() {
@@ -341,21 +537,43 @@ Deno.test(
   },
 );
 
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerStreamResponse() {
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
-    writer.write(new TextEncoder().encode("hello "));
-    writer.write(new TextEncoder().encode("world"));
-    writer.close();
+function createStreamTest(count: number, delay: number, action: string) {
+  function doAction(controller: ReadableStreamDefaultController, i: number) {
+    if (i == count) {
+      if (action == "Throw") {
+        controller.error(new Error("Expected error!"));
+      } else {
+        controller.close();
+      }
+    } else {
+      controller.enqueue(`a${i}`);
 
-    const listeningPromise = deferred();
+      if (delay == 0) {
+        doAction(controller, i + 1);
+      } else {
+        setTimeout(() => doAction(controller, i + 1), delay);
+      }
+    }
+  }
+
+  function makeStream(count: number, delay: number): ReadableStream {
+    return new ReadableStream({
+      start(controller) {
+        if (delay == 0) {
+          doAction(controller, 0);
+        } else {
+          setTimeout(() => doAction(controller, 0), delay);
+        }
+      },
+    }).pipeThrough(new TextEncoderStream());
+  }
+
+  Deno.test(`httpServerStreamCount${count}Delay${delay}${action}`, async () => {
     const ac = new AbortController();
+    const listeningPromise = deferred();
     const server = Deno.serve({
-      handler: (request) => {
-        assert(!request.body);
-        return new Response(stream.readable);
+      handler: async (request) => {
+        return new Response(makeStream(count, delay));
       },
       port: 4501,
       signal: ac.signal,
@@ -365,12 +583,34 @@ Deno.test(
 
     await listeningPromise;
     const resp = await fetch("http://127.0.0.1:4501/");
-    const respBody = await resp.text();
-    assertEquals("hello world", respBody);
+    const text = await resp.text();
+
     ac.abort();
     await server;
-  },
-);
+    let expected = "";
+    if (action == "Throw" && count < 2 && delay < 1000) {
+      // NOTE: This is specific to the current implementation. In some cases where a stream errors, we
+      // don't send the first packet.
+      expected = "";
+    } else {
+      for (let i = 0; i < count; i++) {
+        expected += `a${i}`;
+      }
+    }
+
+    assertEquals(text, expected);
+  });
+}
+
+for (let count of [0, 1, 2, 3]) {
+  for (let delay of [0, 1, 1000]) {
+    // Creating a stream that errors in start will throw
+    if (delay > 0) {
+      createStreamTest(count, delay, "Throw");
+    }
+    createStreamTest(count, delay, "Close");
+  }
+}
 
 Deno.test(
   { permissions: { net: true } },
@@ -536,7 +776,10 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
         response,
         socket,
       } = Deno.upgradeWebSocket(request);
-      socket.onerror = () => fail();
+      socket.onerror = (e) => {
+        console.error(e);
+        fail();
+      };
       socket.onmessage = (m) => {
         socket.send(m.data);
         socket.close(1001);
@@ -553,7 +796,10 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   const def = deferred();
   const ws = new WebSocket("ws://localhost:4501");
   ws.onmessage = (m) => assertEquals(m.data, "foo");
-  ws.onerror = () => fail();
+  ws.onerror = (e) => {
+    console.error(e);
+    fail();
+  };
   ws.onclose = () => def.resolve();
   ws.onopen = () => ws.send("foo");
 
@@ -561,6 +807,215 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   ac.abort();
   await server;
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketRaw() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const server = Deno.serve({
+      handler: async (request) => {
+        const { conn, response } = upgradeHttpRaw(request);
+        const buf = new Uint8Array(1024);
+        let read;
+
+        // Write our fake HTTP upgrade
+        await conn.write(
+          new TextEncoder().encode(
+            "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgraded\r\n\r\nExtra",
+          ),
+        );
+
+        // Upgrade data
+        read = await conn.read(buf);
+        assertEquals(
+          new TextDecoder().decode(buf.subarray(0, read!)),
+          "Upgrade data",
+        );
+        // Read the packet to echo
+        read = await conn.read(buf);
+        // Echo
+        await conn.write(buf.subarray(0, read!));
+
+        conn.close();
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+
+    const conn = await Deno.connect({ port: 4501 });
+    await conn.write(
+      new TextEncoder().encode(
+        "GET / HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nUpgrade data",
+      ),
+    );
+    const buf = new Uint8Array(1024);
+    let len;
+
+    // Headers
+    let headers = "";
+    for (let i = 0; i < 2; i++) {
+      len = await conn.read(buf);
+      headers += new TextDecoder().decode(buf.subarray(0, len!));
+      if (headers.endsWith("Extra")) {
+        break;
+      }
+    }
+    assertMatch(
+      headers,
+      /HTTP\/1\.1 101 Switching Protocols[ ,.A-Za-z:0-9\r\n]*Extra/im,
+    );
+
+    // Data to echo
+    await conn.write(new TextEncoder().encode("buffer data"));
+
+    // Echo
+    len = await conn.read(buf);
+    assertEquals(
+      new TextDecoder().decode(buf.subarray(0, len!)),
+      "buffer data",
+    );
+
+    conn.close();
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketUpgradeTwice() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const server = Deno.serve({
+      handler: async (request) => {
+        const {
+          response,
+          socket,
+        } = Deno.upgradeWebSocket(request);
+        assertThrows(
+          () => {
+            Deno.upgradeWebSocket(request);
+          },
+          Deno.errors.Http,
+          "already upgraded",
+        );
+        socket.onerror = (e) => {
+          console.error(e);
+          fail();
+        };
+        socket.onmessage = (m) => {
+          socket.send(m.data);
+          socket.close(1001);
+        };
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const def = deferred();
+    const ws = new WebSocket("ws://localhost:4501");
+    ws.onmessage = (m) => assertEquals(m.data, "foo");
+    ws.onerror = (e) => {
+      console.error(e);
+      fail();
+    };
+    ws.onclose = () => def.resolve();
+    ws.onopen = () => ws.send("foo");
+
+    await def;
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketCloseFast() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const server = Deno.serve({
+      handler: async (request) => {
+        const {
+          response,
+          socket,
+        } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => socket.close();
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const def = deferred();
+    const ws = new WebSocket("ws://localhost:4501");
+    ws.onerror = (e) => {
+      console.error(e);
+      fail();
+    };
+    ws.onclose = () => def.resolve();
+
+    await def;
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketCanAccessRequest() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const server = Deno.serve({
+      handler: async (request) => {
+        const {
+          response,
+          socket,
+        } = Deno.upgradeWebSocket(request);
+        socket.onerror = (e) => {
+          console.error(e);
+          fail();
+        };
+        socket.onmessage = (m) => {
+          socket.send(request.url.toString());
+          socket.close(1001);
+        };
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const def = deferred();
+    const ws = new WebSocket("ws://localhost:4501");
+    ws.onmessage = (m) => assertEquals(m.data, "http://localhost:4501/");
+    ws.onerror = (e) => {
+      console.error(e);
+      fail();
+    };
+    ws.onclose = () => def.resolve();
+    ws.onopen = () => ws.send("foo");
+
+    await def;
+    ac.abort();
+    await server;
+  },
+);
 
 Deno.test(
   { permissions: { net: true } },
@@ -682,47 +1137,49 @@ Deno.test(
   },
 );
 
-// FIXME: auto request body reading is intefering with passing it as response.
-// Deno.test(
-//   { permissions: { net: true } },
-//   async function httpServerStreamDuplex() {
-//     const promise = deferred();
-//     const ac = new AbortController();
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerStreamDuplex() {
+    const promise = deferred();
+    const ac = new AbortController();
 
-//     const server = Deno.serve(request => {
-//       assert(request.body);
+    const server = Deno.serve(
+      { port: 2333, signal: ac.signal },
+      (request) => {
+        assert(request.body);
 
-//       promise.resolve();
-//       return new Response(request.body);
-//     }, { port: 2333, signal: ac.signal });
+        promise.resolve();
+        return new Response(request.body);
+      },
+    );
 
-//     const ts = new TransformStream();
-//     const writable = ts.writable.getWriter();
+    const ts = new TransformStream();
+    const writable = ts.writable.getWriter();
 
-//     const resp = await fetch("http://127.0.0.1:2333/", {
-//       method: "POST",
-//       body: ts.readable,
-//     });
+    const resp = await fetch("http://127.0.0.1:2333/", {
+      method: "POST",
+      body: ts.readable,
+    });
 
-//     await promise;
-//     assert(resp.body);
-//     const reader = resp.body.getReader();
-//     await writable.write(new Uint8Array([1]));
-//     const chunk1 = await reader.read();
-//     assert(!chunk1.done);
-//     assertEquals(chunk1.value, new Uint8Array([1]));
-//     await writable.write(new Uint8Array([2]));
-//     const chunk2 = await reader.read();
-//     assert(!chunk2.done);
-//     assertEquals(chunk2.value, new Uint8Array([2]));
-//     await writable.close();
-//     const chunk3 = await reader.read();
-//     assert(chunk3.done);
+    await promise;
+    assert(resp.body);
+    const reader = resp.body.getReader();
+    await writable.write(new Uint8Array([1]));
+    const chunk1 = await reader.read();
+    assert(!chunk1.done);
+    assertEquals(chunk1.value, new Uint8Array([1]));
+    await writable.write(new Uint8Array([2]));
+    const chunk2 = await reader.read();
+    assert(!chunk2.done);
+    assertEquals(chunk2.value, new Uint8Array([2]));
+    await writable.close();
+    const chunk3 = await reader.read();
+    assert(chunk3.done);
 
-//     ac.abort();
-//     await server;
-//   },
-// );
+    ac.abort();
+    await server;
+  },
+);
 
 Deno.test(
   { permissions: { net: true } },
@@ -867,10 +1324,10 @@ Deno.test(
     let responseText = new TextDecoder("iso-8859-1").decode(buf);
     clientConn.close();
 
-    assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
-
     ac.abort();
     await server;
+
+    assertMatch(responseText, /\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/);
   },
 );
 
@@ -1355,84 +1812,11 @@ createServerLengthTest("autoResponseWithKnownLengthEmpty", {
   expects_con_len: true,
 });
 
-// FIXME: https://github.com/denoland/deno/issues/15892
-// createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
-//   body: stream(""),
-//   expects_chunked: true,
-//   expects_con_len: false,
-// });
-
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerGetChunkedResponseWithKa() {
-    const promises = [deferred(), deferred()];
-    let reqCount = 0;
-    const listeningPromise = deferred();
-    const ac = new AbortController();
-
-    const server = Deno.serve({
-      handler: async (request) => {
-        assertEquals(request.method, "GET");
-        promises[reqCount].resolve();
-        reqCount++;
-        return new Response(reqCount <= 1 ? stream("foo bar baz") : "zar quux");
-      },
-      port: 4503,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
-
-    await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
-    const encoder = new TextEncoder();
-    {
-      const body =
-        `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
-      const writeResult = await conn.write(encoder.encode(body));
-      assertEquals(body.length, writeResult);
-      await promises[0];
-    }
-
-    const decoder = new TextDecoder();
-    {
-      let msg = "";
-      while (true) {
-        try {
-          const buf = new Uint8Array(1024);
-          const readResult = await conn.read(buf);
-          assert(readResult);
-          msg += decoder.decode(buf.subarray(0, readResult));
-          assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
-          break;
-        } catch {
-          continue;
-        }
-      }
-    }
-
-    // once more!
-    {
-      const body =
-        `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
-      const writeResult = await conn.write(encoder.encode(body));
-      assertEquals(body.length, writeResult);
-      await promises[1];
-    }
-    {
-      const buf = new Uint8Array(1024);
-      const readResult = await conn.read(buf);
-      assert(readResult);
-      const msg = decoder.decode(buf.subarray(0, readResult));
-      assert(msg.endsWith("zar quux"));
-    }
-
-    conn.close();
-
-    ac.abort();
-    await server;
-  },
-);
+createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
+  body: stream(""),
+  expects_chunked: true,
+  expects_con_len: false,
+});
 
 Deno.test(
   { permissions: { net: true } },
@@ -1841,6 +2225,7 @@ Deno.test(
         method: "GET",
         headers: { "connection": "close" },
       });
+      assertEquals(resp.status, 204);
       assertEquals(resp.headers.get("Content-Length"), null);
     } finally {
       ac.abort();
@@ -2158,21 +2543,21 @@ Deno.test(
     const ac = new AbortController();
     const promise = deferred();
     let count = 0;
-    const server = Deno.serve(() => {
-      count++;
-      return new Response(`hello world ${count}`);
-    }, {
-      async onListen() {
-        const res1 = await fetch("http://localhost:9000/");
+    const server = Deno.serve({
+      async onListen({ port }: { port: number }) {
+        const res1 = await fetch(`http://localhost:${port}/`);
         assertEquals(await res1.text(), "hello world 1");
 
-        const res2 = await fetch("http://localhost:9000/");
+        const res2 = await fetch(`http://localhost:${port}/`);
         assertEquals(await res2.text(), "hello world 2");
 
         promise.resolve();
         ac.abort();
       },
       signal: ac.signal,
+    }, () => {
+      count++;
+      return new Response(`hello world ${count}`);
     });
 
     await promise;
@@ -2199,13 +2584,13 @@ Deno.test(
         return new Response("ok");
       },
       signal: ac.signal,
-      onListen: onListen(listeningPromise),
+      onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
       onError: createOnErrorCb(ac),
     });
 
     try {
-      await listeningPromise;
-      const resp = await fetch("http://localhost:9000/", {
+      const port = await listeningPromise;
+      const resp = await fetch(`http://localhost:${port}/`, {
         headers: { connection: "close" },
         method: "POST",
         body: '{"sus":true}',
@@ -2226,7 +2611,16 @@ Deno.test(
   async function testIssue16567() {
     const ac = new AbortController();
     const promise = deferred();
-    const server = Deno.serve(() =>
+    const server = Deno.serve({
+      async onListen({ port }) {
+        const res1 = await fetch(`http://localhost:${port}/`);
+        assertEquals((await res1.text()).length, 40 * 50_000);
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    }, () =>
       new Response(
         new ReadableStream({
           start(c) {
@@ -2237,16 +2631,7 @@ Deno.test(
             c.close();
           },
         }),
-      ), {
-      async onListen() {
-        const res1 = await fetch("http://localhost:9000/");
-        assertEquals((await res1.text()).length, 40 * 50_000);
-
-        promise.resolve();
-        ac.abort();
-      },
-      signal: ac.signal,
-    });
+      ));
 
     await promise;
     await server;
@@ -2383,4 +2768,81 @@ function parseTrailer(field: string | null): Headers | undefined {
 function isProhibitedForTrailer(key: string): boolean {
   const s = new Set(["transfer-encoding", "content-length", "trailer"]);
   return s.has(key.toLowerCase());
+}
+
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function httpServeCurlH2C() {
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { signal: ac.signal },
+      () => new Response("hello world!"),
+    );
+
+    assertEquals(
+      "hello world!",
+      await curlRequest(["http://localhost:8000/path"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest(["http://localhost:8000/path", "--http2"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        "http://localhost:8000/path",
+        "--http2",
+        "--http2-prior-knowledge",
+      ]),
+    );
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  async function httpsServeCurlH2C() {
+    const ac = new AbortController();
+    const server = Deno.serve(
+      {
+        signal: ac.signal,
+        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+      },
+      () => new Response("hello world!"),
+    );
+
+    assertEquals(
+      "hello world!",
+      await curlRequest(["https://localhost:9000/path", "-k"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest(["https://localhost:9000/path", "-k", "--http2"]),
+    );
+    assertEquals(
+      "hello world!",
+      await curlRequest([
+        "https://localhost:9000/path",
+        "-k",
+        "--http2",
+        "--http2-prior-knowledge",
+      ]),
+    );
+
+    ac.abort();
+    await server;
+  },
+);
+
+async function curlRequest(args: string[]) {
+  const { success, stdout } = await new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "null",
+  }).output();
+  assert(success);
+  return new TextDecoder().decode(stdout);
 }

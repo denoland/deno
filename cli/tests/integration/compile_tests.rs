@@ -4,6 +4,7 @@ use std::fs::File;
 use std::process::Command;
 use test_util as util;
 use test_util::TempDir;
+use util::assert_contains;
 
 #[test]
 fn compile() {
@@ -111,13 +112,13 @@ fn standalone_error() {
   let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Uncaught Error: boom!"));
-  assert!(stderr.contains("throw new Error(\"boom!\");"));
-  assert!(stderr.contains("\n    at boom (file://"));
-  assert!(stderr.contains("standalone_error.ts:2:11"));
-  assert!(stderr.contains("at foo (file://"));
-  assert!(stderr.contains("standalone_error.ts:5:5"));
-  assert!(stderr.contains("standalone_error.ts:7:1"));
+  assert_contains!(stderr, "error: Uncaught Error: boom!");
+  assert_contains!(stderr, "throw new Error(\"boom!\");");
+  assert_contains!(stderr, "\n    at boom (file://");
+  assert_contains!(stderr, "standalone_error.ts:2:11");
+  assert_contains!(stderr, "at foo (file://");
+  assert_contains!(stderr, "standalone_error.ts:5:5");
+  assert_contains!(stderr, "standalone_error.ts:7:1");
 }
 
 #[test]
@@ -156,10 +157,10 @@ fn standalone_error_module_with_imports() {
   let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Uncaught Error: boom!"));
-  assert!(stderr.contains("throw new Error(\"boom!\");"));
-  assert!(stderr.contains("\n    at file://"));
-  assert!(stderr.contains("standalone_error_module_with_imports_2.ts:2:7"));
+  assert_contains!(stderr, "error: Uncaught Error: boom!");
+  assert_contains!(stderr, "throw new Error(\"boom!\");");
+  assert_contains!(stderr, "\n    at file://");
+  assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
 }
 
 #[test]
@@ -259,7 +260,7 @@ fn compile_with_file_exists_error() {
     file_path.display(),
   );
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.contains(&expected_stderr));
+  assert_contains!(stderr, &expected_stderr);
 }
 
 #[test]
@@ -293,7 +294,7 @@ fn compile_with_directory_exists_error() {
     exe.display()
   );
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.contains(&expected_stderr));
+  assert_contains!(stderr, &expected_stderr);
 }
 
 #[test]
@@ -327,8 +328,7 @@ fn compile_with_conflict_file_exists_error() {
     exe.display()
   );
   let stderr = String::from_utf8(output.stderr).unwrap();
-  dbg!(&stderr);
-  assert!(stderr.contains(&expected_stderr));
+  assert_contains!(stderr, &expected_stderr);
   assert!(std::fs::read(&exe)
     .unwrap()
     .eq(b"SHOULD NOT BE OVERWRITTEN"));
@@ -407,8 +407,10 @@ fn standalone_runtime_flags() {
   let stdout_str = String::from_utf8(output.stdout).unwrap();
   assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
   let stderr_str = String::from_utf8(output.stderr).unwrap();
-  assert!(util::strip_ansi_codes(&stderr_str)
-    .contains("PermissionDenied: Requires write access"));
+  assert_contains!(
+    util::strip_ansi_codes(&stderr_str),
+    "PermissionDenied: Requires write access"
+  );
 }
 
 #[test]
@@ -636,9 +638,10 @@ fn check_local_by_default2() {
   let stdout = String::from_utf8(output.stdout).unwrap();
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert!(stdout.is_empty());
-  assert!(stderr.contains(
+  assert_contains!(
+    stderr,
     r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
-  ));
+  );
 }
 
 #[test]

@@ -48,7 +48,6 @@ class Kv {
   }
 
   async get(key: Deno.KvKey, opts?: { consistency?: Deno.KvConsistencyLevel }) {
-    key = convertKey(key);
     const [entries]: [RawKvEntry[]] = await core.opAsync(
       "op_kv_snapshot_read",
       this.#rid,
@@ -76,7 +75,6 @@ class Kv {
     keys: Deno.KvKey[],
     opts?: { consistency?: Deno.KvConsistencyLevel },
   ): Promise<Deno.KvEntry<unknown>[]> {
-    keys = keys.map(convertKey);
     const ranges: RawKvEntry[][] = await core.opAsync(
       "op_kv_snapshot_read",
       this.#rid,
@@ -103,7 +101,6 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown) {
-    key = convertKey(key);
     value = serializeValue(value);
 
     const checks: Deno.AtomicCheck[] = [];
@@ -119,12 +116,10 @@ class Kv {
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
-    return { versionstamp };
+    return { ok: true, versionstamp };
   }
 
   async delete(key: Deno.KvKey) {
-    key = convertKey(key);
-
     const checks: Deno.AtomicCheck[] = [];
     const mutations = [
       [key, "delete", null],
@@ -211,14 +206,14 @@ class AtomicOperation {
 
   check(...checks: Deno.AtomicCheck[]): this {
     for (const check of checks) {
-      this.#checks.push([convertKey(check.key), check.versionstamp]);
+      this.#checks.push([check.key, check.versionstamp]);
     }
     return this;
   }
 
   mutate(...mutations: Deno.KvMutation[]): this {
     for (const mutation of mutations) {
-      const key = convertKey(mutation.key);
+      const key = mutation.key;
       let type: string;
       let value: RawValue | null;
       switch (mutation.type) {
@@ -246,17 +241,32 @@ class AtomicOperation {
     return this;
   }
 
+  sum(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "sum", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  min(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "min", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  max(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "max", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
   set(key: Deno.KvKey, value: unknown): this {
-    this.#mutations.push([convertKey(key), "set", serializeValue(value)]);
+    this.#mutations.push([key, "set", serializeValue(value)]);
     return this;
   }
 
   delete(key: Deno.KvKey): this {
-    this.#mutations.push([convertKey(key), "delete", null]);
+    this.#mutations.push([key, "delete", null]);
     return this;
   }
 
-  async commit(): Promise<Deno.KvCommitResult | null> {
+  async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
@@ -264,8 +274,8 @@ class AtomicOperation {
       this.#mutations,
       [], // TODO(@losfair): enqueue
     );
-    if (versionstamp === null) return null;
-    return { versionstamp };
+    if (versionstamp === null) return { ok: false };
+    return { ok: true, versionstamp };
   }
 
   then() {
@@ -275,8 +285,8 @@ class AtomicOperation {
   }
 }
 
-const MIN_U64 = 0n;
-const MAX_U64 = 0xffffffffffffffffn;
+const MIN_U64 = BigInt("0");
+const MAX_U64 = BigInt("0xffffffffffffffff");
 
 class KvU64 {
   readonly value: bigint;
@@ -296,21 +306,13 @@ class KvU64 {
   }
 }
 
-function convertKey(key: Deno.KvKey | Deno.KvKeyPart): Deno.KvKey {
-  if (Array.isArray(key)) {
-    return key;
-  } else {
-    return [key as Deno.KvKeyPart];
-  }
-}
-
 function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
   const { kind, value } = entry.value;
   switch (kind) {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value),
+        value: core.deserialize(value, { forStorage: true }),
       };
     case "bytes":
       return {
@@ -341,7 +343,7 @@ function serializeValue(value: unknown): RawValue {
   } else {
     return {
       kind: "v8",
-      value: core.serialize(value),
+      value: core.serialize(value, { forStorage: true }),
     };
   }
 }

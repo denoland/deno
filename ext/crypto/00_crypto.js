@@ -12,11 +12,12 @@ const primordials = globalThis.__bootstrap.primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
-  ArrayBufferPrototype,
-  ArrayBufferPrototypeSlice,
-  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
+  ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeSlice,
   ArrayPrototypeEvery,
+  ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeIncludes,
   DataViewPrototypeGetBuffer,
@@ -26,24 +27,24 @@ const {
   JSONStringify,
   MathCeil,
   ObjectAssign,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
+  SafeArrayIterator,
+  SafeWeakMap,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
-  StringPrototypeCharCodeAt,
-  StringFromCharCode,
-  SafeArrayIterator,
   Symbol,
   SymbolFor,
   SyntaxError,
-  TypedArrayPrototypeSlice,
+  TypeError,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetSymbolToStringTag,
-  TypeError,
+  TypedArrayPrototypeSlice,
   Uint8Array,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
@@ -199,17 +200,18 @@ function normalizeAlgorithm(algorithm, op) {
   // 1.
   const registeredAlgorithms = supportedAlgorithms[op];
   // 2. 3.
-  const initialAlg = webidl.converters.Algorithm(algorithm, {
-    prefix: "Failed to normalize algorithm",
-    context: "passed algorithm",
-  });
+  const initialAlg = webidl.converters.Algorithm(
+    algorithm,
+    "Failed to normalize algorithm",
+    "passed algorithm",
+  );
   // 4.
   let algName = initialAlg.name;
 
   // 5.
   let desiredType = undefined;
   for (const key in registeredAlgorithms) {
-    if (!ObjectPrototypeHasOwnProperty(registeredAlgorithms, key)) {
+    if (!ObjectHasOwn(registeredAlgorithms, key)) {
       continue;
     }
     if (
@@ -232,10 +234,11 @@ function normalizeAlgorithm(algorithm, op) {
   }
 
   // 6.
-  const normalizedAlgorithm = webidl.converters[desiredType](algorithm, {
-    prefix: "Failed to normalize algorithm",
-    context: "passed algorithm",
-  });
+  const normalizedAlgorithm = webidl.converters[desiredType](
+    algorithm,
+    "Failed to normalize algorithm",
+    "passed algorithm",
+  );
   // 7.
   normalizedAlgorithm.name = algName;
 
@@ -243,7 +246,7 @@ function normalizeAlgorithm(algorithm, op) {
   const dict = simpleAlgorithmDictionaries[desiredType];
   // 10.
   for (const member in dict) {
-    if (!ObjectPrototypeHasOwnProperty(dict, member)) {
+    if (!ObjectHasOwn(dict, member)) {
       continue;
     }
     const idlType = dict[member];
@@ -386,12 +389,15 @@ function constructKey(type, extractable, usages, algorithm, handle) {
  * @returns
  */
 function usageIntersection(a, b) {
-  return a.filter((i) => b.includes(i));
+  return ArrayPrototypeFilter(
+    a,
+    (i) => ArrayPrototypeIncludes(b, i),
+  );
 }
 
 // TODO(lucacasonato): this should be moved to rust
 /** @type {WeakMap<object, object>} */
-const KEY_STORE = new WeakMap();
+const KEY_STORE = new SafeWeakMap();
 
 function getKeyLength(algorithm) {
   switch (algorithm.name) {
@@ -468,15 +474,13 @@ class SubtleCrypto {
   async digest(algorithm, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    data = webidl.converters.BufferSource(data, prefix, "Argument 2");
 
     data = copyBuffer(data);
 
@@ -500,19 +504,14 @@ class SubtleCrypto {
   async encrypt(algorithm, key, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'encrypt' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 3",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
     // 2.
     data = copyBuffer(data);
@@ -548,19 +547,14 @@ class SubtleCrypto {
   async decrypt(algorithm, key, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'decrypt' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 3",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
     // 2.
     data = copyBuffer(data);
@@ -756,19 +750,14 @@ class SubtleCrypto {
   async sign(algorithm, key, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 3",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
     // 1.
     data = copyBuffer(data);
@@ -920,27 +909,24 @@ class SubtleCrypto {
   async importKey(format, keyData, algorithm, extractable, keyUsages) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    format = webidl.converters.KeyFormat(format, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    keyData = webidl.converters["BufferSource or JsonWebKey"](
+      keyData,
       prefix,
-      context: "Argument 1",
-    });
-    keyData = webidl.converters["BufferSource or JsonWebKey"](keyData, {
+      "Argument 2",
+    );
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 2",
-    });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+      "Argument 3",
+    );
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 4");
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 3",
-    });
-    extractable = webidl.converters.boolean(extractable, {
-      prefix,
-      context: "Argument 4",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
-      prefix,
-      context: "Argument 5",
-    });
+      "Argument 5",
+    );
 
     // 2.
     if (format !== "jwk") {
@@ -1054,15 +1040,9 @@ class SubtleCrypto {
   async exportKey(format, key) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    format = webidl.converters.KeyFormat(format, {
-      prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
 
     const handle = key[_handle];
     // 2.
@@ -1126,20 +1106,15 @@ class SubtleCrypto {
   async deriveBits(algorithm, baseKey, length) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    baseKey = webidl.converters.CryptoKey(baseKey, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    baseKey = webidl.converters.CryptoKey(baseKey, prefix, "Argument 2");
     if (length !== null) {
-      length = webidl.converters["unsigned long"](length, {
-        prefix,
-        context: "Argument 3",
-      });
+      length = webidl.converters["unsigned long"](length, prefix, "Argument 3");
     }
 
     // 2.
@@ -1176,27 +1151,28 @@ class SubtleCrypto {
   ) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'deriveKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 5, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 5, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    baseKey = webidl.converters.CryptoKey(baseKey, {
+      "Argument 1",
+    );
+    baseKey = webidl.converters.CryptoKey(baseKey, prefix, "Argument 2");
+    derivedKeyType = webidl.converters.AlgorithmIdentifier(
+      derivedKeyType,
       prefix,
-      context: "Argument 2",
-    });
-    derivedKeyType = webidl.converters.AlgorithmIdentifier(derivedKeyType, {
+      "Argument 3",
+    );
+    extractable = webidl.converters["boolean"](
+      extractable,
       prefix,
-      context: "Argument 3",
-    });
-    extractable = webidl.converters["boolean"](extractable, {
+      "Argument 4",
+    );
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 4",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
-      prefix,
-      context: "Argument 5",
-    });
+      "Argument 5",
+    );
 
     // 2-3.
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
@@ -1271,23 +1247,15 @@ class SubtleCrypto {
   async verify(algorithm, key, signature, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'verify' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    signature = webidl.converters.BufferSource(signature, {
-      prefix,
-      context: "Argument 3",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 4",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    signature = webidl.converters.BufferSource(signature, prefix, "Argument 3");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 4");
 
     // 2.
     signature = copyBuffer(signature);
@@ -1411,23 +1379,19 @@ class SubtleCrypto {
   async wrapKey(format, key, wrappingKey, wrapAlgorithm) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'wrapKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    format = webidl.converters.KeyFormat(format, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    wrappingKey = webidl.converters.CryptoKey(
+      wrappingKey,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
+      "Argument 3",
+    );
+    wrapAlgorithm = webidl.converters.AlgorithmIdentifier(
+      wrapAlgorithm,
       prefix,
-      context: "Argument 2",
-    });
-    wrappingKey = webidl.converters.CryptoKey(wrappingKey, {
-      prefix,
-      context: "Argument 3",
-    });
-    wrapAlgorithm = webidl.converters.AlgorithmIdentifier(wrapAlgorithm, {
-      prefix,
-      context: "Argument 4",
-    });
+      "Argument 4",
+    );
 
     let normalizedAlgorithm;
 
@@ -1547,38 +1511,34 @@ class SubtleCrypto {
   ) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'unwrapKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 7, { prefix });
-    format = webidl.converters.KeyFormat(format, {
+    webidl.requiredArguments(arguments.length, 7, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    wrappedKey = webidl.converters.BufferSource(
+      wrappedKey,
       prefix,
-      context: "Argument 1",
-    });
-    wrappedKey = webidl.converters.BufferSource(wrappedKey, {
+      "Argument 2",
+    );
+    unwrappingKey = webidl.converters.CryptoKey(
+      unwrappingKey,
       prefix,
-      context: "Argument 2",
-    });
-    unwrappingKey = webidl.converters.CryptoKey(unwrappingKey, {
+      "Argument 3",
+    );
+    unwrapAlgorithm = webidl.converters.AlgorithmIdentifier(
+      unwrapAlgorithm,
       prefix,
-      context: "Argument 3",
-    });
-    unwrapAlgorithm = webidl.converters.AlgorithmIdentifier(unwrapAlgorithm, {
-      prefix,
-      context: "Argument 4",
-    });
+      "Argument 4",
+    );
     unwrappedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
       unwrappedKeyAlgorithm,
-      {
-        prefix,
-        context: "Argument 5",
-      },
+      prefix,
+      "Argument 5",
     );
-    extractable = webidl.converters.boolean(extractable, {
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 6");
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 6",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
-      prefix,
-      context: "Argument 7",
-    });
+      "Argument 7",
+    );
 
     // 2.
     wrappedKey = copyBuffer(wrappedKey);
@@ -1708,19 +1668,22 @@ class SubtleCrypto {
   async generateKey(algorithm, extractable, keyUsages) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'generateKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    extractable = webidl.converters["boolean"](extractable, {
+      "Argument 1",
+    );
+    extractable = webidl.converters["boolean"](
+      extractable,
       prefix,
-      context: "Argument 2",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
+      "Argument 2",
+    );
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 3",
-    });
+      "Argument 3",
+    );
 
     const usages = keyUsages;
 
@@ -4715,17 +4678,18 @@ class Crypto {
   getRandomValues(typedArray) {
     webidl.assertBranded(this, CryptoPrototype);
     const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // Fast path for Uint8Array
     const tag = TypedArrayPrototypeGetSymbolToStringTag(typedArray);
     if (tag === "Uint8Array") {
       ops.op_crypto_get_random_values(typedArray);
       return typedArray;
     }
-    typedArray = webidl.converters.ArrayBufferView(typedArray, {
+    typedArray = webidl.converters.ArrayBufferView(
+      typedArray,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     switch (tag) {
       case "Int8Array":
       case "Uint8ClampedArray":

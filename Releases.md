@@ -6,6 +6,93 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.33.1 / 2023.04.28
+
+- fix(ext/fetch): subview Uint8Array in Req/Resp (#18890)
+- fix(ext/websocket): client connect URI (#18892)
+- fix(ext/websocket): restore op_ws_send_ping (#18891)
+- fix(repl): don't panic on undefined exception (#18888)
+
+### 1.33.0 / 2023.04.27
+
+- BREAKING(unstable): remove "Deno.serve(handler, options)" overload (#18759)
+- Revert "chore(ext/websocket): Add autobahn|testsuite fuzzingclient (#…
+  (#18856)
+- feat(bench): add `--no-run` flag (#18433)
+- feat(cli): don't check permissions for statically analyzable dynamic imports
+  (#18713)
+- feat(cli): flatten deno.json configuaration (#17799)
+- feat(ext/ffi): support marking symbols as optional (#18529)
+- feat(ext/http): Rework Deno.serve using hyper 1.0-rc3 (#18619)
+- feat(ext/kv): add more atomic operation helpers (#18854)
+- feat(ext/kv): return ok bool from atomic commit (#18873)
+- feat(ext/url): `URL.canParse` (#18286)
+- feat(lint): add `Deno.run` to `no-deprecated-deno-api` (#18869)
+- feat(node/crypto): Elliptic Curve Diffie-Hellman (ECDH) support (#18832)
+- feat(node/http): implement ClientRequest.setTimeout() (#18783)
+- feat(task): introduce built-in `unset` command to `deno task` (#18606)
+- feat: Deprecate Deno.run API in favor of Deno.Command (#17630) (#18866)
+- fix(compile): write bytes directly to output file (#18777)
+- fix(core): Wrap safe collections' argument of primordials (#18750)
+- fix(coverage): exclude test files (#18748)
+- fix(dts): `URLPatternComponentResult` groups should have possibly undefined
+  key values (#18643)
+- fix(ext/node): add crypto.sign|verify methods (#18765)
+- fix(ext/node): fix hash.flush (#18818)
+- fix(ext/node): implement asymmetric keygen (#18651)
+- fix(ext/node): improve vm.runInThisContext (#18767)
+- fix(ext/node): prime generation (#18861)
+- fix(lsp): show dependency errors for repeated imports (#18807)
+- fix(npm): only include top level packages in top level node_modules directory
+  (#18824)
+- fix(test): allow explicit undefined for boolean test options (#18786)
+- fix(test): handle dispatched exceptions from test functions (#18853)
+- perf(ext/http): avoid spread arg deopt in op_http_wait (#18850)
+- perf(ext/http): optimize away code based on callback length (#18849)
+- perf(ext/http): optimize for zero or one-packet response streams (#18834)
+- perf(ext/http): use smi for slab IDs (#18848)
+- perf(ext/websocket): various performance improvements (#18862)
+
+### 1.32.5 / 2023.04.18
+
+- feat(UNSTABLE/kv): AtomicOperation#sum (#18704)
+- fix(core): Use safe primordials wrappers (#18687)
+- fix(ext/node): add req.socket.remoteAddress (#18733)
+- fix(ext/node): implement crypto.createVerify (#18703)
+- fix(ext/node): polyfill response._implicitHeader method (#18738)
+- fix(ext/websocket): Avoid write deadlock that requires read_frame to complete
+  (#18705)
+- fix(lsp): ensure language server status works on unix (#18727)
+- fix(npm): eagerly reload package information when version from lockfile not
+  found locally (#18673)
+- fix(path): Remove non node symbols (#18630)
+- fix(test): add process sigint handler for --watch (#18678)
+- perf(ext/websocket): make `op_server_ws_next_event` deferred (#18632)
+- perf(ops): directly respond for eager ops (#18683)
+
+### 1.32.4 / 2023.04.12
+
+- Revert "fix(cli): don't store blob and data urls in the module cache (#18261)"
+  (#18572)
+- feat(core): sync io ops in core (#18603)
+- feat(ext/http): add an op to perform raw HTTP upgrade (#18511)
+- fix(core): preserve syntax error locations in dynamic imports (#18664)
+- fix(ext/cache): cache.put overwrites previous call (#18649)
+- fix(ext/kv): keys must be arrays (#18655)
+- fix(ext/node): add X509Certificate (#18625)
+- fix(ext/node): add symmetric keygen (#18609)
+- fix(ext/node): fix unable to resolve fraction.js (#18544)
+- fix(ext/node): implement hkdf-expand (#18612)
+- fix(ext/node): json encode binary command name (#18596)
+- fix(npm): cache bust npm specifiers more aggressively (#18636)
+- fix(npm): do not "npm install" when npm specifier happens to match
+  package.json entry (#18660)
+- fix(npm): reload an npm package's dependency's information when version not
+  found (#18622)
+- perf(ext/io): remove a data copy from File write (#18601)
+- perf(ext/websocket): replace tokio_tungstenite server with fastwebsockets
+  (#18587)
+
 ### 1.32.3 / 2023.04.01
 
 - fix(check): ensure diagnostics caused by changes in other files get

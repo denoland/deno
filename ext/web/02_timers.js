@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
@@ -7,17 +9,16 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
   Uint8Array,
   Uint32Array,
-  // deno-lint-ignore camelcase
   NumberPOSITIVE_INFINITY,
   PromisePrototypeThen,
   SafeArrayIterator,
+  SafeMap,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypeError,
@@ -26,6 +27,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
+const { op_sleep } = core.generateAsyncOpHandler("op_sleep");
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -76,7 +78,7 @@ function handleTimerMacrotask() {
  *
  * @type {Map<number, { cancelRid: number, isRef: boolean, promiseId: number }>}
  */
-const activeTimers = new Map();
+const activeTimers = new SafeMap();
 
 let nextId = 1;
 
@@ -216,7 +218,7 @@ const scheduledTimers = { head: null, tail: null };
  */
 function runAfterTimeout(cb, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
-  const sleepPromise = core.opAsync2("op_sleep", millis, cancelRid);
+  const sleepPromise = op_sleep(millis, cancelRid);
   timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
   if (!timerInfo.isRef) {
     core.unrefOp(timerInfo.promiseId);

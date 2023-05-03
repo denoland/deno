@@ -28,20 +28,14 @@ class CompressionStream {
 
   constructor(format) {
     const prefix = "Failed to construct 'CompressionStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    format = webidl.converters.CompressionFormat(format, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    format = webidl.converters.CompressionFormat(format, prefix, "Argument 1");
 
     const rid = ops.op_compression_new(format, false);
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
-        chunk = webidl.converters.BufferSource(chunk, {
-          prefix,
-          context: "chunk",
-        });
+        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
         const output = ops.op_compression_write(
           rid,
           chunk,
@@ -76,20 +70,14 @@ class DecompressionStream {
 
   constructor(format) {
     const prefix = "Failed to construct 'DecompressionStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    format = webidl.converters.CompressionFormat(format, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    format = webidl.converters.CompressionFormat(format, prefix, "Argument 1");
 
     const rid = ops.op_compression_new(format, true);
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
-        chunk = webidl.converters.BufferSource(chunk, {
-          prefix,
-          context: "chunk",
-        });
+        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
         const output = ops.op_compression_write(
           rid,
           chunk,

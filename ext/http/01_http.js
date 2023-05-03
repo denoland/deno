@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+const { op_http_write } = Deno.core.generateAsyncOpHandler("op_http_write");
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
@@ -32,8 +36,8 @@ import {
   SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
-import { listen, TcpConn, UnixConn } from "ext:deno_net/01_net.js";
-import { listenTls, TlsConn } from "ext:deno_net/02_tls.js";
+import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
+import { TlsConn } from "ext:deno_net/02_tls.js";
 import {
   Deferred,
   getReadableStreamResourceBacking,
@@ -41,23 +45,22 @@ import {
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
+import { serve } from "ext:deno_http/00_serve.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   Error,
   ObjectPrototypeIsPrototypeOf,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
-  SetPrototypeClear,
   StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
-  StringPrototypeToLowerCase,
   StringPrototypeSplit,
-  SafeSet,
-  PromisePrototypeCatch,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -66,7 +69,6 @@ const {
 } = primordials;
 
 const connErrorSymbol = Symbol("connError");
-const streamRid = Symbol("streamRid");
 const _deferred = Symbol("upgradeHttpDeferred");
 
 class HttpConn {
@@ -79,7 +81,7 @@ class HttpConn {
   // that were created during lifecycle of this request.
   // When the connection is closed these resources should be closed
   // as well.
-  managedResources = new Set();
+  managedResources = new SafeSet();
 
   constructor(rid, remoteAddr, localAddr) {
     this.#rid = rid;
@@ -323,7 +325,7 @@ function createRespondWith(
               break;
             }
             try {
-              await core.opAsync2("op_http_write", streamRid, value);
+              await op_http_write(streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -407,6 +409,7 @@ const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
 const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
 function upgradeWebSocket(request, options = {}) {
+  const inner = toInnerRequest(request);
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
     websocketCvf(upgrade);
@@ -456,27 +459,31 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  const response = fromInnerResponse(r, "immutable");
-
   const socket = webidl.createBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
-  response[_ws] = socket;
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
   socket[_idleTimeoutTimeout] = null;
+
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeWebSocket", r, socket);
+  }
+
+  const response = fromInnerResponse(r, "immutable");
+
+  response[_ws] = socket;
 
   return { response, socket };
 }
 
 function upgradeHttp(req) {
+  const inner = toInnerRequest(req);
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttp", arguments);
+  }
+
   req[_deferred] = new Deferred();
   return req[_deferred].promise;
-}
-
-async function upgradeHttpRaw(req, tcpConn) {
-  const inner = toInnerRequest(req);
-  const res = await core.opAsync("op_http_upgrade_early", inner[streamRid]);
-  return new TcpConn(res, tcpConn.remoteAddr, tcpConn.localAddr);
 }
 
 const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
@@ -495,17 +502,20 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
       StringPrototypeToLowerCase(checkText),
       "",
     ),
-    (c) => [c.charCodeAt(0), c.toUpperCase().charCodeAt(0)],
+    (c) => [
+      StringPrototypeCharCodeAt(c, 0),
+      StringPrototypeCharCodeAt(StringPrototypeToUpperCase(c), 0),
+    ],
   );
   /** @type {number} */
   let i;
   /** @type {number} */
   let char;
 
-  /** @param value {string} */
+  /** @param {string} value */
   return function (value) {
     for (i = 0; i < value.length; i++) {
-      char = value.charCodeAt(i);
+      char = StringPrototypeCharCodeAt(value, i);
       skipWhitespace(value);
 
       if (hasWord(value)) {
@@ -553,233 +563,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-function hostnameForDisplay(hostname) {
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  return hostname === "0.0.0.0" ? "localhost" : hostname;
-}
-
-async function respond(handler, requestEvent, connInfo, onError) {
-  let response;
-
-  try {
-    response = await handler(requestEvent.request, connInfo);
-
-    if (response.bodyUsed && response.body !== null) {
-      throw new TypeError("Response body already consumed.");
-    }
-  } catch (e) {
-    // Invoke `onError` handler if the request handler throws.
-    response = await onError(e);
-  }
-
-  try {
-    // Send the response.
-    await requestEvent.respondWith(response);
-  } catch {
-    // `respondWith()` can throw for various reasons, including downstream and
-    // upstream connection errors, as well as errors thrown during streaming
-    // of the response content.  In order to avoid false negatives, we ignore
-    // the error here and let `serveHttp` close the connection on the
-    // following iteration if it is in fact a downstream connection error.
-  }
-}
-
-async function serveConnection(
-  server,
-  activeHttpConnections,
-  handler,
-  httpConn,
-  connInfo,
-  onError,
-) {
-  while (!server.closed) {
-    let requestEvent = null;
-
-    try {
-      // Yield the new HTTP request on the connection.
-      requestEvent = await httpConn.nextRequest();
-    } catch {
-      // Connection has been closed.
-      break;
-    }
-
-    if (requestEvent === null) {
-      break;
-    }
-
-    respond(handler, requestEvent, connInfo, onError);
-  }
-
-  SetPrototypeDelete(activeHttpConnections, httpConn);
-  try {
-    httpConn.close();
-  } catch {
-    // Connection has already been closed.
-  }
-}
-
-async function serve(arg1, arg2) {
-  let options = undefined;
-  let handler = undefined;
-  if (typeof arg1 === "function") {
-    handler = arg1;
-    options = arg2;
-  } else if (typeof arg2 === "function") {
-    handler = arg2;
-    options = arg1;
-  } else {
-    options = arg1;
-  }
-  if (handler === undefined) {
-    if (options === undefined) {
-      throw new TypeError(
-        "No handler was provided, so an options bag is mandatory.",
-      );
-    }
-    handler = options.handler;
-  }
-  if (typeof handler !== "function") {
-    throw new TypeError("A handler function must be provided.");
-  }
-  if (options === undefined) {
-    options = {};
-  }
-
-  const signal = options.signal;
-  const onError = options.onError ?? function (error) {
-    console.error(error);
-    return new Response("Internal Server Error", { status: 500 });
-  };
-  const onListen = options.onListen ?? function ({ port }) {
-    console.log(
-      `Listening on http://${hostnameForDisplay(listenOpts.hostname)}:${port}/`,
-    );
-  };
-  const listenOpts = {
-    hostname: options.hostname ?? "127.0.0.1",
-    port: options.port ?? 9000,
-    reusePort: options.reusePort ?? false,
-  };
-
-  if (options.cert || options.key) {
-    if (!options.cert || !options.key) {
-      throw new TypeError(
-        "Both cert and key must be provided to enable HTTPS.",
-      );
-    }
-    listenOpts.cert = options.cert;
-    listenOpts.key = options.key;
-  }
-
-  let listener;
-  if (listenOpts.cert && listenOpts.key) {
-    listener = listenTls({
-      hostname: listenOpts.hostname,
-      port: listenOpts.port,
-      cert: listenOpts.cert,
-      key: listenOpts.key,
-      reusePort: listenOpts.reusePort,
-    });
-  } else {
-    listener = listen({
-      hostname: listenOpts.hostname,
-      port: listenOpts.port,
-      reusePort: listenOpts.reusePort,
-    });
-  }
-
-  const serverDeferred = new Deferred();
-  const activeHttpConnections = new SafeSet();
-
-  const server = {
-    transport: listenOpts.cert && listenOpts.key ? "https" : "http",
-    hostname: listenOpts.hostname,
-    port: listenOpts.port,
-    closed: false,
-
-    close() {
-      if (server.closed) {
-        return;
-      }
-      server.closed = true;
-      try {
-        listener.close();
-      } catch {
-        // Might have been already closed.
-      }
-
-      for (const httpConn of new SafeSetIterator(activeHttpConnections)) {
-        try {
-          httpConn.close();
-        } catch {
-          // Might have been already closed.
-        }
-      }
-
-      SetPrototypeClear(activeHttpConnections);
-      serverDeferred.resolve();
-    },
-
-    async serve() {
-      while (!server.closed) {
-        let conn;
-
-        try {
-          conn = await listener.accept();
-        } catch {
-          // Listener has been closed.
-          if (!server.closed) {
-            console.log("Listener has closed unexpectedly");
-          }
-          break;
-        }
-
-        let httpConn;
-        try {
-          const rid = ops.op_http_start(conn.rid);
-          httpConn = new HttpConn(rid, conn.remoteAddr, conn.localAddr);
-        } catch {
-          // Connection has been closed;
-          continue;
-        }
-
-        SetPrototypeAdd(activeHttpConnections, httpConn);
-
-        const connInfo = {
-          localAddr: conn.localAddr,
-          remoteAddr: conn.remoteAddr,
-        };
-        // Serve the HTTP connection
-        serveConnection(
-          server,
-          activeHttpConnections,
-          handler,
-          httpConn,
-          connInfo,
-          onError,
-        );
-      }
-      await serverDeferred.promise;
-    },
-  };
-
-  signal?.addEventListener(
-    "abort",
-    () => {
-      try {
-        server.close();
-      } catch {
-        // Pass
-      }
-    },
-    { once: true },
-  );
-
-  onListen(listener.addr);
-
-  await PromisePrototypeCatch(server.serve(), console.error);
-}
-
-export { _ws, HttpConn, serve, upgradeHttp, upgradeHttpRaw, upgradeWebSocket };
+export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };
