@@ -34,6 +34,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_tls::RootCertStoreProvider;
@@ -330,6 +331,7 @@ pub struct WebWorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
+  pub fs: Option<Arc<dyn FileSystem>>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_fs: Option<Arc<dyn deno_node::NodeFs>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
@@ -448,7 +450,7 @@ impl WebWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<Fs, PermissionsContainer>(unstable, fs),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable, options.fs),
       deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
         options.npm_resolver,
         options.node_fs,

@@ -42,6 +42,7 @@ async fn main() -> Result<(), AnyError> {
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     should_wait_for_inspector_session: false,
+    fs: None,
     module_loader,
     node_fs: None,
     npm_resolver: None,

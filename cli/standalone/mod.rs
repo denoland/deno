@@ -36,6 +36,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -336,6 +337,7 @@ pub async fn run(
     BlobStore::default(),
     Box::new(module_loader_factory),
     root_cert_store_provider,
+    Arc::new(deno_fs::RealFs),
     node_fs,
     None,
     CliMainWorkerOptions {

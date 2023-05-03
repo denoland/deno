@@ -18,7 +18,6 @@ mod startup_snapshot {
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
   use deno_core::ModuleCode;
-  use deno_fs::StdFs;
   use std::path::Path;
 
   fn transpile_ts_for_snapshotting(
@@ -316,7 +315,7 @@ mod startup_snapshot {
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<_, Permissions>(false, StdFs),
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, None),
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
