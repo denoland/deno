@@ -27,7 +27,7 @@ const {
   JSONStringify,
   MathCeil,
   ObjectAssign,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   SafeWeakMap,
@@ -211,7 +211,7 @@ function normalizeAlgorithm(algorithm, op) {
   // 5.
   let desiredType = undefined;
   for (const key in registeredAlgorithms) {
-    if (!ObjectPrototypeHasOwnProperty(registeredAlgorithms, key)) {
+    if (!ObjectHasOwn(registeredAlgorithms, key)) {
       continue;
     }
     if (
@@ -246,7 +246,7 @@ function normalizeAlgorithm(algorithm, op) {
   const dict = simpleAlgorithmDictionaries[desiredType];
   // 10.
   for (const member in dict) {
-    if (!ObjectPrototypeHasOwnProperty(dict, member)) {
+    if (!ObjectHasOwn(dict, member)) {
       continue;
     }
     const idlType = dict[member];
