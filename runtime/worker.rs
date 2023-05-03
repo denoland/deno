@@ -178,22 +178,20 @@ impl Default for WorkerOptions {
 }
 
 impl MainWorker {
-  pub fn bootstrap_from_options<Fs: deno_fs::FileSystem + 'static>(
+  pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
     permissions: PermissionsContainer,
-    fs: Fs,
     options: WorkerOptions,
   ) -> Self {
     let bootstrap_options = options.bootstrap.clone();
-    let mut worker = Self::from_options(main_module, permissions, fs, options);
+    let mut worker = Self::from_options(main_module, permissions, options);
     worker.bootstrap(&bootstrap_options);
     worker
   }
 
-  pub fn from_options<Fs: deno_fs::FileSystem + 'static>(
+  pub fn from_options(
     main_module: ModuleSpecifier,
     permissions: PermissionsContainer,
-    fs: Fs,
     mut options: WorkerOptions,
   ) -> Self {
     deno_core::extension!(deno_permissions_worker,

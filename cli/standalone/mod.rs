@@ -37,7 +37,6 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;

@@ -467,7 +467,6 @@ impl CliMainWorkerFactory {
     let worker = MainWorker::bootstrap_from_options(
       main_module.clone(),
       permissions,
-      StdFs,
       options,
     );
 
@@ -595,7 +594,6 @@ fn create_web_worker_callback(
     WebWorker::bootstrap_from_options(
       args.name,
       args.permissions,
-      StdFs,
       args.main_module,
       args.worker_id,
       options,
@@ -649,7 +647,7 @@ mod tests {
       stdio: Default::default(),
     };
 
-    MainWorker::bootstrap_from_options(main_module, permissions, StdFs, options)
+    MainWorker::bootstrap_from_options(main_module, permissions, options)
   }
 
   #[tokio::test]
