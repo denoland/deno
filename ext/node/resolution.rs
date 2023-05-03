@@ -1078,7 +1078,7 @@ impl NodeResolver {
     url: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
     let file_path = url.to_file_path().unwrap();
-    let current_dir = file_path.parent().unwrap().canonicalize()?;
+    let current_dir = self.fs.canonicalize(file_path.parent().unwrap())?;
     let mut current_dir = current_dir.as_path();
     let package_json_path = current_dir.join("package.json");
     if self.fs.exists(&package_json_path) {
