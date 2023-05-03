@@ -405,14 +405,14 @@ impl deno_fs::FileSystem for DenoCompileFileSystem {
 
   fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>> {
     if self.0.is_path_within(path) {
-      todo!() // todo
+      Ok(self.0.read_dir(path)?)
     } else {
       RealFs.read_dir_sync(path)
     }
   }
   async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
     if self.0.is_path_within(&path) {
-      todo!() // todo
+      Ok(self.0.read_dir(&path)?)
     } else {
       RealFs.read_dir_async(path).await
     }

@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_io::fs::FsStat;
 use serde::Deserialize;
 use serde::Serialize;
@@ -429,6 +430,22 @@ impl FileBackedVfs {
     path.starts_with(&self.fs_root.root)
   }
 
+  pub fn read_dir(&self, path: &Path) -> std::io::Result<Vec<FsDirEntry>> {
+    let dir = self.dir_entry(path)?;
+    Ok(
+      dir
+        .entries
+        .iter()
+        .map(|entry| FsDirEntry {
+          name: entry.name().to_string(),
+          is_file: matches!(entry, VfsEntry::File(_)),
+          is_directory: matches!(entry, VfsEntry::Dir(_)),
+          is_symlink: matches!(entry, VfsEntry::Symlink(_)),
+        })
+        .collect(),
+    )
+  }
+
   pub fn lstat(&self, path: &Path) -> std::io::Result<FsStat> {
     let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
     Ok(entry.as_fs_stat())
@@ -481,15 +498,25 @@ impl FileBackedVfs {
     })
   }
 
+  pub fn dir_entry(&self, path: &Path) -> std::io::Result<&VirtualDirectory> {
+    let (_, entry) = self.fs_root.find_entry(path)?;
+    match entry {
+      VfsEntryRef::Dir(dir) => Ok(dir),
+      VfsEntryRef::Symlink(_) => unreachable!(),
+      VfsEntryRef::File(file) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "path is a file",
+      )),
+    }
+  }
+
   pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
     let (_, entry) = self.fs_root.find_entry(path)?;
     match entry {
-      VfsEntryRef::Dir(_) => {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "path is a directory",
-        ));
-      }
+      VfsEntryRef::Dir(_) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "path is a directory",
+      )),
       VfsEntryRef::Symlink(_) => unreachable!(),
       VfsEntryRef::File(file) => Ok(file),
     }
