@@ -49,7 +49,7 @@ class Kv {
   #rid: number;
 
   constructor(rid: number = undefined, symbol: symbol = undefined) {
-    if (kvSymbol === symbol) {
+    if (kvSymbol !== symbol) {
       throw new TypeError(
         "Deno.Kv can not be constructed, use Deno.openKv instead.",
       );
