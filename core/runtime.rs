@@ -561,12 +561,8 @@ impl JsRuntime {
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
-    let loaded_extensions = Rc::new(RefCell::new(false));
-    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
-      ext_loader,
-      op_state,
-      loaded_extensions.clone(),
-    )));
+    let module_map_rc =
+      Rc::new(RefCell::new(ModuleMap::new(ext_loader, op_state)));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
@@ -585,7 +581,7 @@ impl JsRuntime {
       event_loop_middlewares: Vec::with_capacity(num_extensions),
       extensions,
       state: state_rc,
-      module_map: Some(module_map_rc),
+      module_map: Some(module_map_rc.clone()),
       is_main: options.is_main,
     };
 
@@ -593,9 +589,9 @@ impl JsRuntime {
     // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
+    module_map_rc.borrow().loader.allow_ext_resolution();
     js_runtime.init_extension_js(&realm).unwrap();
-    *loaded_extensions.borrow_mut() = true;
-    js_runtime.module_map.as_ref().unwrap().borrow_mut().loader = loader;
+    module_map_rc.borrow().loader.disallow_ext_resolution();
 
     js_runtime
   }
@@ -696,7 +692,15 @@ impl JsRuntime {
       JsRealm::new(v8::Global::new(scope, context))
     };
 
+    self
+      .module_map
+      .as_ref()
+      .map(|m| m.borrow().loader.allow_ext_resolution());
     self.init_extension_js(&realm)?;
+    self
+      .module_map
+      .as_ref()
+      .map(|m| m.borrow().loader.disallow_ext_resolution());
     Ok(realm)
   }
 

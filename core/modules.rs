@@ -380,28 +380,6 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
-/// Helper function, that calls into `loader.resolve()`, but denies resolution
-/// of `ext` scheme if we are running with a snapshot loaded and not
-/// creating a snapshot
-pub(crate) fn resolve_helper(
-  loaded_extensions: bool,
-  loader: Rc<dyn ModuleLoader>,
-  specifier: &str,
-  referrer: &str,
-  kind: ResolutionKind,
-) -> Result<ModuleSpecifier, Error> {
-  if specifier.starts_with("ext:") {
-    if !referrer.starts_with("ext:") && referrer != "." || loaded_extensions {
-      return Err(generic_error(
-        "Cannot load extension module from external code",
-      ));
-    }
-    return Ok(ModuleSpecifier::parse(specifier)?);
-  }
-
-  loader.resolve(specifier, referrer, kind)
-}
-
 /// Function that can be passed to the `ExtModuleLoader` that allows to
 /// transpile sources before passing to V8.
 pub type ExtModuleLoaderCb =
@@ -410,6 +388,7 @@ pub type ExtModuleLoaderCb =
 pub struct ExtModuleLoader {
   module_loader: Rc<dyn ModuleLoader>,
   extensions: Rc<RefCell<Vec<Extension>>>,
+  ext_resolution_allowed: RefCell<bool>,
   used_esm_sources: RefCell<HashMap<String, bool>>,
   maybe_load_callback: Option<ExtModuleLoaderCb>,
 }
@@ -419,6 +398,7 @@ impl Default for ExtModuleLoader {
     Self {
       module_loader: Rc::new(NoopModuleLoader),
       extensions: Default::default(),
+      ext_resolution_allowed: Default::default(),
       used_esm_sources: RefCell::new(HashMap::default()),
       maybe_load_callback: None,
     }
@@ -442,47 +422,32 @@ impl ExtModuleLoader {
     ExtModuleLoader {
       module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
       extensions,
+      ext_resolution_allowed: Default::default(),
       used_esm_sources: RefCell::new(used_esm_sources),
       maybe_load_callback,
     }
   }
-}
 
-impl Drop for ExtModuleLoader {
-  fn drop(&mut self) {
-    let used_esm_sources = self.used_esm_sources.get_mut();
-    let unused_modules: Vec<_> = used_esm_sources
-      .iter()
-      .filter(|(_s, v)| !*v)
-      .map(|(s, _)| s)
-      .collect();
-
-    if !unused_modules.is_empty() {
-      let mut msg =
-        "Following modules were passed to ExtModuleLoader but never used:\n"
-          .to_string();
-      for m in unused_modules {
-        msg.push_str("  - ");
-        msg.push_str(m);
-        msg.push('\n');
-      }
-      panic!("{}", msg);
-    }
-  }
-}
-
-impl ModuleLoader for ExtModuleLoader {
-  fn resolve(
+  pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    // `ext:` specifier resolution is handled in `resolve_helper()`.
+    if specifier.starts_with("ext:") {
+      if !referrer.starts_with("ext:") && referrer != "."
+        || !*self.ext_resolution_allowed.borrow()
+      {
+        return Err(generic_error(
+          "Cannot load extension module from external code",
+        ));
+      }
+      return Ok(ModuleSpecifier::parse(specifier)?);
+    }
     self.module_loader.resolve(specifier, referrer, kind)
   }
 
-  fn load(
+  pub fn load(
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
@@ -533,7 +498,7 @@ impl ModuleLoader for ExtModuleLoader {
     .boxed_local()
   }
 
-  fn prepare_load(
+  pub fn prepare_load(
     &self,
     op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
@@ -550,6 +515,37 @@ impl ModuleLoader for ExtModuleLoader {
       maybe_referrer,
       is_dyn_import,
     )
+  }
+
+  pub fn allow_ext_resolution(&self) {
+    *self.ext_resolution_allowed.borrow_mut() = true;
+  }
+
+  pub fn disallow_ext_resolution(&self) {
+    *self.ext_resolution_allowed.borrow_mut() = false;
+  }
+}
+
+impl Drop for ExtModuleLoader {
+  fn drop(&mut self) {
+    let used_esm_sources = self.used_esm_sources.get_mut();
+    let unused_modules: Vec<_> = used_esm_sources
+      .iter()
+      .filter(|(_s, v)| !*v)
+      .map(|(s, _)| s)
+      .collect();
+
+    if !unused_modules.is_empty() {
+      let mut msg =
+        "Following modules were passed to ExtModuleLoader but never used:\n"
+          .to_string();
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m);
+        msg.push('\n');
+      }
+      panic!("{}", msg);
+    }
   }
 }
 
@@ -638,8 +634,7 @@ pub(crate) struct RecursiveModuleLoad {
   // These three fields are copied from `module_map_rc`, but they are cloned
   // ahead of time to avoid already-borrowed errors.
   op_state: Rc<RefCell<OpState>>,
-  loader: Rc<dyn ModuleLoader>,
-  loaded_extensions: bool,
+  loader: Rc<ExtModuleLoader>,
 }
 
 impl RecursiveModuleLoad {
@@ -695,7 +690,6 @@ impl RecursiveModuleLoad {
       init,
       state: LoadState::Init,
       module_map_rc: module_map_rc.clone(),
-      loaded_extensions: *module_map_rc.borrow().loaded_extensions.borrow(),
       op_state,
       loader,
       pending: FuturesUnordered::new(),
@@ -724,29 +718,17 @@ impl RecursiveModuleLoad {
 
   fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
-      LoadInit::Main(ref specifier) => resolve_helper(
-        self.loaded_extensions,
-        self.loader.clone(),
-        specifier,
-        ".",
-        ResolutionKind::MainModule,
-      ),
-      LoadInit::Side(ref specifier) => resolve_helper(
-        self.loaded_extensions,
-        self.loader.clone(),
-        specifier,
-        ".",
-        ResolutionKind::Import,
-      ),
-      LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        resolve_helper(
-          self.loaded_extensions,
-          self.loader.clone(),
-          specifier,
-          referrer,
-          ResolutionKind::DynamicImport,
-        )
+      LoadInit::Main(ref specifier) => {
+        self
+          .loader
+          .resolve(specifier, ".", ResolutionKind::MainModule)
       }
+      LoadInit::Side(ref specifier) => {
+        self.loader.resolve(specifier, ".", ResolutionKind::Import)
+      }
+      LoadInit::DynamicImport(ref specifier, ref referrer, _) => self
+        .loader
+        .resolve(specifier, referrer, ResolutionKind::DynamicImport),
     }
   }
 
@@ -755,29 +737,21 @@ impl RecursiveModuleLoad {
 
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
-        let spec = resolve_helper(
-          self.loaded_extensions,
-          self.loader.clone(),
-          specifier,
-          ".",
-          ResolutionKind::MainModule,
-        )?;
+        let spec =
+          self
+            .loader
+            .resolve(specifier, ".", ResolutionKind::MainModule)?;
         (spec, None)
       }
       LoadInit::Side(ref specifier) => {
-        let spec = resolve_helper(
-          self.loaded_extensions,
-          self.loader.clone(),
-          specifier,
-          ".",
-          ResolutionKind::Import,
-        )?;
+        let spec =
+          self
+            .loader
+            .resolve(specifier, ".", ResolutionKind::Import)?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        let spec = resolve_helper(
-          self.loaded_extensions,
-          self.loader.clone(),
+        let spec = self.loader.resolve(
           specifier,
           referrer,
           ResolutionKind::DynamicImport,
@@ -1086,7 +1060,7 @@ pub(crate) struct ModuleMap {
   pub(crate) next_load_id: ModuleLoadId,
 
   // Handling of futures for loading module sources
-  pub loader: Rc<dyn ModuleLoader>,
+  pub loader: Rc<ExtModuleLoader>,
   op_state: Rc<RefCell<OpState>>,
   pub(crate) dynamic_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
@@ -1098,8 +1072,6 @@ pub(crate) struct ModuleMap {
   // This store is used temporarly, to forward parsed JSON
   // value from `new_json_module` to `json_module_evaluation_steps`
   json_value_store: HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
-
-  pub(crate) loaded_extensions: Rc<RefCell<bool>>,
 }
 
 impl ModuleMap {
@@ -1374,9 +1346,8 @@ impl ModuleMap {
   }
 
   pub(crate) fn new(
-    loader: Rc<dyn ModuleLoader>,
+    loader: Rc<ExtModuleLoader>,
     op_state: Rc<RefCell<OpState>>,
-    loaded_extensions: Rc<RefCell<bool>>,
   ) -> ModuleMap {
     Self {
       handles: vec![],
@@ -1390,7 +1361,6 @@ impl ModuleMap {
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),
       json_value_store: HashMap::new(),
-      loaded_extensions,
     }
   }
 
@@ -1519,9 +1489,7 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier = match resolve_helper(
-        *self.loaded_extensions.borrow(),
-        self.loader.clone(),
+      let module_specifier = match self.loader.resolve(
         &import_specifier,
         name.as_ref(),
         if is_dynamic_import {
@@ -1710,18 +1678,9 @@ impl ModuleMap {
       .dynamic_import_map
       .insert(load.id, resolver_handle);
 
-    let (loader, loaded_extensions) = {
-      let module_map = module_map_rc.borrow();
-      let loaded_extensions = *module_map.loaded_extensions.borrow();
-      (module_map.loader.clone(), loaded_extensions)
-    };
-    let resolve_result = resolve_helper(
-      loaded_extensions,
-      loader,
-      specifier,
-      referrer,
-      ResolutionKind::DynamicImport,
-    );
+    let loader = module_map_rc.borrow().loader.clone();
+    let resolve_result =
+      loader.resolve(specifier, referrer, ResolutionKind::DynamicImport);
     let fut = match resolve_result {
       Ok(module_specifier) => {
         if module_map_rc
@@ -1755,14 +1714,10 @@ impl ModuleMap {
     referrer: &str,
     import_assertions: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier = resolve_helper(
-      *self.loaded_extensions.borrow(),
-      self.loader.clone(),
-      specifier,
-      referrer,
-      ResolutionKind::Import,
-    )
-    .expect("Module should have been already resolved");
+    let resolved_specifier = self
+      .loader
+      .resolve(specifier, referrer, ResolutionKind::Import)
+      .expect("Module should have been already resolved");
 
     let module_type =
       get_asserted_module_type_from_assertions(&import_assertions);
@@ -3034,44 +2989,27 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
 
   #[test]
   fn ext_resolution() {
-    resolve_helper(
-      false,
-      Rc::new(ExtModuleLoader::default()),
-      "ext:core.js",
-      "ext:referrer.js",
-      ResolutionKind::Import,
-    )
-    .unwrap();
-    resolve_helper(
-      false,
-      Rc::new(ExtModuleLoader::default()),
-      "ext:core.js",
-      ".",
-      ResolutionKind::Import,
-    )
-    .unwrap();
+    let loader = ExtModuleLoader::default();
+    loader.allow_ext_resolution();
+    loader
+      .resolve("ext:core.js", "ext:referrer.js", ResolutionKind::Import)
+      .unwrap();
+    loader
+      .resolve("ext:core.js", ".", ResolutionKind::Import)
+      .unwrap();
     assert_eq!(
-      resolve_helper(
-        false,
-        Rc::new(ExtModuleLoader::default()),
-        "ext:core.js",
-        "file://bar",
-        ResolutionKind::Import,
-      )
-      .err()
-      .map(|e| e.to_string()),
+      loader
+        .resolve("ext:core.js", "file://bar", ResolutionKind::Import,)
+        .err()
+        .map(|e| e.to_string()),
       Some("Cannot load extension module from external code".to_string())
     );
+    loader.disallow_ext_resolution();
     assert_eq!(
-      resolve_helper(
-        true,
-        Rc::new(ExtModuleLoader::default()),
-        "ext:core.js",
-        "ext:referrer.js",
-        ResolutionKind::Import,
-      )
-      .err()
-      .map(|e| e.to_string()),
+      loader
+        .resolve("ext:core.js", "ext:referrer.js", ResolutionKind::Import,)
+        .err()
+        .map(|e| e.to_string()),
       Some("Cannot load extension module from external code".to_string())
     );
   }

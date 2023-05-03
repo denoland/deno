@@ -10,7 +10,6 @@ use crate::error::is_instance_of_error;
 use crate::error::JsStackFrame;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
-use crate::modules::resolve_helper;
 use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
@@ -362,11 +361,7 @@ fn import_meta_resolve(
     url_prop.to_rust_string_lossy(scope)
   };
   let module_map_rc = JsRuntime::module_map(scope);
-  let (loader, loaded_extensions) = {
-    let module_map = module_map_rc.borrow();
-    let loaded_extensions = *module_map.loaded_extensions.borrow();
-    (module_map.loader.clone(), loaded_extensions)
-  };
+  let loader = module_map_rc.borrow().loader.clone();
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
   if specifier_str.starts_with("npm:") {
@@ -374,13 +369,8 @@ fn import_meta_resolve(
     return;
   }
 
-  match resolve_helper(
-    loaded_extensions,
-    loader,
-    &specifier_str,
-    &referrer,
-    ResolutionKind::DynamicImport,
-  ) {
+  match loader.resolve(&specifier_str, &referrer, ResolutionKind::DynamicImport)
+  {
     Ok(resolved) => {
       let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);
