@@ -1086,7 +1086,7 @@ impl NodeResolver {
     }
     let root_pkg_folder = self
       .npm_resolver
-      .resolve_package_folder_from_path(&current_dir)?;
+      .resolve_package_folder_from_path(current_dir)?;
     while current_dir.starts_with(&root_pkg_folder) {
       current_dir = current_dir.parent().unwrap();
       let package_json_path = current_dir.join("package.json");
