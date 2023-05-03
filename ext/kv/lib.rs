@@ -53,8 +53,7 @@ impl UnstableChecker {
 }
 
 deno_core::extension!(deno_kv,
-  // TODO(bartlomieju): specify deps
-  deps = [ ],
+  deps = [ deno_console ],
   parameters = [ DBH: DatabaseHandler ],
   ops = [
     op_kv_database_open<DBH>,

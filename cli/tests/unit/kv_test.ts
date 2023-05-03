@@ -578,17 +578,29 @@ Deno.test("KvU64 underflow", () => {
   }, RangeError);
 });
 
-Deno.test("KvU64 frozen", () => {
-  const a = new Deno.KvU64(1n);
-  assertThrows(() => {
-    // @ts-expect-error value is readonly
-    a.value = 2n;
-  }, TypeError);
-});
-
 Deno.test("KvU64 unbox", () => {
   const a = new Deno.KvU64(1n);
   assertEquals(a.value, 1n);
+});
+
+Deno.test("KvU64 unbox with valueOf", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(a.valueOf(), 1n);
+});
+
+Deno.test("KvU64 auto-unbox", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(a as unknown as bigint + 1n, 2n);
+});
+
+Deno.test("KvU64 toString", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(a.toString(), "1");
+});
+
+Deno.test("KvU64 inspect", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(Deno.inspect(a), "[Deno.KvU64: 1n]");
 });
 
 async function collect<T>(
