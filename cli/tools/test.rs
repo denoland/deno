@@ -1033,12 +1033,9 @@ pub async fn test_specifier(
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
 
-  loop {
-    if !worker.dispatch_beforeunload_event(located_script_name!())? {
-      break;
-    }
-    worker.run_event_loop(false).await?;
-  }
+  // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
+  // event loop to continue beyond what's needed to await results.
+  worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
 
   if let Some(coverage_collector) = coverage_collector.as_mut() {

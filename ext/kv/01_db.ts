@@ -23,7 +23,7 @@ const encodeCursor: (
 
 async function openKv(path: string) {
   const rid = await core.opAsync("op_kv_database_open", path);
-  return new Kv(rid);
+  return new Kv(rid, kvSymbol);
 }
 
 interface RawKvEntry {
@@ -43,10 +43,17 @@ type RawValue = {
   value: bigint;
 };
 
+const kvSymbol = Symbol("KvRid");
+
 class Kv {
   #rid: number;
 
-  constructor(rid: number) {
+  constructor(rid: number = undefined, symbol: symbol = undefined) {
+    if (kvSymbol !== symbol) {
+      throw new TypeError(
+        "Deno.Kv can not be constructed, use Deno.openKv instead.",
+      );
+    }
     this.#rid = rid;
   }
 
