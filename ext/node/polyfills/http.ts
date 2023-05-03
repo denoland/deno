@@ -351,6 +351,18 @@ class ClientRequest extends NodeWritable {
   }
 
   setTimeout(timeout: number, callback?: () => void) {
+    if (timeout == 0) {
+      // Node's underlying Socket implementation expects a 0 value to disable the
+      // existing timeout.
+      if (this.opts.timeout) {
+        clearTimeout(this.opts.timeout);
+        this.opts.timeout = undefined;
+        this.opts.signal = undefined;
+      }
+
+      return;
+    }
+
     const controller = new AbortController();
     this.opts.signal = controller.signal;
 

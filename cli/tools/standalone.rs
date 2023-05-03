@@ -25,7 +25,7 @@ pub async fn compile(
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let file_fetcher = factory.file_fetcher()?;
-  let http_client = factory.http_client()?;
+  let http_client = factory.http_client();
   let deno_dir = factory.deno_dir()?;
   let module_graph_builder = factory.module_graph_builder().await?;
   let parsed_source_cache = factory.parsed_source_cache()?;

@@ -5,11 +5,11 @@
 
 // deno-lint-ignore-file camelcase
 
-const { op_listen } = Deno[Deno.internal].core.ops;
+const { op_listen } = Deno.core.ops;
 const {
   op_accept,
   op_read_socket,
-} = core.generateAsyncOpHandler(
+} = Deno.core.generateAsyncOpHandler(
   "op_accept",
   "op_read_socket",
 );
