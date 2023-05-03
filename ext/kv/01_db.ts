@@ -3,9 +3,14 @@
 // @ts-ignore internal api
 const {
   AsyncGeneratorPrototype,
-  SymbolToStringTag,
+  BigIntPrototypeToString,
+  ObjectFreeze,
   ObjectGetPrototypeOf,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeReplace,
   SymbolFor,
+  SymbolToStringTag,
+  Uint8ArrayPrototype,
 } = globalThis.__bootstrap.primordials;
 const core = Deno.core;
 const ops = core.ops;
@@ -312,7 +317,7 @@ class KvU64 {
   }
 
   toString() {
-    return this.value.toString();
+    return BigIntPrototypeToString(this.value);
   }
 
   get [SymbolToStringTag]() {
@@ -320,8 +325,11 @@ class KvU64 {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(Object(this.value), inspectOptions)
-      .replace("BigInt", "Deno.KvU64");
+    return StringPrototypeReplace(
+      inspect(Object(this.value), inspectOptions),
+      "BigInt",
+      "Deno.KvU64",
+    );
   }
 }
 
@@ -349,12 +357,12 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
 }
 
 function serializeValue(value: unknown): RawValue {
-  if (value instanceof Uint8Array) {
+  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
     return {
       kind: "bytes",
       value,
     };
-  } else if (value instanceof KvU64) {
+  } else if (ObjectPrototypeIsPrototypeOf(KvU64.prototype, value)) {
     return {
       kind: "u64",
       value: value.valueOf(),
@@ -417,13 +425,13 @@ class KvListIterator extends AsyncIterator
     let start: Deno.KvKey | undefined;
     let end: Deno.KvKey | undefined;
     if ("prefix" in selector && selector.prefix !== undefined) {
-      prefix = Object.freeze([...selector.prefix]);
+      prefix = ObjectFreeze([...selector.prefix]);
     }
     if ("start" in selector && selector.start !== undefined) {
-      start = Object.freeze([...selector.start]);
+      start = ObjectFreeze([...selector.start]);
     }
     if ("end" in selector && selector.end !== undefined) {
-      end = Object.freeze([...selector.end]);
+      end = ObjectFreeze([...selector.end]);
     }
     if (prefix) {
       if (start && end) {
