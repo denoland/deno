@@ -498,6 +498,8 @@ async fn bench_specifier(
     sender.send(BenchEvent::Result(desc.id, result))?;
   }
 
+  // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
+  // event loop to continue beyond what's needed to await results.
   worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
   Ok(())
