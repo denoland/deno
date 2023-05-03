@@ -615,11 +615,11 @@ impl JsRuntime {
           match realm_state.op_ctxs.get(i as usize) {
             Some(op_ctx) => {
               if op_ctx.decl.name != op_name {
-                panic!("Snapshotted op mismatch; expected \"{}\" at index {} but got \"{}\"", op_name, i, op_ctx.decl.name);
+                panic!("Snapshotted op mismatch; expected \"{}\" but got \"{}\" at index {}", op_name, op_ctx.decl.name, i);
               }
             }
             None => {
-              panic!("Snapshotted op mismatch; expected \"{}\" at index {} but got None", op_name, i);
+              panic!("Snapshotted op mismatch; expected \"{}\" but got None at index {}", op_name, i);
             }
           }
         }
@@ -3482,6 +3482,42 @@ pub mod tests {
     );
     assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
     assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "Snapshotted op mismatch; expected \"op_test\" but got \"op_test2\""
+  )]
+  #[cfg(debug_assertions)]
+  fn snapshotted_ops_order() {
+    #[op]
+    fn op_test() -> Result<String, Error> {
+      Ok(String::from("test"))
+    }
+
+    #[op]
+    fn op_test2() -> Result<String, Error> {
+      Ok(String::from("test2"))
+    }
+
+    let runtime = JsRuntime::new(RuntimeOptions {
+      will_snapshot: true,
+      extensions: vec![Extension::builder("text_ext")
+        .ops(vec![op_test::decl(), op_test2::decl()])
+        .build()],
+      ..Default::default()
+    });
+
+    let snapshot = runtime.snapshot();
+
+    // This should banic in debug build, because we messed up ops ordering
+    JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
+      extensions: vec![Extension::builder("text_ext")
+        .ops(vec![op_test2::decl(), op_test::decl()])
+        .build()],
+      ..Default::default()
+    });
   }
 
   #[test]
