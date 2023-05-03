@@ -543,6 +543,29 @@ impl JsRuntime {
         }
       }
 
+      #[cfg(feature = "include_js_files_for_snapshotting")]
+      {
+        let js_sources = options
+          .extensions
+          .iter()
+          .flat_map(|ext| match ext.get_js_sources() {
+            Some(s) => s.to_owned(),
+            None => vec![],
+          })
+          .collect::<Vec<ExtensionFileSource>>();
+
+        if snapshot_options != snapshot_util::SnapshotOptions::None {
+          for source in &js_sources {
+            use crate::ExtensionFileSourceCode;
+            if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+              &source.code
+            {
+              println!("cargo:rerun-if-changed={}", path.display())
+            }
+          }
+        }
+      }
+
       Rc::new(crate::modules::ExtModuleLoader::new(
         options.module_loader,
         esm_sources,
