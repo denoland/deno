@@ -132,7 +132,7 @@ pub struct JsRuntime {
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_options: snapshot_util::SnapshotOptions,
   allocations: IsolateAllocations,
-  extensions: Vec<Extension>,
+  extensions: Rc<RefCell<Vec<Extension>>>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
@@ -416,7 +416,7 @@ impl JsRuntime {
     let global_context;
     let mut maybe_snapshotted_data = None;
 
-    let (mut isolate, snapshot_options) = if snapshot_options.will_snapshot() {
+    let mut isolate = if snapshot_options.will_snapshot() {
       let snapshot_creator =
         snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
@@ -433,7 +433,7 @@ impl JsRuntime {
 
         global_context = v8::Global::new(scope, context);
       }
-      (isolate, snapshot_options)
+      isolate
     } else {
       #[cfg(not(target_env = "msvc"))]
       let vtable: &'static v8::RustAllocatorVtable<
@@ -492,7 +492,7 @@ impl JsRuntime {
         global_context = v8::Global::new(scope, context);
       }
 
-      (isolate, snapshot_options)
+      isolate
     };
 
     // SAFETY: this is first use of `isolate_ptr` so we are sure we're
@@ -521,61 +521,33 @@ impl JsRuntime {
       None
     };
 
-    let loader = if snapshot_options != snapshot_util::SnapshotOptions::Load {
-      let esm_sources = options
+    let loader = options
+      .module_loader
+      .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+    #[cfg(feature = "include_js_files_for_snapshotting")]
+    if snapshot_options.will_snapshot() {
+      for source in options
         .extensions
         .iter()
-        .flat_map(|ext| match ext.get_esm_sources() {
-          Some(s) => s.to_owned(),
-          None => vec![],
-        })
-        .collect::<Vec<ExtensionFileSource>>();
-
-      #[cfg(feature = "include_js_files_for_snapshotting")]
-      if snapshot_options != snapshot_util::SnapshotOptions::None {
-        for source in &esm_sources {
-          use crate::ExtensionFileSourceCode;
-          if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-            &source.code
-          {
-            println!("cargo:rerun-if-changed={}", path.display())
-          }
-        }
-      }
-
-      #[cfg(feature = "include_js_files_for_snapshotting")]
+        .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
+        .flatten()
+        .flatten()
       {
-        let js_sources = options
-          .extensions
-          .iter()
-          .flat_map(|ext| match ext.get_js_sources() {
-            Some(s) => s.to_owned(),
-            None => vec![],
-          })
-          .collect::<Vec<ExtensionFileSource>>();
-
-        if snapshot_options != snapshot_util::SnapshotOptions::None {
-          for source in &js_sources {
-            use crate::ExtensionFileSourceCode;
-            if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-              &source.code
-            {
-              println!("cargo:rerun-if-changed={}", path.display())
-            }
-          }
+        use crate::ExtensionFileSourceCode;
+        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+          &source.code
+        {
+          println!("cargo:rerun-if-changed={}", path.display())
         }
       }
-
-      Rc::new(crate::modules::ExtModuleLoader::new(
-        options.module_loader,
-        esm_sources,
-        options.snapshot_module_load_cb,
-      ))
-    } else {
-      options
-        .module_loader
-        .unwrap_or_else(|| Rc::new(NoopModuleLoader))
-    };
+    }
+    let num_extensions = options.extensions.len();
+    let extensions = Rc::new(RefCell::new(options.extensions));
+    let ext_loader = Rc::new(crate::modules::ExtModuleLoader::new(
+      Some(loader.clone()),
+      extensions.clone(),
+      options.snapshot_module_load_cb,
+    ));
 
     {
       let mut state = state_rc.borrow_mut();
@@ -589,11 +561,11 @@ impl JsRuntime {
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
-
+    let loaded_extensions = Rc::new(RefCell::new(false));
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
-      loader,
+      ext_loader,
       op_state,
-      snapshot_options == snapshot_util::SnapshotOptions::Load,
+      loaded_extensions.clone(),
     )));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
@@ -610,8 +582,8 @@ impl JsRuntime {
       v8_isolate: Some(isolate),
       snapshot_options,
       allocations: IsolateAllocations::default(),
-      event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
-      extensions: options.extensions,
+      event_loop_middlewares: Vec::with_capacity(num_extensions),
+      extensions,
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
@@ -622,6 +594,8 @@ impl JsRuntime {
     js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
     js_runtime.init_extension_js(&realm).unwrap();
+    *loaded_extensions.borrow_mut() = true;
+    js_runtime.module_map.as_ref().unwrap().borrow_mut().loader = loader;
 
     js_runtime
   }
@@ -790,7 +764,7 @@ impl JsRuntime {
 
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions);
-    for ext in &extensions {
+    for ext in extensions.borrow().iter() {
       {
         if let Some(esm_files) = ext.get_esm_sources() {
           if let Some(entry_point) = ext.get_esm_entry_point() {
@@ -863,23 +837,15 @@ impl JsRuntime {
   /// Initializes ops of provided Extensions
   fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
-    // Take extensions to avoid double-borrow
-    {
-      let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    // Setup state
+    for e in self.extensions.borrow_mut().iter_mut() {
+      // ops are already registered during in bindings::initialize_context();
+      e.init_state(&mut op_state.borrow_mut());
 
-      // Setup state
-      for e in extensions.iter_mut() {
-        // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut());
-
-        // Setup event-loop middleware
-        if let Some(middleware) = e.init_event_loop_middleware() {
-          self.event_loop_middlewares.push(middleware);
-        }
+      // Setup event-loop middleware
+      if let Some(middleware) = e.init_event_loop_middleware() {
+        self.event_loop_middlewares.push(middleware);
       }
-
-      // Restore extensions
-      self.extensions = extensions;
     }
     Ok(())
   }

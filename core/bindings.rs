@@ -259,46 +259,43 @@ pub fn host_import_module_dynamically_callback<'s>(
     .unwrap()
     .to_rust_string_lossy(scope);
 
-  let is_ext_module = specifier_str.starts_with("ext:");
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  if !is_ext_module {
-    let assertions = parse_import_assertions(
-      scope,
-      import_assertions,
-      ImportAssertionsKind::DynamicImport,
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::DynamicImport,
+  );
+
+  {
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    validate_import_assertions(tc_scope, &assertions);
+    if tc_scope.has_caught() {
+      let e = tc_scope.exception().unwrap();
+      resolver.reject(tc_scope, e);
+    }
+  }
+  let asserted_module_type =
+    get_asserted_module_type_from_assertions(&assertions);
+
+  let resolver_handle = v8::Global::new(scope, resolver);
+  {
+    let state_rc = JsRuntime::state(scope);
+    let module_map_rc = JsRuntime::module_map(scope);
+
+    debug!(
+      "dyn_import specifier {} referrer {} ",
+      specifier_str, referrer_name_str
     );
-
-    {
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      validate_import_assertions(tc_scope, &assertions);
-      if tc_scope.has_caught() {
-        let e = tc_scope.exception().unwrap();
-        resolver.reject(tc_scope, e);
-      }
-    }
-    let asserted_module_type =
-      get_asserted_module_type_from_assertions(&assertions);
-
-    let resolver_handle = v8::Global::new(scope, resolver);
-    {
-      let state_rc = JsRuntime::state(scope);
-      let module_map_rc = JsRuntime::module_map(scope);
-
-      debug!(
-        "dyn_import specifier {} referrer {} ",
-        specifier_str, referrer_name_str
-      );
-      ModuleMap::load_dynamic_import(
-        module_map_rc,
-        &specifier_str,
-        &referrer_name_str,
-        asserted_module_type,
-        resolver_handle,
-      );
-      state_rc.borrow_mut().notify_new_dynamic_import();
-    }
+    ModuleMap::load_dynamic_import(
+      module_map_rc,
+      &specifier_str,
+      &referrer_name_str,
+      asserted_module_type,
+      resolver_handle,
+    );
+    state_rc.borrow_mut().notify_new_dynamic_import();
   }
   // Map errors from module resolution (not JS errors from module execution) to
   // ones rethrown from this scope, so they include the call stack of the
@@ -310,16 +307,6 @@ pub fn host_import_module_dynamically_callback<'s>(
     v8::FunctionBuilder::<v8::Function>::build(builder, scope).unwrap();
 
   let promise = promise.catch(scope, map_err).unwrap();
-
-  if is_ext_module {
-    let message = v8::String::new_external_onebyte_static(
-      scope,
-      b"Cannot load extension module from external code",
-    )
-    .unwrap();
-    let exception = v8::Exception::type_error(scope, message);
-    resolver.reject(scope, exception);
-  }
 
   Some(promise)
 }
@@ -375,12 +362,10 @@ fn import_meta_resolve(
     url_prop.to_rust_string_lossy(scope)
   };
   let module_map_rc = JsRuntime::module_map(scope);
-  let (loader, snapshot_loaded_and_not_snapshotting) = {
+  let (loader, loaded_extensions) = {
     let module_map = module_map_rc.borrow();
-    (
-      module_map.loader.clone(),
-      module_map.snapshot_loaded_and_not_snapshotting,
-    )
+    let loaded_extensions = *module_map.loaded_extensions.borrow();
+    (module_map.loader.clone(), loaded_extensions)
   };
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
@@ -390,7 +375,7 @@ fn import_meta_resolve(
   }
 
   match resolve_helper(
-    snapshot_loaded_and_not_snapshotting,
+    loaded_extensions,
     loader,
     &specifier_str,
     &referrer,
