@@ -177,7 +177,7 @@ impl<'a> VfsEntryRef<'a> {
     }
   }
 
-  pub fn as_fs_state(&self) -> FsStat {
+  pub fn as_fs_stat(&self) -> FsStat {
     match self {
       VfsEntryRef::Dir(_) => FsStat {
         is_directory: true,
@@ -269,7 +269,7 @@ pub struct VirtualDirectory {
   pub entries: Vec<VfsEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VirtualFile {
   pub name: String,
   pub offset: u64,
@@ -429,14 +429,14 @@ impl FileBackedVfs {
     path.starts_with(&self.fs_root.root)
   }
 
-  pub fn symlink_metadata(&self, path: &Path) -> std::io::Result<FsStat> {
+  pub fn lstat(&self, path: &Path) -> std::io::Result<FsStat> {
     let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
-    Ok(entry.as_fs_state())
+    Ok(entry.as_fs_stat())
   }
 
-  pub fn metadata(&self, path: &Path) -> std::io::Result<FsStat> {
+  pub fn stat(&self, path: &Path) -> std::io::Result<FsStat> {
     let (_, entry) = self.fs_root.find_entry(path)?;
-    Ok(entry.as_fs_state())
+    Ok(entry.as_fs_stat())
   }
 
   pub fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
@@ -444,9 +444,46 @@ impl FileBackedVfs {
     Ok(path.to_path_buf())
   }
 
-  pub fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
+  pub fn read_all(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    self.read_all_file(self.file_entry(path)?)
+  }
+
+  pub fn read_all_file(&self, file: &VirtualFile) -> std::io::Result<Vec<u8>> {
+    let mut fs_file = self.file.lock();
+    fs_file.seek(SeekFrom::Start(
+      self.fs_root.start_file_offset + file.offset,
+    ))?;
+    let mut buf = vec![0; file.len as usize];
+    fs_file.read_exact(&mut buf)?;
+    Ok(buf)
+  }
+
+  pub fn read_file(
+    &self,
+    file: &VirtualFile,
+    pos: u64,
+    buf: &mut [u8],
+  ) -> std::io::Result<usize> {
+    let mut fs_file = self.file.lock();
+    fs_file.seek(SeekFrom::Start(
+      self.fs_root.start_file_offset + file.offset + pos,
+    ))?;
+    fs_file.read(buf)
+  }
+
+  pub fn read_all_to_string(&self, path: &Path) -> std::io::Result<String> {
+    let buf = self.read_all(path)?;
+    String::from_utf8(buf).map_err(|_| {
+      std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "stream did not contain valid UTF-8",
+      )
+    })
+  }
+
+  pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
     let (_, entry) = self.fs_root.find_entry(path)?;
-    let file = match entry {
+    match entry {
       VfsEntryRef::Dir(_) => {
         return Err(std::io::Error::new(
           std::io::ErrorKind::Other,
@@ -454,21 +491,8 @@ impl FileBackedVfs {
         ));
       }
       VfsEntryRef::Symlink(_) => unreachable!(),
-      VfsEntryRef::File(file) => file,
-    };
-    let mut fs_file = self.file.lock();
-    fs_file.seek(SeekFrom::Start(
-      self.fs_root.start_file_offset + file.offset,
-    ))?;
-    let mut buf = vec![0; file.len as usize];
-    fs_file.read_exact(&mut buf)?;
-    drop(fs_file); // drop lock
-    String::from_utf8(buf).map_err(|_| {
-      std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        "stream did not contain valid UTF-8",
-      )
-    })
+      VfsEntryRef::File(file) => Ok(file),
+    }
   }
 }
 
@@ -501,18 +525,22 @@ mod test {
     let (dest_path, mut virtual_fs) = into_virtual_fs(builder, &temp_dir);
 
     assert_eq!(
-      virtual_fs.read_to_string(&dest_path.join("a.txt")).unwrap(),
+      virtual_fs
+        .read_all_to_string(&dest_path.join("a.txt"))
+        .unwrap(),
       "data",
     );
     assert_eq!(
-      virtual_fs.read_to_string(&dest_path.join("b.txt")).unwrap(),
+      virtual_fs
+        .read_all_to_string(&dest_path.join("b.txt"))
+        .unwrap(),
       "data",
     );
 
     // attempt reading a symlink
     assert_eq!(
       virtual_fs
-        .read_to_string(&dest_path.join("sub_dir").join("e.txt"))
+        .read_all_to_string(&dest_path.join("sub_dir").join("e.txt"))
         .unwrap(),
       "e",
     );
@@ -528,28 +556,23 @@ mod test {
     // metadata
     assert!(
       virtual_fs
-        .symlink_metadata(&dest_path.join("sub_dir").join("e.txt"))
+        .lstat(&dest_path.join("sub_dir").join("e.txt"))
         .unwrap()
         .is_symlink
     );
     assert!(
       virtual_fs
-        .metadata(&dest_path.join("sub_dir").join("e.txt"))
+        .stat(&dest_path.join("sub_dir").join("e.txt"))
         .unwrap()
         .is_file
     );
     assert!(
       virtual_fs
-        .metadata(&dest_path.join("sub_dir"))
+        .stat(&dest_path.join("sub_dir"))
         .unwrap()
         .is_directory,
     );
-    assert!(
-      virtual_fs
-        .metadata(&dest_path.join("e.txt"))
-        .unwrap()
-        .is_file,
-    );
+    assert!(virtual_fs.stat(&dest_path.join("e.txt")).unwrap().is_file,);
   }
 
   #[test]
@@ -572,29 +595,35 @@ mod test {
     let (dest_path, mut virtual_fs) = into_virtual_fs(builder, &temp_dir);
 
     assert_eq!(
-      virtual_fs.read_to_string(&dest_path.join("a.txt")).unwrap(),
+      virtual_fs
+        .read_all_to_string(&dest_path.join("a.txt"))
+        .unwrap(),
       "data",
     );
     assert_eq!(
-      virtual_fs.read_to_string(&dest_path.join("b.txt")).unwrap(),
+      virtual_fs
+        .read_all_to_string(&dest_path.join("b.txt"))
+        .unwrap(),
       "data",
     );
 
     assert_eq!(
       virtual_fs
-        .read_to_string(&dest_path.join("nested").join("sub_dir").join("c.txt"))
+        .read_all_to_string(
+          &dest_path.join("nested").join("sub_dir").join("c.txt")
+        )
         .unwrap(),
       "c",
     );
     assert_eq!(
       virtual_fs
-        .read_to_string(&dest_path.join("sub_dir_link").join("c.txt"))
+        .read_all_to_string(&dest_path.join("sub_dir_link").join("c.txt"))
         .unwrap(),
       "c",
     );
     assert!(
       virtual_fs
-        .symlink_metadata(&dest_path.join("sub_dir_link"))
+        .lstat(&dest_path.join("sub_dir_link"))
         .unwrap()
         .is_symlink
     );
