@@ -2997,6 +2997,12 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
     loader
       .resolve("ext:core.js", ".", ResolutionKind::Import)
       .unwrap();
+  }
+
+  #[test]
+  fn ext_resolution_failure() {
+    let loader = ExtModuleLoader::default();
+    loader.allow_ext_resolution();
     assert_eq!(
       loader
         .resolve("ext:core.js", "file://bar", ResolutionKind::Import,)

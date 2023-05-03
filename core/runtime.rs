@@ -692,13 +692,21 @@ impl JsRuntime {
       JsRealm::new(v8::Global::new(scope, context))
     };
 
-    if let Some(m) = self.module_map.as_ref() {
-      m.borrow().loader.allow_ext_resolution();
-    }
+    self
+      .module_map
+      .as_ref()
+      .unwrap()
+      .borrow()
+      .loader
+      .allow_ext_resolution();
     self.init_extension_js(&realm)?;
-    if let Some(m) = self.module_map.as_ref() {
-      m.borrow().loader.disallow_ext_resolution();
-    }
+    self
+      .module_map
+      .as_ref()
+      .unwrap()
+      .borrow()
+      .loader
+      .disallow_ext_resolution();
     Ok(realm)
   }
 
