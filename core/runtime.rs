@@ -598,6 +598,8 @@ impl JsRuntime {
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
+
+      #[cfg(debug_assertions)]
       {
         let op_names =
           v8::Local::new(scope, snapshotted_data.snapshotted_ops.clone());
@@ -1075,12 +1077,14 @@ impl JsRuntime {
 
     // Serialize the module map and store its data in the snapshot.
     {
+      #[allow(unused_mut)]
       let mut snapshotted_data = {
         let module_map_rc = self.module_map.take().unwrap();
         let module_map = module_map_rc.borrow();
         module_map.serialize_for_snapshotting(&mut self.handle_scope())
       };
 
+      #[cfg(debug_assertions)]
       {
         let realm = self.global_realm();
         let mut scope = self.handle_scope();
@@ -3510,7 +3514,7 @@ pub mod tests {
 
     let snapshot = runtime.snapshot();
 
-    // This should banic in debug build, because we messed up ops ordering
+    // This should panic in debug build, because we messed up ops ordering
     JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
       extensions: vec![Extension::builder("text_ext")

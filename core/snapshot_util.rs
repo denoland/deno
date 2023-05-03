@@ -151,10 +151,12 @@ impl SnapshotOptions {
 pub(crate) struct SnapshottedData {
   pub module_map_data: v8::Global<v8::Array>,
   pub module_handles: Vec<v8::Global<v8::Module>>,
+  #[cfg(debug_assertions)]
   pub snapshotted_ops: v8::Global<v8::Array>,
 }
 
 static CONTEXT_DATA_INDEX_MODULE_MAP: usize = 0;
+#[cfg(debug_assertions)]
 static CONTEXT_DATA_INDEX_OP_NAMES: usize = 1;
 
 pub(crate) fn get_snapshotted_data(
@@ -175,35 +177,26 @@ pub(crate) fn get_snapshotted_data(
     Err(err) => data_error_to_panic(err),
   };
 
-  let result = scope.get_context_data_from_snapshot_once::<v8::Array>(
-    CONTEXT_DATA_INDEX_OP_NAMES,
-  );
-
-  let snapshotted_ops = match result {
-    Ok(v) => v,
-    Err(err) => data_error_to_panic(err),
+  #[cfg(debug_assertions)]
+  let snapshotted_ops = {
+    let result = scope.get_context_data_from_snapshot_once::<v8::Array>(
+      CONTEXT_DATA_INDEX_OP_NAMES,
+    );
+    match result {
+      Ok(v) => v,
+      Err(err) => data_error_to_panic(err),
+    }
   };
 
-  // let snapshotted_ops = {
-  //   let len = op_names_val.length() as usize;
-  //   let mut op_names = Vec::with_capacity(len);
+  #[cfg(debug_assertions)]
+  let module_handle_start_index = CONTEXT_DATA_INDEX_OP_NAMES as u32;
 
-  //   for i in 0..len {
-  //     let op_name: v8::Local<v8::String> = op_names_val
-  //       .get_index(&mut scope, i as u32)
-  //       .unwrap()
-  //       .try_into()
-  //       .unwrap();
-  //     op_names.push(op_name.to_rust_string_lossy(&mut scope));
-  //   }
-  //   op_names
-  // };
-
-  let module_handle_start_index = (CONTEXT_DATA_INDEX_MODULE_MAP + 1) as u32;
+  #[cfg(not(debug_assertions))]
+  let module_handle_start_index = CONTEXT_DATA_INDEX_MODULE_MAP as u32;
 
   let next_module_id = {
     let info_data: v8::Local<v8::Array> = val
-      .get_index(&mut scope, module_handle_start_index)
+      .get_index(&mut scope, module_handle_start_index + 1)
       .unwrap()
       .try_into()
       .unwrap();
@@ -227,6 +220,7 @@ pub(crate) fn get_snapshotted_data(
   SnapshottedData {
     module_map_data: v8::Global::new(&mut scope, val),
     module_handles,
+    #[cfg(debug_assertions)]
     snapshotted_ops: v8::Global::new(&mut scope, snapshotted_ops),
   }
 }
@@ -241,17 +235,23 @@ pub(crate) fn set_snapshotted_data(
   let offset = scope.add_context_data(local_context, local_data);
   assert_eq!(offset, CONTEXT_DATA_INDEX_MODULE_MAP);
 
+  #[cfg(debug_assertions)]
   {
     let local_data = v8::Local::new(scope, snapshotted_data.snapshotted_ops);
     let offset = scope.add_context_data(local_context, local_data);
     assert_eq!(offset, CONTEXT_DATA_INDEX_OP_NAMES);
   }
 
+  #[cfg(not(debug_assertions))]
+  let additional_offset = 1;
+  #[cfg(debug_assertions)]
+  let additional_offset = 2;
+
   for (index, handle) in snapshotted_data.module_handles.into_iter().enumerate()
   {
     let module_handle = v8::Local::new(scope, handle);
     let offset = scope.add_context_data(local_context, module_handle);
-    assert_eq!(offset, index + 2);
+    assert_eq!(offset, index + additional_offset);
   }
 }
 

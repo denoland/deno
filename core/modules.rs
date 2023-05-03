@@ -1216,12 +1216,16 @@ impl ModuleMap {
 
     let handles = self.handles.clone();
 
-    let snapshotted_ops_local = v8::Array::new(scope, 0);
-    let snapshotted_ops = v8::Global::new(scope, snapshotted_ops_local);
+    #[cfg(debug_assertions)]
+    let snapshotted_ops = {
+      let snapshotted_ops_local = v8::Array::new(scope, 0);
+      v8::Global::new(scope, snapshotted_ops_local)
+    };
 
     SnapshottedData {
       module_map_data: array_global,
       module_handles: handles,
+      #[cfg(debug_assertions)]
       snapshotted_ops,
     }
   }
