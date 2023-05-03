@@ -4003,11 +4003,14 @@ declare namespace Deno {
    *     "console.log('Hello World')",
    *   ],
    *   stdin: "piped",
+   *   stdout: "piped",
    * });
    * const child = command.spawn();
    *
    * // open a file and pipe the subprocess output to it.
-   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   * child.stdout.pipeTo(
+   *   Deno.openSync("output", { write: true, create: true }).writable,
+   * );
    *
    * // manually close stdin
    * child.stdin.close();
@@ -4044,6 +4047,7 @@ declare namespace Deno {
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    *
+   * @tags allow-run
    * @category Sub Process
    */
   export class Command {

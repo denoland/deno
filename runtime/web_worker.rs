@@ -37,7 +37,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::StdFs;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_tls::rustls::RootCertStore;
+use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
@@ -329,7 +329,7 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_fs: Option<Arc<dyn deno_node::NodeFs>>,
@@ -407,7 +407,7 @@ impl WebWorker {
       deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store: options.root_cert_store.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -418,7 +418,7 @@ impl WebWorker {
       deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
       deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::deno_webstorage::init_ops(None).disable(),
@@ -429,7 +429,7 @@ impl WebWorker {
       ),
       deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
       deno_net::deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),

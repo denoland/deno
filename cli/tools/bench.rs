@@ -5,10 +5,10 @@ use crate::args::CliOptions;
 use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display::write_json_to_stdout;
+use crate::factory::CliFactory;
 use crate::graph_util::graph_valid_with_cli_options;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
@@ -635,12 +635,13 @@ pub async fn run_benchmarks(
   cli_options: CliOptions,
   bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
   // Various bench files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
+    Permissions::from_options(&cli_options.permissions_options())?;
 
   let specifiers =
     collect_specifiers(&bench_options.files, is_supported_bench_path)?;
@@ -649,15 +650,20 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  check_specifiers(&ps.options, &ps.module_load_preparer, specifiers.clone())
-    .await?;
+  check_specifiers(
+    cli_options,
+    factory.module_load_preparer().await?,
+    specifiers.clone(),
+  )
+  .await?;
 
   if bench_options.no_run {
     return Ok(());
   }
 
-  let log_level = ps.options.log_level();
-  let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
+  let log_level = cli_options.log_level();
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
   bench_specifiers(
     worker_factory,
     &permissions,
@@ -678,21 +684,25 @@ pub async fn run_benchmarks_with_watch(
   cli_options: CliOptions,
   bench_options: BenchOptions,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let module_graph_builder = factory.module_graph_builder().await?;
+  let file_watcher = factory.file_watcher()?;
+  let module_load_preparer = factory.module_load_preparer().await?;
   // Various bench files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
-  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
+    Permissions::from_options(&cli_options.permissions_options())?;
+  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = bench_options.files.include.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
     let files_changed = changed.is_some();
     let bench_options = &bench_options;
-    let module_graph_builder = ps.module_graph_builder.clone();
-    let cli_options = ps.options.clone();
+    let module_graph_builder = module_graph_builder.clone();
+    let cli_options = cli_options.clone();
 
     async move {
       let bench_modules =
@@ -797,15 +807,18 @@ pub async fn run_benchmarks_with_watch(
     })
   };
 
+  let create_cli_main_worker_factory =
+    factory.create_cli_main_worker_factory_func().await?;
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let permissions = &permissions;
     let bench_options = &bench_options;
-    ps.reset_for_file_watcher();
-    let module_load_preparer = ps.module_load_preparer.clone();
-    let cli_options = ps.options.clone();
-    let worker_factory = Arc::new(ps.create_cli_main_worker_factory());
+    file_watcher.reset();
+    let module_load_preparer = module_load_preparer.clone();
+    let cli_options = cli_options.clone();
+    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
 
     async move {
+      let worker_factory = Arc::new(create_cli_main_worker_factory());
       let specifiers =
         collect_specifiers(&bench_options.files, is_supported_bench_path)?
           .into_iter()
@@ -836,7 +849,7 @@ pub async fn run_benchmarks_with_watch(
     }
   };
 
-  let clear_screen = !ps.options.no_clear_screen();
+  let clear_screen = !cli_options.no_clear_screen();
   file_watcher::watch_func(
     resolver,
     operation,

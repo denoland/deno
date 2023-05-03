@@ -4,8 +4,8 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::ReplFlags;
 use crate::colors;
+use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
-use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_runtime::permissions::Permissions;
@@ -98,17 +98,17 @@ async fn read_eval_file(
 }
 
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let ps = ProcState::from_flags(flags).await?;
-  let main_module = ps.options.resolve_main_module()?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &ps.options.permissions_options(),
+    &cli_options.permissions_options(),
   )?);
-  let cli_options = ps.options.clone();
-  let npm_resolver = ps.npm_resolver.clone();
-  let resolver = ps.resolver.clone();
-  let dir = ps.dir.clone();
-  let file_fetcher = ps.file_fetcher.clone();
-  let worker_factory = ps.create_cli_main_worker_factory();
+  let npm_resolver = factory.npm_resolver().await?.clone();
+  let resolver = factory.resolver().await?.clone();
+  let dir = factory.deno_dir()?;
+  let file_fetcher = factory.file_fetcher()?;
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
 
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
@@ -116,7 +116,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
   let mut repl_session =
-    ReplSession::initialize(&cli_options, npm_resolver, resolver, worker)
+    ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
       .await?;
   let mut rustyline_channel = rustyline_channel();
 
@@ -130,7 +130,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
 
   if let Some(eval_files) = repl_flags.eval_files {
     for eval_file in eval_files {
-      match read_eval_file(&cli_options, &file_fetcher, &eval_file).await {
+      match read_eval_file(cli_options, file_fetcher, &eval_file).await {
         Ok(eval_source) => {
           let output = repl_session
             .evaluate_line_and_get_output(&eval_source)

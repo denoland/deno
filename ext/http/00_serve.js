@@ -64,7 +64,7 @@ const {
   op_set_response_headers,
   op_upgrade_raw,
   op_ws_server_create,
-} = Deno.core.generateAsyncOpHandler(
+} = core.generateAsyncOpHandler(
   "op_http_wait",
   "op_upgrade",
   "op_get_request_headers",

@@ -564,31 +564,6 @@ for (let i = 0; i < 10; i++) {
     return (ops[opName] = fn);
   }
 
-  function opAsync2(name, arg0, arg1) {
-    const id = nextPromiseId++;
-    try {
-      const maybeResult = asyncOps[name](id, arg0, arg1);
-      if (maybeResult !== undefined) {
-        movePromise(id);
-        return unwrapOpResultNewPromise(id, maybeResult, opAsync2);
-      }
-    } catch (err) {
-      movePromise(id);
-      if (!ReflectHas(asyncOps, name)) {
-        return PromiseReject(new TypeError(`${name} is not a registered op`));
-      }
-      ErrorCaptureStackTrace(err, opAsync2);
-      return PromiseReject(err);
-    }
-    let promise = PromisePrototypeThen(
-      setPromise(id),
-      unwrapOpError(eventLoopTick),
-    );
-    promise = handleOpCallTracing(name, id, promise);
-    promise[promiseIdSymbol] = id;
-    return promise;
-  }
-
   function opAsync(name, ...args) {
     const id = nextPromiseId++;
     try {
@@ -823,7 +798,6 @@ for (let i = 0; i < 10; i++) {
     asyncStub,
     generateAsyncOpHandler,
     opAsync,
-    opAsync2,
     resources,
     metrics,
     registerErrorBuilder,

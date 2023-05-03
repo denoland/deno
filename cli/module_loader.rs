@@ -12,14 +12,13 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
 use crate::node::CliNodeCodeTranslator;
-use crate::proc_state::CjsResolutionStore;
-use crate::proc_state::FileWatcherReporter;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
+use crate::watcher::FileWatcherReporter;
 use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;
@@ -789,5 +788,23 @@ impl NpmModuleLoader {
       return deno_node::resolve_builtin_node_module(specifier);
     }
     Ok(response.into_url())
+  }
+}
+
+/// Keeps track of what module specifiers were resolved as CJS.
+#[derive(Default)]
+pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
+
+impl CjsResolutionStore {
+  pub fn clear(&self) {
+    self.0.lock().clear();
+  }
+
+  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+    self.0.lock().contains(specifier)
+  }
+
+  pub fn insert(&self, specifier: ModuleSpecifier) {
+    self.0.lock().insert(specifier);
   }
 }
