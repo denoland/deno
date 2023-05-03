@@ -120,6 +120,9 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator.workspace = true
+
 [dev-dependencies]
 deno_bench_util.workspace = true
 dotenv = "=0.15.0"

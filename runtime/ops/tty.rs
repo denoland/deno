@@ -7,7 +7,34 @@ use deno_io::StdFileResource;
 use std::io::Error;
 
 #[cfg(unix)]
+use deno_core::ResourceId;
+#[cfg(unix)]
 use nix::sys::termios;
+#[cfg(unix)]
+use std::cell::RefCell;
+#[cfg(unix)]
+use std::collections::HashMap;
+#[cfg(unix)]
+use std::rc::Rc;
+
+#[cfg(unix)]
+#[derive(Default, Clone)]
+struct TtyModeStore(Rc<RefCell<HashMap<ResourceId, termios::Termios>>>);
+
+#[cfg(unix)]
+impl TtyModeStore {
+  pub fn get(&self, id: ResourceId) -> Option<termios::Termios> {
+    self.0.borrow().get(&id).map(ToOwned::to_owned)
+  }
+
+  pub fn take(&self, id: ResourceId) -> Option<termios::Termios> {
+    self.0.borrow_mut().remove(&id)
+  }
+
+  pub fn set(&self, id: ResourceId, mode: termios::Termios) {
+    self.0.borrow_mut().insert(id, mode);
+  }
+}
 
 #[cfg(windows)]
 use deno_core::error::custom_error;
@@ -35,6 +62,10 @@ fn get_windows_handle(
 deno_core::extension!(
   deno_tty,
   ops = [op_stdin_set_raw, op_isatty, op_console_size],
+  state = |state| {
+    #[cfg(unix)]
+    state.put(TtyModeStore::default());
+  },
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.force_op_registration();
   },
@@ -118,53 +149,49 @@ fn op_stdin_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    StdFileResource::with_file_and_metadata(
-      state,
-      rid,
-      move |std_file, meta_data| {
-        let raw_fd = std_file.as_raw_fd();
+    let tty_mode_store = state.borrow::<TtyModeStore>().clone();
+    let previous_mode = tty_mode_store.get(rid);
 
-        if is_raw {
-          let mut raw = {
-            let mut meta_data = meta_data.lock();
-            let maybe_tty_mode = &mut meta_data.tty.mode;
-            if maybe_tty_mode.is_none() {
-              // Save original mode.
-              let original_mode = termios::tcgetattr(raw_fd)?;
-              maybe_tty_mode.replace(original_mode);
-            }
-            maybe_tty_mode.clone().unwrap()
-          };
+    StdFileResource::with_file(state, rid, move |std_file| {
+      let raw_fd = std_file.as_raw_fd();
 
-          raw.input_flags &= !(termios::InputFlags::BRKINT
-            | termios::InputFlags::ICRNL
-            | termios::InputFlags::INPCK
-            | termios::InputFlags::ISTRIP
-            | termios::InputFlags::IXON);
-
-          raw.control_flags |= termios::ControlFlags::CS8;
-
-          raw.local_flags &= !(termios::LocalFlags::ECHO
-            | termios::LocalFlags::ICANON
-            | termios::LocalFlags::IEXTEN);
-          if !cbreak {
-            raw.local_flags &= !(termios::LocalFlags::ISIG);
+      if is_raw {
+        let mut raw = match previous_mode {
+          Some(mode) => mode,
+          None => {
+            // Save original mode.
+            let original_mode = termios::tcgetattr(raw_fd)?;
+            tty_mode_store.set(rid, original_mode.clone());
+            original_mode
           }
-          raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] =
-            1;
-          raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] =
-            0;
-          termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-        } else {
-          // Try restore saved mode.
-          if let Some(mode) = meta_data.lock().tty.mode.take() {
-            termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
-          }
+        };
+
+        raw.input_flags &= !(termios::InputFlags::BRKINT
+          | termios::InputFlags::ICRNL
+          | termios::InputFlags::INPCK
+          | termios::InputFlags::ISTRIP
+          | termios::InputFlags::IXON);
+
+        raw.control_flags |= termios::ControlFlags::CS8;
+
+        raw.local_flags &= !(termios::LocalFlags::ECHO
+          | termios::LocalFlags::ICANON
+          | termios::LocalFlags::IEXTEN);
+        if !cbreak {
+          raw.local_flags &= !(termios::LocalFlags::ISIG);
         }
+        raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
+        raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
+        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
+      } else {
+        // Try restore saved mode.
+        if let Some(mode) = tty_mode_store.take(rid) {
+          termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
+        }
+      }
 
-        Ok(())
-      },
-    )
+      Ok(())
+    })
   }
 }
 
