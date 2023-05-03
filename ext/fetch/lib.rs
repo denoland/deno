@@ -225,6 +225,7 @@ pub fn op_fetch<FP>(
 where
   FP: FetchPermissions + 'static,
 {
+  println!("op_fetch");
   let client = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
@@ -623,6 +624,7 @@ pub fn op_fetch_custom_client<FP>(
 where
   FP: FetchPermissions + 'static,
 {
+  println!("op_fetch_custom_client");
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
@@ -674,6 +676,7 @@ pub fn create_http_client(
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<Client, AnyError> {
+  println!("create_http_client");
   let mut tls_config = deno_tls::create_client_config(
     root_cert_store,
     ca_certs,
