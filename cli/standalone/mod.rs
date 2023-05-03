@@ -37,6 +37,7 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -269,8 +270,26 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let vfs = load_npm_vfs().context("Failed to load npm vfs.")?;
-  let node_fs = Arc::new(DenoCompileFileSystem::new(vfs));
+  let (fs, node_fs, node_modules_path) = if metadata.npm_snapshot.is_some() {
+    let vfs = load_npm_vfs().context("Failed to load npm vfs.")?;
+    let node_modules_path = if metadata.node_modules_dir {
+      Some(vfs.root().to_path_buf())
+    } else {
+      None
+    };
+    let fs = Arc::new(DenoCompileFileSystem::new(vfs));
+    (
+      fs.clone() as Arc<dyn deno_fs::FileSystem>,
+      fs as Arc<dyn deno_node::NodeFs>,
+      node_modules_path,
+    )
+  } else {
+    (
+      Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
+      Arc::new(deno_node::RealFs) as Arc<dyn deno_node::NodeFs>,
+      None,
+    )
+  };
   let snapshot = match metadata.npm_snapshot {
     Some(snapshot) => Some(snapshot.into_valid()?),
     None => None,
@@ -286,7 +305,7 @@ pub async fn run(
     &progress_bar,
     npm_registry_url,
     npm_resolution.clone(),
-    None, // todo: provide node_modules path here
+    node_modules_path,
   );
   let npm_resolver = Arc::new(CliNpmResolver::new(
     npm_resolution.clone(),
@@ -345,7 +364,7 @@ pub async fn run(
     BlobStore::default(),
     Box::new(module_loader_factory),
     root_cert_store_provider,
-    Arc::new(deno_fs::RealFs),
+    fs,
     node_fs,
     None,
     CliMainWorkerOptions {

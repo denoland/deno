@@ -18,7 +18,6 @@ use deno_core::url::Url;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_runtime::permissions::PermissionsOptions;
 use log::Level;
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 
