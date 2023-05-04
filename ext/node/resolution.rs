@@ -1078,14 +1078,17 @@ impl NodeResolver {
     url: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
     let file_path = url.to_file_path().unwrap();
-    let mut current_dir = file_path.parent().unwrap();
+    let current_dir = deno_core::strip_unc_prefix(
+      self.fs.canonicalize(file_path.parent().unwrap())?,
+    );
+    let mut current_dir = current_dir.as_path();
     let package_json_path = current_dir.join("package.json");
     if self.fs.exists(&package_json_path) {
       return Ok(package_json_path);
     }
     let root_pkg_folder = self
       .npm_resolver
-      .resolve_package_folder_from_path(&url.to_file_path().unwrap())?;
+      .resolve_package_folder_from_path(current_dir)?;
     while current_dir.starts_with(&root_pkg_folder) {
       current_dir = current_dir.parent().unwrap();
       let package_json_path = current_dir.join("package.json");

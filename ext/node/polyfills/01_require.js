@@ -16,7 +16,7 @@ const {
   ArrayPrototypeSplice,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectSetPrototypeOf,
   ObjectKeys,
   ObjectEntries,
@@ -433,7 +433,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy({}, {
 
   getOwnPropertyDescriptor(target, prop) {
     if (
-      ObjectPrototypeHasOwnProperty(target, prop) || prop === "__esModule"
+      ObjectHasOwn(target, prop) || prop === "__esModule"
     ) {
       return ObjectGetOwnPropertyDescriptor(target, prop);
     }

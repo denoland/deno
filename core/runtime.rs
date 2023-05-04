@@ -72,6 +72,48 @@ struct IsolateAllocations {
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
 
+/// A custom allocator for array buffers for V8. It uses `jemalloc` so it's
+/// not available on Windows.
+#[cfg(not(target_env = "msvc"))]
+mod custom_allocator {
+  use std::ffi::c_void;
+
+  pub struct RustAllocator;
+
+  pub unsafe extern "C" fn allocate(
+    _alloc: &RustAllocator,
+    n: usize,
+  ) -> *mut c_void {
+    tikv_jemalloc_sys::calloc(1, n)
+  }
+
+  pub unsafe extern "C" fn allocate_uninitialized(
+    _alloc: &RustAllocator,
+    n: usize,
+  ) -> *mut c_void {
+    tikv_jemalloc_sys::malloc(n)
+  }
+
+  pub unsafe extern "C" fn free(
+    _alloc: &RustAllocator,
+    data: *mut c_void,
+    _n: usize,
+  ) {
+    tikv_jemalloc_sys::free(data)
+  }
+
+  pub unsafe extern "C" fn reallocate(
+    _alloc: &RustAllocator,
+    prev: *mut c_void,
+    _oldlen: usize,
+    newlen: usize,
+  ) -> *mut c_void {
+    tikv_jemalloc_sys::realloc(prev, newlen)
+  }
+
+  pub unsafe extern "C" fn drop(_alloc: *const RustAllocator) {}
+}
+
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. A JsRuntime is a Future that can be used with
 /// an event loop (Tokio, async_std).
@@ -90,7 +132,7 @@ pub struct JsRuntime {
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_options: snapshot_util::SnapshotOptions,
   allocations: IsolateAllocations,
-  extensions: Vec<Extension>,
+  extensions: Rc<RefCell<Vec<Extension>>>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
@@ -374,7 +416,7 @@ impl JsRuntime {
     let global_context;
     let mut maybe_snapshotted_data = None;
 
-    let (mut isolate, snapshot_options) = if snapshot_options.will_snapshot() {
+    let mut isolate = if snapshot_options.will_snapshot() {
       let snapshot_creator =
         snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
@@ -391,8 +433,22 @@ impl JsRuntime {
 
         global_context = v8::Global::new(scope, context);
       }
-      (isolate, snapshot_options)
+      isolate
     } else {
+      #[cfg(not(target_env = "msvc"))]
+      let vtable: &'static v8::RustAllocatorVtable<
+        custom_allocator::RustAllocator,
+      > = &v8::RustAllocatorVtable {
+        allocate: custom_allocator::allocate,
+        allocate_uninitialized: custom_allocator::allocate_uninitialized,
+        free: custom_allocator::free,
+        reallocate: custom_allocator::reallocate,
+        drop: custom_allocator::drop,
+      };
+      #[cfg(not(target_env = "msvc"))]
+      let allocator = Arc::new(custom_allocator::RustAllocator);
+
+      #[allow(unused_mut)]
       let mut params = options
         .create_params
         .take()
@@ -403,6 +459,14 @@ impl JsRuntime {
           )
         })
         .external_references(&**refs);
+
+      #[cfg(not(target_env = "msvc"))]
+      // SAFETY: We are leaking the created `allocator` variable so we're sure
+      // it will outlive the created isolate. We also made sure that the vtable
+      // is correct.
+      let mut params = params.array_buffer_allocator(unsafe {
+        v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
+      });
 
       if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
@@ -428,7 +492,7 @@ impl JsRuntime {
         global_context = v8::Global::new(scope, context);
       }
 
-      (isolate, snapshot_options)
+      isolate
     };
 
     // SAFETY: this is first use of `isolate_ptr` so we are sure we're
@@ -457,38 +521,33 @@ impl JsRuntime {
       None
     };
 
-    let loader = if snapshot_options != snapshot_util::SnapshotOptions::Load {
-      let esm_sources = options
+    let loader = options
+      .module_loader
+      .unwrap_or_else(|| Rc::new(NoopModuleLoader));
+    #[cfg(feature = "include_js_files_for_snapshotting")]
+    if snapshot_options.will_snapshot() {
+      for source in options
         .extensions
         .iter()
-        .flat_map(|ext| match ext.get_esm_sources() {
-          Some(s) => s.to_owned(),
-          None => vec![],
-        })
-        .collect::<Vec<ExtensionFileSource>>();
-
-      #[cfg(feature = "include_js_files_for_snapshotting")]
-      if snapshot_options != snapshot_util::SnapshotOptions::None {
-        for source in &esm_sources {
-          use crate::ExtensionFileSourceCode;
-          if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-            &source.code
-          {
-            println!("cargo:rerun-if-changed={}", path.display())
-          }
+        .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
+        .flatten()
+        .flatten()
+      {
+        use crate::ExtensionFileSourceCode;
+        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+          &source.code
+        {
+          println!("cargo:rerun-if-changed={}", path.display())
         }
       }
-
-      Rc::new(crate::modules::ExtModuleLoader::new(
-        options.module_loader,
-        esm_sources,
-        options.snapshot_module_load_cb,
-      ))
-    } else {
-      options
-        .module_loader
-        .unwrap_or_else(|| Rc::new(NoopModuleLoader))
-    };
+    }
+    let num_extensions = options.extensions.len();
+    let extensions = Rc::new(RefCell::new(options.extensions));
+    let ext_loader = Rc::new(crate::modules::ExtModuleLoader::new(
+      Some(loader.clone()),
+      extensions.clone(),
+      options.snapshot_module_load_cb,
+    ));
 
     {
       let mut state = state_rc.borrow_mut();
@@ -502,12 +561,8 @@ impl JsRuntime {
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
-
-    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(
-      loader,
-      op_state,
-      snapshot_options == snapshot_util::SnapshotOptions::Load,
-    )));
+    let module_map_rc =
+      Rc::new(RefCell::new(ModuleMap::new(ext_loader, op_state)));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
@@ -523,10 +578,10 @@ impl JsRuntime {
       v8_isolate: Some(isolate),
       snapshot_options,
       allocations: IsolateAllocations::default(),
-      event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
-      extensions: options.extensions,
+      event_loop_middlewares: Vec::with_capacity(num_extensions),
+      extensions,
       state: state_rc,
-      module_map: Some(module_map_rc),
+      module_map: Some(module_map_rc.clone()),
       is_main: options.is_main,
     };
 
@@ -534,7 +589,9 @@ impl JsRuntime {
     // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
+    module_map_rc.borrow().loader.allow_ext_resolution();
     js_runtime.init_extension_js(&realm).unwrap();
+    module_map_rc.borrow().loader.disallow_ext_resolution();
 
     js_runtime
   }
@@ -635,7 +692,21 @@ impl JsRuntime {
       JsRealm::new(v8::Global::new(scope, context))
     };
 
+    self
+      .module_map
+      .as_ref()
+      .unwrap()
+      .borrow()
+      .loader
+      .allow_ext_resolution();
     self.init_extension_js(&realm)?;
+    self
+      .module_map
+      .as_ref()
+      .unwrap()
+      .borrow()
+      .loader
+      .disallow_ext_resolution();
     Ok(realm)
   }
 
@@ -703,7 +774,7 @@ impl JsRuntime {
 
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions);
-    for ext in &extensions {
+    for ext in extensions.borrow().iter() {
       {
         if let Some(esm_files) = ext.get_esm_sources() {
           if let Some(entry_point) = ext.get_esm_entry_point() {
@@ -776,23 +847,15 @@ impl JsRuntime {
   /// Initializes ops of provided Extensions
   fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
-    // Take extensions to avoid double-borrow
-    {
-      let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    // Setup state
+    for e in self.extensions.borrow_mut().iter_mut() {
+      // ops are already registered during in bindings::initialize_context();
+      e.init_state(&mut op_state.borrow_mut());
 
-      // Setup state
-      for e in extensions.iter_mut() {
-        // ops are already registered during in bindings::initialize_context();
-        e.init_state(&mut op_state.borrow_mut());
-
-        // Setup event-loop middleware
-        if let Some(middleware) = e.init_event_loop_middleware() {
-          self.event_loop_middlewares.push(middleware);
-        }
+      // Setup event-loop middleware
+      if let Some(middleware) = e.init_event_loop_middleware() {
+        self.event_loop_middlewares.push(middleware);
       }
-
-      // Restore extensions
-      self.extensions = extensions;
     }
     Ok(())
   }

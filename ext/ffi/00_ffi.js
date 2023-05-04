@@ -10,7 +10,7 @@ const {
   ArrayPrototypeJoin,
   DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Number,
   NumberIsSafeInteger,
@@ -439,7 +439,7 @@ class DynamicLibrary {
   constructor(path, symbols) {
     ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
-      if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+      if (!ObjectHasOwn(symbols, symbol)) {
         continue;
       }
 

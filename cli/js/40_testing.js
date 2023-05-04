@@ -21,7 +21,7 @@ const {
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
@@ -166,7 +166,7 @@ function assertOps(fn) {
 
     const details = [];
     for (const key in post.ops) {
-      if (!ObjectPrototypeHasOwnProperty(post.ops, key)) {
+      if (!ObjectHasOwn(post.ops, key)) {
         continue;
       }
       const preOp = pre.ops[key] ??
