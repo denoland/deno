@@ -305,8 +305,9 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let npm_resolution = self.npm_resolution().await?;
+        let node_fs = self.node_fs();
         let npm_fs_resolver = create_npm_fs_resolver(
-          self.node_fs().clone(),
+          node_fs.clone(),
           self.npm_cache()?.clone(),
           self.text_only_progress_bar(),
           CliNpmRegistryApi::default_url().to_owned(),
@@ -314,6 +315,7 @@ impl CliFactory {
           self.options.node_modules_dir_path(),
         );
         Ok(Arc::new(CliNpmResolver::new(
+          node_fs.clone(),
           npm_resolution.clone(),
           npm_fs_resolver,
           self.maybe_lockfile().as_ref().cloned(),

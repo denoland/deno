@@ -308,6 +308,7 @@ pub async fn run(
     node_modules_path,
   );
   let npm_resolver = Arc::new(CliNpmResolver::new(
+    node_fs.clone(),
     npm_resolution.clone(),
     npm_fs_resolver,
     None,

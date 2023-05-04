@@ -609,7 +609,6 @@ mod tests {
   use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-  use deno_runtime::deno_fs::StdFs;
   use deno_runtime::deno_web::BlobStore;
   use deno_runtime::permissions::Permissions;
 

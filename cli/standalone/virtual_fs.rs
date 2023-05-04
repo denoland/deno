@@ -503,7 +503,7 @@ impl FileBackedVfs {
     match entry {
       VfsEntryRef::Dir(dir) => Ok(dir),
       VfsEntryRef::Symlink(_) => unreachable!(),
-      VfsEntryRef::File(file) => Err(std::io::Error::new(
+      VfsEntryRef::File(_) => Err(std::io::Error::new(
         std::io::ErrorKind::Other,
         "path is a file",
       )),

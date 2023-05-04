@@ -19,6 +19,7 @@ use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeFs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
@@ -32,7 +33,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::Lockfile;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 
 use self::common::NpmPackageFsResolver;
@@ -49,6 +50,7 @@ pub struct NpmProcessState {
 
 /// Brings together the npm resolution with the file system.
 pub struct CliNpmResolver {
+  fs: Arc<dyn NodeFs>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -57,6 +59,7 @@ pub struct CliNpmResolver {
 impl std::fmt::Debug for CliNpmResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
+      .field("fs", &"<omitted>")
       .field("fs_resolver", &"<omitted>")
       .field("resolution", &"<omitted>")
       .field("maybe_lockfile", &"<omitted>")
@@ -66,11 +69,13 @@ impl std::fmt::Debug for CliNpmResolver {
 
 impl CliNpmResolver {
   pub fn new(
+    fs: Arc<dyn NodeFs>,
     resolution: Arc<NpmResolution>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     Self {
+      fs,
       fs_resolver,
       resolution,
       maybe_lockfile,
@@ -97,7 +102,9 @@ impl CliNpmResolver {
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
     let path = self.fs_resolver.package_folder(pkg_id)?;
-    let path = canonicalize_path_maybe_not_exists(&path)?;
+    let path = canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
+      self.fs.canonicalize(path)
+    })?;
     log::debug!(
       "Resolved package folder of {} to {}",
       pkg_id.as_serialized(),
@@ -291,6 +298,7 @@ pub fn create_npm_fs_resolver(
       resolution,
     )),
     None => Arc::new(GlobalNpmPackageResolver::new(
+      fs,
       cache,
       registry_url,
       resolution,

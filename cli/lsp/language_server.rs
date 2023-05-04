@@ -457,8 +457,9 @@ fn create_lsp_structs(
   ));
   let resolution =
     Arc::new(NpmResolution::from_serialized(api.clone(), None, None));
+  let node_fs = Arc::new(deno_node::RealFs);
   let fs_resolver = create_npm_fs_resolver(
-    Arc::new(deno_node::RealFs),
+    node_fs.clone(),
     npm_cache.clone(),
     &progress_bar,
     registry_url.clone(),
@@ -468,7 +469,12 @@ fn create_lsp_structs(
   (
     api,
     npm_cache,
-    Arc::new(CliNpmResolver::new(resolution.clone(), fs_resolver, None)),
+    Arc::new(CliNpmResolver::new(
+      node_fs,
+      resolution.clone(),
+      fs_resolver,
+      None,
+    )),
     resolution,
   )
 }
@@ -711,6 +717,7 @@ impl Inner {
     ));
     let node_fs = Arc::new(deno_node::RealFs);
     let npm_resolver = Arc::new(CliNpmResolver::new(
+      node_fs.clone(),
       npm_resolution.clone(),
       create_npm_fs_resolver(
         node_fs.clone(),
