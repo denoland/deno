@@ -289,7 +289,7 @@ pub fn main() {
     run_subcommand(flags).await
   };
 
-  let exit_code = unwrap_or_exit(run_local(future));
+  let exit_code = unwrap_or_exit(run_local(tokio::task::unconstrained(future)));
 
   std::process::exit(exit_code);
 }
