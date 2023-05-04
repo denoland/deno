@@ -26,6 +26,8 @@ mod version;
 mod watcher;
 mod worker;
 
+use deno_runtime::tokio_util::run_local2;
+use deno_runtime::tokio_util::run_local3;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 
@@ -147,7 +149,12 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags).await
+        tokio::spawn(unsafe {
+          deno_runtime::tokio_util::make_me_send::MakeMeSend::new(
+            tools::run::run_script(flags),
+          )
+        })
+        .await?
       }
     }
     DenoSubcommand::Task(task_flags) => {
@@ -258,7 +265,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
 
   let future = async move {
-    let current_exe_path = current_exe()?;
+    let current_exe_path = unwrap_or_exit(current_exe().map_err(|e| e.into()));
     let standalone_res =
       match standalone::extract_standalone(&current_exe_path, args.clone())
         .await
@@ -286,10 +293,9 @@ pub fn main() {
 
     util::logger::init(flags.log_level);
 
-    run_subcommand(flags).await
+    let exit_code = unwrap_or_exit(run_subcommand(flags).await);
+    std::process::exit(exit_code);
   };
 
-  let exit_code = unwrap_or_exit(run_local(future));
-
-  std::process::exit(exit_code);
+  run_local2(future)
 }

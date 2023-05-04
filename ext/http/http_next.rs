@@ -253,53 +253,59 @@ pub fn op_upgrade_raw(
   let (read_rx, write_tx) = tokio::io::split(read);
   let (mut write_rx, mut read_tx) = tokio::io::split(write);
 
-  spawn_local(async move {
-    let mut upgrade_stream = WebSocketUpgrade::<ResponseBytes>::default();
+  tokio::spawn(unsafe {
+    make_me_send::MakeMeSend::new(async move {
+      let mut upgrade_stream = WebSocketUpgrade::<ResponseBytes>::default();
 
-    // Stage 2: Extract the Upgraded connection
-    let mut buf = [0; 1024];
-    let upgraded = loop {
-      let read = Pin::new(&mut write_rx).read(&mut buf).await?;
-      match upgrade_stream.write(&buf[..read]) {
-        Ok(None) => continue,
-        Ok(Some((response, bytes))) => {
-          with_resp_mut(index, |resp| *resp = Some(response));
-          with_promise_mut(index, |promise| promise.complete(true));
-          let mut upgraded = upgrade.await?;
-          upgraded.write_all(&bytes).await?;
-          break upgraded;
-        }
-        Err(err) => return Err(err),
-      }
-    };
-
-    // Stage 3: Pump the data
-    let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
-
-    spawn_local(async move {
+      // Stage 2: Extract the Upgraded connection
       let mut buf = [0; 1024];
-      loop {
-        let read = upgraded_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
+      let upgraded = loop {
+        let read = Pin::new(&mut write_rx).read(&mut buf).await?;
+        match upgrade_stream.write(&buf[..read]) {
+          Ok(None) => continue,
+          Ok(Some((response, bytes))) => {
+            with_resp_mut(index, |resp| *resp = Some(response));
+            with_promise_mut(index, |promise| promise.complete(true));
+            let mut upgraded = upgrade.await?;
+            upgraded.write_all(&bytes).await?;
+            break upgraded;
+          }
+          Err(err) => return Err(err),
         }
-        read_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
-    spawn_local(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = write_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        upgraded_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, AnyError>(())
-    });
+      };
 
-    Ok(())
+      // Stage 3: Pump the data
+      let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
+
+      tokio::spawn(unsafe {
+        make_me_send::MakeMeSend::new(async move {
+          let mut buf = [0; 1024];
+          loop {
+            let read = upgraded_rx.read(&mut buf).await?;
+            if read == 0 {
+              break;
+            }
+            read_tx.write_all(&buf[..read]).await?;
+          }
+          Ok::<_, AnyError>(())
+        })
+      });
+      tokio::spawn(unsafe {
+        make_me_send::MakeMeSend::new(async move {
+          let mut buf = [0; 1024];
+          loop {
+            let read = write_rx.read(&mut buf).await?;
+            if read == 0 {
+              break;
+            }
+            upgraded_tx.write_all(&buf[..read]).await?;
+          }
+          Ok::<_, AnyError>(())
+        })
+      });
+
+      Ok(())
+    })
   });
 
   Ok(
@@ -670,18 +676,20 @@ fn serve_https(
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn_local(async {
-    io.handshake().await?;
-    // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
-    // based on the prefix bytes
-    let handshake = io.get_ref().1.alpn_protocol();
-    if handshake == Some(TLS_ALPN_HTTP_2) {
-      serve_http2_unconditional(io, svc, cancel).await
-    } else if handshake == Some(TLS_ALPN_HTTP_11) {
-      serve_http11_unconditional(io, svc, cancel).await
-    } else {
-      serve_http2_autodetect(io, svc, cancel).await
-    }
+  tokio::spawn(unsafe {
+    make_me_send::MakeMeSend::new(async {
+      io.handshake().await?;
+      // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
+      // based on the prefix bytes
+      let handshake = io.get_ref().1.alpn_protocol();
+      if handshake == Some(TLS_ALPN_HTTP_2) {
+        serve_http2_unconditional(io, svc, cancel).await
+      } else if handshake == Some(TLS_ALPN_HTTP_11) {
+        serve_http11_unconditional(io, svc, cancel).await
+      } else {
+        serve_http2_autodetect(io, svc, cancel).await
+      }
+    })
   })
 }
 
@@ -695,7 +703,9 @@ fn serve_http(
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn_local(serve_http2_autodetect(io, svc, cancel))
+  tokio::spawn(unsafe {
+    make_me_send::MakeMeSend::new(serve_http2_autodetect(io, svc, cancel))
+  })
 }
 
 fn serve_http_on(
@@ -753,6 +763,39 @@ impl Resource for HttpJoinHandle {
   }
 }
 
+pub mod make_me_send {
+  use core::future::Future;
+  use core::pin::Pin;
+  use core::task::Context;
+  use core::task::Poll;
+
+  pub struct MakeMeSend<F> {
+    future: F,
+  }
+
+  impl<F> MakeMeSend<F> {
+    /// SAFETY: You must ensure that the future is not used
+    /// on the wrong thread.
+    pub unsafe fn new(future: F) -> Self {
+      Self { future }
+    }
+  }
+
+  unsafe impl<F> Send for MakeMeSend<F> {}
+
+  impl<F: Future> Future for MakeMeSend<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+      unsafe {
+        let me = Pin::into_inner_unchecked(self);
+        let future = Pin::new_unchecked(&mut me.future);
+        future.poll(cx)
+      }
+    }
+  }
+}
+
 #[op(v8)]
 pub fn op_serve_http(
   state: Rc<RefCell<OpState>>,
@@ -779,21 +822,23 @@ pub fn op_serve_http(
   let cancel_clone = resource.cancel_handle();
 
   let listen_properties_clone = listen_properties.clone();
-  let handle = spawn_local(async move {
-    loop {
-      let conn = listener
-        .accept()
-        .try_or_cancel(cancel_clone.clone())
-        .await?;
-      serve_http_on(
-        conn,
-        &listen_properties_clone,
-        cancel_clone.clone(),
-        tx.clone(),
-      );
-    }
-    #[allow(unreachable_code)]
-    Ok::<_, AnyError>(())
+  let handle = tokio::spawn(unsafe {
+    make_me_send::MakeMeSend::new(async move {
+      loop {
+        let conn = listener
+          .accept()
+          .try_or_cancel(cancel_clone.clone())
+          .await?;
+        serve_http_on(
+          conn,
+          &listen_properties_clone,
+          cancel_clone.clone(),
+          tx.clone(),
+        );
+      }
+      #[allow(unreachable_code)]
+      Ok::<_, AnyError>(())
+    })
   });
 
   // Set the handle after we start the future

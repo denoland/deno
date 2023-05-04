@@ -581,16 +581,49 @@ pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
     .map(|_| "DOMExceptionNetworkError")
 }
 
+pub mod make_me_send {
+  use core::future::Future;
+  use core::pin::Pin;
+  use core::task::Context;
+  use core::task::Poll;
+
+  pub struct MakeMeSend<F> {
+    future: F,
+  }
+
+  impl<F> MakeMeSend<F> {
+    /// SAFETY: You must ensure that the future is not used
+    /// on the wrong thread.
+    pub unsafe fn new(future: F) -> Self {
+      Self { future }
+    }
+  }
+
+  unsafe impl<F> Send for MakeMeSend<F> {}
+
+  impl<F: Future> Future for MakeMeSend<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+      unsafe {
+        let me = Pin::into_inner_unchecked(self);
+        let future = Pin::new_unchecked(&mut me.future);
+        future.poll(cx)
+      }
+    }
+  }
+}
+
 // Needed so hyper can use non Send futures
 #[derive(Clone)]
 struct LocalExecutor;
 
 impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
 where
-  Fut: Future + 'static,
-  Fut::Output: 'static,
+  Fut: Future + 'static + Send,
+  Fut::Output: 'static + Send,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn_local(fut);
+    tokio::spawn(unsafe { make_me_send::MakeMeSend::new(fut) });
   }
 }
