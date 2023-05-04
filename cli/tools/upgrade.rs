@@ -270,13 +270,15 @@ pub async fn upgrade(
   let factory = CliFactory::from_flags(flags).await?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
+  let output_exe_path =
+    upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
   let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
 
   if permissions.readonly() {
     bail!(
       "You do not have write permission to {}",
-      current_exe_path.display()
+      output_exe_path.display()
     );
   }
   #[cfg(unix)]
@@ -287,7 +289,7 @@ pub async fn upgrade(
       "You don't have write permission to {} because it's owned by root.\n",
       "Consider updating deno through your package manager if its installed from it.\n",
       "Otherwise run `deno upgrade` as root.",
-    ), current_exe_path.display());
+    ), output_exe_path.display());
   }
 
   let install_version = match upgrade_flags.version {
