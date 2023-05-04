@@ -742,8 +742,7 @@ function readableStreamForRid(rid, autoClose = true) {
           return;
         }
 
-        // deno-lint-ignore prefer-primordials
-        const [bytesRead, newView] = await core.readDetaching(rid, v);
+        const { 0: bytesRead, 1: newView } = await core.readDetaching(rid, v);
         if (bytesRead === 0) {
           tryClose();
           controller.close();
