@@ -272,24 +272,30 @@ pub async fn upgrade(
   let current_exe_path = std::env::current_exe()?;
   let output_exe_path =
     upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
-  let metadata = fs::metadata(&current_exe_path)?;
-  let permissions = metadata.permissions();
 
-  if permissions.readonly() {
-    bail!(
-      "You do not have write permission to {}",
-      output_exe_path.display()
-    );
-  }
-  #[cfg(unix)]
-  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
-    && !nix::unistd::Uid::effective().is_root()
-  {
-    bail!(concat!(
-      "You don't have write permission to {} because it's owned by root.\n",
-      "Consider updating deno through your package manager if its installed from it.\n",
-      "Otherwise run `deno upgrade` as root.",
-    ), output_exe_path.display());
+  // get permissions of current exe to be used as default when output exe
+  // does not exist
+  let mut permissions = fs::metadata(&current_exe_path)?.permissions();
+
+  if let Ok(metadata) = fs::metadata(output_exe_path) {
+    // update permissions variable
+    permissions = metadata.permissions();
+    if permissions.readonly() {
+      bail!(
+        "You do not have write permission to {}",
+        output_exe_path.display()
+      );
+    }
+    #[cfg(unix)]
+    if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+      && !nix::unistd::Uid::effective().is_root()
+    {
+      bail!(concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ), output_exe_path.display());
+    }
   }
 
   let install_version = match upgrade_flags.version {
