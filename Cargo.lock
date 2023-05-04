@@ -1154,6 +1154,7 @@ dependencies = [
  "cbc",
  "data-encoding",
  "deno_core",
+ "deno_fs",
  "deno_media_type",
  "deno_npm",
  "deno_semver",

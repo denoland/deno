@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::NodeFs;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 
@@ -63,7 +62,7 @@ impl PackageJson {
   }
 
   pub fn load(
-    fs: &dyn NodeFs,
+    fs: &dyn deno_fs::FileSystem,
     resolver: &dyn NpmResolver,
     permissions: &dyn NodePermissions,
     path: PathBuf,
@@ -73,7 +72,7 @@ impl PackageJson {
   }
 
   pub fn load_skip_read_permission(
-    fs: &dyn NodeFs,
+    fs: &dyn deno_fs::FileSystem,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     assert!(path.is_absolute());
@@ -90,7 +89,7 @@ impl PackageJson {
       Err(err) => bail!(
         "Error loading package.json at {}. {:#}",
         path.display(),
-        err
+        AnyError::from(err),
       ),
     };
 

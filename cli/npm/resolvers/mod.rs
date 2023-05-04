@@ -18,7 +18,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
-use deno_runtime::deno_node;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
@@ -270,7 +270,7 @@ impl NpmResolver for CliNpmResolver {
 }
 
 pub fn create_npm_fs_resolver(
-  fs: Arc<dyn deno_node::NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   cache: Arc<NpmCache>,
   progress_bar: &ProgressBar,
   registry_url: Url,

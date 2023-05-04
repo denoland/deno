@@ -18,6 +18,7 @@ aes.workspace = true
 cbc.workspace = true
 data-encoding = "2.3.3"
 deno_core.workspace = true
+deno_fs.workspace = true
 deno_media_type.workspace = true
 deno_npm.workspace = true
 deno_semver.workspace = true
