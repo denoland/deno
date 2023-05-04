@@ -679,7 +679,6 @@ pub struct ConfigFileJson {
   pub test: Option<Value>,
   pub bench: Option<Value>,
   pub lock: Option<Value>,
-  pub include: Option<Value>,
   pub exclude: Option<Value>,
 }
 
@@ -894,14 +893,6 @@ impl ConfigFile {
   }
 
   pub fn to_files_config(&self) -> Result<Option<FilesConfig>, AnyError> {
-    let include: Vec<String> = if let Some(include) = self.json.include.clone()
-    {
-      serde_json::from_value(include)
-        .context("Failed to parse \"include\" configuration")?
-    } else {
-      Vec::new()
-    };
-
     let exclude: Vec<String> = if let Some(exclude) = self.json.exclude.clone()
     {
       serde_json::from_value(exclude)
@@ -910,8 +901,8 @@ impl ConfigFile {
       Vec::new()
     };
 
-    let raw_fies_config = SerializedFilesConfig { include, exclude };
-    Ok(Some(raw_fies_config.into_resolved(&self.specifier)?))
+    let raw_files_config = SerializedFilesConfig { exclude, ..Default::default() };
+    Ok(Some(raw_files_config.into_resolved(&self.specifier)?))
   }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
@@ -1543,9 +1534,9 @@ mod tests {
   #[test]
   fn test_parse_config_with_global_files() {
     let config_text = r#"{
-      "include": ["src/"],
+      "exclude": ["foo/"],
       "test": {
-        "include": ["npm/"],
+        "exclude": ["npm/"],
       },
       "bench": {}
     }"#;
@@ -1561,9 +1552,10 @@ mod tests {
       .to_test_config()
       .expect("error parsing fmt object")
       .expect("fmt object should be defined");
+    assert_eq!(test_config.files.include, Vec::<PathBuf>::new());
     assert_eq!(
-      test_config.files.include,
-      vec![PathBuf::from("/deno/npm/"), PathBuf::from("/deno/src/")]
+      test_config.files.exclude,
+      vec![PathBuf::from("/deno/npm/"), PathBuf::from("/deno/foo/")]
     );
 
     let bench_config = config_file
@@ -1571,15 +1563,14 @@ mod tests {
       .expect("error parsing fmt object")
       .expect("fmt object should be defined");
     assert_eq!(
-      bench_config.files.include,
-      vec![PathBuf::from("/deno/src/")]
+      bench_config.files.exclude,
+      vec![PathBuf::from("/deno/foo/")]
     );
   }
 
   #[test]
   fn test_parse_config_with_global_files_only() {
     let config_text = r#"{
-      "include": ["src/"],
       "exclude": ["npm/"]
     }"#;
     let config_specifier =
@@ -1590,25 +1581,27 @@ mod tests {
       config_file.to_compiler_options().expect("error parsing");
     assert!(options_value.is_object());
 
+    let empty_include = Vec::<PathBuf>::new();
+
     let files_config = config_file
       .to_files_config()
       .expect("error parsing files object")
       .expect("files object should be defined");
-    assert_eq!(files_config.include, vec![PathBuf::from("/deno/src/")]);
+    assert_eq!(files_config.include, empty_include);
     assert_eq!(files_config.exclude, vec![PathBuf::from("/deno/npm/")]);
 
     let lint_config = config_file
       .to_lint_config()
       .expect("error parsing lint object")
       .expect("lint object should be defined");
-    assert_eq!(lint_config.files.include, vec![PathBuf::from("/deno/src/")]);
+    assert_eq!(lint_config.files.include, empty_include);
     assert_eq!(lint_config.files.exclude, vec![PathBuf::from("/deno/npm/")]);
 
     let fmt_config = config_file
       .to_fmt_config()
       .expect("error parsing fmt object")
       .expect("fmt object should be defined");
-    assert_eq!(fmt_config.files.include, vec![PathBuf::from("/deno/src/")]);
+    assert_eq!(fmt_config.files.include, empty_include);
     assert_eq!(fmt_config.files.exclude, vec![PathBuf::from("/deno/npm/")],);
   }
 
