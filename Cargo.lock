@@ -865,6 +865,7 @@ dependencies = [
  "deno_ast",
  "deno_ops",
  "futures",
+ "hashlink",
  "indexmap",
  "libc",
  "log",

@@ -6,8 +6,8 @@ use crate::ops::OpCtx;
 use crate::runtime::exception_to_err_result;
 use crate::JsRuntime;
 use anyhow::Error;
+use hashlink::LinkedHashMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::BuildHasherDefault;
 use std::hash::Hasher;
@@ -43,7 +43,7 @@ pub(crate) struct ContextState {
   pub(crate) js_format_exception_cb: Option<Rc<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: Option<Rc<v8::Global<v8::Function>>>,
   pub(crate) pending_promise_rejections:
-    HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
+    LinkedHashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) unrefed_ops: HashSet<i32, BuildHasherDefault<IdentityHasher>>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
@@ -270,22 +270,9 @@ impl<'s> JsRealmLocal<'s> {
     let context_state_rc = self.state(scope);
     let mut context_state = context_state_rc.borrow_mut();
 
-    if context_state.pending_promise_rejections.is_empty() {
+    let Some((_, handle)) = context_state.pending_promise_rejections.pop_front() else {
       return Ok(());
-    }
-
-    let key = {
-      context_state
-        .pending_promise_rejections
-        .keys()
-        .next()
-        .unwrap()
-        .clone()
     };
-    let handle = context_state
-      .pending_promise_rejections
-      .remove(&key)
-      .unwrap();
     drop(context_state);
 
     let exception = v8::Local::new(scope, handle);

@@ -23,6 +23,7 @@ anyhow.workspace = true
 bytes.workspace = true
 deno_ops.workspace = true
 futures.workspace = true
+hashlink.workspace = true
 # Stay on 1.6 to avoid a dependency cycle in ahash https://github.com/tkaitchuck/aHash/issues/95
 # Projects not depending on ahash are unafected as cargo will pull any 1.X that is >= 1.6.
 indexmap = "1.6"
