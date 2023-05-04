@@ -604,7 +604,7 @@ pub struct TestConfig {
 impl TestConfig {
   pub fn with_files(self, files: FilesConfig) -> Self {
     let files = self.files.extend(files);
-    Self { files, ..self }
+    Self { files }
   }
 }
 
@@ -643,7 +643,7 @@ pub struct BenchConfig {
 impl BenchConfig {
   pub fn with_files(self, files: FilesConfig) -> Self {
     let files = self.files.extend(files);
-    Self { files, ..self }
+    Self { files }
   }
 }
 
