@@ -361,6 +361,11 @@ itest!(test_with_custom_jsx {
   output: "test/hello_world.out",
 });
 
+itest!(before_unload_prevent_default {
+  args: "test --quiet test/before_unload_prevent_default.ts",
+  output: "test/before_unload_prevent_default.out",
+});
+
 #[test]
 fn captured_output() {
   let context = TestContext::default();
