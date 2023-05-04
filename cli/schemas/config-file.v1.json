@@ -223,6 +223,13 @@
         }
       }
     },
+    "exclude": {
+      "type": "array",
+      "description": "List of files or directories that will be ignored by all other configurations.",
+      "items": {
+        "type": "string"
+      }
+    },
     "lint": {
       "description": "Configuration for linter",
       "type": "object",
