@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
@@ -17,9 +19,6 @@ use deno_runtime::deno_io::fs::File;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
-use deno_runtime::deno_node::NodeFs;
-use deno_runtime::deno_node::NodeFsMetadata;
-use deno_runtime::deno_node::RealFs as NodeRealFs;
 
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VirtualFile;
@@ -80,11 +79,32 @@ impl deno_io::fs::File for DenoCompileFile {
       .read_file(&self.file, self.pos(), buf)
       .map_err(|err| err.into())
   }
+  async fn read_byob(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+  ) -> FsResult<(usize, BufMutView)> {
+    let inner = (*self).clone();
+    tokio::task::spawn(async move {
+      let nread = inner.vfs.read_file(&inner.file, inner.pos(), &mut buf)?;
+      Ok((nread, buf))
+    })
+    .await?
+  }
+
   fn write_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<usize> {
+    Err(FsError::NotSupported)
+  }
+  async fn write(
+    self: Rc<Self>,
+    _buf: BufView,
+  ) -> FsResult<deno_core::WriteOutcome> {
     Err(FsError::NotSupported)
   }
 
   fn write_all_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn write_all(self: Rc<Self>, _buf: BufView) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
 
@@ -170,28 +190,6 @@ impl deno_io::fs::File for DenoCompileFile {
     _mtime_secs: i64,
     _mtime_nanos: u32,
   ) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  // deno_core
-  async fn read_byob(
-    self: Rc<Self>,
-    mut buf: BufMutView,
-  ) -> FsResult<(usize, BufMutView)> {
-    let inner = (*self).clone();
-    tokio::task::spawn(async move {
-      let nread = inner.vfs.read_file(&inner.file, inner.pos(), &mut buf)?;
-      Ok((nread, buf))
-    })
-    .await?
-  }
-  async fn write_byob(
-    self: Rc<Self>,
-    _buf: BufView,
-  ) -> FsResult<deno_core::WriteOutcome> {
-    Err(FsError::NotSupported)
-  }
-  async fn write_all_byob(self: Rc<Self>, _buf: BufView) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
 
@@ -516,50 +514,5 @@ impl deno_fs::FileSystem for DenoCompileFileSystem {
     RealFs
       .utime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
-  }
-}
-
-impl NodeFs for DenoCompileFileSystem {
-  fn current_dir(&self) -> std::io::Result<PathBuf> {
-    NodeRealFs.current_dir()
-  }
-
-  fn metadata(&self, path: &Path) -> std::io::Result<NodeFsMetadata> {
-    if self.0.is_path_within(path) {
-      self.0.stat(path).map(|metadata| NodeFsMetadata {
-        is_file: metadata.is_file,
-        is_dir: metadata.is_directory,
-      })
-    } else {
-      NodeRealFs.metadata(path)
-    }
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    self.metadata(path).map(|m| m.is_file).unwrap_or(false)
-  }
-
-  fn is_dir(&self, path: &Path) -> bool {
-    self.metadata(path).map(|m| m.is_dir).unwrap_or(false)
-  }
-
-  fn exists(&self, path: &Path) -> bool {
-    self.metadata(path).is_ok()
-  }
-
-  fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
-    if self.0.is_path_within(path) {
-      self.0.read_all_to_string(path)
-    } else {
-      NodeRealFs.read_to_string(path)
-    }
-  }
-
-  fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
-    if self.0.is_path_within(path) {
-      self.0.canonicalize(path)
-    } else {
-      NodeRealFs.canonicalize(path)
-    }
   }
 }

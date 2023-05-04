@@ -14,7 +14,7 @@ use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_runtime::deno_node::NodeFs;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
@@ -29,7 +29,7 @@ use super::common::NpmPackageFsResolver;
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
-  fs: Arc<dyn NodeFs>,
+  fs: Arc<dyn FileSystem>,
   cache: Arc<NpmCache>,
   resolution: Arc<NpmResolution>,
   registry_url: Url,
@@ -37,7 +37,7 @@ pub struct GlobalNpmPackageResolver {
 
 impl GlobalNpmPackageResolver {
   pub fn new(
-    fs: Arc<dyn NodeFs>,
+    fs: Arc<dyn FileSystem>,
     cache: Arc<NpmCache>,
     registry_url: Url,
     resolution: Arc<NpmResolution>,

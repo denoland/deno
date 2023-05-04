@@ -269,23 +269,20 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let (fs, node_fs, node_modules_path) = if metadata.npm_snapshot.is_some() {
+  let (fs, node_modules_path) = if metadata.npm_snapshot.is_some() {
     let vfs = load_npm_vfs().context("Failed to load npm vfs.")?;
     let node_modules_path = if metadata.node_modules_dir {
       Some(vfs.root().to_path_buf())
     } else {
       None
     };
-    let fs = Arc::new(DenoCompileFileSystem::new(vfs));
     (
-      fs.clone() as Arc<dyn deno_fs::FileSystem>,
-      fs as Arc<dyn deno_node::NodeFs>,
+      Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
       node_modules_path,
     )
   } else {
     (
       Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
-      Arc::new(deno_node::RealFs) as Arc<dyn deno_node::NodeFs>,
       None,
     )
   };
@@ -307,7 +304,7 @@ pub async fn run(
     node_modules_path,
   );
   let npm_resolver = Arc::new(CliNpmResolver::new(
-    node_fs.clone(),
+    fs.clone(),
     npm_resolution.clone(),
     npm_fs_resolver,
     None,
@@ -320,7 +317,7 @@ pub async fn run(
   let cjs_esm_code_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
-    node_fs.clone(),
+    fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
   ));
@@ -347,7 +344,7 @@ pub async fn run(
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_resolutions,
         node_code_translator,
-        node_fs.clone(),
+        fs.clone(),
         node_resolver.clone(),
       )),
       root_permissions: permissions.clone(),

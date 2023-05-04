@@ -29,6 +29,13 @@ impl FsError {
       Self::NotSupported => io::ErrorKind::Other,
     }
   }
+
+  pub fn into_io_error(self) -> io::Error {
+    match self {
+      FsError::Io(err) => err,
+      FsError::FileBusy | FsError::NotSupported => self.kind().into(),
+    }
+  }
 }
 
 impl From<io::Error> for FsError {

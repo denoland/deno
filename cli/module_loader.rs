@@ -46,8 +46,8 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
-use deno_runtime::deno_node::NodeFs;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -653,7 +653,7 @@ impl SourceMapGetter for CliSourceMapGetter {
 pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
-  fs: Arc<dyn NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
 }
 
@@ -661,13 +661,13 @@ impl NpmModuleLoader {
   pub fn new(
     cjs_resolutions: Arc<CjsResolutionStore>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
-    node_fs: Arc<dyn NodeFs>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
   ) -> Self {
     Self {
       cjs_resolutions,
       node_code_translator,
-      fs: node_fs,
+      fs,
       node_resolver,
     }
   }
@@ -757,15 +757,19 @@ impl NpmModuleLoader {
     permissions: &PermissionsContainer,
   ) -> Result<ModuleCodeSource, AnyError> {
     let file_path = specifier.to_file_path().unwrap();
-    let code = self.fs.read_to_string(&file_path).with_context(|| {
-      let mut msg = "Unable to load ".to_string();
-      msg.push_str(&file_path.to_string_lossy());
-      if let Some(referrer) = &maybe_referrer {
-        msg.push_str(" imported from ");
-        msg.push_str(referrer.as_str());
-      }
-      msg
-    })?;
+    let code = self
+      .fs
+      .read_to_string(&file_path)
+      .map_err(AnyError::from)
+      .with_context(|| {
+        let mut msg = "Unable to load ".to_string();
+        msg.push_str(&file_path.to_string_lossy());
+        if let Some(referrer) = &maybe_referrer {
+          msg.push_str(" imported from ");
+          msg.push_str(referrer.as_str());
+        }
+        msg
+      })?;
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals

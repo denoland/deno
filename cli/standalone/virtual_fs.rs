@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -466,10 +468,6 @@ impl FileBackedVfs {
     Ok(path.to_path_buf())
   }
 
-  pub fn read_all(&self, path: &Path) -> std::io::Result<Vec<u8>> {
-    self.read_all_file(self.file_entry(path)?)
-  }
-
   pub fn read_all_file(&self, file: &VirtualFile) -> std::io::Result<Vec<u8>> {
     let mut fs_file = self.file.lock();
     fs_file.seek(SeekFrom::Start(
@@ -491,16 +489,6 @@ impl FileBackedVfs {
       self.fs_root.start_file_offset + file.offset + pos,
     ))?;
     fs_file.read(buf)
-  }
-
-  pub fn read_all_to_string(&self, path: &Path) -> std::io::Result<String> {
-    let buf = self.read_all(path)?;
-    String::from_utf8(buf).map_err(|_| {
-      std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        "stream did not contain valid UTF-8",
-      )
-    })
   }
 
   pub fn dir_entry(&self, path: &Path) -> std::io::Result<&VirtualDirectory> {

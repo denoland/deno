@@ -18,8 +18,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_node::NodeFs;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
@@ -50,7 +49,7 @@ pub struct NpmProcessState {
 
 /// Brings together the npm resolution with the file system.
 pub struct CliNpmResolver {
-  fs: Arc<dyn deno_fs::FileSystem>,
+  fs: Arc<dyn FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -69,7 +68,7 @@ impl std::fmt::Debug for CliNpmResolver {
 
 impl CliNpmResolver {
   pub fn new(
-    fs: Arc<dyn NodeFs>,
+    fs: Arc<dyn FileSystem>,
     resolution: Arc<NpmResolution>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -103,7 +102,10 @@ impl CliNpmResolver {
   ) -> Result<PathBuf, AnyError> {
     let path = self.fs_resolver.package_folder(pkg_id)?;
     let path = canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
-      self.fs.canonicalize(path)
+      self
+        .fs
+        .realpath_sync(path)
+        .map_err(|err| err.into_io_error())
     })?;
     log::debug!(
       "Resolved package folder of {} to {}",
@@ -281,7 +283,7 @@ impl NpmResolver for CliNpmResolver {
 }
 
 pub fn create_npm_fs_resolver(
-  fs: Arc<dyn deno_fs::FileSystem>,
+  fs: Arc<dyn FileSystem>,
   cache: Arc<NpmCache>,
   progress_bar: &ProgressBar,
   registry_url: Url,
