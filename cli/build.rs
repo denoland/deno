@@ -9,7 +9,6 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
-use deno_runtime::deno_fs::StdFs;
 use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
@@ -361,11 +360,11 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::deno_http::init_ops(),
     deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(false, StdFs),
-    deno_node::deno_node::init_ops::<PermissionsContainer>(
-      None,
-      Some(Arc::new(deno_node::RealFs)),
+    deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+      false,
+      Arc::new(deno_fs::RealFs),
     ),
+    deno_node::deno_node::init_ops::<PermissionsContainer>(None, None),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 

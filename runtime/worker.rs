@@ -30,7 +30,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
-use deno_fs::StdFs;
+use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_tls::RootCertStoreProvider;
@@ -87,6 +87,7 @@ pub struct WorkerOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
+  pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
@@ -149,6 +150,7 @@ impl Default for WorkerOptions {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
+      fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
@@ -266,7 +268,7 @@ impl MainWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable, options.fs),
       deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
         options.node_fs,
