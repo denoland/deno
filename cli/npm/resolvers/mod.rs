@@ -18,7 +18,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
-use deno_runtime::deno_node;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeFs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -50,7 +50,7 @@ pub struct NpmProcessState {
 
 /// Brings together the npm resolution with the file system.
 pub struct CliNpmResolver {
-  fs: Arc<dyn NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
   resolution: Arc<NpmResolution>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -281,7 +281,7 @@ impl NpmResolver for CliNpmResolver {
 }
 
 pub fn create_npm_fs_resolver(
-  fs: Arc<dyn deno_node::NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   cache: Arc<NpmCache>,
   progress_bar: &ProgressBar,
   registry_url: Url,

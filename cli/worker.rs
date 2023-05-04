@@ -99,7 +99,6 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  node_fs: Arc<dyn deno_node::NodeFs>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
@@ -311,7 +310,6 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     options: CliMainWorkerOptions,
   ) -> Self {
@@ -329,7 +327,6 @@ impl CliMainWorkerFactory {
         module_loader_factory,
         root_cert_store_provider,
         fs,
-        node_fs,
         maybe_inspector_server,
       }),
     }
@@ -449,8 +446,7 @@ impl CliMainWorkerFactory {
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       module_loader,
-      fs: Some(shared.fs.clone()),
-      node_fs: Some(shared.node_fs.clone()),
+      fs: shared.fs.clone(),
       npm_resolver: Some(shared.npm_resolver.clone()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
@@ -575,8 +571,7 @@ fn create_web_worker_callback(
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: maybe_source_map_getter,
       module_loader,
-      fs: Some(shared.fs.clone()),
-      node_fs: Some(shared.node_fs.clone()),
+      fs: shared.fs.clone(),
       npm_resolver: Some(shared.npm_resolver.clone()),
       worker_type: args.worker_type,
       maybe_inspector_server,
@@ -603,13 +598,8 @@ fn create_web_worker_callback(
 
 #[cfg(test)]
 mod tests {
-  use std::rc::Rc;
-
   use super::*;
   use deno_core::resolve_path;
-  use deno_core::FsModuleLoader;
-  use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-  use deno_runtime::deno_web::BlobStore;
   use deno_runtime::permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
@@ -618,32 +608,8 @@ mod tests {
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
-      bootstrap: BootstrapOptions::default(),
-      extensions: vec![],
       startup_snapshot: Some(crate::js::deno_isolate_init()),
-      unsafely_ignore_certificate_errors: None,
-      root_cert_store_provider: None,
-      seed: None,
-      format_js_error_fn: None,
-      source_map_getter: None,
-      web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
-      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
-      create_web_worker_cb: Arc::new(|_| unreachable!()),
-      maybe_inspector_server: None,
-      should_break_on_first_statement: false,
-      should_wait_for_inspector_session: false,
-      module_loader: Rc::new(FsModuleLoader),
-      fs: None,
-      node_fs: None,
-      npm_resolver: None,
-      get_error_class_fn: None,
-      cache_storage_dir: None,
-      origin_storage_dir: None,
-      blob_store: BlobStore::default(),
-      broadcast_channel: InMemoryBroadcastChannel::default(),
-      shared_array_buffer_store: None,
-      compiled_wasm_module_store: None,
-      stdio: Default::default(),
+      ..Default::default()
     };
 
     MainWorker::bootstrap_from_options(main_module, permissions, options)

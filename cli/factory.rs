@@ -43,7 +43,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -133,6 +132,7 @@ struct CliFactoryServices {
   http_client: Deferred<Arc<HttpClient>>,
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
+  fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   graph_container: Deferred<Arc<ModuleGraphContainer>>,
   lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
@@ -146,7 +146,6 @@ struct CliFactoryServices {
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
-  node_fs: Deferred<Arc<dyn deno_node::NodeFs>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_api: Deferred<Arc<CliNpmRegistryApi>>,
   npm_cache: Deferred<Arc<NpmCache>>,
@@ -245,6 +244,10 @@ impl CliFactory {
     })
   }
 
+  pub fn fs(&self) -> &Arc<dyn deno_fs::FileSystem> {
+    self.services.fs.get_or_init(|| Arc::new(deno_fs::RealFs))
+  }
+
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
     self
       .services
@@ -292,22 +295,15 @@ impl CliFactory {
       .await
   }
 
-  pub fn node_fs(&self) -> &Arc<dyn deno_node::NodeFs> {
-    self
-      .services
-      .node_fs
-      .get_or_init(|| Arc::new(deno_node::RealFs))
-  }
-
   pub async fn npm_resolver(&self) -> Result<&Arc<CliNpmResolver>, AnyError> {
     self
       .services
       .npm_resolver
       .get_or_try_init_async(async {
         let npm_resolution = self.npm_resolution().await?;
-        let node_fs = self.node_fs();
+        let fs = self.fs().clone();
         let npm_fs_resolver = create_npm_fs_resolver(
-          node_fs.clone(),
+          fs.clone(),
           self.npm_cache()?.clone(),
           self.text_only_progress_bar(),
           CliNpmRegistryApi::default_url().to_owned(),
@@ -315,7 +311,7 @@ impl CliFactory {
           self.options.node_modules_dir_path(),
         );
         Ok(Arc::new(CliNpmResolver::new(
-          node_fs.clone(),
+          fs.clone(),
           npm_resolution.clone(),
           npm_fs_resolver,
           self.maybe_lockfile().as_ref().cloned(),
@@ -439,7 +435,7 @@ impl CliFactory {
       .node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(NodeResolver::new(
-          self.node_fs().clone(),
+          self.fs().clone(),
           self.npm_resolver().await?.clone(),
         )))
       })
@@ -460,7 +456,7 @@ impl CliFactory {
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
-          self.node_fs().clone(),
+          self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
         )))
@@ -556,8 +552,7 @@ impl CliFactory {
     let node_code_translator = self.node_code_translator().await?.clone();
     let options = self.cli_options().clone();
     let main_worker_options = self.create_cli_main_worker_options()?;
-    let fs = Arc::new(deno_fs::RealFs);
-    let node_fs = self.node_fs().clone();
+    let fs = self.fs().clone();
     let root_cert_store_provider = self.root_cert_store_provider().clone();
     let node_resolver = self.node_resolver().await?.clone();
     let npm_resolver = self.npm_resolver().await?.clone();
@@ -585,7 +580,6 @@ impl CliFactory {
         )),
         root_cert_store_provider.clone(),
         fs.clone(),
-        node_fs.clone(),
         maybe_inspector_server.clone(),
         main_worker_options.clone(),
       )
@@ -618,8 +612,7 @@ impl CliFactory {
         ),
       )),
       self.root_cert_store_provider().clone(),
-      Arc::new(deno_fs::RealFs),
-      self.node_fs().clone(),
+      self.fs().clone(),
       self.maybe_inspector_server().clone(),
       self.create_cli_main_worker_options()?,
     ))

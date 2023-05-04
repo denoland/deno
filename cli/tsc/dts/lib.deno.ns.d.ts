@@ -1488,6 +1488,12 @@ declare namespace Deno {
      * would resolve to `n` < `p.byteLength`. `write()` must not modify the
      * slice data, even temporarily.
      *
+     * This function is one of the lowest
+     * level APIs and most users should not work with this directly, but rather use
+     * [`writeAll()`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+     * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
+     * instead.
+     *
      * Implementations should not retain a reference to `p`.
      */
     write(p: Uint8Array): Promise<number>;

@@ -23,7 +23,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_runtime::deno_core::futures;
-use deno_runtime::deno_node::NodeFs;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
@@ -44,7 +44,7 @@ use super::common::NpmPackageFsResolver;
 /// and resolves packages from it.
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver {
-  fs: Arc<dyn NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   cache: Arc<NpmCache>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
@@ -55,7 +55,7 @@ pub struct LocalNpmPackageResolver {
 
 impl LocalNpmPackageResolver {
   pub fn new(
-    fs: Arc<dyn NodeFs>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     cache: Arc<NpmCache>,
     progress_bar: ProgressBar,
     registry_url: Url,
@@ -94,7 +94,7 @@ impl LocalNpmPackageResolver {
       // Canonicalize the path so it's not pointing to the symlinked directory
       // in `node_modules` directory of the referrer.
       Some(path) => {
-        Ok(deno_core::strip_unc_prefix(self.fs.canonicalize(&path)?))
+        Ok(deno_core::strip_unc_prefix(self.fs.realpath_sync(&path)?))
       }
       None => bail!("could not find npm package for '{}'", specifier),
     }

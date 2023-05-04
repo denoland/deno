@@ -2,7 +2,6 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -12,6 +11,7 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_fs::FileSystemRc;
 use deno_media_type::MediaType;
 use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
@@ -19,9 +19,8 @@ use deno_semver::npm::NpmPackageReqReference;
 
 use crate::errors;
 use crate::AllowAllNodePermissions;
-use crate::NodeFs;
 use crate::NodePermissions;
-use crate::NpmResolver;
+use crate::NpmResolverRc;
 use crate::PackageJson;
 use crate::PathClean;
 
@@ -105,14 +104,17 @@ impl NodeResolution {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
+
 #[derive(Debug)]
 pub struct NodeResolver {
-  fs: Arc<dyn NodeFs>,
-  npm_resolver: Arc<dyn NpmResolver>,
+  fs: FileSystemRc,
+  npm_resolver: NpmResolverRc,
 }
 
 impl NodeResolver {
-  pub fn new(fs: Arc<dyn NodeFs>, npm_resolver: Arc<dyn NpmResolver>) -> Self {
+  pub fn new(fs: FileSystemRc, npm_resolver: NpmResolverRc) -> Self {
     Self { fs, npm_resolver }
   }
 
@@ -280,8 +282,9 @@ impl NodeResolver {
       p_str.to_string()
     };
 
-    let (is_dir, is_file) = if let Ok(stats) = self.fs.metadata(Path::new(&p)) {
-      (stats.is_dir, stats.is_file)
+    let (is_dir, is_file) = if let Ok(stats) = self.fs.stat_sync(Path::new(&p))
+    {
+      (stats.is_directory, stats.is_file)
     } else {
       (false, false)
     };
@@ -491,7 +494,7 @@ impl NodeResolver {
     referrer_kind: NodeModuleKind,
   ) -> Option<PathBuf> {
     fn probe_extensions(
-      fs: &dyn NodeFs,
+      fs: &dyn deno_fs::FileSystem,
       path: &Path,
       referrer_kind: NodeModuleKind,
     ) -> Option<PathBuf> {
@@ -1079,7 +1082,7 @@ impl NodeResolver {
   ) -> Result<PathBuf, AnyError> {
     let file_path = url.to_file_path().unwrap();
     let current_dir = deno_core::strip_unc_prefix(
-      self.fs.canonicalize(file_path.parent().unwrap())?,
+      self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
     let mut current_dir = current_dir.as_path();
     let package_json_path = current_dir.join("package.json");

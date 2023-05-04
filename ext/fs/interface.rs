@@ -11,6 +11,9 @@ use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
+
 #[derive(Deserialize, Default, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -72,8 +75,11 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
+#[allow(clippy::disallowed_types)]
+pub type FileSystemRc = crate::sync::MaybeArc<dyn FileSystem>;
+
 #[async_trait::async_trait(?Send)]
-pub trait FileSystem: Send + Sync {
+pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
   fn chdir(&self, path: &Path) -> FsResult<()>;
@@ -209,7 +215,7 @@ pub trait FileSystem: Send + Sync {
     if let Some(mode) = options.mode {
       file.clone().chmod_async(mode).await?;
     }
-    file.write_all_async(data).await?;
+    file.write_all(data.into()).await?;
     Ok(())
   }
 
@@ -224,5 +230,27 @@ pub trait FileSystem: Send + Sync {
     let file = self.open_async(path, options).await?;
     let buf = file.read_all_async().await?;
     Ok(buf)
+  }
+
+  fn is_file(&self, path: &Path) -> bool {
+    self.stat_sync(path).map(|m| m.is_file).unwrap_or(false)
+  }
+
+  fn is_dir(&self, path: &Path) -> bool {
+    self
+      .stat_sync(path)
+      .map(|m| m.is_directory)
+      .unwrap_or(false)
+  }
+
+  fn exists(&self, path: &Path) -> bool {
+    self.stat_sync(path).is_ok()
+  }
+
+  fn read_to_string(&self, path: &Path) -> FsResult<String> {
+    let buf = self.read_file_sync(path)?;
+    String::from_utf8(buf).map_err(|err| {
+      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
+    })
   }
 }

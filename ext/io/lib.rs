@@ -442,7 +442,7 @@ impl crate::fs::File for StdFileResourceInner {
       }
     }
   }
-  async fn write_all_byob(self: Rc<Self>, buf: BufView) -> FsResult<()> {
+  async fn write_all(self: Rc<Self>, buf: BufView) -> FsResult<()> {
     match self.kind {
       StdFileResourceKind::File => {
         self
@@ -477,7 +477,7 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  async fn write_byob(
+  async fn write(
     self: Rc<Self>,
     view: BufView,
   ) -> FsResult<deno_core::WriteOutcome> {

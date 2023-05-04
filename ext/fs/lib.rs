@@ -3,14 +3,18 @@
 mod interface;
 mod ops;
 mod std_fs;
+pub mod sync;
 
 pub use crate::interface::FileSystem;
+pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
 pub use crate::interface::FsFileType;
 pub use crate::interface::OpenOptions;
-use crate::ops::*;
-
 pub use crate::std_fs::RealFs;
+pub use crate::sync::MaybeSend;
+pub use crate::sync::MaybeSync;
+
+use crate::ops::*;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
@@ -18,7 +22,6 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::Arc;
 
 pub trait FsPermissions {
   fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
@@ -153,10 +156,10 @@ deno_core::extension!(deno_fs,
   esm = [ "30_fs.js" ],
   options = {
     unstable: bool,
-    fs: Option<Arc<dyn FileSystem>>,
+    fs: FileSystemRc,
   },
   state = |state, options| {
     state.put(UnstableChecker { unstable: options.unstable });
-    state.put(options.fs.unwrap_or_else(|| Arc::new(RealFs)));
+    state.put(options.fs);
   },
 );

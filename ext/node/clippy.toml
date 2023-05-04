@@ -38,3 +38,6 @@ disallowed-methods = [
   { path = "std::fs::symlink_metadata", reason = "File system operations should be done using NodeFs trait" },
   { path = "std::fs::write", reason = "File system operations should be done using NodeFs trait" },
 ]
+disallowed-types = [
+  { path = "std::sync::Arc", reason = "use deno_fs::sync::MaybeArc instead" },
+]

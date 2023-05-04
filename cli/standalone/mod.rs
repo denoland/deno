@@ -37,7 +37,6 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -300,7 +299,7 @@ pub async fn run(
     None,
   ));
   let npm_fs_resolver = create_npm_fs_resolver(
-    node_fs.clone(),
+    fs.clone(),
     npm_cache,
     &progress_bar,
     npm_registry_url,
@@ -314,7 +313,7 @@ pub async fn run(
     None,
   ));
   let node_resolver =
-    Arc::new(NodeResolver::new(node_fs.clone(), npm_resolver.clone()));
+    Arc::new(NodeResolver::new(fs.clone(), npm_resolver.clone()));
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(dir.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
@@ -366,7 +365,6 @@ pub async fn run(
     Box::new(module_loader_factory),
     root_cert_store_provider,
     fs,
-    node_fs,
     None,
     CliMainWorkerOptions {
       argv: metadata.argv,
