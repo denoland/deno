@@ -187,6 +187,13 @@ pub trait Resource: Any + 'static {
     None
   }
 
+  /// Resources backed by a file descriptor can let ops know to allow for
+  /// low-level optimizations.
+  #[cfg(windows)]
+  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
+    None
+  }
+
   fn size_hint(&self) -> (u64, Option<u64>) {
     (0, None)
   }

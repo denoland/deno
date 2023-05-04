@@ -1059,7 +1059,10 @@ dependencies = [
 name = "deno_io"
 version = "0.13.0"
 dependencies = [
+ "async-trait",
  "deno_core",
+ "filetime",
+ "fs3",
  "nix",
  "once_cell",
  "tokio",
