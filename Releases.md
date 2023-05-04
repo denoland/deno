@@ -11,8 +11,6 @@ https://github.com/denoland/deno_install
 - fix(core): Use primordials for methods (#18839)
 - fix(core): allow esm extensions not included in snapshot (#18980)
 - fix(core): rebuild when JS sources for snapshotting change (#18976)
-- fix(docs): replace "e.g." with "i.e." in `seek()`/`seekSync()` comment
-  (#18964)
 - fix(ext/io) several sync fs fixes (#18886)
 - fix(ext/kv): KvU64#valueOf and KvU64 inspect (#18656)
 - fix(ext/kv): stricter structured clone serializer (#18914)
