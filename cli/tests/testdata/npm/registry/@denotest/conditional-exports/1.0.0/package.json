@@ -15,6 +15,7 @@
     "./client/*": {
       "types": "./types/src/client/*.d.ts",
       "import": "./esm/client/*.js"
-    }
+    },
+    "./*": "./*"
   }
 }

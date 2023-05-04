@@ -14,9 +14,7 @@ and limitations under the License.
 ***************************************************************************** */
 
 
-
 /// <reference no-default-lib="true"/>
-
 
 /// <reference lib="es2018.intl" />
 declare namespace Intl {
@@ -103,7 +101,7 @@ declare namespace Intl {
      *
      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl#locales_argument).
      */
-    type LocalesArgument = UnicodeBCP47LocaleIdentifier | Locale | (UnicodeBCP47LocaleIdentifier | Locale)[] | undefined;
+    type LocalesArgument = UnicodeBCP47LocaleIdentifier | Locale | readonly (UnicodeBCP47LocaleIdentifier | Locale)[] | undefined;
 
     /**
      * An object with some or all of properties of `options` parameter

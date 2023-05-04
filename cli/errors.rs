@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -11,6 +11,7 @@
 
 use deno_ast::Diagnostic;
 use deno_core::error::AnyError;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use import_map::ImportMapError;
@@ -25,16 +26,17 @@ fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
 
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   match err {
-    ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
-    ModuleGraphError::InvalidSource(_, _)
-    | ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
-    ModuleGraphError::ParseErr(_, diagnostic) => {
-      get_diagnostic_class(diagnostic)
-    }
+    ModuleGraphError::ModuleError(err) => match err {
+      ModuleError::LoadingErr(_, _, err) => get_error_class_name(err.as_ref()),
+      ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
+      ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
+      ModuleError::UnsupportedMediaType { .. }
+      | ModuleError::UnsupportedImportAssertionType { .. } => "TypeError",
+      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+        "NotFound"
+      }
+    },
     ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
-    ModuleGraphError::UnsupportedMediaType(_, _)
-    | ModuleGraphError::UnsupportedImportAssertionType(_, _) => "TypeError",
-    ModuleGraphError::Missing(_) => "NotFound",
   }
 }
 
@@ -63,13 +65,13 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
         .map(get_resolution_error_class)
     })
     .unwrap_or_else(|| {
-      eprintln!(
-        "Error '{}' contains boxed error of unknown type:{}",
-        e,
-        e.chain()
-          .map(|e| format!("\n  {:?}", e))
-          .collect::<String>()
-      );
+      if cfg!(debug) {
+        log::warn!(
+          "Error '{}' contains boxed error of unknown type:{}",
+          e,
+          e.chain().map(|e| format!("\n  {e:?}")).collect::<String>()
+        );
+      }
       "Error"
     })
 }

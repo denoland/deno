@@ -1,18 +1,21 @@
-use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::op;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
-use deno_core::ZeroCopyBuf;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
+use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::Location;
@@ -47,13 +50,10 @@ impl BlobStore {
     parts.remove(id)
   }
 
-  pub fn get_object_url(
-    &self,
-    mut url: Url,
-  ) -> Result<Option<Arc<Blob>>, AnyError> {
+  pub fn get_object_url(&self, mut url: Url) -> Option<Arc<Blob>> {
     let blob_store = self.object_urls.lock();
     url.set_fragment(None);
-    Ok(blob_store.get(&url).cloned())
+    blob_store.get(&url).cloned()
   }
 
   pub fn insert_object_url(
@@ -67,7 +67,7 @@ impl BlobStore {
       "null".to_string()
     };
     let id = Uuid::new_v4();
-    let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
+    let url = Url::parse(&format!("blob:{origin}/{id}")).unwrap();
 
     let mut blob_store = self.object_urls.lock();
     blob_store.insert(url.clone(), Arc::new(blob));
@@ -160,10 +160,7 @@ impl BlobPart for SlicedBlobPart {
 }
 
 #[op]
-pub fn op_blob_create_part(
-  state: &mut deno_core::OpState,
-  data: ZeroCopyBuf,
-) -> Uuid {
+pub fn op_blob_create_part(state: &mut OpState, data: ZeroCopyBuf) -> Uuid {
   let blob_store = state.borrow::<BlobStore>();
   let part = InMemoryBlobPart(data.to_vec());
   blob_store.insert_part(Arc::new(part))
@@ -178,7 +175,7 @@ pub struct SliceOptions {
 
 #[op]
 pub fn op_blob_slice_part(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   id: Uuid,
   options: SliceOptions,
 ) -> Result<Uuid, AnyError> {
@@ -204,7 +201,7 @@ pub fn op_blob_slice_part(
 
 #[op]
 pub async fn op_blob_read_part(
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: Rc<RefCell<OpState>>,
   id: Uuid,
 ) -> Result<ZeroCopyBuf, AnyError> {
   let part = {
@@ -218,14 +215,14 @@ pub async fn op_blob_read_part(
 }
 
 #[op]
-pub fn op_blob_remove_part(state: &mut deno_core::OpState, id: Uuid) {
+pub fn op_blob_remove_part(state: &mut OpState, id: Uuid) {
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_part(&id);
 }
 
 #[op]
 pub fn op_blob_create_object_url(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   media_type: String,
   part_ids: Vec<Uuid>,
 ) -> Result<String, AnyError> {
@@ -274,7 +271,7 @@ pub struct ReturnBlobPart {
 
 #[op]
 pub fn op_blob_from_object_url(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   url: String,
 ) -> Result<Option<ReturnBlob>, AnyError> {
   let url = Url::parse(&url)?;
@@ -285,7 +282,7 @@ pub fn op_blob_from_object_url(
   let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
     type_error("Blob URLs are not supported in this context.")
   })?;
-  if let Some(blob) = blob_store.get_object_url(url)? {
+  if let Some(blob) = blob_store.get_object_url(url) {
     let parts = blob
       .parts
       .iter()

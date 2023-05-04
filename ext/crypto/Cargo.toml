@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_crypto"
-version = "0.94.0"
+version = "0.116.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,12 +14,12 @@ description = "Web Cryptography API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-aes = "0.8.1"
+aes.workspace = true
 aes-gcm = "0.10"
 aes-kw = { version = "0.2.1", features = ["alloc"] }
 base64.workspace = true
 block-modes = "0.9.1"
-cbc = { version = "0.1.2", features = ["alloc"] }
+cbc.workspace = true
 const-oid = "0.9.0"
 ctr = "0.9.1"
 # https://github.com/dalek-cryptography/curve25519-dalek/pull/397
@@ -33,12 +33,13 @@ p256 = { version = "0.11.1", features = ["ecdh"] }
 p384 = "0.11.1"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
-rsa = { version = "=0.7.0-pre", default-features = false, features = ["std"] }
+rsa.workspace = true
 sec1 = "0.3.0"
 serde.workspace = true
 serde_bytes.workspace = true
-sha-1 = "0.10.0"
+sha1 = { version = "0.10.5", features = ["oid"] }
 sha2.workspace = true
+signature.workspace = true
 spki = "0.6.0"
 tokio.workspace = true
 uuid.workspace = true

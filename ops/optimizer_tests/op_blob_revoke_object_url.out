@@ -6,27 +6,32 @@
 pub struct op_blob_revoke_object_url;
 #[doc(hidden)]
 impl op_blob_revoke_object_url {
-    pub fn name() -> &'static str {
+    pub const fn name() -> &'static str {
         stringify!(op_blob_revoke_object_url)
     }
-    pub fn v8_fn_ptr<'scope>() -> deno_core::v8::FunctionCallback {
-        use deno_core::v8::MapFnTo;
-        Self::v8_func.map_fn_to()
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    pub extern "C" fn v8_fn_ptr<'scope>(
+        info: *const deno_core::v8::FunctionCallbackInfo,
+    ) {
+        let info = unsafe { &*info };
+        let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
+        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            info,
+        );
+        let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+        Self::v8_func(scope, args, rv);
     }
-    pub fn decl<'scope>() -> deno_core::OpDecl {
+    pub const fn decl<'scope>() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr(),
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
-            fast_fn: Some(
-                Box::new(op_blob_revoke_object_url_fast {
-                    _phantom: ::std::marker::PhantomData,
-                }),
-            ),
+            fast_fn: None,
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            argc: 1usize,
+            force_registration: false,
+            arg_count: 1usize as u8,
         }
     }
     #[inline]
@@ -46,18 +51,6 @@ impl op_blob_revoke_object_url {
             &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
                 as *const deno_core::_ops::OpCtx)
         };
-        {
-            let op_state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
-            if let Some(err) = op_state.last_fast_op_error.take() {
-                let exception = deno_core::error::to_v8_error(
-                    scope,
-                    op_state.get_error_class_fn,
-                    &err,
-                );
-                scope.throw_exception(exception);
-                return;
-            }
-        }
         let arg_0 = match deno_core::v8::Local::<
             deno_core::v8::String,
         >::try_from(args.get(0usize as i32)) {
@@ -83,47 +76,5 @@ impl op_blob_revoke_object_url {
                 scope.throw_exception(exception);
             }
         };
-    }
-}
-struct op_blob_revoke_object_url_fast {
-    _phantom: ::std::marker::PhantomData<()>,
-}
-impl<'scope> deno_core::v8::fast_api::FastFunction for op_blob_revoke_object_url_fast {
-    fn function(&self) -> *const ::std::ffi::c_void {
-        op_blob_revoke_object_url_fast_fn as *const ::std::ffi::c_void
-    }
-    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
-        use deno_core::v8::fast_api::Type::*;
-        use deno_core::v8::fast_api::CType;
-        &[V8Value, SeqOneByteString, CallbackOptions]
-    }
-    fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Void
-    }
-}
-fn op_blob_revoke_object_url_fast_fn<'scope>(
-    _: deno_core::v8::Local<deno_core::v8::Object>,
-    url: *const deno_core::v8::fast_api::FastApiOneByteString,
-    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
-) -> () {
-    use deno_core::v8;
-    use deno_core::_ops;
-    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
-        &mut *fast_api_callback_options
-    };
-    let __ctx = unsafe {
-        &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
-            as *const _ops::OpCtx)
-    };
-    let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let url = unsafe { &*url }.as_str().to_owned();
-    let result = op_blob_revoke_object_url::call(state, url);
-    match result {
-        Ok(result) => result,
-        Err(err) => {
-            state.last_fast_op_error.replace(err);
-            __opts.fallback = true;
-            Default::default()
-        }
     }
 }

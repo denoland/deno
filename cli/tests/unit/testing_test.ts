@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 Deno.test(function testWrongOverloads() {
@@ -114,7 +114,7 @@ Deno.test(async function invalidStepArguments(t) {
       await (t as any).step(() => {});
     },
     TypeError,
-    "Expected a test definition or name and function.",
+    "The step function must have a name.",
   );
 });
 
@@ -147,3 +147,8 @@ Deno.test(async function parentOnTextContext(t1) {
     });
   });
 });
+
+Deno.test("explicit undefined for boolean options", {
+  ignore: undefined,
+  only: undefined,
+}, () => {});

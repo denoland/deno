@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_core"
-version = "0.162.0"
+version = "0.184.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 [features]
 default = ["v8_use_custom_libcxx"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
+include_js_files_for_snapshotting = []
 
 [dependencies]
 anyhow.workspace = true
@@ -38,9 +39,12 @@ sourcemap = "6.1"
 url.workspace = true
 v8.workspace = true
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemalloc-sys.workspace = true
+
 [[example]]
 name = "http_bench_json_ops"
-path = "examples/http_bench_json_ops.rs"
+path = "examples/http_bench_json_ops/main.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]

@@ -14,9 +14,7 @@ and limitations under the License.
 ***************************************************************************** */
 
 
-
 /// <reference no-default-lib="true"/>
-
 
 /////////////////////////////
 /// Window Iterable APIs
@@ -34,6 +32,10 @@ interface BaseAudioContext {
     createPeriodicWave(real: Iterable<number>, imag: Iterable<number>, constraints?: PeriodicWaveConstraints): PeriodicWave;
 }
 
+interface CSSKeyframesRule {
+    [Symbol.iterator](): IterableIterator<CSSKeyframeRule>;
+}
+
 interface CSSRuleList {
     [Symbol.iterator](): IterableIterator<CSSRule>;
 }
@@ -44,6 +46,10 @@ interface CSSStyleDeclaration {
 
 interface Cache {
     addAll(requests: Iterable<RequestInfo>): Promise<void>;
+}
+
+interface CanvasPath {
+    roundRect(x: number, y: number, w: number, h: number, radii?: number | DOMPointInit | Iterable<number | DOMPointInit>): void;
 }
 
 interface CanvasPathDrawingStyles {
@@ -131,6 +137,16 @@ interface IDBObjectStore {
      * Throws an "InvalidStateError" DOMException if not called within an upgrade transaction.
      */
     createIndex(name: string, keyPath: string | Iterable<string>, options?: IDBIndexParameters): IDBIndex;
+}
+
+interface MIDIInputMap extends ReadonlyMap<string, MIDIInput> {
+}
+
+interface MIDIOutput {
+    send(data: Iterable<number>, timestamp?: DOMHighResTimeStamp): void;
+}
+
+interface MIDIOutputMap extends ReadonlyMap<string, MIDIOutput> {
 }
 
 interface MediaKeyStatusMap {
@@ -273,8 +289,8 @@ interface WEBGL_draw_buffers {
 interface WEBGL_multi_draw {
     multiDrawArraysInstancedWEBGL(mode: GLenum, firstsList: Int32Array | Iterable<GLint>, firstsOffset: GLuint, countsList: Int32Array | Iterable<GLsizei>, countsOffset: GLuint, instanceCountsList: Int32Array | Iterable<GLsizei>, instanceCountsOffset: GLuint, drawcount: GLsizei): void;
     multiDrawArraysWEBGL(mode: GLenum, firstsList: Int32Array | Iterable<GLint>, firstsOffset: GLuint, countsList: Int32Array | Iterable<GLsizei>, countsOffset: GLuint, drawcount: GLsizei): void;
-    multiDrawElementsInstancedWEBGL(mode: GLenum, countsList: Int32Array | Iterable<GLint>, countsOffset: GLuint, type: GLenum, offsetsList: Int32Array | Iterable<GLsizei>, offsetsOffset: GLuint, instanceCountsList: Int32Array | Iterable<GLsizei>, instanceCountsOffset: GLuint, drawcount: GLsizei): void;
-    multiDrawElementsWEBGL(mode: GLenum, countsList: Int32Array | Iterable<GLint>, countsOffset: GLuint, type: GLenum, offsetsList: Int32Array | Iterable<GLsizei>, offsetsOffset: GLuint, drawcount: GLsizei): void;
+    multiDrawElementsInstancedWEBGL(mode: GLenum, countsList: Int32Array | Iterable<GLsizei>, countsOffset: GLuint, type: GLenum, offsetsList: Int32Array | Iterable<GLsizei>, offsetsOffset: GLuint, instanceCountsList: Int32Array | Iterable<GLsizei>, instanceCountsOffset: GLuint, drawcount: GLsizei): void;
+    multiDrawElementsWEBGL(mode: GLenum, countsList: Int32Array | Iterable<GLsizei>, countsOffset: GLuint, type: GLenum, offsetsList: Int32Array | Iterable<GLsizei>, offsetsOffset: GLuint, drawcount: GLsizei): void;
 }
 
 interface WebGL2RenderingContextBase {

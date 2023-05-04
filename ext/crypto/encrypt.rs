@@ -1,4 +1,4 @@
-use crate::shared::*;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockEncryptMut;
@@ -30,6 +30,8 @@ use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+
+use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

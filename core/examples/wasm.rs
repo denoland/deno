@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::op;
 use deno_core::Extension;
@@ -51,7 +51,7 @@ fn op_set_wasm_mem(
 
 fn main() {
   // Build a deno_core::Extension providing custom ops
-  let ext = Extension::builder()
+  let ext = Extension::builder("my_ext")
     .ops(vec![op_wasm::decl(), op_set_wasm_mem::decl()])
     .build();
 
@@ -62,6 +62,6 @@ fn main() {
   });
 
   runtime
-    .execute_script("<usage>", include_str!("wasm.js"))
+    .execute_script("<usage>", include_ascii_string!("wasm.js"))
     .unwrap();
 }

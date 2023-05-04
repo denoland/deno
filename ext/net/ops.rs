@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
 use crate::resolve_addr::resolve_addr;
@@ -9,12 +9,12 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::CancelFuture;
 
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -28,8 +28,11 @@ use socket2::Socket;
 use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use std::str::FromStr;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -43,42 +46,13 @@ use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
-  vec![
-    op_net_accept_tcp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_accept_unix::decl(),
-    op_net_connect_tcp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_connect_unix::decl::<P>(),
-    op_net_listen_tcp::decl::<P>(),
-    op_net_listen_udp::decl::<P>(),
-    op_node_unstable_net_listen_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unix::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_listen_unixpacket::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_node_unstable_net_listen_unixpacket::decl::<P>(),
-    op_net_recv_udp::decl(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_recv_unixpacket::decl(),
-    op_net_send_udp::decl::<P>(),
-    #[cfg(unix)]
-    crate::ops_unix::op_net_send_unixpacket::decl::<P>(),
-    op_dns_resolve::decl::<P>(),
-    op_set_nodelay::decl(),
-    op_set_keepalive::decl(),
-  ]
-}
-
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -182,6 +156,151 @@ where
   let nwritten = socket.send_to(&zero_copy, &addr).await?;
 
   Ok(nwritten)
+}
+
+#[op]
+async fn op_net_join_multi_v4_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: String,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
+
+  socket.join_multicast_v4(addr, interface_addr)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_join_multi_v6_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: u32,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv6Addr::from_str(address.as_str())?;
+
+  socket.join_multicast_v6(&addr, multi_interface)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_leave_multi_v4_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: String,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv4Addr::from_str(address.as_str())?;
+  let interface_addr = Ipv4Addr::from_str(multi_interface.as_str())?;
+
+  socket.leave_multicast_v4(addr, interface_addr)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_leave_multi_v6_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  address: String,
+  multi_interface: u32,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  let addr = Ipv6Addr::from_str(address.as_str())?;
+
+  socket.leave_multicast_v6(&addr, multi_interface)?;
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_set_multi_loopback_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  is_v4_membership: bool,
+  loopback: bool,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  if is_v4_membership {
+    socket.set_multicast_loop_v4(loopback)?
+  } else {
+    socket.set_multicast_loop_v6(loopback)?;
+  }
+
+  Ok(())
+}
+
+#[op]
+async fn op_net_set_multi_ttl_udp<NP>(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  ttl: u32,
+) -> Result<(), AnyError>
+where
+  NP: NetPermissions + 'static,
+{
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<UdpSocketResource>(rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+
+  socket.set_multicast_ttl_v4(ttl)?;
+
+  Ok(())
 }
 
 #[op]
@@ -295,6 +414,7 @@ fn net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -330,9 +450,18 @@ where
   let socket_addr = socket2::SockAddr::from(addr);
   socket_tmp.bind(&socket_addr)?;
   socket_tmp.set_nonblocking(true)?;
+
   // Enable messages to be sent to the broadcast address (255.255.255.255) by default
   socket_tmp.set_broadcast(true)?;
+
+  if domain == Domain::IPV4 {
+    socket_tmp.set_multicast_loop_v4(loopback)?;
+  } else {
+    socket_tmp.set_multicast_loop_v6(loopback)?;
+  }
+
   let std_socket: std::net::UdpSocket = socket_tmp.into();
+
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {
@@ -349,12 +478,13 @@ fn op_net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_udp::<NP>(state, addr, reuse_address)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
 #[op]
@@ -362,12 +492,12 @@ fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
+  loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_udp::<NP>(state, addr, reuse_address)
+  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]
@@ -417,6 +547,7 @@ pub enum DnsReturnRecord {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveAddrArgs {
+  cancel_rid: Option<ResourceId>,
   query: String,
   record_type: RecordType,
   options: Option<ResolveDnsOption>,
@@ -452,6 +583,7 @@ where
     query,
     record_type,
     options,
+    cancel_rid,
   } = args;
 
   let (config, opts) = if let Some(name_server) =
@@ -485,11 +617,31 @@ where
 
   let resolver = AsyncResolver::tokio(config, opts)?;
 
-  let results = resolver
-    .lookup(query, record_type)
-    .await
+  let lookup_fut = resolver.lookup(query, record_type);
+
+  let cancel_handle = cancel_rid.and_then(|rid| {
+    state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(rid)
+      .ok()
+  });
+
+  let lookup = if let Some(cancel_handle) = cancel_handle {
+    let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
+
+    if let Some(cancel_rid) = cancel_rid {
+      state.borrow_mut().resource_table.close(cancel_rid).ok();
+    };
+
+    lookup_rv?
+  } else {
+    lookup_fut.await
+  };
+
+  lookup
     .map_err(|e| {
-      let message = format!("{}", e);
+      let message = format!("{e}");
       match e.kind() {
         ResolveErrorKind::NoRecordsFound { .. } => {
           custom_error("NotFound", message)
@@ -502,10 +654,8 @@ where
       }
     })?
     .iter()
-    .filter_map(rdata_to_return_record(record_type))
-    .collect();
-
-  Ok(results)
+    .filter_map(|rdata| rdata_to_return_record(record_type)(rdata).transpose())
+    .collect::<Result<Vec<DnsReturnRecord>, AnyError>>()
 }
 
 #[op]
@@ -514,7 +664,6 @@ pub fn op_set_nodelay(
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setNoDelay");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay)
@@ -526,7 +675,6 @@ pub fn op_set_keepalive(
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.Conn#setKeepAlive");
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive)
@@ -534,10 +682,10 @@ pub fn op_set_keepalive(
 
 fn rdata_to_return_record(
   ty: RecordType,
-) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
+) -> impl Fn(&RData) -> Result<Option<DnsReturnRecord>, AnyError> {
   use RecordType::*;
-  move |r: &RData| -> Option<DnsReturnRecord> {
-    match ty {
+  move |r: &RData| -> Result<Option<DnsReturnRecord>, AnyError> {
+    let record = match ty {
       A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
       AAAA => r
         .as_aaaa()
@@ -617,9 +765,14 @@ fn rdata_to_return_record(
           .collect();
         DnsReturnRecord::Txt(texts)
       }),
-      // TODO(magurotuna): Other record types are not supported
-      _ => todo!(),
-    }
+      _ => {
+        return Err(custom_error(
+          "NotSupported",
+          "Provided record type is not supported",
+        ))
+      }
+    };
+    Ok(record)
   }
 }
 
@@ -627,13 +780,15 @@ fn rdata_to_return_record(
 mod tests {
   use super::*;
   use crate::UnstableChecker;
-  use deno_core::Extension;
+  use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
   use std::path::Path;
+  use std::sync::Arc;
+  use std::sync::Mutex;
   use trust_dns_proto::rr::rdata::caa::KeyValue;
   use trust_dns_proto::rr::rdata::caa::CAA;
   use trust_dns_proto::rr::rdata::mx::MX;
@@ -649,7 +804,7 @@ mod tests {
     let func = rdata_to_return_record(RecordType::A);
     let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::A("127.0.0.1".to_string()))
     );
   }
@@ -658,14 +813,20 @@ mod tests {
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aaaa("::1".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Aaaa("::1".to_string()))
+    );
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aname("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Aname("".to_string()))
+    );
   }
 
   #[test]
@@ -677,7 +838,7 @@ mod tests {
       vec![KeyValue::new("account", "123456")],
     ));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Caa {
         critical: false,
         tag: "issue".to_string(),
@@ -690,7 +851,10 @@ mod tests {
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Cname("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Cname("".to_string()))
+    );
   }
 
   #[test]
@@ -698,7 +862,7 @@ mod tests {
     let func = rdata_to_return_record(RecordType::MX);
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Mx {
         preference: 10,
         exchange: "".to_string()
@@ -718,7 +882,7 @@ mod tests {
       Name::new(),
     ));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Naptr {
         order: 1,
         preference: 2,
@@ -734,14 +898,20 @@ mod tests {
   fn rdata_to_return_record_ns() {
     let func = rdata_to_return_record(RecordType::NS);
     let rdata = RData::NS(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ns("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Ns("".to_string()))
+    );
   }
 
   #[test]
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ptr("".to_string())));
+    assert_eq!(
+      func(&rdata).unwrap(),
+      Some(DnsReturnRecord::Ptr("".to_string()))
+    );
   }
 
   #[test]
@@ -757,7 +927,7 @@ mod tests {
       0,
     ));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Soa {
         mname: "".to_string(),
         rname: "".to_string(),
@@ -775,7 +945,7 @@ mod tests {
     let func = rdata_to_return_record(RecordType::SRV);
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Srv {
         priority: 1,
         weight: 2,
@@ -795,7 +965,7 @@ mod tests {
       &[0xe3, 0x81, 0x82], // "あ" in UTF-8
     ]));
     assert_eq!(
-      func(&rdata),
+      func(&rdata).unwrap(),
       Some(DnsReturnRecord::Txt(vec![
         "foo".to_string(),
         "bar".to_string(),
@@ -842,7 +1012,7 @@ mod tests {
       assert!(socket.nodelay().unwrap());
       assert!(!socket.keepalive().unwrap());
     });
-    check_sockopt(String::from("127.0.0.1:4245"), set_nodelay, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4145"), set_nodelay, test_fn).await;
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -854,7 +1024,7 @@ mod tests {
       assert!(!socket.nodelay().unwrap());
       assert!(socket.keepalive().unwrap());
     });
-    check_sockopt(String::from("127.0.0.1:4246"), set_keepalive, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4146"), set_keepalive, test_fn).await;
   }
 
   #[allow(clippy::type_complexity)]
@@ -863,21 +1033,26 @@ mod tests {
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,
     test_fn: Box<dyn FnOnce(SockRef)>,
   ) {
+    let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
-    tokio::spawn(async move {
-      let listener = TcpListener::bind(addr).await.unwrap();
-      let _ = listener.accept().await;
-    });
-    let my_ext = Extension::builder()
-      .state(move |state| {
+    let listener = TcpListener::bind(addr).await.unwrap();
+    let accept_fut = listener.accept().boxed_local();
+    let store_fut = async move {
+      let socket = accept_fut.await.unwrap();
+      sockets.lock().unwrap().push(socket);
+    }
+    .boxed_local();
+
+    deno_core::extension!(
+      test_ext,
+      state = |state| {
         state.put(TestPermission {});
         state.put(UnstableChecker { unstable: true });
-        Ok(())
-      })
-      .build();
+      }
+    );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![my_ext],
+      extensions: vec![test_ext::init_ops()],
       ..Default::default()
     });
 
@@ -889,9 +1064,23 @@ mod tests {
       port: server_addr[1].parse().unwrap(),
     };
 
-    let connect_fut =
-      op_net_connect_tcp::call::<TestPermission>(conn_state, ip_addr);
-    let (rid, _, _) = connect_fut.await.unwrap();
+    let mut connect_fut =
+      op_net_connect_tcp::call::<TestPermission>(conn_state, ip_addr)
+        .boxed_local();
+    let mut rid = None;
+
+    tokio::select! {
+      _ = store_fut => {
+        let result = connect_fut.await;
+        let vals = result.unwrap();
+        rid = rid.or(Some(vals.0));
+      },
+      result = &mut connect_fut => {
+        let vals = result.unwrap();
+        rid = rid.or(Some(vals.0));
+      }
+    };
+    let rid = rid.unwrap();
 
     let state = runtime.op_state();
     set_sockopt_fn(&mut state.borrow_mut(), rid);

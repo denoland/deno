@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use anyhow::Error;
 
 pub fn get_error_code(err: &Error) -> Option<&'static str> {
@@ -54,6 +56,7 @@ fn get_io_error_code(err: &std::io::Error) -> &'static str {
     // ErrorKind::ExecutableFileBusy => "ETXTBSY",
     // ErrorKind::CrossesDevices => "EXDEV",
     ErrorKind::PermissionDenied => "EACCES", // NOTE: Collides with EPERM ...
+    ErrorKind::WouldBlock => "EWOULDBLOCK",  // NOTE: Collides with EAGAIN ...
     _ => "",
   }
 }

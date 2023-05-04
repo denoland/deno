@@ -1,16 +1,34 @@
-/// Optimizer for #[op]
-use crate::Op;
-use pmutil::{q, Quote};
-use proc_macro2::TokenStream;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//! Optimizer for #[op]
+
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
-use syn::{
-  parse_quote, punctuated::Punctuated, token::Colon2,
-  AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
-  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypePtr,
-  TypeReference, TypeSlice, TypeTuple,
-};
+
+use pmutil::q;
+use pmutil::Quote;
+use proc_macro2::TokenStream;
+
+use syn::parse_quote;
+use syn::punctuated::Punctuated;
+use syn::token::Colon2;
+use syn::AngleBracketedGenericArguments;
+use syn::FnArg;
+use syn::GenericArgument;
+use syn::PatType;
+use syn::Path;
+use syn::PathArguments;
+use syn::PathSegment;
+use syn::ReturnType;
+use syn::Signature;
+use syn::Type;
+use syn::TypePath;
+use syn::TypePtr;
+use syn::TypeReference;
+use syn::TypeSlice;
+use syn::TypeTuple;
+
+use crate::Op;
 
 #[derive(Debug)]
 pub(crate) enum BailoutReason {
@@ -32,8 +50,10 @@ enum TransformKind {
   V8Value,
   SliceU32(bool),
   SliceU8(bool),
+  SliceF64(bool),
   SeqOneByteString(StringType),
   PtrU8,
+  PtrVoid,
   WasmMemory,
 }
 
@@ -59,6 +79,13 @@ impl Transform {
     }
   }
 
+  fn slice_f64(index: usize, is_mut: bool) -> Self {
+    Transform {
+      kind: TransformKind::SliceF64(is_mut),
+      index,
+    }
+  }
+
   fn seq_one_byte_string(index: usize, is_ref: StringType) -> Self {
     Transform {
       kind: TransformKind::SeqOneByteString(is_ref),
@@ -76,6 +103,13 @@ impl Transform {
   fn u8_ptr(index: usize) -> Self {
     Transform {
       kind: TransformKind::PtrU8,
+      index,
+    }
+  }
+
+  fn void_ptr(index: usize) -> Self {
+    Transform {
+      kind: TransformKind::PtrVoid,
       index,
     }
   }
@@ -123,6 +157,10 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
 
         q!(Vars { var: &ident }, {
+          // V8 guarantees that ArrayBuffers are always 4-byte aligned
+          // (seems to be always 8-byte aligned on 64-bit machines)
+          // but Deno FFI makes it possible to create ArrayBuffers at any
+          // alignment. Thus this check is needed.
           let var = match unsafe { &*var }.get_storage_if_aligned() {
             Some(v) => v,
             None => {
@@ -136,6 +174,16 @@ impl Transform {
       TransformKind::SliceU8(_) => {
         *ty =
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
+
+        q!(Vars { var: &ident }, {
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() };
+        })
+      }
+      TransformKind::SliceF64(_) => {
+        *ty =
+          parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<f64> };
 
         q!(Vars { var: &ident }, {
           let var = match unsafe { &*var }.get_storage_if_aligned() {
@@ -152,18 +200,39 @@ impl Transform {
         *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
         match str_ty {
           StringType::Ref => q!(Vars { var: &ident }, {
-            let var = unsafe { &*var }.as_str();
+            let var = match ::std::str::from_utf8(unsafe { &*var }.as_bytes()) {
+              Ok(v) => v,
+              Err(_) => {
+                unsafe { &mut *fast_api_callback_options }.fallback = true;
+                return Default::default();
+              }
+            };
           }),
           StringType::Cow => q!(Vars { var: &ident }, {
-            let var = ::std::borrow::Cow::Borrowed(unsafe { &*var }.as_str());
+            let var = ::std::borrow::Cow::Borrowed(
+              match ::std::str::from_utf8(unsafe { &*var }.as_bytes()) {
+                Ok(v) => v,
+                Err(_) => {
+                  unsafe { &mut *fast_api_callback_options }.fallback = true;
+                  return Default::default();
+                }
+              },
+            );
           }),
           StringType::Owned => q!(Vars { var: &ident }, {
-            let var = unsafe { &*var }.as_str().to_owned();
+            let var = match ::std::str::from_utf8(unsafe { &*var }.as_bytes()) {
+              Ok(v) => v.to_owned(),
+              Err(_) => {
+                unsafe { &mut *fast_api_callback_options }.fallback = true;
+                return Default::default();
+              }
+            };
           }),
         }
       }
       TransformKind::WasmMemory => {
         // Note: `ty` is correctly set to __opts by the fast call tier.
+        // U8 slice is always byte-aligned.
         q!(Vars { var: &ident, core }, {
           let var = unsafe {
             &*(__opts.wasm_memory
@@ -178,14 +247,16 @@ impl Transform {
           parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &*var }.get_storage_if_aligned() {
-            Some(v) => v.as_ptr(),
-            None => {
-              unsafe { &mut *fast_api_callback_options }.fallback = true;
-              return Default::default();
-            }
-          };
+          // SAFETY: U8 slice is always byte-aligned.
+          let var =
+            unsafe { (&*var).get_storage_if_aligned().unwrap_unchecked() }
+              .as_ptr();
         })
+      }
+      TransformKind::PtrVoid => {
+        *ty = parse_quote! { *mut ::std::ffi::c_void };
+
+        q!(Vars {}, {})
       }
     }
   }
@@ -193,13 +264,14 @@ impl Transform {
 
 fn get_fast_scalar(s: &str) -> Option<FastValue> {
   match s {
+    "bool" => Some(FastValue::Bool),
     "u32" => Some(FastValue::U32),
     "i32" => Some(FastValue::I32),
-    "u64" => Some(FastValue::U64),
-    "i64" => Some(FastValue::I64),
+    "u64" | "usize" => Some(FastValue::U64),
+    "i64" | "isize" => Some(FastValue::I64),
     "f32" => Some(FastValue::F32),
     "f64" => Some(FastValue::F64),
-    "bool" => Some(FastValue::Bool),
+    "* const c_void" | "* mut c_void" => Some(FastValue::Pointer),
     "ResourceId" => Some(FastValue::U32),
     _ => None,
   }
@@ -218,17 +290,29 @@ fn can_return_fast(v: &FastValue) -> bool {
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum FastValue {
   Void,
+  Bool,
   U32,
   I32,
   U64,
   I64,
   F32,
   F64,
-  Bool,
+  Pointer,
   V8Value,
   Uint8Array,
   Uint32Array,
+  Float64Array,
   SeqOneByteString,
+}
+
+impl FastValue {
+  pub fn default_value(&self) -> Quote {
+    match self {
+      FastValue::Pointer => q!({ ::std::ptr::null_mut() }),
+      FastValue::Void => q!({}),
+      _ => q!({ Default::default() }),
+    }
+  }
 }
 
 impl Default for FastValue {
@@ -355,6 +439,13 @@ impl Optimizer {
       self.analyze_param_type(index, param)?;
     }
 
+    // TODO(@littledivy): https://github.com/denoland/deno/issues/17159
+    if self.returns_result
+      && self.fast_parameters.contains(&FastValue::SeqOneByteString)
+    {
+      self.fast_compatible = false;
+    }
+
     Ok(())
   }
 
@@ -406,6 +497,31 @@ impl Optimizer {
                 {
                   self.fast_result = Some(FastValue::Void);
                 }
+                Some(GenericArgument::Type(Type::Ptr(TypePtr {
+                  mutability: Some(_),
+                  elem,
+                  ..
+                }))) => {
+                  match &**elem {
+                    Type::Path(TypePath {
+                      path: Path { segments, .. },
+                      ..
+                    }) => {
+                      // Is `T` a c_void?
+                      let segment = single_segment(segments)?;
+                      match segment {
+                        PathSegment { ident, .. } if ident == "c_void" => {
+                          self.fast_result = Some(FastValue::Pointer);
+                          return Ok(());
+                        }
+                        _ => {
+                          return Err(BailoutReason::FastUnsupportedParamType)
+                        }
+                      }
+                    }
+                    _ => return Err(BailoutReason::FastUnsupportedParamType),
+                  }
+                }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
             }
@@ -421,6 +537,29 @@ impl Optimizer {
             return Err(BailoutReason::FastUnsupportedParamType);
           }
         };
+      }
+      Type::Ptr(TypePtr {
+        mutability: Some(_),
+        elem,
+        ..
+      }) => {
+        match &**elem {
+          Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+          }) => {
+            // Is `T` a c_void?
+            let segment = single_segment(segments)?;
+            match segment {
+              PathSegment { ident, .. } if ident == "c_void" => {
+                self.fast_result = Some(FastValue::Pointer);
+                return Ok(());
+              }
+              _ => return Err(BailoutReason::FastUnsupportedParamType),
+            }
+          }
+          _ => return Err(BailoutReason::FastUnsupportedParamType),
+        }
       }
       _ => return Err(BailoutReason::FastUnsupportedParamType),
     };
@@ -486,7 +625,6 @@ impl Optimizer {
                         match segment {
                           // Is `T` a u8?
                           PathSegment { ident, .. } if ident == "u8" => {
-                            self.needs_fast_callback_option = true;
                             assert!(self
                               .transforms
                               .insert(index, Transform::wasm_memory(index))
@@ -600,6 +738,7 @@ impl Optimizer {
                     let segment = single_segment(segments)?;
                     match segment {
                       PathSegment { ident, .. } if ident == "str" => {
+                        self.needs_fast_callback_option = true;
                         self.fast_parameters.push(FastValue::SeqOneByteString);
                         assert!(self
                           .transforms
@@ -624,6 +763,7 @@ impl Optimizer {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
                 self.fast_parameters.push(val);
               } else if ident == "String" {
+                self.needs_fast_callback_option = true;
                 // Is `T` an owned String?
                 self.fast_parameters.push(FastValue::SeqOneByteString);
                 assert!(self
@@ -657,6 +797,7 @@ impl Optimizer {
               }
               // Is `T` a str?
               PathSegment { ident, .. } if ident == "str" => {
+                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::SeqOneByteString);
                 assert!(self
                   .transforms
@@ -680,7 +821,6 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
-                  self.needs_fast_callback_option = true;
                   self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
@@ -694,6 +834,15 @@ impl Optimizer {
                   assert!(self
                     .transforms
                     .insert(index, Transform::slice_u32(index, is_mut_ref))
+                    .is_none());
+                }
+                // Is `T` a f64?
+                PathSegment { ident, .. } if ident == "f64" => {
+                  self.needs_fast_callback_option = true;
+                  self.fast_parameters.push(FastValue::Float64Array);
+                  assert!(self
+                    .transforms
+                    .insert(index, Transform::slice_f64(index, is_mut_ref))
                     .is_none());
                 }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
@@ -717,11 +866,35 @@ impl Optimizer {
             match segment {
               // Is `T` a u8?
               PathSegment { ident, .. } if ident == "u8" => {
-                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::Uint8Array);
                 assert!(self
                   .transforms
                   .insert(index, Transform::u8_ptr(index))
+                  .is_none());
+              }
+              _ => return Err(BailoutReason::FastUnsupportedParamType),
+            }
+          }
+          _ => return Err(BailoutReason::FastUnsupportedParamType),
+        },
+        // *const T
+        Type::Ptr(TypePtr {
+          elem,
+          mutability: Some(_),
+          ..
+        }) => match &**elem {
+          Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+          }) => {
+            let segment = single_segment(segments)?;
+            match segment {
+              // Is `T` a c_void?
+              PathSegment { ident, .. } if ident == "c_void" => {
+                self.fast_parameters.push(FastValue::Pointer);
+                assert!(self
+                  .transforms
+                  .insert(index, Transform::void_ptr(index))
                   .is_none());
               }
               _ => return Err(BailoutReason::FastUnsupportedParamType),
@@ -763,7 +936,9 @@ fn double_segment(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{Attributes, Op};
+  use crate::Attributes;
+  use crate::Op;
+  use pretty_assertions::assert_eq;
   use std::path::PathBuf;
   use syn::parse_quote;
 
@@ -806,7 +981,7 @@ mod tests {
     let mut op = Op::new(item, attrs);
     let mut optimizer = Optimizer::new();
     if let Err(e) = optimizer.analyze(&mut op) {
-      let e_str = format!("{:?}", e);
+      let e_str = format!("{e:?}");
       if update_expected {
         std::fs::write(input.with_extension("expected"), e_str)
           .expect("Failed to write expected file");
@@ -819,11 +994,11 @@ mod tests {
     if update_expected {
       std::fs::write(
         input.with_extension("expected"),
-        format!("{:#?}", optimizer),
+        format!("{optimizer:#?}"),
       )
       .expect("Failed to write expected file");
     } else {
-      assert_eq!(format!("{:#?}", optimizer), expected);
+      assert_eq!(format!("{optimizer:#?}"), expected);
     }
   }
 }

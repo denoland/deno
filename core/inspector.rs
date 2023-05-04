@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
 //! <https://chromedevtools.github.io/devtools-protocol/>
@@ -11,7 +11,6 @@ use crate::futures::channel::mpsc::UnboundedSender;
 use crate::futures::channel::oneshot;
 use crate::futures::future::select;
 use crate::futures::future::Either;
-use crate::futures::future::Future;
 use crate::futures::prelude::*;
 use crate::futures::stream::SelectAll;
 use crate::futures::stream::StreamExt;
@@ -90,6 +89,7 @@ pub struct JsRuntimeInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   deregister_tx: Option<oneshot::Sender<()>>,
+  is_dispatching_message: RefCell<bool>,
 }
 
 impl Drop for JsRuntimeInspector {
@@ -117,6 +117,16 @@ impl Drop for JsRuntimeInspector {
 impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
     &self.v8_inspector_client
+  }
+
+  unsafe fn base_ptr(
+    this: *const Self,
+  ) -> *const v8::inspector::V8InspectorClientBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_inspector_client) }
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
@@ -193,6 +203,7 @@ impl JsRuntimeInspector {
       flags: Default::default(),
       waker,
       deregister_tx: None,
+      is_dispatching_message: Default::default(),
     }));
     let mut self_ = self__.borrow_mut();
     self_.v8_inspector = Rc::new(RefCell::new(
@@ -233,6 +244,10 @@ impl JsRuntimeInspector {
     self__
   }
 
+  pub fn is_dispatching_message(&self) -> bool {
+    *self.is_dispatching_message.borrow()
+  }
+
   pub fn context_destroyed(
     &mut self,
     scope: &mut HandleScope,
@@ -245,6 +260,35 @@ impl JsRuntimeInspector {
       .as_mut()
       .unwrap()
       .context_destroyed(context);
+  }
+
+  pub fn exception_thrown(
+    &self,
+    scope: &mut HandleScope,
+    exception: v8::Local<'_, v8::Value>,
+    in_promise: bool,
+  ) {
+    let context = scope.get_current_context();
+    let message = v8::Exception::create_message(scope, exception);
+    let stack_trace = message.get_stack_trace(scope).unwrap();
+    let mut v8_inspector_ref = self.v8_inspector.borrow_mut();
+    let v8_inspector = v8_inspector_ref.as_mut().unwrap();
+    let stack_trace = v8_inspector.create_stack_trace(stack_trace);
+    v8_inspector.exception_thrown(
+      context,
+      if in_promise {
+        v8::inspector::StringView::from("Uncaught (in promise)".as_bytes())
+      } else {
+        v8::inspector::StringView::from("Uncaught".as_bytes())
+      },
+      exception,
+      v8::inspector::StringView::from("".as_bytes()),
+      v8::inspector::StringView::from("".as_bytes()),
+      0,
+      0,
+      stack_trace,
+      0,
+    );
   }
 
   pub fn has_active_sessions(&self) -> bool {
@@ -387,6 +431,23 @@ impl JsRuntimeInspector {
       }
 
       break;
+    }
+  }
+
+  /// This function blocks the thread until at least one inspector client has
+  /// established a websocket connection.
+  pub fn wait_for_session(&mut self) {
+    loop {
+      match self.sessions.get_mut().established.iter_mut().next() {
+        Some(_session) => {
+          self.flags.get_mut().waiting_for_session = false;
+          break;
+        }
+        None => {
+          self.flags.get_mut().waiting_for_session = true;
+          self.poll_sessions_sync();
+        }
+      };
     }
   }
 
@@ -666,6 +727,14 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     &self.v8_channel
   }
 
+  unsafe fn base_ptr(this: *const Self) -> *const v8::inspector::ChannelBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_channel) }
+  }
+
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
     &mut self.v8_channel
   }
@@ -715,7 +784,8 @@ pub struct LocalInspectorSession {
   v8_session_rx: UnboundedReceiver<InspectorMsg>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
-  notification_queue: Vec<Value>,
+  notification_tx: UnboundedSender<Value>,
+  notification_rx: Option<UnboundedReceiver<Value>>,
 }
 
 impl LocalInspectorSession {
@@ -726,19 +796,20 @@ impl LocalInspectorSession {
     let response_tx_map = HashMap::new();
     let next_message_id = 0;
 
-    let notification_queue = Vec::new();
+    let (notification_tx, notification_rx) = mpsc::unbounded::<Value>();
 
     Self {
       v8_session_tx,
       v8_session_rx,
       response_tx_map,
       next_message_id,
-      notification_queue,
+      notification_tx,
+      notification_rx: Some(notification_rx),
     }
   }
 
-  pub fn notifications(&mut self) -> Vec<Value> {
-    self.notification_queue.split_off(0)
+  pub fn take_notification_rx(&mut self) -> UnboundedReceiver<Value> {
+    self.notification_rx.take().unwrap()
   }
 
   pub async fn post_message<T: serde::Serialize>(
@@ -814,7 +885,8 @@ impl LocalInspectorSession {
         .unwrap();
     } else {
       let message = serde_json::from_str(&inspector_msg.content).unwrap();
-      self.notification_queue.push(message);
+      // Ignore if the receiver has been dropped.
+      let _ = self.notification_tx.unbounded_send(message);
     }
   }
 }

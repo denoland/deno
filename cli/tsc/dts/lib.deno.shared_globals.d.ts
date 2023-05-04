@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.

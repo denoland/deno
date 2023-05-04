@@ -1,8 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::serde::Serialize;
 use crate::OpId;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
+use std::cell::RefMut;
 
 // TODO(@AaronO): split into AggregateMetrics & PerOpMetrics
 #[derive(Clone, Default, Debug, Serialize)]
@@ -62,7 +63,7 @@ impl OpsTracker {
 
   #[inline]
   fn metrics_mut(&self, id: OpId) -> RefMut<OpMetrics> {
-    RefMut::map(self.ops.borrow_mut(), |ops| &mut ops[id])
+    RefMut::map(self.ops.borrow_mut(), |ops| &mut ops[id as usize])
   }
 
   #[inline]

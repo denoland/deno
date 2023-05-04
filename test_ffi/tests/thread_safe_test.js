@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -82,7 +82,7 @@ const cleanupCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback being called");
-    Promise.resolve().then(() => cleanup());
+    queueMicrotask(() => cleanup());
   },
 );
 

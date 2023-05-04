@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -421,7 +421,6 @@ declare class Response implements Body {
   readonly redirected: boolean;
   readonly status: number;
   readonly statusText: string;
-  readonly trailer: Promise<Headers>;
   readonly type: ResponseType;
   readonly url: string;
   clone(): Response;

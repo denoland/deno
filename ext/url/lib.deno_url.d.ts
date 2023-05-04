@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -150,6 +150,14 @@ declare class URLSearchParams {
    * ```
    */
   toString(): string;
+
+  /** Contains the number of search parameters
+   *
+   * ```ts
+   * searchParams.size
+   * ```
+   */
+  size: number;
 }
 
 /** The URL interface represents an object providing static methods used for
@@ -159,6 +167,7 @@ declare class URLSearchParams {
  */
 declare class URL {
   constructor(url: string | URL, base?: string | URL);
+  static canParse(url: string | URL, base?: string | URL): boolean;
   static createObjectURL(blob: Blob): string;
   static revokeObjectURL(url: string): void;
 
@@ -197,7 +206,7 @@ declare type URLPatternInput = string | URLPatternInit;
 /** @category Web APIs */
 declare interface URLPatternComponentResult {
   input: string;
-  groups: Record<string, string>;
+  groups: Record<string, string | undefined>;
 }
 
 /** `URLPatternResult` is the object returned from `URLPattern.exec`.
@@ -236,7 +245,7 @@ declare interface URLPatternResult {
  * ```ts
  * // Specify the pattern as structured data.
  * const pattern = new URLPattern({ pathname: "/users/:user" });
- * const match = pattern.exec("/users/joe");
+ * const match = pattern.exec("https://blog.example.com/users/joe");
  * console.log(match.pathname.groups.user); // joe
  * ```
  *
@@ -249,9 +258,9 @@ declare interface URLPatternResult {
  *
  * ```ts
  * // Specify a relative string pattern with a base URL.
- * const pattern = new URLPattern("/:article", "https://blog.example.com");
- * console.log(pattern.test("https://blog.example.com/article")); // true
- * console.log(pattern.test("https://blog.example.com/article/123")); // false
+ * const pattern = new URLPattern("/article/:id", "https://blog.example.com");
+ * console.log(pattern.test("https://blog.example.com/article")); // false
+ * console.log(pattern.test("https://blog.example.com/article/123")); // true
  * ```
  *
  * @category Web APIs
@@ -262,13 +271,14 @@ declare class URLPattern {
   /**
    * Test if the given input matches the stored pattern.
    *
-   * The input can either be provided as a url string (with an optional base),
-   * or as individual components in the form of an object.
+   * The input can either be provided as an absolute URL string with an optional base,
+   * relative URL string with a required base, or as individual components
+   * in the form of an `URLPatternInit` object.
    *
    * ```ts
    * const pattern = new URLPattern("https://example.com/books/:id");
    *
-   * // Test a url string.
+   * // Test an absolute url string.
    * console.log(pattern.test("https://example.com/books/123")); // true
    *
    * // Test a relative url with a base.
@@ -283,13 +293,14 @@ declare class URLPattern {
   /**
    * Match the given input against the stored pattern.
    *
-   * The input can either be provided as a url string (with an optional base),
-   * or as individual components in the form of an object.
+   * The input can either be provided as an absolute URL string with an optional base,
+   * relative URL string with a required base, or as individual components
+   * in the form of an `URLPatternInit` object.
    *
    * ```ts
    * const pattern = new URLPattern("https://example.com/books/:id");
    *
-   * // Match a url string.
+   * // Match an absolute url string.
    * let match = pattern.exec("https://example.com/books/123");
    * console.log(match.pathname.groups.id); // 123
    *

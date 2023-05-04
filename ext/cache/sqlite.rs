@@ -1,4 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::borrow::Cow;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
@@ -12,13 +19,6 @@ use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-
-use std::borrow::Cow;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
 use crate::deserialize_headers;
 use crate::get_header;
@@ -114,7 +114,7 @@ impl Cache for SqliteBackedCache {
         },
       )?;
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
-      std::fs::create_dir_all(&responses_dir)?;
+      std::fs::create_dir_all(responses_dir)?;
       Ok::<i64, AnyError>(cache_id)
     })
     .await?
@@ -285,29 +285,11 @@ impl Cache for SqliteBackedCache {
 async fn insert_cache_asset(
   db: Arc<Mutex<rusqlite::Connection>>,
   put: CachePutRequest,
-  body_key_start_time: Option<(String, u64)>,
+  response_body_key: Option<String>,
 ) -> Result<Option<String>, deno_core::anyhow::Error> {
   tokio::task::spawn_blocking(move || {
     let maybe_response_body = {
       let db = db.lock();
-      let mut response_body_key = None;
-      if let Some((body_key, start_time)) = body_key_start_time {
-        response_body_key = Some(body_key);
-          let last_inserted_at = db.query_row("
-          SELECT last_inserted_at FROM request_response_list
-          WHERE cache_id = ?1 AND request_url = ?2",
-          (put.cache_id, &put.request_url), |row| {
-            let last_inserted_at: i64 = row.get(0)?;
-            Ok(last_inserted_at)
-          }).optional()?;
-          if let Some(last_inserted) = last_inserted_at {
-            // Some other worker has already inserted this resource into the cache.
-            // Note: okay to unwrap() as it is always present when response_body_key is present.
-            if start_time > (last_inserted as u64) {
-              return Ok(None);
-            }
-          }
-      }
       db.query_row(
         "INSERT OR REPLACE INTO request_response_list
              (cache_id, request_url, request_headers, response_headers,
@@ -368,13 +350,23 @@ impl CachePutResource {
     let mut file = resource.borrow_mut().await;
     file.flush().await?;
     file.sync_all().await?;
-    insert_cache_asset(
+    let maybe_body_key = insert_cache_asset(
       self.db.clone(),
       self.put_request.clone(),
-      Some((self.response_body_key.clone(), self.start_time)),
+      Some(self.response_body_key.clone()),
     )
     .await?;
-    Ok(())
+    match maybe_body_key {
+      Some(key) => {
+        assert_eq!(key, self.response_body_key);
+        Ok(())
+      }
+      // This should never happen because we will always have
+      // body key associated with CachePutResource
+      None => Err(deno_core::anyhow::anyhow!(
+        "unexpected: response body key is None"
+      )),
+    }
   }
 }
 

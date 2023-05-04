@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
 use crate::NetPermissions;
@@ -27,13 +27,13 @@ pub use tokio::net::UnixStream;
 /// A utility function to map OsStrings to Strings
 pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
   s.into_string().map_err(|s| {
-    let message = format!("File name or path {:?} is not valid UTF-8", s);
+    let message = format!("File name or path {s:?} is not valid UTF-8");
     custom_error("InvalidData", message)
   })
 }
 
-struct UnixListenerResource {
-  listener: AsyncRefCell<UnixListener>,
+pub(crate) struct UnixListenerResource {
+  pub listener: AsyncRefCell<UnixListener>,
   cancel: CancelHandle,
 }
 

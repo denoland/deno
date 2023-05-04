@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -11,7 +11,6 @@ use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
-use deno_graph::Resolved;
 
 use crate::util::path::path_with_stem_suffix;
 use crate::util::path::relative_specifier;
@@ -40,8 +39,9 @@ impl Mappings {
     remote_modules: &[&Module],
     output_dir: &Path,
   ) -> Result<Self, AnyError> {
-    let partitioned_specifiers =
-      partition_by_root_specifiers(remote_modules.iter().map(|m| &m.specifier));
+    let partitioned_specifiers = partition_by_root_specifiers(
+      remote_modules.iter().map(|m| m.specifier()),
+    );
     let mut mapped_paths = HashSet::new();
     let mut mappings = HashMap::new();
     let mut proxies = HashMap::new();
@@ -53,7 +53,12 @@ impl Mappings {
         &mut mapped_paths,
       );
       for specifier in specifiers {
-        let media_type = graph.get(&specifier).unwrap().media_type;
+        let module = graph.get(&specifier).unwrap();
+        let media_type = match module {
+          Module::Esm(module) => module.media_type,
+          Module::Json(_) => MediaType::Json,
+          Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
+        };
         let sub_path = sanitize_filepath(&make_url_relative(&root, &{
           let mut specifier = specifier.clone();
           specifier.set_query(None);
@@ -76,29 +81,30 @@ impl Mappings {
 
     // resolve all the "proxy" paths to use for when an x-typescript-types header is specified
     for module in remote_modules {
-      if let Some((
-        _,
-        Resolved::Ok {
-          specifier, range, ..
-        },
-      )) = &module.maybe_types_dependency
-      {
-        // hack to tell if it's an x-typescript-types header
-        let is_ts_types_header =
-          range.start == Position::zeroed() && range.end == Position::zeroed();
-        if is_ts_types_header {
-          let module_path = mappings.get(&module.specifier).unwrap();
-          let proxied_path = get_unique_path(
-            path_with_stem_suffix(module_path, ".proxied"),
-            &mut mapped_paths,
-          );
-          proxies.insert(
-            module.specifier.clone(),
-            ProxiedModule {
-              output_path: proxied_path,
-              declaration_specifier: specifier.clone(),
-            },
-          );
+      if let Some(module) = module.esm() {
+        if let Some(resolved) = &module
+          .maybe_types_dependency
+          .as_ref()
+          .and_then(|d| d.dependency.ok())
+        {
+          let range = &resolved.range;
+          // hack to tell if it's an x-typescript-types header
+          let is_ts_types_header = range.start == Position::zeroed()
+            && range.end == Position::zeroed();
+          if is_ts_types_header {
+            let module_path = mappings.get(&module.specifier).unwrap();
+            let proxied_path = get_unique_path(
+              path_with_stem_suffix(module_path, ".proxied"),
+              &mut mapped_paths,
+            );
+            proxies.insert(
+              module.specifier.clone(),
+              ProxiedModule {
+                output_path: proxied_path,
+                declaration_specifier: resolved.specifier.clone(),
+              },
+            );
+          }
         }
       }
     }
@@ -133,10 +139,7 @@ impl Mappings {
       self
         .mappings
         .get(specifier)
-        .as_ref()
-        .unwrap_or_else(|| {
-          panic!("Could not find local path for {}", specifier)
-        })
+        .unwrap_or_else(|| panic!("Could not find local path for {specifier}"))
         .to_path_buf()
     }
   }
@@ -164,7 +167,7 @@ impl Mappings {
       .iter()
       .find(|s| child_specifier.as_str().starts_with(s.as_str()))
       .unwrap_or_else(|| {
-        panic!("Could not find base specifier for {}", child_specifier)
+        panic!("Could not find base specifier for {child_specifier}")
       })
   }
 
@@ -197,7 +200,7 @@ fn path_with_extension(path: &Path, new_ext: &str) -> PathBuf {
         // maintain casing
         return path.to_path_buf();
       }
-      let media_type: MediaType = path.into();
+      let media_type = MediaType::from_path(path);
       if media_type == MediaType::Unknown {
         return path.with_file_name(format!(
           "{}.{}",

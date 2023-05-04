@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 //! This module is meant to eventually implement HTTP cache
 //! as defined in RFC 7234 (<https://tools.ietf.org/html/rfc7234>).
 //! Currently it's a very simplified version to fulfill Deno needs
@@ -11,7 +11,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use log::error;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -35,14 +34,14 @@ fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
     "http" | "https" => {
       let host = url.host_str().unwrap();
       let host_port = match url.port() {
-        Some(port) => format!("{}_PORT{}", host, port),
+        Some(port) => format!("{host}_PORT{port}"),
         None => host.to_string(),
       };
       out.push(host_port);
     }
     "data" | "blob" => (),
     scheme => {
-      error!("Don't know how to create cache name for scheme: {}", scheme);
+      log::debug!("Don't know how to create cache name for scheme: {}", scheme);
       return None;
     }
   };
@@ -128,8 +127,7 @@ impl HttpCache {
       io::Error::new(
         e.kind(),
         format!(
-          "Could not create remote modules cache location: {:?}\nCheck the permission of the directory.",
-          path
+          "Could not create remote modules cache location: {path:?}\nCheck the permission of the directory."
         ),
       )
     })
@@ -231,7 +229,7 @@ mod tests {
     headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
-    eprintln!("result {:?}", r);
+    eprintln!("result {r:?}");
     assert!(r.is_ok());
     let r = cache.get(&url);
     assert!(r.is_ok());

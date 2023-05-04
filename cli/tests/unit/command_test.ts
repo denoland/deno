@@ -1,4 +1,5 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -84,6 +85,24 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
+  async function commandStdinPiped() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["info"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
+    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
+    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+
+    await child.status;
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
   async function commandStdoutPiped() {
     const command = new Deno.Command(Deno.execPath(), {
       args: [
@@ -91,6 +110,7 @@ Deno.test(
         "await Deno.stdout.write(new TextEncoder().encode('hello'))",
       ],
       stderr: "null",
+      stdout: "piped",
     });
     const child = command.spawn();
 
@@ -124,6 +144,7 @@ Deno.test(
         "await Deno.stderr.write(new TextEncoder().encode('hello'))",
       ],
       stdout: "null",
+      stderr: "piped",
     });
     const child = command.spawn();
 
@@ -163,6 +184,8 @@ Deno.test(
         "eval",
         "Deno.stderr.write(new TextEncoder().encode('error\\n')); Deno.stdout.write(new TextEncoder().encode('output\\n'));",
       ],
+      stdout: "piped",
+      stderr: "piped",
     });
     const child = command.spawn();
     await child.stdout.pipeTo(file.writable, {
@@ -828,10 +851,11 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true } },
-  async function commandWithPromisePrototypeThenOverride() {
+  async function commandWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
+    const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
-      Promise.prototype.then = () => {
+      Promise.prototype.then = Array.prototype[Symbol.iterator] = () => {
         throw new Error();
       };
       await new Deno.Command(Deno.execPath(), {
@@ -839,6 +863,7 @@ Deno.test(
       }).output();
     } finally {
       Promise.prototype.then = originalThen;
+      Array.prototype[Symbol.iterator] = originalSymbolIterator;
     }
   },
 );

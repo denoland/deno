@@ -1,24 +1,16 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use std::env::current_dir;
 use std::io::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
-  }
-  Ok(canonicalized_path)
+  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
 }
 
 #[inline]
@@ -28,7 +20,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   } else {
     let cwd =
       current_dir().context("Failed to get current working directory")?;
-    Ok(normalize_path(&cwd.join(path)))
+    Ok(normalize_path(cwd.join(path)))
   }
 }
 
@@ -71,11 +63,11 @@ mod tests {
     }
   }
 
-  // TODO: Get a good expected value here for Windows.
-  #[cfg(not(windows))]
   #[test]
   fn resolve_from_cwd_absolute() {
-    let expected = Path::new("/a");
-    assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
+    let expected = Path::new("a");
+    let cwd = current_dir().unwrap();
+    let absolute_expected = cwd.join(expected);
+    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }
 }

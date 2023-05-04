@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test(function btoaSuccess() {
@@ -264,8 +264,8 @@ Deno.test(function textEncoderShouldCoerceToString() {
 });
 
 Deno.test(function binaryEncode() {
-  // @ts-ignore: Deno.core allowed
-  const ops = Deno.core.ops;
+  // @ts-ignore: Deno[Deno.internal].core allowed
+  const ops = Deno[Deno.internal].core.ops;
   function asBinaryString(bytes: Uint8Array): string {
     return Array.from(bytes).map(
       (v: number) => String.fromCodePoint(v),

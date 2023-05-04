@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
   tokio::runtime::Builder::new_current_thread()

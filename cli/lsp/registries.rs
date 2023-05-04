@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
@@ -30,12 +30,12 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -66,8 +66,8 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
 
 const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
 
-static REPLACEMENT_VARIABLE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
+static REPLACEMENT_VARIABLE_RE: Lazy<regex::Regex> =
+  lazy_regex::lazy_regex!(r"\$\{\{?(\w+)\}?\}");
 
 fn base_url(url: &Url) -> String {
   url.origin().ascii_serialization()
@@ -217,10 +217,10 @@ fn get_endpoint_with_match(
         Token::Key(k) if k.name == *key => Some(k),
         _ => None,
       });
-      url = url
-        .replace(&format!("${{{}}}", name), &value.to_string(maybe_key, true));
+      url =
+        url.replace(&format!("${{{name}}}"), &value.to_string(maybe_key, true));
       url = url.replace(
-        &format!("${{{{{}}}}}", name),
+        &format!("${{{{{name}}}}}"),
         &percent_encoding::percent_encode(
           value.to_string(maybe_key, true).as_bytes(),
           COMPONENT,
@@ -278,8 +278,8 @@ fn replace_variable(
   let value = maybe_value.unwrap_or("");
   if let StringOrNumber::String(name) = &variable.name {
     url_str
-      .replace(&format!("${{{}}}", name), value)
-      .replace(&format! {"${{{{{}}}}}", name}, value)
+      .replace(&format!("${{{name}}}"), value)
+      .replace(&format! {"${{{{{name}}}}}"}, value)
   } else {
     url_str
   }
@@ -295,18 +295,20 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   }
   for registry in &config.registries {
     let (_, keys) = string_to_regex(&registry.schema, None)?;
-    let key_names: Vec<String> = keys.map_or_else(Vec::new, |keys| {
-      keys
-        .iter()
-        .filter_map(|k| {
-          if let StringOrNumber::String(s) = &k.name {
-            Some(s.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
-    });
+    let key_names: Vec<String> = keys
+      .map(|keys| {
+        keys
+          .iter()
+          .filter_map(|k| {
+            if let StringOrNumber::String(s) = &k.name {
+              Some(s.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      })
+      .unwrap_or_default();
 
     for key_name in &key_names {
       if !registry
@@ -424,16 +426,13 @@ impl Default for ModuleRegistry {
     // custom root.
     let dir = DenoDir::new(None).unwrap();
     let location = dir.registries_folder_path();
-    let http_client = HttpClient::new(None, None).unwrap();
-    Self::new(&location, http_client).unwrap()
+    let http_client = Arc::new(HttpClient::new(None, None));
+    Self::new(&location, http_client)
   }
 }
 
 impl ModuleRegistry {
-  pub fn new(
-    location: &Path,
-    http_client: HttpClient,
-  ) -> Result<Self, AnyError> {
+  pub fn new(location: &Path, http_client: Arc<HttpClient>) -> Self {
     let http_cache = HttpCache::new(location);
     let mut file_fetcher = FileFetcher::new(
       http_cache,
@@ -442,13 +441,13 @@ impl ModuleRegistry {
       http_client,
       BlobStore::default(),
       None,
-    )?;
+    );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
-    Ok(Self {
+    Self {
       origins: HashMap::new(),
       file_fetcher,
-    })
+    }
   }
 
   fn complete_literal(
@@ -519,7 +518,7 @@ impl ModuleRegistry {
       .file_fetcher
       .fetch_with_accept(
         specifier,
-        &mut Permissions::allow_all(),
+        PermissionsContainer::allow_all(),
         Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
       )
       .await;
@@ -617,7 +616,7 @@ impl ModuleRegistry {
         .ok()?;
         let file = self
           .file_fetcher
-          .fetch(&endpoint, &mut Permissions::allow_all())
+          .fetch(&endpoint, PermissionsContainer::allow_all())
           .await
           .ok()?;
         let documentation: lsp::Documentation =
@@ -664,18 +663,20 @@ impl ModuleRegistry {
               })
               .ok()?;
             let mut i = tokens.len();
-            let last_key_name =
-              StringOrNumber::String(tokens.iter().last().map_or_else(
-                || "".to_string(),
-                |t| {
+            let last_key_name = StringOrNumber::String(
+              tokens
+                .iter()
+                .last()
+                .map(|t| {
                   if let Token::Key(key) = t {
                     if let StringOrNumber::String(s) = &key.name {
                       return s.clone();
                     }
                   }
                   "".to_string()
-                },
-              ));
+                })
+                .unwrap_or_default(),
+            );
             loop {
               let matcher = Matcher::new(&tokens[..i], None)
                 .map_err(|e| {
@@ -723,7 +724,7 @@ impl ModuleRegistry {
                         }
                         for (idx, item) in items.into_iter().enumerate() {
                           let mut label = if let Some(p) = &prefix {
-                            format!("{}{}", p, item)
+                            format!("{p}{item}")
                           } else {
                             item.clone()
                           };
@@ -880,7 +881,7 @@ impl ModuleRegistry {
                             is_incomplete = true;
                           }
                           for (idx, item) in items.into_iter().enumerate() {
-                            let path = format!("{}{}", prefix, item);
+                            let path = format!("{prefix}{item}");
                             let kind = Some(lsp::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();
@@ -955,7 +956,7 @@ impl ModuleRegistry {
             None
           } else {
             Some(lsp::CompletionList {
-              items: completions.into_iter().map(|(_, i)| i).collect(),
+              items: completions.into_values().collect(),
               is_incomplete,
             })
           };
@@ -973,7 +974,7 @@ impl ModuleRegistry {
     let specifier = Url::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .ok()?;
     serde_json::from_str(&file.source).ok()
@@ -988,7 +989,7 @@ impl ModuleRegistry {
       .origins
       .keys()
       .filter_map(|k| {
-        let mut origin = k.as_str().to_string();
+        let mut origin = k.to_string();
         if origin.ends_with('/') {
           origin.pop();
         }
@@ -1030,7 +1031,7 @@ impl ModuleRegistry {
     let specifier = ModuleSpecifier::parse(url).ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1066,7 +1067,7 @@ impl ModuleRegistry {
         .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(&specifier, PermissionsContainer::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -1248,8 +1249,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1310,8 +1310,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1534,8 +1533,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1605,8 +1603,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1657,8 +1654,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1669,18 +1665,18 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
-    let result = module_registry.check_origin("https://deno.com").await;
+      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err
-      .contains("https://deno.com/.well-known/deno-import-intellisense.json"));
+    assert!(err.contains(
+      "https://example.com/.well-known/deno-import-intellisense.json"
+    ));
 
     // because we are caching an empty file when we hit an error with import
     // detection when fetching the config file, we should have an error now that
     // indicates trying to parse an empty file.
-    let result = module_registry.check_origin("https://deno.com").await;
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("EOF while parsing a value at line 1 column 0"));

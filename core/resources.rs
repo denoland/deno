@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Think of Resources as File Descriptors. They are integers that are allocated
 // by the privileged side of Deno which refer to various rust objects that need
@@ -152,6 +152,18 @@ pub trait Resource: Any + 'static {
       }
       Ok(())
     })
+  }
+
+  /// The same as [`read_byob()`][Resource::read_byob], but synchronous.
+  fn read_byob_sync(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
+    _ = data;
+    Err(not_supported())
+  }
+
+  /// The same as [`write()`][Resource::write], but synchronous.
+  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
+    _ = data;
+    Err(not_supported())
   }
 
   /// The shutdown method can be used to asynchronously close the resource. It
