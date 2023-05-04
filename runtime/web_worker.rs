@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
@@ -6,6 +7,7 @@ use crate::permissions::PermissionsContainer;
 use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
+
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -34,6 +36,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::sync::MaybeArc;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
@@ -41,6 +44,7 @@ use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
+
 use log::debug;
 use std::cell::RefCell;
 use std::fmt;
@@ -331,9 +335,9 @@ pub struct WebWorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
-  pub fs: Arc<dyn FileSystem>,
+  pub fs: MaybeArc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
+  pub npm_resolver: Option<MaybeArc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
