@@ -209,7 +209,7 @@ pub trait FileSystem: Send + Sync {
     if let Some(mode) = options.mode {
       file.clone().chmod_async(mode).await?;
     }
-    file.write_all_async(data).await?;
+    file.write_all(data.into()).await?;
     Ok(())
   }
 

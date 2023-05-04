@@ -331,7 +331,7 @@ pub struct WebWorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
-  pub fs: Option<Arc<dyn FileSystem>>,
+  pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_fs: Option<Arc<dyn deno_node::NodeFs>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,

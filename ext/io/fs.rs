@@ -127,12 +127,29 @@ impl FsStat {
 #[async_trait::async_trait(?Send)]
 pub trait File {
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize>;
+  async fn read(self: Rc<Self>, limit: usize) -> FsResult<BufView> {
+    let vec = vec![0; limit];
+    let buf = BufMutView::from(vec);
+    let (nread, buf) = self.read_byob(buf).await?;
+    let mut vec = buf.unwrap_vec();
+    if vec.len() != nread {
+      vec.truncate(nread);
+    }
+    Ok(BufView::from(vec))
+  }
+  async fn read_byob(
+    self: Rc<Self>,
+    buf: BufMutView,
+  ) -> FsResult<(usize, BufMutView)>;
+
   fn write_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<usize>;
+  async fn write(
+    self: Rc<Self>,
+    buf: BufView,
+  ) -> FsResult<deno_core::WriteOutcome>;
 
   fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()>;
-  async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()> {
-    self.write_all_byob(buf.into()).await
-  }
+  async fn write_all(self: Rc<Self>, buf: BufView) -> FsResult<()>;
 
   fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>>;
   async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>>;
@@ -175,17 +192,6 @@ pub trait File {
     mtime_secs: i64,
     mtime_nanos: u32,
   ) -> FsResult<()>;
-
-  // deno_core
-  async fn read_byob(
-    self: Rc<Self>,
-    buf: BufMutView,
-  ) -> FsResult<(usize, BufMutView)>;
-  async fn write_byob(
-    self: Rc<Self>,
-    buf: BufView,
-  ) -> FsResult<deno_core::WriteOutcome>;
-  async fn write_all_byob(self: Rc<Self>, buf: BufView) -> FsResult<()>;
 
   // lower level functionality
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
@@ -252,14 +258,12 @@ impl deno_core::Resource for FileResource {
     limit: usize,
   ) -> deno_core::AsyncResult<deno_core::BufView> {
     Box::pin(async move {
-      let vec = vec![0; limit];
-      let buf = BufMutView::from(vec);
-      let (nread, buf) = self.file.clone().read_byob(buf).await?;
-      let mut vec = buf.unwrap_vec();
-      if vec.len() != nread {
-        vec.truncate(nread);
-      }
-      Ok(BufView::from(vec))
+      self
+        .file
+        .clone()
+        .read(limit)
+        .await
+        .map_err(|err| err.into())
     })
   }
 
@@ -282,12 +286,7 @@ impl deno_core::Resource for FileResource {
     buf: deno_core::BufView,
   ) -> deno_core::AsyncResult<deno_core::WriteOutcome> {
     Box::pin(async move {
-      self
-        .file
-        .clone()
-        .write_byob(buf)
-        .await
-        .map_err(|err| err.into())
+      self.file.clone().write(buf).await.map_err(|err| err.into())
     })
   }
 
@@ -299,7 +298,7 @@ impl deno_core::Resource for FileResource {
       self
         .file
         .clone()
-        .write_all_byob(buf)
+        .write_all(buf)
         .await
         .map_err(|err| err.into())
     })
