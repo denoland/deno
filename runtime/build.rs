@@ -214,12 +214,6 @@ mod startup_snapshot {
     }
   }
 
-  struct SnapshotNodeEnv;
-
-  impl deno_node::NodeEnv for SnapshotNodeEnv {
-    type P = Permissions;
-  }
-
   deno_core::extension!(runtime,
     deps = [
       deno_webidl,
@@ -319,7 +313,7 @@ mod startup_snapshot {
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node::init_ops_and_esm::<SnapshotNodeEnv>(None, None),
+      deno_node::deno_node::init_ops_and_esm::<Permissions>(None, None),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];

@@ -360,7 +360,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_http::deno_http::init_ops(),
     deno_io::deno_io::init_ops(Default::default()),
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, None),
-    deno_node::deno_node::init_ops::<deno_runtime::RuntimeNodeEnv>(None, None),
+    deno_node::deno_node::init_ops::<PermissionsContainer>(None, None),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 

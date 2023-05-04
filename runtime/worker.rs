@@ -269,7 +269,7 @@ impl MainWorker {
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable, options.fs),
-      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
         options.node_fs,
       ),
