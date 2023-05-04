@@ -1256,6 +1256,12 @@ dbTest("keys must be arrays", async (db) => {
   );
 });
 
+Deno.test("Deno.Kv constructor throws", () => {
+  assertThrows(() => {
+    new Deno.Kv();
+  });
+});
+
 // This function is never called, it is just used to check that all the types
 // are behaving as expected.
 async function _typeCheckingTests() {
