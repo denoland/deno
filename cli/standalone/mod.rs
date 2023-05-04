@@ -295,6 +295,7 @@ pub async fn run(
     snapshot,
     None,
   ));
+  let has_node_modules_dir = node_modules_path.is_some();
   let npm_fs_resolver = create_npm_fs_resolver(
     fs.clone(),
     npm_cache,
@@ -368,7 +369,7 @@ pub async fn run(
       debug: false,
       coverage_dir: None,
       enable_testing_features: false,
-      has_node_modules_dir: false,
+      has_node_modules_dir,
       inspect_brk: false,
       inspect_wait: false,
       is_inspecting: false,

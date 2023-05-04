@@ -455,16 +455,12 @@ impl FileBackedVfs {
   }
 
   pub fn stat(&self, path: &Path) -> std::io::Result<FsStat> {
-    eprintln!("STATING: {}", path.display());
     let (_, entry) = self.fs_root.find_entry(path)?;
-    eprintln!("  <found>");
     Ok(entry.as_fs_stat())
   }
 
   pub fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
-    eprintln!("CANONICALIZING: {}", path.display());
     let (path, _) = self.fs_root.find_entry(path)?;
-    eprintln!("   {}", path.display());
     Ok(path.to_path_buf())
   }
 
