@@ -471,6 +471,16 @@ impl Extension {
   pub fn disable(self) -> Self {
     self.enabled(false)
   }
+
+  pub(crate) fn find_esm(
+    &self,
+    specifier: &str,
+  ) -> Option<&ExtensionFileSource> {
+    self
+      .get_esm_sources()?
+      .iter()
+      .find(|s| s.specifier == specifier)
+  }
 }
 
 // Provides a convenient builder pattern to declare Extensions
