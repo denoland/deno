@@ -6,6 +6,33 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.33.2 / 2023.05.04
+
+- fix(core): Use primordials for methods (#18839)
+- fix(core): allow esm extensions not included in snapshot (#18980)
+- fix(core): rebuild when JS sources for snapshotting change (#18976)
+- fix(docs): replace "e.g." with "i.e." in `seek()`/`seekSync()` comment
+  (#18964)
+- fix(ext/io) several sync fs fixes (#18886)
+- fix(ext/kv): KvU64#valueOf and KvU64 inspect (#18656)
+- fix(ext/kv): stricter structured clone serializer (#18914)
+- fix(ext/kv): throw on the Kv constructor (#18978)
+- fix(ext/node): add missing `release` property to node's `process` (#18923)
+- fix(ext/url): throw `TypeError` for empty argument (#18896)
+- fix(ext/websocket): update fastwebsockets to 0.3.1 (#18916)
+- fix(fmt/json): support formatting number with exponent and no sign (#18894)
+- fix(node/http): Request.setTimeout(0) should clear (#18949)
+- fix(npm): canonicalize filename before returning (#18948)
+- fix(npm): canonicalize search directory when looking for package.json (#18981)
+- fix(test): disable preventDefault() for beforeunload event (#18911)
+- perf(core): async op pseudo-codegen and performance work (#18887)
+- perf(core): use jemalloc for V8 array buffer allocator (#18875)
+- perf(ext/web): fast path for ws events (#18905)
+- perf(ext/websocket): use internal dispatch for msg events (#18904)
+- perf: lazily create RootCertStore (#18938)
+- perf: lazily retrieve ppid (#18940)
+- perf: use jemalloc as global allocator (#18957)
+
 ### 1.33.1 / 2023.04.28
 
 - fix(ext/fetch): subview Uint8Array in Req/Resp (#18890)
