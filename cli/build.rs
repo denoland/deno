@@ -362,7 +362,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_http::deno_http::init_ops(),
     deno_io::deno_io::init_ops(Default::default()),
     deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(false, StdFs),
-    deno_node::deno_node::init_ops::<deno_runtime::RuntimeNodeEnv>(
+    deno_node::deno_node::init_ops::<PermissionsContainer>(
       None,
       Some(Arc::new(deno_node::RealFs)),
     ),
