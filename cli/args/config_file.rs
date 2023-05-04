@@ -23,7 +23,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::ops::Add;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -349,15 +348,11 @@ impl FilesConfig {
     self.include.is_empty()
       || self.include.iter().any(|i| file_path.starts_with(i))
   }
-}
 
-impl Add for FilesConfig {
-  type Output = Self;
-
-  fn add(self, rhs: Self) -> Self::Output {
-    FilesConfig {
-      include: [&self.include[..], &rhs.include[..]].concat(),
-      exclude: [&self.exclude[..], &rhs.exclude[..]].concat(),
+  fn extend(self, rhs: Self) -> Self {
+    Self {
+      include: [self.include, rhs.include].concat(),
+      exclude: [self.exclude, rhs.exclude].concat(),
     }
   }
 }
@@ -441,12 +436,9 @@ pub struct LintConfig {
 }
 
 impl LintConfig {
-  pub fn extend_files(&self, files: &FilesConfig) -> Self {
-    Self {
-      rules: self.rules.clone(),
-      files: self.files.clone() + files.clone(),
-      report: self.report.clone(),
-    }
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files, ..self }
   }
 }
 
@@ -571,11 +563,9 @@ pub struct FmtConfig {
 }
 
 impl FmtConfig {
-  pub fn extend_files(&self, files: &FilesConfig) -> Self {
-    FmtConfig {
-      options: self.options.clone(),
-      files: self.files.clone() + files.clone(),
-    }
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files, ..self }
   }
 }
 
@@ -612,10 +602,9 @@ pub struct TestConfig {
 }
 
 impl TestConfig {
-  pub fn extend_files(&self, files: &FilesConfig) -> Self {
-    TestConfig {
-      files: self.files.clone() + files.clone(),
-    }
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files, ..self }
   }
 }
 
@@ -652,10 +641,9 @@ pub struct BenchConfig {
 }
 
 impl BenchConfig {
-  pub fn extend_files(&self, files: &FilesConfig) -> Self {
-    BenchConfig {
-      files: self.files.clone() + files.clone(),
-    }
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files, ..self }
   }
 }
 
@@ -901,7 +889,10 @@ impl ConfigFile {
       Vec::new()
     };
 
-    let raw_files_config = SerializedFilesConfig { exclude, ..Default::default() };
+    let raw_files_config = SerializedFilesConfig {
+      exclude,
+      ..Default::default()
+    };
     Ok(Some(raw_files_config.into_resolved(&self.specifier)?))
   }
 
@@ -923,7 +914,7 @@ impl ConfigFile {
     let fmt_config = fmt_config.unwrap_or_default();
     let files_config = files_config.unwrap_or_default();
 
-    Ok(Some(fmt_config.extend_files(&files_config)))
+    Ok(Some(fmt_config.with_files(files_config)))
   }
 
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
@@ -944,7 +935,7 @@ impl ConfigFile {
     let lint_config = lint_config.unwrap_or_default();
     let files_config = files_config.unwrap_or_default();
 
-    Ok(Some(lint_config.extend_files(&files_config)))
+    Ok(Some(lint_config.with_files(files_config)))
   }
 
   pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
@@ -965,7 +956,7 @@ impl ConfigFile {
     let test_config = test_config.unwrap_or_default();
     let files_config = files_config.unwrap_or_default();
 
-    Ok(Some(test_config.extend_files(&files_config)))
+    Ok(Some(test_config.with_files(files_config)))
   }
 
   pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
@@ -987,7 +978,7 @@ impl ConfigFile {
     let bench_config = bench_config.unwrap_or_default();
     let files_config = files_config.unwrap_or_default();
 
-    Ok(Some(bench_config.extend_files(&files_config)))
+    Ok(Some(bench_config.with_files(files_config)))
   }
 
   /// Return any tasks that are defined in the configuration file as a sequence
