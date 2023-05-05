@@ -14,7 +14,6 @@ use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
-use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -48,71 +47,6 @@ pub(crate) struct AllowAllNodePermissions;
 impl NodePermissions for AllowAllNodePermissions {
   fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
     Ok(())
-  }
-}
-
-#[derive(Default, Clone)]
-pub struct NodeFsMetadata {
-  pub is_file: bool,
-  pub is_dir: bool,
-}
-
-pub trait NodeFs: std::fmt::Debug + Send + Sync {
-  fn current_dir(&self) -> io::Result<PathBuf>;
-  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata>;
-  fn is_file(&self, path: &Path) -> bool;
-  fn is_dir(&self, path: &Path) -> bool;
-  fn exists(&self, path: &Path) -> bool;
-  fn read_to_string(&self, path: &Path) -> io::Result<String>;
-  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
-}
-
-#[derive(Debug)]
-pub struct RealFs;
-
-impl NodeFs for RealFs {
-  fn current_dir(&self) -> io::Result<PathBuf> {
-    #[allow(clippy::disallowed_methods)]
-    std::env::current_dir()
-  }
-
-  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata> {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path).map(|metadata| {
-      // on most systems, calling is_file() and is_dir() is cheap
-      // and returns information already found in the metadata object
-      NodeFsMetadata {
-        is_file: metadata.is_file(),
-        is_dir: metadata.is_dir(),
-      }
-    })
-  }
-
-  fn exists(&self, path: &Path) -> bool {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path).is_ok()
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path)
-      .map(|m| m.is_file())
-      .unwrap_or(false)
-  }
-
-  fn is_dir(&self, path: &Path) -> bool {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
-  }
-
-  fn read_to_string(&self, path: &Path) -> io::Result<String> {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::read_to_string(path)
-  }
-
-  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
-    #[allow(clippy::disallowed_methods)]
-    std::path::Path::canonicalize(path)
   }
 }
 
@@ -516,10 +450,10 @@ deno_core::extension!(deno_node,
   ],
   options = {
     maybe_npm_resolver: Option<Arc<dyn NpmResolver>>,
-    fs: Option<Arc<dyn NodeFs>>,
+    fs: Arc<dyn deno_fs::FileSystem>,
   },
   state = |state, options| {
-    let fs = options.fs.unwrap_or_else(|| Arc::new(RealFs));
+    let fs = options.fs;
     state.put(fs.clone());
     if let Some(npm_resolver) = options.maybe_npm_resolver {
       state.put(npm_resolver.clone());

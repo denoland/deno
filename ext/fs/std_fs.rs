@@ -22,7 +22,7 @@ use crate::OpenOptions;
 #[cfg(not(unix))]
 use deno_io::fs::FsError;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RealFs;
 
 #[async_trait::async_trait(?Send)]

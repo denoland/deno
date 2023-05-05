@@ -73,7 +73,7 @@ pub struct FsDirEntry {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait FileSystem: Send + Sync {
+pub trait FileSystem: std::fmt::Debug + Send + Sync {
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
   fn chdir(&self, path: &Path) -> FsResult<()>;
@@ -224,5 +224,27 @@ pub trait FileSystem: Send + Sync {
     let file = self.open_async(path, options).await?;
     let buf = file.read_all_async().await?;
     Ok(buf)
+  }
+
+  fn is_file(&self, path: &Path) -> bool {
+    self.stat_sync(path).map(|m| m.is_file).unwrap_or(false)
+  }
+
+  fn is_dir(&self, path: &Path) -> bool {
+    self
+      .stat_sync(path)
+      .map(|m| m.is_directory)
+      .unwrap_or(false)
+  }
+
+  fn exists(&self, path: &Path) -> bool {
+    self.stat_sync(path).is_ok()
+  }
+
+  fn read_to_string(&self, path: &Path) -> FsResult<String> {
+    let buf = self.read_file_sync(path)?;
+    String::from_utf8(buf).map_err(|err| {
+      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
+    })
   }
 }

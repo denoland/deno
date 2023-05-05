@@ -31,7 +31,6 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -208,11 +207,11 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let node_fs = Arc::new(deno_node::RealFs);
+  let fs = Arc::new(deno_fs::RealFs);
   let npm_resolution =
     Arc::new(NpmResolution::from_serialized(npm_api.clone(), None, None));
   let npm_fs_resolver = create_npm_fs_resolver(
-    node_fs.clone(),
+    fs.clone(),
     npm_cache,
     &progress_bar,
     npm_registry_url,
@@ -225,7 +224,7 @@ pub async fn run(
     None,
   ));
   let node_resolver =
-    Arc::new(NodeResolver::new(node_fs.clone(), npm_resolver.clone()));
+    Arc::new(NodeResolver::new(fs.clone(), npm_resolver.clone()));
   let module_loader_factory = StandaloneModuleLoaderFactory {
     loader: EmbeddedModuleLoader {
       eszip: Arc::new(eszip),
@@ -254,8 +253,7 @@ pub async fn run(
     BlobStore::default(),
     Box::new(module_loader_factory),
     root_cert_store_provider,
-    Arc::new(deno_fs::RealFs),
-    node_fs,
+    fs,
     None,
     CliMainWorkerOptions {
       argv: metadata.argv,

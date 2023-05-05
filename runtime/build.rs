@@ -273,6 +273,7 @@ mod startup_snapshot {
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    let fs = std::sync::Arc::new(deno_fs::RealFs);
     let extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
@@ -309,14 +310,11 @@ mod startup_snapshot {
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(
-        false,
-        std::sync::Arc::new(deno_fs::RealFs),
-      ),
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, fs.clone()),
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node::init_ops_and_esm::<Permissions>(None, None),
+      deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];

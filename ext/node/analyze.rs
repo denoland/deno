@@ -13,7 +13,6 @@ use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
-use crate::NodeFs;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 use crate::NodeResolutionMode;
@@ -67,7 +66,7 @@ pub trait CjsEsmCodeAnalyzer {
 
 pub struct NodeCodeTranslator<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer> {
   cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-  fs: Arc<dyn NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn NpmResolver>,
 }
@@ -77,7 +76,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
 {
   pub fn new(
     cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-    fs: Arc<dyn NodeFs>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn NpmResolver>,
   ) -> Self {
@@ -161,6 +160,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
       let reexport_file_text = self
         .fs
         .read_to_string(&resolved_reexport)
+        .map_err(AnyError::from)
         .with_context(|| {
           format!(
             "Could not find '{}' ({}) referenced from {}",
