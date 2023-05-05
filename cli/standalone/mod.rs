@@ -62,11 +62,15 @@ use self::binary::load_npm_vfs;
 use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
-#[derive(Clone)]
-struct EmbeddedModuleLoader {
-  eszip: Arc<eszip::EszipV2>,
+struct SharedModuleLoaderState {
+  eszip: eszip::EszipV2,
   maybe_import_map_resolver: Option<Arc<CliGraphResolver>>,
   npm_module_loader: Arc<NpmModuleLoader>,
+}
+
+#[derive(Clone)]
+struct EmbeddedModuleLoader {
+  shared: Arc<SharedModuleLoaderState>,
   root_permissions: PermissionsContainer,
   dynamic_permissions: PermissionsContainer,
 }
@@ -79,7 +83,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     // Try to follow redirects when resolving.
-    let referrer = match self.eszip.get_module(referrer) {
+    let referrer = match self.shared.eszip.get_module(referrer) {
       Some(eszip::Module { ref specifier, .. }) => {
         ModuleSpecifier::parse(specifier)?
       }
@@ -95,21 +99,23 @@ impl ModuleLoader for EmbeddedModuleLoader {
       &self.root_permissions
     };
 
-    if let Some(result) = self.npm_module_loader.resolve_if_in_npm_package(
-      specifier,
-      &referrer,
-      permissions,
-    ) {
+    if let Some(result) = self
+      .shared
+      .npm_module_loader
+      .resolve_if_in_npm_package(specifier, &referrer, permissions)
+    {
       return result;
     }
 
     if let Ok(reference) = NpmPackageReqReference::from_str(specifier) {
       return self
+        .shared
         .npm_module_loader
-        .resolve_for_req_reference(&reference, permissions);
+        .resolve_req_reference(&reference, permissions);
     }
 
     self
+      .shared
       .maybe_import_map_resolver
       .as_ref()
       .map(|r| r.resolve(specifier, &referrer))
@@ -132,11 +138,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
       &self.root_permissions
     };
 
-    if let Some(result) = self.npm_module_loader.load_sync_if_in_npm_package(
-      module_specifier,
-      maybe_referrer,
-      permissions,
-    ) {
+    if let Some(result) =
+      self.shared.npm_module_loader.load_sync_if_in_npm_package(
+        module_specifier,
+        maybe_referrer,
+        permissions,
+      )
+    {
       return match result {
         Ok(code_source) => Box::pin(deno_core::futures::future::ready(Ok(
           deno_core::ModuleSource::new_with_redirect(
@@ -154,6 +162,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
 
     let module = self
+      .shared
       .eszip
       .get_module(module_specifier.as_str())
       .ok_or_else(|| type_error("Module not found"));
@@ -190,24 +199,32 @@ impl ModuleLoader for EmbeddedModuleLoader {
 }
 
 struct StandaloneModuleLoaderFactory {
-  loader: EmbeddedModuleLoader,
+  shared: Arc<SharedModuleLoaderState>,
 }
 
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
-    _root_permissions: PermissionsContainer,
-    _dynamic_permissions: PermissionsContainer,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Rc<dyn ModuleLoader> {
-    Rc::new(self.loader.clone())
+    Rc::new(EmbeddedModuleLoader {
+      shared: self.shared.clone(),
+      root_permissions,
+      dynamic_permissions,
+    })
   }
 
   fn create_for_worker(
     &self,
-    _root_permissions: PermissionsContainer,
-    _dynamic_permissions: PermissionsContainer,
+    root_permissions: PermissionsContainer,
+    dynamic_permissions: PermissionsContainer,
   ) -> Rc<dyn ModuleLoader> {
-    Rc::new(self.loader.clone())
+    Rc::new(EmbeddedModuleLoader {
+      shared: self.shared.clone(),
+      root_permissions,
+      dynamic_permissions,
+    })
   }
 
   fn create_source_map_getter(
@@ -322,12 +339,9 @@ pub async fn run(
     node_resolver.clone(),
     npm_resolver.clone(),
   ));
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &metadata.permissions,
-  )?);
   let module_loader_factory = StandaloneModuleLoaderFactory {
-    loader: EmbeddedModuleLoader {
-      eszip: Arc::new(eszip),
+    shared: Arc::new(SharedModuleLoaderState {
+      eszip,
       maybe_import_map_resolver: metadata.maybe_import_map.map(
         |(base, source)| {
           Arc::new(CliGraphResolver::new(
@@ -348,12 +362,12 @@ pub async fn run(
         fs.clone(),
         node_resolver.clone(),
       )),
-      root_permissions: permissions.clone(),
-      // todo(THIS PR): seems wrong :)
-      dynamic_permissions: permissions.clone(),
-    },
+    }),
   };
 
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &metadata.permissions,
+  )?);
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
     npm_resolver.clone(),

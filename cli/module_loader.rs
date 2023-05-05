@@ -548,7 +548,7 @@ impl ModuleLoader for CliModuleLoader {
           return self
             .shared
             .npm_module_loader
-            .resolve_for_req_reference(&reference, permissions);
+            .resolve_req_reference(&reference, permissions);
         }
       }
     }
@@ -711,7 +711,7 @@ impl NpmModuleLoader {
       .with_context(|| format!("Could not resolve '{}'.", nv_ref))
   }
 
-  pub fn resolve_for_req_reference(
+  pub fn resolve_req_reference(
     &self,
     reference: &NpmPackageReqReference,
     permissions: &PermissionsContainer,
