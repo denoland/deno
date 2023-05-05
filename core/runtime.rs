@@ -23,7 +23,6 @@ use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
-use crate::ExtensionFileSource;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -752,46 +751,38 @@ impl JsRuntime {
     module_map
   }
 
-  /// Initializes JS of provided Extensions in the given realm
+  /// Initializes JS of provided Extensions in the given realm.
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
-    fn load_and_evaluate_module(
-      runtime: &mut JsRuntime,
-      file_source: &ExtensionFileSource,
-    ) -> Result<(), Error> {
-      futures::executor::block_on(async {
-        let id = runtime
-          .load_side_module(
-            &ModuleSpecifier::parse(file_source.specifier)?,
-            None,
-          )
-          .await?;
-        let receiver = runtime.mod_evaluate(id);
-        runtime.run_event_loop(false).await?;
-        receiver.await?
-      })
-      .with_context(|| format!("Couldn't execute '{}'", file_source.specifier))
-    }
+    // Initalization of JS happens in phases:
+    // 1. Iterate through all extensions:
+    //  a. Execute all extension "script" JS files
+    //  b. Load all extension "module" JS files (but do not execute them yet)
+    // 2. Iterate through all extensions:
+    //  a. If an extension has a `esm_entry_point`, execute it.
+
+    let mut esm_entrypoints = vec![];
 
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions);
-    for ext in extensions.borrow().iter() {
-      {
+
+    futures::executor::block_on(async {
+      for ext in extensions.borrow().iter() {
         if let Some(esm_files) = ext.get_esm_sources() {
-          if let Some(entry_point) = ext.get_esm_entry_point() {
-            let file_source = esm_files
-              .iter()
-              .find(|file| file.specifier == entry_point)
-              .unwrap();
-            load_and_evaluate_module(self, file_source)?;
-          } else {
-            for file_source in esm_files {
-              load_and_evaluate_module(self, file_source)?;
+          for file_source in esm_files {
+            let id = self
+              .load_side_module(
+                &ModuleSpecifier::parse(file_source.specifier)?,
+                None,
+              )
+              .await?;
+            if let Some(entry_point) = ext.get_esm_entry_point() {
+              if file_source.specifier == entry_point {
+                esm_entrypoints.push((file_source.specifier, id));
+              }
             }
           }
         }
-      }
 
-      {
         if let Some(js_files) = ext.get_js_sources() {
           for file_source in js_files {
             realm.execute_script(
@@ -801,14 +792,23 @@ impl JsRuntime {
             )?;
           }
         }
+
+        if ext.is_core {
+          self.init_cbs(realm);
+        }
       }
 
-      // TODO(bartlomieju): this not great that we need to have this conditional
-      // here, but I haven't found a better way to do it yet.
-      if ext.is_core {
-        self.init_cbs(realm);
+      for (specifier, id) in esm_entrypoints {
+        let receiver = self.mod_evaluate(id);
+        self.run_event_loop(false).await?;
+        receiver
+          .await?
+          .with_context(|| format!("Couldn't execute '{specifier}'"))?;
       }
-    }
+
+      Ok::<_, anyhow::Error>(())
+    })?;
+
     // Restore extensions
     self.extensions = extensions;
 

@@ -309,6 +309,7 @@ mod ts {
 // deps = [runtime]
 deno_core::extension!(
   cli,
+  esm_entry_point = "ext:cli/runtime/js/99_main.js",
   esm = [
     dir "js",
     "40_testing.js"
