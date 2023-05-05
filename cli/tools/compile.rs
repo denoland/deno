@@ -3,6 +3,7 @@
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
+use crate::graph_util::error_for_any_npm_specifier;
 use crate::standalone::is_standalone_binary;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;
@@ -61,6 +62,12 @@ pub async fn compile(
       .await?,
   )
   .unwrap();
+
+  if !cli_options.unstable() {
+    error_for_any_npm_specifier(&graph).context(
+      "Using npm specifiers with deno compile requires the --unstable flag.",
+    )?;
+  }
 
   let parser = parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;

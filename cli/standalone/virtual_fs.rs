@@ -47,7 +47,7 @@ impl VfsBuilder {
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.add_dir(&path);
+    self.add_dir(path);
     let read_dir = std::fs::read_dir(path)
       .with_context(|| format!("Reading {}", path.display()))?;
 
@@ -173,14 +173,6 @@ enum VfsEntryRef<'a> {
 }
 
 impl<'a> VfsEntryRef<'a> {
-  pub fn name(&self) -> &str {
-    match self {
-      VfsEntryRef::Dir(dir) => &dir.name,
-      VfsEntryRef::File(file) => &file.name,
-      VfsEntryRef::Symlink(symlink) => &symlink.name,
-    }
-  }
-
   pub fn as_fs_stat(&self) -> FsStat {
     match self {
       VfsEntryRef::Dir(_) => FsStat {
@@ -304,18 +296,18 @@ pub struct VfsRoot {
 }
 
 impl VfsRoot {
-  fn find_entry<'file>(
-    &'file self,
+  fn find_entry<'a>(
+    &'a self,
     path: &Path,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef<'file>)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
     self.find_entry_inner(path, &mut HashSet::new())
   }
 
-  fn find_entry_inner<'file>(
-    &'file self,
+  fn find_entry_inner<'a>(
+    &'a self,
     path: &Path,
     seen: &mut HashSet<PathBuf>,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef<'file>)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
     let mut path = Cow::Borrowed(path);
     loop {
       let (resolved_path, entry) =
@@ -344,11 +336,11 @@ impl VfsRoot {
     self.find_entry_no_follow_inner(path, &mut HashSet::new())
   }
 
-  fn find_entry_no_follow_inner<'file>(
-    &'file self,
+  fn find_entry_no_follow_inner<'a>(
+    &'a self,
     path: &Path,
     seen: &mut HashSet<PathBuf>,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef<'file>)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
     let relative_path = match path.strip_prefix(&self.root) {
       Ok(p) => p,
       Err(_) => {
@@ -461,7 +453,7 @@ impl FileBackedVfs {
 
   pub fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
     let (path, _) = self.fs_root.find_entry(path)?;
-    Ok(path.to_path_buf())
+    Ok(path)
   }
 
   pub fn read_all_file(&self, file: &VirtualFile) -> std::io::Result<Vec<u8>> {
@@ -519,7 +511,10 @@ mod test {
 
   use super::*;
 
-  // todo(THIS PR): tests for circular symlinks
+  fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
+    let file = vfs.file_entry(path).unwrap();
+    String::from_utf8(vfs.read_all_file(file).unwrap()).unwrap()
+  }
 
   #[test]
   fn builds_and_uses_virtual_fs() {
@@ -538,26 +533,14 @@ mod test {
     );
 
     // get the virtual fs
-    let (dest_path, mut virtual_fs) = into_virtual_fs(builder, &temp_dir);
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
 
-    assert_eq!(
-      virtual_fs
-        .read_all_to_string(&dest_path.join("a.txt"))
-        .unwrap(),
-      "data",
-    );
-    assert_eq!(
-      virtual_fs
-        .read_all_to_string(&dest_path.join("b.txt"))
-        .unwrap(),
-      "data",
-    );
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("a.txt")), "data");
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("b.txt")), "data");
 
     // attempt reading a symlink
     assert_eq!(
-      virtual_fs
-        .read_all_to_string(&dest_path.join("sub_dir").join("e.txt"))
-        .unwrap(),
+      read_file(&virtual_fs, &dest_path.join("sub_dir").join("e.txt")),
       "e",
     );
 
@@ -608,33 +591,20 @@ mod test {
     let src_path = temp_dir.path().join("src");
     let mut builder = VfsBuilder::new(src_path.clone());
     builder.add_dir_recursive(&src_path).unwrap();
-    let (dest_path, mut virtual_fs) = into_virtual_fs(builder, &temp_dir);
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("a.txt")), "data",);
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("b.txt")), "data",);
 
     assert_eq!(
-      virtual_fs
-        .read_all_to_string(&dest_path.join("a.txt"))
-        .unwrap(),
-      "data",
-    );
-    assert_eq!(
-      virtual_fs
-        .read_all_to_string(&dest_path.join("b.txt"))
-        .unwrap(),
-      "data",
-    );
-
-    assert_eq!(
-      virtual_fs
-        .read_all_to_string(
-          &dest_path.join("nested").join("sub_dir").join("c.txt")
-        )
-        .unwrap(),
+      read_file(
+        &virtual_fs,
+        &dest_path.join("nested").join("sub_dir").join("c.txt")
+      ),
       "c",
     );
     assert_eq!(
-      virtual_fs
-        .read_all_to_string(&dest_path.join("sub_dir_link").join("c.txt"))
-        .unwrap(),
+      read_file(&virtual_fs, &dest_path.join("sub_dir_link").join("c.txt")),
       "c",
     );
     assert!(
@@ -676,6 +646,25 @@ mod test {
           start_file_offset: 0,
         },
       ),
+    )
+  }
+
+  #[test]
+  fn circular_symlink() {
+    let temp_dir = TempDir::new();
+    let src_path = temp_dir.path().join("src");
+    let mut builder = VfsBuilder::new(src_path.clone());
+    builder.add_symlink(&src_path.join("a.txt"), &src_path.join("b.txt"));
+    builder.add_symlink(&src_path.join("b.txt"), &src_path.join("c.txt"));
+    builder.add_symlink(&src_path.join("c.txt"), &src_path.join("a.txt"));
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+    assert_eq!(
+      virtual_fs
+        .file_entry(&dest_path.join("a.txt"))
+        .err()
+        .unwrap()
+        .to_string(),
+      "circular symlinks",
     )
   }
 }

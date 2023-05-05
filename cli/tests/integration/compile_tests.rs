@@ -5,6 +5,7 @@ use std::process::Command;
 use test_util as util;
 use test_util::TempDir;
 use util::assert_contains;
+use util::env_vars_for_npm_tests;
 
 #[test]
 fn compile() {
@@ -790,3 +791,18 @@ fn dynamic_import_unanalyzable() {
   .unwrap();
   assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
 }
+
+itest!(npm_specifiers_errors_no_unstable {
+  args: "compile -A --quiet npm/cached_only/main.ts",
+  output_str: Some(
+    concat!(
+      "error: Using npm specifiers with deno compile requires the --unstable flag.",
+      "\n\n",
+      "Caused by:\n",
+      "    npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"
+    )
+  ),
+  exit_code: 1,
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});

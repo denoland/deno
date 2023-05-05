@@ -133,7 +133,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     };
 
     if let Some(result) = self.npm_module_loader.load_sync_if_in_npm_package(
-      &module_specifier,
+      module_specifier,
       maybe_referrer,
       permissions,
     ) {
@@ -145,7 +145,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               _ => ModuleType::JavaScript,
             },
             code_source.code,
-            &module_specifier,
+            module_specifier,
             &code_source.found_url,
           ),
         ))),

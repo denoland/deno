@@ -97,7 +97,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Compile(compile_flags) => {
-      tools::standalone::compile(flags, compile_flags).await?;
+      tools::compile::compile(flags, compile_flags).await?;
       Ok(0)
     }
     DenoSubcommand::Coverage(coverage_flags) => {

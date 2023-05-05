@@ -704,7 +704,7 @@ impl NpmModuleLoader {
   ) -> Result<ModuleSpecifier, AnyError> {
     self
       .handle_node_resolve_result(self.node_resolver.resolve_npm_reference(
-        &nv_ref,
+        nv_ref,
         NodeResolutionMode::Execution,
         permissions,
       ))

@@ -675,10 +675,6 @@ impl CliOptions {
     }
   }
 
-  pub fn npm_cache_dir(&self) -> Option<PathBuf> {
-    self.flags.npm_cache_dir.clone()
-  }
-
   pub fn cache_setting(&self) -> CacheSetting {
     if self.flags.cached_only {
       CacheSetting::Only

@@ -38,7 +38,7 @@ impl DenoCompileFile {
         Ok(pos)
       }
       SeekFrom::End(offset) => {
-        if offset < 0 && (offset * -1) as u64 > self.file.len {
+        if offset < 0 && -offset as u64 > self.file.len {
           Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into())
         } else {
           let mut current_pos = self.pos.lock();
@@ -54,12 +54,10 @@ impl DenoCompileFile {
         let mut current_pos = self.pos.lock();
         if offset >= 0 {
           *current_pos += offset as u64;
+        } else if -offset as u64 > *current_pos {
+          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into());
         } else {
-          if (offset * -1) as u64 > *current_pos {
-            return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into());
-          } else {
-            *current_pos -= offset as u64;
-          }
+          *current_pos -= offset as u64;
         }
         Ok(*current_pos)
       }
