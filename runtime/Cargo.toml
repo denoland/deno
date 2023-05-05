@@ -101,6 +101,7 @@ serde.workspace = true
 signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"
 tokio.workspace = true
+tokio-metrics = "0.2.2"
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
