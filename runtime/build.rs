@@ -347,6 +347,7 @@ fn main() {
   if env::var_os("DOCS_RS").is_some() {
     let snapshot_slice = &[];
     #[allow(clippy::needless_borrow)]
+    #[allow(clippy::disallowed_methods)]
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 
