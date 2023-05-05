@@ -51,8 +51,8 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     // The default value is 512, which is an unhelpfully large thread pool. We
     // don't ever want to have more than a couple dozen threads.
     .max_blocking_threads(32)
-    .global_queue_interval(4096)
-    .event_interval(1024)
+    .global_queue_interval(40960)
+    .event_interval(10000)
     .build()
     .unwrap()
 }
@@ -69,10 +69,10 @@ where
     let runtime_monitor = tokio_metrics::RuntimeMonitor::new(&handle);
 
     // print runtime metrics every 500ms
-    let frequency = std::time::Duration::from_millis(500);
+    let frequency = std::time::Duration::from_millis(1_000);
     tokio::spawn(async move {
       for metrics in runtime_monitor.intervals() {
-        println!("Metrics = {:?}", metrics);
+        println!("{:#?}", metrics);
         tokio::time::sleep(frequency).await;
       }
     });

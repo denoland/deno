@@ -2485,8 +2485,41 @@ impl JsRuntime {
   }
 }
 
+pub mod make_me_send {
+  use core::future::Future;
+  use core::pin::Pin;
+  use core::task::Context;
+  use core::task::Poll;
+
+  pub struct MakeMeSend<F> {
+    future: F,
+  }
+
+  impl<F> MakeMeSend<F> {
+    /// SAFETY: You must ensure that the future is not used
+    /// on the wrong thread.
+    pub unsafe fn new(future: F) -> Self {
+      Self { future }
+    }
+  }
+
+  unsafe impl<F> Send for MakeMeSend<F> {}
+
+  impl<F: Future> Future for MakeMeSend<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+      unsafe {
+        let me = Pin::into_inner_unchecked(self);
+        let future = Pin::new_unchecked(&mut me.future);
+        future.poll(cx)
+      }
+    }
+  }
+}
+
 #[inline]
-pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
+pub fn queue_fast_async_op<R: serde::Serialize + Send + 'static>(
   ctx: &OpCtx,
   promise_id: PromiseId,
   op: impl Future<Output = Result<R, Error>> + 'static,
@@ -2505,9 +2538,9 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
-  state
-    .pending_ops_set
-    .spawn_local(OpCall::pending(ctx, promise_id, fut));
+  state.pending_ops_set.spawn(unsafe {
+    make_me_send::MakeMeSend::new(OpCall::pending(ctx, promise_id, fut))
+  });
   state.have_unpolled_ops = true;
 }
 
@@ -2630,7 +2663,9 @@ pub fn queue_async_op<'s>(
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops_set.spawn_local(op_call);
+  state
+    .pending_ops_set
+    .spawn(unsafe { make_me_send::MakeMeSend::new(op_call) });
   state.have_unpolled_ops = true;
   None
 }
