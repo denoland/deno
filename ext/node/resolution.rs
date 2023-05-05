@@ -19,7 +19,6 @@ use deno_semver::npm::NpmPackageReqReference;
 
 use crate::errors;
 use crate::AllowAllNodePermissions;
-use crate::NodeFs;
 use crate::NodePermissions;
 use crate::NpmResolver;
 use crate::PackageJson;
@@ -107,12 +106,15 @@ impl NodeResolution {
 
 #[derive(Debug)]
 pub struct NodeResolver {
-  fs: Arc<dyn NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   npm_resolver: Arc<dyn NpmResolver>,
 }
 
 impl NodeResolver {
-  pub fn new(fs: Arc<dyn NodeFs>, npm_resolver: Arc<dyn NpmResolver>) -> Self {
+  pub fn new(
+    fs: Arc<dyn deno_fs::FileSystem>,
+    npm_resolver: Arc<dyn NpmResolver>,
+  ) -> Self {
     Self { fs, npm_resolver }
   }
 
@@ -280,8 +282,9 @@ impl NodeResolver {
       p_str.to_string()
     };
 
-    let (is_dir, is_file) = if let Ok(stats) = self.fs.metadata(Path::new(&p)) {
-      (stats.is_dir, stats.is_file)
+    let (is_dir, is_file) = if let Ok(stats) = self.fs.stat_sync(Path::new(&p))
+    {
+      (stats.is_directory, stats.is_file)
     } else {
       (false, false)
     };
@@ -491,7 +494,7 @@ impl NodeResolver {
     referrer_kind: NodeModuleKind,
   ) -> Option<PathBuf> {
     fn probe_extensions(
-      fs: &dyn NodeFs,
+      fs: &dyn deno_fs::FileSystem,
       path: &Path,
       referrer_kind: NodeModuleKind,
     ) -> Option<PathBuf> {
@@ -1079,7 +1082,7 @@ impl NodeResolver {
   ) -> Result<PathBuf, AnyError> {
     let file_path = url.to_file_path().unwrap();
     let current_dir = deno_core::strip_unc_prefix(
-      self.fs.canonicalize(file_path.parent().unwrap())?,
+      self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
     let mut current_dir = current_dir.as_path();
     let package_json_path = current_dir.join("package.json");
