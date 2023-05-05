@@ -766,8 +766,17 @@ impl JsRuntime {
     let extensions = std::mem::take(&mut self.extensions);
 
     futures::executor::block_on(async {
-      for ext in extensions.borrow().iter() {
-        if let Some(esm_files) = ext.get_esm_sources() {
+      let num_of_extensions = extensions.borrow().len();
+      for i in 0..num_of_extensions {
+        let (maybe_esm_files, maybe_esm_entry_point) = {
+          let exts = extensions.borrow();
+          (
+            exts[i].get_esm_sources().map(|e| e.to_owned()),
+            exts[i].get_esm_entry_point(),
+          )
+        };
+
+        if let Some(esm_files) = maybe_esm_files {
           for file_source in esm_files {
             let id = self
               .load_side_module(
@@ -775,13 +784,16 @@ impl JsRuntime {
                 None,
               )
               .await?;
-            if let Some(entry_point) = ext.get_esm_entry_point() {
+            if let Some(entry_point) = maybe_esm_entry_point {
               if file_source.specifier == entry_point {
                 esm_entrypoints.push((file_source.specifier, id));
               }
             }
           }
         }
+
+        let exts = extensions.borrow();
+        let ext = &exts[i];
 
         if let Some(js_files) = ext.get_js_sources() {
           for file_source in js_files {
