@@ -262,6 +262,9 @@ pub async fn run(
   metadata: Metadata,
 ) -> Result<(), AnyError> {
   let main_module = &metadata.entrypoint;
+  let current_exe_path = std::env::current_exe().unwrap();
+  let current_exe_name =
+    current_exe_path.file_name().unwrap().to_string_lossy();
   let dir = DenoDir::new(None)?;
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
@@ -273,9 +276,14 @@ pub async fn run(
     Some(root_cert_store_provider.clone()),
     metadata.unsafely_ignore_certificate_errors.clone(),
   ));
-  let npm_registry_url = CliNpmRegistryApi::default_url().to_owned();
+  // use a dummy npm registry url
+  let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
+  let root_path = std::env::temp_dir()
+    .join(format!("deno-compile-{}", current_exe_name))
+    .join("node_modules");
+
   let npm_cache = Arc::new(NpmCache::new(
-    dir.npm_folder_path(),
+    root_path.clone(),
     CacheSetting::Use,
     http_client.clone(),
     progress_bar.clone(),
@@ -289,7 +297,13 @@ pub async fn run(
   let (fs, node_modules_path, snapshot) = if let Some(snapshot) =
     metadata.npm_snapshot
   {
-    let vfs = load_npm_vfs().context("Failed to load npm vfs.")?;
+    let vfs_root_dir_path = if metadata.node_modules_dir {
+      root_path
+    } else {
+      npm_cache.registry_folder(&npm_registry_url)
+    };
+    let vfs =
+      load_npm_vfs(vfs_root_dir_path).context("Failed to load npm vfs.")?;
     let node_modules_path = if metadata.node_modules_dir {
       Some(vfs.root().to_path_buf())
     } else {

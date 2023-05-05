@@ -6,6 +6,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
@@ -27,7 +28,9 @@ use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
+use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -58,12 +61,8 @@ pub struct Metadata {
   pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
 }
 
-pub fn load_npm_vfs() -> Result<FileBackedVfs, AnyError> {
+pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
   let file_path = current_exe().unwrap();
-  let name = file_path.file_name().unwrap().to_string_lossy();
-  let root = std::env::temp_dir()
-    .join(format!("deno-compile-{}", name))
-    .join("node_modules");
   let mut file = std::fs::File::open(file_path)?;
   let _trailer_pos = file.seek(SeekFrom::End(-40))?;
   let mut trailer = [0; 40];
@@ -72,11 +71,22 @@ pub fn load_npm_vfs() -> Result<FileBackedVfs, AnyError> {
   file.seek(SeekFrom::Start(trailer.npm_vfs_pos))?;
   let mut vfs_data = vec![0; trailer.npm_vfs_len() as usize];
   file.read_exact(&mut vfs_data)?;
-  let dir: VirtualDirectory = serde_json::from_slice(&vfs_data)?;
+  let mut dir: VirtualDirectory = serde_json::from_slice(&vfs_data)?;
+  std::fs::write(
+    "V:\\scratch\\vfs.json",
+    deno_core::serde_json::to_string_pretty(&dir).unwrap(),
+  )
+  .unwrap();
+  // align the name of the directory with the root dir
+  dir.name = root_dir_path
+    .file_name()
+    .unwrap()
+    .to_string_lossy()
+    .to_string();
 
   let fs_root = VfsRoot {
     dir,
-    root,
+    root_path: root_dir_path,
     start_file_offset: trailer.npm_files_pos,
   };
   Ok(FileBackedVfs::new(file, fs_root))
@@ -250,6 +260,8 @@ pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   client: &'a HttpClient,
   deno_dir: &'a DenoDir,
+  npm_api: &'a CliNpmRegistryApi,
+  npm_cache: &'a NpmCache,
   npm_resolver: &'a CliNpmResolver,
   resolution: &'a NpmResolution,
 }
@@ -259,6 +271,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     file_fetcher: &'a FileFetcher,
     client: &'a HttpClient,
     deno_dir: &'a DenoDir,
+    npm_api: &'a CliNpmRegistryApi,
+    npm_cache: &'a NpmCache,
     npm_resolver: &'a CliNpmResolver,
     resolution: &'a NpmResolution,
   ) -> Self {
@@ -266,6 +280,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       file_fetcher,
       client,
       deno_dir,
+      npm_api,
+      npm_cache,
       npm_resolver,
       resolution,
     }
@@ -425,18 +441,25 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
-    let root_path = self.npm_resolver.root_dir_url().to_file_path().unwrap();
-    let mut builder = VfsBuilder::new(root_path);
     if let Some(node_modules_path) = self.npm_resolver.node_modules_path() {
+      let mut builder = VfsBuilder::new(node_modules_path.clone());
       builder.add_dir_recursive(&node_modules_path)?;
+      Ok(builder)
     } else {
+      // DO NOT include the user's registry url as it may contain credentials,
+      // but also don't make this dependent on the registry url
+      let registry_url = self.npm_api.base_url();
+      let root_path = self.npm_cache.registry_folder(registry_url);
+      let mut builder = VfsBuilder::new(root_path);
       for package in self.resolution.all_packages() {
         let folder = self
           .npm_resolver
           .resolve_pkg_folder_from_pkg_id(&package.pkg_id)?;
         builder.add_dir_recursive(&folder)?;
       }
+      // overwrite the root directory's name to obscure the user's registry url
+      builder.set_root_dir_name("node_modules".to_string());
+      Ok(builder)
     }
-    Ok(builder)
   }
 }

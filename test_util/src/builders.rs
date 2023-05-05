@@ -341,6 +341,7 @@ impl TestCommandBuilder {
     ))
   }
 
+  #[track_caller]
   pub fn run(&self) -> TestCommandOutput {
     fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
       let mut output = String::new();

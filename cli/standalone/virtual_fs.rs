@@ -53,6 +53,10 @@ impl VfsBuilder {
     }
   }
 
+  pub fn set_root_dir_name(&mut self, name: String) {
+    self.root_dir.name = name;
+  }
+
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
     self.add_dir(path);
     let read_dir = std::fs::read_dir(path)
@@ -240,6 +244,7 @@ impl<'a> VfsEntryRef<'a> {
   }
 }
 
+// todo(dsherret): we should store this more efficiently in the binary
 #[derive(Debug, Serialize, Deserialize)]
 pub enum VfsEntry {
   Dir(VirtualDirectory),
@@ -298,7 +303,7 @@ impl VirtualSymlink {
 #[derive(Debug)]
 pub struct VfsRoot {
   pub dir: VirtualDirectory,
-  pub root: PathBuf,
+  pub root_path: PathBuf,
   pub start_file_offset: u64,
 }
 
@@ -327,7 +332,7 @@ impl VfsRoot {
               "circular symlinks",
             ));
           }
-          path = Cow::Owned(symlink.resolve_dest_from_root(&self.root));
+          path = Cow::Owned(symlink.resolve_dest_from_root(&self.root_path));
         }
         _ => {
           return Ok((resolved_path, entry));
@@ -348,7 +353,7 @@ impl VfsRoot {
     path: &Path,
     seen: &mut HashSet<PathBuf>,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
-    let relative_path = match path.strip_prefix(&self.root) {
+    let relative_path = match path.strip_prefix(&self.root_path) {
       Ok(p) => p,
       Err(_) => {
         return Err(std::io::Error::new(
@@ -357,7 +362,7 @@ impl VfsRoot {
         ));
       }
     };
-    let mut final_path = self.root.clone();
+    let mut final_path = self.root_path.clone();
     let mut current_entry = VfsEntryRef::Dir(&self.dir);
     for component in relative_path.components() {
       let component = component.as_os_str().to_string_lossy();
@@ -367,7 +372,7 @@ impl VfsRoot {
           dir
         }
         VfsEntryRef::Symlink(symlink) => {
-          let dest = symlink.resolve_dest_from_root(&self.root);
+          let dest = symlink.resolve_dest_from_root(&self.root_path);
           let (resolved_path, entry) = self.find_entry_inner(&dest, seen)?;
           final_path = resolved_path; // overwrite with the new resolved path
           match entry {
@@ -637,11 +642,11 @@ impl FileBackedVfs {
   }
 
   pub fn root(&self) -> &Path {
-    &self.fs_root.root
+    &self.fs_root.root_path
   }
 
   pub fn is_path_within(&self, path: &Path) -> bool {
-    path.starts_with(&self.fs_root.root)
+    path.starts_with(&self.fs_root.root_path)
   }
 
   pub fn open_file(
@@ -676,7 +681,7 @@ impl FileBackedVfs {
     let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
     match entry {
       VfsEntryRef::Symlink(symlink) => {
-        Ok(symlink.resolve_dest_from_root(&self.fs_root.root))
+        Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
       }
       VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => Err(std::io::Error::new(
         std::io::ErrorKind::Other,
@@ -882,7 +887,7 @@ mod test {
         file,
         VfsRoot {
           dir: root_dir,
-          root: dest_path,
+          root_path: dest_path,
           start_file_offset: 0,
         },
       ),

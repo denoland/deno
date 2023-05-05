@@ -25,20 +25,18 @@ pub async fn compile(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
-  let file_fetcher = factory.file_fetcher()?;
-  let http_client = factory.http_client();
-  let deno_dir = factory.deno_dir()?;
   let module_graph_builder = factory.module_graph_builder().await?;
   let parsed_source_cache = factory.parsed_source_cache()?;
-  let npm_resolver = factory.npm_resolver().await?;
-  let npm_resolution = factory.npm_resolution().await?;
 
+  // todo: move to the clifactory
   let binary_writer = DenoCompileBinaryWriter::new(
-    file_fetcher,
-    http_client,
-    deno_dir,
-    npm_resolver,
-    npm_resolution,
+    factory.file_fetcher()?,
+    factory.http_client(),
+    factory.deno_dir()?,
+    factory.npm_api()?,
+    factory.npm_cache()?,
+    factory.npm_resolver().await?,
+    factory.npm_resolution().await?,
   );
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
