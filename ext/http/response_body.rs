@@ -62,7 +62,7 @@ impl Future for CompletionHandle {
   }
 }
 
-trait PollFrame {
+trait PollFrame: Unpin {
   fn poll_frame(
     self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
@@ -123,6 +123,20 @@ impl ResponseBytes {
     self.1.complete(success);
     current
   }
+
+  fn poll_stream_frame<S: PollFrame>(
+    mut self: Pin<&mut Self>,
+    stm: &mut S,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Result<Frame<BufView>, AnyError>>> {
+    match Pin::new(stm).poll_frame(cx) {
+      x @ std::task::Poll::Ready(None) => {
+        self.complete(true);
+        x
+      }
+      x @ _ => x,
+    }
+  }
 }
 
 impl ResponseBytesInner {
@@ -156,22 +170,19 @@ impl Body for ResponseBytes {
           unreachable!()
         }
       }
-      ResponseBytesInner::Resource(res) => match Pin::new(res).poll_frame(cx) {
+      ResponseBytesInner::Resource(stm) => match Pin::new(stm).poll_frame(cx) {
         x @ std::task::Poll::Ready(None) => {
           self.complete(true);
           x
         }
         x @ _ => x,
       },
-      ResponseBytesInner::V8Stream(stm) => match stm.poll_recv(cx) {
-        std::task::Poll::Pending => std::task::Poll::Pending,
-        std::task::Poll::Ready(Some(buf)) => {
-          std::task::Poll::Ready(Some(Ok(Frame::data(buf))))
-        }
-        std::task::Poll::Ready(None) => {
+      ResponseBytesInner::V8Stream(stm) => match Pin::new(stm).poll_frame(cx) {
+        x @ std::task::Poll::Ready(None) => {
           self.complete(true);
-          std::task::Poll::Ready(None)
+          x
         }
+        x @ _ => x,
       },
     }
   }
@@ -243,6 +254,25 @@ impl PollFrame for ResourceBodyAdapter {
       size_hint.set_upper(upper)
     }
     size_hint
+  }
+}
+
+impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
+  fn poll_frame(
+    mut self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Result<Frame<BufView>, AnyError>>> {
+    match self.poll_recv(cx) {
+      std::task::Poll::Pending => std::task::Poll::Pending,
+      std::task::Poll::Ready(Some(buf)) => {
+        std::task::Poll::Ready(Some(Ok(Frame::data(buf))))
+      }
+      std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+    }
+  }
+
+  fn size_hint(&self) -> SizeHint {
+    SizeHint::default()
   }
 }
 
