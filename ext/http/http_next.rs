@@ -7,6 +7,7 @@ use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::CompletionHandle;
+use crate::response_body::ResourceBodyAdapter;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
@@ -32,6 +33,7 @@ use deno_net::raw::put_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use http::request::Parts;
+use http::response;
 use hyper1::body::Incoming;
 use hyper1::header::COOKIE;
 use hyper1::http::HeaderName;
@@ -490,12 +492,11 @@ pub fn op_set_response_body_resource(
   };
 
   with_resp_mut(index, move |response| {
-    let future = resource.clone().read(64 * 1024);
-    response
-      .as_mut()
-      .unwrap()
-      .body_mut()
-      .initialize(ResponseBytesInner::Resource(auto_close, resource, future));
+    response.as_mut().unwrap().body_mut().initialize(
+      ResponseBytesInner::Resource(ResourceBodyAdapter::new(
+        resource, auto_close,
+      )),
+    )
   });
 
   Ok(())

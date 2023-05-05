@@ -62,6 +62,15 @@ impl Future for CompletionHandle {
   }
 }
 
+trait PollFrame {
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Result<Frame<BufView>, AnyError>>>;
+
+  fn size_hint(&self) -> SizeHint;
+}
+
 #[derive(Default)]
 pub enum ResponseBytesInner {
   /// An empty stream.
@@ -69,10 +78,10 @@ pub enum ResponseBytesInner {
   Empty,
   /// A completed stream.
   Done,
-  /// A static buffer of bytes, sent it one fell swoop.
+  /// A static buffer of bytes, sent in one fell swoop.
   Bytes(BufView),
   /// A resource stream, piped in fast mode.
-  Resource(bool, Rc<dyn Resource>, AsyncResult<BufView>),
+  Resource(ResourceBodyAdapter),
   /// A JS-backed stream, written in JS and transported via pipe.
   V8Stream(tokio::sync::mpsc::Receiver<BufView>),
 }
@@ -122,15 +131,7 @@ impl ResponseBytesInner {
       Self::Done => SizeHint::with_exact(0),
       Self::Empty => SizeHint::with_exact(0),
       Self::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
-      Self::Resource(_, res, _) => {
-        let hint = res.size_hint();
-        let mut size_hint = SizeHint::new();
-        size_hint.set_lower(hint.0);
-        if let Some(upper) = hint.1 {
-          size_hint.set_upper(upper)
-        }
-        size_hint
-      }
+      Self::Resource(res) => res.size_hint(),
       Self::V8Stream(..) => SizeHint::default(),
     }
   }
@@ -155,26 +156,13 @@ impl Body for ResponseBytes {
           unreachable!()
         }
       }
-      ResponseBytesInner::Resource(auto_close, stm, ref mut future) => {
-        match future.poll_unpin(cx) {
-          std::task::Poll::Pending => std::task::Poll::Pending,
-          std::task::Poll::Ready(Err(err)) => {
-            std::task::Poll::Ready(Some(Err(err)))
-          }
-          std::task::Poll::Ready(Ok(buf)) => {
-            if buf.is_empty() {
-              if *auto_close {
-                stm.clone().close();
-              }
-              self.complete(true);
-              return std::task::Poll::Ready(None);
-            }
-            // Re-arm the future
-            *future = stm.clone().read(64 * 1024);
-            std::task::Poll::Ready(Some(Ok(Frame::data(buf))))
-          }
+      ResponseBytesInner::Resource(res) => match Pin::new(res).poll_frame(cx) {
+        x @ std::task::Poll::Ready(None) => {
+          self.complete(true);
+          x
         }
-      }
+        x @ _ => x,
+      },
       ResponseBytesInner::V8Stream(stm) => match stm.poll_recv(cx) {
         std::task::Poll::Pending => std::task::Poll::Pending,
         std::task::Poll::Ready(Some(buf)) => {
@@ -203,6 +191,58 @@ impl Drop for ResponseBytes {
   fn drop(&mut self) {
     // We won't actually poll_frame for Empty responses so this is where we return success
     self.complete(matches!(self.0, ResponseBytesInner::Empty));
+  }
+}
+
+pub struct ResourceBodyAdapter {
+  auto_close: bool,
+  stm: Rc<dyn Resource>,
+  future: AsyncResult<BufView>,
+}
+
+impl ResourceBodyAdapter {
+  pub fn new(stm: Rc<dyn Resource>, auto_close: bool) -> Self {
+    let future = stm.clone().read(64 * 1024);
+    ResourceBodyAdapter {
+      auto_close,
+      stm,
+      future,
+    }
+  }
+}
+
+impl PollFrame for ResourceBodyAdapter {
+  fn poll_frame(
+    mut self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Result<Frame<BufView>, AnyError>>> {
+    match self.future.poll_unpin(cx) {
+      std::task::Poll::Pending => std::task::Poll::Pending,
+      std::task::Poll::Ready(Err(err)) => {
+        std::task::Poll::Ready(Some(Err(err)))
+      }
+      std::task::Poll::Ready(Ok(buf)) => {
+        if buf.is_empty() {
+          if self.auto_close {
+            self.stm.clone().close();
+          }
+          return std::task::Poll::Ready(None);
+        }
+        // Re-arm the future
+        self.future = self.stm.clone().read(64 * 1024);
+        std::task::Poll::Ready(Some(Ok(Frame::data(buf))))
+      }
+    }
+  }
+
+  fn size_hint(&self) -> SizeHint {
+    let hint = self.stm.size_hint();
+    let mut size_hint = SizeHint::new();
+    size_hint.set_lower(hint.0);
+    if let Some(upper) = hint.1 {
+      size_hint.set_upper(upper)
+    }
+    size_hint
   }
 }
 
