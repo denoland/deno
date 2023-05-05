@@ -41,7 +41,6 @@ impl op_add_4 {
             is_unstable: false,
             is_v8: false,
             force_registration: false,
-            arg_count: 4usize as u8,
         }
     }
     #[inline]

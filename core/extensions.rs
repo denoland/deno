@@ -73,7 +73,6 @@ pub struct OpDecl {
   pub is_unstable: bool,
   pub is_v8: bool,
   pub force_registration: bool,
-  pub arg_count: u8,
   pub fast_fn: Option<FastFunction>,
 }
 
