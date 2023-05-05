@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
@@ -33,19 +32,6 @@ const {
   TypedArrayPrototypeGetByteLength,
   Uint8ArrayPrototype,
 } = primordials;
-const {
-  op_ws_send_text,
-  op_ws_send_binary,
-  op_ws_next_event,
-  op_ws_create,
-  op_ws_close,
-} = core.generateAsyncOpHandler(
-  "op_ws_send_text",
-  "op_ws_send_binary",
-  "op_ws_next_event",
-  "op_ws_create",
-  "op_ws_close",
-);
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",
@@ -167,7 +153,8 @@ class WebSocketStream {
       };
       options.signal?.[add](abort);
       PromisePrototypeThen(
-        op_ws_create(
+        core.opAsync(
+          "op_ws_create",
           "new WebSocketStream()",
           this[_url],
           options.protocols ? ArrayPrototypeJoin(options.protocols, ", ") : "",
@@ -178,12 +165,15 @@ class WebSocketStream {
           options.signal?.[remove](abort);
           if (this[_earlyClose]) {
             PromisePrototypeThen(
-              op_ws_close(create.rid),
+              core.opAsync("op_ws_close", create.rid),
               () => {
                 PromisePrototypeThen(
                   (async () => {
                     while (true) {
-                      const { 0: kind } = await op_ws_next_event(create.rid);
+                      const { 0: kind } = await core.opAsync(
+                        "op_ws_next_event",
+                        create.rid,
+                      );
 
                       if (kind > 5) {
                         /* close */
@@ -216,11 +206,11 @@ class WebSocketStream {
             const writable = new WritableStream({
               write: async (chunk) => {
                 if (typeof chunk === "string") {
-                  await op_ws_send_text(this[_rid], chunk);
+                  await core.opAsync2("op_ws_send_text", this[_rid], chunk);
                 } else if (
                   ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
                 ) {
-                  await op_ws_send_binary(this[_rid], chunk);
+                  await core.opAsync2("op_ws_send_binary", this[_rid], chunk);
                 } else {
                   throw new TypeError(
                     "A chunk may only be either a string or an Uint8Array",
@@ -245,7 +235,10 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
-              const { 0: kind, 1: value } = await op_ws_next_event(this[_rid]);
+              const { 0: kind, 1: value } = await core.opAsync2(
+                "op_ws_next_event",
+                this[_rid],
+              );
 
               switch (kind) {
                 case 0:
@@ -409,7 +402,7 @@ class WebSocketStream {
       this[_earlyClose] = true;
     } else if (this[_closed].state === "pending") {
       PromisePrototypeThen(
-        op_ws_close(this[_rid], code, closeInfo.reason),
+        core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
         () => {
           setTimeout(() => {
             this[_closeSent].resolve(DateNow());

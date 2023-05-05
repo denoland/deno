@@ -1,8 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
-
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import randomFill, {
@@ -33,15 +31,6 @@ export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.t
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
-const {
-  op_node_gen_prime_async,
-  op_node_check_prime_bytes_async,
-  op_node_check_prime_async,
-} = Deno.core.generateAsyncOpHandler(
-  "op_node_gen_prime_async",
-  "op_node_check_prime_bytes_async",
-  "op_node_check_prime_async",
-);
 
 export type LargeNumberLike =
   | ArrayBufferView
@@ -90,9 +79,9 @@ export function checkPrime(
 
   validateInt32(checks, "options.checks", 0);
 
-  let op = op_node_check_prime_bytes_async;
+  let op = "op_node_check_prime_bytes_async";
   if (typeof candidate === "bigint") {
-    op = op_node_check_prime_async;
+    op = "op_node_check_prime_async";
   } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
     throw new ERR_INVALID_ARG_TYPE(
       "candidate",
@@ -107,7 +96,7 @@ export function checkPrime(
     );
   }
 
-  op(candidate, checks).then(
+  core.opAsync2(op, candidate, checks).then(
     (result) => {
       callback?.(null, result);
     },
@@ -171,7 +160,7 @@ export function generatePrime(
   const {
     bigint,
   } = validateRandomPrimeJob(size, options);
-  op_node_gen_prime_async(size).then((prime: Uint8Array) =>
+  core.opAsync2("op_node_gen_prime_async", size).then((prime: Uint8Array) =>
     bigint ? arrayBufferToUnsignedBigInt(prime.buffer) : prime.buffer
   ).then((prime: ArrayBuffer | bigint) => {
     callback?.(null, prime);
