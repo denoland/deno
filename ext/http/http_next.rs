@@ -630,9 +630,7 @@ fn serve_http11_unconditional(
     .keep_alive(true)
     .serve_connection(io, svc);
 
-  conn
-    .with_upgrades()
-    .map_err(AnyError::from)
+  conn.with_upgrades().map_err(AnyError::from)
 }
 
 fn serve_http2_unconditional(
@@ -666,19 +664,22 @@ fn serve_https(
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn_local(async {
-    io.handshake().await?;
-    // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
-    // based on the prefix bytes
-    let handshake = io.get_ref().1.alpn_protocol();
-    if handshake == Some(TLS_ALPN_HTTP_2) {
-      serve_http2_unconditional(io, svc).await
-    } else if handshake == Some(TLS_ALPN_HTTP_11) {
-      serve_http11_unconditional(io, svc).await
-    } else {
-      serve_http2_autodetect(io, svc).await
+  spawn_local(
+    async {
+      io.handshake().await?;
+      // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
+      // based on the prefix bytes
+      let handshake = io.get_ref().1.alpn_protocol();
+      if handshake == Some(TLS_ALPN_HTTP_2) {
+        serve_http2_unconditional(io, svc).await
+      } else if handshake == Some(TLS_ALPN_HTTP_11) {
+        serve_http11_unconditional(io, svc).await
+      } else {
+        serve_http2_autodetect(io, svc).await
+      }
     }
-  }.try_or_cancel(cancel))
+    .try_or_cancel(cancel),
+  )
 }
 
 fn serve_http(
