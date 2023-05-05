@@ -3463,6 +3463,12 @@ itest!(unhandled_rejection_dynamic_import2 {
   output: "run/unhandled_rejection_dynamic_import2/main.ts.out",
 });
 
+itest!(unhandled_rejection_order {
+  args: "run run/unhandled_rejection_order.ts",
+  output: "run/unhandled_rejection_order.ts.out",
+  exit_code: 1,
+});
+
 itest!(nested_error {
   args: "run run/nested_error/main.ts",
   output: "run/nested_error/main.ts.out",
