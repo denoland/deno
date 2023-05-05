@@ -53,6 +53,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use tokio::task::JoinSet;
 use v8::OwnedIsolate;
 
 pub enum Snapshot {
@@ -208,6 +209,7 @@ pub struct JsRuntimeState {
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
   pub(crate) pending_ops: FuturesUnordered<OpCall>,
+  pub(crate) pending_ops_set: JoinSet<(RealmIdx, PromiseId, OpId, OpResult)>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -384,6 +386,7 @@ impl JsRuntime {
       source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
+      pending_ops_set: JoinSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -1348,7 +1351,7 @@ impl JsRuntime {
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
-      state.waker.wake();
+      // state.waker.wake();
     }
 
     drop(state);
@@ -1513,7 +1516,7 @@ impl EventLoopPendingState {
     }
 
     EventLoopPendingState {
-      has_pending_refed_ops: state.pending_ops.len() > num_unrefed_ops,
+      has_pending_refed_ops: state.pending_ops_set.len() > num_unrefed_ops,
       has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
       has_pending_dyn_module_evaluation: !state
         .pending_dyn_mod_evaluate
@@ -2289,13 +2292,26 @@ impl JsRuntime {
     {
       let mut state = self.state.borrow_mut();
       state.have_unpolled_ops = false;
+      let op_state = state.op_state.clone();
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (realm_idx, promise_id, op_id, resp) = item;
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        responses_per_realm[realm_idx as usize].push((promise_id, resp));
+      loop {
+        let mut fut = state.pending_ops_set.join_next();
+        let mut t = unsafe { Pin::new_unchecked(&mut fut) };
+        if let Poll::Ready(Some(item)) = t.poll_unpin(cx) {
+          let (realm_idx, promise_id, op_id, resp) = item.unwrap();
+          op_state.borrow().tracker.track_async_completed(op_id);
+          responses_per_realm[realm_idx as usize].push((promise_id, resp));
+        } else {
+          break;
+        }
       }
+      // while let Poll::Ready(Some(item)) =
+
+      // {
+      //   let (realm_idx, promise_id, op_id, resp) = item.unwrap();
+      //   state.op_state.borrow().tracker.track_async_completed(op_id);
+      //   responses_per_realm[realm_idx as usize].push((promise_id, resp));
+      // }
     }
 
     // Handle responses for each realm.
@@ -2394,23 +2410,48 @@ impl JsRuntime {
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
       let mut realm_state = realm_state_rc.borrow_mut();
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (realm_idx, promise_id, op_id, mut resp) = item;
-        debug_assert_eq!(
-          state.known_realms[realm_idx as usize],
-          state.global_realm.as_ref().unwrap().context()
-        );
-        realm_state.unrefed_ops.remove(&promise_id);
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id).into());
-        args.push(match resp.to_v8(scope) {
-          Ok(v) => v,
-          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
-            .to_v8(scope)
-            .unwrap(),
-        });
+      let op_state = state.op_state.clone();
+
+      loop {
+        let mut fut = state.pending_ops_set.join_next();
+        let mut t = unsafe { Pin::new_unchecked(&mut fut) };
+        if let Poll::Ready(Some(item)) = t.poll_unpin(cx) {
+          let (realm_idx, promise_id, op_id, mut resp) = item.unwrap();
+          // debug_assert_eq!(
+          //   state.known_realms[realm_idx as usize],
+          //   state.global_realm.as_ref().unwrap().context()
+          // );
+          realm_state.unrefed_ops.remove(&promise_id);
+          op_state.borrow().tracker.track_async_completed(op_id);
+          args.push(v8::Integer::new(scope, promise_id).into());
+          args.push(match resp.to_v8(scope) {
+            Ok(v) => v,
+            Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+              .to_v8(scope)
+              .unwrap(),
+          });
+        } else {
+          break;
+        }
       }
+
+      // while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
+      // {
+      //   let (realm_idx, promise_id, op_id, mut resp) = item;
+      //   debug_assert_eq!(
+      //     state.known_realms[realm_idx as usize],
+      //     state.global_realm.as_ref().unwrap().context()
+      //   );
+      //   realm_state.unrefed_ops.remove(&promise_id);
+      //   state.op_state.borrow().tracker.track_async_completed(op_id);
+      //   args.push(v8::Integer::new(scope, promise_id).into());
+      //   args.push(match resp.to_v8(scope) {
+      //     Ok(v) => v,
+      //     Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+      //       .to_v8(scope)
+      //       .unwrap(),
+      //   });
+      // }
     }
 
     let has_tick_scheduled =
@@ -2465,8 +2506,8 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
   state
-    .pending_ops
-    .push(OpCall::pending(ctx, promise_id, fut));
+    .pending_ops_set
+    .spawn_local(OpCall::pending(ctx, promise_id, fut));
   state.have_unpolled_ops = true;
 }
 
@@ -2589,7 +2630,7 @@ pub fn queue_async_op<'s>(
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops.push(op_call);
+  state.pending_ops_set.spawn_local(op_call);
   state.have_unpolled_ops = true;
   None
 }
