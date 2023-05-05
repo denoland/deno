@@ -5,7 +5,7 @@
 - Forks and local clones of
   [`denoland/deno`](https://github.com/denoland/deno/),
   [`denoland/deno_std`](https://github.com/denoland/deno_std/),
-  [`denoland/dotland`](https://github.com/denoland/dotland/),
+  [`denoland/dotcom`](https://github.com/denoland/dotcom/),
   [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
   [`denoland/manual`](https://github.com/denoland/manual/)
 
@@ -163,15 +163,14 @@ verify on GitHub that everything looks correct.
 - [ ] Publish the release on Github
 
 - [ ] Run the
-      https://github.com/denoland/dotland/actions/workflows/update_versions.yml
+      https://github.com/denoland/dotcom/actions/workflows/update_versions.yml
       workflow.
   - [ ] This should open a PR. Review and merge it.
 
   <details>
      <summary>Failure Steps</summary>
 
-  1. Update https://github.com/denoland/dotland/blob/main/versions.json
-     manually.
+  1. Update https://github.com/denoland/dotcom/blob/main/versions.json manually.
   2. Open a PR and merge.
   </details>
 

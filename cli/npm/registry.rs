@@ -52,7 +52,7 @@ static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
   Url::parse("https://registry.npmjs.org").unwrap()
 });
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
@@ -62,8 +62,8 @@ impl CliNpmRegistryApi {
 
   pub fn new(
     base_url: Url,
-    cache: NpmCache,
-    http_client: HttpClient,
+    cache: Arc<NpmCache>,
+    http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
@@ -168,11 +168,11 @@ enum CacheItem {
 #[derive(Debug)]
 struct CliNpmRegistryApiInner {
   base_url: Url,
-  cache: NpmCache,
+  cache: Arc<NpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
 }
 

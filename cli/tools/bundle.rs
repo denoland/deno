@@ -13,9 +13,8 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TsConfigType;
 use crate::args::TypeCheckMode;
-use crate::graph_util::create_graph_and_maybe_check;
+use crate::factory::CliFactory;
 use crate::graph_util::error_for_any_npm_specifier;
-use crate::proc_state::ProcState;
 use crate::util;
 use crate::util::display;
 use crate::util::file_watcher::ResolutionResult;
@@ -41,10 +40,13 @@ pub async fn bundle(
     let module_specifier = &module_specifier;
     async move {
       log::debug!(">>>>> bundle START");
-      let ps = ProcState::from_cli_options(cli_options).await?;
-      let graph =
-        create_graph_and_maybe_check(vec![module_specifier.clone()], &ps)
-          .await?;
+      let factory = CliFactory::from_cli_options(cli_options);
+      let module_graph_builder = factory.module_graph_builder().await?;
+      let cli_options = factory.cli_options();
+
+      let graph = module_graph_builder
+        .create_graph_and_maybe_check(vec![module_specifier.clone()])
+        .await?;
 
       let mut paths_to_watch: Vec<PathBuf> = graph
         .specifiers()
@@ -58,15 +60,14 @@ pub async fn bundle(
         })
         .collect();
 
-      if let Ok(Some(import_map_path)) = ps
-        .options
+      if let Ok(Some(import_map_path)) = cli_options
         .resolve_import_map_specifier()
         .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
       {
         paths_to_watch.push(import_map_path);
       }
 
-      Ok((paths_to_watch, graph, ps))
+      Ok((paths_to_watch, graph, cli_options.clone()))
     }
     .map(move |result| match result {
       Ok((paths_to_watch, graph, ps)) => ResolutionResult::Restart {
@@ -80,49 +81,50 @@ pub async fn bundle(
     })
   };
 
-  let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
-    let out_file = &bundle_flags.out_file;
-    async move {
-      // at the moment, we don't support npm specifiers in deno bundle, so show an error
-      error_for_any_npm_specifier(&graph)?;
+  let operation =
+    |(cli_options, graph): (Arc<CliOptions>, Arc<deno_graph::ModuleGraph>)| {
+      let out_file = &bundle_flags.out_file;
+      async move {
+        // at the moment, we don't support npm specifiers in deno bundle, so show an error
+        error_for_any_npm_specifier(&graph)?;
 
-      let bundle_output = bundle_module_graph(graph.as_ref(), &ps)?;
-      log::debug!(">>>>> bundle END");
+        let bundle_output = bundle_module_graph(graph.as_ref(), &cli_options)?;
+        log::debug!(">>>>> bundle END");
 
-      if let Some(out_file) = out_file {
-        let output_bytes = bundle_output.code.as_bytes();
-        let output_len = output_bytes.len();
-        util::fs::write_file(out_file, output_bytes, 0o644)?;
-        log::info!(
-          "{} {:?} ({})",
-          colors::green("Emit"),
-          out_file,
-          colors::gray(display::human_size(output_len as f64))
-        );
-        if let Some(bundle_map) = bundle_output.maybe_map {
-          let map_bytes = bundle_map.as_bytes();
-          let map_len = map_bytes.len();
-          let ext = if let Some(curr_ext) = out_file.extension() {
-            format!("{}.map", curr_ext.to_string_lossy())
-          } else {
-            "map".to_string()
-          };
-          let map_out_file = out_file.with_extension(ext);
-          util::fs::write_file(&map_out_file, map_bytes, 0o644)?;
+        if let Some(out_file) = out_file {
+          let output_bytes = bundle_output.code.as_bytes();
+          let output_len = output_bytes.len();
+          util::fs::write_file(out_file, output_bytes, 0o644)?;
           log::info!(
             "{} {:?} ({})",
             colors::green("Emit"),
-            map_out_file,
-            colors::gray(display::human_size(map_len as f64))
+            out_file,
+            colors::gray(display::human_size(output_len as f64))
           );
+          if let Some(bundle_map) = bundle_output.maybe_map {
+            let map_bytes = bundle_map.as_bytes();
+            let map_len = map_bytes.len();
+            let ext = if let Some(curr_ext) = out_file.extension() {
+              format!("{}.map", curr_ext.to_string_lossy())
+            } else {
+              "map".to_string()
+            };
+            let map_out_file = out_file.with_extension(ext);
+            util::fs::write_file(&map_out_file, map_bytes, 0o644)?;
+            log::info!(
+              "{} {:?} ({})",
+              colors::green("Emit"),
+              map_out_file,
+              colors::gray(display::human_size(map_len as f64))
+            );
+          }
+        } else {
+          println!("{}", bundle_output.code);
         }
-      } else {
-        println!("{}", bundle_output.code);
-      }
 
-      Ok(())
-    }
-  };
+        Ok(())
+      }
+    };
 
   if cli_options.watch_paths().is_some() {
     util::file_watcher::watch_func(
@@ -149,14 +151,13 @@ pub async fn bundle(
 
 fn bundle_module_graph(
   graph: &deno_graph::ModuleGraph,
-  ps: &ProcState,
+  cli_options: &CliOptions,
 ) -> Result<deno_emit::BundleEmit, AnyError> {
   log::info!("{} {}", colors::green("Bundle"), graph.roots[0]);
 
-  let ts_config_result = ps
-    .options
-    .resolve_ts_config_for_emit(TsConfigType::Bundle)?;
-  if ps.options.type_check_mode() == TypeCheckMode::None {
+  let ts_config_result =
+    cli_options.resolve_ts_config_for_emit(TsConfigType::Bundle)?;
+  if cli_options.type_check_mode() == TypeCheckMode::None {
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       log::warn!("{}", ignored_options);
     }

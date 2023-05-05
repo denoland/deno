@@ -4,34 +4,29 @@
 
 use std::fs;
 use std::io;
-use std::io::Read;
-use std::io::Seek;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
-use deno_io::StdFileResource;
-use fs3::FileExt;
+use deno_io::fs::File;
+use deno_io::fs::FsResult;
+use deno_io::fs::FsStat;
+use deno_io::StdFileResourceInner;
 
 use crate::interface::FsDirEntry;
-use crate::interface::FsError;
 use crate::interface::FsFileType;
-use crate::interface::FsResult;
-use crate::interface::FsStat;
-use crate::File;
 use crate::FileSystem;
 use crate::OpenOptions;
 
+#[cfg(not(unix))]
+use deno_io::fs::FsError;
+
 #[derive(Clone)]
-pub struct StdFs;
+pub struct RealFs;
 
 #[async_trait::async_trait(?Send)]
-impl FileSystem for StdFs {
-  type File = StdFileResource;
-
+impl FileSystem for RealFs {
   fn cwd(&self) -> FsResult<PathBuf> {
     std::env::current_dir().map_err(Into::into)
   }
@@ -40,7 +35,7 @@ impl FileSystem for StdFs {
     Ok(std::env::temp_dir())
   }
 
-  fn chdir(&self, path: impl AsRef<Path>) -> FsResult<()> {
+  fn chdir(&self, path: &Path) -> FsResult<()> {
     std::env::set_current_dir(path).map_err(Into::into)
   }
 
@@ -78,27 +73,27 @@ impl FileSystem for StdFs {
 
   fn open_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     options: OpenOptions,
-  ) -> FsResult<Self::File> {
+  ) -> FsResult<Rc<dyn File>> {
     let opts = open_options(options);
     let std_file = opts.open(path)?;
-    Ok(StdFileResource::fs_file(std_file))
+    Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
   async fn open_async(
     &self,
     path: PathBuf,
     options: OpenOptions,
-  ) -> FsResult<Self::File> {
+  ) -> FsResult<Rc<dyn File>> {
     let opts = open_options(options);
     let std_file =
       tokio::task::spawn_blocking(move || opts.open(path)).await??;
-    Ok(StdFileResource::fs_file(std_file))
+    Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
 
   fn mkdir_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     recursive: bool,
     mode: u32,
   ) -> FsResult<()> {
@@ -110,19 +105,19 @@ impl FileSystem for StdFs {
     recursive: bool,
     mode: u32,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || mkdir(path, recursive, mode)).await?
+    tokio::task::spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
 
-  fn chmod_sync(&self, path: impl AsRef<Path>, mode: u32) -> FsResult<()> {
+  fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
     chmod(path, mode)
   }
   async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || chmod(path, mode)).await?
+    tokio::task::spawn_blocking(move || chmod(&path, mode)).await?
   }
 
   fn chown_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -134,68 +129,56 @@ impl FileSystem for StdFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || chown(path, uid, gid)).await?
+    tokio::task::spawn_blocking(move || chown(&path, uid, gid)).await?
   }
 
-  fn remove_sync(
-    &self,
-    path: impl AsRef<Path>,
-    recursive: bool,
-  ) -> FsResult<()> {
+  fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
     remove(path, recursive)
   }
   async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || remove(path, recursive)).await?
+    tokio::task::spawn_blocking(move || remove(&path, recursive)).await?
   }
 
-  fn copy_file_sync(
-    &self,
-    from: impl AsRef<Path>,
-    to: impl AsRef<Path>,
-  ) -> FsResult<()> {
+  fn copy_file_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
     copy_file(from, to)
   }
   async fn copy_file_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || copy_file(from, to)).await?
+    tokio::task::spawn_blocking(move || copy_file(&from, &to)).await?
   }
 
-  fn stat_sync(&self, path: impl AsRef<Path>) -> FsResult<FsStat> {
+  fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
     stat(path).map(Into::into)
   }
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    tokio::task::spawn_blocking(move || stat(path))
+    tokio::task::spawn_blocking(move || stat(&path))
       .await?
       .map(Into::into)
   }
 
-  fn lstat_sync(&self, path: impl AsRef<Path>) -> FsResult<FsStat> {
+  fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
     lstat(path).map(Into::into)
   }
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    tokio::task::spawn_blocking(move || lstat(path))
+    tokio::task::spawn_blocking(move || lstat(&path))
       .await?
       .map(Into::into)
   }
 
-  fn realpath_sync(&self, path: impl AsRef<Path>) -> FsResult<PathBuf> {
+  fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
     realpath(path)
   }
   async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf> {
-    tokio::task::spawn_blocking(move || realpath(path)).await?
+    tokio::task::spawn_blocking(move || realpath(&path)).await?
   }
 
-  fn read_dir_sync(&self, path: impl AsRef<Path>) -> FsResult<Vec<FsDirEntry>> {
+  fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>> {
     read_dir(path)
   }
   async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
-    tokio::task::spawn_blocking(move || read_dir(path)).await?
+    tokio::task::spawn_blocking(move || read_dir(&path)).await?
   }
 
-  fn rename_sync(
-    &self,
-    oldpath: impl AsRef<Path>,
-    newpath: impl AsRef<Path>,
-  ) -> FsResult<()> {
+  fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     fs::rename(oldpath, newpath).map_err(Into::into)
   }
   async fn rename_async(
@@ -208,11 +191,7 @@ impl FileSystem for StdFs {
       .map_err(Into::into)
   }
 
-  fn link_sync(
-    &self,
-    oldpath: impl AsRef<Path>,
-    newpath: impl AsRef<Path>,
-  ) -> FsResult<()> {
+  fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     fs::hard_link(oldpath, newpath).map_err(Into::into)
   }
   async fn link_async(
@@ -227,8 +206,8 @@ impl FileSystem for StdFs {
 
   fn symlink_sync(
     &self,
-    oldpath: impl AsRef<Path>,
-    newpath: impl AsRef<Path>,
+    oldpath: &Path,
+    newpath: &Path,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
     symlink(oldpath, newpath, file_type)
@@ -239,11 +218,11 @@ impl FileSystem for StdFs {
     newpath: PathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || symlink(oldpath, newpath, file_type))
+    tokio::task::spawn_blocking(move || symlink(&oldpath, &newpath, file_type))
       .await?
   }
 
-  fn read_link_sync(&self, path: impl AsRef<Path>) -> FsResult<PathBuf> {
+  fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
     fs::read_link(path).map_err(Into::into)
   }
   async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
@@ -252,16 +231,16 @@ impl FileSystem for StdFs {
       .map_err(Into::into)
   }
 
-  fn truncate_sync(&self, path: impl AsRef<Path>, len: u64) -> FsResult<()> {
+  fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()> {
     truncate(path, len)
   }
   async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || truncate(path, len)).await?
+    tokio::task::spawn_blocking(move || truncate(&path, len)).await?
   }
 
   fn utime_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -289,7 +268,7 @@ impl FileSystem for StdFs {
 
   fn write_file_sync(
     &self,
-    path: impl AsRef<Path>,
+    path: &Path,
     options: OpenOptions,
     data: &[u8],
   ) -> FsResult<()> {
@@ -324,7 +303,7 @@ impl FileSystem for StdFs {
     .await?
   }
 
-  fn read_file_sync(&self, path: impl AsRef<Path>) -> FsResult<Vec<u8>> {
+  fn read_file_sync(&self, path: &Path) -> FsResult<Vec<u8>> {
     fs::read(path).map_err(Into::into)
   }
   async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
@@ -334,7 +313,7 @@ impl FileSystem for StdFs {
   }
 }
 
-fn mkdir(path: impl AsRef<Path>, recursive: bool, mode: u32) -> FsResult<()> {
+fn mkdir(path: &Path, recursive: bool, mode: u32) -> FsResult<()> {
   let mut builder = fs::DirBuilder::new();
   builder.recursive(recursive);
   #[cfg(unix)]
@@ -350,7 +329,7 @@ fn mkdir(path: impl AsRef<Path>, recursive: bool, mode: u32) -> FsResult<()> {
 }
 
 #[cfg(unix)]
-fn chmod(path: impl AsRef<Path>, mode: u32) -> FsResult<()> {
+fn chmod(path: &Path, mode: u32) -> FsResult<()> {
   use std::os::unix::fs::PermissionsExt;
   let permissions = fs::Permissions::from_mode(mode);
   fs::set_permissions(path, permissions)?;
@@ -359,24 +338,20 @@ fn chmod(path: impl AsRef<Path>, mode: u32) -> FsResult<()> {
 
 // TODO: implement chmod for Windows (#4357)
 #[cfg(not(unix))]
-fn chmod(path: impl AsRef<Path>, _mode: u32) -> FsResult<()> {
+fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
   // Still check file/dir exists on Windows
   std::fs::metadata(path)?;
   Err(FsError::NotSupported)
 }
 
 #[cfg(unix)]
-fn chown(
-  path: impl AsRef<Path>,
-  uid: Option<u32>,
-  gid: Option<u32>,
-) -> FsResult<()> {
+fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
   use nix::unistd::chown;
   use nix::unistd::Gid;
   use nix::unistd::Uid;
   let owner = uid.map(Uid::from_raw);
   let group = gid.map(Gid::from_raw);
-  let res = chown(path.as_ref(), owner, group);
+  let res = chown(path, owner, group);
   if let Err(err) = res {
     return Err(io::Error::from_raw_os_error(err as i32).into());
   }
@@ -385,60 +360,57 @@ fn chown(
 
 // TODO: implement chown for Windows
 #[cfg(not(unix))]
-fn chown(
-  _path: impl AsRef<Path>,
-  _uid: Option<u32>,
-  _gid: Option<u32>,
-) -> FsResult<()> {
+fn chown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
   Err(FsError::NotSupported)
 }
 
-fn remove(path: impl AsRef<Path>, recursive: bool) -> FsResult<()> {
+fn remove(path: &Path, recursive: bool) -> FsResult<()> {
   // TODO: this is racy. This should open fds, and then `unlink` those.
-  let metadata = fs::symlink_metadata(&path)?;
+  let metadata = fs::symlink_metadata(path)?;
 
   let file_type = metadata.file_type();
   let res = if file_type.is_dir() {
     if recursive {
-      fs::remove_dir_all(&path)
+      fs::remove_dir_all(path)
     } else {
-      fs::remove_dir(&path)
+      fs::remove_dir(path)
     }
   } else if file_type.is_symlink() {
     #[cfg(unix)]
     {
-      fs::remove_file(&path)
+      fs::remove_file(path)
     }
     #[cfg(not(unix))]
     {
       use std::os::windows::prelude::MetadataExt;
       use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-        fs::remove_dir(&path)
+        fs::remove_dir(path)
       } else {
-        fs::remove_file(&path)
+        fs::remove_file(path)
       }
     }
   } else {
-    fs::remove_file(&path)
+    fs::remove_file(path)
   };
 
   res.map_err(Into::into)
 }
 
-fn copy_file(from: impl AsRef<Path>, to: impl AsRef<Path>) -> FsResult<()> {
+fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   #[cfg(target_os = "macos")]
   {
     use libc::clonefile;
     use libc::stat;
     use libc::unlink;
     use std::ffi::CString;
+    use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::prelude::OsStrExt;
 
-    let from_str = CString::new(from.as_ref().as_os_str().as_bytes()).unwrap();
-    let to_str = CString::new(to.as_ref().as_os_str().as_bytes()).unwrap();
+    let from_str = CString::new(from.as_os_str().as_bytes()).unwrap();
+    let to_str = CString::new(to.as_os_str().as_bytes()).unwrap();
 
     // SAFETY: `from` and `to` are valid C strings.
     // std::fs::copy does open() + fcopyfile() on macOS. We try to use
@@ -499,36 +471,37 @@ fn copy_file(from: impl AsRef<Path>, to: impl AsRef<Path>) -> FsResult<()> {
 }
 
 #[cfg(not(windows))]
-fn stat(path: impl AsRef<Path>) -> FsResult<FsStat> {
+fn stat(path: &Path) -> FsResult<FsStat> {
   let metadata = fs::metadata(path)?;
-  Ok(metadata_to_fsstat(metadata))
+  Ok(FsStat::from_std(metadata))
 }
 
 #[cfg(windows)]
-fn stat(path: impl AsRef<Path>) -> FsResult<FsStat> {
-  let metadata = fs::metadata(path.as_ref())?;
-  let mut fsstat = metadata_to_fsstat(metadata);
+fn stat(path: &Path) -> FsResult<FsStat> {
+  let metadata = fs::metadata(path)?;
+  let mut fsstat = FsStat::from_std(metadata);
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
-  let path = path.as_ref().canonicalize()?;
+  let path = path.canonicalize()?;
   stat_extra(&mut fsstat, &path, FILE_FLAG_BACKUP_SEMANTICS)?;
   Ok(fsstat)
 }
 
 #[cfg(not(windows))]
-fn lstat(path: impl AsRef<Path>) -> FsResult<FsStat> {
+fn lstat(path: &Path) -> FsResult<FsStat> {
   let metadata = fs::symlink_metadata(path)?;
-  Ok(metadata_to_fsstat(metadata))
+  Ok(FsStat::from_std(metadata))
 }
 
 #[cfg(windows)]
-fn lstat(path: impl AsRef<Path>) -> FsResult<FsStat> {
-  let metadata = fs::symlink_metadata(path.as_ref())?;
-  let mut fsstat = metadata_to_fsstat(metadata);
+fn lstat(path: &Path) -> FsResult<FsStat> {
   use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
   use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
+
+  let metadata = fs::symlink_metadata(path)?;
+  let mut fsstat = FsStat::from_std(metadata);
   stat_extra(
     &mut fsstat,
-    path.as_ref(),
+    path,
     FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
   )?;
   Ok(fsstat)
@@ -595,70 +568,11 @@ fn stat_extra(
   }
 }
 
-#[inline(always)]
-fn metadata_to_fsstat(metadata: fs::Metadata) -> FsStat {
-  macro_rules! unix_or_zero {
-    ($member:ident) => {{
-      #[cfg(unix)]
-      {
-        use std::os::unix::fs::MetadataExt;
-        metadata.$member()
-      }
-      #[cfg(not(unix))]
-      {
-        0
-      }
-    }};
-  }
-
-  #[inline(always)]
-  fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<u64> {
-    match maybe_time {
-      Ok(time) => Some(
-        time
-          .duration_since(UNIX_EPOCH)
-          .map(|t| t.as_millis() as u64)
-          .unwrap_or_else(|err| err.duration().as_millis() as u64),
-      ),
-      Err(_) => None,
-    }
-  }
-
-  FsStat {
-    is_file: metadata.is_file(),
-    is_directory: metadata.is_dir(),
-    is_symlink: metadata.file_type().is_symlink(),
-    size: metadata.len(),
-
-    mtime: to_msec(metadata.modified()),
-    atime: to_msec(metadata.accessed()),
-    birthtime: to_msec(metadata.created()),
-
-    dev: unix_or_zero!(dev),
-    ino: unix_or_zero!(ino),
-    mode: unix_or_zero!(mode),
-    nlink: unix_or_zero!(nlink),
-    uid: unix_or_zero!(uid),
-    gid: unix_or_zero!(gid),
-    rdev: unix_or_zero!(rdev),
-    blksize: unix_or_zero!(blksize),
-    blocks: unix_or_zero!(blocks),
-  }
+fn realpath(path: &Path) -> FsResult<PathBuf> {
+  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
 }
 
-fn realpath(path: impl AsRef<Path>) -> FsResult<PathBuf> {
-  let canonicalized_path = path.as_ref().canonicalize()?;
-  #[cfg(windows)]
-  let canonicalized_path = PathBuf::from(
-    canonicalized_path
-      .display()
-      .to_string()
-      .trim_start_matches("\\\\?\\"),
-  );
-  Ok(canonicalized_path)
-}
-
-fn read_dir(path: impl AsRef<Path>) -> FsResult<Vec<FsDirEntry>> {
+fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
   let entries = fs::read_dir(path)?
     .filter_map(|entry| {
       let entry = entry.ok()?;
@@ -687,24 +601,24 @@ fn read_dir(path: impl AsRef<Path>) -> FsResult<Vec<FsDirEntry>> {
 
 #[cfg(not(windows))]
 fn symlink(
-  oldpath: impl AsRef<Path>,
-  newpath: impl AsRef<Path>,
+  oldpath: &Path,
+  newpath: &Path,
   _file_type: Option<FsFileType>,
 ) -> FsResult<()> {
-  std::os::unix::fs::symlink(oldpath.as_ref(), newpath.as_ref())?;
+  std::os::unix::fs::symlink(oldpath, newpath)?;
   Ok(())
 }
 
 #[cfg(windows)]
 fn symlink(
-  oldpath: impl AsRef<Path>,
-  newpath: impl AsRef<Path>,
+  oldpath: &Path,
+  newpath: &Path,
   file_type: Option<FsFileType>,
 ) -> FsResult<()> {
   let file_type = match file_type {
     Some(file_type) => file_type,
     None => {
-      let old_meta = fs::metadata(&oldpath);
+      let old_meta = fs::metadata(oldpath);
       match old_meta {
         Ok(metadata) => {
           if metadata.is_file() {
@@ -731,17 +645,17 @@ fn symlink(
 
   match file_type {
     FsFileType::File => {
-      std::os::windows::fs::symlink_file(&oldpath, &newpath)?;
+      std::os::windows::fs::symlink_file(oldpath, newpath)?;
     }
     FsFileType::Directory => {
-      std::os::windows::fs::symlink_dir(&oldpath, &newpath)?;
+      std::os::windows::fs::symlink_dir(oldpath, newpath)?;
     }
   };
 
   Ok(())
 }
 
-fn truncate(path: impl AsRef<Path>, len: u64) -> FsResult<()> {
+fn truncate(path: &Path, len: u64) -> FsResult<()> {
   let file = fs::OpenOptions::new().write(true).open(path)?;
   file.set_len(len)?;
   Ok(())
@@ -767,163 +681,4 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options
-}
-
-fn sync<T>(
-  resource: Rc<StdFileResource>,
-  f: impl FnOnce(&mut fs::File) -> io::Result<T>,
-) -> FsResult<T> {
-  let res = resource
-    .with_file2(|file| f(file))
-    .ok_or(FsError::FileBusy)??;
-  Ok(res)
-}
-
-async fn nonblocking<T: Send + 'static>(
-  resource: Rc<StdFileResource>,
-  f: impl FnOnce(&mut fs::File) -> io::Result<T> + Send + 'static,
-) -> FsResult<T> {
-  let res = resource.with_file_blocking_task2(f).await?;
-  Ok(res)
-}
-
-#[async_trait::async_trait(?Send)]
-impl File for StdFileResource {
-  fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()> {
-    sync(self, |file| file.write_all(buf))
-  }
-  async fn write_all_async(self: Rc<Self>, buf: Vec<u8>) -> FsResult<()> {
-    nonblocking(self, move |file| file.write_all(&buf)).await
-  }
-
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    sync(self, |file| {
-      let mut buf = Vec::new();
-      file.read_to_end(&mut buf)?;
-      Ok(buf)
-    })
-  }
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    nonblocking(self, |file| {
-      let mut buf = Vec::new();
-      file.read_to_end(&mut buf)?;
-      Ok(buf)
-    })
-    .await
-  }
-
-  fn chmod_sync(self: Rc<Self>, _mode: u32) -> FsResult<()> {
-    #[cfg(unix)]
-    {
-      sync(self, |file| {
-        use std::os::unix::prelude::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(_mode))
-      })
-    }
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
-  }
-
-  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
-    #[cfg(unix)]
-    {
-      nonblocking(self, move |file| {
-        use std::os::unix::prelude::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(_mode))
-      })
-      .await
-    }
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
-  }
-
-  fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
-    sync(self, |file| file.seek(pos))
-  }
-  async fn seek_async(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64> {
-    nonblocking(self, move |file| file.seek(pos)).await
-  }
-
-  fn datasync_sync(self: Rc<Self>) -> FsResult<()> {
-    sync(self, |file| file.sync_data())
-  }
-  async fn datasync_async(self: Rc<Self>) -> FsResult<()> {
-    nonblocking(self, |file| file.sync_data()).await
-  }
-
-  fn sync_sync(self: Rc<Self>) -> FsResult<()> {
-    sync(self, |file| file.sync_all())
-  }
-  async fn sync_async(self: Rc<Self>) -> FsResult<()> {
-    nonblocking(self, |file| file.sync_all()).await
-  }
-
-  fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
-    sync(self, |file| file.metadata().map(metadata_to_fsstat))
-  }
-  async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
-    nonblocking(self, |file| file.metadata().map(metadata_to_fsstat)).await
-  }
-
-  fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
-    sync(self, |file| {
-      if exclusive {
-        file.lock_exclusive()
-      } else {
-        file.lock_shared()
-      }
-    })
-  }
-  async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
-    nonblocking(self, move |file| {
-      if exclusive {
-        file.lock_exclusive()
-      } else {
-        file.lock_shared()
-      }
-    })
-    .await
-  }
-
-  fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    sync(self, |file| file.unlock())
-  }
-  async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
-    nonblocking(self, |file| file.unlock()).await
-  }
-
-  fn truncate_sync(self: Rc<Self>, len: u64) -> FsResult<()> {
-    sync(self, |file| file.set_len(len))
-  }
-  async fn truncate_async(self: Rc<Self>, len: u64) -> FsResult<()> {
-    nonblocking(self, move |file| file.set_len(len)).await
-  }
-
-  fn utime_sync(
-    self: Rc<Self>,
-    atime_secs: i64,
-    atime_nanos: u32,
-    mtime_secs: i64,
-    mtime_nanos: u32,
-  ) -> FsResult<()> {
-    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
-    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    sync(self, |file| {
-      filetime::set_file_handle_times(file, Some(atime), Some(mtime))
-    })
-  }
-  async fn utime_async(
-    self: Rc<Self>,
-    atime_secs: i64,
-    atime_nanos: u32,
-    mtime_secs: i64,
-    mtime_nanos: u32,
-  ) -> FsResult<()> {
-    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
-    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    nonblocking(self, move |file| {
-      filetime::set_file_handle_times(file, Some(atime), Some(mtime))
-    })
-    .await
-  }
 }

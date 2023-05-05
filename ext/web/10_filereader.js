@@ -23,12 +23,12 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
   queueMicrotask,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetBuffer,
@@ -273,7 +273,7 @@ class FileReader extends EventTarget {
     webidl.assertBranded(this, FileReaderPrototype);
 
     if (!this[handlerSymbol]) {
-      this[handlerSymbol] = new Map();
+      this[handlerSymbol] = new SafeMap();
     }
     let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
     if (handlerWrapper) {
@@ -383,10 +383,7 @@ class FileReader extends EventTarget {
     const prefix = "Failed to execute 'readAsText' on 'FileReader'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     if (encoding !== undefined) {
-      encoding = webidl.converters["DOMString"](encoding, {
-        prefix,
-        context: "Argument 2",
-      });
+      encoding = webidl.converters["DOMString"](encoding, prefix, "Argument 2");
     }
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "Text", encoding });

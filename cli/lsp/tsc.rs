@@ -2763,7 +2763,7 @@ fn op_resolve(
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
-        state.state_snapshot.maybe_npm_resolver.as_ref(),
+        state.state_snapshot.maybe_node_resolver.as_ref(),
       );
       Ok(
         resolved

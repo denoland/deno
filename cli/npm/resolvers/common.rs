@@ -3,6 +3,7 @@
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -26,11 +27,10 @@ pub trait NpmPackageFsResolver: Send + Sync {
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<PathBuf>;
 
-  fn resolve_package_folder_from_deno_module(
+  fn package_folder(
     &self,
-    id: &NpmPackageId,
+    package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError>;
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -43,13 +43,11 @@ pub trait NpmPackageFsResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
-
   async fn cache_packages(&self) -> Result<(), AnyError>;
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -57,7 +55,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   mut packages: Vec<NpmResolutionPackage>,
-  cache: &NpmCache,
+  cache: &Arc<NpmCache>,
   registry_url: &Url,
 ) -> Result<(), AnyError> {
   let sync_download = should_sync_download();
@@ -92,7 +90,7 @@ pub async fn cache_packages(
 }
 
 pub fn ensure_registry_read_permission(
-  permissions: &mut dyn NodePermissions,
+  permissions: &dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
 ) -> Result<(), AnyError> {

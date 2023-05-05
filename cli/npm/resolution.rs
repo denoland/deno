@@ -38,11 +38,8 @@ use super::registry::CliNpmRegistryApi;
 /// based on changes to the resolution.
 ///
 /// This does not interact with the file system.
-#[derive(Clone)]
-pub struct NpmResolution(Arc<NpmResolutionInner>);
-
-struct NpmResolutionInner {
-  api: CliNpmRegistryApi,
+pub struct NpmResolution {
+  api: Arc<CliNpmRegistryApi>,
   snapshot: RwLock<NpmResolutionSnapshot>,
   update_queue: TaskQueue,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -50,7 +47,7 @@ struct NpmResolutionInner {
 
 impl std::fmt::Debug for NpmResolution {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let snapshot = self.0.snapshot.read();
+    let snapshot = self.snapshot.read();
     f.debug_struct("NpmResolution")
       .field("snapshot", &snapshot.as_serialized())
       .finish()
@@ -59,13 +56,13 @@ impl std::fmt::Debug for NpmResolution {
 
 impl NpmResolution {
   pub fn from_serialized(
-    api: CliNpmRegistryApi,
+    api: Arc<CliNpmRegistryApi>,
     initial_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     let snapshot =
       NpmResolutionSnapshot::new(NpmResolutionSnapshotCreateOptions {
-        api: Arc::new(api.clone()),
+        api: api.clone(),
         snapshot: initial_snapshot.unwrap_or_default(),
         // WARNING: When bumping this version, check if anything needs to be
         // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
@@ -77,35 +74,33 @@ impl NpmResolution {
   }
 
   pub fn new(
-    api: CliNpmRegistryApi,
+    api: Arc<CliNpmRegistryApi>,
     initial_snapshot: NpmResolutionSnapshot,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    Self(Arc::new(NpmResolutionInner {
+    Self {
       api,
       snapshot: RwLock::new(initial_snapshot),
       update_queue: Default::default(),
       maybe_lockfile,
-    }))
+    }
   }
 
   pub async fn add_package_reqs(
     &self,
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    let inner = &self.0;
-
     // only allow one thread in here at a time
-    let _permit = inner.update_queue.acquire().await;
+    let _permit = self.update_queue.acquire().await;
     let snapshot = add_package_reqs_to_snapshot(
-      &inner.api,
+      &self.api,
       package_reqs,
-      self.0.maybe_lockfile.clone(),
-      || inner.snapshot.read().clone(),
+      self.maybe_lockfile.clone(),
+      || self.snapshot.read().clone(),
     )
     .await?;
 
-    *inner.snapshot.write() = snapshot;
+    *self.snapshot.write() = snapshot;
     Ok(())
   }
 
@@ -113,17 +108,16 @@ impl NpmResolution {
     &self,
     package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    let inner = &self.0;
     // only allow one thread in here at a time
-    let _permit = inner.update_queue.acquire().await;
+    let _permit = self.update_queue.acquire().await;
 
     let reqs_set = package_reqs.iter().cloned().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
-      &inner.api,
+      &self.api,
       package_reqs,
-      self.0.maybe_lockfile.clone(),
+      self.maybe_lockfile.clone(),
       || {
-        let snapshot = inner.snapshot.read().clone();
+        let snapshot = self.snapshot.read().clone();
         let has_removed_package = !snapshot
           .package_reqs()
           .keys()
@@ -138,37 +132,36 @@ impl NpmResolution {
     )
     .await?;
 
-    *inner.snapshot.write() = snapshot;
+    *self.snapshot.write() = snapshot;
 
     Ok(())
   }
 
   pub async fn resolve_pending(&self) -> Result<(), AnyError> {
-    let inner = &self.0;
     // only allow one thread in here at a time
-    let _permit = inner.update_queue.acquire().await;
+    let _permit = self.update_queue.acquire().await;
 
     let snapshot = add_package_reqs_to_snapshot(
-      &inner.api,
+      &self.api,
       Vec::new(),
-      self.0.maybe_lockfile.clone(),
-      || inner.snapshot.read().clone(),
+      self.maybe_lockfile.clone(),
+      || self.snapshot.read().clone(),
     )
     .await?;
 
-    *inner.snapshot.write() = snapshot;
+    *self.snapshot.write() = snapshot;
 
     Ok(())
   }
 
-  pub fn pkg_req_ref_to_nv_ref(
+  pub fn resolve_nv_ref_from_pkg_req_ref(
     &self,
-    req_ref: NpmPackageReqReference,
+    req_ref: &NpmPackageReqReference,
   ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
     let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
     Ok(NpmPackageNvReference {
       nv: node_id.nv,
-      sub_path: req_ref.sub_path,
+      sub_path: req_ref.sub_path.clone(),
     })
   }
 
@@ -177,7 +170,6 @@ impl NpmResolution {
     id: &NpmPackageId,
   ) -> Option<NpmPackageCacheFolderId> {
     self
-      .0
       .snapshot
       .read()
       .package_from_id(id)
@@ -190,7 +182,6 @@ impl NpmResolution {
     referrer: &NpmPackageCacheFolderId,
   ) -> Result<NpmResolutionPackage, Box<PackageNotFoundFromReferrerError>> {
     self
-      .0
       .snapshot
       .read()
       .resolve_package_from_package(name, referrer)
@@ -203,7 +194,6 @@ impl NpmResolution {
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self
-      .0
       .snapshot
       .read()
       .resolve_pkg_from_pkg_req(req)
@@ -215,7 +205,6 @@ impl NpmResolution {
     id: &NpmPackageNv,
   ) -> Result<NpmPackageId, PackageNvNotFoundError> {
     self
-      .0
       .snapshot
       .read()
       .resolve_package_from_deno_module(id)
@@ -230,8 +219,7 @@ impl NpmResolution {
     pkg_req: &NpmPackageReq,
   ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
     // we should always have this because it should have been cached before here
-    let package_info =
-      self.0.api.get_cached_package_info(&pkg_req.name).unwrap();
+    let package_info = self.api.get_cached_package_info(&pkg_req.name).unwrap();
     self.resolve_package_req_as_pending_with_info(pkg_req, &package_info)
   }
 
@@ -244,30 +232,29 @@ impl NpmResolution {
     package_info: &NpmPackageInfo,
   ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
     debug_assert_eq!(pkg_req.name, package_info.name);
-    let inner = &self.0;
-    let mut snapshot = inner.snapshot.write();
+    let mut snapshot = self.snapshot.write();
     let nv = snapshot.resolve_package_req_as_pending(pkg_req, package_info)?;
     Ok(nv)
   }
 
   pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
-    self.0.snapshot.read().all_packages_partitioned()
+    self.snapshot.read().all_packages_partitioned()
   }
 
   pub fn has_packages(&self) -> bool {
-    !self.0.snapshot.read().is_empty()
+    !self.snapshot.read().is_empty()
   }
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
-    self.0.snapshot.read().clone()
+    self.snapshot.read().clone()
   }
 
   pub fn serialized_snapshot(&self) -> SerializedNpmResolutionSnapshot {
-    self.0.snapshot.read().as_serialized()
+    self.snapshot.read().as_serialized()
   }
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    let snapshot = self.0.snapshot.read();
+    let snapshot = self.snapshot.read();
     populate_lockfile_from_snapshot(lockfile, &snapshot)
   }
 }

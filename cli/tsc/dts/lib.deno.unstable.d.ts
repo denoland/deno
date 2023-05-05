@@ -97,6 +97,8 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
+   *
+   * @category FFI
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -351,7 +353,9 @@ declare namespace Deno {
       : StaticForeignSymbol<T[K]>;
   };
 
+  /** @category FFI */
   const brand: unique symbol;
+  /** @category FFI */
   type PointerObject = { [brand]: unknown };
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -643,8 +647,11 @@ declare namespace Deno {
 
   /**
    *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
+   *
+   *  @category FFI
    */
   type Cast<A, B> = A extends B ? A : B;
+  /** @category FFI */
   type Const<T> = Cast<
     T,
     | (T extends string | number | bigint | boolean ? T : never)
@@ -1354,10 +1361,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(
-    handler: ServeHandler,
-    options?: ServeOptions | ServeTlsOptions,
-  ): Promise<void>;
+  export function serve(handler: ServeHandler): Promise<void>;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1514,25 +1518,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Allows "hijacking" the connection that the request is associated with.
-   * This can be used to implement protocols that build on top of HTTP (eg.
-   * {@linkcode WebSocket}).
-   *
-   * Unlike {@linkcode Deno.upgradeHttp} this function does not require that you
-   * respond to the request with a {@linkcode Response} object. Instead this
-   * function returns the underlying connection and first packet received
-   * immediately, and then the caller is responsible for writing the response to
-   * the connection.
-   *
-   * This method can only be called on requests originating the
-   * {@linkcode Deno.serve} server.
-   *
-   * @category HTTP Server
-   */
-  export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that
@@ -1559,6 +1544,10 @@ declare namespace Deno {
    * the parts is determined by both the type and the value of the part. The
    * relative significance of the types can be found in documentation for the
    * {@linkcode Deno.KvKeyPart} type.
+   *
+   * Keys have a maximum size of 2048 bytes serialized. If the size of the key
+   * exceeds this limit, an error will be thrown on the operation that this key
+   * was passed to.
    *
    * @category KV
    */
@@ -1642,7 +1631,8 @@ declare namespace Deno {
    * - `sum` - Adds the given value to the existing value of the key. Both the
    *   value specified in the mutation, and any existing value must be of type
    *   `Deno.KvU64`. If the key does not exist, the value is set to the given
-   *   value (summed with 0).
+   *   value (summed with 0). If the result of the sum overflows an unsigned
+   *   64-bit integer, the result is wrapped around.
    * - `max` - Sets the value of the key to the maximum of the existing value
    *   and the given value. Both the value specified in the mutation, and any
    *   existing value must be of type `Deno.KvU64`. If the key does not exist,
@@ -1770,9 +1760,16 @@ declare namespace Deno {
     batchSize?: number;
   }
 
+  /** @category KV */
   export interface KvCommitResult {
+    ok: true;
     /** The versionstamp of the value committed to KV. */
     versionstamp: string;
+  }
+
+  /** @category KV */
+  export interface KvCommitError {
+    ok: false;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1816,11 +1813,13 @@ declare namespace Deno {
    *
    * The `commit` method of an atomic operation returns a value indicating
    * whether checks passed and mutations were performed. If the operation failed
-   * because of a failed check, the return value will be `null`. If the
+   * because of a failed check, the return value will be a
+   * {@linkcode Deno.KvCommitError} with an `ok: false` property. If the
    * operation failed for any other reason (storage error, invalid value, etc.),
    * an exception will be thrown. If the operation succeeded, the return value
-   * will be a {@linkcode Deno.KvCommitResult} object containing the
-   * versionstamp of the value committed to KV.
+   * will be a {@linkcode Deno.KvCommitResult} object with a `ok: true` property
+   * and the versionstamp of the value committed to KV.
+
    *
    * @category KV
    */
@@ -1840,6 +1839,24 @@ declare namespace Deno {
      */
     mutate(...mutations: KvMutation[]): this;
     /**
+     * Shortcut for creating a `sum` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    sum(key: KvKey, n: bigint): this;
+    /**
+     * Shortcut for creating a `min` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    min(key: KvKey, n: bigint): this;
+    /**
+     * Shortcut for creating a `max` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    max(key: KvKey, n: bigint): this;
+    /**
      * Add to the operation a mutation that sets the value of the specified key
      * to the specified value if all checks pass during the commit.
      */
@@ -1852,17 +1869,19 @@ declare namespace Deno {
     /**
      * Commit the operation to the KV store. Returns a value indicating whether
      * checks passed and mutations were performed. If the operation failed
-     * because of a failed check, the return value will be `null`. If the
-     * operation failed for any other reason (storage error, invalid value,
-     * etc.), an exception will be thrown. If the operation succeeded, the
-     * return value will be a {@linkcode Deno.KvCommitResult} object containing
-     * the versionstamp of the value committed to KV.
+     * because of a failed check, the return value will be a {@linkcode
+     * Deno.KvCommitError} with an `ok: false` property. If the operation failed
+     * for any other reason (storage error, invalid value, etc.), an exception
+     * will be thrown. If the operation succeeded, the return value will be a
+     * {@linkcode Deno.KvCommitResult} object with a `ok: true` property and the
+     * versionstamp of the value committed to KV.
      *
-     * If the commit returns `null`, one may create a new atomic operation with
-     * updated checks and mutations and attempt to commit it again. See the note
-     * on optimistic locking in the documentation for {@linkcode Deno.AtomicOperation}.
+     * If the commit returns `ok: false`, one may create a new atomic operation
+     * with updated checks and mutations and attempt to commit it again. See the
+     * note on optimistic locking in the documentation for
+     * {@linkcode Deno.AtomicOperation}.
      */
-    commit(): Promise<KvCommitResult | null>;
+    commit(): Promise<KvCommitResult | KvCommitError>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1896,7 +1915,8 @@ declare namespace Deno {
    * maximum length of 64 KiB after serialization. Serialization of both keys
    * and values is somewhat opaque, but one can usually assume that the
    * serialization of any value is about the same length as the resulting string
-   * of a JSON serialization of that same value.
+   * of a JSON serialization of that same value. If theses limits are exceeded,
+   * an exception will be thrown.
    *
    * @category KV
    */

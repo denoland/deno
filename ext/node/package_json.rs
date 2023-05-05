@@ -4,7 +4,7 @@ use crate::NodeFs;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 
-use super::RequireNpmResolver;
+use super::NpmResolver;
 
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
@@ -62,16 +62,18 @@ impl PackageJson {
     }
   }
 
-  pub fn load<Fs: NodeFs>(
-    resolver: &dyn RequireNpmResolver,
-    permissions: &mut dyn NodePermissions,
+  pub fn load(
+    fs: &dyn NodeFs,
+    resolver: &dyn NpmResolver,
+    permissions: &dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;
-    Self::load_skip_read_permission::<Fs>(path)
+    Self::load_skip_read_permission(fs, path)
   }
 
-  pub fn load_skip_read_permission<Fs: NodeFs>(
+  pub fn load_skip_read_permission(
+    fs: &dyn NodeFs,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     assert!(path.is_absolute());
@@ -80,7 +82,7 @@ impl PackageJson {
       return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
     }
 
-    let source = match Fs::read_to_string(&path) {
+    let source = match fs.read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
         return Ok(PackageJson::empty(path));

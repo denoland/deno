@@ -42,13 +42,13 @@ const {
   PromisePrototypeThen,
   PromisePrototypeCatch,
   SafeArrayIterator,
+  SafeWeakMap,
   String,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
-  WeakMap,
   WeakMapPrototypeDelete,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
@@ -62,7 +62,7 @@ const REQUEST_BODY_HEADER_NAMES = [
   "content-type",
 ];
 
-const requestBodyReaders = new WeakMap();
+const requestBodyReaders = new SafeWeakMap();
 
 /**
  * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
@@ -523,10 +523,11 @@ function handleWasmStreaming(source, rid) {
   // This implements part of
   // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
   try {
-    const res = webidl.converters["Response"](source, {
-      prefix: "Failed to call 'WebAssembly.compileStreaming'",
-      context: "Argument 1",
-    });
+    const res = webidl.converters["Response"](
+      source,
+      "Failed to call 'WebAssembly.compileStreaming'",
+      "Argument 1",
+    );
 
     // 2.3.
     // The spec is ambiguous here, see

@@ -2,8 +2,15 @@
 
 // @ts-ignore internal api
 const {
-  ObjectGetPrototypeOf,
   AsyncGeneratorPrototype,
+  BigIntPrototypeToString,
+  ObjectFreeze,
+  ObjectGetPrototypeOf,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeReplace,
+  SymbolFor,
+  SymbolToStringTag,
+  Uint8ArrayPrototype,
 } = globalThis.__bootstrap.primordials;
 const core = Deno.core;
 const ops = core.ops;
@@ -16,7 +23,7 @@ const encodeCursor: (
 
 async function openKv(path: string) {
   const rid = await core.opAsync("op_kv_database_open", path);
-  return new Kv(rid);
+  return new Kv(rid, kvSymbol);
 }
 
 interface RawKvEntry {
@@ -36,10 +43,17 @@ type RawValue = {
   value: bigint;
 };
 
+const kvSymbol = Symbol("KvRid");
+
 class Kv {
   #rid: number;
 
-  constructor(rid: number) {
+  constructor(rid: number = undefined, symbol: symbol = undefined) {
+    if (kvSymbol !== symbol) {
+      throw new TypeError(
+        "Deno.Kv can not be constructed, use Deno.openKv instead.",
+      );
+    }
     this.#rid = rid;
   }
 
@@ -116,7 +130,7 @@ class Kv {
       [],
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
-    return { versionstamp };
+    return { ok: true, versionstamp };
   }
 
   async delete(key: Deno.KvKey) {
@@ -241,6 +255,21 @@ class AtomicOperation {
     return this;
   }
 
+  sum(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "sum", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  min(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "min", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
+  max(key: Deno.KvKey, n: bigint): this {
+    this.#mutations.push([key, "max", serializeValue(new KvU64(n))]);
+    return this;
+  }
+
   set(key: Deno.KvKey, value: unknown): this {
     this.#mutations.push([key, "set", serializeValue(value)]);
     return this;
@@ -251,7 +280,7 @@ class AtomicOperation {
     return this;
   }
 
-  async commit(): Promise<Deno.KvCommitResult | null> {
+  async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
@@ -259,8 +288,8 @@ class AtomicOperation {
       this.#mutations,
       [], // TODO(@losfair): enqueue
     );
-    if (versionstamp === null) return null;
-    return { versionstamp };
+    if (versionstamp === null) return { ok: false };
+    return { ok: true, versionstamp };
   }
 
   then() {
@@ -270,11 +299,11 @@ class AtomicOperation {
   }
 }
 
-const MIN_U64 = 0n;
-const MAX_U64 = 0xffffffffffffffffn;
+const MIN_U64 = BigInt("0");
+const MAX_U64 = BigInt("0xffffffffffffffff");
 
 class KvU64 {
-  readonly value: bigint;
+  value: bigint;
 
   constructor(value: bigint) {
     if (typeof value !== "bigint") {
@@ -284,10 +313,30 @@ class KvU64 {
       throw new RangeError("value must be a positive bigint");
     }
     if (value > MAX_U64) {
-      throw new RangeError("value must be a 64-bit unsigned integer");
+      throw new RangeError("value must fit in a 64-bit unsigned integer");
     }
     this.value = value;
     Object.freeze(this);
+  }
+
+  valueOf() {
+    return this.value;
+  }
+
+  toString() {
+    return BigIntPrototypeToString(this.value);
+  }
+
+  get [SymbolToStringTag]() {
+    return "Deno.KvU64";
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return StringPrototypeReplace(
+      inspect(Object(this.value), inspectOptions),
+      "BigInt",
+      "Deno.KvU64",
+    );
   }
 }
 
@@ -297,7 +346,7 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value),
+        value: core.deserialize(value, { forStorage: true }),
       };
     case "bytes":
       return {
@@ -315,20 +364,20 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
 }
 
 function serializeValue(value: unknown): RawValue {
-  if (value instanceof Uint8Array) {
+  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
     return {
       kind: "bytes",
       value,
     };
-  } else if (value instanceof KvU64) {
+  } else if (ObjectPrototypeIsPrototypeOf(KvU64.prototype, value)) {
     return {
       kind: "u64",
-      value: value.value,
+      value: value.valueOf(),
     };
   } else {
     return {
       kind: "v8",
-      value: core.serialize(value),
+      value: core.serialize(value, { forStorage: true }),
     };
   }
 }
@@ -383,13 +432,13 @@ class KvListIterator extends AsyncIterator
     let start: Deno.KvKey | undefined;
     let end: Deno.KvKey | undefined;
     if ("prefix" in selector && selector.prefix !== undefined) {
-      prefix = Object.freeze([...selector.prefix]);
+      prefix = ObjectFreeze([...selector.prefix]);
     }
     if ("start" in selector && selector.start !== undefined) {
-      start = Object.freeze([...selector.start]);
+      start = ObjectFreeze([...selector.start]);
     }
     if ("end" in selector && selector.end !== undefined) {
-      end = Object.freeze([...selector.end]);
+      end = ObjectFreeze([...selector.end]);
     }
     if (prefix) {
       if (start && end) {

@@ -210,15 +210,18 @@ impl JsStackFrame {
     // V8's column numbers are 0-based, we want 1-based.
     let c = message.get_start_column() as i64 + 1;
     let state_rc = JsRuntime::state(scope);
-    let state = &mut *state_rc.borrow_mut();
-    if let Some(source_map_getter) = &state.source_map_getter {
-      let (f, l, c) = apply_source_map(
-        f,
-        l,
-        c,
-        &mut state.source_map_cache,
-        source_map_getter.as_ref(),
-      );
+    let (getter, cache) = {
+      let state = state_rc.borrow();
+      (
+        state.source_map_getter.clone(),
+        state.source_map_cache.clone(),
+      )
+    };
+
+    if let Some(source_map_getter) = getter {
+      let mut cache = cache.borrow_mut();
+      let (f, l, c) =
+        apply_source_map(f, l, c, &mut cache, &**source_map_getter);
       Some(JsStackFrame::from_location(Some(f), Some(l), Some(c)))
     } else {
       Some(JsStackFrame::from_location(Some(f), Some(l), Some(c)))
@@ -280,8 +283,15 @@ impl JsError {
     }
     {
       let state_rc = JsRuntime::state(scope);
-      let state = &mut *state_rc.borrow_mut();
-      if let Some(source_map_getter) = &state.source_map_getter {
+      let (getter, cache) = {
+        let state = state_rc.borrow();
+        (
+          state.source_map_getter.clone(),
+          state.source_map_cache.clone(),
+        )
+      };
+      if let Some(source_map_getter) = getter {
+        let mut cache = cache.borrow_mut();
         for (i, frame) in frames.iter().enumerate() {
           if let (Some(file_name), Some(line_number)) =
             (&frame.file_name, frame.line_number)
@@ -290,8 +300,8 @@ impl JsError {
               source_line = get_source_line(
                 file_name,
                 line_number,
-                &mut state.source_map_cache,
-                source_map_getter.as_ref(),
+                &mut cache,
+                &**source_map_getter,
               );
               source_line_frame_index = Some(i);
               break;
@@ -405,8 +415,16 @@ impl JsError {
       }
       {
         let state_rc = JsRuntime::state(scope);
-        let state = &mut *state_rc.borrow_mut();
-        if let Some(source_map_getter) = &state.source_map_getter {
+        let (getter, cache) = {
+          let state = state_rc.borrow();
+          (
+            state.source_map_getter.clone(),
+            state.source_map_cache.clone(),
+          )
+        };
+        if let Some(source_map_getter) = getter {
+          let mut cache = cache.borrow_mut();
+
           for (i, frame) in frames.iter().enumerate() {
             if let (Some(file_name), Some(line_number)) =
               (&frame.file_name, frame.line_number)
@@ -415,8 +433,8 @@ impl JsError {
                 source_line = get_source_line(
                   file_name,
                   line_number,
-                  &mut state.source_map_cache,
-                  source_map_getter.as_ref(),
+                  &mut cache,
+                  &**source_map_getter,
                 );
                 source_line_frame_index = Some(i);
                 break;

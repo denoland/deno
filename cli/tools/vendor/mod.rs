@@ -15,7 +15,8 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
-use crate::proc_state::ProcState;
+use crate::factory::CliFactory;
+use crate::graph_util::ModuleGraphBuilder;
 use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
@@ -42,14 +43,20 @@ pub async fn vendor(
   let output_dir = resolve_from_cwd(&raw_output_dir)?;
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
-  let graph = create_graph(&ps, &vendor_flags).await?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let graph = create_graph(
+    factory.module_graph_builder().await?,
+    &vendor_flags,
+    cli_options.initial_cwd(),
+  )
+  .await?;
   let vendored_count = build::build(
     graph,
-    &ps.parsed_source_cache,
+    factory.parsed_source_cache()?,
     &output_dir,
-    ps.maybe_import_map.as_deref(),
-    ps.lockfile.clone(),
+    factory.maybe_import_map().await?.as_deref(),
+    factory.maybe_lockfile().clone(),
     &build::RealVendorEnvironment,
   )?;
 
@@ -65,7 +72,7 @@ pub async fn vendor(
   );
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
-    if maybe_update_config_file(&output_dir, &ps) {
+    if maybe_update_config_file(&output_dir, cli_options) {
       log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
@@ -147,15 +154,14 @@ fn validate_options(
   Ok(())
 }
 
-fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
+fn maybe_update_config_file(output_dir: &Path, options: &CliOptions) -> bool {
   assert!(output_dir.is_absolute());
-  let config_file_specifier = match ps.options.maybe_config_file_specifier() {
+  let config_file_specifier = match options.maybe_config_file_specifier() {
     Some(f) => f,
     None => return false,
   };
 
-  let fmt_config = ps
-    .options
+  let fmt_config = options
     .maybe_config_file()
     .as_ref()
     .and_then(|config| config.to_fmt_config().ok())
@@ -262,16 +268,17 @@ fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
 }
 
 async fn create_graph(
-  ps: &ProcState,
+  module_graph_builder: &ModuleGraphBuilder,
   flags: &VendorFlags,
+  initial_cwd: &Path,
 ) -> Result<deno_graph::ModuleGraph, AnyError> {
   let entry_points = flags
     .specifiers
     .iter()
-    .map(|p| resolve_url_or_path(p, ps.options.initial_cwd()))
+    .map(|p| resolve_url_or_path(p, initial_cwd))
     .collect::<Result<Vec<_>, _>>()?;
 
-  ps.create_graph(entry_points).await
+  module_graph_builder.create_graph(entry_points).await
 }
 
 #[cfg(test)]

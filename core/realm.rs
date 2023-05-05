@@ -4,25 +4,47 @@ use crate::bindings;
 use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
 use crate::runtime::exception_to_err_result;
+use crate::JsRuntime;
 use anyhow::Error;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::hash::BuildHasherDefault;
+use std::hash::Hasher;
 use std::option::Option;
 use std::rc::Rc;
 use v8::HandleScope;
 use v8::Local;
 
+// Hasher used for `unrefed_ops`. Since these are rolling i32, there's no
+// need to actually hash them.
+#[derive(Default)]
+pub(crate) struct IdentityHasher(u64);
+
+impl Hasher for IdentityHasher {
+  fn write_i32(&mut self, i: i32) {
+    self.0 = i as u64;
+  }
+
+  fn finish(&self) -> u64 {
+    self.0
+  }
+
+  fn write(&mut self, _bytes: &[u8]) {
+    unreachable!()
+  }
+}
+
 #[derive(Default)]
 pub(crate) struct ContextState {
-  pub(crate) js_event_loop_tick_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_event_loop_tick_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_build_custom_error_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_promise_reject_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_format_exception_cb: Option<Rc<v8::Global<v8::Function>>>,
+  pub(crate) js_wasm_streaming_cb: Option<Rc<v8::Global<v8::Function>>>,
   pub(crate) pending_promise_rejections:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
-  pub(crate) unrefed_ops: HashSet<i32>,
+  pub(crate) unrefed_ops: HashSet<i32, BuildHasherDefault<IdentityHasher>>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
   pub(crate) op_ctxs: Box<[OpCtx]>,
@@ -73,16 +95,18 @@ pub(crate) struct ContextState {
 /// keep the underlying V8 context alive even if it would have otherwise been
 /// garbage collected.
 #[derive(Clone)]
-pub struct JsRealm(v8::Global<v8::Context>);
+pub struct JsRealm(Rc<v8::Global<v8::Context>>);
 impl JsRealm {
   pub fn new(context: v8::Global<v8::Context>) -> Self {
-    JsRealm(context)
+    JsRealm(Rc::new(context))
   }
 
+  #[inline(always)]
   pub fn context(&self) -> &v8::Global<v8::Context> {
     &self.0
   }
 
+  #[inline(always)]
   pub(crate) fn state(
     &self,
     isolate: &mut v8::Isolate,
@@ -95,6 +119,7 @@ impl JsRealm {
       .clone()
   }
 
+  #[inline(always)]
   pub(crate) fn state_from_scope(
     scope: &mut v8::HandleScope,
   ) -> Rc<RefCell<ContextState>> {
@@ -106,11 +131,12 @@ impl JsRealm {
   }
 
   /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
+  #[inline(always)]
   pub fn handle_scope<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
   ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(isolate, &self.0)
+    v8::HandleScope::with_context(isolate, &*self.0)
   }
 
   /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
@@ -212,12 +238,36 @@ impl JsRealm {
   }
 
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
+}
+
+pub struct JsRealmLocal<'s>(v8::Local<'s, v8::Context>);
+impl<'s> JsRealmLocal<'s> {
+  pub fn new(context: v8::Local<'s, v8::Context>) -> Self {
+    JsRealmLocal(context)
+  }
+
+  #[inline(always)]
+  pub fn context(&self) -> v8::Local<v8::Context> {
+    self.0
+  }
+
+  #[inline(always)]
+  pub(crate) fn state(
+    &self,
+    isolate: &mut v8::Isolate,
+  ) -> Rc<RefCell<ContextState>> {
+    self
+      .context()
+      .get_slot::<Rc<RefCell<ContextState>>>(isolate)
+      .unwrap()
+      .clone()
+  }
 
   pub(crate) fn check_promise_rejections(
     &self,
-    isolate: &mut v8::Isolate,
+    scope: &mut v8::HandleScope,
   ) -> Result<(), Error> {
-    let context_state_rc = self.state(isolate);
+    let context_state_rc = self.state(scope);
     let mut context_state = context_state_rc.borrow_mut();
 
     if context_state.pending_promise_rejections.is_empty() {
@@ -238,8 +288,16 @@ impl JsRealm {
       .unwrap();
     drop(context_state);
 
-    let scope = &mut self.handle_scope(isolate);
     let exception = v8::Local::new(scope, handle);
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow();
+    if let Some(inspector) = &state.inspector {
+      let inspector = inspector.borrow();
+      inspector.exception_thrown(scope, exception, true);
+      if inspector.has_blocking_sessions() {
+        return Ok(());
+      }
+    }
     exception_to_err_result(scope, exception, true)
   }
 }

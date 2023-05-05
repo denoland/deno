@@ -19,8 +19,8 @@ use super::NpmResolution;
 #[derive(Debug)]
 struct PackageJsonDepsInstallerInner {
   has_installed_flag: AtomicFlag,
-  npm_registry_api: CliNpmRegistryApi,
-  npm_resolution: NpmResolution,
+  npm_registry_api: Arc<CliNpmRegistryApi>,
+  npm_resolution: Arc<NpmResolution>,
   package_deps: PackageJsonDeps,
 }
 
@@ -58,22 +58,20 @@ impl PackageJsonDepsInstallerInner {
 }
 
 /// Holds and controls installing dependencies from package.json.
-#[derive(Debug, Clone, Default)]
-pub struct PackageJsonDepsInstaller(Option<Arc<PackageJsonDepsInstallerInner>>);
+#[derive(Debug, Default)]
+pub struct PackageJsonDepsInstaller(Option<PackageJsonDepsInstallerInner>);
 
 impl PackageJsonDepsInstaller {
   pub fn new(
-    npm_registry_api: CliNpmRegistryApi,
-    npm_resolution: NpmResolution,
+    npm_registry_api: Arc<CliNpmRegistryApi>,
+    npm_resolution: Arc<NpmResolution>,
     deps: Option<PackageJsonDeps>,
   ) -> Self {
-    Self(deps.map(|package_deps| {
-      Arc::new(PackageJsonDepsInstallerInner {
-        has_installed_flag: Default::default(),
-        npm_registry_api,
-        npm_resolution,
-        package_deps,
-      })
+    Self(deps.map(|package_deps| PackageJsonDepsInstallerInner {
+      has_installed_flag: Default::default(),
+      npm_registry_api,
+      npm_resolution,
+      package_deps,
     }))
   }
 

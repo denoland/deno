@@ -263,18 +263,21 @@ async fn build_test_graph(
   mut loader: TestLoader,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver = original_import_map.map(|m| {
-    let npm_registry_api = CliNpmRegistryApi::new_uninitialized();
-    let npm_resolution =
-      NpmResolution::from_serialized(npm_registry_api.clone(), None, None);
-    let deps_installer = PackageJsonDepsInstaller::new(
+  let resolver = original_import_map.map(|original_import_map| {
+    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
+      npm_registry_api.clone(),
+      None,
+      None,
+    ));
+    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
       npm_registry_api.clone(),
       npm_resolution.clone(),
       None,
-    );
+    ));
     CliGraphResolver::new(
       None,
-      Some(Arc::new(m)),
+      Some(Arc::new(original_import_map)),
       false,
       npm_registry_api,
       npm_resolution,
