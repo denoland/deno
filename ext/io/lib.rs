@@ -409,8 +409,10 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
-        self.with_sync(|file| Ok(file.read(buf)?))
+      StdFileResourceKind::File => self.with_sync(|file| Ok(file.read(buf)?)),
+      StdFileResourceKind::Stdin => {
+        // bypass the file and use std::io::stdin()
+        Ok(std::io::stdin().read(buf)?)
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(FsError::NotSupported)
@@ -448,10 +450,6 @@ impl crate::fs::File for StdFileResourceInner {
         self
           .with_inner_blocking_task(move |file| Ok(file.write_all(&buf)?))
           .await
-      }
-      StdFileResourceKind::Stdin => {
-        // bypass the file and use std::io::stdin()
-        std::io::stdin().read(buf)
       }
       StdFileResourceKind::Stdin => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
@@ -524,9 +522,15 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File => {
         let mut buf = Vec::new();
         self.with_sync(|file| Ok(file.read_to_end(&mut buf)?))?;
+        Ok(buf)
+      }
+      StdFileResourceKind::Stdin => {
+        // bypass the file and use std::io::stdin()
+        let mut buf = Vec::new();
+        std::io::stdin().read_to_end(&mut buf)?;
         Ok(buf)
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
@@ -536,7 +540,7 @@ impl crate::fs::File for StdFileResourceInner {
   }
   async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File => {
         self
           .with_inner_blocking_task(|file| {
             let mut buf = Vec::new();
@@ -544,6 +548,15 @@ impl crate::fs::File for StdFileResourceInner {
             Ok(buf)
           })
           .await
+      }
+      StdFileResourceKind::Stdin => {
+        // bypass the file and use std::io::stdin()
+        tokio::task::spawn_blocking(|| {
+          let mut buf = Vec::new();
+          std::io::stdin().read_to_end(&mut buf)?;
+          Ok(buf)
+        })
+        .await?
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(FsError::NotSupported)
