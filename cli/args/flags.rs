@@ -9,7 +9,6 @@ use clap::Command;
 use clap::ValueHint;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
-use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
@@ -284,12 +283,6 @@ pub enum CaData {
   Bytes(Vec<u8>),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum NodeModulesDirOption {
-  Bool(bool),
-  Path(PathBuf),
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -315,7 +308,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
-  pub node_modules_dir: Option<NodeModulesDirOption>,
+  pub node_modules_dir: Option<bool>,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
@@ -340,9 +333,6 @@ pub struct Flags {
   pub version: bool,
   pub watch: Option<Vec<PathBuf>>,
   pub no_clear_screen: bool,
-  // todo: REMOVE! TEMPORARY
-  pub npm_cache_dir: Option<PathBuf>,
-  pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -3265,9 +3255,7 @@ fn no_npm_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn local_npm_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.node_modules_dir = matches
-    .remove_one::<bool>("node-modules-dir")
-    .map(NodeModulesDirOption::Bool);
+  flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
 }
 
 fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
@@ -5473,7 +5461,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        node_modules_dir: Some(NodeModulesDirOption::Bool(true)),
+        node_modules_dir: Some(true),
         ..Flags::default()
       }
     );
@@ -5490,7 +5478,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        node_modules_dir: Some(NodeModulesDirOption::Bool(false)),
+        node_modules_dir: Some(false),
         ..Flags::default()
       }
     );

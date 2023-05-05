@@ -803,9 +803,6 @@ impl CliOptions {
       // TODO(bartlomieju): remove this clone
       return Ok(Some(state.snapshot.clone().into_valid()?));
     }
-    if let Some(snapshot) = &self.flags.npm_snapshot {
-      return Ok(Some(snapshot.clone().into_valid()?));
-    }
 
     if let Some(lockfile) = self.maybe_lockfile() {
       if !lockfile.lock().overwrite {
@@ -1149,13 +1146,8 @@ fn resolve_local_node_modules_folder(
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
 ) -> Result<Option<PathBuf>, AnyError> {
-  let path = if flags.node_modules_dir
-    == Some(NodeModulesDirOption::Bool(false))
-  {
+  let path = if flags.node_modules_dir == Some(false) {
     return Ok(None);
-  } else if let Some(NodeModulesDirOption::Path(path)) = &flags.node_modules_dir
-  {
-    return Ok(Some(path.clone()));
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
