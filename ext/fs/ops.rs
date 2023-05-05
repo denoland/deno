@@ -7,6 +7,7 @@ use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
@@ -27,9 +28,9 @@ use serde::Serialize;
 
 use crate::check_unstable;
 use crate::check_unstable2;
-use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
+use crate::FileSystem;
 use crate::FsPermissions;
 use crate::OpenOptions;
 
@@ -38,7 +39,7 @@ pub fn op_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
 {
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let path = fs.cwd()?;
   state
     .borrow_mut::<P>()
@@ -55,7 +56,7 @@ where
   let d = PathBuf::from(&directory);
   state.borrow_mut::<P>().check_read(&d, "Deno.chdir()")?;
   state
-    .borrow::<FileSystemRc>()
+    .borrow::<Arc<dyn FileSystem>>()
     .chdir(&d)
     .context_path("chdir", &d)
 }
@@ -65,7 +66,10 @@ fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError>
 where
 {
   check_unstable(state, "Deno.umask");
-  state.borrow::<FileSystemRc>().umask(mask).context("umask")
+  state
+    .borrow::<Arc<dyn FileSystem>>()
+    .umask(mask)
+    .context("umask")
 }
 
 #[op]
@@ -83,7 +87,7 @@ where
   let permissions = state.borrow_mut::<P>();
   permissions.check(&options, &path, "Deno.openSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
 
   let rid = state
@@ -108,7 +112,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions.check(&options, &path, "Deno.open()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   let file = fs
     .open_async(path.clone(), options)
@@ -140,7 +144,7 @@ where
     .borrow_mut::<P>()
     .check_write(&path, "Deno.mkdirSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.mkdir_sync(&path, recursive, mode)
     .context_path("mkdir", &path)?;
 
@@ -164,7 +168,7 @@ where
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.mkdir()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.mkdir_async(path.clone(), recursive, mode)
@@ -187,7 +191,7 @@ where
   state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.chmodSync()")?;
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
   Ok(())
 }
@@ -205,7 +209,7 @@ where
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.chmod()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   fs.chmod_async(path.clone(), mode)
     .await
@@ -227,7 +231,7 @@ where
   state
     .borrow_mut::<P>()
     .check_write(&path, "Deno.chownSync()")?;
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.chown_sync(&path, uid, gid)
     .context_path("chown", &path)?;
   Ok(())
@@ -247,7 +251,7 @@ where
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.chown()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   fs.chown_async(path.clone(), uid, gid)
     .await
@@ -270,7 +274,7 @@ where
     .borrow_mut::<P>()
     .check_write(&path, "Deno.removeSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.remove_sync(&path, recursive)
     .context_path("remove", &path)?;
 
@@ -293,7 +297,7 @@ where
     state
       .borrow_mut::<P>()
       .check_write(&path, "Deno.remove()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.remove_async(path.clone(), recursive)
@@ -319,7 +323,7 @@ where
   permissions.check_read(&from, "Deno.copyFileSync()")?;
   permissions.check_write(&to, "Deno.copyFileSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.copy_file_sync(&from, &to)
     .context_two_path("copy", &from, &to)?;
 
@@ -343,7 +347,7 @@ where
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&from, "Deno.copyFile()")?;
     permissions.check_write(&to, "Deno.copyFile()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.copy_file_async(from.clone(), to.clone())
@@ -366,7 +370,7 @@ where
   state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.statSync()")?;
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let stat = fs.stat_sync(&path).context_path("stat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -386,7 +390,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&path, "Deno.stat()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   let stat = fs
     .stat_async(path.clone())
@@ -408,7 +412,7 @@ where
   state
     .borrow_mut::<P>()
     .check_read(&path, "Deno.lstatSync()")?;
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let stat = fs.lstat_sync(&path).context_path("lstat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -428,7 +432,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&path, "Deno.lstat()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
   let stat = fs
     .lstat_async(path.clone())
@@ -447,7 +451,7 @@ where
 {
   let path = PathBuf::from(path);
 
-  let fs = state.borrow::<FileSystemRc>().clone();
+  let fs = state.borrow::<Arc<dyn FileSystem>>().clone();
   let permissions = state.borrow_mut::<P>();
   permissions.check_read(&path, "Deno.realPathSync()")?;
   if path.is_relative() {
@@ -474,7 +478,7 @@ where
   let fs;
   {
     let mut state = state.borrow_mut();
-    fs = state.borrow::<FileSystemRc>().clone();
+    fs = state.borrow::<Arc<dyn FileSystem>>().clone();
     let permissions = state.borrow_mut::<P>();
     permissions.check_read(&path, "Deno.realPath()")?;
     if path.is_relative() {
@@ -504,7 +508,7 @@ where
     .borrow_mut::<P>()
     .check_read(&path, "Deno.readDirSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let entries = fs.read_dir_sync(&path).context_path("readdir", &path)?;
 
   Ok(entries)
@@ -525,7 +529,7 @@ where
     state
       .borrow_mut::<P>()
       .check_read(&path, "Deno.readDir()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   let entries = fs
@@ -553,7 +557,7 @@ where
   permissions.check_write(&oldpath, "Deno.renameSync()")?;
   permissions.check_write(&newpath, "Deno.renameSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.rename_sync(&oldpath, &newpath)
     .context_two_path("rename", &oldpath, &newpath)?;
 
@@ -578,7 +582,7 @@ where
     permissions.check_read(&oldpath, "Deno.rename()")?;
     permissions.check_write(&oldpath, "Deno.rename()")?;
     permissions.check_write(&newpath, "Deno.rename()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.rename_async(oldpath.clone(), newpath.clone())
@@ -606,7 +610,7 @@ where
   permissions.check_read(&newpath, "Deno.linkSync()")?;
   permissions.check_write(&newpath, "Deno.linkSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.link_sync(&oldpath, &newpath)
     .context_two_path("link", &oldpath, &newpath)?;
 
@@ -632,7 +636,7 @@ where
     permissions.check_write(&oldpath, "Deno.link()")?;
     permissions.check_read(&newpath, "Deno.link()")?;
     permissions.check_write(&newpath, "Deno.link()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.link_async(oldpath.clone(), newpath.clone())
@@ -659,7 +663,7 @@ where
   permissions.check_write_all("Deno.symlinkSync()")?;
   permissions.check_read_all("Deno.symlinkSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.symlink_sync(&oldpath, &newpath, file_type)
     .context_two_path("symlink", &oldpath, &newpath)?;
 
@@ -684,7 +688,7 @@ where
     let permissions = state.borrow_mut::<P>();
     permissions.check_write_all("Deno.symlink()")?;
     permissions.check_read_all("Deno.symlink()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.symlink_async(oldpath.clone(), newpath.clone(), file_type)
@@ -708,7 +712,7 @@ where
     .borrow_mut::<P>()
     .check_read(&path, "Deno.readLink()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
 
   let target = fs.read_link_sync(&path).context_path("readlink", &path)?;
   let target_string = path_into_string(target.into_os_string())?;
@@ -730,7 +734,7 @@ where
     state
       .borrow_mut::<P>()
       .check_read(&path, "Deno.readLink()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   let target = fs
@@ -756,7 +760,7 @@ where
     .borrow_mut::<P>()
     .check_write(&path, "Deno.truncateSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.truncate_sync(&path, len)
     .context_path("truncate", &path)?;
 
@@ -779,7 +783,7 @@ where
     state
       .borrow_mut::<P>()
       .check_write(&path, "Deno.truncate()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.truncate_async(path.clone(), len)
@@ -805,7 +809,7 @@ where
 
   state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   fs.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .context_path("utime", &path)?;
 
@@ -829,7 +833,7 @@ where
   let fs = {
     let mut state = state.borrow_mut();
     state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
-    state.borrow::<FileSystemRc>().clone()
+    state.borrow::<Arc<dyn FileSystem>>().clone()
   };
 
   fs.utime_async(
@@ -993,11 +997,11 @@ where
 fn make_temp_check_sync<P>(
   state: &mut OpState,
   dir: Option<String>,
-) -> Result<(PathBuf, FileSystemRc), AnyError>
+) -> Result<(PathBuf, Arc<dyn FileSystem>), AnyError>
 where
   P: FsPermissions + 'static,
 {
-  let fs = state.borrow::<FileSystemRc>().clone();
+  let fs = state.borrow::<Arc<dyn FileSystem>>().clone();
   let dir = match dir {
     Some(dir) => {
       let dir = PathBuf::from(dir);
@@ -1022,12 +1026,12 @@ where
 fn make_temp_check_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<String>,
-) -> Result<(PathBuf, FileSystemRc), AnyError>
+) -> Result<(PathBuf, Arc<dyn FileSystem>), AnyError>
 where
   P: FsPermissions + 'static,
 {
   let mut state = state.borrow_mut();
-  let fs = state.borrow::<FileSystemRc>().clone();
+  let fs = state.borrow::<Arc<dyn FileSystem>>().clone();
   let dir = match dir {
     Some(dir) => {
       let dir = PathBuf::from(dir);
@@ -1085,7 +1089,7 @@ where
   let options = OpenOptions::write(create, append, create_new, mode);
   permissions.check(&options, &path, "Deno.writeFileSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
 
   fs.write_file_sync(&path, options, &data)
     .context_path("writefile", &path)?;
@@ -1117,7 +1121,7 @@ where
     permissions.check(&options, &path, "Deno.writeFile()")?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<FileSystemRc>().clone(), cancel_handle)
+    (state.borrow::<Arc<dyn FileSystem>>().clone(), cancel_handle)
   };
 
   let fut = fs.write_file_async(path.clone(), options, data.to_vec());
@@ -1150,7 +1154,7 @@ where
   let permissions = state.borrow_mut::<P>();
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let buf = fs.read_file_sync(&path).context("readfile")?;
 
   Ok(buf.into())
@@ -1173,7 +1177,7 @@ where
     permissions.check_read(&path, "Deno.readFile()")?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<FileSystemRc>().clone(), cancel_handle)
+    (state.borrow::<Arc<dyn FileSystem>>().clone(), cancel_handle)
   };
 
   let fut = fs.read_file_async(path.clone());
@@ -1206,7 +1210,7 @@ where
   let permissions = state.borrow_mut::<P>();
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
+  let fs = state.borrow::<Arc<dyn FileSystem>>();
   let buf = fs.read_file_sync(&path).context("readfile")?;
 
   Ok(string_from_utf8_lossy(buf))
@@ -1229,7 +1233,7 @@ where
     permissions.check_read(&path, "Deno.readFile()")?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<FileSystemRc>().clone(), cancel_handle)
+    (state.borrow::<Arc<dyn FileSystem>>().clone(), cancel_handle)
   };
 
   let fut = fs.read_file_async(path.clone());

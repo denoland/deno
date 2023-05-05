@@ -11,9 +11,6 @@ use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-
 #[derive(Deserialize, Default, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -75,11 +72,8 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
-#[allow(clippy::disallowed_types)]
-pub type FileSystemRc = crate::sync::MaybeArc<dyn FileSystem>;
-
 #[async_trait::async_trait(?Send)]
-pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
+pub trait FileSystem: std::fmt::Debug + Send + Sync {
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
   fn chdir(&self, path: &Path) -> FsResult<()>;

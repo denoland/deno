@@ -13,9 +13,6 @@ description = "Ops for interacting with the file system"
 [lib]
 path = "lib.rs"
 
-[features]
-sync_fs = []
-
 [dependencies]
 async-trait.workspace = true
 deno_core.workspace = true
