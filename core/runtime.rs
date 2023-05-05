@@ -1831,7 +1831,7 @@ impl JsRuntime {
             .state(tc_scope)
             .borrow_mut()
             .pending_promise_rejections
-            .remove(&promise_global);
+            .retain(|(key, _)| key != &promise_global);
         }
       }
       let promise_global = v8::Global::new(tc_scope, promise);
@@ -4133,6 +4133,23 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .unwrap_err()
       .to_string()
       .contains("JavaScript execution has been terminated"));
+  }
+
+  #[tokio::test]
+  async fn test_unhandled_rejection_order() {
+    let mut runtime = JsRuntime::new(Default::default());
+    runtime
+      .execute_script_static(
+        "",
+        r#"
+        for (let i = 0; i < 100; i++) {
+          Promise.reject(i);
+        }
+        "#,
+      )
+      .unwrap();
+    let err = runtime.run_event_loop(false).await.unwrap_err();
+    assert_eq!(err.to_string(), "Uncaught (in promise) 0");
   }
 
   #[tokio::test]

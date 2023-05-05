@@ -6,9 +6,9 @@ use crate::ops::OpCtx;
 use crate::runtime::exception_to_err_result;
 use crate::JsRuntime;
 use anyhow::Error;
-use hashlink::LinkedHashMap;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::hash::BuildHasherDefault;
 use std::hash::Hasher;
 use std::option::Option;
@@ -43,7 +43,7 @@ pub(crate) struct ContextState {
   pub(crate) js_format_exception_cb: Option<Rc<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: Option<Rc<v8::Global<v8::Function>>>,
   pub(crate) pending_promise_rejections:
-    LinkedHashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
+    VecDeque<(v8::Global<v8::Promise>, v8::Global<v8::Value>)>,
   pub(crate) unrefed_ops: HashSet<i32, BuildHasherDefault<IdentityHasher>>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
