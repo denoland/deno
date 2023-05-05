@@ -99,7 +99,6 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  node_fs: Arc<dyn deno_node::NodeFs>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 }
 
@@ -311,7 +310,6 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    node_fs: Arc<dyn deno_node::NodeFs>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     options: CliMainWorkerOptions,
   ) -> Self {
@@ -329,7 +327,6 @@ impl CliMainWorkerFactory {
         module_loader_factory,
         root_cert_store_provider,
         fs,
-        node_fs,
         maybe_inspector_server,
       }),
     }
@@ -450,7 +447,6 @@ impl CliMainWorkerFactory {
       should_wait_for_inspector_session: shared.options.inspect_wait,
       module_loader,
       fs: shared.fs.clone(),
-      node_fs: Some(shared.node_fs.clone()),
       npm_resolver: Some(shared.npm_resolver.clone()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
@@ -576,7 +572,6 @@ fn create_web_worker_callback(
       source_map_getter: maybe_source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
-      node_fs: Some(shared.node_fs.clone()),
       npm_resolver: Some(shared.npm_resolver.clone()),
       worker_type: args.worker_type,
       maybe_inspector_server,

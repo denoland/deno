@@ -326,6 +326,7 @@ deno_core::extension!(
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
+  let fs = Arc::new(deno_fs::RealFs);
   let extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops(),
     deno_console::deno_console::init_ops(),
@@ -360,11 +361,8 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
     deno_http::deno_http::init_ops(),
     deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<PermissionsContainer>(
-      false,
-      Arc::new(deno_fs::RealFs),
-    ),
-    deno_node::deno_node::init_ops::<PermissionsContainer>(None, None),
+    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
+    deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 
