@@ -456,7 +456,7 @@ impl FileBackedVfs {
     Ok(path)
   }
 
-  pub fn read_all_file(&self, file: &VirtualFile) -> std::io::Result<Vec<u8>> {
+  pub fn read_file_all(&self, file: &VirtualFile) -> std::io::Result<Vec<u8>> {
     let mut fs_file = self.file.lock();
     fs_file.seek(SeekFrom::Start(
       self.fs_root.start_file_offset + file.offset,
@@ -513,7 +513,7 @@ mod test {
 
   fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
     let file = vfs.file_entry(path).unwrap();
-    String::from_utf8(vfs.read_all_file(file).unwrap()).unwrap()
+    String::from_utf8(vfs.read_file_all(file).unwrap()).unwrap()
   }
 
   #[test]

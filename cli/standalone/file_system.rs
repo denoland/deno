@@ -9,7 +9,7 @@ use std::sync::Arc;
 use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
-use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
 use deno_runtime::deno_fs::OpenOptions;
@@ -107,11 +107,11 @@ impl deno_io::fs::File for DenoCompileFile {
   }
 
   fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    Ok(self.vfs.read_all_file(&self.file)?)
+    Ok(self.vfs.read_file_all(&self.file)?)
   }
   async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
     let inner = (*self).clone();
-    tokio::task::spawn_blocking(move || inner.vfs.read_all_file(&inner.file))
+    tokio::task::spawn_blocking(move || inner.vfs.read_file_all(&inner.file))
       .await?
       .map_err(|err| err.into())
   }
@@ -208,7 +208,7 @@ impl deno_io::fs::File for DenoCompileFile {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
 
 impl DenoCompileFileSystem {
@@ -223,10 +223,28 @@ impl DenoCompileFileSystem {
       Ok(())
     }
   }
+
+  fn copy_to_real_path(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+    let old_file = self.0.file_entry(oldpath)?;
+    let old_file_bytes = self.0.read_file_all(old_file)?;
+    RealFs.write_file_sync(
+      newpath,
+      OpenOptions {
+        read: false,
+        write: true,
+        create: true,
+        truncate: true,
+        append: false,
+        create_new: false,
+        mode: None,
+      },
+      &old_file_bytes,
+    )
+  }
 }
 
 #[async_trait::async_trait(?Send)]
-impl deno_fs::FileSystem for DenoCompileFileSystem {
+impl FileSystem for DenoCompileFileSystem {
   fn cwd(&self) -> FsResult<PathBuf> {
     RealFs.cwd()
   }
@@ -336,7 +354,7 @@ impl deno_fs::FileSystem for DenoCompileFileSystem {
   fn copy_file_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     self.error_if_in_vfs(newpath)?;
     if self.0.is_path_within(oldpath) {
-      todo!() // todo
+      self.copy_to_real_path(oldpath, newpath)
     } else {
       RealFs.copy_file_sync(oldpath, newpath)
     }
@@ -348,7 +366,11 @@ impl deno_fs::FileSystem for DenoCompileFileSystem {
   ) -> FsResult<()> {
     self.error_if_in_vfs(&newpath)?;
     if self.0.is_path_within(&oldpath) {
-      todo!() // todo
+      let fs = self.clone();
+      tokio::task::spawn_blocking(move || {
+        fs.copy_to_real_path(&oldpath, &newpath)
+      })
+      .await?
     } else {
       RealFs.copy_file_async(oldpath, newpath).await
     }
