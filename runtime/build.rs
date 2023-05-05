@@ -273,7 +273,7 @@ mod startup_snapshot {
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
-    let fs = deno_fs::sync::MaybeArc::new(deno_fs::RealFs);
+    let fs = std::sync::Arc::new(deno_fs::RealFs);
     let extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
