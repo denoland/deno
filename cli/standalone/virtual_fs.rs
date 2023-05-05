@@ -494,7 +494,7 @@ impl FileBackedVfsFile {
 #[async_trait::async_trait(?Send)]
 impl deno_io::fs::File for FileBackedVfsFile {
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
-    self.read_to_buf(buf).map_err(|err| err.into())
+    self.read_to_buf(buf)
   }
   async fn read_byob(
     self: Rc<Self>,
@@ -530,9 +530,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
   async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
     let inner = (*self).clone();
-    tokio::task::spawn_blocking(move || inner.read_to_end())
-      .await?
-      .map_err(|err| err.into())
+    tokio::task::spawn_blocking(move || inner.read_to_end()).await?
   }
 
   fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {
