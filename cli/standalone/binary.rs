@@ -72,11 +72,7 @@ pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
   let mut vfs_data = vec![0; trailer.npm_vfs_len() as usize];
   file.read_exact(&mut vfs_data)?;
   let mut dir: VirtualDirectory = serde_json::from_slice(&vfs_data)?;
-  std::fs::write(
-    "V:\\scratch\\vfs.json",
-    deno_core::serde_json::to_string_pretty(&dir).unwrap(),
-  )
-  .unwrap();
+
   // align the name of the directory with the root dir
   dir.name = root_dir_path
     .file_name()
