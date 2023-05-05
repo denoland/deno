@@ -71,6 +71,13 @@ trait PollFrame: Unpin {
   fn size_hint(&self) -> SizeHint;
 }
 
+pub enum ResponseStream {
+  /// A resource stream, piped in fast mode.
+  Resource(ResourceBodyAdapter),
+  /// A JS-backed stream, written in JS and transported via pipe.
+  V8Stream(tokio::sync::mpsc::Receiver<BufView>),
+}
+
 #[derive(Default)]
 pub enum ResponseBytesInner {
   /// An empty stream.
@@ -80,10 +87,8 @@ pub enum ResponseBytesInner {
   Done,
   /// A static buffer of bytes, sent in one fell swoop.
   Bytes(BufView),
-  /// A resource stream, piped in fast mode.
-  Resource(ResourceBodyAdapter),
-  /// A JS-backed stream, written in JS and transported via pipe.
-  V8Stream(tokio::sync::mpsc::Receiver<BufView>),
+  /// An uncompressed stream.
+  UncompressedStream(ResponseStream),
 }
 
 impl std::fmt::Debug for ResponseBytesInner {
@@ -92,8 +97,7 @@ impl std::fmt::Debug for ResponseBytesInner {
       Self::Done => f.write_str("Done"),
       Self::Empty => f.write_str("Empty"),
       Self::Bytes(..) => f.write_str("Bytes"),
-      Self::Resource(..) => f.write_str("Resource"),
-      Self::V8Stream(..) => f.write_str("V8Stream"),
+      Self::UncompressedStream(..) => f.write_str("Uncompressed"),
     }
   }
 }
@@ -123,20 +127,6 @@ impl ResponseBytes {
     self.1.complete(success);
     current
   }
-
-  fn poll_stream_frame<S: PollFrame>(
-    mut self: Pin<&mut Self>,
-    stm: &mut S,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Option<Result<Frame<BufView>, AnyError>>> {
-    match Pin::new(stm).poll_frame(cx) {
-      x @ std::task::Poll::Ready(None) => {
-        self.complete(true);
-        x
-      }
-      x @ _ => x,
-    }
-  }
 }
 
 impl ResponseBytesInner {
@@ -145,9 +135,18 @@ impl ResponseBytesInner {
       Self::Done => SizeHint::with_exact(0),
       Self::Empty => SizeHint::with_exact(0),
       Self::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
-      Self::Resource(res) => res.size_hint(),
-      Self::V8Stream(..) => SizeHint::default(),
+      Self::UncompressedStream(res) => res.size_hint(),
     }
+  }
+
+  pub fn from_v8(rx: tokio::sync::mpsc::Receiver<BufView>) -> Self {
+    Self::UncompressedStream(ResponseStream::V8Stream(rx))
+  }
+
+  pub fn from_resource(stm: Rc<dyn Resource>, auto_close: bool) -> Self {
+    Self::UncompressedStream(ResponseStream::Resource(
+      ResourceBodyAdapter::new(stm, auto_close),
+    ))
   }
 }
 
@@ -170,20 +169,15 @@ impl Body for ResponseBytes {
           unreachable!()
         }
       }
-      ResponseBytesInner::Resource(stm) => match Pin::new(stm).poll_frame(cx) {
-        x @ std::task::Poll::Ready(None) => {
-          self.complete(true);
-          x
+      ResponseBytesInner::UncompressedStream(stm) => {
+        match Pin::new(stm).poll_frame(cx) {
+          x @ std::task::Poll::Ready(None) => {
+            self.complete(true);
+            x
+          }
+          x @ _ => x,
         }
-        x @ _ => x,
-      },
-      ResponseBytesInner::V8Stream(stm) => match Pin::new(stm).poll_frame(cx) {
-        x @ std::task::Poll::Ready(None) => {
-          self.complete(true);
-          x
-        }
-        x @ _ => x,
-      },
+      }
     }
   }
 
@@ -218,6 +212,25 @@ impl ResourceBodyAdapter {
       auto_close,
       stm,
       future,
+    }
+  }
+}
+
+impl PollFrame for ResponseStream {
+  fn poll_frame(
+    mut self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Result<Frame<BufView>, AnyError>>> {
+    match &mut *self {
+      ResponseStream::Resource(res) => Pin::new(res).poll_frame(cx),
+      ResponseStream::V8Stream(res) => Pin::new(res).poll_frame(cx),
+    }
+  }
+
+  fn size_hint(&self) -> SizeHint {
+    match self {
+      ResponseStream::Resource(res) => res.size_hint(),
+      ResponseStream::V8Stream(res) => res.size_hint(),
     }
   }
 }

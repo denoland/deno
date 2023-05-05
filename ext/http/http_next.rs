@@ -492,11 +492,11 @@ pub fn op_set_response_body_resource(
   };
 
   with_resp_mut(index, move |response| {
-    response.as_mut().unwrap().body_mut().initialize(
-      ResponseBytesInner::Resource(ResourceBodyAdapter::new(
-        resource, auto_close,
-      )),
-    )
+    response
+      .as_mut()
+      .unwrap()
+      .body_mut()
+      .initialize(ResponseBytesInner::from_resource(resource, auto_close))
   });
 
   Ok(())
@@ -511,7 +511,7 @@ pub fn op_set_response_body_stream(
   let (tx, rx) = tokio::sync::mpsc::channel(1);
   let (tx, rx) = (
     V8StreamHttpResponseBody::new(tx),
-    ResponseBytesInner::V8Stream(rx),
+    ResponseBytesInner::from_v8(rx),
   );
 
   with_resp_mut(index, move |response| {
