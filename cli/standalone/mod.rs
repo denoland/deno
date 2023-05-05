@@ -37,6 +37,7 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -107,11 +108,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
       return result;
     }
 
+    // npm specifier
     if let Ok(reference) = NpmPackageReqReference::from_str(specifier) {
       return self
         .shared
         .npm_module_loader
         .resolve_req_reference(&reference, permissions);
+    }
+
+    // Built-in Node modules
+    if let Some(module_name) = specifier.strip_prefix("node:") {
+      return deno_node::resolve_builtin_node_module(module_name);
     }
 
     self
@@ -165,7 +172,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       .shared
       .eszip
       .get_module(module_specifier.as_str())
-      .ok_or_else(|| type_error("Module not found"));
+      .ok_or_else(|| {
+        type_error(format!("Module not found: {}", module_specifier))
+      });
     // TODO(mmastrac): This clone can probably be removed in the future if ModuleSpecifier is no longer a full-fledged URL
     let module_specifier = module_specifier.clone();
 

@@ -6,6 +6,7 @@ use test_util as util;
 use test_util::TempDir;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
+use util::TestContextBuilder;
 
 #[test]
 fn compile() {
@@ -806,3 +807,81 @@ itest!(npm_specifiers_errors_no_unstable {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+#[test]
+fn compile_npm_specifiers() {
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_temp_cwd()
+    .build();
+
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    concat!(
+      "import path from 'node:path';\n",
+      "import { getValue, setValue } from 'npm:@denotest/esm-basic';\n",
+      "import getValueDefault from 'npm:@denotest/esm-import-cjs-default';\n",
+      "setValue(2);\n",
+      "console.log(path.join('testing', 'this'));",
+      "console.log(getValue());",
+      "console.log(getValueDefault());",
+    ),
+  );
+
+  // try with and without --node-modules-dir
+  let compile_commands = &[
+    "compile --unstable main.ts --output binary",
+    "compile --unstable --node-modules-dir main.ts --output binary",
+  ];
+
+  for compile_command in compile_commands {
+    let output = context.new_command().args(compile_command).run();
+    output.print_output();
+    output.assert_exit_code(0);
+    output.skip_output_check();
+
+    let temp_dir_path = temp_dir.path().to_path_buf();
+    let binary_path = if cfg!(windows) {
+      temp_dir_path.join("binary.exe")
+    } else {
+      temp_dir_path.join("binary")
+    };
+
+    let output = context
+      .new_command()
+      .command_name(binary_path.to_string_lossy())
+      .run();
+    output.assert_matches_text(
+      r#"Node esm importing node cjs
+===========================
+{
+  default: [Function (anonymous)],
+  named: [Function (anonymous)],
+  MyClass: [class MyClass]
+}
+{ default: [Function (anonymous)], named: [Function (anonymous)] }
+[Module: null prototype] {
+  MyClass: [class MyClass],
+  __esModule: true,
+  default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  named: [Function (anonymous)]
+}
+[Module: null prototype] {
+  __esModule: true,
+  default: { default: [Function (anonymous)], named: [Function (anonymous)] },
+  named: [Function (anonymous)]
+}
+===========================
+static method
+testing[WILDCARD]this
+2
+5
+"#,
+    );
+  }
+}
