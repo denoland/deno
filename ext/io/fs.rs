@@ -33,7 +33,8 @@ impl FsError {
   pub fn into_io_error(self) -> io::Error {
     match self {
       FsError::Io(err) => err,
-      FsError::FileBusy | FsError::NotSupported => self.kind().into(),
+      FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
+      FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
     }
   }
 }
