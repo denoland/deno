@@ -286,7 +286,9 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let (fs, node_modules_path) = if metadata.npm_snapshot.is_some() {
+  let (fs, node_modules_path, snapshot) = if let Some(snapshot) =
+    metadata.npm_snapshot
+  {
     let vfs = load_npm_vfs().context("Failed to load npm vfs.")?;
     let node_modules_path = if metadata.node_modules_dir {
       Some(vfs.root().to_path_buf())
@@ -296,16 +298,14 @@ pub async fn run(
     (
       Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
       node_modules_path,
+      Some(snapshot.into_valid()?),
     )
   } else {
     (
       Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
       None,
+      None,
     )
-  };
-  let snapshot = match metadata.npm_snapshot {
-    Some(snapshot) => Some(snapshot.into_valid()?),
-    None => None,
   };
   let npm_resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -389,7 +389,7 @@ pub async fn run(
       is_inspecting: false,
       is_npm_main: false,
       location: metadata.location,
-      // todo(dsherret): support a binary command being compiled
+      // todo(dsherret): support a npm binary command being compiled
       maybe_binary_npm_command_name: None,
       origin_data_folder_path: None,
       seed: metadata.seed,

@@ -15,6 +15,7 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use tokio::task::JoinError;
 
+#[derive(Debug)]
 pub enum FsError {
   Io(io::Error),
   FileBusy,

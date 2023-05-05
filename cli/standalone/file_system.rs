@@ -1,212 +1,21 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::parking_lot::Mutex;
-use deno_core::BufMutView;
-use deno_core::BufView;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
 use deno_runtime::deno_fs::OpenOptions;
 use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::File;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 
 use super::virtual_fs::FileBackedVfs;
-use super::virtual_fs::VirtualFile;
-
-#[derive(Clone)]
-struct DenoCompileFile {
-  file: VirtualFile,
-  pos: Arc<Mutex<u64>>,
-  vfs: Arc<FileBackedVfs>,
-}
-
-impl DenoCompileFile {
-  pub fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
-    match pos {
-      SeekFrom::Start(pos) => {
-        *self.pos.lock() = pos;
-        Ok(pos)
-      }
-      SeekFrom::End(offset) => {
-        if offset < 0 && -offset as u64 > self.file.len {
-          Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into())
-        } else {
-          let mut current_pos = self.pos.lock();
-          *current_pos = if offset >= 0 {
-            self.file.len - (offset as u64)
-          } else {
-            self.file.len + (-offset as u64)
-          };
-          Ok(*current_pos)
-        }
-      }
-      SeekFrom::Current(offset) => {
-        let mut current_pos = self.pos.lock();
-        if offset >= 0 {
-          *current_pos += offset as u64;
-        } else if -offset as u64 > *current_pos {
-          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into());
-        } else {
-          *current_pos -= offset as u64;
-        }
-        Ok(*current_pos)
-      }
-    }
-  }
-
-  pub fn pos(&self) -> u64 {
-    *self.pos.lock()
-  }
-}
-
-#[async_trait::async_trait(?Send)]
-impl deno_io::fs::File for DenoCompileFile {
-  fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
-    self
-      .vfs
-      .read_file(&self.file, self.pos(), buf)
-      .map_err(|err| err.into())
-  }
-  async fn read_byob(
-    self: Rc<Self>,
-    mut buf: BufMutView,
-  ) -> FsResult<(usize, BufMutView)> {
-    let inner = (*self).clone();
-    tokio::task::spawn(async move {
-      let nread = inner.vfs.read_file(&inner.file, inner.pos(), &mut buf)?;
-      Ok((nread, buf))
-    })
-    .await?
-  }
-
-  fn write_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<usize> {
-    Err(FsError::NotSupported)
-  }
-  async fn write(
-    self: Rc<Self>,
-    _buf: BufView,
-  ) -> FsResult<deno_core::WriteOutcome> {
-    Err(FsError::NotSupported)
-  }
-
-  fn write_all_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn write_all(self: Rc<Self>, _buf: BufView) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    Ok(self.vfs.read_file_all(&self.file)?)
-  }
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
-    let inner = (*self).clone();
-    tokio::task::spawn_blocking(move || inner.vfs.read_file_all(&inner.file))
-      .await?
-      .map_err(|err| err.into())
-  }
-
-  fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  fn seek_sync(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
-    self.seek(pos)
-  }
-  async fn seek_async(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
-    self.seek(pos)
-  }
-
-  fn datasync_sync(self: Rc<Self>) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn datasync_async(self: Rc<Self>) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  fn sync_sync(self: Rc<Self>) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn sync_async(self: Rc<Self>) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
-  }
-  async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
-  }
-
-  fn lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  fn truncate_sync(self: Rc<Self>, _len: u64) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn truncate_async(self: Rc<Self>, _len: u64) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  fn utime_sync(
-    self: Rc<Self>,
-    _atime_secs: i64,
-    _atime_nanos: u32,
-    _mtime_secs: i64,
-    _mtime_nanos: u32,
-  ) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-  async fn utime_async(
-    self: Rc<Self>,
-    _atime_secs: i64,
-    _atime_nanos: u32,
-    _mtime_secs: i64,
-    _mtime_nanos: u32,
-  ) -> FsResult<()> {
-    Err(FsError::NotSupported)
-  }
-
-  // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
-    Err(FsError::NotSupported)
-  }
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
-    None
-  }
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
-    None
-  }
-  fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>> {
-    Ok(self)
-  }
-}
 
 #[derive(Debug, Clone)]
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
@@ -268,12 +77,7 @@ impl FileSystem for DenoCompileFileSystem {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
     if self.0.is_path_within(path) {
-      let file = self.0.file_entry(path)?;
-      Ok(Rc::new(DenoCompileFile {
-        file: file.clone(),
-        vfs: self.0.clone(),
-        pos: Default::default(),
-      }))
+      Ok(self.0.open_file(path)?)
     } else {
       RealFs.open_sync(path, options)
     }
@@ -284,12 +88,7 @@ impl FileSystem for DenoCompileFileSystem {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
     if self.0.is_path_within(&path) {
-      let file = self.0.file_entry(&path)?;
-      Ok(Rc::new(DenoCompileFile {
-        file: file.clone(),
-        vfs: self.0.clone(),
-        pos: Default::default(),
-      }))
+      Ok(self.0.open_file(&path)?)
     } else {
       RealFs.open_async(path, options).await
     }
@@ -489,14 +288,14 @@ impl FileSystem for DenoCompileFileSystem {
 
   fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
     if self.0.is_path_within(path) {
-      todo!() // todo
+      Ok(self.0.read_link(path)?)
     } else {
       RealFs.read_link_sync(path)
     }
   }
   async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
     if self.0.is_path_within(&path) {
-      todo!() // todo
+      Ok(self.0.read_link(&path)?)
     } else {
       RealFs.read_link_async(path).await
     }

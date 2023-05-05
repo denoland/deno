@@ -9,11 +9,18 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_core::BufMutView;
+use deno_core::BufView;
 use deno_runtime::deno_fs::FsDirEntry;
+use deno_runtime::deno_io;
+use deno_runtime::deno_io::fs::FsError;
+use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 use serde::Deserialize;
 use serde::Serialize;
@@ -403,6 +410,218 @@ impl VfsRoot {
   }
 }
 
+#[derive(Clone)]
+struct FileBackedVfsFile {
+  file: VirtualFile,
+  pos: Arc<Mutex<u64>>,
+  vfs: Arc<FileBackedVfs>,
+}
+
+impl FileBackedVfsFile {
+  fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
+    match pos {
+      SeekFrom::Start(pos) => {
+        *self.pos.lock() = pos;
+        Ok(pos)
+      }
+      SeekFrom::End(offset) => {
+        if offset < 0 && -offset as u64 > self.file.len {
+          Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into())
+        } else {
+          let mut current_pos = self.pos.lock();
+          *current_pos = if offset >= 0 {
+            self.file.len - (offset as u64)
+          } else {
+            self.file.len + (-offset as u64)
+          };
+          Ok(*current_pos)
+        }
+      }
+      SeekFrom::Current(offset) => {
+        let mut current_pos = self.pos.lock();
+        if offset >= 0 {
+          *current_pos += offset as u64;
+        } else if -offset as u64 > *current_pos {
+          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into());
+        } else {
+          *current_pos -= -offset as u64;
+        }
+        Ok(*current_pos)
+      }
+    }
+  }
+
+  fn read_to_buf(&self, buf: &mut [u8]) -> FsResult<usize> {
+    let pos = {
+      let mut pos = self.pos.lock();
+      let read_pos = *pos;
+      // advance the position due to the read
+      *pos = std::cmp::min(self.file.len, *pos + buf.len() as u64);
+      read_pos
+    };
+    self
+      .vfs
+      .read_file(&self.file, pos, buf)
+      .map_err(|err| err.into())
+  }
+
+  fn read_to_end(&self) -> FsResult<Vec<u8>> {
+    let pos = {
+      let mut pos = self.pos.lock();
+      let read_pos = *pos;
+      // todo(dsherret): should this always set it to the end of the file?
+      if *pos < self.file.len {
+        // advance the position due to the read
+        *pos = self.file.len;
+      }
+      read_pos
+    };
+    if pos > self.file.len {
+      return Ok(Vec::new());
+    }
+    let size = (self.file.len - pos) as usize;
+    let mut buf = vec![0; size];
+    self.vfs.read_file(&self.file, pos, &mut buf)?;
+    Ok(buf)
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl deno_io::fs::File for FileBackedVfsFile {
+  fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
+    self.read_to_buf(buf).map_err(|err| err.into())
+  }
+  async fn read_byob(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+  ) -> FsResult<(usize, BufMutView)> {
+    let inner = (*self).clone();
+    tokio::task::spawn(async move {
+      let nread = inner.read_to_buf(&mut buf)?;
+      Ok((nread, buf))
+    })
+    .await?
+  }
+
+  fn write_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<usize> {
+    Err(FsError::NotSupported)
+  }
+  async fn write(
+    self: Rc<Self>,
+    _buf: BufView,
+  ) -> FsResult<deno_core::WriteOutcome> {
+    Err(FsError::NotSupported)
+  }
+
+  fn write_all_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn write_all(self: Rc<Self>, _buf: BufView) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
+    self.read_to_end()
+  }
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
+    let inner = (*self).clone();
+    tokio::task::spawn_blocking(move || inner.read_to_end())
+      .await?
+      .map_err(|err| err.into())
+  }
+
+  fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn seek_sync(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
+    self.seek(pos)
+  }
+  async fn seek_async(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
+    self.seek(pos)
+  }
+
+  fn datasync_sync(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn datasync_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn sync_sync(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn sync_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
+    Err(FsError::NotSupported)
+  }
+  async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
+    Err(FsError::NotSupported)
+  }
+
+  fn lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn truncate_sync(self: Rc<Self>, _len: u64) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn truncate_async(self: Rc<Self>, _len: u64) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn utime_sync(
+    self: Rc<Self>,
+    _atime_secs: i64,
+    _atime_nanos: u32,
+    _mtime_secs: i64,
+    _mtime_nanos: u32,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn utime_async(
+    self: Rc<Self>,
+    _atime_secs: i64,
+    _atime_nanos: u32,
+    _mtime_secs: i64,
+    _mtime_nanos: u32,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  // lower level functionality
+  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+    Err(FsError::NotSupported)
+  }
+  #[cfg(unix)]
+  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
+    None
+  }
+  #[cfg(windows)]
+  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
+    None
+  }
+  fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn deno_io::fs::File>> {
+    Ok(self)
+  }
+}
+
 #[derive(Debug)]
 pub struct FileBackedVfs {
   file: Mutex<File>,
@@ -425,6 +644,18 @@ impl FileBackedVfs {
     path.starts_with(&self.fs_root.root)
   }
 
+  pub fn open_file(
+    self: &Arc<Self>,
+    path: &Path,
+  ) -> std::io::Result<Rc<dyn deno_io::fs::File>> {
+    let file = self.file_entry(path)?;
+    Ok(Rc::new(FileBackedVfsFile {
+      file: file.clone(),
+      vfs: self.clone(),
+      pos: Default::default(),
+    }))
+  }
+
   pub fn read_dir(&self, path: &Path) -> std::io::Result<Vec<FsDirEntry>> {
     let dir = self.dir_entry(path)?;
     Ok(
@@ -439,6 +670,19 @@ impl FileBackedVfs {
         })
         .collect(),
     )
+  }
+
+  pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
+    let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
+    match entry {
+      VfsEntryRef::Symlink(symlink) => {
+        Ok(symlink.resolve_dest_from_root(&self.fs_root.root))
+      }
+      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "not a symlink",
+      )),
+    }
   }
 
   pub fn lstat(&self, path: &Path) -> std::io::Result<FsStat> {
@@ -457,12 +701,8 @@ impl FileBackedVfs {
   }
 
   pub fn read_file_all(&self, file: &VirtualFile) -> std::io::Result<Vec<u8>> {
-    let mut fs_file = self.file.lock();
-    fs_file.seek(SeekFrom::Start(
-      self.fs_root.start_file_offset + file.offset,
-    ))?;
     let mut buf = vec![0; file.len as usize];
-    fs_file.read_exact(&mut buf)?;
+    self.read_file(file, 0, &mut buf)?;
     Ok(buf)
   }
 
@@ -665,6 +905,76 @@ mod test {
         .unwrap()
         .to_string(),
       "circular symlinks",
-    )
+    );
+    assert_eq!(
+      virtual_fs.read_link(&dest_path.join("a.txt")).unwrap(),
+      dest_path.join("b.txt")
+    );
+    assert_eq!(
+      virtual_fs.read_link(&dest_path.join("b.txt")).unwrap(),
+      dest_path.join("c.txt")
+    );
+  }
+
+  #[tokio::test]
+  async fn test_open_file() {
+    let temp_dir = TempDir::new();
+    let temp_path = temp_dir.path();
+    let mut builder = VfsBuilder::new(temp_path.to_path_buf());
+    builder.add_file(
+      &temp_path.join("a.txt"),
+      "0123456789".to_string().into_bytes(),
+    );
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+    let virtual_fs = Arc::new(virtual_fs);
+    let file = virtual_fs.open_file(&dest_path.join("a.txt")).unwrap();
+    file.clone().seek_sync(SeekFrom::Current(2)).unwrap();
+    let mut buf = vec![0; 2];
+    file.clone().read_sync(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    file.clone().read_sync(&mut buf).unwrap();
+    assert_eq!(buf, b"45");
+    file.clone().seek_sync(SeekFrom::Current(-4)).unwrap();
+    file.clone().read_sync(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    file.clone().seek_sync(SeekFrom::Start(2)).unwrap();
+    file.clone().read_sync(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    file.clone().seek_sync(SeekFrom::End(2)).unwrap();
+    file.clone().read_sync(&mut buf).unwrap();
+    assert_eq!(buf, b"89");
+    file.clone().seek_sync(SeekFrom::Current(-8)).unwrap();
+    file.clone().read_sync(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    assert_eq!(
+      file
+        .clone()
+        .seek_sync(SeekFrom::Current(-5))
+        .err()
+        .unwrap()
+        .into_io_error()
+        .to_string(),
+      "An attempt was made to move the file pointer before the beginning of the file."
+    );
+    // go beyond the file length, then back
+    file.clone().seek_sync(SeekFrom::Current(40)).unwrap();
+    file.clone().seek_sync(SeekFrom::Current(-38)).unwrap();
+    let read_buf = file.clone().read(2).await.unwrap();
+    assert_eq!(read_buf.to_vec(), b"67");
+    file.clone().seek_sync(SeekFrom::Current(-2)).unwrap();
+
+    // read to the end of the file
+    let all_buf = file.clone().read_all_sync().unwrap();
+    assert_eq!(all_buf.to_vec(), b"6789");
+    file.clone().seek_sync(SeekFrom::Current(-9)).unwrap();
+
+    // try try_clone_inner and read_all_async
+    let all_buf = file
+      .try_clone_inner()
+      .unwrap()
+      .read_all_async()
+      .await
+      .unwrap();
+    assert_eq!(all_buf.to_vec(), b"123456789");
   }
 }
