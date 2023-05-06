@@ -305,7 +305,7 @@ where
 
   loop {
     // We may need to give the runtime a tick to settle, as cancellations may need to propagate to tasks
-    tokio::time::sleep(Duration::from_micros(1)).await;
+    tokio::time::sleep(Duration::from_millis(1)).await;
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
