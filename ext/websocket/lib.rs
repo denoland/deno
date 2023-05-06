@@ -588,9 +588,11 @@ struct LocalExecutor;
 impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
 where
   Fut: Future + 'static,
-  Fut::Output: 'static,
+  Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn_local(fut);
+    // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+    // so it's okay to mask the future as send.
+    tokio::task::spawn(unsafe { deno_core::MaskFutureAsSend::new(fut) });
   }
 }

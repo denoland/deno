@@ -239,8 +239,12 @@ impl LanguageServer {
           let cli_options = result.cli_options;
           let roots = result.roots;
           let open_docs = result.open_docs;
-          let handle = tokio::task::spawn_local(async move {
-            create_graph_for_caching(cli_options, roots, open_docs).await
+          // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+          // so it's okay to mask the future as send.
+          let handle = tokio::spawn(unsafe {
+            deno_core::MaskFutureAsSend::new(async move {
+              create_graph_for_caching(cli_options, roots, open_docs).await
+            })
           });
           if let Err(err) = handle.await.unwrap() {
             self

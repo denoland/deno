@@ -74,7 +74,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::task::spawn_local;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Flow {
@@ -224,9 +223,13 @@ impl Drop for TlsStream {
     let use_linger_task = inner.poll_close(&mut cx).is_pending();
 
     if use_linger_task {
-      spawn_local(poll_fn(move |cx| inner.poll_close(cx)));
-    } else if cfg!(debug_assertions) {
-      spawn_local(async {}); // Spawn dummy task to detect missing LocalSet.
+      // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+      // so it's okay to mask the future as send.
+      tokio::spawn(unsafe {
+        deno_core::MaskFutureAsSend::new(poll_fn(move |cx| {
+          inner.poll_close(cx)
+        }))
+      });
     }
   }
 }

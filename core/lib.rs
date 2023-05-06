@@ -121,6 +121,7 @@ pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
 pub use crate::task_queue::TaskQueue;
 pub use crate::task_queue::TaskQueuePermit;
+pub use mask_future_as_send::MaskFutureAsSend;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
@@ -161,6 +162,39 @@ macro_rules! located_script_name {
       "]"
     )
   };
+}
+
+mod mask_future_as_send {
+  use core::future::Future;
+  use core::pin::Pin;
+  use core::task::Context;
+  use core::task::Poll;
+
+  pub struct MaskFutureAsSend<F> {
+    future: F,
+  }
+
+  impl<F> MaskFutureAsSend<F> {
+    /// SAFETY: You must ensure that the future is actually used on the same
+    /// thread, ie. always use "current thread" runtime for futures.
+    pub unsafe fn new(future: F) -> Self {
+      Self { future }
+    }
+  }
+
+  unsafe impl<F> Send for MaskFutureAsSend<F> {}
+
+  impl<F: Future> Future for MaskFutureAsSend<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+      unsafe {
+        let me = Pin::into_inner_unchecked(self);
+        let future = Pin::new_unchecked(&mut me.future);
+        future.poll(cx)
+      }
+    }
+  }
 }
 
 #[cfg(test)]

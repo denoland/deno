@@ -106,10 +106,12 @@ struct LocalExecutor;
 impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
 where
   Fut: Future + 'static,
-  Fut::Output: 'static,
+  Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn_local(fut);
+    // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+    // so it's okay to mask the future as send.
+    tokio::task::spawn(unsafe { deno_core::MaskFutureAsSend::new(fut) });
   }
 }
 
@@ -158,29 +160,33 @@ fn handle_ws_request(
     }
   };
 
-  // spawn a task that will wait for websocket connection and then pump messages between
+  // Spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
-  tokio::task::spawn_local(async move {
-    let websocket = if let Ok(w) = fut.await {
-      w
-    } else {
-      eprintln!("Inspector server failed to upgrade to WS connection");
-      return;
-    };
+  // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+  // so it's okay to mask the future as send.
+  tokio::task::spawn(unsafe {
+    deno_core::MaskFutureAsSend::new(async move {
+      let websocket = if let Ok(w) = fut.await {
+        w
+      } else {
+        eprintln!("Inspector server failed to upgrade to WS connection");
+        return;
+      };
 
-    // The 'outbound' channel carries messages sent to the websocket.
-    let (outbound_tx, outbound_rx) = mpsc::unbounded();
-    // The 'inbound' channel carries messages received from the websocket.
-    let (inbound_tx, inbound_rx) = mpsc::unbounded();
+      // The 'outbound' channel carries messages sent to the websocket.
+      let (outbound_tx, outbound_rx) = mpsc::unbounded();
+      // The 'inbound' channel carries messages received from the websocket.
+      let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
-    let inspector_session_proxy = InspectorSessionProxy {
-      tx: outbound_tx,
-      rx: inbound_rx,
-    };
+      let inspector_session_proxy = InspectorSessionProxy {
+        tx: outbound_tx,
+        rx: inbound_rx,
+      };
 
-    eprintln!("Debugger session started.");
-    let _ = new_session_tx.unbounded_send(inspector_session_proxy);
-    pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
+      eprintln!("Debugger session started.");
+      let _ = new_session_tx.unbounded_send(inspector_session_proxy);
+      pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
+    })
   });
 
   Ok(resp)

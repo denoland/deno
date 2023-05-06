@@ -68,7 +68,6 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::task::spawn_local;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
@@ -177,7 +176,9 @@ impl HttpConnResource {
     };
     let (task_fut, closed_fut) = task_fut.remote_handle();
     let closed_fut = closed_fut.shared();
-    spawn_local(task_fut);
+    // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+    // so it's okay to mask the future as send.
+    tokio::spawn(unsafe { deno_core::MaskFutureAsSend::new(task_fut) });
 
     Self {
       addr,
@@ -995,20 +996,24 @@ struct LocalExecutor;
 impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
 where
   Fut: Future + 'static,
-  Fut::Output: 'static,
+  Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    spawn_local(fut);
+    // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+    // so it's okay to mask the future as send.
+    tokio::spawn(unsafe { deno_core::MaskFutureAsSend::new(fut) });
   }
 }
 
 impl<Fut> hyper1::rt::Executor<Fut> for LocalExecutor
 where
   Fut: Future + 'static,
-  Fut::Output: 'static,
+  Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    spawn_local(fut);
+    // SAFETY: we are running in a "current thread" flavor of the Tokio runtime,
+    // so it's okay to mask the future as send.
+    tokio::spawn(unsafe { deno_core::MaskFutureAsSend::new(fut) });
   }
 }
 
