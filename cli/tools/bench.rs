@@ -436,7 +436,7 @@ async fn check_specifiers(
 
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
-  worker_factory: &CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   sender: UnboundedSender<BenchEvent>,
@@ -524,7 +524,7 @@ async fn bench_specifiers(
     let options = option_for_handles.clone();
     tokio::task::spawn_blocking(move || {
       let future = bench_specifier(
-        &worker_factory,
+        worker_factory,
         permissions,
         specifier,
         sender,

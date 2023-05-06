@@ -715,7 +715,10 @@ impl WebWorker {
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    tokio::task::unconstrained(poll_fn(|cx| {
+      self.poll_event_loop(cx, wait_for_inspector)
+    }))
+    .await
   }
 
   // Starts polling for messages from worker host from JavaScript.

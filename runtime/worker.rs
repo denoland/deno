@@ -483,7 +483,10 @@ impl MainWorker {
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    self.js_runtime.run_event_loop(wait_for_inspector).await
+    tokio::task::unconstrained(
+      self.js_runtime.run_event_loop(wait_for_inspector),
+    )
+    .await
   }
 
   /// A utility function that runs provided future concurrently with the event loop.

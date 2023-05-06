@@ -292,17 +292,18 @@ impl TestRun {
         let file_result = if token.is_cancelled() {
           Ok(())
         } else {
+          let options = test::TestSpecifierOptions {
+            filter,
+            shuffle: None,
+            trace_ops: false,
+          };
           run_in_current_thread_runtime(test::test_specifier(
-            &worker_factory,
+            worker_factory,
             permissions,
             specifier,
             sender.clone(),
             fail_fast_tracker,
-            &test::TestSpecifierOptions {
-              filter,
-              shuffle: None,
-              trace_ops: false,
-            },
+            options,
           ))
         };
         if let Err(error) = file_result {

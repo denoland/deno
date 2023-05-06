@@ -916,12 +916,12 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 pub async fn test_specifier(
-  worker_factory: &CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mut sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
-  options: &TestSpecifierOptions,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
     return Ok(());
@@ -1330,12 +1330,12 @@ async fn test_specifiers(
     let specifier_options = options.specifier.clone();
     tokio::task::spawn_blocking(move || {
       run_in_current_thread_runtime(test_specifier(
-        &worker_factory,
+        worker_factory,
         permissions,
         specifier,
         sender.clone(),
         fail_fast_tracker,
-        &specifier_options,
+        specifier_options,
       ))
     })
   });
