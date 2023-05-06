@@ -7,7 +7,6 @@ use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::CompletionHandle;
-use crate::response_body::ResourceBodyAdapter;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
@@ -18,7 +17,6 @@ use deno_core::futures::TryFutureExt;
 use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
-use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -33,7 +31,6 @@ use deno_net::raw::put_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use http::request::Parts;
-use http::response;
 use hyper1::body::Incoming;
 use hyper1::header::COOKIE;
 use hyper1::http::HeaderName;
@@ -529,7 +526,7 @@ pub fn op_set_response_body_text(index: u32, text: String) {
         .as_mut()
         .unwrap()
         .body_mut()
-        .initialize(ResponseBytesInner::Bytes(BufView::from(text.into_bytes())))
+        .initialize(ResponseBytesInner::from_vec(text.into_bytes()))
     });
   }
 }
@@ -542,7 +539,7 @@ pub fn op_set_response_body_bytes(index: u32, buffer: &[u8]) {
         .as_mut()
         .unwrap()
         .body_mut()
-        .initialize(ResponseBytesInner::Bytes(BufView::from(buffer.to_vec())))
+        .initialize(ResponseBytesInner::from_slice(buffer))
     });
   };
 }

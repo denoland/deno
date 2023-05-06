@@ -71,6 +71,13 @@ trait PollFrame: Unpin {
   fn size_hint(&self) -> SizeHint;
 }
 
+pub enum Compression {
+  None,
+  GZip,
+  Deflate,
+  Brotli,
+}
+
 pub enum ResponseStream {
   /// A resource stream, piped in fast mode.
   Resource(ResourceBodyAdapter),
@@ -89,6 +96,8 @@ pub enum ResponseBytesInner {
   Bytes(BufView),
   /// An uncompressed stream.
   UncompressedStream(ResponseStream),
+  /// A GZip stream.
+  GZipStream(GZipResponseStream),
 }
 
 impl std::fmt::Debug for ResponseBytesInner {
@@ -98,6 +107,7 @@ impl std::fmt::Debug for ResponseBytesInner {
       Self::Empty => f.write_str("Empty"),
       Self::Bytes(..) => f.write_str("Bytes"),
       Self::UncompressedStream(..) => f.write_str("Uncompressed"),
+      Self::GZipStream(..) => f.write_str("GZip"),
     }
   }
 }
@@ -136,17 +146,26 @@ impl ResponseBytesInner {
       Self::Empty => SizeHint::with_exact(0),
       Self::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
       Self::UncompressedStream(res) => res.size_hint(),
+      // Self::GZipStream(res) => SizeHint::
     }
   }
 
-  pub fn from_v8(rx: tokio::sync::mpsc::Receiver<BufView>) -> Self {
+  pub fn from_v8(compression: Compression, rx: tokio::sync::mpsc::Receiver<BufView>) -> Self {
     Self::UncompressedStream(ResponseStream::V8Stream(rx))
   }
 
-  pub fn from_resource(stm: Rc<dyn Resource>, auto_close: bool) -> Self {
+  pub fn from_resource(compression: Compression, stm: Rc<dyn Resource>, auto_close: bool) -> Self {
     Self::UncompressedStream(ResponseStream::Resource(
       ResourceBodyAdapter::new(stm, auto_close),
     ))
+  }
+
+  pub fn from_slice(compression: Compression, bytes: &[u8]) -> Self {
+    Self::Bytes(BufView::from(bytes.to_vec()))
+  }
+
+  pub fn from_vec(compression: Compression, vec: Vec<u8>) -> Self {
+    Self::Bytes(BufView::from(vec))
   }
 }
 
@@ -177,6 +196,9 @@ impl Body for ResponseBytes {
           }
           x @ _ => x,
         }
+      },
+      ResponseBytesInner::GZipStream(stm) => {
+
       }
     }
   }
@@ -287,6 +309,10 @@ impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
   fn size_hint(&self) -> SizeHint {
     SizeHint::default()
   }
+}
+
+struct GZipResponseStream {
+  stm: async_compression::tokio::bufread::GzipEncoder<ResponseStream>,
 }
 
 /// A response body object that can be passed to V8. This body will feed byte buffers to a channel which
