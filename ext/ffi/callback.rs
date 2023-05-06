@@ -6,9 +6,11 @@ use crate::FfiPermissions;
 use crate::FfiState;
 use crate::ForeignFunction;
 use crate::PendingFfiAsyncWork;
-use crate::LOCAL_ISOLATE_POINTER;
+use crate::ISOLATE_ID_COUNTER;
+use crate::LOCAL_ISOLATE_ID;
 use crate::MAX_SAFE_INTEGER;
 use crate::MIN_SAFE_INTEGER;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::op;
@@ -30,6 +32,7 @@ use std::pin::Pin;
 use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::sync::atomic;
 use std::sync::mpsc::sync_channel;
 use std::task::Poll;
 use std::task::Waker;
@@ -78,20 +81,6 @@ impl Resource for UnsafeCallbackResource {
   fn name(&self) -> Cow<str> {
     "unsafecallback".into()
   }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-    // SAFETY: This drops the closure and the callback info associated with it.
-    // Any retained function pointers to the closure become dangling pointers.
-    // It is up to the user to know that it is safe to call the `close()` on the
-    // UnsafeCallback instance.
-    unsafe {
-      let info = Box::from_raw(self.info);
-      let isolate = info.isolate.as_mut().unwrap();
-      let _ = v8::Global::from_raw(isolate, info.callback);
-      let _ = v8::Global::from_raw(isolate, info.context);
-    }
-  }
 }
 
 struct CallbackInfo {
@@ -100,7 +89,7 @@ struct CallbackInfo {
   pub async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
-  pub isolate: *mut v8::Isolate,
+  pub isolate_id: u32,
   pub waker: Option<Waker>,
 }
 
@@ -122,8 +111,8 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &CallbackInfo,
 ) {
-  LOCAL_ISOLATE_POINTER.with(|s| {
-    if ptr::eq(*s.borrow(), info.isolate) {
+  LOCAL_ISOLATE_ID.with(|s| {
+    if *s.borrow() == info.isolate_id {
       // Own isolate thread, okay to call directly
       do_ffi_callback(cif, info, result, args);
     } else {
@@ -155,9 +144,6 @@ unsafe fn do_ffi_callback(
 ) {
   let callback: NonNull<v8::Function> = info.callback;
   let context: NonNull<v8::Context> = info.context;
-  let isolate: *mut v8::Isolate = info.isolate;
-  let isolate = &mut *isolate;
-  let callback = v8::Global::from_raw(isolate, callback);
   let context = std::mem::transmute::<
     NonNull<v8::Context>,
     v8::Local<v8::Context>,
@@ -174,7 +160,10 @@ unsafe fn do_ffi_callback(
   // refer the same `let bool_value`.
   let mut cb_scope = v8::CallbackScope::new(context);
   let scope = &mut v8::HandleScope::new(&mut cb_scope);
-  let func = callback.open(scope);
+  let func = std::mem::transmute::<
+    NonNull<v8::Function>,
+    v8::Local<v8::Function>,
+  >(callback);
   let result = result as *mut c_void;
   let vals: &[*const c_void] =
     std::slice::from_raw_parts(args, info.parameters.len());
@@ -267,7 +256,6 @@ unsafe fn do_ffi_callback(
 
   let recv = v8::undefined(scope);
   let call_result = func.call(scope, recv.into(), &params);
-  std::mem::forget(callback);
 
   if call_result.is_none() {
     // JS function threw an exception. Set the return value to zero and return.
@@ -555,12 +543,30 @@ where
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
-  let isolate: *mut v8::Isolate = &mut *scope as &mut v8::Isolate;
-  LOCAL_ISOLATE_POINTER.with(|s| {
-    if s.borrow().is_null() {
-      s.replace(isolate);
+  let isolate_id_result: Result<u32, u32> = LOCAL_ISOLATE_ID.with(|s| {
+    let value = *s.borrow();
+    if value == 0 {
+      let res = ISOLATE_ID_COUNTER.fetch_update(
+        atomic::Ordering::SeqCst,
+        atomic::Ordering::SeqCst,
+        |v| Some(v + 1),
+      )?;
+      s.replace(res);
+      Ok(res)
+    } else {
+      Ok(value)
     }
   });
+
+  if isolate_id_result.is_err() {
+    return Err(generic_error("Failed to update Isolate ID counter"));
+  }
+
+  let isolate_id = isolate_id_result.unwrap();
+
+  if isolate_id == 0 {
+    panic!("Isolate ID counter overflowed u32");
+  }
 
   let async_work_sender =
     state.borrow_mut::<FfiState>().async_work_sender.clone();
@@ -574,7 +580,7 @@ where
     async_work_sender,
     callback,
     context,
-    isolate,
+    isolate_id,
     waker: None,
   }));
   let cif = Cif::new(
@@ -606,4 +612,25 @@ where
   let array_value: v8::Local<v8::Value> = array.into();
 
   Ok(array_value.into())
+}
+
+#[op(v8)]
+pub fn op_ffi_unsafe_callback_close(
+  state: &mut OpState,
+  scope: &mut v8::HandleScope,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  // SAFETY: This drops the closure and the callback info associated with it.
+  // Any retained function pointers to the closure become dangling pointers.
+  // It is up to the user to know that it is safe to call the `close()` on the
+  // UnsafeCallback instance.
+  unsafe {
+    let callback_resource =
+      state.resource_table.take::<UnsafeCallbackResource>(rid)?;
+    callback_resource.cancel.cancel();
+    let info = Box::from_raw(callback_resource.info);
+    let _ = v8::Global::from_raw(scope, info.callback);
+    let _ = v8::Global::from_raw(scope, info.context);
+  }
+  Ok(())
 }

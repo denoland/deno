@@ -426,7 +426,7 @@ class UnsafeCallback {
 
   close() {
     this.#refcount = 0;
-    core.close(this.#rid);
+    ops.op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
