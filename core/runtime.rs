@@ -2484,7 +2484,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   let mut state = runtime_state.borrow_mut();
   state
     .pending_ops
-    .spawn_local(OpCall::pending(ctx, promise_id, fut));
+    .spawn(OpCall::pending(ctx, promise_id, fut));
   state.have_unpolled_ops = true;
 }
 
@@ -2607,7 +2607,7 @@ pub fn queue_async_op<'s>(
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops.spawn_local(op_call);
+  state.pending_ops.spawn(op_call);
   state.have_unpolled_ops = true;
   None
 }
@@ -2723,8 +2723,8 @@ pub mod tests {
     (runtime, dispatch_count)
   }
 
-  #[test]
-  fn test_ref_unref_ops() {
+  #[tokio::test]
+  async fn test_ref_unref_ops() {
     let (mut runtime, _dispatch_count) = setup(Mode::AsyncDeferred);
     runtime
       .execute_script_static(

@@ -38,6 +38,11 @@ pub struct OpCall {
   fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 }
 
+// NOTE(bartlomieju): we are cheating here a bit - this struct is not really
+// Send but we need to be so that we can use `spawn()` in Tokio.
+// We are still gonna be pinned to a specific thread so that's okay.
+unsafe impl Send for OpCall {}
+
 impl OpCall {
   /// Wraps a future; the inner future is polled the usual way (lazily).
   pub fn pending(

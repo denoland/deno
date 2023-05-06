@@ -35,6 +35,11 @@ pub enum SerializablePkg {
   Serializable(Box<dyn Serializable>),
 }
 
+// NOTE(bartlomieju): we are cheating here a bit - this struct is not really
+// Send but we need to be so that we can use `spawn()` in Tokio.
+// We are still gonna be pinned to a specific thread so that's okay.
+unsafe impl Send for SerializablePkg {}
+
 impl SerializablePkg {
   pub fn to_v8<'a>(
     &mut self,
