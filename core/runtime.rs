@@ -4707,7 +4707,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       let main_realm = runtime.global_realm();
       let other_realm = runtime.create_realm().unwrap();
 
@@ -4759,7 +4759,9 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(()))
       ));
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
   #[test]
