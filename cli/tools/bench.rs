@@ -31,7 +31,7 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::run_in_current_thread_runtime;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -530,7 +530,7 @@ async fn bench_specifiers(
         sender,
         options.filter,
       );
-      run_local(future)
+      run_in_current_thread_runtime(future)
     })
   });
 

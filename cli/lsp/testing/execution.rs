@@ -26,7 +26,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::run_in_current_thread_runtime;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -292,7 +292,7 @@ impl TestRun {
         let file_result = if token.is_cancelled() {
           Ok(())
         } else {
-          run_local(test::test_specifier(
+          run_in_current_thread_runtime(test::test_specifier(
             &worker_factory,
             permissions,
             specifier,

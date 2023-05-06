@@ -47,7 +47,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::run_in_current_thread_runtime;
 use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
@@ -289,7 +289,7 @@ pub fn main() {
     run_subcommand(flags).await
   };
 
-  let exit_code = unwrap_or_exit(run_local(future));
+  let exit_code = unwrap_or_exit(run_in_current_thread_runtime(future));
 
   std::process::exit(exit_code);
 }

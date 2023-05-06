@@ -42,7 +42,7 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::run_in_current_thread_runtime;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -1329,7 +1329,7 @@ async fn test_specifiers(
     let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
     let specifier_options = options.specifier.clone();
     tokio::task::spawn_blocking(move || {
-      run_local(test_specifier(
+      run_in_current_thread_runtime(test_specifier(
         &worker_factory,
         permissions,
         specifier,

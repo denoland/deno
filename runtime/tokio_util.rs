@@ -14,11 +14,17 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     .unwrap()
 }
 
-pub fn run_local<F, R>(future: F) -> R
+/// Runs the provided future in a "current thread" flavor of Tokio runtime.
+/// This function blocks until the provided future resolves. It should be used
+/// as an entry-point for asynchronous code.
+///
+/// Since `deno_core::JsRuntime` is not `Send` we are forced to use current
+/// thread flavor. You can still use `tokio::spawn` for non-`Send` futures if
+/// you wrap them in `deno_core::MaskFutureAsSend`.
+pub fn run_in_current_thread_runtime<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R>,
 {
   let rt = create_basic_runtime();
-  let local = tokio::task::LocalSet::new();
-  local.block_on(&rt, future)
+  rt.block_on(future)
 }
