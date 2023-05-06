@@ -53,7 +53,7 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
   });
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
+  lazy_regex::lazy_regex!(r#"\sfrom\s+["']([^"']*)["']"#);
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 

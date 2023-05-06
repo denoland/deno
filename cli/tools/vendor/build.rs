@@ -1117,7 +1117,7 @@ mod test {
       .unwrap();
 
     assert_eq!(
-      err.to_string(),
+      test_util::strip_ansi_codes(&err.to_string()),
       concat!(
         "500 Internal Server Error\n",
         "    at https://localhost/mod.ts:1:14"

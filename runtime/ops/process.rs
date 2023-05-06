@@ -13,10 +13,10 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
-use deno_io::StdFileResource;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -94,7 +94,9 @@ impl StdioOrRid {
   ) -> Result<std::process::Stdio, AnyError> {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
-      StdioOrRid::Rid(rid) => StdFileResource::as_stdio(state, *rid),
+      StdioOrRid::Rid(rid) => {
+        FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
+      }
     }
   }
 }

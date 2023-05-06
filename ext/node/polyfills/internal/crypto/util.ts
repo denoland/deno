@@ -46,6 +46,47 @@ const digestAlgorithms = [
   "sha1",
 ];
 
+export type EllipticCurve = {
+  name: string;
+  ephemeral: boolean;
+  privateKeySize: number;
+  publicKeySize: number;
+  sharedSecretSize: number;
+};
+
+export const ellipticCurves: Array<EllipticCurve> = [
+  {
+    name: "secp256k1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // Weierstrass-class EC used by Bitcoin
+  {
+    name: "prime256v1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC
+  {
+    name: "secp256r1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC (same as above)
+  {
+    name: "secp384r1",
+    privateKeySize: 48,
+    publicKeySize: 97,
+    sharedSecretSize: 48,
+  }, // NIST P-384 EC
+  {
+    name: "secp224r1",
+    privateKeySize: 28,
+    publicKeySize: 57,
+    sharedSecretSize: 28,
+  }, // NIST P-224 EC
+];
+
 // deno-fmt-ignore
 const supportedCiphers = [
   "aes-128-ecb",  "aes-192-ecb",
@@ -114,8 +155,9 @@ export function getHashes(): readonly string[] {
   return digestAlgorithms;
 }
 
+const curveNames = ellipticCurves.map((x) => x.name);
 export function getCurves(): readonly string[] {
-  notImplemented("crypto.getCurves");
+  return curveNames;
 }
 
 export interface SecureHeapUsage {
@@ -133,7 +175,9 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
-export { kHandle, kKeyObject };
+const kAesKeyLengths = [128, 192, 256];
+
+export { kAesKeyLengths, kHandle, kKeyObject };
 
 export default {
   getDefaultEncoding,
@@ -147,4 +191,5 @@ export default {
   toBuf,
   kHandle,
   kKeyObject,
+  kAesKeyLengths,
 };

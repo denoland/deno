@@ -5,8 +5,8 @@
 use crate::args::Flags;
 use crate::args::UpgradeFlags;
 use crate::colors;
+use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
-use crate::proc_state::ProcState;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::time;
@@ -17,7 +17,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_graph::semver::Version;
+use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -26,6 +26,7 @@ use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::Duration;
 
 static ARCHIVE_NAME: Lazy<String> =
@@ -50,13 +51,13 @@ trait UpdateCheckerEnvironment: Clone + Send + Sync {
 
 #[derive(Clone)]
 struct RealUpdateCheckerEnvironment {
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
   current_time: chrono::DateTime<chrono::Utc>,
 }
 
 impl RealUpdateCheckerEnvironment {
-  pub fn new(http_client: HttpClient, cache_file_path: PathBuf) -> Self {
+  pub fn new(http_client: Arc<HttpClient>, cache_file_path: PathBuf) -> Self {
     Self {
       http_client,
       cache_file_path,
@@ -183,7 +184,10 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   }
 }
 
-pub fn check_for_upgrades(http_client: HttpClient, cache_file_path: PathBuf) {
+pub fn check_for_upgrades(
+  http_client: Arc<HttpClient>,
+  cache_file_path: PathBuf,
+) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return;
   }
@@ -263,7 +267,8 @@ pub async fn upgrade(
   flags: Flags,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
   let metadata = fs::metadata(&current_exe_path)?;
   let permissions = metadata.permissions();
@@ -285,13 +290,11 @@ pub async fn upgrade(
     ), current_exe_path.display());
   }
 
-  let client = &ps.http_client;
-
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
-      if upgrade_flags.canary
-        && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
-      {
+      let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+
+      if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
         bail!("Invalid commit hash passed");
       } else if !upgrade_flags.canary
         && Version::parse_standard(&passed_version).is_err()

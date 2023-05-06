@@ -16,7 +16,7 @@ const {
   ArrayPrototypeSplice,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectSetPrototypeOf,
   ObjectKeys,
   ObjectEntries,
@@ -241,8 +241,10 @@ setupBuiltinModules();
 const cjsParseCache = new SafeWeakMap();
 
 function pathDirname(filepath) {
-  if (filepath == null || filepath === "") {
+  if (filepath == null) {
     throw new Error("Empty filepath.");
+  } else if (filepath === "") {
+    return ".";
   }
   return ops.op_require_path_dirname(filepath);
 }
@@ -431,7 +433,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy({}, {
 
   getOwnPropertyDescriptor(target, prop) {
     if (
-      ObjectPrototypeHasOwnProperty(target, prop) || prop === "__esModule"
+      ObjectHasOwn(target, prop) || prop === "__esModule"
     ) {
       return ObjectGetOwnPropertyDescriptor(target, prop);
     }
@@ -555,15 +557,21 @@ Module._findPath = function (request, paths, isMain, parentPath) {
       }
     }
 
-    const isDenoDirPackage = ops.op_require_is_deno_dir_package(
-      curPath,
-    );
-    const isRelative = ops.op_require_is_request_relative(
-      request,
-    );
-    const basePath = (isDenoDirPackage && !isRelative)
-      ? pathResolve(curPath, packageSpecifierSubPath(request))
-      : pathResolve(curPath, request);
+    let basePath;
+
+    if (usesLocalNodeModulesDir) {
+      basePath = pathResolve(curPath, request);
+    } else {
+      const isDenoDirPackage = ops.op_require_is_deno_dir_package(
+        curPath,
+      );
+      const isRelative = ops.op_require_is_request_relative(
+        request,
+      );
+      basePath = (isDenoDirPackage && !isRelative)
+        ? pathResolve(curPath, packageSpecifierSubPath(request))
+        : pathResolve(curPath, request);
+    }
     let filename;
 
     const rc = stat(basePath);
@@ -605,15 +613,17 @@ Module._nodeModulePaths = function (fromPath) {
 Module._resolveLookupPaths = function (request, parent) {
   const paths = [];
 
-  if (ops.op_require_is_request_relative(request) && parent?.filename) {
+  if (ops.op_require_is_request_relative(request)) {
     ArrayPrototypePush(
       paths,
-      ops.op_require_path_dirname(parent.filename),
+      parent?.filename ? ops.op_require_path_dirname(parent.filename) : ".",
     );
     return paths;
   }
 
-  if (parent?.filename && parent.filename.length > 0) {
+  if (
+    !usesLocalNodeModulesDir && parent?.filename && parent.filename.length > 0
+  ) {
     const denoDirPath = ops.op_require_resolve_deno_dir(
       request,
       parent.filename,
@@ -752,7 +762,6 @@ Module._resolveFilename = function (
         paths = options.paths;
       } else {
         const fakeParent = new Module("", null);
-
         paths = [];
 
         for (let i = 0; i < options.paths.length; i++) {
@@ -828,14 +837,35 @@ Module._resolveFilename = function (
   throw err;
 };
 
+/**
+ * Internal CommonJS API to always require modules before requiring the actual
+ * one when calling `require("my-module")`. This is used by require hooks such
+ * as `ts-node/register`.
+ * @param {string[]} requests List of modules to preload
+ */
+Module._preloadModules = function (requests) {
+  if (!ArrayIsArray(requests) || requests.length === 0) {
+    return;
+  }
+
+  const parent = new Module("internal/preload", null);
+  // All requested files must be resolved against cwd
+  parent.paths = Module._nodeModulePaths(process.cwd());
+  for (let i = 0; i < requests.length; i++) {
+    parent.require(requests[i]);
+  }
+};
+
 Module.prototype.load = function (filename) {
   if (this.loaded) {
     throw Error("Module already loaded");
   }
 
-  this.filename = filename;
+  // Canonicalize the path so it's not pointing to the symlinked directory
+  // in `node_modules` directory of the referrer.
+  this.filename = ops.op_require_real_path(filename);
   this.paths = Module._nodeModulePaths(
-    pathDirname(filename),
+    pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
   // allow .mjs to be overriden
@@ -954,7 +984,7 @@ Module._extensions[".js"] = function (module, filename) {
   const content = ops.op_require_read_file(filename);
 
   if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = ops.op_require_read_closest_package_json(filename);
+    const pkg = ops.op_require_read_package_scope(filename);
     if (pkg && pkg.exists && pkg.typ == "module") {
       let message = `Trying to import ESM module: ${filename}`;
 

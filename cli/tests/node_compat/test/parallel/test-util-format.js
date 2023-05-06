@@ -50,13 +50,11 @@ assert.strictEqual(util.format('foo', 'bar', 'baz'), 'foo bar baz');
 assert.strictEqual(util.format(symbol), 'Symbol(foo)');
 assert.strictEqual(util.format('foo', symbol), 'foo Symbol(foo)');
 assert.strictEqual(util.format('%s', symbol), 'Symbol(foo)');
-// TODO(kt3k): Enable this
-// assert.strictEqual(util.format('%j', symbol), 'undefined');
+assert.strictEqual(util.format('%j', symbol), 'undefined');
 
 // Number format specifier
 assert.strictEqual(util.format('%d'), '%d');
 assert.strictEqual(util.format('%d', 42.0), '42');
-/* TODO(kt3k): Enable this
 assert.strictEqual(util.format('%d', 42), '42');
 assert.strictEqual(util.format('%d', '42'), '42');
 assert.strictEqual(util.format('%d', '42.0'), '42');
@@ -137,7 +135,6 @@ assert.strictEqual(util.format('%f', Infinity), 'Infinity');
 assert.strictEqual(util.format('%f', -Infinity), '-Infinity');
 assert.strictEqual(util.format('%f %f', 42, 43), '42 43');
 assert.strictEqual(util.format('%f %f', 42), '42 %f');
-*/
 
 // String format specifier
 assert.strictEqual(util.format('%s'), '%s');
@@ -146,16 +143,16 @@ assert.strictEqual(util.format('%s', null), 'null');
 assert.strictEqual(util.format('%s', 'foo'), 'foo');
 assert.strictEqual(util.format('%s', 42), '42');
 assert.strictEqual(util.format('%s', '42'), '42');
-// assert.strictEqual(util.format('%s', -0), '-0');
+assert.strictEqual(util.format('%s', -0), '-0');
 assert.strictEqual(util.format('%s', '-0.0'), '-0.0');
 assert.strictEqual(util.format('%s %s', 42, 43), '42 43');
 assert.strictEqual(util.format('%s %s', 42), '42 %s');
-// assert.strictEqual(util.format('%s', 42n), '42n');
+assert.strictEqual(util.format('%s', 42n), '42n');
 assert.strictEqual(util.format('%s', Symbol('foo')), 'Symbol(foo)');
 assert.strictEqual(util.format('%s', true), 'true');
-// assert.strictEqual(util.format('%s', { a: [1, 2, 3] }), '{ a: [Array] }');
+assert.strictEqual(util.format('%s', { a: [1, 2, 3] }), '{ a: [Array] }');
 assert.strictEqual(util.format('%s', { toString() { return 'Foo'; } }), 'Foo');
-// assert.strictEqual(util.format('%s', { toString: 5 }), '{ toString: 5 }');
+assert.strictEqual(util.format('%s', { toString: 5 }), '{ toString: 5 }');
 assert.strictEqual(util.format('%s', () => 5), '() => 5');
 assert.strictEqual(util.format('%s', Infinity), 'Infinity');
 assert.strictEqual(util.format('%s', -Infinity), '-Infinity');
@@ -243,10 +240,10 @@ assert.strictEqual(util.format('%s', -Infinity), '-Infinity');
 
 // JSON format specifier
 assert.strictEqual(util.format('%j'), '%j');
-// assert.strictEqual(util.format('%j', 42), '42');
-// assert.strictEqual(util.format('%j', '42'), '"42"');
-// assert.strictEqual(util.format('%j %j', 42, 43), '42 43');
-// assert.strictEqual(util.format('%j %j', 42), '42 %j');
+assert.strictEqual(util.format('%j', 42), '42');
+assert.strictEqual(util.format('%j', '42'), '"42"');
+assert.strictEqual(util.format('%j %j', 42, 43), '42 43');
+assert.strictEqual(util.format('%j %j', 42), '42 %j');
 
 // Object format specifier
 const obj = {
@@ -268,8 +265,7 @@ const nestedObj2 = {
 };
 assert.strictEqual(util.format('%o'), '%o');
 assert.strictEqual(util.format('%o', 42), '42');
-// assert.strictEqual(util.format('%o', 'foo'), '\'foo\'');
-/*
+assert.strictEqual(util.format('%o', 'foo'), '\'foo\'');
 assert.strictEqual(
   util.format('%o', obj),
   '{\n' +
@@ -340,11 +336,9 @@ assert.strictEqual(
   '    [prototype]: { [constructor]: [Circular *1] }\n' +
   '  }\n' +
   '} %o');
-*/
 
 assert.strictEqual(util.format('%O'), '%O');
 assert.strictEqual(util.format('%O', 42), '42');
-/* TODO(kt3k): Enable this
 assert.strictEqual(util.format('%O', 'foo'), '\'foo\'');
 assert.strictEqual(
   util.format('%O', obj),
@@ -359,7 +353,6 @@ assert.strictEqual(
 assert.strictEqual(
   util.format('%O %O', obj),
   '{ foo: \'bar\', foobar: 1, func: [Function: func] } %O');
-*/
 
 // Various format specifiers
 assert.strictEqual(util.format('%%s%s', 'foo'), '%sfoo');
@@ -382,7 +375,6 @@ assert.strictEqual(util.format('%i:%i'), '%i:%i');
 assert.strictEqual(util.format('%f:%f', 12, 30), '12:30');
 assert.strictEqual(util.format('%f:%f', 12), '12:%f');
 assert.strictEqual(util.format('%f:%f'), '%f:%f');
-/* TODO(kt3k): Enable this
 assert.strictEqual(util.format('o: %j, a: %j', {}, []), 'o: {}, a: []');
 assert.strictEqual(util.format('o: %j, a: %j', {}), 'o: {}, a: %j');
 assert.strictEqual(util.format('o: %j, a: %j'), 'o: %j, a: %j');
@@ -396,7 +388,6 @@ assert.strictEqual(util.format('a% b', 'x'), 'a% b x');
 assert.strictEqual(util.format('percent: %d%, fraction: %d', 10, 0.1),
                    'percent: 10%, fraction: 0.1');
 assert.strictEqual(util.format('abc%', 1), 'abc% 1');
-*/
 
 // Additional arguments after format specifiers
 assert.strictEqual(util.format('%i', 1, 'number'), '1 number');
@@ -408,7 +399,6 @@ assert.strictEqual(util.format('%cab'), '%cab');
 assert.strictEqual(util.format('%cab', 'color: blue'), 'ab');
 assert.strictEqual(util.format('%cab', 'color: blue', 'c'), 'ab c');
 
-/* TODO(kt3k): Enable this
 {
   const o = {};
   o.o = o;
@@ -424,7 +414,6 @@ assert.strictEqual(util.format('%cab', 'color: blue', 'c'), 'ab c');
   assert.throws(() => util.format('%j', o),
                 /^Error: Not a circular object but still not serializable$/);
 }
-*/
 
 // Errors
 const err = new Error('foo');
@@ -442,7 +431,6 @@ class CustomError extends Error {
 const customError = new CustomError('bar');
 assert.strictEqual(util.format(customError), customError.stack);
 // Doesn't capture stack trace
-/* TODO(kt3k): Enable this
 function BadCustomError(msg) {
   Error.call(this);
   Object.defineProperty(this, 'message',
@@ -454,7 +442,6 @@ Object.setPrototypeOf(BadCustomError.prototype, Error.prototype);
 Object.setPrototypeOf(BadCustomError, Error);
 assert.strictEqual(util.format(new BadCustomError('foo')),
                    '[BadCustomError: foo]');
-*/
 
 // The format of arguments should not depend on type of the first argument
 assert.strictEqual(util.format('1', '1'), '1 1');
@@ -491,7 +478,6 @@ assert.strictEqual(
 //   'SharedArrayBuffer { [Uint8Contents]: <00 00 00 00>, byteLength: 4 }'
 // );
 
-/* TODO(kt3k): Enable this
 assert.strictEqual(
   util.formatWithOptions(
     { colors: true, compact: 3 },
@@ -499,7 +485,6 @@ assert.strictEqual(
   ),
   '[ 1, [Object] ]'
 );
-*/
 
 [
   undefined,

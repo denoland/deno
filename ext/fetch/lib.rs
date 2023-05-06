@@ -3,7 +3,16 @@
 mod byte_stream;
 mod fs_fetch_handler;
 
-use data_url::DataUrl;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::cmp::min;
+use std::convert::From;
+use std::path::Path;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
@@ -29,6 +38,9 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
+use deno_tls::RootCertStoreProvider;
+
+use data_url::DataUrl;
 use http::header::CONTENT_LENGTH;
 use http::Uri;
 use reqwest::header::HeaderMap;
@@ -46,14 +58,6 @@ use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::cmp::min;
-use std::convert::From;
-use std::path::Path;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::rc::Rc;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -67,7 +71,7 @@ use crate::byte_stream::MpscByteStream;
 #[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
   pub request_builder_hook:
     Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
@@ -76,11 +80,20 @@ pub struct Options {
   pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
+impl Options {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+    Ok(match &self.root_cert_store_provider {
+      Some(provider) => Some(provider.get_or_try_init()?.clone()),
+      None => None,
+    })
+  }
+}
+
 impl Default for Options {
   fn default() -> Self {
     Self {
       user_agent: "".to_string(),
-      root_cert_store: None,
+      root_cert_store_provider: None,
       proxy: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
@@ -111,18 +124,7 @@ deno_core::extension!(deno_fetch,
     options: Options,
   },
   state = |state, options| {
-    state.put::<Options>(options.options.clone());
-    state.put::<reqwest::Client>({
-      create_http_client(
-        &options.options.user_agent,
-        options.options.root_cert_store,
-        vec![],
-        options.options.proxy,
-        options.options.unsafely_ignore_certificate_errors,
-        options.options.client_cert_chain_and_key
-      )
-      .unwrap()
-    });
+    state.put::<Options>(options.options);
   },
 );
 
@@ -189,6 +191,26 @@ pub struct FetchReturn {
   cancel_handle_rid: Option<ResourceId>,
 }
 
+pub fn get_or_create_client_from_state(
+  state: &mut OpState,
+) -> Result<reqwest::Client, AnyError> {
+  if let Some(client) = state.try_borrow::<reqwest::Client>() {
+    Ok(client.clone())
+  } else {
+    let options = state.borrow::<Options>();
+    let client = create_http_client(
+      &options.user_agent,
+      options.root_cert_store()?,
+      vec![],
+      options.proxy.clone(),
+      options.unsafely_ignore_certificate_errors.clone(),
+      options.client_cert_chain_and_key.clone(),
+    )?;
+    state.put::<reqwest::Client>(client.clone());
+    Ok(client)
+  }
+}
+
 #[op]
 pub fn op_fetch<FP>(
   state: &mut OpState,
@@ -207,8 +229,7 @@ where
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
-    let client = state.borrow::<reqwest::Client>();
-    client.clone()
+    get_or_create_client_from_state(state)?
   };
 
   let method = Method::from_bytes(&method)?;
@@ -632,7 +653,7 @@ where
 
   let client = create_http_client(
     &options.user_agent,
-    options.root_cert_store.clone(),
+    options.root_cert_store()?,
     ca_certs,
     args.proxy,
     options.unsafely_ignore_certificate_errors.clone(),
