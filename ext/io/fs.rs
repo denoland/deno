@@ -81,6 +81,9 @@ pub struct FsStat {
   pub blksize: u64,
   pub blocks: u64,
   pub is_block_device: bool,
+  pub is_char_device: bool,
+  pub is_fifo: bool,
+  pub is_socket: bool,
 }
 
 impl FsStat {

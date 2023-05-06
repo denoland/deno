@@ -3126,6 +3126,18 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     isBlockDevice: boolean | null;
+    /**  True if this is info for a char device.
+     *
+     * _Linux/Mac OS only._ */
+    isCharDevice: boolean | null;
+    /**  True if this is info for a fifo.
+     *
+     * _Linux/Mac OS only._ */
+    isFifo: boolean | null;
+    /**  True if this is info for a socket.
+     *
+     * _Linux/Mac OS only._ */
+    isSocket: boolean | null;
   }
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.

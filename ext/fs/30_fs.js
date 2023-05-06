@@ -305,6 +305,9 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   blksize: "?u64",
   blocks: "?u64",
   isBlockDevice: "?bool",
+  isCharDevice: "?bool",
+  isFifo: "?bool",
+  isSocket: "?bool",
 });
 
 function parseFileInfo(response) {
@@ -329,6 +332,9 @@ function parseFileInfo(response) {
     blksize: unix ? response.blksize : null,
     blocks: unix ? response.blocks : null,
     isBlockDevice: unix ? response.isBlockDevice : null,
+    isCharDevice: unix ? response.isCharDevice : null,
+    isFifo: unix ? response.isFifo : null,
+    isSocket: unix ? response.isSocket : null,
   };
 }
 
