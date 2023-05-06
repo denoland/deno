@@ -175,19 +175,28 @@ mod mask_future_as_send {
   }
 
   impl<F> MaskFutureAsSend<F> {
-    /// SAFETY: You must ensure that the future is actually used on the same
-    /// thread, ie. always use "current thread" runtime for futures.
+    /// Mark a non-`Send` future as `Send`. This is a trick to be able to use
+    /// `tokio::spawn()` (which requires `Send` futures) in a current thread
+    /// runtime.
+    ///
+    /// # Safety
+    ///
+    /// You must ensure that the future is actually used on the same
+    /// thread, ie. always use current thread runtime flavor from Tokio.
     pub unsafe fn new(future: F) -> Self {
       Self { future }
     }
   }
 
+  // SAFETY: we are cheating here - this struct is NOT really Send,
+  // but we need to mark it Send so that we can use `spawn()` in Tokio.
   unsafe impl<F> Send for MaskFutureAsSend<F> {}
 
   impl<F: Future> Future for MaskFutureAsSend<F> {
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+      // SAFETY: We are sure that future is valid here
       unsafe {
         let me = Pin::into_inner_unchecked(self);
         let future = Pin::new_unchecked(&mut me.future);
