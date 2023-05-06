@@ -208,7 +208,6 @@ pub struct JsRuntimeState {
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
   pub(crate) pending_ops: JoinSet<OpCallResult>,
-  pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -388,7 +387,6 @@ impl JsRuntime {
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
       waker: AtomicWaker::new(),
-      have_unpolled_ops: false,
       dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
@@ -1343,8 +1341,7 @@ impl JsRuntime {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if state.have_unpolled_ops
-      || pending_state.has_pending_background_tasks
+    if pending_state.has_pending_background_tasks
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
@@ -2288,7 +2285,6 @@ impl JsRuntime {
     // Now handle actual ops.
     {
       let mut state = self.state.borrow_mut();
-      state.have_unpolled_ops = false;
 
       loop {
         let mut next_op_fut = state.pending_ops.join_next();
@@ -2398,8 +2394,6 @@ impl JsRuntime {
     // Now handle actual ops.
     {
       let mut state = self.state.borrow_mut();
-      state.have_unpolled_ops = false;
-
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
       let mut realm_state = realm_state_rc.borrow_mut();
 
@@ -2485,7 +2479,6 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   state
     .pending_ops
     .spawn(OpCall::pending(ctx, promise_id, fut));
-  state.have_unpolled_ops = true;
 }
 
 #[inline]
@@ -2608,7 +2601,6 @@ pub fn queue_async_op<'s>(
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
   state.pending_ops.spawn(op_call);
-  state.have_unpolled_ops = true;
   None
 }
 

@@ -35,9 +35,9 @@ pub enum SerializablePkg {
   Serializable(Box<dyn Serializable>),
 }
 
-// NOTE(bartlomieju): we are cheating here a bit - this struct is not really
-// Send but we need to be so that we can use `spawn()` in Tokio.
-// We are still gonna be pinned to a specific thread so that's okay.
+// SAFETY: we are cheating here - this struct is NOT really Send,
+// but we need to mark it Send so that we can use `spawn()` in Tokio.
+// `JsRuntime` is still gonna be pinned to a specific thread so that's okay.
 unsafe impl Send for SerializablePkg {}
 
 impl SerializablePkg {
