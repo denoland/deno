@@ -1378,7 +1378,7 @@ async fn test_watch_serve() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
   let file_content = r#"
-      await Deno.serve(() => new Response("hello"));
+      await Deno.serve({port: 4600, handler: () => new Response("hello")});
     "#;
   write(&file_to_watch, file_content).unwrap();
 
