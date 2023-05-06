@@ -36,7 +36,6 @@ use futures::future::poll_fn;
 use futures::future::Future;
 use futures::future::FutureExt;
 use futures::future::MaybeDone;
-use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::noop_waker;
 use futures::task::AtomicWaker;
@@ -53,6 +52,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use tokio::task::JoinSet;
 use v8::OwnedIsolate;
 
 pub enum Snapshot {
@@ -207,7 +207,7 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
-  pub(crate) pending_ops: FuturesUnordered<OpCall>,
+  pub(crate) pending_ops: JoinSet<OpCallResult>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -383,7 +383,7 @@ impl JsRuntime {
       has_tick_scheduled: false,
       source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
-      pending_ops: FuturesUnordered::new(),
+      pending_ops: JoinSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -2290,11 +2290,20 @@ impl JsRuntime {
       let mut state = self.state.borrow_mut();
       state.have_unpolled_ops = false;
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (realm_idx, promise_id, op_id, resp) = item;
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        responses_per_realm[realm_idx as usize].push((promise_id, resp));
+      loop {
+        let mut next_op_fut = state.pending_ops.join_next();
+        // SAFETY: we are sure the pointer is valid here.
+        let mut pinned_fut = unsafe { Pin::new_unchecked(&mut next_op_fut) };
+        if let Poll::Ready(Some(item)) = pinned_fut.poll_unpin(cx) {
+          // It's safe to unwrap here, because we are any failures in ops are handled
+          // in the `resp` argument.
+          let (realm_idx, promise_id, op_id, resp) = item.unwrap();
+          drop(next_op_fut);
+          state.op_state.borrow().tracker.track_async_completed(op_id);
+          responses_per_realm[realm_idx as usize].push((promise_id, resp));
+        } else {
+          break;
+        }
       }
     }
 
@@ -2394,22 +2403,31 @@ impl JsRuntime {
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
       let mut realm_state = realm_state_rc.borrow_mut();
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (realm_idx, promise_id, op_id, mut resp) = item;
-        debug_assert_eq!(
-          state.known_realms[realm_idx as usize],
-          state.global_realm.as_ref().unwrap().context()
-        );
-        realm_state.unrefed_ops.remove(&promise_id);
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id).into());
-        args.push(match resp.to_v8(scope) {
-          Ok(v) => v,
-          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
-            .to_v8(scope)
-            .unwrap(),
-        });
+      loop {
+        let mut next_op_fut = state.pending_ops.join_next();
+        // SAFETY: we are sure the pointer is valid here.
+        let mut pinned_fut = unsafe { Pin::new_unchecked(&mut next_op_fut) };
+        if let Poll::Ready(Some(item)) = pinned_fut.poll_unpin(cx) {
+          // It's safe to unwrap here, because we are any failures in ops are handled
+          // in the `resp` argument.
+          let (realm_idx, promise_id, op_id, mut resp) = item.unwrap();
+          drop(next_op_fut);
+          debug_assert_eq!(
+            state.known_realms[realm_idx as usize],
+            state.global_realm.as_ref().unwrap().context()
+          );
+          realm_state.unrefed_ops.remove(&promise_id);
+          state.op_state.borrow().tracker.track_async_completed(op_id);
+          args.push(v8::Integer::new(scope, promise_id).into());
+          args.push(match resp.to_v8(scope) {
+            Ok(v) => v,
+            Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+              .to_v8(scope)
+              .unwrap(),
+          });
+        } else {
+          break;
+        }
       }
     }
 
@@ -2466,7 +2484,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   let mut state = runtime_state.borrow_mut();
   state
     .pending_ops
-    .push(OpCall::pending(ctx, promise_id, fut));
+    .spawn_local(OpCall::pending(ctx, promise_id, fut));
   state.have_unpolled_ops = true;
 }
 
@@ -2589,7 +2607,7 @@ pub fn queue_async_op<'s>(
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops.push(op_call);
+  state.pending_ops.spawn_local(op_call);
   state.have_unpolled_ops = true;
   None
 }

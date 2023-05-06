@@ -26,6 +26,7 @@ use v8::fast_api::CTypeInfo;
 pub type RealmIdx = u16;
 pub type PromiseId = i32;
 pub type OpId = u16;
+pub type OpCallResult = (RealmIdx, PromiseId, OpId, OpResult);
 
 #[pin_project]
 pub struct OpCall {
@@ -65,7 +66,7 @@ impl OpCall {
 }
 
 impl Future for OpCall {
-  type Output = (RealmIdx, PromiseId, OpId, OpResult);
+  type Output = OpCallResult;
 
   fn poll(
     self: std::pin::Pin<&mut Self>,
