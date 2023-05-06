@@ -80,6 +80,7 @@ pub struct FsStat {
   pub rdev: u64,
   pub blksize: u64,
   pub blocks: u64,
+  pub is_block_device: bool,
 }
 
 impl FsStat {
@@ -94,6 +95,20 @@ impl FsStat {
         #[cfg(not(unix))]
         {
           0
+        }
+      }};
+    }
+
+    macro_rules! unix_or_false {
+      ($member:ident) => {{
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::FileTypeExt;
+          metadata.file_type().$member()
+        }
+        #[cfg(not(unix))]
+        {
+          false
         }
       }};
     }
@@ -130,6 +145,7 @@ impl FsStat {
       rdev: unix_or_zero!(rdev),
       blksize: unix_or_zero!(blksize),
       blocks: unix_or_zero!(blocks),
+      is_block_device: unix_or_false!(is_block_device),
     }
   }
 }

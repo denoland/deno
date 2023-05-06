@@ -241,6 +241,7 @@ async function rename(oldpath, newpath) {
 //  high u32 | low u32
 //
 // 4. ?u64 converts a zero u64 value to JS null on Windows.
+//    ?bool converts a false bool value to JS null on Windows.
 function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
@@ -269,7 +270,15 @@ function createByteStruct(types) {
       }] + view[${offset + 3}] * 2**32),`;
       offset += 2;
     } else {
-      str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      if (!optional) {
+        str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      } else {
+        str += `${name}: (unix ? !!((view[${offset}] + view[${
+          offset + 1
+        }] * 2**32)) : !!((view[${offset}] + view[${
+          offset + 1
+        }] * 2**32)) || null),`;
+      }
     }
     offset += 2;
   }
@@ -295,6 +304,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   rdev: "?u64",
   blksize: "?u64",
   blocks: "?u64",
+  isBlockDevice: "?bool",
 });
 
 function parseFileInfo(response) {
@@ -318,6 +328,7 @@ function parseFileInfo(response) {
     rdev: unix ? response.rdev : null,
     blksize: unix ? response.blksize : null,
     blocks: unix ? response.blocks : null,
+    isBlockDevice: unix ? response.isBlockDevice : null,
   };
 }
 

@@ -3122,6 +3122,10 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     blocks: number | null;
+    /**  True if this is info for a block device.
+     *
+     * _Linux/Mac OS only._ */
+    isBlockDevice: boolean | null;
   }
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
