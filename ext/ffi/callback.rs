@@ -93,12 +93,12 @@ impl Resource for UnsafeCallbackResource {
 }
 
 struct CallbackInfo {
-  pub parameters: Vec<NativeType>,
-  pub result: NativeType,
   pub async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
-  pub isolate_id: u32,
+  pub parameters: Vec<NativeType>,
+  pub result: NativeType,
+  pub thread_id: u32,
   pub waker: Option<Waker>,
 }
 
@@ -121,7 +121,7 @@ unsafe extern "C" fn deno_ffi_callback(
   info: &CallbackInfo,
 ) {
   LOCAL_THREAD_ID.with(|s| {
-    if *s.borrow() == info.isolate_id {
+    if *s.borrow() == info.thread_id {
       // Own isolate thread, okay to call directly
       do_ffi_callback(cif, info, result, args);
     } else {
@@ -552,7 +552,7 @@ where
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
-  let isolate_id: u32 = LOCAL_THREAD_ID.with(|s| {
+  let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();
     if value == 0 {
       let res = THREAD_ID_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
@@ -563,7 +563,7 @@ where
     }
   });
 
-  if isolate_id == 0 {
+  if thread_id == 0 {
     panic!("Isolate ID counter overflowed u32");
   }
 
@@ -574,12 +574,12 @@ where
   let context = v8::Global::new(scope, current_context).into_raw();
 
   let info: *mut CallbackInfo = Box::leak(Box::new(CallbackInfo {
-    parameters: args.parameters.clone(),
-    result: args.result.clone(),
     async_work_sender,
     callback,
     context,
-    isolate_id,
+    parameters: args.parameters.clone(),
+    result: args.result.clone(),
+    thread_id,
     waker: None,
   }));
   let cif = Cif::new(
