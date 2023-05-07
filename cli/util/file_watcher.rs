@@ -307,7 +307,7 @@ where
     // We may need to give the runtime a tick to settle, as cancellations may need to propagate
     // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
     // start to fail, this may need to be increased.
-    for i in 0..10 {
+    for _ in 0..10 {
       tokio::task::yield_now().await;
     }
 
