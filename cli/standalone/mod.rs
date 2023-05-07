@@ -3,6 +3,7 @@
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CacheSetting;
+use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDir;
@@ -17,6 +18,8 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
+use crate::npm::PackageJsonDepsInstaller;
+use crate::resolver::MappedSpecifierResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
@@ -24,7 +27,6 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use crate::worker::HasNodeSpecifierChecker;
 use crate::worker::ModuleLoaderFactory;
-use crate::CliGraphResolver;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
@@ -35,7 +37,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
-use deno_graph::source::Resolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -65,7 +66,7 @@ use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
   eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<Arc<CliGraphResolver>>,
+  mapped_specifier_resolver: MappedSpecifierResolver,
   npm_module_loader: Arc<NpmModuleLoader>,
 }
 
@@ -108,8 +109,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
       return result;
     }
 
+    let maybe_mapped = self
+      .shared
+      .mapped_specifier_resolver
+      .resolve(specifier, &referrer)?
+      .into_specifier();
+
     // npm specifier
-    if let Ok(reference) = NpmPackageReqReference::from_str(specifier) {
+    let specifier_text = maybe_mapped
+      .as_ref()
+      .map(|r| r.as_str())
+      .unwrap_or(specifier);
+    if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
       return self
         .shared
         .npm_module_loader
@@ -117,19 +128,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
 
     // Built-in Node modules
-    if let Some(module_name) = specifier.strip_prefix("node:") {
+    if let Some(module_name) = specifier_text.strip_prefix("node:") {
       return deno_node::resolve_builtin_node_module(module_name);
     }
 
-    self
-      .shared
-      .maybe_import_map_resolver
-      .as_ref()
-      .map(|r| r.resolve(specifier, &referrer))
-      .unwrap_or_else(|| {
-        deno_core::resolve_import(specifier, referrer.as_str())
-          .map_err(|err| err.into())
-      })
+    match maybe_mapped {
+      Some(resolved) => Ok(resolved),
+      None => deno_core::resolve_import(specifier, referrer.as_str())
+        .map_err(|err| err.into()),
+    }
   }
 
   fn load(
@@ -362,22 +369,20 @@ pub async fn run(
     node_resolver.clone(),
     npm_resolver.clone(),
   ));
+  let package_json_deps_provider = Arc::new(PackageJsonDepsProvider::new(
+    metadata
+      .package_json_deps
+      .map(|serialized| serialized.into_deps()),
+  ));
+  let maybe_import_map = metadata.maybe_import_map.map(|(base, source)| {
+    Arc::new(parse_from_json(&base, &source).unwrap().import_map)
+  });
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       eszip,
-      maybe_import_map_resolver: metadata.maybe_import_map.map(
-        |(base, source)| {
-          Arc::new(CliGraphResolver::new(
-            None,
-            Some(Arc::new(
-              parse_from_json(&base, &source).unwrap().import_map,
-            )),
-            false,
-            npm_api.clone(),
-            npm_resolution.clone(),
-            Default::default(),
-          ))
-        },
+      mapped_specifier_resolver: MappedSpecifierResolver::new(
+        maybe_import_map.clone(),
+        package_json_deps_provider.clone(),
       ),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_resolutions,

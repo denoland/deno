@@ -270,18 +270,14 @@ async fn build_test_graph(
       None,
       None,
     ));
-    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
-      npm_registry_api.clone(),
-      npm_resolution.clone(),
-      None,
-    ));
     CliGraphResolver::new(
       None,
       Some(Arc::new(original_import_map)),
       false,
       npm_registry_api,
       npm_resolution,
-      deps_installer,
+      Default::default(),
+      Default::default(),
     )
   });
   let mut graph = ModuleGraph::default();

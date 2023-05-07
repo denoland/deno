@@ -33,6 +33,7 @@ pub use config_file::TsTypeLib;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
+pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;

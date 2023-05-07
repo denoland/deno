@@ -84,7 +84,7 @@ lazy-regex.workspace = true
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-monch = "=0.4.1"
+monch = "=0.4.2"
 notify.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true

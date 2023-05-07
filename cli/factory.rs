@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::Lockfile;
+use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -30,6 +31,7 @@ use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -151,6 +153,7 @@ struct CliFactoryServices {
   npm_cache: Deferred<Arc<NpmCache>>,
   npm_resolver: Deferred<Arc<CliNpmResolver>>,
   npm_resolution: Deferred<Arc<NpmResolution>>,
+  package_json_deps_provider: Deferred<Arc<PackageJsonDepsProvider>>,
   package_json_deps_installer: Deferred<Arc<PackageJsonDepsInstaller>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
@@ -320,6 +323,14 @@ impl CliFactory {
       .await
   }
 
+  pub fn package_json_deps_provider(&self) -> &Arc<PackageJsonDepsProvider> {
+    self.services.package_json_deps_provider.get_or_init(|| {
+      Arc::new(PackageJsonDepsProvider::new(
+        self.options.maybe_package_json_deps(),
+      ))
+    })
+  }
+
   pub async fn package_json_deps_installer(
     &self,
   ) -> Result<&Arc<PackageJsonDepsInstaller>, AnyError> {
@@ -327,12 +338,10 @@ impl CliFactory {
       .services
       .package_json_deps_installer
       .get_or_try_init_async(async {
-        let npm_api = self.npm_api()?;
-        let npm_resolution = self.npm_resolution().await?;
         Ok(Arc::new(PackageJsonDepsInstaller::new(
-          npm_api.clone(),
-          npm_resolution.clone(),
-          self.options.maybe_package_json_deps(),
+          self.package_json_deps_provider().clone(),
+          self.npm_api()?.clone(),
+          self.npm_resolution().await?.clone(),
         )))
       })
       .await
@@ -367,6 +376,7 @@ impl CliFactory {
           self.options.no_npm(),
           self.npm_api()?.clone(),
           self.npm_resolution().await?.clone(),
+          self.package_json_deps_provider().clone(),
           self.package_json_deps_installer().await?.clone(),
         )))
       })
@@ -535,6 +545,21 @@ impl CliFactory {
 
   pub fn cjs_resolutions(&self) -> &Arc<CjsResolutionStore> {
     self.services.cjs_resolutions.get_or_init(Default::default)
+  }
+
+  pub async fn create_compile_binary_writer(
+    &self,
+  ) -> Result<DenoCompileBinaryWriter, AnyError> {
+    Ok(DenoCompileBinaryWriter::new(
+      self.file_fetcher()?,
+      self.http_client(),
+      self.deno_dir()?,
+      self.npm_api()?,
+      self.npm_cache()?,
+      self.npm_resolver().await?,
+      self.npm_resolution().await?,
+      self.package_json_deps_provider(),
+    ))
   }
 
   /// Gets a function that can be used to create a CliMainWorkerFactory

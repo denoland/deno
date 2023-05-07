@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeMap;
 use std::env::current_exe;
 use std::io::Read;
 use std::io::Seek;
@@ -16,15 +17,21 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_runtime::permissions::PermissionsOptions;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmVersionReqSpecifierParseError;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::args::package_json::PackageJsonDepValueParseError;
+use crate::args::package_json::PackageJsonDeps;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::PackageJsonDepsProvider;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -41,6 +48,80 @@ use super::virtual_fs::VfsRoot;
 use super::virtual_fs::VirtualDirectory;
 
 const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
+
+#[derive(Serialize, Deserialize)]
+enum SerializablePackageJsonDepValueParseError {
+  SchemeValue(String),
+  Specifier(String),
+  Unsupported { scheme: String },
+}
+
+impl SerializablePackageJsonDepValueParseError {
+  pub fn from_err(err: PackageJsonDepValueParseError) -> Self {
+    match err {
+      PackageJsonDepValueParseError::SchemeValue(err) => {
+        Self::SchemeValue(err.value)
+      }
+      PackageJsonDepValueParseError::Specifier(err) => {
+        Self::Specifier(err.source.to_string())
+      }
+      PackageJsonDepValueParseError::Unsupported { scheme } => {
+        Self::Unsupported { scheme }
+      }
+    }
+  }
+
+  pub fn into_err(self) -> PackageJsonDepValueParseError {
+    match self {
+      SerializablePackageJsonDepValueParseError::SchemeValue(value) => {
+        PackageJsonDepValueParseError::SchemeValue(
+          PackageDepNpmSchemeValueParseError { value },
+        )
+      }
+      SerializablePackageJsonDepValueParseError::Specifier(source) => {
+        PackageJsonDepValueParseError::Specifier(
+          NpmVersionReqSpecifierParseError {
+            source: monch::ParseErrorFailureError::new(source),
+          },
+        )
+      }
+      SerializablePackageJsonDepValueParseError::Unsupported { scheme } => {
+        PackageJsonDepValueParseError::Unsupported { scheme }
+      }
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SerializablePackageJsonDeps(
+  BTreeMap<
+    String,
+    Result<NpmPackageReq, SerializablePackageJsonDepValueParseError>,
+  >,
+);
+
+impl SerializablePackageJsonDeps {
+  pub fn from_deps(deps: PackageJsonDeps) -> Self {
+    Self(
+      deps
+        .into_iter()
+        .map(|(name, req)| {
+          let res =
+            req.map_err(SerializablePackageJsonDepValueParseError::from_err);
+          (name, res)
+        })
+        .collect(),
+    )
+  }
+
+  pub fn into_deps(self) -> PackageJsonDeps {
+    self
+      .0
+      .into_iter()
+      .map(|(name, res)| (name, res.map_err(|err| err.into_err())))
+      .collect()
+  }
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct Metadata {
@@ -59,6 +140,7 @@ pub struct Metadata {
   /// Whether this uses a node_modules directory (true) or the global cache (false).
   pub node_modules_dir: bool,
   pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
+  pub package_json_deps: Option<SerializablePackageJsonDeps>,
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -260,6 +342,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   npm_cache: &'a NpmCache,
   npm_resolver: &'a CliNpmResolver,
   resolution: &'a NpmResolution,
+  package_json_deps_provider: &'a PackageJsonDepsProvider,
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
@@ -271,6 +354,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_cache: &'a NpmCache,
     npm_resolver: &'a CliNpmResolver,
     resolution: &'a NpmResolution,
+    package_json_deps_provider: &'a PackageJsonDepsProvider,
   ) -> Self {
     Self {
       file_fetcher,
@@ -280,6 +364,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       npm_cache,
       npm_resolver,
       resolution,
+      package_json_deps_provider,
     }
   }
 
@@ -424,6 +509,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       maybe_import_map,
       node_modules_dir: self.npm_resolver.node_modules_path().is_some(),
       npm_snapshot,
+      package_json_deps: self
+        .package_json_deps_provider
+        .deps()
+        .map(|deps| SerializablePackageJsonDeps::from_deps(deps.clone())),
     };
 
     write_binary_bytes(

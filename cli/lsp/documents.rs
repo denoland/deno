@@ -46,6 +46,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
+use package_json::PackageJsonDepsProvider;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -1218,10 +1219,12 @@ impl Documents {
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
     );
+    let deps_provider =
+      Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
     let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
+      deps_provider.clone(),
       npm_registry_api.clone(),
       npm_resolution.clone(),
-      maybe_package_json_deps,
     ));
     self.resolver = Arc::new(CliGraphResolver::new(
       maybe_jsx_config,
@@ -1229,6 +1232,7 @@ impl Documents {
       false,
       npm_registry_api,
       npm_resolution,
+      deps_provider,
       deps_installer,
     ));
     self.imports = Arc::new(

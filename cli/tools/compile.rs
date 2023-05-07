@@ -5,7 +5,6 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::graph_util::error_for_any_npm_specifier;
 use crate::standalone::is_standalone_binary;
-use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -27,17 +26,7 @@ pub async fn compile(
   let cli_options = factory.cli_options();
   let module_graph_builder = factory.module_graph_builder().await?;
   let parsed_source_cache = factory.parsed_source_cache()?;
-
-  // todo: move to the clifactory
-  let binary_writer = DenoCompileBinaryWriter::new(
-    factory.file_fetcher()?,
-    factory.http_client(),
-    factory.deno_dir()?,
-    factory.npm_api()?,
-    factory.npm_cache()?,
-    factory.npm_resolver().await?,
-    factory.npm_resolution().await?,
-  );
+  let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
