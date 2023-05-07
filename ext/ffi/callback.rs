@@ -80,6 +80,10 @@ impl Resource for UnsafeCallbackResource {
   fn name(&self) -> Cow<str> {
     "unsafecallback".into()
   }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
 }
 
 struct CallbackInfo {
@@ -616,10 +620,10 @@ pub fn op_ffi_unsafe_callback_close(
   unsafe {
     let callback_resource =
       state.resource_table.take::<UnsafeCallbackResource>(rid)?;
-    callback_resource.cancel.cancel();
     let info = Box::from_raw(callback_resource.info);
     let _ = v8::Global::from_raw(scope, info.callback);
     let _ = v8::Global::from_raw(scope, info.context);
+    callback_resource.close();
   }
   Ok(())
 }
