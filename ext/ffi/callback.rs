@@ -10,7 +10,6 @@ use crate::ISOLATE_ID_COUNTER;
 use crate::LOCAL_ISOLATE_ID;
 use crate::MAX_SAFE_INTEGER;
 use crate::MIN_SAFE_INTEGER;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::op;
@@ -543,26 +542,16 @@ where
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
-  let isolate_id_result: Result<u32, u32> = LOCAL_ISOLATE_ID.with(|s| {
+  let isolate_id: u32 = LOCAL_ISOLATE_ID.with(|s| {
     let value = *s.borrow();
     if value == 0 {
-      let res = ISOLATE_ID_COUNTER.fetch_update(
-        atomic::Ordering::SeqCst,
-        atomic::Ordering::SeqCst,
-        |v| Some(v + 1),
-      )?;
+      let res = ISOLATE_ID_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
       s.replace(res);
-      Ok(res)
+      res
     } else {
-      Ok(value)
+      value
     }
   });
-
-  if isolate_id_result.is_err() {
-    return Err(generic_error("Failed to update Isolate ID counter"));
-  }
-
-  let isolate_id = isolate_id_result.unwrap();
 
   if isolate_id == 0 {
     panic!("Isolate ID counter overflowed u32");
