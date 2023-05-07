@@ -6,8 +6,6 @@ use crate::FfiPermissions;
 use crate::FfiState;
 use crate::ForeignFunction;
 use crate::PendingFfiAsyncWork;
-use crate::ISOLATE_ID_COUNTER;
-use crate::LOCAL_ISOLATE_ID;
 use crate::MAX_SAFE_INTEGER;
 use crate::MIN_SAFE_INTEGER;
 use deno_core::error::AnyError;
@@ -32,9 +30,17 @@ use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::atomic;
+use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::sync_channel;
 use std::task::Poll;
 use std::task::Waker;
+
+static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+thread_local! {
+  static LOCAL_THREAD_ID: RefCell<u32> = RefCell::new(0);
+}
+
 #[derive(Clone)]
 pub struct PtrSymbol {
   pub cif: libffi::middle::Cif,
@@ -114,7 +120,7 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &CallbackInfo,
 ) {
-  LOCAL_ISOLATE_ID.with(|s| {
+  LOCAL_THREAD_ID.with(|s| {
     if *s.borrow() == info.isolate_id {
       // Own isolate thread, okay to call directly
       do_ffi_callback(cif, info, result, args);
@@ -546,10 +552,10 @@ where
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
-  let isolate_id: u32 = LOCAL_ISOLATE_ID.with(|s| {
+  let isolate_id: u32 = LOCAL_THREAD_ID.with(|s| {
     let value = *s.borrow();
     if value == 0 {
-      let res = ISOLATE_ID_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
+      let res = THREAD_ID_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
       s.replace(res);
       res
     } else {

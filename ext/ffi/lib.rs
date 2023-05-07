@@ -10,7 +10,6 @@ use std::os::raw::c_char;
 use std::os::raw::c_short;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::AtomicU32;
 
 mod call;
 mod callback;
@@ -42,12 +41,6 @@ const _: () = {
   assert!(size_of::<c_short>() == 2);
   assert!(size_of::<*const ()>() == 8);
 };
-
-static ISOLATE_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
-
-thread_local! {
-  static LOCAL_ISOLATE_ID: RefCell<u32> = RefCell::new(0);
-}
 
 pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
 pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
