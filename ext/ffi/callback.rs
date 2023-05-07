@@ -323,17 +323,6 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut bool) = value;
     }
-    NativeType::I32 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        value.value() as i32
-      } else {
-        // Fallthrough, probably UB.
-        value
-          .int32_value(scope)
-          .expect("Unable to deserialize result parameter.")
-      };
-      *(result as *mut i32) = value;
-    }
     NativeType::F32 => {
       let value = if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
         value.value() as f32
@@ -395,7 +384,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut *mut c_void) = pointer;
     }
     NativeType::I8 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
         value.value() as i8
       } else {
         // Fallthrough, essentially UB.
@@ -406,7 +395,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut i8) = value;
     }
     NativeType::U8 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
         value.value() as u8
       } else {
         // Fallthrough, essentially UB.
@@ -417,7 +406,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut u8) = value;
     }
     NativeType::I16 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
         value.value() as i16
       } else {
         // Fallthrough, essentially UB.
@@ -428,7 +417,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut i16) = value;
     }
     NativeType::U16 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
         value.value() as u16
       } else {
         // Fallthrough, essentially UB.
@@ -438,9 +427,20 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut u16) = value;
     }
+    NativeType::I32 => {
+      let value = if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
+        value.value()
+      } else {
+        // Fallthrough, essentially UB.
+        value
+          .int32_value(scope)
+          .expect("Unable to deserialize result parameter.")
+      };
+      *(result as *mut i32) = value;
+    }
     NativeType::U32 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        value.value() as u32
+      let value = if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
+        value.value()
       } else {
         // Fallthrough, essentially UB.
         value
@@ -449,21 +449,25 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut u32) = value;
     }
-    NativeType::I64 => {
+    NativeType::I64 | NativeType::ISize => {
       if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut i64) = value.i64_value().0;
-      } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        *(result as *mut i64) = value.value();
+      } else if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
+        *(result as *mut i64) = value.value() as i64;
+      } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
+        *(result as *mut i64) = value.value() as i64;
       } else {
         *(result as *mut i64) = value
           .integer_value(scope)
           .expect("Unable to deserialize result parameter.");
       }
     }
-    NativeType::U64 => {
+    NativeType::U64 | NativeType::USize => {
       if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut u64) = value.u64_value().0;
-      } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      } else if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
+        *(result as *mut u64) = value.value() as u64;
+      } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
         *(result as *mut u64) = value.value() as u64;
       } else {
         *(result as *mut u64) = value
@@ -503,9 +507,6 @@ unsafe fn do_ffi_callback(
     }
     NativeType::Void => {
       // nop
-    }
-    _ => {
-      unreachable!();
     }
   };
 }
