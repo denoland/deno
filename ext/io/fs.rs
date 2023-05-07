@@ -21,6 +21,16 @@ pub enum FsError {
   NotSupported,
 }
 
+impl FsError {
+  pub fn kind(&self) -> io::ErrorKind {
+    match self {
+      Self::Io(err) => err.kind(),
+      Self::FileBusy => io::ErrorKind::Other,
+      Self::NotSupported => io::ErrorKind::Other,
+    }
+  }
+}
+
 impl From<io::Error> for FsError {
   fn from(err: io::Error) -> Self {
     Self::Io(err)

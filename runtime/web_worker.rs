@@ -333,7 +333,6 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_fs: Option<Arc<dyn deno_node::NodeFs>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -442,10 +441,13 @@ impl WebWorker {
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
       deno_http::deno_http::init_ops(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable, options.fs),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
       deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
-        options.node_fs,
+        options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::deno_web_worker::init_ops(),
