@@ -123,7 +123,9 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
       let worker = create_cli_main_worker_factory()
         .create_main_worker(main_module, permissions)
         .await?;
+      let reset_env = util::env::reset_env_func();
       worker.run_for_watcher().await?;
+      reset_env();
 
       Ok(())
     })
