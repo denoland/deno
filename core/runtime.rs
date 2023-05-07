@@ -2622,8 +2622,6 @@ pub mod tests {
   use crate::modules::SymbolicModule;
   use crate::ZeroCopyBuf;
   use deno_ops::op;
-  use futures::future::lazy;
-  use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
   use std::sync::atomic::AtomicUsize;
@@ -2633,13 +2631,6 @@ pub mod tests {
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
     pub use crate::*;
-  }
-
-  pub fn run_in_task<F>(f: F)
-  where
-    F: FnOnce(&mut Context) + 'static,
-  {
-    futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
   #[derive(Copy, Clone)]
@@ -2876,7 +2867,7 @@ pub mod tests {
   #[tokio::test]
   async fn test_poll_value() {
     let mut runtime = JsRuntime::new(Default::default());
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       let value_global = runtime
         .execute_script_static("a.js", "Promise.resolve(1 + 2)")
         .unwrap();
@@ -2915,7 +2906,8 @@ pub mod tests {
         .unwrap();
       let v = runtime.poll_value(&value_global, cx);
       matches!(v, Poll::Ready(Err(e)) if e.to_string() == "Promise resolution is still pending but the event loop has already resolved.");
-    });
+      Poll::Ready(())
+    }).await;
   }
 
   #[tokio::test]
@@ -3073,10 +3065,10 @@ pub mod tests {
     assert_eq!(frame.column_number, Some(12));
   }
 
-  #[test]
-  fn test_encode_decode() {
+  #[tokio::test]
+  async fn test_encode_decode() {
     let (mut runtime, _dispatch_count) = setup(Mode::Async);
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script(
           "encode_decode_test.js",
@@ -3087,13 +3079,15 @@ pub mod tests {
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
-  #[test]
-  fn test_serialize_deserialize() {
+  #[tokio::test]
+  async fn test_serialize_deserialize() {
     let (mut runtime, _dispatch_count) = setup(Mode::Async);
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script(
           "serialize_deserialize_test.js",
@@ -3103,11 +3097,13 @@ pub mod tests {
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
-  #[test]
-  fn test_error_builder() {
+  #[tokio::test]
+  async fn test_error_builder() {
     #[op]
     fn op_err() -> Result<(), Error> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
@@ -3123,7 +3119,7 @@ pub mod tests {
       get_error_class_fn: Some(&get_error_class_name),
       ..Default::default()
     });
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "error_builder_test.js",
@@ -3133,7 +3129,9 @@ pub mod tests {
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
   #[test]
@@ -3658,10 +3656,10 @@ main();
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
-  #[test]
-  fn test_error_async_stack() {
+  #[tokio::test]
+  async fn test_error_async_stack() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "error_async_stack.js",
@@ -3692,11 +3690,13 @@ main();
         }
         _ => panic!(),
       };
+      Poll::Ready(())
     })
+    .await;
   }
 
-  #[test]
-  fn test_error_context() {
+  #[tokio::test]
+  async fn test_error_context() {
     use anyhow::anyhow;
 
     #[op]
@@ -3715,7 +3715,7 @@ main();
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "test_error_context_sync.js",
@@ -3758,13 +3758,14 @@ if (errMessage !== "higher-level sync error: original sync error") {
         Poll::Ready(Err(err)) => panic!("{err:?}"),
         _ => panic!(),
       }
-    })
+      Poll::Ready(())
+    }).await;
   }
 
-  #[test]
-  fn test_pump_message_loop() {
+  #[tokio::test]
+  async fn test_pump_message_loop() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "pump_message_loop.js",
@@ -3809,7 +3810,9 @@ assertEquals(1, notify_return_value);
           r#"assertEquals(globalThis.resolved, true);"#,
         )
         .unwrap();
+      Poll::Ready(())
     })
+    .await;
   }
 
   #[test]
