@@ -50,35 +50,35 @@ const {
 
 const {
   op_http_wait,
-  op_upgrade,
-  op_get_request_headers,
-  op_get_request_method_and_url,
-  op_read_request_body,
-  op_serve_http,
-  op_set_promise_complete,
-  op_set_response_body_bytes,
-  op_set_response_body_resource,
-  op_set_response_body_stream,
-  op_set_response_body_text,
-  op_set_response_header,
-  op_set_response_headers,
-  op_upgrade_raw,
+  op_http_upgrade,
+  op_http_get_request_headers,
+  op_http_get_request_method_and_url,
+  op_http_read_request_body,
+  op_http_serve,
+  op_http_set_promise_complete,
+  op_http_set_response_body_bytes,
+  op_http_set_response_body_resource,
+  op_http_set_response_body_stream,
+  op_http_set_response_body_text,
+  op_http_set_response_header,
+  op_http_set_response_headers,
+  op_http_upgrade_raw,
   op_ws_server_create,
 } = core.generateAsyncOpHandler(
   "op_http_wait",
-  "op_upgrade",
-  "op_get_request_headers",
-  "op_get_request_method_and_url",
-  "op_read_request_body",
-  "op_serve_http",
-  "op_set_promise_complete",
-  "op_set_response_body_bytes",
-  "op_set_response_body_resource",
-  "op_set_response_body_stream",
-  "op_set_response_body_text",
-  "op_set_response_header",
-  "op_set_response_headers",
-  "op_upgrade_raw",
+  "op_http_upgrade",
+  "op_http_get_request_headers",
+  "op_http_get_request_method_and_url",
+  "op_http_read_request_body",
+  "op_http_serve",
+  "op_http_set_promise_complete",
+  "op_http_set_response_body_bytes",
+  "op_http_set_response_body_resource",
+  "op_http_set_response_body_stream",
+  "op_http_set_response_body_text",
+  "op_http_set_response_header",
+  "op_http_set_response_headers",
+  "op_http_upgrade_raw",
   "op_ws_server_create",
 );
 const _upgraded = Symbol("_upgraded");
@@ -178,7 +178,7 @@ class InnerRequest {
 
       this.#upgraded = () => {};
 
-      const upgradeRid = op_upgrade_raw(slabId);
+      const upgradeRid = op_http_upgrade_raw(slabId);
 
       const conn = new TcpConn(
         upgradeRid,
@@ -209,7 +209,7 @@ class InnerRequest {
       (async () => {
         try {
           // Returns the connection and extra bytes, which we can pass directly to op_ws_server_create
-          const upgrade = await op_upgrade(
+          const upgrade = await op_http_upgrade(
             slabId,
             response.headerList,
           );
@@ -248,7 +248,7 @@ class InnerRequest {
       }
       // TODO(mmastrac): This is quite slow as we're serializing a large number of values. We may want to consider
       // splitting this up into multiple ops.
-      this.#methodAndUri = op_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
     }
 
     const path = this.#methodAndUri[2];
@@ -283,7 +283,7 @@ class InnerRequest {
       if (this.#slabId === undefined) {
         throw new TypeError("request closed");
       }
-      this.#methodAndUri = op_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
     }
     return {
       transport: "tcp",
@@ -297,7 +297,7 @@ class InnerRequest {
       if (this.#slabId === undefined) {
         throw new TypeError("request closed");
       }
-      this.#methodAndUri = op_get_request_method_and_url(this.#slabId);
+      this.#methodAndUri = op_http_get_request_method_and_url(this.#slabId);
     }
     return this.#methodAndUri[0];
   }
@@ -315,7 +315,7 @@ class InnerRequest {
       this.#body = null;
       return null;
     }
-    this.#streamRid = op_read_request_body(this.#slabId);
+    this.#streamRid = op_http_read_request_body(this.#slabId);
     this.#body = new InnerBody(readableStreamForRid(this.#streamRid, false));
     return this.#body;
   }
@@ -324,7 +324,7 @@ class InnerRequest {
     if (this.#slabId === undefined) {
       throw new TypeError("request closed");
     }
-    return op_get_request_headers(this.#slabId);
+    return op_http_get_request_headers(this.#slabId);
   }
 
   get slabId() {
@@ -365,12 +365,12 @@ function fastSyncResponseOrStream(req, respBody) {
   const body = stream.body;
 
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
-    op_set_response_body_bytes(req, body);
+    op_http_set_response_body_bytes(req, body);
     return null;
   }
 
   if (typeof body === "string") {
-    op_set_response_body_text(req, body);
+    op_http_set_response_body_text(req, body);
     return null;
   }
 
@@ -380,7 +380,7 @@ function fastSyncResponseOrStream(req, respBody) {
   }
   const resourceBacking = getReadableStreamResourceBacking(stream);
   if (resourceBacking) {
-    op_set_response_body_resource(
+    op_http_set_response_body_resource(
       req,
       resourceBacking.rid,
       resourceBacking.autoClose,
@@ -416,9 +416,9 @@ async function asyncResponse(responseBodies, req, status, stream) {
     // and we race it.
     let timeoutPromise;
     timeout = setTimeout(() => {
-      responseRid = op_set_response_body_stream(req);
+      responseRid = op_http_set_response_body_stream(req);
       SetPrototypeAdd(responseBodies, responseRid);
-      op_set_promise_complete(req, status);
+      op_http_set_promise_complete(req, status);
       timeoutPromise = core.writeAll(responseRid, value1);
     }, 250);
     const { value: value2, done: done2 } = await reader.read();
@@ -443,13 +443,13 @@ async function asyncResponse(responseBodies, req, status, stream) {
         // Reader will be closed by finally block
         // No response stream
         closed = true;
-        op_set_response_body_bytes(req, value1);
+        op_http_set_response_body_bytes(req, value1);
         return;
       }
 
-      responseRid = op_set_response_body_stream(req);
+      responseRid = op_http_set_response_body_stream(req);
       SetPrototypeAdd(responseBodies, responseRid);
-      op_set_promise_complete(req, status);
+      op_http_set_promise_complete(req, status);
       // Write our first packet
       await core.writeAll(responseRid, value1);
     }
@@ -481,7 +481,7 @@ async function asyncResponse(responseBodies, req, status, stream) {
       core.tryClose(responseRid);
       SetPrototypeDelete(responseBodies, responseRid);
     } else {
-      op_set_promise_complete(req, status);
+      op_http_set_promise_complete(req, status);
     }
   }
 }
@@ -545,9 +545,9 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
     const headers = inner.headerList;
     if (headers && headers.length > 0) {
       if (headers.length == 1) {
-        op_set_response_header(req, headers[0][0], headers[0][1]);
+        op_http_set_response_header(req, headers[0][0], headers[0][1]);
       } else {
-        op_set_response_headers(req, headers);
+        op_http_set_response_headers(req, headers);
       }
     }
 
@@ -557,7 +557,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
       // Handle the stream asynchronously
       await asyncResponse(responseBodies, req, status, stream);
     } else {
-      op_set_promise_complete(req, status);
+      op_http_set_promise_complete(req, status);
     }
 
     innerRequest?.close();
@@ -625,13 +625,13 @@ async function serve(arg1, arg2) {
     listenOpts.alpnProtocols = ["h2", "http/1.1"];
     const listener = Deno.listenTls(listenOpts);
     listenOpts.port = listener.addr.port;
-    context.initialize(op_serve_http(
+    context.initialize(op_http_serve(
       listener.rid,
     ));
   } else {
     const listener = Deno.listen(listenOpts);
     listenOpts.port = listener.addr.port;
-    context.initialize(op_serve_http(
+    context.initialize(op_http_serve(
       listener.rid,
     ));
   }

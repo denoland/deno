@@ -35,7 +35,7 @@ use crate::FsPermissions;
 use crate::OpenOptions;
 
 #[op]
-pub fn op_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
+pub fn op_fs_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
 where
   P: FsPermissions + 'static,
 {
@@ -49,7 +49,7 @@ where
 }
 
 #[op]
-fn op_chdir<P>(state: &mut OpState, directory: &str) -> Result<(), AnyError>
+fn op_fs_chdir<P>(state: &mut OpState, directory: &str) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
 {
@@ -62,7 +62,10 @@ where
 }
 
 #[op]
-fn op_umask(state: &mut OpState, mask: Option<u32>) -> Result<u32, AnyError>
+fn op_fs_umask(
+  state: &mut OpState,
+  mask: Option<u32>,
+) -> Result<u32, AnyError>
 where
 {
   check_unstable(state, "Deno.umask");
@@ -73,7 +76,7 @@ where
 }
 
 #[op]
-fn op_open_sync<P>(
+fn op_fs_open_sync<P>(
   state: &mut OpState,
   path: String,
   options: Option<OpenOptions>,
@@ -97,7 +100,7 @@ where
 }
 
 #[op]
-async fn op_open_async<P>(
+async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   options: Option<OpenOptions>,
@@ -127,7 +130,7 @@ where
 }
 
 #[op]
-fn op_mkdir_sync<P>(
+fn op_fs_mkdir_sync<P>(
   state: &mut OpState,
   path: String,
   recursive: bool,
@@ -152,7 +155,7 @@ where
 }
 
 #[op]
-async fn op_mkdir_async<P>(
+async fn op_fs_mkdir_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   recursive: bool,
@@ -179,7 +182,7 @@ where
 }
 
 #[op]
-fn op_chmod_sync<P>(
+fn op_fs_chmod_sync<P>(
   state: &mut OpState,
   path: String,
   mode: u32,
@@ -197,7 +200,7 @@ where
 }
 
 #[op]
-async fn op_chmod_async<P>(
+async fn op_fs_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   mode: u32,
@@ -218,7 +221,7 @@ where
 }
 
 #[op]
-fn op_chown_sync<P>(
+fn op_fs_chown_sync<P>(
   state: &mut OpState,
   path: String,
   uid: Option<u32>,
@@ -238,7 +241,7 @@ where
 }
 
 #[op]
-async fn op_chown_async<P>(
+async fn op_fs_chown_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   uid: Option<u32>,
@@ -260,7 +263,7 @@ where
 }
 
 #[op]
-fn op_remove_sync<P>(
+fn op_fs_remove_sync<P>(
   state: &mut OpState,
   path: &str,
   recursive: bool,
@@ -282,7 +285,7 @@ where
 }
 
 #[op]
-async fn op_remove_async<P>(
+async fn op_fs_remove_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   recursive: bool,
@@ -308,7 +311,7 @@ where
 }
 
 #[op]
-fn op_copy_file_sync<P>(
+fn op_fs_copy_file_sync<P>(
   state: &mut OpState,
   from: &str,
   to: &str,
@@ -331,7 +334,7 @@ where
 }
 
 #[op]
-async fn op_copy_file_async<P>(
+async fn op_fs_copy_file_async<P>(
   state: Rc<RefCell<OpState>>,
   from: String,
   to: String,
@@ -358,7 +361,7 @@ where
 }
 
 #[op]
-fn op_stat_sync<P>(
+fn op_fs_stat_sync<P>(
   state: &mut OpState,
   path: String,
   stat_out_buf: &mut [u32],
@@ -378,7 +381,7 @@ where
 }
 
 #[op]
-async fn op_stat_async<P>(
+async fn op_fs_stat_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<SerializableStat, AnyError>
@@ -400,7 +403,7 @@ where
 }
 
 #[op]
-fn op_lstat_sync<P>(
+fn op_fs_lstat_sync<P>(
   state: &mut OpState,
   path: String,
   stat_out_buf: &mut [u32],
@@ -420,7 +423,7 @@ where
 }
 
 #[op]
-async fn op_lstat_async<P>(
+async fn op_fs_lstat_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<SerializableStat, AnyError>
@@ -442,7 +445,7 @@ where
 }
 
 #[op]
-fn op_realpath_sync<P>(
+fn op_fs_realpath_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<String, AnyError>
@@ -466,7 +469,7 @@ where
 }
 
 #[op]
-async fn op_realpath_async<P>(
+async fn op_fs_realpath_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<String, AnyError>
@@ -495,7 +498,7 @@ where
 }
 
 #[op]
-fn op_read_dir_sync<P>(
+fn op_fs_read_dir_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<Vec<FsDirEntry>, AnyError>
@@ -515,7 +518,7 @@ where
 }
 
 #[op]
-async fn op_read_dir_async<P>(
+async fn op_fs_read_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<Vec<FsDirEntry>, AnyError>
@@ -541,7 +544,7 @@ where
 }
 
 #[op]
-fn op_rename_sync<P>(
+fn op_fs_rename_sync<P>(
   state: &mut OpState,
   oldpath: String,
   newpath: String,
@@ -565,7 +568,7 @@ where
 }
 
 #[op]
-async fn op_rename_async<P>(
+async fn op_fs_rename_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
@@ -593,7 +596,7 @@ where
 }
 
 #[op]
-fn op_link_sync<P>(
+fn op_fs_link_sync<P>(
   state: &mut OpState,
   oldpath: &str,
   newpath: &str,
@@ -618,7 +621,7 @@ where
 }
 
 #[op]
-async fn op_link_async<P>(
+async fn op_fs_link_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
@@ -647,7 +650,7 @@ where
 }
 
 #[op]
-fn op_symlink_sync<P>(
+fn op_fs_symlink_sync<P>(
   state: &mut OpState,
   oldpath: &str,
   newpath: &str,
@@ -671,7 +674,7 @@ where
 }
 
 #[op]
-async fn op_symlink_async<P>(
+async fn op_fs_symlink_async<P>(
   state: Rc<RefCell<OpState>>,
   oldpath: String,
   newpath: String,
@@ -699,7 +702,7 @@ where
 }
 
 #[op]
-fn op_read_link_sync<P>(
+fn op_fs_read_link_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<String, AnyError>
@@ -720,7 +723,7 @@ where
 }
 
 #[op]
-async fn op_read_link_async<P>(
+async fn op_fs_read_link_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
 ) -> Result<String, AnyError>
@@ -746,7 +749,7 @@ where
 }
 
 #[op]
-fn op_truncate_sync<P>(
+fn op_fs_truncate_sync<P>(
   state: &mut OpState,
   path: &str,
   len: u64,
@@ -768,7 +771,7 @@ where
 }
 
 #[op]
-async fn op_truncate_async<P>(
+async fn op_fs_truncate_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   len: u64,
@@ -794,7 +797,7 @@ where
 }
 
 #[op]
-fn op_utime_sync<P>(
+fn op_fs_utime_sync<P>(
   state: &mut OpState,
   path: &str,
   atime_secs: i64,
@@ -817,7 +820,7 @@ where
 }
 
 #[op]
-async fn op_utime_async<P>(
+async fn op_fs_utime_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   atime_secs: i64,
@@ -850,7 +853,7 @@ where
 }
 
 #[op]
-fn op_make_temp_dir_sync<P>(
+fn op_fs_make_temp_dir_sync<P>(
   state: &mut OpState,
   dir: Option<String>,
   prefix: Option<String>,
@@ -883,7 +886,7 @@ where
 }
 
 #[op]
-async fn op_make_temp_dir_async<P>(
+async fn op_fs_make_temp_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<String>,
   prefix: Option<String>,
@@ -916,7 +919,7 @@ where
 }
 
 #[op]
-fn op_make_temp_file_sync<P>(
+fn op_fs_make_temp_file_sync<P>(
   state: &mut OpState,
   dir: Option<String>,
   prefix: Option<String>,
@@ -956,7 +959,7 @@ where
 }
 
 #[op]
-async fn op_make_temp_file_async<P>(
+async fn op_fs_make_temp_file_async<P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<String>,
   prefix: Option<String>,
@@ -1071,7 +1074,7 @@ fn tmp_name(
 }
 
 #[op]
-fn op_write_file_sync<P>(
+fn op_fs_write_file_sync<P>(
   state: &mut OpState,
   path: String,
   mode: Option<u32>,
@@ -1098,7 +1101,7 @@ where
 }
 
 #[op]
-async fn op_write_file_async<P>(
+async fn op_fs_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   mode: Option<u32>,
@@ -1142,7 +1145,7 @@ where
 }
 
 #[op]
-fn op_read_file_sync<P>(
+fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<ZeroCopyBuf, AnyError>
@@ -1161,7 +1164,7 @@ where
 }
 
 #[op]
-async fn op_read_file_async<P>(
+async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
@@ -1198,7 +1201,7 @@ where
 }
 
 #[op]
-fn op_read_file_text_sync<P>(
+fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
   path: String,
 ) -> Result<String, AnyError>
@@ -1217,7 +1220,7 @@ where
 }
 
 #[op]
-async fn op_read_file_text_async<P>(
+async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
@@ -1277,7 +1280,7 @@ fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {
 }
 
 #[op]
-fn op_seek_sync(
+fn op_fs_seek_sync(
   state: &mut OpState,
   rid: ResourceId,
   offset: i64,
@@ -1290,7 +1293,7 @@ fn op_seek_sync(
 }
 
 #[op]
-async fn op_seek_async(
+async fn op_fs_seek_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   offset: i64,
@@ -1303,7 +1306,7 @@ async fn op_seek_async(
 }
 
 #[op]
-fn op_fdatasync_sync(
+fn op_fs_fdatasync_sync(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1313,7 +1316,7 @@ fn op_fdatasync_sync(
 }
 
 #[op]
-async fn op_fdatasync_async(
+async fn op_fs_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1323,14 +1326,17 @@ async fn op_fdatasync_async(
 }
 
 #[op]
-fn op_fsync_sync(state: &mut OpState, rid: ResourceId) -> Result<(), AnyError> {
+fn op_fs_fsync_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
   let file = FileResource::get_file(state, rid)?;
   file.sync_sync()?;
   Ok(())
 }
 
 #[op]
-async fn op_fsync_async(
+async fn op_fs_fsync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1340,7 +1346,7 @@ async fn op_fsync_async(
 }
 
 #[op]
-fn op_fstat_sync(
+fn op_fs_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
   stat_out_buf: &mut [u32],
@@ -1353,7 +1359,7 @@ fn op_fstat_sync(
 }
 
 #[op]
-async fn op_fstat_async(
+async fn op_fs_fstat_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<SerializableStat, AnyError> {
@@ -1363,7 +1369,7 @@ async fn op_fstat_async(
 }
 
 #[op]
-fn op_flock_sync(
+fn op_fs_flock_sync(
   state: &mut OpState,
   rid: ResourceId,
   exclusive: bool,
@@ -1375,7 +1381,7 @@ fn op_flock_sync(
 }
 
 #[op]
-async fn op_flock_async(
+async fn op_fs_flock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   exclusive: bool,
@@ -1387,7 +1393,7 @@ async fn op_flock_async(
 }
 
 #[op]
-fn op_funlock_sync(
+fn op_fs_funlock_sync(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1398,7 +1404,7 @@ fn op_funlock_sync(
 }
 
 #[op]
-async fn op_funlock_async(
+async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1409,7 +1415,7 @@ async fn op_funlock_async(
 }
 
 #[op]
-fn op_ftruncate_sync(
+fn op_fs_ftruncate_sync(
   state: &mut OpState,
   rid: ResourceId,
   len: u64,
@@ -1420,7 +1426,7 @@ fn op_ftruncate_sync(
 }
 
 #[op]
-async fn op_ftruncate_async(
+async fn op_fs_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   len: u64,
@@ -1431,7 +1437,7 @@ async fn op_ftruncate_async(
 }
 
 #[op]
-fn op_futime_sync(
+fn op_fs_futime_sync(
   state: &mut OpState,
   rid: ResourceId,
   atime_secs: i64,
@@ -1445,7 +1451,7 @@ fn op_futime_sync(
 }
 
 #[op]
-async fn op_futime_async(
+async fn op_fs_futime_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   atime_secs: i64,
