@@ -2036,7 +2036,40 @@ Deno.test(
     });
 
     await listeningPromise;
-    const response = await fetch(`http://localhost:4503/`);
+    const response = await fetch(`http://localhost:4503/`, { headers: { "Accept-Encoding": "gzip, deflate, br" } });
+    assertEquals(response.status, 200);
+    await promise;
+    assertEquals(new Uint8Array(await response.arrayBuffer()), data);
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerSendGzipFile() {
+    const promise = deferred();
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    const data = new Uint8Array(70 * 1024).fill(1);
+    await file.write(data);
+    file.close();
+    const server = Deno.serve({
+      handler: async () => {
+        const f = await Deno.open(tmpFile, { read: true });
+        promise.resolve();
+        return new Response(f.readable, { status: 200 });
+      },
+      port: 4503,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const response = await fetch(`http://localhost:4503/`, { headers: { "Accept-Encoding": "gzip, deflate, br" } });
     assertEquals(response.status, 200);
     await promise;
     assertEquals(new Uint8Array(await response.arrayBuffer()), data);

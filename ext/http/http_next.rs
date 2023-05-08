@@ -31,6 +31,7 @@ use deno_net::ops_tls::TlsStream;
 use deno_net::raw::put_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
+use http::header::ACCEPT_ENCODING;
 use http::request::Parts;
 use hyper1::body::Incoming;
 use hyper1::header::COOKIE;
@@ -489,13 +490,19 @@ pub fn op_set_response_body_resource(
     state.resource_table.get_any(stream_rid)?
   };
 
+  let compression = with_req(index, |req| {
+    if req.headers.get(ACCEPT_ENCODING)
+      == Some(&HeaderValue::from_static("gzip, deflate, br"))
+    {
+      Compression::GZip
+    } else {
+      Compression::None
+    }
+  });
+
   with_resp_mut(index, move |response| {
     response.as_mut().unwrap().body_mut().initialize(
-      ResponseBytesInner::from_resource(
-        Compression::None,
-        resource,
-        auto_close,
-      ),
+      ResponseBytesInner::from_resource(compression, resource, auto_close),
     )
   });
 

@@ -106,11 +106,10 @@ trait PollFrame: Unpin {
   fn size_hint(&self) -> SizeHint;
 }
 
+#[derive(PartialEq, Eq)]
 pub enum Compression {
   None,
   GZip,
-  Deflate,
-  Brotli,
 }
 
 pub enum ResponseStream {
@@ -181,7 +180,15 @@ impl ResponseBytesInner {
       Self::Empty => SizeHint::with_exact(0),
       Self::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
       Self::UncompressedStream(res) => res.size_hint(),
-      Self::GZipStream(res) => SizeHint::default(),
+      Self::GZipStream(..) => SizeHint::default(),
+    }
+  }
+
+  fn from_stream(compression: Compression, stream: ResponseStream) -> Self {
+    if compression == Compression::GZip {
+      Self::GZipStream(GZipResponseStream::new(stream))
+    } else {
+      Self::UncompressedStream(stream)
     }
   }
 
@@ -189,7 +196,7 @@ impl ResponseBytesInner {
     compression: Compression,
     rx: tokio::sync::mpsc::Receiver<BufView>,
   ) -> Self {
-    Self::UncompressedStream(ResponseStream::V8Stream(rx))
+    Self::from_stream(compression, ResponseStream::V8Stream(rx))
   }
 
   pub fn from_resource(
@@ -197,9 +204,10 @@ impl ResponseBytesInner {
     stm: Rc<dyn Resource>,
     auto_close: bool,
   ) -> Self {
-    Self::UncompressedStream(ResponseStream::Resource(
-      ResourceBodyAdapter::new(stm, auto_close),
-    ))
+    Self::from_stream(
+      compression,
+      ResponseStream::Resource(ResourceBodyAdapter::new(stm, auto_close)),
+    )
   }
 
   pub fn from_slice(compression: Compression, bytes: &[u8]) -> Self {
