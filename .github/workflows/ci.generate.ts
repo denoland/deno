@@ -544,7 +544,7 @@ const ci = {
         {
           name: "cargo package",
           if: "matrix.job == 'lint'",
-          run: "cargo package --workspace",
+          run: "cargo package --workspace --allow-dirty",
         },
         {
           name: "Build debug",

@@ -330,7 +330,7 @@ jobs:
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
       - name: cargo package
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
-        run: cargo package --workspace
+        run: cargo package --workspace --allow-dirty
       - name: Build debug
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: cargo build --locked --all-targets
