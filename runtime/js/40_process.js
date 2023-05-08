@@ -200,6 +200,7 @@ function collectOutput(readableStream) {
 class ChildProcess {
   #rid;
   #waitPromiseId;
+  #waitComplete = false;
   #unrefed = false;
 
   #pid;
@@ -269,6 +270,7 @@ class ChildProcess {
     this.#waitPromiseId = waitPromise[promiseIdSymbol];
     this.#status = PromisePrototypeThen(waitPromise, (res) => {
       signal?.[abortSignal.remove](onAbort);
+      this.#waitComplete = true;
       return res;
     });
   }
@@ -316,6 +318,9 @@ class ChildProcess {
   }
 
   kill(signo = "SIGTERM") {
+    if (this.#waitComplete) {
+      throw new TypeError("Child process has already terminated.");
+    }
     ops.op_spawn_kill(this.#rid, signo);
   }
 
