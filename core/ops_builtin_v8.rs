@@ -894,7 +894,7 @@ fn op_store_pending_promise_rejection<'a>(
   let error_global = v8::Global::new(scope, reason.v8_value);
   context_state
     .pending_promise_rejections
-    .insert(promise_global, error_global);
+    .push_back((promise_global, error_global));
 }
 
 #[op(v8)]
@@ -909,7 +909,7 @@ fn op_remove_pending_promise_rejection<'a>(
   let promise_global = v8::Global::new(scope, promise_value);
   context_state
     .pending_promise_rejections
-    .remove(&promise_global);
+    .retain(|(key, _)| key != &promise_global);
 }
 
 #[op(v8)]
@@ -924,7 +924,8 @@ fn op_has_pending_promise_rejection<'a>(
   let promise_global = v8::Global::new(scope, promise_value);
   context_state
     .pending_promise_rejections
-    .contains_key(&promise_global)
+    .iter()
+    .any(|(key, _)| key == &promise_global)
 }
 
 #[op(v8)]
