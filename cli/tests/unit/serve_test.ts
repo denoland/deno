@@ -94,8 +94,9 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
     onListen: onListen(listeningPromise),
     onError: createOnErrorCb(ac),
   });
+  await listeningPromise;
 
-  assertRejects(
+  await assertRejects(
     () =>
       Deno.serve({
         handler: (_req) => new Response("ok"),
