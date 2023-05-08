@@ -7,6 +7,7 @@ use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::CompletionHandle;
+use crate::response_body::Compression;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
@@ -489,11 +490,13 @@ pub fn op_set_response_body_resource(
   };
 
   with_resp_mut(index, move |response| {
-    response
-      .as_mut()
-      .unwrap()
-      .body_mut()
-      .initialize(ResponseBytesInner::from_resource(resource, auto_close))
+    response.as_mut().unwrap().body_mut().initialize(
+      ResponseBytesInner::from_resource(
+        Compression::None,
+        resource,
+        auto_close,
+      ),
+    )
   });
 
   Ok(())
@@ -508,7 +511,7 @@ pub fn op_set_response_body_stream(
   let (tx, rx) = tokio::sync::mpsc::channel(1);
   let (tx, rx) = (
     V8StreamHttpResponseBody::new(tx),
-    ResponseBytesInner::from_v8(rx),
+    ResponseBytesInner::from_v8(Compression::None, rx),
   );
 
   with_resp_mut(index, move |response| {
@@ -522,11 +525,9 @@ pub fn op_set_response_body_stream(
 pub fn op_set_response_body_text(index: u32, text: String) {
   if !text.is_empty() {
     with_resp_mut(index, move |response| {
-      response
-        .as_mut()
-        .unwrap()
-        .body_mut()
-        .initialize(ResponseBytesInner::from_vec(text.into_bytes()))
+      response.as_mut().unwrap().body_mut().initialize(
+        ResponseBytesInner::from_vec(Compression::None, text.into_bytes()),
+      )
     });
   }
 }
@@ -539,7 +540,7 @@ pub fn op_set_response_body_bytes(index: u32, buffer: &[u8]) {
         .as_mut()
         .unwrap()
         .body_mut()
-        .initialize(ResponseBytesInner::from_slice(buffer))
+        .initialize(ResponseBytesInner::from_slice(Compression::None, buffer))
     });
   };
 }
