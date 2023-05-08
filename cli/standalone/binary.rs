@@ -346,6 +346,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     file_fetcher: &'a FileFetcher,
     client: &'a HttpClient,

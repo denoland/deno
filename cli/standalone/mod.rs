@@ -18,7 +18,6 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::MappedSpecifierResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;

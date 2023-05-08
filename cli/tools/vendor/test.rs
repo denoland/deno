@@ -22,7 +22,6 @@ use import_map::ImportMap;
 use crate::cache::ParsedSourceCache;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;

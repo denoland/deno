@@ -829,24 +829,23 @@ fn compile_npm_specifiers() {
     ),
   );
 
+  let temp_dir_path = temp_dir.path().to_path_buf();
+  let binary_path = if cfg!(windows) {
+    temp_dir_path.join("binary.exe")
+  } else {
+    temp_dir_path.join("binary")
+  };
+
   // try with and without --node-modules-dir
   let compile_commands = &[
-    "compile --unstable main.ts --output binary",
-    "compile --unstable --node-modules-dir main.ts --output binary",
+    "compile --unstable --output binary main.ts",
+    "compile --unstable --node-modules-dir --output binary main.ts",
   ];
 
   for compile_command in compile_commands {
     let output = context.new_command().args(compile_command).run();
-    output.print_output();
     output.assert_exit_code(0);
     output.skip_output_check();
-
-    let temp_dir_path = temp_dir.path().to_path_buf();
-    let binary_path = if cfg!(windows) {
-      temp_dir_path.join("binary.exe")
-    } else {
-      temp_dir_path.join("binary")
-    };
 
     let output = context
       .new_command()
@@ -884,4 +883,32 @@ testing[WILDCARD]this
 "#,
     );
   }
+
+  // try with a package.json
+  temp_dir.remove_dir_all("node_modules");
+  temp_dir.write(
+    "main.ts",
+    concat!(
+      "import { getValue, setValue } from '@denotest/esm-basic';\n",
+      "setValue(2);\n",
+      "console.log(getValue());",
+    ),
+  );
+  temp_dir.write(
+    "package.json",
+    r#"{ "dependencies": { "@denotest/esm-basic": "1" } }"#,
+  );
+
+  let output = context
+    .new_command()
+    .args("compile --unstable --output binary main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .command_name(binary_path.to_string_lossy())
+    .run();
+  output.assert_matches_text("2\n");
 }

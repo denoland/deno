@@ -214,13 +214,13 @@ impl Resolver for CliGraphResolver {
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
     {
-      None => deno_graph::resolve_import(specifier, referrer)
-        .map_err(|err| err.into()),
       PackageJson(specifier) => {
         self.found_package_json_dep_flag.raise();
-        return Ok(specifier);
+        Ok(specifier)
       }
       ImportMap(specifier) => Ok(specifier),
+      None => deno_graph::resolve_import(specifier, referrer)
+        .map_err(|err| err.into()),
     }
   }
 }
