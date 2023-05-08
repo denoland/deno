@@ -27,6 +27,8 @@ use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::util::sync::AtomicFlag;
 
+/// Result of checking if a specifier is mapped via
+/// an import map or package.json.
 pub enum MappedResolution {
   None,
   PackageJson(ModuleSpecifier),
@@ -43,6 +45,8 @@ impl MappedResolution {
   }
 }
 
+/// Resolver for specifiers that could be mapped via an
+/// import map or package.json.
 #[derive(Debug)]
 pub struct MappedSpecifierResolver {
   maybe_import_map: Option<Arc<ImportMap>>,
@@ -214,11 +218,13 @@ impl Resolver for CliGraphResolver {
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
     {
+      ImportMap(specifier) => Ok(specifier),
       PackageJson(specifier) => {
+        // found a specifier in the package.json, so mark that
+        // we need to do an "npm install" later
         self.found_package_json_dep_flag.raise();
         Ok(specifier)
       }
-      ImportMap(specifier) => Ok(specifier),
       None => deno_graph::resolve_import(specifier, referrer)
         .map_err(|err| err.into()),
     }
