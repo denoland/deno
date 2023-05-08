@@ -7,7 +7,6 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Waker;
 
-use bytes::Buf;
 use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::bad_resource;
@@ -41,6 +40,8 @@ enum ResponseStreamResult {
   /// will only be returned from compression streams that require additional buffering.
   NoData,
   /// Stream provided trailers.
+  // TODO(mmastrac): We are threading trailers through the response system to eventually support Grpc.
+  #[allow(unused)]
   Trailers(HeaderMap),
   /// Stream failed.
   Error(AnyError),

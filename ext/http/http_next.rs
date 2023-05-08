@@ -500,11 +500,12 @@ fn is_request_compressible(headers: &HeaderMap) -> Compression {
   let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
     matches!(r, Ok((Some(Encoding::Identity | Encoding::Gzip), _)))
   });
+  #[allow(clippy::single_match)]
   match fly_accept_encoding::preferred(accepted) {
     Ok(Some(fly_accept_encoding::Encoding::Gzip)) => return Compression::GZip,
     _ => {}
   }
-  return Compression::None;
+  Compression::None
 }
 
 fn is_response_compressible(headers: &HeaderMap) -> bool {
@@ -530,7 +531,7 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
       }
     }
   }
-  return true;
+  true
 }
 
 fn modify_compressibility_from_response(
@@ -555,7 +556,7 @@ fn modify_compressibility_from_response(
   weaken_etag(headers);
   headers.remove(CONTENT_LENGTH);
   headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
-  return compression;
+  compression
 }
 
 /// If the user provided a ETag header for uncompressed data, we need to ensure it is a
