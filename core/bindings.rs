@@ -499,12 +499,12 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
         let error_global = v8::Global::new(scope, error);
         context_state
           .pending_promise_rejections
-          .insert(promise_global, error_global);
+          .push_back((promise_global, error_global));
       }
       PromiseHandlerAddedAfterReject => {
         context_state
           .pending_promise_rejections
-          .remove(&promise_global);
+          .retain(|(key, _)| key != &promise_global);
       }
       PromiseRejectAfterResolved => {}
       PromiseResolveAfterResolved => {
