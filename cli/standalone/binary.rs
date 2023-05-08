@@ -146,8 +146,8 @@ pub struct Metadata {
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
   let file_path = current_exe().unwrap();
   let mut file = std::fs::File::open(file_path)?;
-  let _trailer_pos = file.seek(SeekFrom::End(-40))?;
-  let mut trailer = [0; 40];
+  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
+  let mut trailer = [0; TRAILER_SIZE];
   file.read_exact(&mut trailer)?;
   let trailer = Trailer::parse(&trailer)?.unwrap();
   file.seek(SeekFrom::Start(trailer.npm_vfs_pos))?;
@@ -213,12 +213,15 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   let Ok(mut output_file) = std::fs::File::open(exe_path) else {
     return false;
   };
-  if output_file.seek(SeekFrom::End(-40)).is_err() {
+  if output_file
+    .seek(SeekFrom::End(-(TRAILER_SIZE as i64)))
+    .is_err()
+  {
     // This seek may fail because the file is too small to possibly be
     // `deno compile` output.
     return false;
   }
-  let mut trailer = [0; 40];
+  let mut trailer = [0; TRAILER_SIZE];
   if output_file.read_exact(&mut trailer).is_err() {
     return false;
   };
@@ -228,13 +231,9 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
-/// binary by checking for the magic trailer string `d3n0l4nd` at EOF-40 (8 bytes * 5).
-/// The magic trailer is followed by:
-/// - a u64 pointer to the JS bundle embedded in the binary
-/// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
-/// These are dereferenced, and the bundle is executed under the configuration
-/// specified by the metadata. If no magic trailer is present, this function
-/// exits with `Ok(None)`.
+/// binary by skipping over the trailer width at the end of the file,
+/// then checking for the magic trailer string `d3n0l4nd`. If found,
+/// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub async fn extract_standalone(
   exe_path: &Path,
   cli_args: Vec<String>,
@@ -244,8 +243,10 @@ pub async fn extract_standalone(
   let mut bufreader =
     deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
 
-  let _trailer_pos = bufreader.seek(SeekFrom::End(-40)).await?;
-  let mut trailer = [0; 40];
+  let _trailer_pos = bufreader
+    .seek(SeekFrom::End(-(TRAILER_SIZE as i64)))
+    .await?;
+  let mut trailer = [0; TRAILER_SIZE];
   bufreader.read_exact(&mut trailer).await?;
   let trailer = match Trailer::parse(&trailer)? {
     None => return Ok(None),
@@ -277,6 +278,8 @@ pub async fn extract_standalone(
 
   Ok(Some((metadata, eszip)))
 }
+
+const TRAILER_SIZE: usize = std::mem::size_of::<Trailer>() + 8; // 8 bytes for the magic trailer string
 
 struct Trailer {
   eszip_pos: u64,
