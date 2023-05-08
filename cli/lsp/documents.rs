@@ -17,11 +17,7 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::lsp::logging::lsp_warn;
-use crate::node;
-use crate::node::node_resolve_npm_reference;
-use crate::node::NodeResolution;
-use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -37,16 +33,20 @@ use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -827,7 +827,7 @@ pub struct Documents {
   imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
-  resolver: CliGraphResolver,
+  resolver: Arc<CliGraphResolver>,
   /// The npm package requirements found in npm specifiers.
   npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
@@ -848,7 +848,7 @@ impl Documents {
       lsp_client_kind,
       resolver_config_hash: 0,
       imports: Default::default(),
-      resolver: CliGraphResolver::default(),
+      resolver: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
@@ -1056,7 +1056,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_npm_resolver: Option<&NpmPackageResolver>,
+    maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1065,25 +1065,25 @@ impl Documents {
     };
     let mut results = Vec::new();
     for specifier in specifiers {
-      if let Some(npm_resolver) = maybe_npm_resolver {
-        if npm_resolver.in_npm_package(referrer) {
+      if let Some(node_resolver) = maybe_node_resolver {
+        if node_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
-            node::node_resolve(
-              &specifier,
-              referrer,
-              NodeResolutionMode::Types,
-              npm_resolver,
-              &mut PermissionsContainer::allow_all(),
-            )
-            .ok()
-            .flatten(),
+            node_resolver
+              .resolve(
+                &specifier,
+                referrer,
+                NodeResolutionMode::Types,
+                &PermissionsContainer::allow_all(),
+              )
+              .ok()
+              .flatten(),
           )));
           continue;
         }
       }
       if let Some(module_name) = specifier.strip_prefix("node:") {
-        if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+        if deno_node::resolve_builtin_node_module(module_name).is_ok() {
           // return itself for node: specifiers because during type checking
           // we resolve to the ambient modules in the @types/node package
           // rather than deno_std/node
@@ -1105,9 +1105,9 @@ impl Documents {
         dependencies.as_ref().and_then(|d| d.deps.get(&specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+          results.push(self.resolve_dependency(specifier, maybe_node_resolver));
         } else {
           results.push(None);
         }
@@ -1115,11 +1115,12 @@ impl Documents {
         .resolve_imports_dependency(&specifier)
         .and_then(|r| r.maybe_specifier())
       {
-        results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
+        results.push(self.resolve_dependency(specifier, maybe_node_resolver));
       } else if let Ok(npm_req_ref) =
         NpmPackageReqReference::from_str(&specifier)
       {
-        results.push(node_resolve_npm_req_ref(npm_req_ref, maybe_npm_resolver));
+        results
+          .push(node_resolve_npm_req_ref(npm_req_ref, maybe_node_resolver));
       } else {
         results.push(None);
       }
@@ -1165,8 +1166,8 @@ impl Documents {
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
     maybe_package_json: Option<&PackageJson>,
-    npm_registry_api: NpmRegistryApi,
-    npm_resolution: NpmResolution,
+    npm_registry_api: Arc<CliNpmRegistryApi>,
+    npm_resolution: Arc<NpmResolution>,
   ) {
     fn calculate_resolver_config_hash(
       enabled_urls: &[Url],
@@ -1186,7 +1187,23 @@ impl Documents {
         hasher.write_str(import_map.base_url().as_str());
       }
       hasher.write_hashable(&maybe_jsx_config);
-      hasher.write_hashable(&maybe_package_json_deps);
+      if let Some(package_json_deps) = &maybe_package_json_deps {
+        // We need to ensure the hashing is deterministic so explicitly type
+        // this in order to catch if the type of package_json_deps ever changes
+        // from a sorted/deterministic BTreeMap to something else.
+        let package_json_deps: &BTreeMap<_, _> = *package_json_deps;
+        for (key, value) in package_json_deps {
+          hasher.write_hashable(key);
+          match value {
+            Ok(value) => {
+              hasher.write_hashable(value);
+            }
+            Err(err) => {
+              hasher.write_str(&err.to_string());
+            }
+          }
+        }
+      }
       hasher.finish()
     }
 
@@ -1201,19 +1218,19 @@ impl Documents {
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
     );
-    let deps_installer = PackageJsonDepsInstaller::new(
+    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
       npm_registry_api.clone(),
       npm_resolution.clone(),
       maybe_package_json_deps,
-    );
-    self.resolver = CliGraphResolver::new(
+    ));
+    self.resolver = Arc::new(CliGraphResolver::new(
       maybe_jsx_config,
       maybe_import_map,
       false,
       npm_registry_api,
       npm_resolution,
       deps_installer,
-    );
+    ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1401,10 +1418,10 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_npm_resolver: Option<&NpmPackageResolver>,
+    maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(npm_ref, maybe_npm_resolver);
+      return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
     }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_esm_module().and_then(|r| r.as_ref().ok());
@@ -1413,7 +1430,7 @@ impl Documents {
     if let Some(specifier) =
       maybe_types_dependency.and_then(|d| d.maybe_specifier())
     {
-      self.resolve_dependency(specifier, maybe_npm_resolver)
+      self.resolve_dependency(specifier, maybe_node_resolver)
     } else {
       let media_type = doc.media_type();
       Some((specifier.clone(), media_type))
@@ -1436,23 +1453,18 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_npm_resolver: Option<&NpmPackageResolver>,
+  maybe_node_resolver: Option<&Arc<NodeResolver>>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
-  maybe_npm_resolver.map(|npm_resolver| {
+  maybe_node_resolver.map(|node_resolver| {
     NodeResolution::into_specifier_and_media_type(
-      npm_resolver
-        .pkg_req_ref_to_nv_ref(npm_req_ref)
+      node_resolver
+        .resolve_npm_req_reference(
+          &npm_req_ref,
+          NodeResolutionMode::Types,
+          &PermissionsContainer::allow_all(),
+        )
         .ok()
-        .and_then(|pkg_id_ref| {
-          node_resolve_npm_reference(
-            &pkg_id_ref,
-            NodeResolutionMode::Types,
-            npm_resolver,
-            &mut PermissionsContainer::allow_all(),
-          )
-          .ok()
-          .flatten()
-        }),
+        .flatten(),
     )
   })
 }
@@ -1847,9 +1859,12 @@ console.log(b, "hello deno");
 
   #[test]
   fn test_documents_refresh_dependencies_config_change() {
-    let npm_registry_api = NpmRegistryApi::new_uninitialized();
-    let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
+    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
+      npm_registry_api.clone(),
+      None,
+      None,
+    ));
 
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway

@@ -12,27 +12,28 @@ const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSplice,
-  ArrayPrototypeMap,
   DateNow,
   Error,
   ErrorPrototype,
-  FunctionPrototypeCall,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   ObjectAssign,
-  ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectDefineProperty,
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  PromisePrototypeThen,
   PromiseResolve,
+  SafeWeakMap,
   Symbol,
   SymbolIterator,
-  PromisePrototypeThen,
-  SafeWeakMap,
   TypeError,
   WeakMapPrototypeDelete,
   WeakMapPrototypeGet,
@@ -44,12 +45,14 @@ import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
-import * as colors from "ext:deno_console/01_colors.js";
 import {
+  getDefaultInspectOptions,
+  getNoColor,
   inspectArgs,
   quoteString,
+  setNoColor,
   wrapConsole,
-} from "ext:deno_console/02_console.js";
+} from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
@@ -99,7 +102,7 @@ function workerClose() {
 function postMessage(message, transferOrOptions = {}) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   message = webidl.converters.any(message);
   let options;
   if (
@@ -109,16 +112,15 @@ function postMessage(message, transferOrOptions = {}) {
   ) {
     const transfer = webidl.converters["sequence<object>"](
       transferOrOptions,
-      { prefix, context: "Argument 2" },
+      prefix,
+      "Argument 2",
     );
     options = { transfer };
   } else {
     options = webidl.converters.StructuredSerializeOptions(
       transferOrOptions,
-      {
-        prefix,
-        context: "Argument 2",
-      },
+      prefix,
+      "Argument 2",
     );
   }
   const { transfer } = options;
@@ -146,8 +148,10 @@ async function pollForMessages() {
     const msgEvent = new event.MessageEvent("message", {
       cancelable: false,
       data: message,
-      ports: transferables.filter((t) =>
-        ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
+      ports: ArrayPrototypeFilter(
+        transferables,
+        (t) =>
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
       ),
     });
 
@@ -218,12 +222,12 @@ function formatException(error) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
-      inspectArgs([quoteString(error)], {
-        colors: !colors.getNoColor(),
+      inspectArgs([quoteString(error, getDefaultInspectOptions())], {
+        colors: !getNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !colors.getNoColor() })}`;
+    return `Uncaught ${inspectArgs([error], { colors: !getNoColor() })}`;
   }
 }
 
@@ -312,7 +316,7 @@ function runtimeStart(
   );
   core.setBuildInfo(target);
   util.setLogDebug(debugFlag, source);
-  colors.setNoColor(noColor || !isTty);
+  setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }
@@ -411,25 +415,24 @@ function bootstrapMainRuntime(runtimeOptions) {
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  const [
-    args,
-    cpuCount,
-    debugFlag,
-    denoVersion,
-    locale,
-    location_,
-    noColor,
-    isTty,
-    tsVersion,
-    unstableFlag,
-    pid,
-    ppid,
-    target,
-    v8Version,
-    userAgent,
-    inspectFlag,
-    _,
-  ] = runtimeOptions;
+  const {
+    0: args,
+    1: cpuCount,
+    2: debugFlag,
+    3: denoVersion,
+    4: locale,
+    5: location_,
+    6: noColor,
+    7: isTty,
+    8: tsVersion,
+    9: unstableFlag,
+    10: pid,
+    11: target,
+    12: v8Version,
+    13: userAgent,
+    14: inspectFlag,
+    // 15: enableTestingFeaturesFlag
+  } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;
@@ -491,9 +494,16 @@ function bootstrapMainRuntime(runtimeOptions) {
   setUserAgent(userAgent);
   setLanguage(locale);
 
+  let ppid = undefined;
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
-    ppid: util.readOnly(ppid),
+    ppid: util.getterOnly(() => {
+      // lazy because it's expensive
+      if (ppid === undefined) {
+        ppid = ops.op_ppid();
+      }
+      return ppid;
+    }),
     noColor: util.readOnly(noColor),
     args: util.readOnly(ObjectFreeze(args)),
     mainModule: util.getterOnly(opMainModule),
@@ -519,25 +529,24 @@ function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
 
-  const [
-    args,
-    cpuCount,
-    debugFlag,
-    denoVersion,
-    locale,
-    location_,
-    noColor,
-    isTty,
-    tsVersion,
-    unstableFlag,
-    pid,
-    _ppid,
-    target,
-    v8Version,
-    _userAgent,
-    _inspectFlag,
-    enableTestingFeaturesFlag,
-  ] = runtimeOptions;
+  const {
+    0: args,
+    1: cpuCount,
+    2: debugFlag,
+    3: denoVersion,
+    4: locale,
+    5: location_,
+    6: noColor,
+    7: isTty,
+    8: tsVersion,
+    9: unstableFlag,
+    10: pid,
+    11: target,
+    12: v8Version,
+    // 13: userAgent,
+    // 14: inspectFlag,
+    15: enableTestingFeaturesFlag,
+  } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
   globalThis_ = globalThis;

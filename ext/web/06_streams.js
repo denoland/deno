@@ -19,8 +19,10 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBuffer,
-  ArrayBufferPrototype,
   ArrayBufferIsView,
+  ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeSlice,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -33,13 +35,12 @@ const {
   DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
-  FinalizationRegistry,
-  Int8Array,
   Int16Array,
   Int32Array,
+  Int8Array,
+  MathMin,
   NumberIsInteger,
   NumberIsNaN,
-  MathMin,
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -52,12 +53,13 @@ const {
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
-  queueMicrotask,
   RangeError,
   ReflectHas,
+  SafeFinalizationRegistry,
   SafePromiseAll,
+  SafeWeakMap,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   Symbol,
   SymbolAsyncIterator,
   SymbolFor,
@@ -67,16 +69,17 @@ const {
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSet,
-  Uint8Array,
+  TypedArrayPrototypeSlice,
   Uint16Array,
   Uint32Array,
+  Uint8Array,
   Uint8ClampedArray,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
   WeakMapPrototypeSet,
+  queueMicrotask,
 } = primordials;
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { assert, AssertionError } from "ext:deno_web/00_infra.js";
 
 /** @template T */
@@ -208,7 +211,12 @@ function uponPromise(promise, onFulfilled, onRejected) {
  * @returns {boolean}
  */
 function isDetachedBuffer(O) {
-  return O.byteLength === 0 && ops.op_arraybuffer_was_detached(O);
+  // deno-lint-ignore prefer-primordials
+  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+    return false;
+  }
+  return ArrayBufferPrototypeGetByteLength(O) === 0 &&
+    ops.op_arraybuffer_was_detached(O);
 }
 
 /**
@@ -238,15 +246,46 @@ function transferArrayBuffer(O) {
 }
 
 /**
+ * @param {ArrayBufferLike} O
+ * @returns {number}
+ */
+function getArrayBufferByteLength(O) {
+  // deno-lint-ignore prefer-primordials
+  if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O)) {
+    // TODO(petamoriken): use primordials
+    // deno-lint-ignore prefer-primordials
+    return O.byteLength;
+  } else {
+    return ArrayBufferPrototypeGetByteLength(O);
+  }
+}
+
+/**
  * @param {ArrayBufferView} O
  * @returns {Uint8Array}
  */
 function cloneAsUint8Array(O) {
   assert(typeof O === "object");
   assert(ArrayBufferIsView(O));
-  assert(!isDetachedBuffer(O.buffer));
-  const buffer = O.buffer.slice(O.byteOffset, O.byteOffset + O.byteLength);
-  return new Uint8Array(buffer);
+  if (TypedArrayPrototypeGetSymbolToStringTag(O) !== undefined) {
+    // TypedArray
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (O)),
+        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (O)),
+        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O)),
+      ),
+    );
+  } else {
+    // DataView
+    return TypedArrayPrototypeSlice(
+      new Uint8Array(
+        DataViewPrototypeGetBuffer(/** @type {DataView} */ (O)),
+        DataViewPrototypeGetByteOffset(/** @type {DataView} */ (O)),
+        DataViewPrototypeGetByteLength(/** @type {DataView} */ (O)),
+      ),
+    );
+  }
 }
 
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
@@ -470,7 +509,7 @@ function extractSizeAlgorithm(strategy) {
       [chunk],
       undefined,
       webidl.converters["unrestricted double"],
-      { prefix: "Failed to call `sizeAlgorithm`" },
+      "Failed to call `sizeAlgorithm`",
     );
 }
 
@@ -657,7 +696,7 @@ function isReadableStreamDisturbed(stream) {
 const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
 // A finalization registry to clean up underlying resources that are GC'ed.
-const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
   core.tryClose(rid);
 });
 
@@ -695,7 +734,7 @@ function readableStreamForRid(rid, autoClose = true) {
         if (controller[_readAll] === true) {
           // fast path for tee'd streams consuming body
           const chunk = await core.readAll(rid);
-          if (chunk.byteLength > 0) {
+          if (TypedArrayPrototypeGetByteLength(chunk) > 0) {
             controller.enqueue(chunk);
           }
           controller.close();
@@ -870,7 +909,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
     }
 
     ArrayPrototypePush(chunks, chunk);
-    totalLength += chunk.byteLength;
+    totalLength += TypedArrayPrototypeGetByteLength(chunk);
   }
 
   const finalBuffer = new Uint8Array(totalLength);
@@ -878,7 +917,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
   for (let i = 0; i < chunks.length; ++i) {
     const chunk = chunks[i];
     TypedArrayPrototypeSet(finalBuffer, chunk, offset);
-    offset += chunk.byteLength;
+    offset += TypedArrayPrototypeGetByteLength(chunk);
   }
   return finalBuffer;
 }
@@ -1092,7 +1131,25 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     return;
   }
 
-  const { buffer, byteOffset, byteLength } = chunk;
+  let buffer, byteLength, byteOffset;
+  if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+    byteLength = DataViewPrototypeGetByteLength(
+      /** @type {DataView} */ (chunk),
+    );
+    byteOffset = DataViewPrototypeGetByteOffset(
+      /** @type {DataView} */ (chunk),
+    );
+  } else {
+    buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (chunk));
+    byteLength = TypedArrayPrototypeGetByteLength(
+      /** @type {Uint8Array} */ (chunk),
+    );
+    byteOffset = TypedArrayPrototypeGetByteOffset(
+      /** @type {Uint8Array} */ (chunk),
+    );
+  }
+
   if (isDetachedBuffer(buffer)) {
     throw new TypeError(
       "chunk's buffer is detached and so cannot be enqueued",
@@ -1101,6 +1158,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   const transferredBuffer = transferArrayBuffer(buffer);
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
+    // deno-lint-ignore prefer-primordials
     if (isDetachedBuffer(firstPendingPullInto.buffer)) {
       throw new TypeError(
         "The BYOB request's buffer has been detached and so cannot be filled with an enqueued chunk",
@@ -1108,6 +1166,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
     firstPendingPullInto.buffer = transferArrayBuffer(
+      // deno-lint-ignore prefer-primordials
       firstPendingPullInto.buffer,
     );
     if (firstPendingPullInto.readerType === "none") {
@@ -1194,7 +1253,16 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
 ) {
   let cloneResult;
   try {
-    cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
+    if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, buffer)) {
+      cloneResult = ArrayBufferPrototypeSlice(
+        buffer,
+        byteOffset,
+        byteOffset + byteLength,
+      );
+    } else {
+      // TODO(lucacasonato): add SharedArrayBuffer to primordials
+      cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
+    }
   } catch (e) {
     readableByteStreamControllerError(controller, e);
   }
@@ -1219,7 +1287,9 @@ function readableByteStreamControllerEnqueueDetachedPullIntoToQueue(
   if (pullIntoDescriptor.bytesFilled > 0) {
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.byteOffset,
       pullIntoDescriptor.bytesFilled,
     );
@@ -1238,8 +1308,11 @@ function readableByteStreamControllerGetBYOBRequest(controller) {
   ) {
     const firstDescriptor = controller[_pendingPullIntos][0];
     const view = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
       firstDescriptor.buffer,
+      // deno-lint-ignore prefer-primordials
       firstDescriptor.byteOffset + firstDescriptor.bytesFilled,
+      // deno-lint-ignore prefer-primordials
       firstDescriptor.byteLength - firstDescriptor.bytesFilled,
     );
     const byobRequest = webidl.createBranded(ReadableStreamBYOBRequest);
@@ -1753,7 +1826,7 @@ function readableByteStreamControllerPullInto(
   /** @type {PullIntoDescriptor} */
   const pullIntoDescriptor = {
     buffer,
-    bufferByteLength: buffer.byteLength,
+    bufferByteLength: getArrayBufferByteLength(buffer),
     byteOffset,
     byteLength,
     bytesFilled: 0,
@@ -1769,7 +1842,9 @@ function readableByteStreamControllerPullInto(
   }
   if (stream[_state] === "closed") {
     const emptyView = new ctor(
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.byteOffset,
       0,
     );
@@ -1799,7 +1874,7 @@ function readableByteStreamControllerPullInto(
       return;
     }
   }
-  controller[_pendingPullIntos].push(pullIntoDescriptor);
+  ArrayPrototypePush(controller[_pendingPullIntos], pullIntoDescriptor);
   readableStreamAddReadIntoRequest(stream, readIntoRequest);
   readableByteStreamControllerCallPullIfNeeded(controller);
 }
@@ -1828,11 +1903,13 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
     }
     if (
       (firstDescriptor.bytesFilled + bytesWritten) >
+        // deno-lint-ignore prefer-primordials
         firstDescriptor.byteLength
     ) {
       throw new RangeError("bytesWritten out of range");
     }
   }
+  // deno-lint-ignore prefer-primordials
   firstDescriptor.buffer = transferArrayBuffer(firstDescriptor.buffer);
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
 }
@@ -1850,6 +1927,7 @@ function readableByteStreamControllerRespondInReadableState(
 ) {
   assert(
     (pullIntoDescriptor.bytesFilled + bytesWritten) <=
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.byteLength,
   );
   readableByteStreamControllerFillHeadPullIntoDescriptor(
@@ -1874,10 +1952,12 @@ function readableByteStreamControllerRespondInReadableState(
   const remainderSize = pullIntoDescriptor.bytesFilled %
     pullIntoDescriptor.elementSize;
   if (remainderSize > 0) {
+    // deno-lint-ignore prefer-primordials
     const end = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
       end - remainderSize,
       remainderSize,
@@ -1903,6 +1983,7 @@ function readableByteStreamControllerRespondInternal(
   bytesWritten,
 ) {
   const firstDescriptor = controller[_pendingPullIntos][0];
+  // deno-lint-ignore prefer-primordials
   assert(canTransferArrayBuffer(firstDescriptor.buffer));
   readableByteStreamControllerInvalidateBYOBRequest(controller);
   const state = controller[_stream][_state];
@@ -1994,47 +2075,57 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
  */
 function readableByteStreamControllerRespondWithNewView(controller, view) {
   assert(controller[_pendingPullIntos].length !== 0);
-  assert(!isDetachedBuffer(view.buffer));
+
+  let buffer, byteLength, byteOffset;
+  if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
+    buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+    byteLength = DataViewPrototypeGetByteLength(/** @type {DataView} */ (view));
+    byteOffset = DataViewPrototypeGetByteOffset(/** @type {DataView} */ (view));
+  } else {
+    buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array}} */ (view));
+    byteLength = TypedArrayPrototypeGetByteLength(
+      /** @type {Uint8Array} */ (view),
+    );
+    byteOffset = TypedArrayPrototypeGetByteOffset(
+      /** @type {Uint8Array} */ (view),
+    );
+  }
+  assert(!isDetachedBuffer(buffer));
   const firstDescriptor = controller[_pendingPullIntos][0];
   const state = controller[_stream][_state];
   if (state === "closed") {
-    if (view.byteLength !== 0) {
+    if (byteLength !== 0) {
       throw new TypeError(
         "The view's length must be 0 when calling respondWithNewView() on a closed stream",
       );
     }
   } else {
     assert(state === "readable");
-    if (view.byteLength === 0) {
+    if (byteLength === 0) {
       throw new TypeError(
         "The view's length must be greater than 0 when calling respondWithNewView() on a readable stream",
       );
     }
   }
-  if (
-    (firstDescriptor.byteOffset + firstDescriptor.bytesFilled) !==
-      view.byteOffset
-  ) {
+  // deno-lint-ignore prefer-primordials
+  if (firstDescriptor.byteOffset + firstDescriptor.bytesFilled !== byteOffset) {
     throw new RangeError(
       "The region specified by view does not match byobRequest",
     );
   }
-  if (firstDescriptor.bufferByteLength !== view.buffer.byteLength) {
+  if (firstDescriptor.bufferByteLength !== getArrayBufferByteLength(buffer)) {
     throw new RangeError(
       "The buffer of view has different capacity than byobRequest",
     );
   }
-  if (
-    (firstDescriptor.bytesFilled + view.byteLength) >
-      firstDescriptor.byteLength
-  ) {
+  // deno-lint-ignore prefer-primordials
+  if (firstDescriptor.bytesFilled + byteLength > firstDescriptor.byteLength) {
     throw new RangeError(
       "The region specified by view is larger than byobRequest",
     );
   }
-  const viewByteLength = view.byteLength;
-  firstDescriptor.buffer = transferArrayBuffer(view.buffer);
-  readableByteStreamControllerRespondInternal(controller, viewByteLength);
+  firstDescriptor.buffer = transferArrayBuffer(buffer);
+  readableByteStreamControllerRespondInternal(controller, byteLength);
 }
 
 /**
@@ -2060,6 +2151,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
     (pullIntoDescriptor.bytesFilled % elementSize);
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
+    // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
@@ -2076,23 +2168,29 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
     const headOfQueue = queue[0];
     const bytesToCopy = MathMin(
       totalBytesToCopyRemaining,
+      // deno-lint-ignore prefer-primordials
       headOfQueue.byteLength,
     );
+    // deno-lint-ignore prefer-primordials
     const destStart = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
 
     const destBuffer = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
       pullIntoDescriptor.buffer,
       destStart,
       bytesToCopy,
     );
     const srcBuffer = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
       headOfQueue.buffer,
+      // deno-lint-ignore prefer-primordials
       headOfQueue.byteOffset,
       bytesToCopy,
     );
     destBuffer.set(srcBuffer);
 
+    // deno-lint-ignore prefer-primordials
     if (headOfQueue.byteLength === bytesToCopy) {
       ArrayPrototypeShift(queue);
     } else {
@@ -2126,11 +2224,15 @@ function readableByteStreamControllerFillReadRequestFromQueue(
 ) {
   assert(controller[_queueTotalSize] > 0);
   const entry = ArrayPrototypeShift(controller[_queue]);
+  // deno-lint-ignore prefer-primordials
   controller[_queueTotalSize] -= entry.byteLength;
   readableByteStreamControllerHandleQueueDrain(controller);
   const view = new Uint8Array(
+    // deno-lint-ignore prefer-primordials
     entry.buffer,
+    // deno-lint-ignore prefer-primordials
     entry.byteOffset,
+    // deno-lint-ignore prefer-primordials
     entry.byteLength,
   );
   readRequest.chunkSteps(view);
@@ -2164,11 +2266,14 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
 ) {
   const bytesFilled = pullIntoDescriptor.bytesFilled;
   const elementSize = pullIntoDescriptor.elementSize;
+  // deno-lint-ignore prefer-primordials
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
+  // deno-lint-ignore prefer-primordials
   const buffer = transferArrayBuffer(pullIntoDescriptor.buffer);
   return new pullIntoDescriptor.viewConstructor(
     buffer,
+    // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.byteOffset,
     bytesFilled / elementSize,
   );
@@ -3029,7 +3134,17 @@ function readableByteStreamTee(stream) {
           readableByteStreamControllerClose(otherBranch[_controller]);
         }
         if (chunk !== undefined) {
-          assert(chunk.byteLength === 0);
+          let byteLength;
+          if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
+            byteLength = DataViewPrototypeGetByteLength(
+              /** @type {DataView} */ (chunk),
+            );
+          } else {
+            byteLength = TypedArrayPrototypeGetByteLength(
+              /** @type {Uint8Array} */ (chunk),
+            );
+          }
+          assert(byteLength === 0);
           if (!byobCanceled) {
             readableByteStreamControllerRespondWithNewView(
               byobBranch[_controller],
@@ -3210,10 +3325,7 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
-        },
+        "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
       );
   }
   if (underlyingSourceDict.pull !== undefined) {
@@ -3223,11 +3335,8 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
+        true,
       );
   }
   if (underlyingSourceDict.cancel !== undefined) {
@@ -3237,11 +3346,8 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
         [reason],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
+        true,
       );
   }
   const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
@@ -3332,10 +3438,7 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
-        },
+        "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
       );
   }
   if (underlyingSourceDict.pull !== undefined) {
@@ -3345,11 +3448,8 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [controller],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSourceDict.cancel !== undefined) {
@@ -3359,11 +3459,8 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
         [reason],
         underlyingSource,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
+        true,
       );
   }
   setUpReadableStreamDefaultController(
@@ -3464,11 +3561,8 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         [chunk, controller],
         transformer,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
+        true,
       );
   }
   if (transformerDict.flush !== undefined) {
@@ -3478,11 +3572,8 @@ function setUpTransformStreamDefaultControllerFromTransformer(
         [controller],
         transformer,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
+        true,
       );
   }
   setUpTransformStreamDefaultController(
@@ -3574,10 +3665,7 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [controller],
         underlyingSink,
         webidl.converters.any,
-        {
-          prefix:
-            "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
-        },
+        "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
       );
   }
   if (underlyingSinkDict.write !== undefined) {
@@ -3587,11 +3675,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [chunk, controller],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSinkDict.close !== undefined) {
@@ -3601,11 +3686,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   if (underlyingSinkDict.abort !== undefined) {
@@ -3615,11 +3697,8 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
         [reason],
         underlyingSink,
         webidl.converters["Promise<undefined>"],
-        {
-          prefix:
-            "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
-          returnsPromise: true,
-        },
+        "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
+        true,
       );
   }
   setUpWritableStreamDefaultController(
@@ -4412,7 +4491,7 @@ function writableStreamMarkCloseRequestInFlight(stream) {
 function writableStreamMarkFirstWriteRequestInFlight(stream) {
   assert(stream[_inFlightWriteRequest] === undefined);
   assert(stream[_writeRequests].length);
-  const writeRequest = stream[_writeRequests].shift();
+  const writeRequest = ArrayPrototypeShift(stream[_writeRequests]);
   stream[_inFlightWriteRequest] = writeRequest;
 }
 
@@ -4596,11 +4675,8 @@ class ByteLengthQueuingStrategy {
   /** @param {{ highWaterMark: number }} init */
   constructor(init) {
     const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    init = webidl.converters.QueuingStrategyInit(init, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
@@ -4638,12 +4714,13 @@ webidl.configurePrototype(ByteLengthQueuingStrategy);
 const ByteLengthQueuingStrategyPrototype = ByteLengthQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
-const byteSizeFunctionWeakMap = new WeakMap();
+const byteSizeFunctionWeakMap = new SafeWeakMap();
 
 function initializeByteLengthSizeFunction(globalObject) {
   if (WeakMapPrototypeHas(byteSizeFunctionWeakMap, globalObject)) {
     return;
   }
+  // deno-lint-ignore prefer-primordials
   const size = (chunk) => chunk.byteLength;
   WeakMapPrototypeSet(byteSizeFunctionWeakMap, globalObject, size);
 }
@@ -4652,11 +4729,8 @@ class CountQueuingStrategy {
   /** @param {{ highWaterMark: number }} init */
   constructor(init) {
     const prefix = "Failed to construct 'CountQueuingStrategy'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    init = webidl.converters.QueuingStrategyInit(init, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    init = webidl.converters.QueuingStrategyInit(init, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     this[_globalObject] = globalThis;
     this[_highWaterMark] = init.highWaterMark;
@@ -4694,7 +4768,7 @@ webidl.configurePrototype(CountQueuingStrategy);
 const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
 /** @type {WeakMap<typeof globalThis, () => 1>} */
-const countSizeFunctionWeakMap = new WeakMap();
+const countSizeFunctionWeakMap = new SafeWeakMap();
 
 /** @param {typeof globalThis} globalObject */
 function initializeCountSizeFunction(globalObject) {
@@ -4733,18 +4807,20 @@ class ReadableStream {
   constructor(underlyingSource = undefined, strategy = undefined) {
     const prefix = "Failed to construct 'ReadableStream'";
     if (underlyingSource !== undefined) {
-      underlyingSource = webidl.converters.object(underlyingSource, {
+      underlyingSource = webidl.converters.object(
+        underlyingSource,
         prefix,
-        context: "Argument 1",
-      });
+        "Argument 1",
+      );
     } else {
       underlyingSource = null;
     }
     if (strategy !== undefined) {
-      strategy = webidl.converters.QueuingStrategy(strategy, {
+      strategy = webidl.converters.QueuingStrategy(
+        strategy,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     } else {
       strategy = {};
     }
@@ -4753,7 +4829,8 @@ class ReadableStream {
     if (underlyingSource !== undefined) {
       underlyingSourceDict = webidl.converters.UnderlyingSource(
         underlyingSource,
-        { prefix, context: "underlyingSource" },
+        prefix,
+        "underlyingSource",
       );
     }
     initializeReadableStream(this);
@@ -4820,10 +4897,11 @@ class ReadableStream {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
     if (options !== undefined) {
-      options = webidl.converters.ReadableStreamGetReaderOptions(options, {
+      options = webidl.converters.ReadableStreamGetReaderOptions(
+        options,
         prefix,
-        context: "Argument 1",
-      });
+        "Argument 1",
+      );
     } else {
       options = {};
     }
@@ -4844,15 +4922,17 @@ class ReadableStream {
   pipeThrough(transform, options = {}) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    transform = webidl.converters.ReadableWritablePair(transform, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    transform = webidl.converters.ReadableWritablePair(
+      transform,
       prefix,
-      context: "Argument 1",
-    });
-    options = webidl.converters.StreamPipeOptions(options, {
+      "Argument 1",
+    );
+    options = webidl.converters.StreamPipeOptions(
+      options,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
     const { readable, writable } = transform;
     const { preventClose, preventAbort, preventCancel, signal } = options;
     if (isReadableStreamLocked(this)) {
@@ -4882,15 +4962,17 @@ class ReadableStream {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      destination = webidl.converters.WritableStream(destination, {
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      destination = webidl.converters.WritableStream(
+        destination,
         prefix,
-        context: "Argument 1",
-      });
-      options = webidl.converters.StreamPipeOptions(options, {
+        "Argument 1",
+      );
+      options = webidl.converters.StreamPipeOptions(
+        options,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     } catch (err) {
       return PromiseReject(err);
     }
@@ -4929,10 +5011,11 @@ class ReadableStream {
   values(options = {}) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'values' on 'ReadableStream'";
-    options = webidl.converters.ReadableStreamIteratorOptions(options, {
+    options = webidl.converters.ReadableStreamIteratorOptions(
+      options,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     /** @type {AsyncIterableIterator<R>} */
     const iterator = ObjectCreate(readableStreamAsyncIteratorPrototype);
     const reader = acquireReadableStreamDefaultReader(this);
@@ -4973,11 +5056,8 @@ class ReadableStreamDefaultReader {
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    stream = webidl.converters.ReadableStream(stream, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     setUpReadableStreamDefaultReader(this, stream);
   }
@@ -5073,11 +5153,8 @@ class ReadableStreamBYOBReader {
   /** @param {ReadableStream<R>} stream */
   constructor(stream) {
     const prefix = "Failed to construct 'ReadableStreamBYOBReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    stream = webidl.converters.ReadableStream(stream, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    stream = webidl.converters.ReadableStream(stream, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     setUpReadableStreamBYOBReader(this, stream);
   }
@@ -5090,25 +5167,34 @@ class ReadableStreamBYOBReader {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
-      view = webidl.converters.ArrayBufferView(view, {
-        prefix,
-        context: "Argument 1",
-      });
+      view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
     } catch (err) {
       return PromiseReject(err);
     }
 
-    if (view.byteLength === 0) {
+    let buffer, byteLength;
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (view));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (view),
+      );
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (view));
+      byteLength = TypedArrayPrototypeGetByteLength(
+        /** @type {Uint8Array} */ (view),
+      );
+    }
+    if (byteLength === 0) {
       return PromiseReject(
         new TypeError("view must have non-zero byteLength"),
       );
     }
-    if (view.buffer.byteLength === 0) {
+    if (getArrayBufferByteLength(buffer) === 0) {
       return PromiseReject(
         new TypeError("view's buffer must have non-zero byteLength"),
       );
     }
-    if (isDetachedBuffer(view.buffer)) {
+    if (isDetachedBuffer(buffer)) {
       return PromiseReject(
         new TypeError("view's buffer has been detached"),
       );
@@ -5203,23 +5289,35 @@ class ReadableStreamBYOBRequest {
   respond(bytesWritten) {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     const prefix = "Failed to execute 'respond' on 'ReadableStreamBYOBRequest'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    bytesWritten = webidl.converters["unsigned long long"](bytesWritten, {
-      enforceRange: true,
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    bytesWritten = webidl.converters["unsigned long long"](
+      bytesWritten,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+      {
+        enforceRange: true,
+      },
+    );
 
     if (this[_controller] === undefined) {
       throw new TypeError("This BYOB request has been invalidated");
     }
-    if (isDetachedBuffer(this[_view].buffer)) {
+
+    let buffer, byteLength;
+    if (TypedArrayPrototypeGetSymbolToStringTag(this[_view]) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(this[_view]);
+      byteLength = DataViewPrototypeGetByteLength(this[_view]);
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(this[_view]);
+      byteLength = TypedArrayPrototypeGetByteLength(this[_view]);
+    }
+    if (isDetachedBuffer(buffer)) {
       throw new TypeError(
         "The BYOB request's buffer has been detached and so cannot be used as a response",
       );
     }
-    assert(this[_view].byteLength > 0);
-    assert(this[_view].buffer.byteLength > 0);
+    assert(byteLength > 0);
+    assert(getArrayBufferByteLength(buffer) > 0);
     readableByteStreamControllerRespond(this[_controller], bytesWritten);
   }
 
@@ -5227,16 +5325,20 @@ class ReadableStreamBYOBRequest {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     const prefix =
       "Failed to execute 'respondWithNewView' on 'ReadableStreamBYOBRequest'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    view = webidl.converters.ArrayBufferView(view, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    view = webidl.converters.ArrayBufferView(view, prefix, "Argument 1");
 
     if (this[_controller] === undefined) {
       throw new TypeError("This BYOB request has been invalidated");
     }
-    if (isDetachedBuffer(view.buffer)) {
+
+    let buffer;
+    if (TypedArrayPrototypeGetSymbolToStringTag(view) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(view);
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(view);
+    }
+    if (isDetachedBuffer(buffer)) {
       throw new TypeError(
         "The given view's buffer has been detached and so cannot be used as a response",
       );
@@ -5314,23 +5416,35 @@ class ReadableByteStreamController {
     webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
     const prefix =
       "Failed to execute 'enqueue' on 'ReadableByteStreamController'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     const arg1 = "Argument 1";
-    chunk = webidl.converters.ArrayBufferView(chunk, {
-      prefix,
-      context: arg1,
-    });
-    if (chunk.byteLength === 0) {
-      throw webidl.makeException(TypeError, "length must be non-zero", {
-        prefix,
-        context: arg1,
-      });
+    chunk = webidl.converters.ArrayBufferView(chunk, prefix, arg1);
+    let buffer, byteLength;
+    if (TypedArrayPrototypeGetSymbolToStringTag(chunk) === undefined) {
+      buffer = DataViewPrototypeGetBuffer(/** @type {DataView} */ (chunk));
+      byteLength = DataViewPrototypeGetByteLength(
+        /** @type {DataView} */ (chunk),
+      );
+    } else {
+      buffer = TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (chunk));
+      byteLength = TypedArrayPrototypeGetByteLength(
+        /** @type {Uint8Array} */ (chunk),
+      );
     }
-    if (chunk.buffer.byteLength === 0) {
+    if (byteLength === 0) {
+      throw webidl.makeException(
+        TypeError,
+        "length must be non-zero",
+        prefix,
+        arg1,
+      );
+    }
+    if (getArrayBufferByteLength(buffer) === 0) {
       throw webidl.makeException(
         TypeError,
         "buffer length must be non-zero",
-        { prefix, context: arg1 },
+        prefix,
+        arg1,
       );
     }
     if (this[_closeRequested] === true) {
@@ -5587,27 +5701,27 @@ class TransformStream {
   ) {
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {
-      transformer = webidl.converters.object(transformer, {
-        prefix,
-        context: "Argument 1",
-      });
+      transformer = webidl.converters.object(transformer, prefix, "Argument 1");
     }
-    writableStrategy = webidl.converters.QueuingStrategy(writableStrategy, {
+    writableStrategy = webidl.converters.QueuingStrategy(
+      writableStrategy,
       prefix,
-      context: "Argument 2",
-    });
-    readableStrategy = webidl.converters.QueuingStrategy(readableStrategy, {
+      "Argument 2",
+    );
+    readableStrategy = webidl.converters.QueuingStrategy(
+      readableStrategy,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 3",
+    );
     this[webidl.brand] = webidl.brand;
     if (transformer === undefined) {
       transformer = null;
     }
-    const transformerDict = webidl.converters.Transformer(transformer, {
+    const transformerDict = webidl.converters.Transformer(
+      transformer,
       prefix,
-      context: "transformer",
-    });
+      "transformer",
+    );
     if (transformerDict.readableType !== undefined) {
       throw new RangeError(
         `${prefix}: readableType transformers not supported.`,
@@ -5644,10 +5758,7 @@ class TransformStream {
           [this[_controller]],
           transformer,
           webidl.converters.any,
-          {
-            prefix:
-              "Failed to call 'start' on 'TransformStreamDefaultController'",
-          },
+          "Failed to call 'start' on 'TransformStreamDefaultController'",
         ),
       );
     } else {
@@ -5777,22 +5888,25 @@ class WritableStream {
   constructor(underlyingSink = undefined, strategy = {}) {
     const prefix = "Failed to construct 'WritableStream'";
     if (underlyingSink !== undefined) {
-      underlyingSink = webidl.converters.object(underlyingSink, {
+      underlyingSink = webidl.converters.object(
+        underlyingSink,
         prefix,
-        context: "Argument 1",
-      });
+        "Argument 1",
+      );
     }
-    strategy = webidl.converters.QueuingStrategy(strategy, {
+    strategy = webidl.converters.QueuingStrategy(
+      strategy,
       prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
     this[webidl.brand] = webidl.brand;
     if (underlyingSink === undefined) {
       underlyingSink = null;
     }
     const underlyingSinkDict = webidl.converters.UnderlyingSink(
       underlyingSink,
-      { prefix, context: "underlyingSink" },
+      prefix,
+      "underlyingSink",
     );
     if (underlyingSinkDict.type != null) {
       throw new RangeError(
@@ -5892,11 +6006,8 @@ class WritableStreamDefaultWriter {
    */
   constructor(stream) {
     const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    stream = webidl.converters.WritableStream(stream, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    stream = webidl.converters.WritableStream(stream, prefix, "Argument 1");
     this[webidl.brand] = webidl.brand;
     setUpWritableStreamDefaultWriter(this, stream);
   }
@@ -6141,8 +6252,8 @@ webidl.converters.UnderlyingSource = webidl
     },
     {
       key: "autoAllocateChunkSize",
-      converter: (V, opts) =>
-        webidl.converters["unsigned long long"](V, {
+      converter: (V, prefix, context, opts) =>
+        webidl.converters["unsigned long long"](V, prefix, context, {
           ...opts,
           enforceRange: true,
         }),

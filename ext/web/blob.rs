@@ -79,11 +79,6 @@ impl BlobStore {
     let mut blob_store = self.object_urls.lock();
     blob_store.remove(url);
   }
-
-  pub fn clear(&self) {
-    self.parts.lock().clear();
-    self.object_urls.lock().clear();
-  }
 }
 
 #[derive(Debug)]

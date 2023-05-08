@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fs"
-version = "0.6.0"
+version = "0.13.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,14 +13,18 @@ description = "Ops for interacting with the file system"
 [lib]
 path = "lib.rs"
 
+[features]
+sync_fs = []
+
 [dependencies]
+async-trait.workspace = true
 deno_core.workspace = true
-deno_crypto.workspace = true
 deno_io.workspace = true
-filetime = "0.2.16"
-fs3 = "0.5.0"
+filetime.workspace = true
+fs3.workspace = true
 libc.workspace = true
 log.workspace = true
+rand.workspace = true
 serde.workspace = true
 tokio.workspace = true
 

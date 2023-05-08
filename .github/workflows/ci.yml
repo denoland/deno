@@ -17,8 +17,34 @@ concurrency:
   group: '${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, ''ci-test-flaky'') && github.head_ref || github.run_id }}'
   cancel-in-progress: true
 jobs:
+  pre_build:
+    name: pre-build
+    runs-on: ubuntu-latest
+    outputs:
+      skip_build: '${{ steps.check.outputs.skip_build }}'
+    steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+        if: github.event.pull_request.draft == true
+      - name: Clone repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 5
+          submodules: false
+        if: github.event.pull_request.draft == true
+      - id: check
+        run: |-
+          GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
+          echo Commit message: $GIT_MESSAGE
+          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
+        if: github.event.pull_request.draft == true
   build:
-    name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}'
+    name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os_display_name }}'
+    needs:
+      - pre_build
+    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner || matrix.os }}'
     timeout-minutes: 120
     defaults:
@@ -30,36 +56,45 @@ jobs:
           - os: macos-12
             job: test
             profile: debug
+            os_display_name: macos-x86_64
           - os: macos-12
             job: test
             profile: release
             skip_pr: true
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''macos-12'' }}'
+            os_display_name: macos-x86_64
+          - os: windows-2022
             job: test
             profile: debug
-          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
-            runner: '${{ github.event_name == ''pull_request'' && ''windows-2022'' || (github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'') }}'
+            os_display_name: windows-x86_64
+          - os: windows-2022
             job: test
             profile: release
             skip_pr: true
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''windows-2022'' }}'
+            os_display_name: windows-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
             profile: release
             use_sysroot: true
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
+            os_display_name: ubuntu-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
             skip_pr: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-bench'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench'') && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            os_display_name: ubuntu-x86_64
+          - os: ubuntu-22.04
             job: test
             profile: debug
             use_sysroot: true
-            wpt: '${{ github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'') }}'
-          - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
+            os_display_name: ubuntu-x86_64
+          - os: ubuntu-22.04
             job: lint
             profile: debug
+            os_display_name: ubuntu-x86_64
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always
@@ -76,36 +111,29 @@ jobs:
           fetch-depth: 5
           submodules: false
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
-      - name: Cancel if draft PR
-        id: exit_early
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (github.event.pull_request.draft == true)'
-        run: |-
-          GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
-          echo Commit message: $GIT_MESSAGE
-          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'EXIT_EARLY=true' >> $GITHUB_OUTPUT)
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Clone submodule ./third_party
         run: git submodule update --init --recursive --depth=1 -- ./third_party
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.wpt))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
       - name: 'Create source tarballs (release, linux)'
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (startsWith(matrix.os, 'ubuntu') &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'ubuntu') &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/')))
+          startsWith(github.ref, 'refs/tags/'))
         run: |-
           mkdir -p target/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
       - uses: dsherret/rust-toolchain-file@v1
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
-      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint'' || matrix.job == ''test''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
+      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' || matrix.job == ''test'')'
         name: Install Deno
         uses: denoland/setup-deno@v1
         with:
@@ -114,26 +142,26 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job != ''lint'')'
       - name: Remove unused versions of Python
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint'' && (startsWith(matrix.os, ''windows''))))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job != ''lint'' && (startsWith(matrix.os, ''windows'')))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
-      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''bench''))'
+      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''bench'')'
         name: Install Node
         uses: actions/setup-node@v3
         with:
           node-version: 18
       - if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.profile == 'release' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/'))))
+          startsWith(github.ref, 'refs/tags/')))
         name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v1
         with:
@@ -143,23 +171,23 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os != 'Windows' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os != 'Windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/'))))
+          startsWith(github.ref, 'refs/tags/')))
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: denoland
       - name: Setup gcloud (windows)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os == 'Windows' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os == 'Windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/'))))
+          startsWith(github.ref, 'refs/tags/')))
         uses: google-github-actions/setup-gcloud@v1
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
@@ -167,12 +195,12 @@ jobs:
           project_id: denoland
       - name: Configure canary build
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'))
+          github.ref == 'refs/heads/main')
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
-      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.use_sysroot))'
+      - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.use_sysroot)'
         name: Set up incremental LTO and sysroot build
         run: |-
           # Avoid running man-db triggers, which sometimes takes several minutes
@@ -254,7 +282,7 @@ jobs:
           then
             node -v
           fi
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Cache Cargo home
         uses: actions/cache@v3
         with:
@@ -262,11 +290,11 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '20-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
+          key: '23-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ./target
@@ -274,9 +302,9 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '23-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (!startsWith(github.ref, ''refs/tags/'')))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
@@ -288,103 +316,108 @@ jobs:
                       https://github.com/rust-lang/crates.io-index \
                       ~/.cargo/registry/index/github.com-1ecc6299db9ec823
           fi
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'')'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: test_format.js
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
       - name: Lint PR title
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint'' && github.event_name == ''pull_request''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && github.event_name == ''pull_request'')'
         env:
           PR_TITLE: '${{ github.event.pull_request.title }}'
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
       - name: cargo package
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''lint''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: cargo package --workspace
       - name: Build debug
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''test'' && matrix.profile == ''debug''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: cargo build --locked --all-targets
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build release
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/'))))))
+          startsWith(github.ref, 'refs/tags/')))))
         run: cargo build --release --locked --all-targets
       - name: Upload PR artifact (linux)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/'))))))
+          startsWith(github.ref, 'refs/tags/')))))
         uses: actions/upload-artifact@v3
         with:
           name: 'deno-${{ github.event.number }}'
           path: target/release/deno
       - name: Pre-release (linux)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (startsWith(matrix.os, 'ubuntu') &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'ubuntu') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
-          github.repository == 'denoland/deno'))
+          github.repository == 'denoland/deno')
         run: |-
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           ./deno types > lib.deno.d.ts
       - name: Pre-release (mac)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (startsWith(matrix.os, 'macOS') &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'macOS') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))))
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
         run: |-
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
       - name: Pre-release (windows)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (startsWith(matrix.os, 'windows') &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'windows') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))))
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))
         shell: pwsh
         run: Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
       - name: Upload canary to dl.deno.land (unix)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os != 'Windows' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os != 'Windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'))
+          github.ref == 'refs/heads/main')
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
       - name: Upload canary to dl.deno.land (windows)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os == 'Windows' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os == 'Windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'))
+          github.ref == 'refs/heads/main')
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
+      - name: Autobahn testsuite
+        if: |-
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'release' &&
+          !startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu'))
+        run: target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js
       - name: Test debug
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' && matrix.profile == 'debug' &&
-          !startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')))
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
+          !startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu'))
         run: cargo test --locked
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test debug (fast)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' && matrix.profile == 'debug' && 
-          !startsWith(matrix.os, 'ubuntu')))
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' && 
+          !startsWith(matrix.os, 'ubuntu'))
         run: |-
           cargo test --locked --lib
           cargo test --locked --test '*'
@@ -392,25 +425,25 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test release
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' && matrix.profile == 'release' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'release' &&
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))))
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked
       - name: Check deno binary
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/'')))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
         run: target/release/deno eval "console.log(1+2)" | grep 3
         env:
           NO_COLOR: 1
       - name: Check deno binary (in sysroot)
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.profile == ''release'' && matrix.use_sysroot))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.profile == ''release'' && matrix.use_sysroot)'
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - name: Configure hosts file for WPT
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.wpt))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
         working-directory: test_util/wpt/
       - name: Run web platform tests (debug)
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.wpt && matrix.profile == ''debug''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt && matrix.profile == ''debug'')'
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
@@ -423,7 +456,7 @@ jobs:
                    --lock=tools/deno.lock.json              \
                    ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.wpt && matrix.profile == ''release''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt && matrix.profile == ''release'')'
         env:
           DENO_BIN: ./target/release/deno
         run: |-
@@ -441,11 +474,11 @@ jobs:
       - name: Upload wpt results to dl.deno.land
         continue-on-error: true
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.wpt &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.wpt &&
           runner.os == 'Linux' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
         run: |-
           gzip ./wptreport.json
           gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
@@ -455,11 +488,11 @@ jobs:
       - name: Upload wpt results to wpt.fyi
         continue-on-error: true
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.wpt &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.wpt &&
           runner.os == 'Linux' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
         env:
           WPT_FYI_USER: deno
           WPT_FYI_PW: '${{ secrets.WPT_FYI_PW }}'
@@ -468,13 +501,13 @@ jobs:
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
       - name: Run benchmarks
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/'')))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
         run: cargo bench --locked
       - name: Post Benchmarks
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'bench' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'bench' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')))
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
         env:
           DENOBOT_PAT: '${{ secrets.DENOBOT_PAT }}'
         run: |-
@@ -490,49 +523,49 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Build product size info
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job != ''lint'' && matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job != ''lint'' && matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
       - name: Worker info
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && (matrix.job == ''bench''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''bench'')'
         run: |-
           cat /proc/cpuinfo
           cat /proc/meminfo
       - name: Upload release to dl.deno.land (unix)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os != 'Windows' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os != 'Windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/')))
+          startsWith(github.ref, 'refs/tags/'))
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/'
       - name: Upload release to dl.deno.land (windows)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (runner.os == 'Windows' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os == 'Windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/')))
+          startsWith(github.ref, 'refs/tags/'))
         env:
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/'
       - name: Create release notes
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/')))
+          startsWith(github.ref, 'refs/tags/'))
         run: |-
           export PATH=$PATH:$(pwd)/target/release
           ./tools/release/05_create_release_notes.ts
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v0.1.15
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != 'true' && (matrix.job == 'test' &&
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/')))
+          startsWith(github.ref, 'refs/tags/'))
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         with:
@@ -546,14 +579,14 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v3
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (steps.exit_early.outputs.EXIT_EARLY != ''true'' && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
         with:
           path: |-
             ./target
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '23-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

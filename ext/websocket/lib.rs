@@ -1,15 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
+use crate::stream::WebSocketStream;
+use bytes::Bytes;
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::SplitSink;
-use deno_core::futures::stream::SplitStream;
-use deno_core::futures::SinkExt;
-use deno_core::futures::StreamExt;
 use deno_core::op;
-use deno_core::StringOrBuffer;
-
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -19,21 +14,28 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use deno_net::raw::take_network_stream_resource;
+use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
+use deno_tls::RootCertStoreProvider;
+use http::header::CONNECTION;
+use http::header::UPGRADE;
 use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::Uri;
-use serde::Deserialize;
+use hyper::Body;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
+use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::io::AsyncRead;
@@ -42,20 +44,28 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::client_async_with_config;
-use tokio_tungstenite::tungstenite::handshake::client::Response;
-use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
-use tokio_tungstenite::tungstenite::protocol::CloseFrame;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::tungstenite::protocol::Role;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-use tokio_tungstenite::MaybeTlsStream;
-use tokio_tungstenite::WebSocketStream;
 
-pub use tokio_tungstenite; // Re-export tokio_tungstenite
+use fastwebsockets::CloseCode;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+
+mod stream;
 
 #[derive(Clone)]
-pub struct WsRootStore(pub Option<RootCertStore>);
+pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
+
+impl WsRootStoreProvider {
+  pub fn get_or_try_init(&self) -> Result<Option<RootCertStore>, AnyError> {
+    Ok(match &self.0 {
+      Some(provider) => Some(provider.get_or_try_init()?.clone()),
+      None => None,
+    })
+  }
+}
+
 #[derive(Clone)]
 pub struct WsUserAgent(pub String);
 
@@ -72,129 +82,6 @@ pub trait WebSocketPermissions {
 /// that there might be another type alias pointing to a `Option<Vec<String>>`, which
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
-
-type ClientWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
-type ServerWsStream = WebSocketStream<Pin<Box<dyn Upgraded>>>;
-
-pub enum WebSocketStreamType {
-  Client {
-    tx: AsyncRefCell<SplitSink<ClientWsStream, Message>>,
-    rx: AsyncRefCell<SplitStream<ClientWsStream>>,
-  },
-  Server {
-    tx: AsyncRefCell<SplitSink<ServerWsStream, Message>>,
-    rx: AsyncRefCell<SplitStream<ServerWsStream>>,
-  },
-}
-
-pub trait Upgraded: AsyncRead + AsyncWrite + Unpin {}
-
-pub async fn ws_create_server_stream(
-  state: &Rc<RefCell<OpState>>,
-  transport: Pin<Box<dyn Upgraded>>,
-) -> Result<ResourceId, AnyError> {
-  let ws_stream = WebSocketStream::from_raw_socket(
-    transport,
-    Role::Server,
-    Some(WebSocketConfig {
-      max_message_size: Some(128 << 20),
-      max_frame_size: Some(32 << 20),
-      ..Default::default()
-    }),
-  )
-  .await;
-  let (ws_tx, ws_rx) = ws_stream.split();
-
-  let ws_resource = WsStreamResource {
-    stream: WebSocketStreamType::Server {
-      tx: AsyncRefCell::new(ws_tx),
-      rx: AsyncRefCell::new(ws_rx),
-    },
-    cancel: Default::default(),
-  };
-
-  let resource_table = &mut state.borrow_mut().resource_table;
-  let rid = resource_table.add(ws_resource);
-  Ok(rid)
-}
-
-pub struct WsStreamResource {
-  pub stream: WebSocketStreamType,
-  // When a `WsStreamResource` resource is closed, all pending 'read' ops are
-  // canceled, while 'write' ops are allowed to complete. Therefore only
-  // 'read' futures are attached to this cancel handle.
-  pub cancel: CancelHandle,
-}
-
-impl WsStreamResource {
-  async fn send(self: &Rc<Self>, message: Message) -> Result<(), AnyError> {
-    use tokio_tungstenite::tungstenite::Error;
-    let res = match self.stream {
-      WebSocketStreamType::Client { .. } => {
-        let mut tx = RcRef::map(self, |r| match &r.stream {
-          WebSocketStreamType::Client { tx, .. } => tx,
-          WebSocketStreamType::Server { .. } => unreachable!(),
-        })
-        .borrow_mut()
-        .await;
-        tx.send(message).await
-      }
-      WebSocketStreamType::Server { .. } => {
-        let mut tx = RcRef::map(self, |r| match &r.stream {
-          WebSocketStreamType::Client { .. } => unreachable!(),
-          WebSocketStreamType::Server { tx, .. } => tx,
-        })
-        .borrow_mut()
-        .await;
-        tx.send(message).await
-      }
-    };
-
-    match res {
-      Ok(()) => Ok(()),
-      Err(Error::ConnectionClosed) => Ok(()),
-      Err(tokio_tungstenite::tungstenite::Error::Protocol(
-        tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing,
-      )) => Ok(()),
-      Err(err) => Err(err.into()),
-    }
-  }
-
-  async fn next_message(
-    self: &Rc<Self>,
-    cancel: RcRef<CancelHandle>,
-  ) -> Result<
-    Option<Result<Message, tokio_tungstenite::tungstenite::Error>>,
-    AnyError,
-  > {
-    match &self.stream {
-      WebSocketStreamType::Client { .. } => {
-        let mut rx = RcRef::map(self, |r| match &r.stream {
-          WebSocketStreamType::Client { rx, .. } => rx,
-          WebSocketStreamType::Server { .. } => unreachable!(),
-        })
-        .borrow_mut()
-        .await;
-        rx.next().or_cancel(cancel).await.map_err(AnyError::from)
-      }
-      WebSocketStreamType::Server { .. } => {
-        let mut rx = RcRef::map(self, |r| match &r.stream {
-          WebSocketStreamType::Client { .. } => unreachable!(),
-          WebSocketStreamType::Server { rx, .. } => rx,
-        })
-        .borrow_mut()
-        .await;
-        rx.next().or_cancel(cancel).await.map_err(AnyError::from)
-      }
-    }
-  }
-}
-
-impl Resource for WsStreamResource {
-  fn name(&self) -> Cow<str> {
-    "webSocketStream".into()
-  }
-}
 
 pub struct WsCancelResource(Rc<CancelHandle>);
 
@@ -243,6 +130,33 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
+  cancel_resource: Option<Rc<CancelHandle>>,
+  request: Request<Body>,
+  socket: S,
+) -> Result<(WebSocket<WebSocketStream>, http::Response<Body>), AnyError> {
+  let client =
+    fastwebsockets::handshake::client(&LocalExecutor, request, socket);
+
+  let (upgraded, response) = if let Some(cancel_resource) = cancel_resource {
+    client.or_cancel(cancel_resource).await?
+  } else {
+    client.await
+  }
+  .map_err(|err| {
+    DomExceptionNetworkError::new(&format!(
+      "failed to connect to WebSocket: {err}"
+    ))
+  })?;
+
+  let upgraded = upgraded.into_inner();
+  let stream =
+    WebSocketStream::new(stream::WsStreamKind::Upgraded(upgraded), None);
+  let stream = WebSocket::after_handshake(stream, Role::Client);
+
+  Ok((stream, response))
+}
+
 #[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
@@ -269,7 +183,7 @@ where
       .borrow_mut()
       .resource_table
       .get::<WsCancelResource>(cancel_rid)?;
-    Some(r)
+    Some(r.0.clone())
   } else {
     None
   };
@@ -278,12 +192,34 @@ where
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
-  let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
+  let root_cert_store = state
+    .borrow()
+    .borrow::<WsRootStoreProvider>()
+    .get_or_try_init()?;
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = url.parse()?;
-  let mut request = Request::builder().method(Method::GET).uri(&uri);
+  let mut request = Request::builder().method(Method::GET).uri(
+    uri
+      .path_and_query()
+      .ok_or(type_error("Missing path in url".to_string()))?
+      .as_str(),
+  );
 
-  request = request.header("User-Agent", user_agent);
+  let authority = uri.authority().unwrap().as_str();
+  let host = authority
+    .find('@')
+    .map(|idx| authority.split_at(idx + 1).1)
+    .unwrap_or_else(|| authority);
+  request = request
+    .header("User-Agent", user_agent)
+    .header("Host", host)
+    .header(UPGRADE, "websocket")
+    .header(CONNECTION, "Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13");
 
   if !protocols.is_empty() {
     request = request.header("Sec-WebSocket-Protocol", protocols);
@@ -313,7 +249,7 @@ where
     }
   }
 
-  let request = request.body(())?;
+  let request = request.body(Body::empty())?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,
@@ -323,8 +259,8 @@ where
   let addr = format!("{domain}:{port}");
   let tcp_socket = TcpStream::connect(addr).await?;
 
-  let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
-    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
+  let (stream, response) = match uri.scheme_str() {
+    Some("ws") => handshake(cancel_resource, request, tcp_socket).await?,
     Some("wss") => {
       let tls_config = create_client_config(
         root_cert_store,
@@ -336,43 +272,18 @@ where
       let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      MaybeTlsStream::Rustls(tls_socket)
+      handshake(cancel_resource, request, tls_socket).await?
     }
     _ => unreachable!(),
   };
-
-  let client = client_async_with_config(
-    request,
-    socket,
-    Some(WebSocketConfig {
-      max_message_size: Some(128 << 20),
-      max_frame_size: Some(32 << 20),
-      ..Default::default()
-    }),
-  );
-  let (stream, response): (ClientWsStream, Response) =
-    if let Some(cancel_resource) = cancel_resource {
-      client.or_cancel(cancel_resource.0.to_owned()).await?
-    } else {
-      client.await
-    }
-    .map_err(|err| {
-      DomExceptionNetworkError::new(&format!(
-        "failed to connect to WebSocket: {err}"
-      ))
-    })?;
 
   if let Some(cancel_rid) = cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
-  let (ws_tx, ws_rx) = stream.split();
-  let resource = WsStreamResource {
-    stream: WebSocketStreamType::Client {
-      rx: AsyncRefCell::new(ws_rx),
-      tx: AsyncRefCell::new(ws_tx),
-    },
-    cancel: Default::default(),
+  let resource = ServerWebSocket {
+    ws: AsyncRefCell::new(FragmentCollector::new(stream)),
+    closed: Rc::new(Cell::new(false)),
   };
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(resource);
@@ -394,13 +305,82 @@ where
   })
 }
 
-#[derive(Deserialize)]
-#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
-pub enum SendValue {
-  Text(String),
-  Binary(ZeroCopyBuf),
-  Pong,
-  Ping,
+#[repr(u16)]
+pub enum MessageKind {
+  Text = 0,
+  Binary = 1,
+  Pong = 2,
+  Error = 3,
+  Closed = 4,
+}
+
+pub struct ServerWebSocket {
+  ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
+  closed: Rc<Cell<bool>>,
+}
+
+impl ServerWebSocket {
+  #[inline]
+  pub async fn write_frame(
+    self: Rc<Self>,
+    frame: Frame,
+  ) -> Result<(), AnyError> {
+    // SAFETY: fastwebsockets only needs a mutable reference to the WebSocket
+    // to populate the write buffer. We encounter an await point when writing
+    // to the socket after the frame has already been written to the buffer.
+    let ws = unsafe { &mut *self.ws.as_ptr() };
+    ws.write_frame(frame)
+      .await
+      .map_err(|err| type_error(err.to_string()))?;
+    Ok(())
+  }
+}
+
+impl Resource for ServerWebSocket {
+  fn name(&self) -> Cow<str> {
+    "serverWebSocket".into()
+  }
+}
+
+pub fn ws_create_server_stream(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
+) -> Result<ResourceId, AnyError> {
+  let mut ws = WebSocket::after_handshake(
+    WebSocketStream::new(
+      stream::WsStreamKind::Network(transport),
+      Some(read_buf),
+    ),
+    Role::Server,
+  );
+  ws.set_writev(true);
+  ws.set_auto_close(true);
+  ws.set_auto_pong(true);
+
+  let ws_resource = ServerWebSocket {
+    ws: AsyncRefCell::new(FragmentCollector::new(ws)),
+    closed: Rc::new(Cell::new(false)),
+  };
+
+  let rid = state.resource_table.add(ws_resource);
+  Ok(rid)
+}
+
+#[op]
+pub fn op_ws_server_create(
+  state: &mut OpState,
+  conn: ResourceId,
+  extra_bytes: &[u8],
+) -> Result<ResourceId, AnyError> {
+  let network_stream =
+    take_network_stream_resource(&mut state.resource_table, conn)?;
+  // Copying the extra bytes, but unlikely this will account for much
+  ws_create_server_stream(
+    state,
+    network_stream,
+    Bytes::from(extra_bytes.to_vec()),
+  )
 }
 
 #[op]
@@ -412,9 +392,10 @@ pub async fn op_ws_send_binary(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)?;
-  resource.send(Message::Binary(data.to_vec())).await?;
-  Ok(())
+    .get::<ServerWebSocket>(rid)?;
+  resource
+    .write_frame(Frame::new(true, OpCode::Binary, None, data.to_vec()))
+    .await
 }
 
 #[op]
@@ -426,30 +407,36 @@ pub async fn op_ws_send_text(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)?;
-  resource.send(Message::Text(data)).await?;
-  Ok(())
+    .get::<ServerWebSocket>(rid)?;
+  resource
+    .write_frame(Frame::new(true, OpCode::Text, None, data.into_bytes()))
+    .await
 }
 
 #[op]
-pub async fn op_ws_send(
+pub async fn op_ws_send_pong(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  value: SendValue,
 ) -> Result<(), AnyError> {
-  let msg = match value {
-    SendValue::Text(text) => Message::Text(text),
-    SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
-    SendValue::Pong => Message::Pong(vec![]),
-    SendValue::Ping => Message::Ping(vec![]),
-  };
-
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)?;
-  resource.send(msg).await?;
-  Ok(())
+    .get::<ServerWebSocket>(rid)?;
+  resource.write_frame(Frame::pong(vec![])).await
+}
+
+#[op]
+pub async fn op_ws_send_ping(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  resource
+    .write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    .await
 }
 
 #[op(deferred)]
@@ -459,34 +446,21 @@ pub async fn op_ws_close(
   code: Option<u16>,
   reason: Option<String>,
 ) -> Result<(), AnyError> {
-  let rid = rid;
-  let msg = Message::Close(code.map(|c| CloseFrame {
-    code: CloseCode::from(c),
-    reason: match reason {
-      Some(reason) => Cow::from(reason),
-      None => Default::default(),
-    },
-  }));
-
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)?;
-  resource.send(msg).await?;
+    .get::<ServerWebSocket>(rid)?;
+  let frame = reason
+    .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
+    .unwrap_or_else(|| Frame::close_raw(vec![]));
+
+  let cell = Rc::clone(&resource.closed);
+  cell.set(true);
+  resource.write_frame(frame).await?;
   Ok(())
 }
 
-#[repr(u16)]
-pub enum MessageKind {
-  Text = 0,
-  Binary = 1,
-  Pong = 2,
-  Ping = 3,
-  Error = 5,
-  Closed = 6,
-}
-
-#[op]
+#[op(fast)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -494,48 +468,58 @@ pub async fn op_ws_next_event(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)?;
+    .get::<ServerWebSocket>(rid)?;
 
-  let cancel = RcRef::map(&resource, |r| &r.cancel);
-  let val = resource.next_message(cancel).await?;
-  let res = match val {
-    Some(Ok(Message::Text(text))) => {
-      (MessageKind::Text as u16, StringOrBuffer::String(text))
-    }
-    Some(Ok(Message::Binary(data))) => (
-      MessageKind::Binary as u16,
-      StringOrBuffer::Buffer(data.into()),
-    ),
-    Some(Ok(Message::Close(Some(frame)))) => (
-      frame.code.into(),
-      StringOrBuffer::String(frame.reason.to_string()),
-    ),
-    Some(Ok(Message::Close(None))) => {
-      (1005, StringOrBuffer::String("".to_string()))
-    }
-    Some(Ok(Message::Ping(_))) => (
-      MessageKind::Ping as u16,
-      StringOrBuffer::Buffer(vec![].into()),
-    ),
-    Some(Ok(Message::Pong(_))) => (
-      MessageKind::Pong as u16,
-      StringOrBuffer::Buffer(vec![].into()),
-    ),
-    Some(Err(e)) => (
-      MessageKind::Error as u16,
-      StringOrBuffer::String(e.to_string()),
-    ),
-    None => {
-      // No message was received, presumably the socket closed while we waited.
-      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
-      let _ = state.borrow_mut().resource_table.close(rid);
-      (
-        MessageKind::Closed as u16,
+  let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
+  loop {
+    let val = match ws.read_frame().await {
+      Ok(val) => val,
+      Err(err) => {
+        // No message was received, socket closed while we waited.
+        // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+        if resource.closed.get() {
+          let _ = state.borrow_mut().resource_table.close(rid);
+          return Ok((
+            MessageKind::Closed as u16,
+            StringOrBuffer::Buffer(vec![].into()),
+          ));
+        }
+
+        return Ok((
+          MessageKind::Error as u16,
+          StringOrBuffer::String(err.to_string()),
+        ));
+      }
+    };
+
+    break Ok(match val.opcode {
+      OpCode::Text => (
+        MessageKind::Text as u16,
+        StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
+      ),
+      OpCode::Binary => (
+        MessageKind::Binary as u16,
+        StringOrBuffer::Buffer(val.payload.into()),
+      ),
+      OpCode::Close => {
+        if val.payload.len() < 2 {
+          return Ok((1005, StringOrBuffer::String("".to_string())));
+        }
+
+        let close_code =
+          CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
+        let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
+        (close_code.into(), StringOrBuffer::String(reason))
+      }
+      OpCode::Pong => (
+        MessageKind::Pong as u16,
         StringOrBuffer::Buffer(vec![].into()),
-      )
-    }
-  };
-  Ok(res)
+      ),
+      OpCode::Continuation | OpCode::Ping => {
+        continue;
+      }
+    });
+  }
 }
 
 deno_core::extension!(deno_websocket,
@@ -544,16 +528,18 @@ deno_core::extension!(deno_websocket,
   ops = [
     op_ws_check_permission_and_cancel_handle<P>,
     op_ws_create<P>,
-    op_ws_send,
     op_ws_close,
     op_ws_next_event,
     op_ws_send_binary,
     op_ws_send_text,
+    op_ws_send_ping,
+    op_ws_send_pong,
+    op_ws_server_create,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
     user_agent: String,
-    root_cert_store: Option<RootCertStore>,
+    root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>
   },
   state = |state, options| {
@@ -561,7 +547,7 @@ deno_core::extension!(deno_websocket,
     state.put(UnsafelyIgnoreCertificateErrors(
       options.unsafely_ignore_certificate_errors,
     ));
-    state.put::<WsRootStore>(WsRootStore(options.root_cert_store));
+    state.put::<WsRootStoreProvider>(WsRootStoreProvider(options.root_cert_store_provider));
   },
 );
 
@@ -593,4 +579,18 @@ impl std::error::Error for DomExceptionNetworkError {}
 pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionNetworkError>()
     .map(|_| "DOMExceptionNetworkError")
+}
+
+// Needed so hyper can use non Send futures
+#[derive(Clone)]
+struct LocalExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
+where
+  Fut: Future + 'static,
+  Fut::Output: 'static,
+{
+  fn execute(&self, fut: Fut) {
+    tokio::task::spawn_local(fut);
+  }
 }

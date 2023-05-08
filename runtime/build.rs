@@ -42,7 +42,7 @@ mod startup_snapshot {
 
     let parsed = deno_ast::parse_module(ParseParams {
       specifier: file_source.specifier.to_string(),
-      text_info: SourceTextInfo::from_string(code.take_as_string()),
+      text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
       media_type,
       capture_tokens: false,
       scope_analysis: false,
@@ -120,21 +120,8 @@ mod startup_snapshot {
     }
   }
 
-  impl deno_flash::FlashPermissions for Permissions {
-    fn check_net<T: AsRef<str>>(
-      &mut self,
-      _host: &(T, Option<u16>),
-      _api_name: &str,
-    ) -> Result<(), deno_core::error::AnyError> {
-      unreachable!("snapshotting!")
-    }
-  }
-
   impl deno_node::NodePermissions for Permissions {
-    fn check_read(
-      &mut self,
-      _p: &Path,
-    ) -> Result<(), deno_core::error::AnyError> {
+    fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -174,6 +161,10 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
+    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
     fn check_read_blind(
       &mut self,
       _path: &Path,
@@ -191,11 +182,16 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
-    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
 
-    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+    fn check_write_blind(
+      &mut self,
+      _path: &Path,
+      _display: &str,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -218,13 +214,6 @@ mod startup_snapshot {
     }
   }
 
-  struct SnapshotNodeEnv;
-
-  impl deno_node::NodeEnv for SnapshotNodeEnv {
-    type P = Permissions;
-    type Fs = deno_node::RealFs;
-  }
-
   deno_core::extension!(runtime,
     deps = [
       deno_webidl,
@@ -244,7 +233,6 @@ mod startup_snapshot {
       deno_net,
       deno_napi,
       deno_http,
-      deno_flash,
       deno_io,
       deno_fs
     ],
@@ -285,6 +273,7 @@ mod startup_snapshot {
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    let fs = std::sync::Arc::new(deno_fs::RealFs);
     let extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
@@ -321,12 +310,11 @@ mod startup_snapshot {
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
       deno_http::deno_http::init_ops_and_esm(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
-      deno_flash::deno_flash::init_ops_and_esm::<Permissions>(false), // No --unstable
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, fs.clone()),
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node::init_ops_and_esm::<SnapshotNodeEnv>(None),
+      deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
       #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];

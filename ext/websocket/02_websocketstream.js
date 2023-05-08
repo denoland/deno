@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
@@ -17,18 +18,34 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  DateNow,
   Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
-  Set,
+  SafeSet,
+  SetPrototypeGetSize,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
   Symbol,
   SymbolFor,
   TypeError,
+  TypedArrayPrototypeGetByteLength,
   Uint8ArrayPrototype,
 } = primordials;
+const {
+  op_ws_send_text,
+  op_ws_send_binary,
+  op_ws_next_event,
+  op_ws_create,
+  op_ws_close,
+} = core.generateAsyncOpHandler(
+  "op_ws_send_text",
+  "op_ws_send_binary",
+  "op_ws_next_event",
+  "op_ws_create",
+  "op_ws_close",
+);
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",
@@ -85,15 +102,13 @@ class WebSocketStream {
   constructor(url, options) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'WebSocketStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    url = webidl.converters.USVString(url, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    url = webidl.converters.USVString(url, prefix, "Argument 1");
+    options = webidl.converters.WebSocketStreamOptions(
+      options,
       prefix,
-      context: "Argument 1",
-    });
-    options = webidl.converters.WebSocketStreamOptions(options, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 2",
+    );
 
     const wsURL = new URL(url);
 
@@ -115,12 +130,14 @@ class WebSocketStream {
 
     if (
       options.protocols.length !==
-        new Set(
-          ArrayPrototypeMap(
-            options.protocols,
-            (p) => StringPrototypeToLowerCase(p),
+        SetPrototypeGetSize(
+          new SafeSet(
+            ArrayPrototypeMap(
+              options.protocols,
+              (p) => StringPrototypeToLowerCase(p),
+            ),
           ),
-        ).size
+        )
     ) {
       throw new DOMException(
         "Can't supply multiple times the same protocol.",
@@ -150,8 +167,7 @@ class WebSocketStream {
       };
       options.signal?.[add](abort);
       PromisePrototypeThen(
-        core.opAsync(
-          "op_ws_create",
+        op_ws_create(
           "new WebSocketStream()",
           this[_url],
           options.protocols ? ArrayPrototypeJoin(options.protocols, ", ") : "",
@@ -162,17 +178,14 @@ class WebSocketStream {
           options.signal?.[remove](abort);
           if (this[_earlyClose]) {
             PromisePrototypeThen(
-              core.opAsync("op_ws_close", create.rid),
+              op_ws_close(create.rid),
               () => {
                 PromisePrototypeThen(
                   (async () => {
                     while (true) {
-                      const { 0: kind } = await core.opAsync(
-                        "op_ws_next_event",
-                        create.rid,
-                      );
+                      const { 0: kind } = await op_ws_next_event(create.rid);
 
-                      if (kind > 6) {
+                      if (kind > 5) {
                         /* close */
                         break;
                       }
@@ -203,17 +216,11 @@ class WebSocketStream {
             const writable = new WritableStream({
               write: async (chunk) => {
                 if (typeof chunk === "string") {
-                  await core.opAsync("op_ws_send", this[_rid], {
-                    kind: "text",
-                    value: chunk,
-                  });
+                  await op_ws_send_text(this[_rid], chunk);
                 } else if (
                   ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
                 ) {
-                  await core.opAsync("op_ws_send", this[_rid], {
-                    kind: "binary",
-                    value: chunk,
-                  }, chunk);
+                  await op_ws_send_binary(this[_rid], chunk);
                 } else {
                   throw new TypeError(
                     "A chunk may only be either a string or an Uint8Array",
@@ -238,10 +245,7 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
-              const { 0: kind, 1: value } = await core.opAsync(
-                "op_ws_next_event",
-                this[_rid],
-              );
+              const { 0: kind, 1: value } = await op_ws_next_event(this[_rid]);
 
               switch (kind) {
                 case 0:
@@ -251,7 +255,11 @@ class WebSocketStream {
                   controller.enqueue(value);
                   break;
                 }
-                case 5: {
+                case 2: {
+                  /* pong */
+                  break;
+                }
+                case 3: {
                   /* error */
                   const err = new Error(value);
                   this[_closed].reject(err);
@@ -259,19 +267,7 @@ class WebSocketStream {
                   core.tryClose(this[_rid]);
                   break;
                 }
-                case 3: {
-                  /* ping */
-                  await core.opAsync("op_ws_send", this[_rid], {
-                    kind: "pong",
-                  });
-                  await pull(controller);
-                  break;
-                }
-                case 2: {
-                  /* pong */
-                  break;
-                }
-                case 6: {
+                case 4: {
                   /* closed */
                   this[_closed].resolve(undefined);
                   core.tryClose(this[_rid]);
@@ -293,7 +289,7 @@ class WebSocketStream {
                 this[_closed].state === "pending"
               ) {
                 if (
-                  new Date().getTime() - await this[_closeSent].promise <=
+                  DateNow() - await this[_closeSent].promise <=
                     CLOSE_RESPONSE_TIMEOUT
                 ) {
                   return pull(controller);
@@ -376,10 +372,11 @@ class WebSocketStream {
 
   close(closeInfo) {
     webidl.assertBranded(this, WebSocketStreamPrototype);
-    closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
-      prefix: "Failed to execute 'close' on 'WebSocketStream'",
-      context: "Argument 1",
-    });
+    closeInfo = webidl.converters.WebSocketCloseInfo(
+      closeInfo,
+      "Failed to execute 'close' on 'WebSocketStream'",
+      "Argument 1",
+    );
 
     if (
       closeInfo.code &&
@@ -394,7 +391,8 @@ class WebSocketStream {
 
     const encoder = new TextEncoder();
     if (
-      closeInfo.reason && encoder.encode(closeInfo.reason).byteLength > 123
+      closeInfo.reason &&
+      TypedArrayPrototypeGetByteLength(encoder.encode(closeInfo.reason)) > 123
     ) {
       throw new DOMException(
         "The close reason may not be longer than 123 bytes.",
@@ -411,10 +409,10 @@ class WebSocketStream {
       this[_earlyClose] = true;
     } else if (this[_closed].state === "pending") {
       PromisePrototypeThen(
-        core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+        op_ws_close(this[_rid], code, closeInfo.reason),
         () => {
           setTimeout(() => {
-            this[_closeSent].resolve(new Date().getTime());
+            this[_closeSent].resolve(DateNow());
           }, 0);
         },
         (err) => {

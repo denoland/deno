@@ -10,9 +10,7 @@ use crate::profiling::is_profiling;
 pub fn create_js_runtime(setup: impl FnOnce() -> Vec<Extension>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
     extensions: setup(),
-    module_loader: Some(
-      std::rc::Rc::new(deno_core::ExtModuleLoader::default()),
-    ),
+    module_loader: None,
     ..Default::default()
   })
 }
@@ -117,6 +115,6 @@ pub fn bench_js_async_with(
 }
 
 async fn inner_async(src: &'static str, runtime: &mut JsRuntime) {
-  runtime.execute_script("inner_loop", src).unwrap();
+  runtime.execute_script_static("inner_loop", src).unwrap();
   runtime.run_event_loop(false).await.unwrap();
 }

@@ -5,6 +5,7 @@ use smallvec::SmallVec;
 
 use super::transl8::FromV8;
 use super::transl8::ToV8;
+use crate::error::value_to_type_str;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
 
@@ -42,7 +43,7 @@ impl FromV8 for BigInt {
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
     let v8bigint = v8::Local::<v8::BigInt>::try_from(value)
-      .map_err(|_| Error::ExpectedBigInt)?;
+      .map_err(|_| Error::ExpectedBigInt(value_to_type_str(value)))?;
     let word_count = v8bigint.word_count();
     let mut words: SmallVec<[u64; 1]> = smallvec![0u64; word_count];
     let (sign_bit, _words) = v8bigint.to_words_array(&mut words);

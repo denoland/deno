@@ -33,6 +33,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -69,11 +70,18 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::task::spawn_local;
 
+use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
 
 pub mod compressible;
+mod http_next;
+mod network_buffered_stream;
 mod reader_stream;
+mod request_body;
+mod request_properties;
+mod response_body;
+mod websocket_upgrade;
 
 deno_core::extension!(
   deno_http,
@@ -87,8 +95,25 @@ deno_core::extension!(
     op_http_shutdown,
     op_http_websocket_accept_header,
     op_http_upgrade_websocket,
+    http_next::op_serve_http,
+    http_next::op_serve_http_on,
+    http_next::op_http_wait,
+    http_next::op_http_track,
+    http_next::op_set_response_header,
+    http_next::op_set_response_headers,
+    http_next::op_set_response_body_text,
+    http_next::op_set_promise_complete,
+    http_next::op_set_response_body_bytes,
+    http_next::op_set_response_body_resource,
+    http_next::op_set_response_body_stream,
+    http_next::op_get_request_header,
+    http_next::op_get_request_headers,
+    http_next::op_get_request_method_and_url,
+    http_next::op_read_request_body,
+    http_next::op_upgrade,
+    http_next::op_upgrade_raw,
   ],
-  esm = ["01_http.js"],
+  esm = ["00_serve.js", "01_http.js"],
 );
 
 pub enum HttpSocketAddr {
@@ -938,41 +963,6 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   Ok(base64::encode(digest))
 }
 
-struct UpgradedStream(hyper::upgrade::Upgraded);
-impl tokio::io::AsyncRead for UpgradedStream {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &mut tokio::io::ReadBuf,
-  ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
-  }
-}
-
-impl tokio::io::AsyncWrite for UpgradedStream {
-  fn poll_write(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &[u8],
-  ) -> std::task::Poll<Result<usize, std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
-  }
-  fn poll_flush(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_flush(cx)
-  }
-  fn poll_shutdown(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
-  }
-}
-
-impl deno_websocket::Upgraded for UpgradedStream {}
-
 #[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
@@ -991,10 +981,10 @@ async fn op_http_upgrade_websocket(
     }
   };
 
-  let transport = hyper::upgrade::on(request).await?;
+  let (transport, bytes) =
+    extract_network_stream(hyper::upgrade::on(request).await?);
   let ws_rid =
-    ws_create_server_stream(&state, Box::pin(UpgradedStream(transport)))
-      .await?;
+    ws_create_server_stream(&mut state.borrow_mut(), transport, bytes)?;
   Ok(ws_rid)
 }
 
@@ -1003,6 +993,16 @@ async fn op_http_upgrade_websocket(
 struct LocalExecutor;
 
 impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
+where
+  Fut: Future + 'static,
+  Fut::Output: 'static,
+{
+  fn execute(&self, fut: Fut) {
+    spawn_local(fut);
+  }
+}
+
+impl<Fut> hyper1::rt::Executor<Fut> for LocalExecutor
 where
   Fut: Future + 'static,
   Fut::Output: 'static,
@@ -1037,4 +1037,92 @@ fn filter_enotconn(
 /// Create a future that is forever pending.
 fn never() -> Pending<Never> {
   pending()
+}
+
+trait CanDowncastUpgrade: Sized {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self>;
+}
+
+impl CanDowncastUpgrade for hyper1::upgrade::Upgraded {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self> {
+    let hyper1::upgrade::Parts { io, read_buf, .. } = self.downcast()?;
+    Ok((io, read_buf))
+  }
+}
+
+impl CanDowncastUpgrade for hyper::upgrade::Upgraded {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self> {
+    let hyper::upgrade::Parts { io, read_buf, .. } = self.downcast()?;
+    Ok((io, read_buf))
+  }
+}
+
+fn maybe_extract_network_stream<
+  T: Into<NetworkStream> + AsyncRead + AsyncWrite + Unpin + 'static,
+  U: CanDowncastUpgrade,
+>(
+  upgraded: U,
+) -> Result<(NetworkStream, Bytes), U> {
+  let upgraded = match upgraded.downcast::<T>() {
+    Ok((stream, bytes)) => return Ok((stream.into(), bytes)),
+    Err(x) => x,
+  };
+
+  match upgraded.downcast::<NetworkBufferedStream<T>>() {
+    Ok((stream, upgraded_bytes)) => {
+      // Both the upgrade and the stream might have unread bytes
+      let (io, stream_bytes) = stream.into_inner();
+      let bytes = match (stream_bytes.is_empty(), upgraded_bytes.is_empty()) {
+        (false, false) => Bytes::default(),
+        (true, false) => upgraded_bytes,
+        (false, true) => stream_bytes,
+        (true, true) => {
+          // The upgraded bytes come first as they have already been read
+          let mut v = upgraded_bytes.to_vec();
+          v.append(&mut stream_bytes.to_vec());
+          Bytes::from(v)
+        }
+      };
+      Ok((io.into(), bytes))
+    }
+    Err(x) => Err(x),
+  }
+}
+
+fn extract_network_stream<U: CanDowncastUpgrade>(
+  upgraded: U,
+) -> (NetworkStream, Bytes) {
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::TcpStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
+      upgraded,
+    ) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  #[cfg(unix)]
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<NetworkStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+
+  // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
+  drop(upgraded);
+  unreachable!("unexpected stream type");
 }

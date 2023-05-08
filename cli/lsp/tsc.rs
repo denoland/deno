@@ -44,6 +44,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
+use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -65,24 +66,18 @@ use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
-static CAPTION_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap()
-});
-static CODEBLOCK_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"^\s*[~`]{3}").unwrap());
-static EMAIL_MATCH_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
-static HTTP_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^https?:"#).unwrap());
-static JSDOC_LINKS_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap()
-});
-static PART_KIND_MODIFIER_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r",|\s+").unwrap());
-static PART_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"^(\S+)\s*-?\s*").unwrap());
-static SCOPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"scope_(\d)").unwrap());
+  lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
+static CAPTION_RE: Lazy<Regex> =
+  lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
+static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}");
+static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
+static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
+static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
+  r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
+);
+static PART_KIND_MODIFIER_RE: Lazy<Regex> = lazy_regex!(r",|\s+");
+static PART_RE: Lazy<Regex> = lazy_regex!(r"^(\S+)\s*-?\s*");
+static SCOPE_RE: Lazy<Regex> = lazy_regex!(r"scope_(\d)");
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
@@ -2768,7 +2763,7 @@ fn op_resolve(
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
-        state.state_snapshot.maybe_npm_resolver.as_ref(),
+        state.state_snapshot.maybe_node_resolver.as_ref(),
       );
       Ok(
         resolved
@@ -2899,7 +2894,7 @@ fn start(runtime: &mut JsRuntime, debug: bool) -> Result<(), AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({init_config});");
 
-  runtime.execute_script(located_script_name!(), init_src)?;
+  runtime.execute_script(located_script_name!(), init_src.into())?;
   Ok(())
 }
 
@@ -3493,7 +3488,7 @@ pub fn request(
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({request_params});");
-  runtime.execute_script(located_script_name!(), request_src)?;
+  runtime.execute_script(located_script_name!(), request_src.into())?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

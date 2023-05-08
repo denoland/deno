@@ -4,12 +4,11 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
-import * as console from "ext:deno_console/02_console.js";
+import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
 import * as http from "ext:deno_http/01_http.js";
-import * as flash from "ext:deno_flash/01_http.js";
 import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
@@ -172,8 +171,7 @@ const denoNsUnstable = {
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   upgradeHttp: http.upgradeHttp,
-  upgradeHttpRaw: flash.upgradeHttpRaw,
-  serve: flash.createServe(ops.op_flash_serve),
+  serve: http.serve,
   openKv: kv.openKv,
   Kv: kv.Kv,
   KvU64: kv.KvU64,
