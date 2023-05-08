@@ -884,7 +884,7 @@ class SubtleCrypto {
         // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
         const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
         const signature = new Uint8Array(SIGNATURE_LEN);
-        if (!ops.op_sign_ed25519(keyData, data, signature)) {
+        if (!ops.op_crypto_sign_ed25519(keyData, data, signature)) {
           throw new DOMException(
             "Failed to sign",
             "OperationError",
@@ -1363,7 +1363,7 @@ class SubtleCrypto {
           );
         }
 
-        return ops.op_verify_ed25519(keyData, data, signature);
+        return ops.op_crypto_verify_ed25519(keyData, data, signature);
       }
     }
 
@@ -1997,7 +1997,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       }
       const privateKeyData = new Uint8Array(32);
       const publicKeyData = new Uint8Array(32);
-      ops.op_generate_x25519_keypair(privateKeyData, publicKeyData);
+      ops.op_crypto_generate_x25519_keypair(privateKeyData, publicKeyData);
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2042,7 +2042,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       const privateKeyData = new Uint8Array(ED25519_SEED_LEN);
       const publicKeyData = new Uint8Array(ED25519_PUBLIC_KEY_LEN);
       if (
-        !ops.op_generate_ed25519_keypair(privateKeyData, publicKeyData)
+        !ops.op_crypto_generate_ed25519_keypair(privateKeyData, publicKeyData)
       ) {
         throw new DOMException("Failed to generate key", "OperationError");
       }
@@ -2179,7 +2179,7 @@ function importKeyEd25519(
       }
 
       const publicKeyData = new Uint8Array(32);
-      if (!ops.op_import_spki_ed25519(keyData, publicKeyData)) {
+      if (!ops.op_crypto_import_spki_ed25519(keyData, publicKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2210,7 +2210,7 @@ function importKeyEd25519(
       }
 
       const privateKeyData = new Uint8Array(32);
-      if (!ops.op_import_pkcs8_ed25519(keyData, privateKeyData)) {
+      if (!ops.op_crypto_import_pkcs8_ed25519(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2397,7 +2397,7 @@ function importKeyX25519(
       }
 
       const publicKeyData = new Uint8Array(32);
-      if (!ops.op_import_spki_x25519(keyData, publicKeyData)) {
+      if (!ops.op_crypto_import_spki_x25519(keyData, publicKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2428,7 +2428,7 @@ function importKeyX25519(
       }
 
       const privateKeyData = new Uint8Array(32);
-      if (!ops.op_import_pkcs8_x25519(keyData, privateKeyData)) {
+      if (!ops.op_crypto_import_pkcs8_x25519(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -4055,7 +4055,7 @@ function exportKeyEd25519(format, key, innerKey) {
         );
       }
 
-      const spkiDer = ops.op_export_spki_ed25519(innerKey);
+      const spkiDer = ops.op_crypto_export_spki_ed25519(innerKey);
       return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
@@ -4067,7 +4067,7 @@ function exportKeyEd25519(format, key, innerKey) {
         );
       }
 
-      const pkcs8Der = ops.op_export_pkcs8_ed25519(
+      const pkcs8Der = ops.op_crypto_export_pkcs8_ed25519(
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
@@ -4075,7 +4075,7 @@ function exportKeyEd25519(format, key, innerKey) {
     }
     case "jwk": {
       const x = key[_type] === "private"
-        ? ops.op_jwk_x_ed25519(innerKey)
+        ? ops.op_crypto_jwk_x_ed25519(innerKey)
         : ops.op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
@@ -4118,7 +4118,7 @@ function exportKeyX25519(format, key, innerKey) {
         );
       }
 
-      const spkiDer = ops.op_export_spki_x25519(innerKey);
+      const spkiDer = ops.op_crypto_export_spki_x25519(innerKey);
       return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
@@ -4130,7 +4130,7 @@ function exportKeyX25519(format, key, innerKey) {
         );
       }
 
-      const pkcs8Der = ops.op_export_pkcs8_x25519(
+      const pkcs8Der = ops.op_crypto_export_pkcs8_x25519(
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
@@ -4476,7 +4476,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
 
       const secret = new Uint8Array(32);
-      const isIdentity = ops.op_derive_bits_x25519(k, u, secret);
+      const isIdentity = ops.op_crypto_derive_bits_x25519(k, u, secret);
 
       // 6.
       if (isIdentity) {
