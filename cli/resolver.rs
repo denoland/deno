@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
@@ -24,6 +25,25 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::util::sync::AtomicFlag;
+
+/// Check that a resolved specifier isn't an `ext:` URL. Normally scheme checks
+/// are done on load rather than resolve. This is needed because `ext:` modules
+/// are preloaded in deno_core and won't be requested from the embedder, so we
+/// need to catch them on resolution instead.
+///
+/// TODO(nayeemrmn): Maybe use a separate module map for `ext:` modules to avoid
+/// this problem. As of writing this is blocked by the way `node:` specifiers
+/// are implemented.
+pub fn validate_scheme_for_resolution(
+  specifier: &ModuleSpecifier,
+) -> Result<(), AnyError> {
+  if specifier.scheme() == "ext" {
+    return Err(type_error(
+      "Cannot load extension module from external code",
+    ));
+  }
+  Ok(())
+}
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
@@ -141,7 +161,10 @@ impl Resolver for CliGraphResolver {
       .as_ref()
       .map(|import_map| import_map.resolve(specifier, referrer))
     {
-      Some(Ok(value)) => return Ok(value),
+      Some(Ok(value)) => {
+        validate_scheme_for_resolution(&value)?;
+        return Ok(value);
+      }
       Some(Err(err)) => Some(err),
       None => None,
     };
@@ -159,7 +182,13 @@ impl Resolver for CliGraphResolver {
     if let Some(err) = maybe_import_map_err {
       Err(err.into())
     } else {
-      deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
+      match deno_graph::resolve_import(specifier, referrer) {
+        Ok(value) => {
+          validate_scheme_for_resolution(&value)?;
+          Ok(value)
+        }
+        Err(err) => Err(err.into()),
+      }
     }
   }
 }

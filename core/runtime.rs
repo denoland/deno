@@ -8,6 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::ExtModuleLoader;
 use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleCode;
 use crate::modules::ModuleError;
@@ -131,6 +132,7 @@ pub struct JsRuntime {
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_options: snapshot_util::SnapshotOptions,
+  snapshot_module_load_cb: Option<Rc<ExtModuleLoaderCb>>,
   allocations: IsolateAllocations,
   extensions: Rc<RefCell<Vec<Extension>>>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
@@ -541,13 +543,6 @@ impl JsRuntime {
         }
       }
     }
-    let num_extensions = options.extensions.len();
-    let extensions = Rc::new(RefCell::new(options.extensions));
-    let ext_loader = Rc::new(crate::modules::ExtModuleLoader::new(
-      Some(loader.clone()),
-      extensions.clone(),
-      options.snapshot_module_load_cb,
-    ));
 
     {
       let mut state = state_rc.borrow_mut();
@@ -561,8 +556,7 @@ impl JsRuntime {
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
-    let module_map_rc =
-      Rc::new(RefCell::new(ModuleMap::new(ext_loader, op_state)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let scope =
         &mut v8::HandleScope::with_context(&mut isolate, global_context);
@@ -577,11 +571,12 @@ impl JsRuntime {
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       snapshot_options,
+      snapshot_module_load_cb: options.snapshot_module_load_cb.map(Rc::new),
       allocations: IsolateAllocations::default(),
-      event_loop_middlewares: Vec::with_capacity(num_extensions),
-      extensions,
+      event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
+      extensions: Rc::new(RefCell::new(options.extensions)),
       state: state_rc,
-      module_map: Some(module_map_rc.clone()),
+      module_map: Some(module_map_rc),
       is_main: options.is_main,
     };
 
@@ -589,9 +584,7 @@ impl JsRuntime {
     // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
-    module_map_rc.borrow().loader.allow_ext_resolution();
     js_runtime.init_extension_js(&realm).unwrap();
-    module_map_rc.borrow().loader.disallow_ext_resolution();
 
     js_runtime
   }
@@ -692,21 +685,7 @@ impl JsRuntime {
       JsRealm::new(v8::Global::new(scope, context))
     };
 
-    self
-      .module_map
-      .as_ref()
-      .unwrap()
-      .borrow()
-      .loader
-      .allow_ext_resolution();
     self.init_extension_js(&realm)?;
-    self
-      .module_map
-      .as_ref()
-      .unwrap()
-      .borrow()
-      .loader
-      .disallow_ext_resolution();
     Ok(realm)
   }
 
@@ -772,6 +751,17 @@ impl JsRuntime {
       .with_context(|| format!("Couldn't execute '{}'", file_source.specifier))
     }
 
+    // TODO(nayeemrmn): Module maps should be per-realm.
+    let module_map = self.module_map.as_ref().unwrap();
+    let loader = module_map.borrow().loader.clone();
+    let ext_loader = Rc::new(ExtModuleLoader::new(
+      loader.clone(),
+      &self.extensions.borrow(),
+      &module_map.borrow(),
+      self.snapshot_module_load_cb.clone(),
+    ));
+    module_map.borrow_mut().loader = ext_loader;
+
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions);
     for ext in extensions.borrow().iter() {
@@ -812,6 +802,7 @@ impl JsRuntime {
     // Restore extensions
     self.extensions = extensions;
 
+    self.module_map.as_ref().unwrap().borrow_mut().loader = loader;
     Ok(())
   }
 
