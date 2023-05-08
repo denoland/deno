@@ -16,6 +16,7 @@ use crate::util::text_encoding;
 
 use data_url::DataUrl;
 use deno_ast::MediaType;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -90,7 +91,9 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
-  let bytes = fs::read(&local)?;
+  let bytes = fs::read(&local).map_err(|e| {
+    anyhow!("Unable to read {:?} because of: {}", local, e.to_string())
+  })?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
   let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from_specifier(specifier);
