@@ -785,6 +785,7 @@ impl JsRuntime {
               )
               .await?;
             if let Some(entry_point) = maybe_esm_entry_point {
+              eprintln!("got entry point {:#?}", entry_point);
               if file_source.specifier == entry_point {
                 esm_entrypoints.push((file_source.specifier, id));
               }
@@ -810,12 +811,20 @@ impl JsRuntime {
         }
       }
 
+      eprintln!("entry points {:#?}", esm_entrypoints);
       for (specifier, id) in esm_entrypoints {
         let receiver = self.mod_evaluate(id);
         self.run_event_loop(false).await?;
         receiver
           .await?
           .with_context(|| format!("Couldn't execute '{specifier}'"))?;
+      }
+
+      {
+        let module_map_rc = self.module_map.clone().unwrap();
+        let mut scope = realm.handle_scope(self.v8_isolate());
+        let module_map = module_map_rc.borrow();
+        module_map.assert_all_modules_evaluated(&mut scope);
       }
 
       Ok::<_, anyhow::Error>(())

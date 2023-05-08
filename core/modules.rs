@@ -1093,6 +1093,28 @@ impl ModuleMap {
     output
   }
 
+  pub(crate) fn assert_all_modules_evaluated(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) {
+    let mut not_evaluated = vec![];
+
+    for (i, handle) in self.handles.iter().enumerate() {
+      let module = v8::Local::new(scope, handle);
+      if !matches!(module.get_status(), v8::ModuleStatus::Evaluated) {
+        not_evaluated.push(self.info[i].name.as_str().to_string());
+      }
+    }
+
+    if !not_evaluated.is_empty() {
+      let mut msg = "Following modules were not evaluated; make sure they are imported from other code:\n".to_string();
+      for m in not_evaluated {
+        msg.push_str(&format!("  - {}\n", m));
+      }
+      panic!("{}", msg);
+    }
+  }
+
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
