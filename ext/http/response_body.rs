@@ -2,10 +2,12 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
+use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Waker;
 
+use bytes::Buf;
 use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::bad_resource;
@@ -20,6 +22,7 @@ use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::WriteOutcome;
+use flate2::write::GzEncoder;
 use http::HeaderMap;
 use hyper1::body::Body;
 use hyper1::body::Frame;
@@ -30,7 +33,7 @@ use pin_project::pin_project;
 /// this type into Hyper's body [`Frame`].
 enum ResponseStreamResult {
   /// Stream is over.
-  EOS,
+  EndOfStream,
   /// Stream provided non-empty data.
   NonEmptyBuf(BufView),
   /// Stream is ready, but provided no data. Retry. This is a result that is like Pending, but does
@@ -46,7 +49,7 @@ enum ResponseStreamResult {
 impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
   fn from(value: ResponseStreamResult) -> Self {
     match value {
-      ResponseStreamResult::EOS => None,
+      ResponseStreamResult::EndOfStream => None,
       ResponseStreamResult::NonEmptyBuf(buf) => Some(Ok(Frame::data(buf))),
       ResponseStreamResult::Error(err) => Some(Err(err)),
       ResponseStreamResult::Trailers(map) => Some(Ok(Frame::trailers(map))),
@@ -211,11 +214,23 @@ impl ResponseBytesInner {
   }
 
   pub fn from_slice(compression: Compression, bytes: &[u8]) -> Self {
-    Self::Bytes(BufView::from(bytes.to_vec()))
+    if compression == Compression::GZip {
+      let mut writer = GzEncoder::new(Vec::new(), flate2::Compression::fast());
+      writer.write_all(bytes).unwrap();
+      Self::Bytes(BufView::from(writer.finish().unwrap()))
+    } else {
+      Self::Bytes(BufView::from(bytes.to_vec()))
+    }
   }
 
   pub fn from_vec(compression: Compression, vec: Vec<u8>) -> Self {
-    Self::Bytes(BufView::from(vec))
+    if compression == Compression::GZip {
+      let mut writer = GzEncoder::new(Vec::new(), flate2::Compression::fast());
+      writer.write_all(&vec).unwrap();
+      Self::Bytes(BufView::from(writer.finish().unwrap()))
+    } else {
+      Self::Bytes(BufView::from(vec))
+    }
   }
 }
 
@@ -250,7 +265,7 @@ impl Body for ResponseBytes {
       break res;
     };
 
-    if matches!(res, ResponseStreamResult::EOS) {
+    if matches!(res, ResponseStreamResult::EndOfStream) {
       self.complete(true);
     }
     std::task::Poll::Ready(res.into())
@@ -322,7 +337,7 @@ impl PollFrame for ResourceBodyAdapter {
           if self.auto_close {
             self.stm.clone().close();
           }
-          ResponseStreamResult::EOS
+          ResponseStreamResult::EndOfStream
         } else {
           // Re-arm the future
           self.future = self.stm.clone().read(64 * 1024);
@@ -351,7 +366,7 @@ impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
   ) -> std::task::Poll<ResponseStreamResult> {
     let res = match ready!(self.poll_recv(cx)) {
       Some(buf) => ResponseStreamResult::NonEmptyBuf(buf),
-      None => ResponseStreamResult::EOS,
+      None => ResponseStreamResult::EndOfStream,
     };
     std::task::Poll::Ready(res)
   }
@@ -367,7 +382,7 @@ enum GZipState {
   Streaming,
   Flushing,
   Trailer,
-  EOS,
+  EndOfStream,
 }
 
 #[pin_project]
@@ -413,8 +428,8 @@ impl PollFrame for GZipResponseStream {
     let state = &mut this.state;
     let orig_state = *state;
     let frame = match *state {
-      GZipState::EOS => {
-        return std::task::Poll::Ready(ResponseStreamResult::EOS)
+      GZipState::EndOfStream => {
+        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream)
       }
       GZipState::Header => {
         *state = GZipState::Streaming;
@@ -423,7 +438,7 @@ impl PollFrame for GZipResponseStream {
         ));
       }
       GZipState::Trailer => {
-        *state = GZipState::EOS;
+        *state = GZipState::EndOfStream;
         let mut v = Vec::with_capacity(8);
         v.extend(&this.crc.sum().to_le_bytes());
         v.extend(&this.crc.amount().to_le_bytes());
@@ -438,7 +453,7 @@ impl PollFrame for GZipResponseStream {
           ready!(Pin::new(&mut this.underlying).poll_frame(cx))
         }
       }
-      GZipState::Flushing => ResponseStreamResult::EOS,
+      GZipState::Flushing => ResponseStreamResult::EndOfStream,
     };
 
     let stm = &mut this.stm;
@@ -459,12 +474,12 @@ impl PollFrame for GZipResponseStream {
       | ResponseStreamResult::Trailers(..)) => {
         return std::task::Poll::Ready(x)
       }
-      ResponseStreamResult::EOS => {
+      ResponseStreamResult::EndOfStream => {
         *state = GZipState::Flushing;
         stm.compress(&[], &mut buf, flate2::FlushCompress::Finish)
       }
       ResponseStreamResult::NonEmptyBuf(mut input) => {
-        let res = stm.compress(&*input, &mut *buf, flate2::FlushCompress::None);
+        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::None);
         let len_in = (stm.total_in() - start_in) as usize;
         debug_assert!(len_in <= input.len());
         this.crc.update(&input[..len_in]);
@@ -589,11 +604,7 @@ mod tests {
     v
   }
 
-  fn empty() -> impl Iterator<Item = Vec<u8>> {
-    vec![].into_iter()
-  }
-
-  fn chunk(mut v: Vec<u8>) -> impl Iterator<Item = Vec<u8>> {
+  fn chunk(v: Vec<u8>) -> impl Iterator<Item = Vec<u8>> {
     // Chunk the data into 10k
     let mut out = vec![];
     for v in v.chunks(10 * 1024) {
@@ -660,7 +671,7 @@ mod tests {
     for i in 0..=LIMIT {
       assert_ne!(i, LIMIT);
       let frame = poll_fn(|cx| Pin::new(&mut resp).poll_frame(cx)).await;
-      if matches!(frame, ResponseStreamResult::EOS) {
+      if matches!(frame, ResponseStreamResult::EndOfStream) {
         break;
       }
       if matches!(frame, ResponseStreamResult::NoData) {

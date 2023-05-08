@@ -1,3 +1,4 @@
+use crate::compressible::is_content_compressible;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::extract_network_stream;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
@@ -13,6 +14,7 @@ use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
+use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
@@ -31,8 +33,15 @@ use deno_net::ops_tls::TlsStream;
 use deno_net::raw::put_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
+use fly_accept_encoding::Encoding;
 use http::header::ACCEPT_ENCODING;
+use http::header::CACHE_CONTROL;
+use http::header::CONTENT_ENCODING;
+use http::header::CONTENT_LENGTH;
+use http::header::CONTENT_RANGE;
+use http::header::CONTENT_TYPE;
 use http::request::Parts;
+use http::HeaderMap;
 use hyper1::body::Incoming;
 use hyper1::header::COOKIE;
 use hyper1::http::HeaderName;
@@ -476,6 +485,130 @@ pub fn op_set_response_headers(
   })
 }
 
+fn is_request_compressible(headers: &HeaderMap) -> Compression {
+  let Some(accept_encoding) = headers.get(ACCEPT_ENCODING) else {
+    return Compression::None;
+  };
+  // Firefox and Chrome send this -- no need to parse
+  if accept_encoding == "gzip, deflate, br" {
+    return Compression::GZip;
+  }
+  if accept_encoding == "gzip" {
+    return Compression::GZip;
+  }
+  // Fall back to the expensive parser
+  let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
+    matches!(r, Ok((Some(Encoding::Identity | Encoding::Gzip), _)))
+  });
+  match fly_accept_encoding::preferred(accepted) {
+    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => return Compression::GZip,
+    _ => {}
+  }
+  return Compression::None;
+}
+
+fn is_response_compressible(headers: &HeaderMap) -> bool {
+  if let Some(content_type) = headers.get(CONTENT_TYPE) {
+    if !is_content_compressible(content_type) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  if headers.contains_key(CONTENT_ENCODING) {
+    return false;
+  }
+  if headers.contains_key(CONTENT_RANGE) {
+    return false;
+  }
+  if let Some(cache_control) = headers.get(CACHE_CONTROL) {
+    if let Ok(s) = std::str::from_utf8(cache_control.as_bytes()) {
+      if let Some(cache_control) = CacheControl::from_value(s) {
+        if cache_control.no_transform {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+fn modify_compressibility_from_response(
+  compression: Compression,
+  length: Option<usize>,
+  headers: &mut HeaderMap,
+) -> Compression {
+  ensure_vary_accept_encoding(headers);
+  if let Some(length) = length {
+    // By the time we add compression headers and Accept-Encoding, it probably doesn't make sense
+    // to compress stuff that's smaller than this.
+    if length < 64 {
+      return Compression::None;
+    }
+  }
+  if compression == Compression::None {
+    return Compression::None;
+  }
+  if !is_response_compressible(headers) {
+    return Compression::None;
+  }
+  weaken_etag(headers);
+  headers.remove(CONTENT_LENGTH);
+  headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+  return compression;
+}
+
+/// If the user provided a ETag header for uncompressed data, we need to ensure it is a
+/// weak Etag header ("W/").
+fn weaken_etag(hmap: &mut HeaderMap) {
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
+    if !etag.as_bytes().starts_with(b"W/") {
+      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+      v.extend(b"W/");
+      v.extend(etag.as_bytes());
+      *etag = v.try_into().unwrap();
+    }
+  }
+}
+
+// Set Vary: Accept-Encoding header for direct body response.
+// Note: we set the header irrespective of whether or not we compress the data
+// to make sure cache services do not serve uncompressed data to clients that
+// support compression.
+fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
+  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
+    if let Ok(s) = v.to_str() {
+      if !s.to_lowercase().contains("accept-encoding") {
+        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
+      }
+      return;
+    }
+  }
+  hmap.insert(
+    hyper::header::VARY,
+    HeaderValue::from_static("Accept-Encoding"),
+  );
+}
+
+fn set_response(
+  index: u32,
+  length: Option<usize>,
+  response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
+) {
+  let compression =
+    with_req(index, |req| is_request_compressible(&req.headers));
+
+  with_resp_mut(index, move |response| {
+    let response = response.as_mut().unwrap();
+    let compression = modify_compressibility_from_response(
+      compression,
+      length,
+      response.headers_mut(),
+    );
+    response.body_mut().initialize(response_fn(compression))
+  });
+}
+
 #[op(fast)]
 pub fn op_set_response_body_resource(
   state: &mut OpState,
@@ -490,20 +623,8 @@ pub fn op_set_response_body_resource(
     state.resource_table.get_any(stream_rid)?
   };
 
-  let compression = with_req(index, |req| {
-    if req.headers.get(ACCEPT_ENCODING)
-      == Some(&HeaderValue::from_static("gzip, deflate, br"))
-    {
-      Compression::GZip
-    } else {
-      Compression::None
-    }
-  });
-
-  with_resp_mut(index, move |response| {
-    response.as_mut().unwrap().body_mut().initialize(
-      ResponseBytesInner::from_resource(compression, resource, auto_close),
-    )
+  set_response(index, None, move |compression| {
+    ResponseBytesInner::from_resource(compression, resource, auto_close)
   });
 
   Ok(())
@@ -516,25 +637,19 @@ pub fn op_set_response_body_stream(
 ) -> Result<ResourceId, AnyError> {
   // TODO(mmastrac): what should this channel size be?
   let (tx, rx) = tokio::sync::mpsc::channel(1);
-  let (tx, rx) = (
-    V8StreamHttpResponseBody::new(tx),
-    ResponseBytesInner::from_v8(Compression::None, rx),
-  );
 
-  with_resp_mut(index, move |response| {
-    response.as_mut().unwrap().body_mut().initialize(rx);
+  set_response(index, None, |compression| {
+    ResponseBytesInner::from_v8(compression, rx)
   });
 
-  Ok(state.resource_table.add(tx))
+  Ok(state.resource_table.add(V8StreamHttpResponseBody::new(tx)))
 }
 
 #[op(fast)]
 pub fn op_set_response_body_text(index: u32, text: String) {
   if !text.is_empty() {
-    with_resp_mut(index, move |response| {
-      response.as_mut().unwrap().body_mut().initialize(
-        ResponseBytesInner::from_vec(Compression::None, text.into_bytes()),
-      )
+    set_response(index, Some(text.len()), |compression| {
+      ResponseBytesInner::from_vec(compression, text.into_bytes())
     });
   }
 }
@@ -542,12 +657,8 @@ pub fn op_set_response_body_text(index: u32, text: String) {
 #[op(fast)]
 pub fn op_set_response_body_bytes(index: u32, buffer: &[u8]) {
   if !buffer.is_empty() {
-    with_resp_mut(index, |response| {
-      response
-        .as_mut()
-        .unwrap()
-        .body_mut()
-        .initialize(ResponseBytesInner::from_slice(Compression::None, buffer))
+    set_response(index, Some(buffer.len()), |compression| {
+      ResponseBytesInner::from_slice(compression, buffer)
     });
   };
 }
