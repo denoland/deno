@@ -697,7 +697,7 @@ async function readFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = ops.op_fs_cancel_handle();
+    cancelRid = ops.op_cancel_handle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -728,7 +728,7 @@ async function readTextFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = ops.op_fs_cancel_handle();
+    cancelRid = ops.op_cancel_handle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -775,7 +775,7 @@ async function writeFile(
   let abortHandler;
   if (options.signal) {
     options.signal.throwIfAborted();
-    cancelRid = ops.op_fs_cancel_handle();
+    cancelRid = ops.op_cancel_handle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
