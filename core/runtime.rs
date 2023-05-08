@@ -72,48 +72,6 @@ struct IsolateAllocations {
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
 
-/// A custom allocator for array buffers for V8. It uses `jemalloc` so it's
-/// not available on Windows.
-#[cfg(not(target_env = "msvc"))]
-mod custom_allocator {
-  use std::ffi::c_void;
-
-  pub struct RustAllocator;
-
-  pub unsafe extern "C" fn allocate(
-    _alloc: &RustAllocator,
-    n: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::calloc(1, n)
-  }
-
-  pub unsafe extern "C" fn allocate_uninitialized(
-    _alloc: &RustAllocator,
-    n: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::malloc(n)
-  }
-
-  pub unsafe extern "C" fn free(
-    _alloc: &RustAllocator,
-    data: *mut c_void,
-    _n: usize,
-  ) {
-    tikv_jemalloc_sys::free(data)
-  }
-
-  pub unsafe extern "C" fn reallocate(
-    _alloc: &RustAllocator,
-    prev: *mut c_void,
-    _oldlen: usize,
-    newlen: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::realloc(prev, newlen)
-  }
-
-  pub unsafe extern "C" fn drop(_alloc: *const RustAllocator) {}
-}
-
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. A JsRuntime is a Future that can be used with
 /// an event loop (Tokio, async_std).
@@ -435,20 +393,6 @@ impl JsRuntime {
       }
       isolate
     } else {
-      #[cfg(not(target_env = "msvc"))]
-      let vtable: &'static v8::RustAllocatorVtable<
-        custom_allocator::RustAllocator,
-      > = &v8::RustAllocatorVtable {
-        allocate: custom_allocator::allocate,
-        allocate_uninitialized: custom_allocator::allocate_uninitialized,
-        free: custom_allocator::free,
-        reallocate: custom_allocator::reallocate,
-        drop: custom_allocator::drop,
-      };
-      #[cfg(not(target_env = "msvc"))]
-      let allocator = Arc::new(custom_allocator::RustAllocator);
-
-      #[allow(unused_mut)]
       let mut params = options
         .create_params
         .take()
@@ -459,14 +403,6 @@ impl JsRuntime {
           )
         })
         .external_references(&**refs);
-
-      #[cfg(not(target_env = "msvc"))]
-      // SAFETY: We are leaking the created `allocator` variable so we're sure
-      // it will outlive the created isolate. We also made sure that the vtable
-      // is correct.
-      let mut params = params.array_buffer_allocator(unsafe {
-        v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
-      });
 
       if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
