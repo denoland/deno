@@ -73,48 +73,6 @@ struct IsolateAllocations {
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
 
-/// A custom allocator for array buffers for V8. It uses `jemalloc` so it's
-/// not available on Windows.
-#[cfg(not(target_env = "msvc"))]
-mod custom_allocator {
-  use std::ffi::c_void;
-
-  pub struct RustAllocator;
-
-  pub unsafe extern "C" fn allocate(
-    _alloc: &RustAllocator,
-    n: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::calloc(1, n)
-  }
-
-  pub unsafe extern "C" fn allocate_uninitialized(
-    _alloc: &RustAllocator,
-    n: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::malloc(n)
-  }
-
-  pub unsafe extern "C" fn free(
-    _alloc: &RustAllocator,
-    data: *mut c_void,
-    _n: usize,
-  ) {
-    tikv_jemalloc_sys::free(data)
-  }
-
-  pub unsafe extern "C" fn reallocate(
-    _alloc: &RustAllocator,
-    prev: *mut c_void,
-    _oldlen: usize,
-    newlen: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::realloc(prev, newlen)
-  }
-
-  pub unsafe extern "C" fn drop(_alloc: *const RustAllocator) {}
-}
-
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. A JsRuntime is a Future that can be used with
 /// an event loop (Tokio, async_std).
@@ -437,20 +395,6 @@ impl JsRuntime {
       }
       isolate
     } else {
-      #[cfg(not(target_env = "msvc"))]
-      let vtable: &'static v8::RustAllocatorVtable<
-        custom_allocator::RustAllocator,
-      > = &v8::RustAllocatorVtable {
-        allocate: custom_allocator::allocate,
-        allocate_uninitialized: custom_allocator::allocate_uninitialized,
-        free: custom_allocator::free,
-        reallocate: custom_allocator::reallocate,
-        drop: custom_allocator::drop,
-      };
-      #[cfg(not(target_env = "msvc"))]
-      let allocator = Arc::new(custom_allocator::RustAllocator);
-
-      #[allow(unused_mut)]
       let mut params = options
         .create_params
         .take()
@@ -461,14 +405,6 @@ impl JsRuntime {
           )
         })
         .external_references(&**refs);
-
-      #[cfg(not(target_env = "msvc"))]
-      // SAFETY: We are leaking the created `allocator` variable so we're sure
-      // it will outlive the created isolate. We also made sure that the vtable
-      // is correct.
-      let mut params = params.array_buffer_allocator(unsafe {
-        v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
-      });
 
       if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
@@ -824,7 +760,7 @@ impl JsRuntime {
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops, apply middlware & override disabled ops
-    exts
+    let ops: Vec<_> = exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
@@ -832,7 +768,37 @@ impl JsRuntime {
         name: d.name,
         ..macroware(d)
       })
-      .collect()
+      .collect();
+
+    // In debug build verify there are no duplicate ops.
+    #[cfg(debug_assertions)]
+    {
+      let mut count_by_name = HashMap::new();
+
+      for op in ops.iter() {
+        count_by_name
+          .entry(&op.name)
+          .or_insert(vec![])
+          .push(op.name.to_string());
+      }
+
+      let mut duplicate_ops = vec![];
+      for (op_name, _count) in
+        count_by_name.iter().filter(|(_k, v)| v.len() > 1)
+      {
+        duplicate_ops.push(op_name.to_string());
+      }
+      if !duplicate_ops.is_empty() {
+        let mut msg = "Found ops with duplicate names:\n".to_string();
+        for op_name in duplicate_ops {
+          msg.push_str(&format!("  - {}\n", op_name));
+        }
+        msg.push_str("Op names need to be unique.");
+        panic!("{}", msg);
+      }
+    }
+
+    ops
   }
 
   /// Initializes ops of provided Extensions
@@ -4780,5 +4746,30 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
+  }
+
+  #[cfg(debug_assertions)]
+  #[test]
+  #[should_panic(expected = "Found ops with duplicate names:")]
+  fn duplicate_op_names() {
+    mod a {
+      use super::*;
+
+      #[op]
+      fn op_test() -> Result<String, Error> {
+        Ok(String::from("Test"))
+      }
+    }
+
+    #[op]
+    fn op_test() -> Result<String, Error> {
+      Ok(String::from("Test"))
+    }
+
+    deno_core::extension!(test_ext, ops = [a::op_test, op_test]);
+    JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init_ops()],
+      ..Default::default()
+    });
   }
 }

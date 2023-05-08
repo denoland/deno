@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::ModuleSpecifier;
@@ -13,11 +12,11 @@ use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
+use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 use crate::NodeResolutionMode;
-use crate::NodeResolver;
-use crate::NpmResolver;
+use crate::NpmResolverRc;
 use crate::PackageJson;
 use crate::PathClean;
 use crate::NODE_GLOBAL_THIS_NAME;
@@ -66,9 +65,9 @@ pub trait CjsEsmCodeAnalyzer {
 
 pub struct NodeCodeTranslator<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer> {
   cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-  fs: Arc<dyn deno_fs::FileSystem>,
-  node_resolver: Arc<NodeResolver>,
-  npm_resolver: Arc<dyn NpmResolver>,
+  fs: deno_fs::FileSystemRc,
+  node_resolver: NodeResolverRc,
+  npm_resolver: NpmResolverRc,
 }
 
 impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
@@ -76,9 +75,9 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
 {
   pub fn new(
     cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
-    fs: Arc<dyn deno_fs::FileSystem>,
-    node_resolver: Arc<NodeResolver>,
-    npm_resolver: Arc<dyn NpmResolver>,
+    fs: deno_fs::FileSystemRc,
+    node_resolver: NodeResolverRc,
+    npm_resolver: NpmResolverRc,
   ) -> Self {
     Self {
       cjs_esm_code_analyzer,
