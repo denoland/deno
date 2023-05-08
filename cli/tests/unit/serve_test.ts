@@ -1995,57 +1995,112 @@ const compressionTestCases = [
   { name: "Empty", length: 0, in: {}, out: {}, expect: null },
   // { name: "EmptyAcceptGzip", length: 0, in: { "Accept-Encoding": "gzip" }, out: {}, expect: null },
   { name: "Uncompressible", length: 1024, in: {}, out: {}, expect: null },
-  { name: "UncompressibleAcceptGzip", length: 1024, in: { "Accept-Encoding": "gzip" }, out: {}, expect: null },
-  { name: "UncompressibleType", length: 1024, in: { "Accept-Encoding": "gzip" }, out: { "Content-Type": "text/fake" }, expect: null },
-  { name: "CompressibleType", length: 1024, in: { "Accept-Encoding": "gzip" }, out: { "Content-Type": "text/plain" }, expect: "gzip" },
-  { name: "CompressibleType2", length: 1024, in: { "Accept-Encoding": "gzip, deflate, br" }, out: { "Content-Type": "text/plain" }, expect: "gzip" },
-  { name: "UncompressibleRange", length: 1024, in: { "Accept-Encoding": "gzip" }, out: { "Content-Type": "text/plain", "Content-Range": "1" }, expect: null },
-  { name: "UncompressibleCE", length: 1024, in: { "Accept-Encoding": "gzip" }, out: { "Content-Type": "text/plain", "Content-Encoding": "random" }, expect: null },
-  { name: "UncompressibleCC", length: 1024, in: { "Accept-Encoding": "gzip" }, out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" }, expect: null },
+  {
+    name: "UncompressibleAcceptGzip",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: {},
+    expect: null,
+  },
+  {
+    name: "UncompressibleType",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/fake" },
+    expect: null,
+  },
+  {
+    name: "CompressibleType",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain" },
+    expect: "gzip",
+  },
+  {
+    name: "CompressibleType2",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip, deflate, br" },
+    out: { "Content-Type": "text/plain" },
+    expect: "gzip",
+  },
+  {
+    name: "UncompressibleRange",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain", "Content-Range": "1" },
+    expect: null,
+  },
+  {
+    name: "UncompressibleCE",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain", "Content-Encoding": "random" },
+    expect: null,
+  },
+  {
+    name: "UncompressibleCC",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },
+    expect: null,
+  },
 ];
 
 for (const testCase of compressionTestCases) {
   const name = `httpServerCompression${testCase.name}`;
-  Deno.test({ permissions: { net: true, write: true, read: true }}, {
-    [name]: async function() {
-      const promise = deferred();
-      const ac = new AbortController();
-      const listeningPromise = deferred();
-      const server = Deno.serve({
-        handler: async (request) => {
-          const f = await makeTempFile(testCase.length);
-          promise.resolve();
-          const headers = testCase.out as any;
-          headers["Content-Length"] = testCase.length.toString();
-          return new Response(f.readable, { headers: headers as HeadersInit });
-        },
-        port: 4503,
-        signal: ac.signal,
-        onListen: onListen(listeningPromise),
-        onError: createOnErrorCb(ac),
-      });
-      try {
-        await listeningPromise;
-        const resp = await fetch("http://127.0.0.1:4503/", { headers: testCase.in as HeadersInit });
-        await promise;
-        const body = await resp.arrayBuffer();
-        if (testCase.expect == null) {
-          assertEquals(body.byteLength, testCase.length);
-          assertEquals(resp.headers.get("content-length"), testCase.length.toString());
-          assertEquals(resp.headers.get("content-encoding"), testCase.out["Content-Encoding"] || null);
-        } else if (testCase.expect == "gzip") {
-          // Note the fetch will transparently decompress this response, BUT we can detect that a response
-          // was compressed by the lack of a content length.
-          assertEquals(body.byteLength, testCase.length);
-          assertEquals(resp.headers.get("content-encoding"), null);
-          assertEquals(resp.headers.get("content-length"), null);
+  Deno.test(
+    { permissions: { net: true, write: true, read: true } },
+    {
+      [name]: async function () {
+        const promise = deferred();
+        const ac = new AbortController();
+        const listeningPromise = deferred();
+        const server = Deno.serve({
+          handler: async (request) => {
+            const f = await makeTempFile(testCase.length);
+            promise.resolve();
+            const headers = testCase.out as any;
+            headers["Content-Length"] = testCase.length.toString();
+            return new Response(f.readable, {
+              headers: headers as HeadersInit,
+            });
+          },
+          port: 4503,
+          signal: ac.signal,
+          onListen: onListen(listeningPromise),
+          onError: createOnErrorCb(ac),
+        });
+        try {
+          await listeningPromise;
+          const resp = await fetch("http://127.0.0.1:4503/", {
+            headers: testCase.in as HeadersInit,
+          });
+          await promise;
+          const body = await resp.arrayBuffer();
+          if (testCase.expect == null) {
+            assertEquals(body.byteLength, testCase.length);
+            assertEquals(
+              resp.headers.get("content-length"),
+              testCase.length.toString(),
+            );
+            assertEquals(
+              resp.headers.get("content-encoding"),
+              testCase.out["Content-Encoding"] || null,
+            );
+          } else if (testCase.expect == "gzip") {
+            // Note the fetch will transparently decompress this response, BUT we can detect that a response
+            // was compressed by the lack of a content length.
+            assertEquals(body.byteLength, testCase.length);
+            assertEquals(resp.headers.get("content-encoding"), null);
+            assertEquals(resp.headers.get("content-length"), null);
+          }
+        } finally {
+          ac.abort();
+          await server;
         }
-      } finally {
-        ac.abort();
-        await server;
-      }
-    }
-  }[name]);
+      },
+    }[name],
+  );
 }
 
 Deno.test(
@@ -2057,7 +2112,10 @@ Deno.test(
 
     const server = Deno.serve({
       handler: async (request) => {
-        assertEquals(new Uint8Array(await request.arrayBuffer()), makeTempData(70 * 1024));
+        assertEquals(
+          new Uint8Array(await request.arrayBuffer()),
+          makeTempData(70 * 1024),
+        );
         promise.resolve();
         return new Response("ok");
       },
