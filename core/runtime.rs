@@ -8,6 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::AssertedModuleType;
 use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleCode;
 use crate::modules::ModuleError;
@@ -713,19 +714,17 @@ impl JsRuntime {
 
         if let Some(esm_files) = maybe_esm_files {
           for file_source in esm_files {
-            let id = self
+            self
               .load_side_module(
                 &ModuleSpecifier::parse(file_source.specifier)?,
                 None,
               )
               .await?;
-            if let Some(entry_point) = maybe_esm_entry_point {
-              eprintln!("got entry point {:#?}", entry_point);
-              if file_source.specifier == entry_point {
-                esm_entrypoints.push((file_source.specifier, id));
-              }
-            }
           }
+        }
+
+        if let Some(entry_point) = maybe_esm_entry_point {
+          esm_entrypoints.push(entry_point);
         }
 
         let exts = extensions.borrow();
@@ -746,9 +745,16 @@ impl JsRuntime {
         }
       }
 
-      eprintln!("entry points {:#?}", esm_entrypoints);
-      for (specifier, id) in esm_entrypoints {
-        let receiver = self.mod_evaluate(id);
+      for specifier in esm_entrypoints {
+        let mod_id = {
+          let module_map = self.module_map.as_ref().unwrap();
+
+          module_map
+            .borrow()
+            .get_id(specifier, AssertedModuleType::JavaScriptOrWasm)
+            .expect(&format!("{} not present in the module map", specifier))
+        };
+        let receiver = self.mod_evaluate(mod_id);
         self.run_event_loop(false).await?;
         receiver
           .await?

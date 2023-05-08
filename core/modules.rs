@@ -1388,7 +1388,7 @@ impl ModuleMap {
 
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
-  fn get_id(
+  pub(crate) fn get_id(
     &self,
     name: impl AsRef<str>,
     asserted_module_type: AssertedModuleType,
