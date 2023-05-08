@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
@@ -239,19 +238,13 @@ fn resolve_package_json_dep(
     if specifier.starts_with(bare_specifier) {
       let path = &specifier[bare_specifier.len()..];
       if path.is_empty() || path.starts_with('/') {
-        match req_result.as_ref() {
-          Ok(req) => {
-            return Ok(Some(ModuleSpecifier::parse(&format!(
-              "npm:{req}{path}"
-            ))?));
-          }
-          Err(err) => {
-            bail!(
-              "Parsing version constraints in the application-level package.json is more strict at the moment.\n\n{:#}",
-              err.clone()
-            )
-          }
-        }
+        let req = req_result.as_ref().map_err(|err| {
+          anyhow!(
+            "Parsing version constraints in the application-level package.json is more strict at the moment.\n\n{:#}",
+            err.clone()
+          )
+        })?;
+        return Ok(Some(ModuleSpecifier::parse(&format!("npm:{req}{path}"))?));
       }
     }
   }
