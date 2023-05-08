@@ -752,7 +752,9 @@ impl JsRuntime {
           module_map
             .borrow()
             .get_id(specifier, AssertedModuleType::JavaScriptOrWasm)
-            .expect(&format!("{} not present in the module map", specifier))
+            .unwrap_or_else(|| {
+              panic!("{} not present in the module map", specifier)
+            })
         };
         let receiver = self.mod_evaluate(mod_id);
         self.run_event_loop(false).await?;
@@ -761,6 +763,7 @@ impl JsRuntime {
           .with_context(|| format!("Couldn't execute '{specifier}'"))?;
       }
 
+      #[cfg(debug_assertions)]
       {
         let module_map_rc = self.module_map.clone().unwrap();
         let mut scope = realm.handle_scope(self.v8_isolate());
