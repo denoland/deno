@@ -829,11 +829,10 @@ fn compile_npm_specifiers() {
     ),
   );
 
-  let temp_dir_path = temp_dir.path().to_path_buf();
   let binary_path = if cfg!(windows) {
-    temp_dir_path.join("binary.exe")
+    temp_dir.path().join("binary.exe")
   } else {
-    temp_dir_path.join("binary")
+    temp_dir.path().join("binary")
   };
 
   // try with and without --node-modules-dir
@@ -911,4 +910,44 @@ testing[WILDCARD]this
     .command_name(binary_path.to_string_lossy())
     .run();
   output.assert_matches_text("2\n");
+}
+
+#[test]
+fn compile_npm_file_system() {
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_temp_cwd()
+    .build();
+
+  let temp_dir = context.temp_dir();
+  let testdata_path = context.testdata_path();
+  let main_path = testdata_path.join("compile/npm_fs/main.ts");
+
+  // compile
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "-A",
+      "--node-modules-dir",
+      "--unstable",
+      "--output",
+      "binary",
+      &main_path.to_string_lossy(),
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // run
+  let binary_path = if cfg!(windows) {
+    temp_dir.path().join("binary.exe")
+  } else {
+    temp_dir.path().join("binary")
+  };
+  let output = context
+    .new_command()
+    .command_name(binary_path.to_string_lossy())
+    .run();
+  output.assert_matches_file("compile/npm_fs/main.out");
 }
