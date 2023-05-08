@@ -310,7 +310,7 @@ pub fn op_http_upgrade_raw(
 }
 
 #[op]
-pub async fn op_http_upgrade(
+pub async fn op_http_upgrade_next(
   state: Rc<RefCell<OpState>>,
   index: u32,
   headers: Vec<(ByteString, ByteString)>,

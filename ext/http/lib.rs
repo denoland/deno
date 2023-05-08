@@ -110,7 +110,7 @@ deno_core::extension!(
     http_next::op_http_set_response_headers,
     http_next::op_http_track,
     http_next::op_http_upgrade_raw,
-    http_next::op_http_upgrade,
+    http_next::op_http_upgrade_next,
     http_next::op_http_wait,
   ],
   esm = ["00_serve.js", "01_http.js"],

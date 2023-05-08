@@ -50,7 +50,7 @@ const {
 
 const {
   op_http_wait,
-  op_http_upgrade,
+  op_http_upgrade_next,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
@@ -66,7 +66,7 @@ const {
   op_ws_server_create,
 } = core.generateAsyncOpHandler(
   "op_http_wait",
-  "op_http_upgrade",
+  "op_http_upgrade_next",
   "op_http_get_request_headers",
   "op_http_get_request_method_and_url",
   "op_http_read_request_body",
@@ -209,7 +209,7 @@ class InnerRequest {
       (async () => {
         try {
           // Returns the connection and extra bytes, which we can pass directly to op_ws_server_create
-          const upgrade = await op_http_upgrade(
+          const upgrade = await op_http_upgrade_next(
             slabId,
             response.headerList,
           );
