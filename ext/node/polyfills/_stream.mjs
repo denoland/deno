@@ -5,6 +5,30 @@
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import { Blob } from "ext:deno_web/09_file.js";
+import { StringDecoder } from "ext:deno_node/string_decoder.ts";
+import { createDeferredPromise, kEmptyObject, normalizeEncoding, once, promisify } from "ext:deno_node/internal/util.mjs";
+import { isAsyncFunction, isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
+import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+
+import {
+  ERR_SOCKET_BAD_PORT, ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE, ERR_OUT_OF_RANGE, ERR_UNKNOWN_SIGNAL,
+      ERR_STREAM_CANNOT_PIPE,
+      ERR_STREAM_DESTROYED,
+      ERR_STREAM_ALREADY_FINISHED,
+      ERR_STREAM_WRITE_AFTER_END,
+  ERR_UNKNOWN_ENCODING,
+  ERR_MISSING_ARGS,
+  ERR_STREAM_PREMATURE_CLOSE,
+  ERR_STREAM_NULL_VALUES,
+        ERR_METHOD_NOT_IMPLEMENTED,
+        ERR_STREAM_PUSH_AFTER_EOF,
+  ERR_STREAM_UNSHIFT_AFTER_END_EVENT,
+  aggregateTwoErrors,
+  ERR_MULTIPLE_CALLBACK,
+  AbortError,
+  hideStackFrames,
+} from "ext:deno_node/internal/errors.ts";
 
 /* esm.sh - esbuild bundle(readable-stream@4.2.0) es2022 production */
 const __process$ = { nextTick };import __buffer$ from "ext:deno_node/buffer.ts";import __string_decoder$ from "ext:deno_node/string_decoder.ts";import __events$ from "ext:deno_node/events.ts";
@@ -17,446 +41,7 @@ var __commonJS = (cb, mod) => function __require() {
 // node_modules/buffer/index.js
 var require_buffer = () => { return __buffer$ };
 
-// lib/ours/util.js
-var require_util = __commonJS({
-  "lib/ours/util.js"(exports, module) {
-    "use strict";
-    var bufferModule = require_buffer();
-    var AsyncFunction = Object.getPrototypeOf(async function() {
-    }).constructor;
-    var Blob = globalThis.Blob || bufferModule.Blob;
-    var isBlob = typeof Blob !== "undefined" ? function isBlob2(b) {
-      return b instanceof Blob;
-    } : function isBlob2(b) {
-      return false;
-    };
-    var AggregateError = class extends Error {
-      constructor(errors) {
-        if (!Array.isArray(errors)) {
-          throw new TypeError(`Expected input to be an Array, got ${typeof errors}`);
-        }
-        let message = "";
-        for (let i = 0; i < errors.length; i++) {
-          message += `    ${errors[i].stack}
-`;
-        }
-        super(message);
-        this.name = "AggregateError";
-        this.errors = errors;
-      }
-    };
-    module.exports = {
-      AggregateError,
-      kEmptyObject: Object.freeze({}),
-      once(callback) {
-        let called = false;
-        return function(...args) {
-          if (called) {
-            return;
-          }
-          called = true;
-          callback.apply(this, args);
-        };
-      },
-      createDeferredPromise: function() {
-        let resolve;
-        let reject;
-        const promise = new Promise((res, rej) => {
-          resolve = res;
-          reject = rej;
-        });
-        return {
-          promise,
-          resolve,
-          reject
-        };
-      },
-      promisify(fn) {
-        return new Promise((resolve, reject) => {
-          fn((err, ...args) => {
-            if (err) {
-              return reject(err);
-            }
-            return resolve(...args);
-          });
-        });
-      },
-      debuglog() {
-        return function() {
-        };
-      },
-      format(format, ...args) {
-        return format.replace(/%([sdifj])/g, function(...[_unused, type]) {
-          const replacement = args.shift();
-          if (type === "f") {
-            return replacement.toFixed(6);
-          } else if (type === "j") {
-            return JSON.stringify(replacement);
-          } else if (type === "s" && typeof replacement === "object") {
-            const ctor = replacement.constructor !== Object ? replacement.constructor.name : "";
-            return `${ctor} {}`.trim();
-          } else {
-            return replacement.toString();
-          }
-        });
-      },
-      inspect(value) {
-        switch (typeof value) {
-          case "string":
-            if (value.includes("'")) {
-              if (!value.includes('"')) {
-                return `"${value}"`;
-              } else if (!value.includes("`") && !value.includes("${")) {
-                return `\`${value}\``;
-              }
-            }
-            return `'${value}'`;
-          case "number":
-            if (isNaN(value)) {
-              return "NaN";
-            } else if (Object.is(value, -0)) {
-              return String(value);
-            }
-            return value;
-          case "bigint":
-            return `${String(value)}n`;
-          case "boolean":
-          case "undefined":
-            return String(value);
-          case "object":
-            return "{}";
-        }
-      },
-      types: {
-        isAsyncFunction(fn) {
-          return fn instanceof AsyncFunction;
-        },
-        isArrayBufferView(arr) {
-          return ArrayBuffer.isView(arr);
-        }
-      },
-      isBlob
-    };
-    module.exports.promisify.custom = Symbol.for("nodejs.util.promisify.custom");
-  }
-});
-
 // lib/ours/errors.js
-var require_errors = __commonJS({
-  "lib/ours/errors.js"(exports, module) {
-    "use strict";
-    var { format, inspect, AggregateError: CustomAggregateError } = require_util();
-    var AggregateError = globalThis.AggregateError || CustomAggregateError;
-    var kIsNodeError = Symbol("kIsNodeError");
-    var kTypes = [
-      "string",
-      "function",
-      "number",
-      "object",
-      // Accept 'Function' and 'Object' as alternative to the lower cased version.
-      "Function",
-      "Object",
-      "boolean",
-      "bigint",
-      "symbol"
-    ];
-    var classRegExp = /^([A-Z][a-z0-9]*)+$/;
-    var nodeInternalPrefix = "__node_internal_";
-    var codes = {};
-    function assert(value, message) {
-      if (!value) {
-        throw new codes.ERR_INTERNAL_ASSERTION(message);
-      }
-    }
-    function addNumericalSeparator(val) {
-      let res = "";
-      let i = val.length;
-      const start = val[0] === "-" ? 1 : 0;
-      for (; i >= start + 4; i -= 3) {
-        res = `_${val.slice(i - 3, i)}${res}`;
-      }
-      return `${val.slice(0, i)}${res}`;
-    }
-    function getMessage(key, msg, args) {
-      if (typeof msg === "function") {
-        assert(
-          msg.length <= args.length,
-          // Default options do not count.
-          `Code: ${key}; The provided arguments length (${args.length}) does not match the required ones (${msg.length}).`
-        );
-        return msg(...args);
-      }
-      const expectedLength = (msg.match(/%[dfijoOs]/g) || []).length;
-      assert(
-        expectedLength === args.length,
-        `Code: ${key}; The provided arguments length (${args.length}) does not match the required ones (${expectedLength}).`
-      );
-      if (args.length === 0) {
-        return msg;
-      }
-      return format(msg, ...args);
-    }
-    function E(code, message, Base) {
-      if (!Base) {
-        Base = Error;
-      }
-      class NodeError extends Base {
-        constructor(...args) {
-          super(getMessage(code, message, args));
-        }
-        toString() {
-          return `${this.name} [${code}]: ${this.message}`;
-        }
-      }
-      Object.defineProperties(NodeError.prototype, {
-        name: {
-          value: Base.name,
-          writable: true,
-          enumerable: false,
-          configurable: true
-        },
-        toString: {
-          value() {
-            return `${this.name} [${code}]: ${this.message}`;
-          },
-          writable: true,
-          enumerable: false,
-          configurable: true
-        }
-      });
-      NodeError.prototype.code = code;
-      NodeError.prototype[kIsNodeError] = true;
-      codes[code] = NodeError;
-    }
-    function hideStackFrames(fn) {
-      const hidden = nodeInternalPrefix + fn.name;
-      Object.defineProperty(fn, "name", {
-        value: hidden
-      });
-      return fn;
-    }
-    function aggregateTwoErrors(innerError, outerError) {
-      if (innerError && outerError && innerError !== outerError) {
-        if (Array.isArray(outerError.errors)) {
-          outerError.errors.push(innerError);
-          return outerError;
-        }
-        const err = new AggregateError([outerError, innerError], outerError.message);
-        err.code = outerError.code;
-        return err;
-      }
-      return innerError || outerError;
-    }
-    var AbortError = class extends Error {
-      constructor(message = "The operation was aborted", options = void 0) {
-        if (options !== void 0 && typeof options !== "object") {
-          throw new codes.ERR_INVALID_ARG_TYPE("options", "Object", options);
-        }
-        super(message, options);
-        this.code = "ABORT_ERR";
-        this.name = "AbortError";
-      }
-    };
-    E("ERR_ASSERTION", "%s", Error);
-    E(
-      "ERR_INVALID_ARG_TYPE",
-      (name, expected, actual) => {
-        assert(typeof name === "string", "'name' must be a string");
-        if (!Array.isArray(expected)) {
-          expected = [expected];
-        }
-        let msg = "The ";
-        if (name.endsWith(" argument")) {
-          msg += `${name} `;
-        } else {
-          msg += `"${name}" ${name.includes(".") ? "property" : "argument"} `;
-        }
-        msg += "must be ";
-        const types = [];
-        const instances = [];
-        const other = [];
-        for (const value of expected) {
-          assert(typeof value === "string", "All expected entries have to be of type string");
-          if (kTypes.includes(value)) {
-            types.push(value.toLowerCase());
-          } else if (classRegExp.test(value)) {
-            instances.push(value);
-          } else {
-            assert(value !== "object", 'The value "object" should be written as "Object"');
-            other.push(value);
-          }
-        }
-        if (instances.length > 0) {
-          const pos = types.indexOf("object");
-          if (pos !== -1) {
-            types.splice(types, pos, 1);
-            instances.push("Object");
-          }
-        }
-        if (types.length > 0) {
-          switch (types.length) {
-            case 1:
-              msg += `of type ${types[0]}`;
-              break;
-            case 2:
-              msg += `one of type ${types[0]} or ${types[1]}`;
-              break;
-            default: {
-              const last = types.pop();
-              msg += `one of type ${types.join(", ")}, or ${last}`;
-            }
-          }
-          if (instances.length > 0 || other.length > 0) {
-            msg += " or ";
-          }
-        }
-        if (instances.length > 0) {
-          switch (instances.length) {
-            case 1:
-              msg += `an instance of ${instances[0]}`;
-              break;
-            case 2:
-              msg += `an instance of ${instances[0]} or ${instances[1]}`;
-              break;
-            default: {
-              const last = instances.pop();
-              msg += `an instance of ${instances.join(", ")}, or ${last}`;
-            }
-          }
-          if (other.length > 0) {
-            msg += " or ";
-          }
-        }
-        switch (other.length) {
-          case 0:
-            break;
-          case 1:
-            if (other[0].toLowerCase() !== other[0]) {
-              msg += "an ";
-            }
-            msg += `${other[0]}`;
-            break;
-          case 2:
-            msg += `one of ${other[0]} or ${other[1]}`;
-            break;
-          default: {
-            const last = other.pop();
-            msg += `one of ${other.join(", ")}, or ${last}`;
-          }
-        }
-        if (actual == null) {
-          msg += `. Received ${actual}`;
-        } else if (typeof actual === "function" && actual.name) {
-          msg += `. Received function ${actual.name}`;
-        } else if (typeof actual === "object") {
-          var _actual$constructor;
-          if ((_actual$constructor = actual.constructor) !== null && _actual$constructor !== void 0 && _actual$constructor.name) {
-            msg += `. Received an instance of ${actual.constructor.name}`;
-          } else {
-            const inspected = inspect(actual, {
-              depth: -1
-            });
-            msg += `. Received ${inspected}`;
-          }
-        } else {
-          let inspected = inspect(actual, {
-            colors: false
-          });
-          if (inspected.length > 25) {
-            inspected = `${inspected.slice(0, 25)}...`;
-          }
-          msg += `. Received type ${typeof actual} (${inspected})`;
-        }
-        return msg;
-      },
-      TypeError
-    );
-    E(
-      "ERR_INVALID_ARG_VALUE",
-      (name, value, reason = "is invalid") => {
-        let inspected = inspect(value);
-        if (inspected.length > 128) {
-          inspected = inspected.slice(0, 128) + "...";
-        }
-        const type = name.includes(".") ? "property" : "argument";
-        return `The ${type} '${name}' ${reason}. Received ${inspected}`;
-      },
-      TypeError
-    );
-    E(
-      "ERR_INVALID_RETURN_VALUE",
-      (input, name, value) => {
-        var _value$constructor;
-        const type = value !== null && value !== void 0 && (_value$constructor = value.constructor) !== null && _value$constructor !== void 0 && _value$constructor.name ? `instance of ${value.constructor.name}` : `type ${typeof value}`;
-        return `Expected ${input} to be returned from the "${name}" function but got ${type}.`;
-      },
-      TypeError
-    );
-    E(
-      "ERR_MISSING_ARGS",
-      (...args) => {
-        assert(args.length > 0, "At least one arg needs to be specified");
-        let msg;
-        const len = args.length;
-        args = (Array.isArray(args) ? args : [args]).map((a) => `"${a}"`).join(" or ");
-        switch (len) {
-          case 1:
-            msg += `The ${args[0]} argument`;
-            break;
-          case 2:
-            msg += `The ${args[0]} and ${args[1]} arguments`;
-            break;
-          default:
-            {
-              const last = args.pop();
-              msg += `The ${args.join(", ")}, and ${last} arguments`;
-            }
-            break;
-        }
-        return `${msg} must be specified`;
-      },
-      TypeError
-    );
-    E(
-      "ERR_OUT_OF_RANGE",
-      (str, range, input) => {
-        assert(range, 'Missing "range" argument');
-        let received;
-        if (Number.isInteger(input) && Math.abs(input) > 2 ** 32) {
-          received = addNumericalSeparator(String(input));
-        } else if (typeof input === "bigint") {
-          received = String(input);
-          if (input > 2n ** 32n || input < -(2n ** 32n)) {
-            received = addNumericalSeparator(received);
-          }
-          received += "n";
-        } else {
-          received = inspect(input);
-        }
-        return `The value of "${str}" is out of range. It must be ${range}. Received ${received}`;
-      },
-      RangeError
-    );
-    E("ERR_MULTIPLE_CALLBACK", "Callback called multiple times", Error);
-    E("ERR_METHOD_NOT_IMPLEMENTED", "The %s method is not implemented", Error);
-    E("ERR_STREAM_ALREADY_FINISHED", "Cannot call %s after a stream was finished", Error);
-    E("ERR_STREAM_CANNOT_PIPE", "Cannot pipe, not readable", Error);
-    E("ERR_STREAM_DESTROYED", "Cannot call %s after a stream was destroyed", Error);
-    E("ERR_STREAM_NULL_VALUES", "May not write null values to stream", TypeError);
-    E("ERR_STREAM_PREMATURE_CLOSE", "Premature close", Error);
-    E("ERR_STREAM_PUSH_AFTER_EOF", "stream.push() after EOF", Error);
-    E("ERR_STREAM_UNSHIFT_AFTER_END_EVENT", "stream.unshift() after end event", Error);
-    E("ERR_STREAM_WRITE_AFTER_END", "write after end", Error);
-    E("ERR_UNKNOWN_ENCODING", "Unknown encoding: %s", TypeError);
-    module.exports = {
-      AbortError,
-      aggregateTwoErrors: hideStackFrames(aggregateTwoErrors),
-      hideStackFrames,
-      codes
-    };
-  }
-});
-
 var require_primordials = __commonJS({
   "lib/ours/primordials.js"(exports2, module2) {
     "use strict";
@@ -575,12 +160,6 @@ var require_validators = __commonJS({
       StringPrototypeToUpperCase,
       StringPrototypeTrim
     } = require_primordials();
-    var {
-      hideStackFrames,
-      codes: { ERR_SOCKET_BAD_PORT, ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE, ERR_OUT_OF_RANGE, ERR_UNKNOWN_SIGNAL }
-    } = require_errors();
-    var { normalizeEncoding } = require_util();
-    var { isAsyncFunction, isArrayBufferView } = require_util().types;
     var signals = {};
     function isInt32(value) {
       return value === (value | 0);
@@ -760,166 +339,7 @@ var require_validators = __commonJS({
 });
 
 // node_modules/process/browser.js
-var require_browser2 = __commonJS({
-  "node_modules/process/browser.js"(exports, module) {
-    var process = module.exports = {};
-    var cachedSetTimeout;
-    var cachedClearTimeout;
-    function defaultSetTimout() {
-      throw new Error("setTimeout has not been defined");
-    }
-    function defaultClearTimeout() {
-      throw new Error("clearTimeout has not been defined");
-    }
-    (function() {
-      try {
-        if (typeof setTimeout === "function") {
-          cachedSetTimeout = setTimeout;
-        } else {
-          cachedSetTimeout = defaultSetTimout;
-        }
-      } catch (e) {
-        cachedSetTimeout = defaultSetTimout;
-      }
-      try {
-        if (typeof clearTimeout === "function") {
-          cachedClearTimeout = clearTimeout;
-        } else {
-          cachedClearTimeout = defaultClearTimeout;
-        }
-      } catch (e) {
-        cachedClearTimeout = defaultClearTimeout;
-      }
-    })();
-    function runTimeout(fun) {
-      if (cachedSetTimeout === setTimeout) {
-        return setTimeout(fun, 0);
-      }
-      if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
-        cachedSetTimeout = setTimeout;
-        return setTimeout(fun, 0);
-      }
-      try {
-        return cachedSetTimeout(fun, 0);
-      } catch (e) {
-        try {
-          return cachedSetTimeout.call(null, fun, 0);
-        } catch (e2) {
-          return cachedSetTimeout.call(this, fun, 0);
-        }
-      }
-    }
-    function runClearTimeout(marker) {
-      if (cachedClearTimeout === clearTimeout) {
-        return clearTimeout(marker);
-      }
-      if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
-        cachedClearTimeout = clearTimeout;
-        return clearTimeout(marker);
-      }
-      try {
-        return cachedClearTimeout(marker);
-      } catch (e) {
-        try {
-          return cachedClearTimeout.call(null, marker);
-        } catch (e2) {
-          return cachedClearTimeout.call(this, marker);
-        }
-      }
-    }
-    var queue = [];
-    var draining = false;
-    var currentQueue;
-    var queueIndex = -1;
-    function cleanUpNextTick() {
-      if (!draining || !currentQueue) {
-        return;
-      }
-      draining = false;
-      if (currentQueue.length) {
-        queue = currentQueue.concat(queue);
-      } else {
-        queueIndex = -1;
-      }
-      if (queue.length) {
-        drainQueue();
-      }
-    }
-    function drainQueue() {
-      if (draining) {
-        return;
-      }
-      var timeout = runTimeout(cleanUpNextTick);
-      draining = true;
-      var len = queue.length;
-      while (len) {
-        currentQueue = queue;
-        queue = [];
-        while (++queueIndex < len) {
-          if (currentQueue) {
-            currentQueue[queueIndex].run();
-          }
-        }
-        queueIndex = -1;
-        len = queue.length;
-      }
-      currentQueue = null;
-      draining = false;
-      runClearTimeout(timeout);
-    }
-    process.nextTick = function(fun) {
-      var args = new Array(arguments.length - 1);
-      if (arguments.length > 1) {
-        for (var i = 1; i < arguments.length; i++) {
-          args[i - 1] = arguments[i];
-        }
-      }
-      queue.push(new Item(fun, args));
-      if (queue.length === 1 && !draining) {
-        runTimeout(drainQueue);
-      }
-    };
-    function Item(fun, array) {
-      this.fun = fun;
-      this.array = array;
-    }
-    Item.prototype.run = function() {
-      this.fun.apply(null, this.array);
-    };
-    process.title = "browser";
-    process.browser = true;
-    process.env = {};
-    process.argv = [];
-    process.version = "";
-    process.versions = {};
-    function noop() {
-    }
-    process.on = noop;
-    process.addListener = noop;
-    process.once = noop;
-    process.off = noop;
-    process.removeListener = noop;
-    process.removeAllListeners = noop;
-    process.emit = noop;
-    process.prependListener = noop;
-    process.prependOnceListener = noop;
-    process.listeners = function(name) {
-      return [];
-    };
-    process.binding = function(name) {
-      throw new Error("process.binding is not supported");
-    };
-    process.cwd = function() {
-      return "/";
-    };
-    process.chdir = function(dir) {
-      throw new Error("process.chdir is not supported");
-    };
-    process.umask = function() {
-      return 0;
-    };
-  }
-});
+var require_browser2 = () => { return __process$; }
 
 // lib/internal/streams/utils.js
 var require_utils = __commonJS({
@@ -1136,9 +556,6 @@ var require_utils = __commonJS({
 var require_end_of_stream = __commonJS({
   "lib/internal/streams/end-of-stream.js"(exports, module) {
     var process = require_browser2();
-    var { AbortError, codes } = require_errors();
-    var { ERR_INVALID_ARG_TYPE, ERR_STREAM_PREMATURE_CLOSE } = codes;
-    var { kEmptyObject, once } = require_util();
     var { validateAbortSignal, validateFunction, validateObject } = require_validators();
     var { Promise: Promise2 } = require_primordials();
     var {
@@ -1329,10 +746,6 @@ var require_end_of_stream = __commonJS({
 var require_operators = __commonJS({
   "lib/internal/streams/operators.js"(exports, module) {
     "use strict";
-    var {
-      codes: { ERR_INVALID_ARG_TYPE, ERR_MISSING_ARGS, ERR_OUT_OF_RANGE },
-      AbortError
-    } = require_errors();
     var { validateAbortSignal, validateInteger, validateObject } = require_validators();
     var kWeakHandler = require_primordials().Symbol("kWeak");
     var { finished } = require_end_of_stream();
@@ -1703,11 +1116,6 @@ var require_destroy = __commonJS({
   "lib/internal/streams/destroy.js"(exports, module) {
     "use strict";
     var process = require_browser2();
-    var {
-      aggregateTwoErrors,
-      codes: { ERR_MULTIPLE_CALLBACK },
-      AbortError
-    } = require_errors();
     var { Symbol: Symbol2 } = require_primordials();
     var { kDestroyed, isDestroyed, isFinished, isServerRequest } = require_utils();
     var kDestroy = Symbol2("kDestroy");
@@ -2422,9 +1830,7 @@ var require_legacy = __commonJS({
 var require_add_abort_signal = __commonJS({
   "lib/internal/streams/add-abort-signal.js"(exports, module) {
     "use strict";
-    var { AbortError, codes } = require_errors();
     var eos = require_end_of_stream();
-    var { ERR_INVALID_ARG_TYPE } = codes;
     var validateAbortSignal = (signal, name) => {
       if (typeof signal !== "object" || !("aborted" in signal)) {
         throw new ERR_INVALID_ARG_TYPE(name, "AbortSignal", signal);
@@ -2468,7 +1874,6 @@ var require_buffer_list = __commonJS({
     "use strict";
     var { StringPrototypeSlice, SymbolIterator, TypedArrayPrototypeSet, Uint8Array: Uint8Array2 } = require_primordials();
     var { Buffer: Buffer2 } = require_buffer();
-    var { inspect } = require_util();
     module.exports = class BufferList {
       constructor() {
         this.head = null;
@@ -2635,7 +2040,6 @@ var require_state = __commonJS({
   "lib/internal/streams/state.js"(exports, module) {
     "use strict";
     var { MathFloor, NumberIsInteger } = require_primordials();
-    var { ERR_INVALID_ARG_VALUE } = require_errors().codes;
     function highWaterMarkFrom(options, isDuplex, duplexKey) {
       return options.highWaterMark != null ? options.highWaterMark : isDuplex ? options[duplexKey] : null;
     }
@@ -2718,266 +2122,6 @@ var require_safe_buffer = __commonJS({
   }
 });
 
-// node_modules/string_decoder/lib/string_decoder.js
-var require_string_decoder = __commonJS({
-  "node_modules/string_decoder/lib/string_decoder.js"(exports) {
-    "use strict";
-    var Buffer2 = require_safe_buffer().Buffer;
-    var isEncoding = Buffer2.isEncoding || function(encoding) {
-      encoding = "" + encoding;
-      switch (encoding && encoding.toLowerCase()) {
-        case "hex":
-        case "utf8":
-        case "utf-8":
-        case "ascii":
-        case "binary":
-        case "base64":
-        case "ucs2":
-        case "ucs-2":
-        case "utf16le":
-        case "utf-16le":
-        case "raw":
-          return true;
-        default:
-          return false;
-      }
-    };
-    function _normalizeEncoding(enc) {
-      if (!enc)
-        return "utf8";
-      var retried;
-      while (true) {
-        switch (enc) {
-          case "utf8":
-          case "utf-8":
-            return "utf8";
-          case "ucs2":
-          case "ucs-2":
-          case "utf16le":
-          case "utf-16le":
-            return "utf16le";
-          case "latin1":
-          case "binary":
-            return "latin1";
-          case "base64":
-          case "ascii":
-          case "hex":
-            return enc;
-          default:
-            if (retried)
-              return;
-            enc = ("" + enc).toLowerCase();
-            retried = true;
-        }
-      }
-    }
-    function normalizeEncoding(enc) {
-      var nenc = _normalizeEncoding(enc);
-      if (typeof nenc !== "string" && (Buffer2.isEncoding === isEncoding || !isEncoding(enc)))
-        throw new Error("Unknown encoding: " + enc);
-      return nenc || enc;
-    }
-    exports.StringDecoder = StringDecoder;
-    function StringDecoder(encoding) {
-      this.encoding = normalizeEncoding(encoding);
-      var nb;
-      switch (this.encoding) {
-        case "utf16le":
-          this.text = utf16Text;
-          this.end = utf16End;
-          nb = 4;
-          break;
-        case "utf8":
-          this.fillLast = utf8FillLast;
-          nb = 4;
-          break;
-        case "base64":
-          this.text = base64Text;
-          this.end = base64End;
-          nb = 3;
-          break;
-        default:
-          this.write = simpleWrite;
-          this.end = simpleEnd;
-          return;
-      }
-      this.lastNeed = 0;
-      this.lastTotal = 0;
-      this.lastChar = Buffer2.allocUnsafe(nb);
-    }
-    StringDecoder.prototype.write = function(buf) {
-      if (buf.length === 0)
-        return "";
-      var r;
-      var i;
-      if (this.lastNeed) {
-        r = this.fillLast(buf);
-        if (r === void 0)
-          return "";
-        i = this.lastNeed;
-        this.lastNeed = 0;
-      } else {
-        i = 0;
-      }
-      if (i < buf.length)
-        return r ? r + this.text(buf, i) : this.text(buf, i);
-      return r || "";
-    };
-    StringDecoder.prototype.end = utf8End;
-    StringDecoder.prototype.text = utf8Text;
-    StringDecoder.prototype.fillLast = function(buf) {
-      if (this.lastNeed <= buf.length) {
-        buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
-        return this.lastChar.toString(this.encoding, 0, this.lastTotal);
-      }
-      buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
-      this.lastNeed -= buf.length;
-    };
-    function utf8CheckByte(byte) {
-      if (byte <= 127)
-        return 0;
-      else if (byte >> 5 === 6)
-        return 2;
-      else if (byte >> 4 === 14)
-        return 3;
-      else if (byte >> 3 === 30)
-        return 4;
-      return byte >> 6 === 2 ? -1 : -2;
-    }
-    function utf8CheckIncomplete(self2, buf, i) {
-      var j = buf.length - 1;
-      if (j < i)
-        return 0;
-      var nb = utf8CheckByte(buf[j]);
-      if (nb >= 0) {
-        if (nb > 0)
-          self2.lastNeed = nb - 1;
-        return nb;
-      }
-      if (--j < i || nb === -2)
-        return 0;
-      nb = utf8CheckByte(buf[j]);
-      if (nb >= 0) {
-        if (nb > 0)
-          self2.lastNeed = nb - 2;
-        return nb;
-      }
-      if (--j < i || nb === -2)
-        return 0;
-      nb = utf8CheckByte(buf[j]);
-      if (nb >= 0) {
-        if (nb > 0) {
-          if (nb === 2)
-            nb = 0;
-          else
-            self2.lastNeed = nb - 3;
-        }
-        return nb;
-      }
-      return 0;
-    }
-    function utf8CheckExtraBytes(self2, buf, p) {
-      if ((buf[0] & 192) !== 128) {
-        self2.lastNeed = 0;
-        return "\uFFFD";
-      }
-      if (self2.lastNeed > 1 && buf.length > 1) {
-        if ((buf[1] & 192) !== 128) {
-          self2.lastNeed = 1;
-          return "\uFFFD";
-        }
-        if (self2.lastNeed > 2 && buf.length > 2) {
-          if ((buf[2] & 192) !== 128) {
-            self2.lastNeed = 2;
-            return "\uFFFD";
-          }
-        }
-      }
-    }
-    function utf8FillLast(buf) {
-      var p = this.lastTotal - this.lastNeed;
-      var r = utf8CheckExtraBytes(this, buf, p);
-      if (r !== void 0)
-        return r;
-      if (this.lastNeed <= buf.length) {
-        buf.copy(this.lastChar, p, 0, this.lastNeed);
-        return this.lastChar.toString(this.encoding, 0, this.lastTotal);
-      }
-      buf.copy(this.lastChar, p, 0, buf.length);
-      this.lastNeed -= buf.length;
-    }
-    function utf8Text(buf, i) {
-      var total = utf8CheckIncomplete(this, buf, i);
-      if (!this.lastNeed)
-        return buf.toString("utf8", i);
-      this.lastTotal = total;
-      var end = buf.length - (total - this.lastNeed);
-      buf.copy(this.lastChar, 0, end);
-      return buf.toString("utf8", i, end);
-    }
-    function utf8End(buf) {
-      var r = buf && buf.length ? this.write(buf) : "";
-      if (this.lastNeed)
-        return r + "\uFFFD";
-      return r;
-    }
-    function utf16Text(buf, i) {
-      if ((buf.length - i) % 2 === 0) {
-        var r = buf.toString("utf16le", i);
-        if (r) {
-          var c = r.charCodeAt(r.length - 1);
-          if (c >= 55296 && c <= 56319) {
-            this.lastNeed = 2;
-            this.lastTotal = 4;
-            this.lastChar[0] = buf[buf.length - 2];
-            this.lastChar[1] = buf[buf.length - 1];
-            return r.slice(0, -1);
-          }
-        }
-        return r;
-      }
-      this.lastNeed = 1;
-      this.lastTotal = 2;
-      this.lastChar[0] = buf[buf.length - 1];
-      return buf.toString("utf16le", i, buf.length - 1);
-    }
-    function utf16End(buf) {
-      var r = buf && buf.length ? this.write(buf) : "";
-      if (this.lastNeed) {
-        var end = this.lastTotal - this.lastNeed;
-        return r + this.lastChar.toString("utf16le", 0, end);
-      }
-      return r;
-    }
-    function base64Text(buf, i) {
-      var n = (buf.length - i) % 3;
-      if (n === 0)
-        return buf.toString("base64", i);
-      this.lastNeed = 3 - n;
-      this.lastTotal = 3;
-      if (n === 1) {
-        this.lastChar[0] = buf[buf.length - 1];
-      } else {
-        this.lastChar[0] = buf[buf.length - 2];
-        this.lastChar[1] = buf[buf.length - 1];
-      }
-      return buf.toString("base64", i, buf.length - n);
-    }
-    function base64End(buf) {
-      var r = buf && buf.length ? this.write(buf) : "";
-      if (this.lastNeed)
-        return r + this.lastChar.toString("base64", 0, 3 - this.lastNeed);
-      return r;
-    }
-    function simpleWrite(buf) {
-      return buf.toString(this.encoding);
-    }
-    function simpleEnd(buf) {
-      return buf && buf.length ? this.write(buf) : "";
-    }
-  }
-});
-
 // lib/internal/streams/from.js
 var require_from = __commonJS({
   "lib/internal/streams/from.js"(exports, module) {
@@ -2985,7 +2129,6 @@ var require_from = __commonJS({
     var process = require_browser2();
     var { PromisePrototypeThen, SymbolAsyncIterator, SymbolIterator } = require_primordials();
     var { Buffer: Buffer2 } = require_buffer();
-    var { ERR_INVALID_ARG_TYPE, ERR_STREAM_NULL_VALUES } = require_errors().codes;
     function from(Readable, iterable, opts) {
       let iterator;
       if (typeof iterable === "string" || iterable instanceof Buffer2) {
@@ -3097,25 +2240,14 @@ var require_readable = __commonJS({
     var { Buffer: Buffer2 } = require_buffer();
     var { addAbortSignal } = require_add_abort_signal();
     var eos = require_end_of_stream();
-    var debug = require_util().debuglog("stream", (fn) => {
+    var debug = debuglog("stream", (fn) => {
       debug = fn;
     });
     var BufferList = require_buffer_list();
     var destroyImpl = require_destroy();
     var { getHighWaterMark, getDefaultHighWaterMark } = require_state();
-    var {
-      aggregateTwoErrors,
-      codes: {
-        ERR_INVALID_ARG_TYPE,
-        ERR_METHOD_NOT_IMPLEMENTED,
-        ERR_OUT_OF_RANGE,
-        ERR_STREAM_PUSH_AFTER_EOF,
-        ERR_STREAM_UNSHIFT_AFTER_END_EVENT
-      }
-    } = require_errors();
     var { validateObject } = require_validators();
     var kPaused = Symbol2("kPaused");
-    var { StringDecoder } = require_string_decoder();
     var from = require_from();
     ObjectSetPrototypeOf(Readable.prototype, Stream.prototype);
     ObjectSetPrototypeOf(Readable, Stream);
@@ -4048,17 +3180,6 @@ var require_writable = __commonJS({
     var destroyImpl = require_destroy();
     var { addAbortSignal } = require_add_abort_signal();
     var { getHighWaterMark, getDefaultHighWaterMark } = require_state();
-    var {
-      ERR_INVALID_ARG_TYPE,
-      ERR_METHOD_NOT_IMPLEMENTED,
-      ERR_MULTIPLE_CALLBACK,
-      ERR_STREAM_CANNOT_PIPE,
-      ERR_STREAM_DESTROYED,
-      ERR_STREAM_ALREADY_FINISHED,
-      ERR_STREAM_NULL_VALUES,
-      ERR_STREAM_WRITE_AFTER_END,
-      ERR_UNKNOWN_ENCODING
-    } = require_errors().codes;
     var { errorOrDestroy } = destroyImpl;
     ObjectSetPrototypeOf(Writable.prototype, Stream.prototype);
     ObjectSetPrototypeOf(Writable, Stream);
@@ -4683,14 +3804,9 @@ var require_duplexify = __commonJS({
       isDuplexNodeStream
     } = require_utils();
     var eos = require_end_of_stream();
-    var {
-      AbortError,
-      codes: { ERR_INVALID_ARG_TYPE, ERR_INVALID_RETURN_VALUE }
-    } = require_errors();
     var { destroyer } = require_destroy();
     var Duplex = require_duplex();
     var Readable = require_readable();
-    var { createDeferredPromise } = require_util();
     var from = require_from();
     var Blob = globalThis.Blob || bufferModule.Blob;
     var isBlob = typeof Blob !== "undefined" ? function isBlob2(b) {
@@ -5127,7 +4243,6 @@ var require_transform = __commonJS({
     "use strict";
     var { ObjectSetPrototypeOf, Symbol: Symbol2 } = require_primordials();
     module.exports = Transform;
-    var { ERR_METHOD_NOT_IMPLEMENTED } = require_errors().codes;
     var Duplex = require_duplex();
     var { getHighWaterMark } = require_state();
     ObjectSetPrototypeOf(Transform.prototype, Duplex.prototype);
@@ -5252,20 +4367,8 @@ var require_pipeline = __commonJS({
     var process = require_browser2();
     var { ArrayIsArray, Promise: Promise2, SymbolAsyncIterator } = require_primordials();
     var eos = require_end_of_stream();
-    var { once } = require_util();
     var destroyImpl = require_destroy();
     var Duplex = require_duplex();
-    var {
-      aggregateTwoErrors,
-      codes: {
-        ERR_INVALID_ARG_TYPE,
-        ERR_INVALID_RETURN_VALUE,
-        ERR_MISSING_ARGS,
-        ERR_STREAM_DESTROYED,
-        ERR_STREAM_PREMATURE_CLOSE
-      },
-      AbortError
-    } = require_errors();
     var { validateFunction, validateAbortSignal } = require_validators();
     var { isIterable, isReadable, isReadableNodeStream, isNodeStream } = require_utils();
     var PassThrough;
@@ -5590,10 +4693,6 @@ var require_compose = __commonJS({
     var Duplex = require_duplex();
     var { destroyer } = require_destroy();
     var { isNodeStream, isReadable, isWritable } = require_utils();
-    var {
-      AbortError,
-      codes: { ERR_INVALID_ARG_VALUE, ERR_MISSING_ARGS }
-    } = require_errors();
     module.exports = function compose(...streams) {
       if (streams.length === 0) {
         throw new ERR_MISSING_ARGS("streams");
@@ -5763,13 +4862,7 @@ var require_stream = __commonJS({
   "lib/stream.js"(exports, module) {
     var { Buffer: Buffer2 } = require_buffer();
     var { ObjectDefineProperty, ObjectKeys, ReflectApply } = require_primordials();
-    var {
-      promisify: { custom: customPromisify }
-    } = require_util();
     var { streamReturningOperators, promiseReturningOperators } = require_operators();
-    var {
-      codes: { ERR_ILLEGAL_CONSTRUCTOR }
-    } = require_errors();
     var compose = require_compose();
     var { pipeline } = require_pipeline();
     var { destroyer } = require_destroy();
@@ -5851,14 +4944,14 @@ var require_stream = __commonJS({
         return promises;
       }
     });
-    ObjectDefineProperty(pipeline, customPromisify, {
+    ObjectDefineProperty(pipeline, promisify, {
       __proto__: null,
       enumerable: true,
       get() {
         return promises.pipeline;
       }
     });
-    ObjectDefineProperty(eos, customPromisify, {
+    ObjectDefineProperty(eos, promisify, {
       __proto__: null,
       enumerable: true,
       get() {
@@ -5874,41 +4967,6 @@ var require_stream = __commonJS({
     };
   }
 });
-
-// lib/ours/browser.js
-var require_browser3 = __commonJS({
-  "lib/ours/browser.js"(exports, module) {
-    var CustomStream = require_stream();
-    var promises = require_promises();
-    var originalDestroy = CustomStream.Readable.destroy;
-    module.exports = CustomStream.Readable;
-    module.exports._uint8ArrayToBuffer = CustomStream._uint8ArrayToBuffer;
-    module.exports._isUint8Array = CustomStream._isUint8Array;
-    module.exports.isDisturbed = CustomStream.isDisturbed;
-    module.exports.isErrored = CustomStream.isErrored;
-    module.exports.isReadable = CustomStream.isReadable;
-    module.exports.Readable = CustomStream.Readable;
-    module.exports.Writable = CustomStream.Writable;
-    module.exports.Duplex = CustomStream.Duplex;
-    module.exports.Transform = CustomStream.Transform;
-    module.exports.PassThrough = CustomStream.PassThrough;
-    module.exports.addAbortSignal = CustomStream.addAbortSignal;
-    module.exports.finished = CustomStream.finished;
-    module.exports.destroy = CustomStream.destroy;
-    module.exports.destroy = originalDestroy;
-    module.exports.pipeline = CustomStream.pipeline;
-    module.exports.compose = CustomStream.compose;
-    Object.defineProperty(CustomStream, "promises", {
-      configurable: true,
-      enumerable: true,
-      get() {
-        return promises;
-      }
-    });
-    module.exports.Stream = CustomStream.Stream;
-    module.exports.default = module.exports;
-  }
-});
 /* End esm.sh bundle */
 
 // The following code implements Readable.fromWeb(), Writable.fromWeb(), and
@@ -5916,12 +4974,6 @@ var require_browser3 = __commonJS({
 // readable-stream module yet. This can be removed once the following upstream
 // issue is resolved: https://github.com/nodejs/readable-stream/issues/482
 
-import {
-  AbortError,
-  ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
-  ERR_STREAM_PREMATURE_CLOSE,
-} from "ext:deno_node/internal/errors.ts";
 import { destroy } from "ext:deno_node/internal/streams/destroy.mjs";
 import finished from "ext:deno_node/internal/streams/end-of-stream.mjs";
 import {
@@ -5931,7 +4983,6 @@ import {
   isWritable,
   isWritableEnded,
 } from "ext:deno_node/internal/streams/utils.mjs";
-import { createDeferredPromise, kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { validateBoolean, validateObject } from "ext:deno_node/internal/validators.mjs";
 
 const CustomStream = require_stream();
