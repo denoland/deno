@@ -434,7 +434,7 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
         // Do a regular copy. fcopyfile() is an overkill for < 128KB
         // files.
         let mut buf = [0u8; 128 * 1024];
-        let mut from_file = fs::File::open(&from)?;
+        let mut from_file = fs::File::open(from)?;
         let perm = from_file.metadata()?.permissions();
 
         let mut to_file = fs::OpenOptions::new()
@@ -443,7 +443,7 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
           .write(true)
           .create(true)
           .truncate(true)
-          .open(&to)?;
+          .open(to)?;
         let writer_metadata = to_file.metadata()?;
         if writer_metadata.is_file() {
           // Set the correct file permissions, in case the file already existed.

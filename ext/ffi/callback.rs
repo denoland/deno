@@ -6,7 +6,6 @@ use crate::FfiPermissions;
 use crate::FfiState;
 use crate::ForeignFunction;
 use crate::PendingFfiAsyncWork;
-use crate::LOCAL_ISOLATE_POINTER;
 use crate::MAX_SAFE_INTEGER;
 use crate::MIN_SAFE_INTEGER;
 use deno_core::error::AnyError;
@@ -30,9 +29,18 @@ use std::pin::Pin;
 use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::sync::atomic;
+use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::sync_channel;
 use std::task::Poll;
 use std::task::Waker;
+
+static THREAD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+thread_local! {
+  static LOCAL_THREAD_ID: RefCell<u32> = RefCell::new(0);
+}
+
 #[derive(Clone)]
 pub struct PtrSymbol {
   pub cif: libffi::middle::Cif,
@@ -81,26 +89,16 @@ impl Resource for UnsafeCallbackResource {
 
   fn close(self: Rc<Self>) {
     self.cancel.cancel();
-    // SAFETY: This drops the closure and the callback info associated with it.
-    // Any retained function pointers to the closure become dangling pointers.
-    // It is up to the user to know that it is safe to call the `close()` on the
-    // UnsafeCallback instance.
-    unsafe {
-      let info = Box::from_raw(self.info);
-      let isolate = info.isolate.as_mut().unwrap();
-      let _ = v8::Global::from_raw(isolate, info.callback);
-      let _ = v8::Global::from_raw(isolate, info.context);
-    }
   }
 }
 
 struct CallbackInfo {
-  pub parameters: Vec<NativeType>,
-  pub result: NativeType,
   pub async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
-  pub isolate: *mut v8::Isolate,
+  pub parameters: Box<[NativeType]>,
+  pub result: NativeType,
+  pub thread_id: u32,
   pub waker: Option<Waker>,
 }
 
@@ -122,8 +120,8 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &CallbackInfo,
 ) {
-  LOCAL_ISOLATE_POINTER.with(|s| {
-    if ptr::eq(*s.borrow(), info.isolate) {
+  LOCAL_THREAD_ID.with(|s| {
+    if *s.borrow() == info.thread_id {
       // Own isolate thread, okay to call directly
       do_ffi_callback(cif, info, result, args);
     } else {
@@ -155,9 +153,6 @@ unsafe fn do_ffi_callback(
 ) {
   let callback: NonNull<v8::Function> = info.callback;
   let context: NonNull<v8::Context> = info.context;
-  let isolate: *mut v8::Isolate = info.isolate;
-  let isolate = &mut *isolate;
-  let callback = v8::Global::from_raw(isolate, callback);
   let context = std::mem::transmute::<
     NonNull<v8::Context>,
     v8::Local<v8::Context>,
@@ -174,7 +169,10 @@ unsafe fn do_ffi_callback(
   // refer the same `let bool_value`.
   let mut cb_scope = v8::CallbackScope::new(context);
   let scope = &mut v8::HandleScope::new(&mut cb_scope);
-  let func = callback.open(scope);
+  let func = std::mem::transmute::<
+    NonNull<v8::Function>,
+    v8::Local<v8::Function>,
+  >(callback);
   let result = result as *mut c_void;
   let vals: &[*const c_void] =
     std::slice::from_raw_parts(args, info.parameters.len());
@@ -267,7 +265,6 @@ unsafe fn do_ffi_callback(
 
   let recv = v8::undefined(scope);
   let call_result = func.call(scope, recv.into(), &params);
-  std::mem::forget(callback);
 
   if call_result.is_none() {
     // JS function threw an exception. Set the return value to zero and return.
@@ -322,17 +319,6 @@ unsafe fn do_ffi_callback(
         value.boolean_value(scope)
       };
       *(result as *mut bool) = value;
-    }
-    NativeType::I32 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        value.value() as i32
-      } else {
-        // Fallthrough, probably UB.
-        value
-          .int32_value(scope)
-          .expect("Unable to deserialize result parameter.")
-      };
-      *(result as *mut i32) = value;
     }
     NativeType::F32 => {
       let value = if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
@@ -395,7 +381,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut *mut c_void) = pointer;
     }
     NativeType::I8 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
         value.value() as i8
       } else {
         // Fallthrough, essentially UB.
@@ -406,7 +392,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut i8) = value;
     }
     NativeType::U8 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
         value.value() as u8
       } else {
         // Fallthrough, essentially UB.
@@ -417,7 +403,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut u8) = value;
     }
     NativeType::I16 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
         value.value() as i16
       } else {
         // Fallthrough, essentially UB.
@@ -428,7 +414,7 @@ unsafe fn do_ffi_callback(
       *(result as *mut i16) = value;
     }
     NativeType::U16 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      let value = if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
         value.value() as u16
       } else {
         // Fallthrough, essentially UB.
@@ -438,9 +424,20 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut u16) = value;
     }
+    NativeType::I32 => {
+      let value = if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
+        value.value()
+      } else {
+        // Fallthrough, essentially UB.
+        value
+          .int32_value(scope)
+          .expect("Unable to deserialize result parameter.")
+      };
+      *(result as *mut i32) = value;
+    }
     NativeType::U32 => {
-      let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        value.value() as u32
+      let value = if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
+        value.value()
       } else {
         // Fallthrough, essentially UB.
         value
@@ -449,21 +446,25 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut u32) = value;
     }
-    NativeType::I64 => {
+    NativeType::I64 | NativeType::ISize => {
       if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut i64) = value.i64_value().0;
-      } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        *(result as *mut i64) = value.value();
+      } else if let Ok(value) = v8::Local::<v8::Int32>::try_from(value) {
+        *(result as *mut i64) = value.value() as i64;
+      } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
+        *(result as *mut i64) = value.value() as i64;
       } else {
         *(result as *mut i64) = value
           .integer_value(scope)
           .expect("Unable to deserialize result parameter.");
       }
     }
-    NativeType::U64 => {
+    NativeType::U64 | NativeType::USize => {
       if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut u64) = value.u64_value().0;
-      } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
+      } else if let Ok(value) = v8::Local::<v8::Uint32>::try_from(value) {
+        *(result as *mut u64) = value.value() as u64;
+      } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
         *(result as *mut u64) = value.value() as u64;
       } else {
         *(result as *mut u64) = value
@@ -503,9 +504,6 @@ unsafe fn do_ffi_callback(
     }
     NativeType::Void => {
       // nop
-    }
-    _ => {
-      unreachable!();
     }
   };
 }
@@ -555,12 +553,20 @@ where
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
 
-  let isolate: *mut v8::Isolate = &mut *scope as &mut v8::Isolate;
-  LOCAL_ISOLATE_POINTER.with(|s| {
-    if s.borrow().is_null() {
-      s.replace(isolate);
+  let thread_id: u32 = LOCAL_THREAD_ID.with(|s| {
+    let value = *s.borrow();
+    if value == 0 {
+      let res = THREAD_ID_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
+      s.replace(res);
+      res
+    } else {
+      value
     }
   });
+
+  if thread_id == 0 {
+    panic!("Isolate ID counter overflowed u32");
+  }
 
   let async_work_sender =
     state.borrow_mut::<FfiState>().async_work_sender.clone();
@@ -569,12 +575,12 @@ where
   let context = v8::Global::new(scope, current_context).into_raw();
 
   let info: *mut CallbackInfo = Box::leak(Box::new(CallbackInfo {
-    parameters: args.parameters.clone(),
-    result: args.result.clone(),
     async_work_sender,
     callback,
     context,
-    isolate,
+    parameters: args.parameters.clone().into(),
+    result: args.result.clone(),
+    thread_id,
     waker: None,
   }));
   let cif = Cif::new(
@@ -606,4 +612,25 @@ where
   let array_value: v8::Local<v8::Value> = array.into();
 
   Ok(array_value.into())
+}
+
+#[op(v8)]
+pub fn op_ffi_unsafe_callback_close(
+  state: &mut OpState,
+  scope: &mut v8::HandleScope,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  // SAFETY: This drops the closure and the callback info associated with it.
+  // Any retained function pointers to the closure become dangling pointers.
+  // It is up to the user to know that it is safe to call the `close()` on the
+  // UnsafeCallback instance.
+  unsafe {
+    let callback_resource =
+      state.resource_table.take::<UnsafeCallbackResource>(rid)?;
+    let info = Box::from_raw(callback_resource.info);
+    let _ = v8::Global::from_raw(scope, info.callback);
+    let _ = v8::Global::from_raw(scope, info.context);
+    callback_resource.close();
+  }
+  Ok(())
 }
