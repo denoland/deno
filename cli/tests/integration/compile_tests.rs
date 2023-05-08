@@ -677,30 +677,40 @@ fn workers_basic() {
 
 #[test]
 fn workers_not_in_module_map() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
+  let context = TestContextBuilder::for_npm()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
   let exe = if cfg!(windows) {
-    dir.path().join("not_in_module_map.exe")
+    temp_dir.path().join("not_in_module_map.exe")
   } else {
-    dir.path().join("not_in_module_map")
+    temp_dir.path().join("not_in_module_map")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg(util::testdata_path().join("./compile/workers/not_in_module_map.ts"))
-    .output()
-    .unwrap();
-  assert!(output.status.success());
+  let main_path =
+    util::testdata_path().join("./compile/workers/not_in_module_map.ts");
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      &main_path.to_string_lossy(),
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
-  assert!(!output.status.success());
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.starts_with(concat!(
-    "error: Uncaught (in worker \"\") Module not found\n",
-    "error: Uncaught (in promise) Error: Unhandled error in child worker.\n"
-  )));
+  let output = context
+    .new_command()
+    .command_name(exe.to_string_lossy())
+    .env("NO_COLOR", "")
+    .run();
+  output.assert_exit_code(1);
+  output.assert_matches_text(concat!(
+    "error: Uncaught (in worker \"\") Module not found: [WILDCARD]",
+    "error: Uncaught (in promise) Error: Unhandled error in child worker.\n[WILDCARD]"
+  ));
 }
 
 #[test]
