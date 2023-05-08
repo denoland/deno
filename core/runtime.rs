@@ -833,7 +833,7 @@ impl JsRuntime {
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops, apply middlware & override disabled ops
-    exts
+    let ops: Vec<_> = exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
@@ -841,7 +841,37 @@ impl JsRuntime {
         name: d.name,
         ..macroware(d)
       })
-      .collect()
+      .collect();
+
+    // In debug build verify there are no duplicate ops.
+    #[cfg(debug_assertions)]
+    {
+      let mut count_by_name = HashMap::new();
+
+      for op in ops.iter() {
+        count_by_name
+          .entry(&op.name)
+          .or_insert(vec![])
+          .push(op.name.to_string());
+      }
+
+      let mut duplicate_ops = vec![];
+      for (op_name, _count) in
+        count_by_name.iter().filter(|(_k, v)| v.len() > 1)
+      {
+        duplicate_ops.push(op_name.to_string());
+      }
+      if !duplicate_ops.is_empty() {
+        let mut msg = "Found ops with duplicate names:\n".to_string();
+        for op_name in duplicate_ops {
+          msg.push_str(&format!("  - {}\n", op_name));
+        }
+        msg.push_str("Op names need to be unique.");
+        panic!("{}", msg);
+      }
+    }
+
+    ops
   }
 
   /// Initializes ops of provided Extensions
@@ -4850,5 +4880,30 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       err.to_string(),
       "Cannot load extension module from external code"
     );
+  }
+
+  #[cfg(debug_assertions)]
+  #[test]
+  #[should_panic(expected = "Found ops with duplicate names:")]
+  fn duplicate_op_names() {
+    mod a {
+      use super::*;
+
+      #[op]
+      fn op_test() -> Result<String, Error> {
+        Ok(String::from("Test"))
+      }
+    }
+
+    #[op]
+    fn op_test() -> Result<String, Error> {
+      Ok(String::from("Test"))
+    }
+
+    deno_core::extension!(test_ext, ops = [a::op_test, op_test]);
+    JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init_ops()],
+      ..Default::default()
+    });
   }
 }
