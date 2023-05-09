@@ -235,7 +235,7 @@ fn slab_insert(
 }
 
 #[op]
-pub fn op_upgrade_raw(
+pub fn op_http_upgrade_raw(
   state: &mut OpState,
   index: u32,
 ) -> Result<ResourceId, AnyError> {
@@ -310,7 +310,7 @@ pub fn op_upgrade_raw(
 }
 
 #[op]
-pub async fn op_upgrade(
+pub async fn op_http_upgrade_next(
   state: Rc<RefCell<OpState>>,
   index: u32,
   headers: Vec<(ByteString, ByteString)>,
@@ -353,7 +353,7 @@ pub async fn op_upgrade(
 }
 
 #[op(fast)]
-pub fn op_set_promise_complete(index: u32, status: u16) {
+pub fn op_http_set_promise_complete(index: u32, status: u16) {
   with_resp_mut(index, |resp| {
     // The Javascript code will never provide a status that is invalid here (see 23_response.js)
     *resp.as_mut().unwrap().status_mut() =
@@ -365,7 +365,7 @@ pub fn op_set_promise_complete(index: u32, status: u16) {
 }
 
 #[op]
-pub fn op_get_request_method_and_url(
+pub fn op_http_get_request_method_and_url(
   index: u32,
 ) -> (String, Option<String>, String, String, Option<u16>) {
   // TODO(mmastrac): Passing method can be optimized
@@ -393,7 +393,10 @@ pub fn op_get_request_method_and_url(
 }
 
 #[op]
-pub fn op_get_request_header(index: u32, name: String) -> Option<ByteString> {
+pub fn op_http_get_request_header(
+  index: u32,
+  name: String,
+) -> Option<ByteString> {
   with_req(index, |req| {
     let value = req.headers.get(name);
     value.map(|value| value.as_bytes().into())
@@ -401,7 +404,9 @@ pub fn op_get_request_header(index: u32, name: String) -> Option<ByteString> {
 }
 
 #[op]
-pub fn op_get_request_headers(index: u32) -> Vec<(ByteString, ByteString)> {
+pub fn op_http_get_request_headers(
+  index: u32,
+) -> Vec<(ByteString, ByteString)> {
   with_req(index, |req| {
     let headers = &req.headers;
     let mut vec = Vec::with_capacity(headers.len());
@@ -436,7 +441,10 @@ pub fn op_get_request_headers(index: u32) -> Vec<(ByteString, ByteString)> {
 }
 
 #[op(fast)]
-pub fn op_read_request_body(state: &mut OpState, index: u32) -> ResourceId {
+pub fn op_http_read_request_body(
+  state: &mut OpState,
+  index: u32,
+) -> ResourceId {
   let incoming = with_req_body_mut(index, |body| body.take().unwrap());
   let body_resource = Rc::new(HttpRequestBody::new(incoming));
   let res = state.resource_table.add_rc(body_resource.clone());
@@ -447,7 +455,7 @@ pub fn op_read_request_body(state: &mut OpState, index: u32) -> ResourceId {
 }
 
 #[op(fast)]
-pub fn op_set_response_header(index: u32, name: &str, value: &str) {
+pub fn op_http_set_response_header(index: u32, name: &str, value: &str) {
   with_resp_mut(index, |resp| {
     let resp_headers = resp.as_mut().unwrap().headers_mut();
     // These are valid latin-1 strings
@@ -458,7 +466,7 @@ pub fn op_set_response_header(index: u32, name: &str, value: &str) {
 }
 
 #[op]
-pub fn op_set_response_headers(
+pub fn op_http_set_response_headers(
   index: u32,
   headers: Vec<(ByteString, ByteString)>,
 ) {
@@ -476,7 +484,7 @@ pub fn op_set_response_headers(
 }
 
 #[op(fast)]
-pub fn op_set_response_body_resource(
+pub fn op_http_set_response_body_resource(
   state: &mut OpState,
   index: u32,
   stream_rid: ResourceId,
@@ -502,7 +510,7 @@ pub fn op_set_response_body_resource(
 }
 
 #[op(fast)]
-pub fn op_set_response_body_stream(
+pub fn op_http_set_response_body_stream(
   state: &mut OpState,
   index: u32,
 ) -> Result<ResourceId, AnyError> {
@@ -521,7 +529,7 @@ pub fn op_set_response_body_stream(
 }
 
 #[op(fast)]
-pub fn op_set_response_body_text(index: u32, text: String) {
+pub fn op_http_set_response_body_text(index: u32, text: String) {
   if !text.is_empty() {
     with_resp_mut(index, move |response| {
       response
@@ -534,7 +542,7 @@ pub fn op_set_response_body_text(index: u32, text: String) {
 }
 
 #[op(fast)]
-pub fn op_set_response_body_bytes(index: u32, buffer: &[u8]) {
+pub fn op_http_set_response_body_bytes(index: u32, buffer: &[u8]) {
   if !buffer.is_empty() {
     with_resp_mut(index, |response| {
       response
@@ -759,7 +767,7 @@ impl Drop for HttpJoinHandle {
 }
 
 #[op(v8)]
-pub fn op_serve_http(
+pub fn op_http_serve(
   state: Rc<RefCell<OpState>>,
   listener_rid: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError> {
@@ -814,7 +822,7 @@ pub fn op_serve_http(
 }
 
 #[op(v8)]
-pub fn op_serve_http_on(
+pub fn op_http_serve_on(
   state: Rc<RefCell<OpState>>,
   conn: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError> {
