@@ -755,6 +755,11 @@ function discoverTestsToRun(
 function partitionTests(tests: TestToRun[]): TestToRun[][] {
   const testsByKey: { [key: string]: TestToRun[] } = {};
   for (const test of tests) {
+    // Run all WebCryptoAPI tests in parallel
+    if (test.path.includes("/WebCryptoAPI")) {
+      testsByKey[test] = [test];
+      continue;
+    }
     // Paths looks like: /fetch/corb/img-html-correctly-labeled.sub-ref.html
     const key = test.path.split("/")[1];
     if (!(key in testsByKey)) {
