@@ -844,6 +844,55 @@ async fn run_watch_load_unload_events() {
   check_alive_then_kill(child);
 }
 
+#[tokio::test]
+async fn run_watch_reset_env() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.ts");
+  write(&file_to_watch, r#"
+    Deno.env.set("ADDED", "added");
+    Deno.env.set("ORIGINAL", "modified");
+    Deno.env.delete("REMAIN");
+    console.log("done");
+  "#).unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--allow-env")
+    .arg("--watch")
+    .arg("--log-level")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .env("REMAIN", "remain")
+    .env("ORIGINAL", "original")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("done", &mut stdout_lines).await;
+
+  // Make sure the watcher actually restarts and works fine with the proper language
+  wait_for_watcher("file_to_watch.ts", &mut stderr_lines).await;
+  wait_contains("Process finished", &mut stderr_lines).await;
+
+  write(&file_to_watch, r#"
+    console.log("ADDED='" + Deno.env.get("ADDED") + "'");
+    console.log("ORIGINAL='" + Deno.env.get("ORIGINAL") + "'");
+    console.log("REMAIN='" + Deno.env.get("REMAIN") + "'");
+  "#).unwrap();
+
+  wait_contains("Restarting!", &mut stderr_lines).await;
+  wait_contains("ADDED='undefined'", &mut stdout_lines).await;
+  wait_contains("ORIGINAL='original'", &mut stdout_lines).await;
+  wait_contains("REMAIN='remain'", &mut stdout_lines).await;
+  wait_contains("Process finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[tokio::test]
 async fn run_watch_not_exit() {
