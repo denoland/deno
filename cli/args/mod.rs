@@ -1304,6 +1304,16 @@ fn has_flag_env_var(name: &str) -> bool {
   matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
 }
 
+pub fn npm_pkg_req_ref_to_binary_command(
+  req_ref: &NpmPackageReqReference,
+) -> String {
+  let binary_name = req_ref
+    .sub_path
+    .as_deref()
+    .unwrap_or(req_ref.req.name.as_str());
+  binary_name.to_string()
+}
+
 #[cfg(test)]
 mod test {
   use super::*;

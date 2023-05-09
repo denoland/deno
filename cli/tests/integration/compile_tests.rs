@@ -924,6 +924,86 @@ testing[WILDCARD]this
 
 #[test]
 fn compile_npm_file_system() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "compile/npm_fs/main.ts",
+    output_file: "compile/npm_fs/main.out",
+    node_modules_dir: true,
+    input_name: Some("binary"),
+    expected_name: "binary",
+    run_args: vec![],
+  });
+}
+
+#[test]
+fn compile_npm_bin_esm() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:@denotest/bin/cli-esm",
+    run_args: vec!["this", "is", "a", "test"],
+    output_file: "npm/deno_run_esm.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cli-esm",
+  });
+}
+
+#[test]
+fn compile_npm_bin_cjs() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:@denotest/bin/cli-cjs",
+    run_args: vec!["this", "is", "a", "test"],
+    output_file: "npm/deno_run_cjs.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cli-cjs",
+  });
+}
+
+#[test]
+fn compile_npm_cowsay() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:cowsay@1.5.0",
+    run_args: vec!["Hello"],
+    output_file: "npm/deno_run_cowsay.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cowsay",
+  });
+}
+
+#[test]
+fn compile_npm_cowsay_explicit() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:cowsay@1.5.0/cowsay",
+    run_args: vec!["Hello"],
+    output_file: "npm/deno_run_cowsay.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cowsay",
+  });
+}
+
+#[test]
+fn compile_npm_cowthink() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:cowsay@1.5.0/cowthink",
+    run_args: vec!["Hello"],
+    output_file: "npm/deno_run_cowthink.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cowthink",
+  });
+}
+
+struct RunNpmBinCompileOptions<'a> {
+  input_specifier: &'a str,
+  output_file: &'a str,
+  node_modules_dir: bool,
+  input_name: Option<&'a str>,
+  expected_name: &'a str,
+  run_args: Vec<&'a str>,
+}
+
+fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
     .use_temp_cwd()
@@ -931,33 +1011,47 @@ fn compile_npm_file_system() {
 
   let temp_dir = context.temp_dir();
   let testdata_path = context.testdata_path();
-  let main_path = testdata_path.join("compile/npm_fs/main.ts");
+  let main_specifier = if opts.input_specifier.starts_with("npm:") {
+    opts.input_specifier.to_string()
+  } else {
+    testdata_path
+      .join(opts.input_specifier)
+      .to_string_lossy()
+      .to_string()
+  };
+
+  let mut args = vec![
+    "compile".to_string(),
+    "-A".to_string(),
+    "--unstable".to_string(),
+  ];
+
+  if opts.node_modules_dir {
+    args.push("--node-modules-dir".to_string());
+  }
+
+  if let Some(bin_name) = opts.input_name {
+    args.push("--output".to_string());
+    args.push(bin_name.to_string());
+  }
+
+  args.push(main_specifier);
 
   // compile
-  let output = context
-    .new_command()
-    .args_vec([
-      "compile",
-      "-A",
-      "--node-modules-dir",
-      "--unstable",
-      "--output",
-      "binary",
-      &main_path.to_string_lossy(),
-    ])
-    .run();
+  let output = context.new_command().args_vec(args).run();
   output.assert_exit_code(0);
   output.skip_output_check();
 
   // run
   let binary_path = if cfg!(windows) {
-    temp_dir.path().join("binary.exe")
+    temp_dir.path().join(format!("{}.exe", opts.expected_name))
   } else {
-    temp_dir.path().join("binary")
+    temp_dir.path().join(opts.expected_name)
   };
   let output = context
     .new_command()
     .command_name(binary_path.to_string_lossy())
+    .args_vec(opts.run_args)
     .run();
-  output.assert_matches_file("compile/npm_fs/main.out");
+  output.assert_matches_file(opts.output_file);
 }

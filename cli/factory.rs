@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -667,11 +668,8 @@ impl CliFactory {
           if let Ok(pkg_ref) = NpmPackageReqReference::from_str(&flags.script) {
             // if the user ran a binary command, we'll need to set process.argv[0]
             // to be the name of the binary command instead of deno
-            let binary_name = pkg_ref
-              .sub_path
-              .as_deref()
-              .unwrap_or(pkg_ref.req.name.as_str());
-            maybe_binary_command_name = Some(binary_name.to_string());
+            maybe_binary_command_name =
+              Some(npm_pkg_req_ref_to_binary_command(&pkg_ref));
           }
         }
         maybe_binary_command_name

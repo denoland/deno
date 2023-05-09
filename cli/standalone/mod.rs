@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::get_root_cert_store;
+use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::PackageJsonDepsProvider;
@@ -414,10 +415,13 @@ pub async fn run(
       inspect_brk: false,
       inspect_wait: false,
       is_inspecting: false,
-      is_npm_main: false,
+      is_npm_main: main_module.scheme() == "npm",
       location: metadata.location,
-      // todo(dsherret): support a npm binary command being compiled
-      maybe_binary_npm_command_name: None,
+      maybe_binary_npm_command_name: NpmPackageReqReference::from_specifier(
+        main_module,
+      )
+      .ok()
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
       origin_data_folder_path: None,
       seed: metadata.seed,
       unsafely_ignore_certificate_errors: metadata
