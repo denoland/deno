@@ -13,7 +13,7 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { inspect, format } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
   codeMap,
@@ -2065,7 +2065,7 @@ export class ERR_UNKNOWN_CREDENTIAL extends NodeError {
 }
 export class ERR_UNKNOWN_ENCODING extends NodeTypeError {
   constructor(x: string) {
-    super("ERR_UNKNOWN_ENCODING", `Unknown encoding: ${x}`);
+    super("ERR_UNKNOWN_ENCODING", format('Unknown encoding: %s', x));
   }
 }
 export class ERR_UNKNOWN_FILE_EXTENSION extends NodeTypeError {
