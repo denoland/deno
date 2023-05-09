@@ -4983,6 +4983,7 @@ import {
   isWritable,
   isWritableEnded,
 } from "ext:deno_node/internal/streams/utils.mjs";
+import { WritableStream, ReadableStream } from "ext:deno_node/stream/web.ts";
 import { validateBoolean, validateObject } from "ext:deno_node/internal/validators.mjs";
 
 const CustomStream = require_stream();
@@ -5004,6 +5005,10 @@ export { finished };
 
 function isWritableStream(object) {
   return object instanceof WritableStream;
+}
+
+function isReadableStream(object) {
+  return object instanceof ReadableStream;
 }
 
 Readable.fromWeb = function (
