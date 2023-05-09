@@ -165,7 +165,8 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
-  pub(crate) pending_ops: FuturesUnordered<OpCall>,
+  // pub(crate) pending_ops: FuturesUnordered<OpCall>,
+  pub(crate) pending_ops_per_realm: Vec<FuturesUnordered<OpCall>>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -341,7 +342,8 @@ impl JsRuntime {
       has_tick_scheduled: false,
       source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
-      pending_ops: FuturesUnordered::new(),
+      // pending_ops: FuturesUnordered::new(),
+      pending_ops_per_realm: vec![FuturesUnordered::new()],
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -618,11 +620,11 @@ impl JsRuntime {
         })),
       );
 
-      self
-        .state
-        .borrow_mut()
-        .known_realms
-        .push(v8::Weak::new(scope, context));
+      {
+        let mut state = self.state.borrow_mut();
+        state.known_realms.push(v8::Weak::new(scope, context));
+        state.pending_ops_per_realm.push(FuturesUnordered::new());
+      }
 
       JsRealm::new(v8::Global::new(scope, context))
     };
@@ -1494,21 +1496,23 @@ impl EventLoopPendingState {
     module_map: &ModuleMap,
   ) -> EventLoopPendingState {
     let mut num_unrefed_ops = 0;
-
+    let mut num_pending_ops = 0;
     if state.known_realms.len() == 1 {
       let realm = state.global_realm.as_ref().unwrap();
       num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
+      num_pending_ops += state.pending_ops_per_realm[0].len();
     } else {
-      for weak_context in &state.known_realms {
+      for (idx, weak_context) in state.known_realms.iter().enumerate() {
         if let Some(context) = weak_context.to_local(scope) {
           let realm = JsRealmLocal::new(context);
           num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
+          num_pending_ops += state.pending_ops_per_realm[idx].len();
         }
       }
     }
 
     EventLoopPendingState {
-      has_pending_refed_ops: state.pending_ops.len() > num_unrefed_ops,
+      has_pending_refed_ops: num_pending_ops > num_unrefed_ops,
       has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
       has_pending_dyn_module_evaluation: !state
         .pending_dyn_mod_evaluate
@@ -2275,31 +2279,18 @@ impl JsRuntime {
       return self.do_single_realm_js_event_loop_tick(cx);
     }
 
-    // `responses_per_realm[idx]` is a vector containing the promise ID and
-    // response for all promises in realm `self.state.known_realms[idx]`.
-    let mut responses_per_realm: Vec<Vec<(PromiseId, OpResult)>> =
-      (0..num_realms).map(|_| vec![]).collect();
-
     // Now handle actual ops.
     {
       let mut state = self.state.borrow_mut();
       state.have_unpolled_ops = false;
-
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (realm_idx, promise_id, op_id, resp) = item;
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        responses_per_realm[realm_idx as usize].push((promise_id, resp));
-      }
     }
 
     // Handle responses for each realm.
     let isolate = self.v8_isolate.as_mut().unwrap();
-    for (realm_idx, responses) in responses_per_realm.into_iter().enumerate() {
+    for realm_idx in 0..num_realms {
+      let mut state = self.state.borrow_mut();
       let realm = {
-        let context = self.state.borrow().known_realms[realm_idx]
-          .to_global(isolate)
-          .unwrap();
+        let context = state.known_realms[realm_idx].to_global(isolate).unwrap();
         JsRealm::new(context)
       };
       let context_state_rc = realm.state(isolate);
@@ -2317,9 +2308,13 @@ impl JsRuntime {
       // This can handle 15 promises futures in a single batch without heap
       // allocations.
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
-        SmallVec::with_capacity(responses.len() * 2 + 2);
+        SmallVec::with_capacity(32);
 
-      for (promise_id, mut resp) in responses {
+      while let Poll::Ready(Some(item)) =
+        state.pending_ops_per_realm[realm_idx].poll_next_unpin(cx)
+      {
+        let (promise_id, op_id, mut resp) = item;
+        state.op_state.borrow().tracker.track_async_completed(op_id);
         context_state.unrefed_ops.remove(&promise_id);
         args.push(v8::Integer::new(scope, promise_id).into());
         args.push(match resp.to_v8(scope) {
@@ -2331,7 +2326,7 @@ impl JsRuntime {
       }
 
       let has_tick_scheduled =
-        v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+        v8::Boolean::new(scope, state.has_tick_scheduled);
       args.push(has_tick_scheduled.into());
 
       let js_event_loop_tick_cb_handle =
@@ -2339,6 +2334,7 @@ impl JsRuntime {
       let tc_scope = &mut v8::TryCatch::new(scope);
       let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
+      drop(state);
       drop(context_state);
       js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
 
@@ -2389,13 +2385,10 @@ impl JsRuntime {
       let realm_state_rc = state.global_realm.as_ref().unwrap().state(scope);
       let mut realm_state = realm_state_rc.borrow_mut();
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
+      while let Poll::Ready(Some(item)) =
+        state.pending_ops_per_realm[0].poll_next_unpin(cx)
       {
-        let (realm_idx, promise_id, op_id, mut resp) = item;
-        debug_assert_eq!(
-          state.known_realms[realm_idx as usize],
-          state.global_realm.as_ref().unwrap().context()
-        );
+        let (promise_id, op_id, mut resp) = item;
         realm_state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
         args.push(v8::Integer::new(scope, promise_id).into());
@@ -2459,8 +2452,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
-  state
-    .pending_ops
+  state.pending_ops_per_realm[ctx.realm_idx as usize]
     .push(OpCall::pending(ctx, promise_id, fut));
   state.have_unpolled_ops = true;
 }
@@ -2584,7 +2576,7 @@ pub fn queue_async_op<'s>(
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops.push(op_call);
+  state.pending_ops_per_realm[ctx.realm_idx as usize].push(op_call);
   state.have_unpolled_ops = true;
   None
 }
@@ -2718,7 +2710,7 @@ pub mod tests {
       let realm = runtime.global_realm();
       let isolate = runtime.v8_isolate();
       let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops.len(), 2);
+      assert_eq!(state_rc.borrow().pending_ops_per_realm[0].len(), 2);
       assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 0);
     }
     runtime
@@ -2734,7 +2726,7 @@ pub mod tests {
       let realm = runtime.global_realm();
       let isolate = runtime.v8_isolate();
       let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops.len(), 2);
+      assert_eq!(state_rc.borrow().pending_ops_per_realm[0].len(), 2);
       assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 2);
     }
     runtime
@@ -2750,7 +2742,7 @@ pub mod tests {
       let realm = runtime.global_realm();
       let isolate = runtime.v8_isolate();
       let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops.len(), 2);
+      assert_eq!(state_rc.borrow().pending_ops_per_realm[0].len(), 2);
       assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 0);
     }
   }
