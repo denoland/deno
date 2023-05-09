@@ -19,6 +19,7 @@ fn setup() -> Vec<Extension> {
           "dict.js"
         )),
       }])
+      .esm_entry_point("ext:deno_webidl_bench/setup.js")
       .build(),
   ]
 }
