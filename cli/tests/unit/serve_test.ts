@@ -1993,7 +1993,22 @@ async function makeTempFile(size: number) {
 
 const compressionTestCases = [
   { name: "Empty", length: 0, in: {}, out: {}, expect: null },
-  // { name: "EmptyAcceptGzip", length: 0, in: { "Accept-Encoding": "gzip" }, out: {}, expect: null },
+  {
+    name: "EmptyAcceptGzip",
+    length: 0,
+    in: { "Accept-Encoding": "gzip" },
+    out: {},
+    expect: null,
+  },
+  // This technically would be compressible if not for the size, however the size_hint is not implemented
+  // for FileResource and we don't currently peek ahead on resources.
+  // {
+  //   name: "EmptyAcceptGzip2",
+  //   length: 0,
+  //   in: { "Accept-Encoding": "gzip" },
+  //   out: { "Content-Type": "text/plain" },
+  //   expect: null,
+  // },
   { name: "Uncompressible", length: 1024, in: {}, out: {}, expect: null },
   {
     name: "UncompressibleAcceptGzip",

@@ -639,7 +639,6 @@ mod tests {
   }
 
   fn front_load_but_one(mut v: Vec<u8>) -> impl Iterator<Item = Vec<u8>> {
-    // Chunk the data at 90%
     let offset = v.len() - 1;
     let v2 = v.split_off(offset);
     vec![v, v2].into_iter()

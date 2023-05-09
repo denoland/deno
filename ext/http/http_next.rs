@@ -624,9 +624,13 @@ pub fn op_set_response_body_resource(
     state.resource_table.get_any(stream_rid)?
   };
 
-  set_response(index, None, move |compression| {
-    ResponseBytesInner::from_resource(compression, resource, auto_close)
-  });
+  set_response(
+    index,
+    resource.size_hint().1.map(|s| s as usize),
+    move |compression| {
+      ResponseBytesInner::from_resource(compression, resource, auto_close)
+    },
+  );
 
   Ok(())
 }
