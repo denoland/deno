@@ -32,6 +32,9 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 
 /* esm.sh - esbuild bundle(readable-stream@4.2.0) es2022 production */
+// generated with
+// $ esbuild --bundle --legal-comments=none --target=es2022 --tree-shaking=true --format=esm .
+// ... then making sure the file uses the existing ext:deno_node stuff instead of bundling it
 const __process$ = { nextTick };import __buffer$ from "ext:deno_node/buffer.ts";import __string_decoder$ from "ext:deno_node/string_decoder.ts";import __events$ from "ext:deno_node/events.ts";
 
 var __getOwnPropNames = Object.getOwnPropertyNames;
