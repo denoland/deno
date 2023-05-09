@@ -810,7 +810,7 @@ itest!(npm_specifiers_errors_no_unstable {
       "error: Using npm specifiers with deno compile requires the --unstable flag.",
       "\n\n",
       "Caused by:\n",
-      "    npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"
+      "    npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"
     )
   ),
   exit_code: 1,

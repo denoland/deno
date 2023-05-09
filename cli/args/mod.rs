@@ -557,7 +557,7 @@ struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
 
-/// Holds the resolved options of many sources used by sub commands
+/// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
