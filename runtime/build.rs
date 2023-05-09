@@ -267,6 +267,17 @@ mod startup_snapshot {
           include_str!("js/99_main.js"),
         ),
       }]);
+      ext.esm_entry_point("ext:runtime_main/js/99_main.js");
+    }
+  );
+
+  #[cfg(feature = "snapshot_from_snapshot")]
+  deno_core::extension!(
+    runtime_main,
+    deps = [runtime],
+    customizer = |ext: &mut deno_core::ExtensionBuilder| {
+      eprintln!("I am here!!!");
+      ext.esm_entry_point("ext:runtime/90_deno_ns.js");
     }
   );
 
@@ -315,7 +326,6 @@ mod startup_snapshot {
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
       deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
-      #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];
 
