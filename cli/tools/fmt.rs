@@ -28,6 +28,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
+use deno_core::task::spawn_blocking;
 use log::debug;
 use log::info;
 use log::warn;
@@ -629,7 +630,7 @@ where
   let handles = file_paths.iter().map(|file_path| {
     let f = f.clone();
     let file_path = file_path.clone();
-    tokio::task::spawn_blocking(move || f(file_path))
+    spawn_blocking(move || f(file_path))
   });
   let join_results = futures::future::join_all(handles).await;
 
