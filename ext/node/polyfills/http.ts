@@ -19,7 +19,6 @@ import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { connResetException } from "ext:deno_node/internal/errors.ts";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -229,13 +228,11 @@ class ClientRequest extends NodeWritable {
     public opts: RequestOptions,
     public cb?: (res: IncomingMessageForClient) => void,
   ) {
-    console.log("ClientRequest::constructor, cb: ", cb);
     super();
   }
 
   // deno-lint-ignore no-explicit-any
   override _write(chunk: any, _enc: string, cb: () => void) {
-    console.log("ClientRequest::_write");
     if (this.controller) {
       this.controller.enqueue(chunk);
       cb();
@@ -252,7 +249,6 @@ class ClientRequest extends NodeWritable {
   }
 
   override async _final() {
-    console.log("ClientRequest::_final");
     if (this.controller) {
       this.controller.close();
     }
@@ -297,7 +293,6 @@ class ClientRequest extends NodeWritable {
   }
 
   abort() {
-    console.log("ClientRequest::abort");
     this.destroy();
   }
 
@@ -305,7 +300,6 @@ class ClientRequest extends NodeWritable {
     body: ReadableStream | null,
     opts: RequestOptions,
   ): Promise<Buffer | ReadableStream | null> {
-    console.log("ClientRequest::_createBody");
     if (!body) return null;
     if (!opts.headers) return body;
 
@@ -328,12 +322,10 @@ class ClientRequest extends NodeWritable {
   }
 
   _createCustomClient(): Promise<Deno.HttpClient | undefined> {
-    console.log("ClientRequest::_createCustomClient");
     return Promise.resolve(undefined);
   }
 
   _createSocket(): Socket {
-    console.log("ClientRequest::_createSocket");
     // Note: Creates a dummy socket for the compatibility
     // Sometimes the libraries check some properties of socket
     // e.g. if (!response.socket.authorized) { ... }
@@ -341,7 +333,6 @@ class ClientRequest extends NodeWritable {
   }
 
   _createUrlStrFromOptions(opts: RequestOptions): string {
-    console.log("ClientRequest::_createUrlStrFromOptions");
     if (opts.href) {
       return opts.href;
     }
@@ -360,7 +351,6 @@ class ClientRequest extends NodeWritable {
   }
 
   setTimeout(timeout: number, callback?: () => void) {
-    console.log("ClientRequest::setTimeout");
     if (timeout == 0) {
       // Node's underlying Socket implementation expects a 0 value to disable the
       // existing timeout.
@@ -809,7 +799,6 @@ export function request(
 ): ClientRequest;
 // deno-lint-ignore no-explicit-any
 export function request(...args: any[]) {
-  console.log("http/request");
   let options = {};
   if (typeof args[0] === "string") {
     options = urlToHttpOptions(new URL(args.shift()));

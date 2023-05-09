@@ -21,8 +21,6 @@ export type Encodings = BinaryEncodings | TextEncodings;
 
 export function notImplemented(msg: string): never {
   const message = msg ? `Not implemented: ${msg}` : "Not implemented";
-  console.error(message);
-  Deno.exit();
   throw new Error(message);
 }
 

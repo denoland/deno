@@ -60,7 +60,6 @@ class HttpsClientRequest extends ClientRequest {
   override async _createCustomClient(): Promise<
     Deno.HttpClient | undefined
   > {
-    console.log("HttpsClientRequest:constructor/start");
     if (caCerts === null) {
       return undefined;
     }
@@ -82,7 +81,6 @@ class HttpsClientRequest extends ClientRequest {
     }
     const caCert = await Deno.readTextFile(certFilename);
     caCerts = [caCert];
-    console.log("HttpsClientRequest:constructor/end");
     return Deno.createHttpClient({ caCerts });
   }
 
@@ -108,7 +106,6 @@ export function request(
 ): HttpsClientRequest;
 // deno-lint-ignore no-explicit-any
 export function request(...args: any[]) {
-  console.log("https:request");
   let options = {};
   if (typeof args[0] === "string") {
     options = urlToHttpOptions(new URL(args.shift()));

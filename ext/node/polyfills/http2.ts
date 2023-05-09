@@ -43,25 +43,13 @@ export class Http2SecureServer {
     notImplemented("Http2SecureServer");
   }
 }
-export function createServer() {
-    notImplemented("createServer");
-}
-export function createSecureServer() {
-    notImplemented("createSecureServer");
-}
-export function connect() {
-    notImplemented("connect");
-}
+export function createServer() {}
+export function createSecureServer() {}
+export function connect() {}
 export const constants = {};
-export function getDefaultSettings() {
-    notImplemented("getDefaultSettings");
-}
-export function getPackedSettings() {
-    notImplemented("getPackedSettings");
-}
-export function getUnpackedSettings() {
-    notImplemented("getUnpackedSettings");
-}
+export function getDefaultSettings() {}
+export function getPackedSettings() {}
+export function getUnpackedSettings() {}
 export const sensitiveHeaders = Symbol("nodejs.http2.sensitiveHeaders");
 export class Http2ServerRequest {
   constructor() {
