@@ -1371,6 +1371,46 @@ async fn run_watch_reload_once() {
   check_alive_then_kill(child);
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/18960. Ensures that Deno.serve
+/// operates properly after a watch restart.
+#[tokio::test]
+async fn test_watch_serve() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_content = r#"
+      console.error("serving");
+      await Deno.serve({port: 4600, handler: () => new Response("hello")});
+    "#;
+  write(&file_to_watch, file_content).unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Listening on", &mut stdout_lines).await;
+  // Note that we start serving very quickly, so we specifically want to wait for this message
+  wait_contains(r#"Watching paths: [""#, &mut stderr_lines).await;
+
+  write(&file_to_watch, file_content).unwrap();
+
+  wait_contains("serving", &mut stderr_lines).await;
+  wait_contains("Listening on", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[tokio::test]
 async fn run_watch_dynamic_imports() {
   let t = TempDir::new();
