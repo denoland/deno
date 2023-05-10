@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -26,6 +27,44 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .extension()
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase());
+}
+
+/// TypeScript figures out the type of file based on the extension, but we take
+/// other factors into account like the file headers. The hack here is to map the
+/// specifier passed to TypeScript to a new specifier with the file extension.
+pub fn mapped_specifier_for_tsc(
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+) -> Option<String> {
+  let ext_media_type = MediaType::from_specifier(specifier);
+  if media_type != ext_media_type {
+    // we can't just add on the extension because typescript considers
+    // all .d.*.ts files as declaration files in TS 5.0+
+    if media_type != MediaType::Dts
+      && media_type == MediaType::TypeScript
+      && specifier
+        .path()
+        .split('/')
+        .last()
+        .map(|last| last.contains(".d."))
+        .unwrap_or(false)
+    {
+      let mut path_parts = specifier
+        .path()
+        .split('/')
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+      let last_part = path_parts.last_mut().unwrap();
+      *last_part = last_part.replace(".d.", "$d$");
+      let mut specifier = specifier.clone();
+      specifier.set_path(&path_parts.join("/"));
+      Some(format!("{}{}", specifier, media_type.as_ts_extension()))
+    } else {
+      Some(format!("{}{}", specifier, media_type.as_ts_extension()))
+    }
+  } else {
+    None
+  }
 }
 
 /// Attempts to convert a specifier to a file path. By default, uses the Url
@@ -67,18 +106,6 @@ pub fn specifier_to_file_path(
       "Invalid file path.\n  Specifier: {specifier}"
     ))),
   }
-}
-
-/// Ensures a specifier that will definitely be a directory has a trailing slash.
-pub fn ensure_directory_specifier(
-  mut specifier: ModuleSpecifier,
-) -> ModuleSpecifier {
-  let path = specifier.path();
-  if !path.ends_with('/') {
-    let new_path = format!("{path}/");
-    specifier.set_path(&new_path);
-  }
-  specifier
 }
 
 /// Gets the parent of this module specifier.
@@ -261,21 +288,6 @@ mod test {
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
           .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
-    }
-  }
-
-  #[test]
-  fn test_ensure_directory_specifier() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///test/");
-    run_test("file:///test/", "file:///test/");
-    run_test("file:///test/other", "file:///test/other/");
-    run_test("file:///test/other/", "file:///test/other/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        ensure_directory_specifier(ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
     }
   }
 

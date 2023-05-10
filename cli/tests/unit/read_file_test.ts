@@ -158,3 +158,29 @@ Deno.test(
     assert(data.byteLength > 0);
   },
 );
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileNotFoundErrorCode() {
+    try {
+      await Deno.readFile("definitely-not-found.json");
+    } catch (e) {
+      assertEquals(e.code, "ENOENT");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileIsDirectoryErrorCode() {
+    try {
+      await Deno.readFile("cli/tests/testdata/assets/");
+    } catch (e) {
+      if (Deno.build.os === "windows") {
+        assertEquals(e.code, "ENOENT");
+      } else {
+        assertEquals(e.code, "EISDIR");
+      }
+    }
+  },
+);

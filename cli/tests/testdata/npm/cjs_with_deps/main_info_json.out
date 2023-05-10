@@ -4,24 +4,8 @@
   ],
   "modules": [
     {
+      "kind": "esm",
       "dependencies": [
-        {
-          "specifier": "npm:chai@4.3",
-          "code": {
-            "specifier": "npm:chai@4.3",
-            "span": {
-              "start": {
-                "line": 1,
-                "character": 23
-              },
-              "end": {
-                "line": 1,
-                "character": 37
-              }
-            }
-          },
-          "npmPackage": "chai@4.3.6"
-        },
         {
           "specifier": "npm:chalk@4",
           "code": {
@@ -38,9 +22,25 @@
             }
           },
           "npmPackage": "chalk@4.1.2"
+        },
+        {
+          "specifier": "npm:chai@4.3",
+          "code": {
+            "specifier": "npm:chai@4.3",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 23
+              },
+              "end": {
+                "line": 1,
+                "character": 37
+              }
+            }
+          },
+          "npmPackage": "chai@4.3.6"
         }
       ],
-      "kind": "esm",
       "local": "[WILDCARD]main.js",
       "emit": null,
       "map": null,
@@ -49,7 +49,10 @@
       "specifier": "[WILDCARD]/main.js"
     }
   ],
-  "redirects": {},
+  "redirects": {
+    "npm:chai@4.3": "npm:chai@4.3.6",
+    "npm:chalk@4": "npm:chalk@4.1.2"
+  },
   "npmPackages": {
     "ansi-styles@4.3.0": {
       "name": "ansi-styles",

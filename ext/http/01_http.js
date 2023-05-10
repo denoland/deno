@@ -1,23 +1,28 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
+const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { InnerBody } from "internal:deno_fetch/22_body.js";
-import { Event, setEventTargetData } from "internal:deno_web/02_event.js";
-import { BlobPrototype } from "internal:deno_web/09_file.js";
+const { op_http_write } = Deno.core.generateAsyncOpHandler("op_http_write");
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { InnerBody } from "ext:deno_fetch/22_body.js";
+import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
+import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "internal:deno_fetch/23_response.js";
+} from "ext:deno_fetch/23_response.js";
 import {
-  _flash,
   fromInnerRequest,
   newInnerRequest,
-} from "internal:deno_fetch/23_request.js";
-import * as abortSignal from "internal:deno_web/03_abort_signal.js";
+  toInnerRequest,
+} from "ext:deno_fetch/23_request.js";
+import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -25,33 +30,37 @@ import {
   _protocol,
   _readyState,
   _rid,
+  _role,
   _server,
   _serverHandleIdleTimeout,
+  SERVER,
   WebSocket,
-} from "internal:deno_websocket/01_websocket.js";
-import { TcpConn, UnixConn } from "internal:deno_net/01_net.js";
-import { TlsConn } from "internal:deno_net/02_tls.js";
+} from "ext:deno_websocket/01_websocket.js";
+import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
+import { TlsConn } from "ext:deno_net/02_tls.js";
 import {
   Deferred,
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "internal:deno_web/06_streams.js";
+} from "ext:deno_web/06_streams.js";
+import { serve } from "ext:deno_http/00_serve.js";
 const {
   ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeSome,
   Error,
   ObjectPrototypeIsPrototypeOf,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
+  StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
-  StringPrototypeToLowerCase,
   StringPrototypeSplit,
-  StringPrototypeTrim,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -72,7 +81,7 @@ class HttpConn {
   // that were created during lifecycle of this request.
   // When the connection is closed these resources should be closed
   // as well.
-  managedResources = new Set();
+  managedResources = new SafeSet();
 
   constructor(rid, remoteAddr, localAddr) {
     this.#rid = rid;
@@ -128,16 +137,17 @@ class HttpConn {
     }
 
     const innerRequest = newInnerRequest(
-      () => method,
+      method,
       url,
       () => ops.op_http_headers(streamRid),
       body !== null ? new InnerBody(body) : null,
       false,
     );
-    const signal = abortSignal.newSignal();
+    innerRequest[streamRid] = streamRid;
+    const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
-      signal,
+      abortController.signal,
       "immutable",
       false,
     );
@@ -148,6 +158,7 @@ class HttpConn {
       request,
       this.#remoteAddr,
       this.#localAddr,
+      abortController,
     );
 
     return { request, respondWith };
@@ -184,6 +195,7 @@ function createRespondWith(
   request,
   remoteAddr,
   localAddr,
+  abortController,
 ) {
   return async function respondWith(resp) {
     try {
@@ -313,7 +325,7 @@ function createRespondWith(
               break;
             }
             try {
-              await core.opAsync("op_http_write", streamRid, value);
+              await op_http_write(streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -368,6 +380,7 @@ function createRespondWith(
         httpConn.close();
 
         ws[_readyState] = WebSocket.OPEN;
+        ws[_role] = SERVER;
         const event = new Event("open");
         ws.dispatchEvent(event);
 
@@ -380,6 +393,9 @@ function createRespondWith(
         }
         ws[_serverHandleIdleTimeout]();
       }
+    } catch (error) {
+      abortController.abort(error);
+      throw error;
     } finally {
       if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
         core.close(streamRid);
@@ -389,15 +405,14 @@ function createRespondWith(
 }
 
 const _ws = Symbol("[[associated_ws]]");
+const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
+const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
 function upgradeWebSocket(request, options = {}) {
+  const inner = toInnerRequest(request);
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
-    ArrayPrototypeSome(
-      StringPrototypeSplit(upgrade, ","),
-      (option) =>
-        StringPrototypeToLowerCase(StringPrototypeTrim(option)) === "websocket",
-    );
+    websocketCvf(upgrade);
   if (!upgradeHasWebSocketOption) {
     throw new TypeError(
       "Invalid Header: 'upgrade' header must contain 'websocket'",
@@ -406,11 +421,7 @@ function upgradeWebSocket(request, options = {}) {
 
   const connection = request.headers.get("connection");
   const connectionHasUpgradeOption = connection !== null &&
-    ArrayPrototypeSome(
-      StringPrototypeSplit(connection, ","),
-      (option) =>
-        StringPrototypeToLowerCase(StringPrototypeTrim(option)) === "upgrade",
-    );
+    upgradeCvf(connection);
   if (!connectionHasUpgradeOption) {
     throw new TypeError(
       "Invalid Header: 'connection' header must contain 'Upgrade'",
@@ -448,27 +459,108 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  const response = fromInnerResponse(r, "immutable");
-
   const socket = webidl.createBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
-  response[_ws] = socket;
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
   socket[_idleTimeoutTimeout] = null;
+
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeWebSocket", r, socket);
+  }
+
+  const response = fromInnerResponse(r, "immutable");
+
+  response[_ws] = socket;
 
   return { response, socket };
 }
 
 function upgradeHttp(req) {
-  if (req[_flash]) {
-    throw new TypeError(
-      "Flash requests can not be upgraded with `upgradeHttp`. Use `upgradeHttpRaw` instead.",
-    );
+  const inner = toInnerRequest(req);
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttp", arguments);
   }
 
   req[_deferred] = new Deferred();
   return req[_deferred].promise;
 }
 
-export { _ws, HttpConn, upgradeHttp, upgradeWebSocket };
+const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
+const tabCharCode = StringPrototypeCharCodeAt("\t", 0);
+const commaCharCode = StringPrototypeCharCodeAt(",", 0);
+
+/** Builds a case function that can be used to find a case insensitive
+ * value in some text that's separated by commas.
+ *
+ * This is done because it doesn't require any allocations.
+ * @param checkText {string} - The text to find. (ex. "websocket")
+ */
+function buildCaseInsensitiveCommaValueFinder(checkText) {
+  const charCodes = ArrayPrototypeMap(
+    StringPrototypeSplit(
+      StringPrototypeToLowerCase(checkText),
+      "",
+    ),
+    (c) => [
+      StringPrototypeCharCodeAt(c, 0),
+      StringPrototypeCharCodeAt(StringPrototypeToUpperCase(c), 0),
+    ],
+  );
+  /** @type {number} */
+  let i;
+  /** @type {number} */
+  let char;
+
+  /** @param {string} value */
+  return function (value) {
+    for (i = 0; i < value.length; i++) {
+      char = StringPrototypeCharCodeAt(value, i);
+      skipWhitespace(value);
+
+      if (hasWord(value)) {
+        skipWhitespace(value);
+        if (i === value.length || char === commaCharCode) {
+          return true;
+        }
+      } else {
+        skipUntilComma(value);
+      }
+    }
+
+    return false;
+  };
+
+  /** @param value {string} */
+  function hasWord(value) {
+    for (let j = 0; j < charCodes.length; ++j) {
+      const { 0: cLower, 1: cUpper } = charCodes[j];
+      if (cLower === char || cUpper === char) {
+        char = StringPrototypeCharCodeAt(value, ++i);
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** @param value {string} */
+  function skipWhitespace(value) {
+    while (char === spaceCharCode || char === tabCharCode) {
+      char = StringPrototypeCharCodeAt(value, ++i);
+    }
+  }
+
+  /** @param value {string} */
+  function skipUntilComma(value) {
+    while (char !== commaCharCode && i < value.length) {
+      char = StringPrototypeCharCodeAt(value, ++i);
+    }
+  }
+}
+
+// Expose this function for unit tests
+internals.buildCaseInsensitiveCommaValueFinder =
+  buildCaseInsensitiveCommaValueFinder;
+
+export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };

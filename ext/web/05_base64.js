@@ -8,8 +8,8 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import DOMException from "internal:deno_web/01_dom_exception.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ObjectPrototypeIsPrototypeOf,
@@ -22,11 +22,8 @@ const {
  */
 function atob(data) {
   const prefix = "Failed to execute 'atob'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
-  data = webidl.converters.DOMString(data, {
-    prefix,
-    context: "Argument 1",
-  });
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  data = webidl.converters.DOMString(data, prefix, "Argument 1");
   try {
     return ops.op_base64_atob(data);
   } catch (e) {
@@ -46,11 +43,8 @@ function atob(data) {
  */
 function btoa(data) {
   const prefix = "Failed to execute 'btoa'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
-  data = webidl.converters.DOMString(data, {
-    prefix,
-    context: "Argument 1",
-  });
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  data = webidl.converters.DOMString(data, prefix, "Argument 1");
   try {
     return ops.op_base64_btoa(data);
   } catch (e) {

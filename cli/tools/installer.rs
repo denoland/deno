@@ -6,15 +6,16 @@ use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
+use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
-use crate::npm::NpmPackageReference;
-use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
+use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -34,7 +35,7 @@ static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z][\w-]*$")
     .case_insensitive(true)
     .build()
-    .unwrap()
+    .expect("invalid regex")
 });
 
 fn validate_name(exec_name: &str) -> Result<(), AnyError> {
@@ -132,13 +133,13 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   let mut url = url.clone();
 
   if url.path() == "/" {
-    let client = HttpClient::new(None, None).unwrap();
+    let client = HttpClient::new(None, None);
     if let Ok(res) = client.get_redirected_response(url.clone()).await {
       url = res.url().clone();
     }
   }
 
-  if let Ok(npm_ref) = NpmPackageReference::from_specifier(&url) {
+  if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url) {
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
         return Some(sub_path);
@@ -232,7 +233,9 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  ProcState::build(flags.clone())
+  CliFactory::from_flags(flags.clone())
+    .await?
+    .module_load_preparer()
     .await?
     .load_and_type_check_files(&[install_flags.module_url.clone()])
     .await?;
@@ -307,7 +310,8 @@ async fn resolve_shim_data(
   let installation_dir = root.join("bin");
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path(&install_flags.module_url)?;
+  let cwd = std::env::current_dir().context("Unable to get CWD")?;
+  let module_url = resolve_url_or_path(&install_flags.module_url, &cwd)?;
 
   let name = if install_flags.name.is_some() {
     install_flags.name.clone()
@@ -407,7 +411,7 @@ async fn resolve_shim_data(
   }
 
   if let Some(import_map_path) = &flags.import_map_path {
-    let import_map_url = resolve_url_or_path(import_map_path)?;
+    let import_map_url = resolve_url_or_path(import_map_path, &cwd)?;
     executable_args.push("--import-map".to_string());
     executable_args.push(import_map_url.to_string());
   }
@@ -429,7 +433,7 @@ async fn resolve_shim_data(
     executable_args.push("--no-lock".to_string());
   } else if flags.lock.is_some()
     // always use a lockfile for an npm entrypoint unless --no-lock
-    || NpmPackageReference::from_specifier(&module_url).is_ok()
+    || NpmPackageReqReference::from_specifier(&module_url).is_ok()
   {
     let copy_path = get_hidden_file_with_ext(&file_path, "lock.json");
     executable_args.push("--lock".to_string());

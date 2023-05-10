@@ -329,10 +329,11 @@
     return SafeIterator;
   };
 
-  primordials.SafeArrayIterator = createSafeIterator(
+  const SafeArrayIterator = createSafeIterator(
     primordials.ArrayPrototypeSymbolIterator,
     primordials.ArrayIteratorPrototypeNext,
   );
+  primordials.SafeArrayIterator = SafeArrayIterator;
   primordials.SafeSetIterator = createSafeIterator(
     primordials.SetPrototypeSymbolIterator,
     primordials.SetIteratorPrototypeNext,
@@ -404,7 +405,11 @@
     Map,
     class SafeMap extends Map {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
       }
     },
   );
@@ -412,7 +417,11 @@
     WeakMap,
     class SafeWeakMap extends WeakMap {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
       }
     },
   );
@@ -421,7 +430,11 @@
     Set,
     class SafeSet extends Set {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
       }
     },
   );
@@ -429,7 +442,20 @@
     WeakSet,
     class SafeWeakSet extends WeakSet {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
+      }
+    },
+  );
+
+  primordials.SafeRegExp = makeSafe(
+    RegExp,
+    class SafeRegExp extends RegExp {
+      constructor(pattern, flags) {
+        super(pattern, flags);
       }
     },
   );
@@ -470,28 +496,79 @@
   primordials.PromisePrototypeCatch = (thisPromise, onRejected) =>
     PromisePrototypeThen(thisPromise, undefined, onRejected);
 
+  const arrayToSafePromiseIterable = (array) =>
+    new SafeArrayIterator(
+      ArrayPrototypeMap(
+        array,
+        (p) => {
+          if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
+            return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
+          }
+          return p;
+        },
+      ),
+    );
+
   /**
    * Creates a Promise that is resolved with an array of results when all of the
    * provided Promises resolve, or rejected when any Promise is rejected.
-   * @param {unknown[]} values An array of Promises.
-   * @returns A new Promise.
+   * @template T
+   * @param {Array<T | PromiseLike<T>>} values
+   * @returns {Promise<Awaited<T>[]>}
    */
   primordials.SafePromiseAll = (values) =>
     // Wrapping on a new Promise is necessary to not expose the SafePromise
     // prototype to user-land.
     new Promise((a, b) =>
-      SafePromise.all(
-        ArrayPrototypeMap(
-          values,
-          (p) => {
-            if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
-              return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
-            }
-            return p;
-          },
-        ),
-      ).then(a, b)
+      SafePromise.all(arrayToSafePromiseIterable(values)).then(a, b)
     );
+
+  // NOTE: Uncomment the following functions when you need to use them
+
+  // /**
+  //  * Creates a Promise that is resolved with an array of results when all
+  //  * of the provided Promises resolve or reject.
+  //  * @template T
+  //  * @param {Array<T | PromiseLike<T>>} values
+  //  * @returns {Promise<PromiseSettledResult<T>[]>}
+  //  */
+  // primordials.SafePromiseAllSettled = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.allSettled(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
+
+  // /**
+  //  * The any function returns a promise that is fulfilled by the first given
+  //  * promise to be fulfilled, or rejected with an AggregateError containing
+  //  * an array of rejection reasons if all of the given promises are rejected.
+  //  * It resolves all elements of the passed iterable to promises as it runs
+  //  * this algorithm.
+  //  * @template T
+  //  * @param {T} values
+  //  * @returns {Promise<Awaited<T[number]>>}
+  //  */
+  // primordials.SafePromiseAny = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.any(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
+
+  // /**
+  //  * Creates a Promise that is resolved or rejected when any of the provided
+  //  * Promises are resolved or rejected.
+  //  * @template T
+  //  * @param {T} values
+  //  * @returns {Promise<Awaited<T[number]>>}
+  //  */
+  // primordials.SafePromiseRace = (values) =>
+  //   // Wrapping on a new Promise is necessary to not expose the SafePromise
+  //   // prototype to user-land.
+  //   new Promise((a, b) =>
+  //     SafePromise.race(arrayToSafePromiseIterable(values)).then(a, b)
+  //   );
 
   /**
    * Attaches a callback that is invoked when the Promise is settled (fulfilled or

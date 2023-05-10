@@ -2,10 +2,12 @@
 
 use test_util as util;
 use test_util::TempDir;
+use util::TestContext;
 
 #[test]
 fn fmt_test() {
-  let t = TempDir::new();
+  let context = TestContext::default();
+  let t = context.deno_dir();
   let testdata_fmt_dir = util::testdata_path().join("fmt");
   let fixed_js = testdata_fmt_dir.join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
@@ -27,49 +29,57 @@ fn fmt_test() {
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
   std::fs::copy(badly_formatted_original_json, &badly_formatted_json).unwrap();
   // First, check formatting by ignoring the badly formatted file.
-  let status = util::deno_cmd()
-    .current_dir(&testdata_fmt_dir)
-    .arg("fmt")
-    .arg(format!(
-      "--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str}"
-    ))
-    .arg("--check")
-    .arg(badly_formatted_js_str)
-    .arg(badly_formatted_md_str)
-    .arg(badly_formatted_json_str)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
+  let s = testdata_fmt_dir.as_os_str().to_str().unwrap();
+
+  let output = context
+    .new_command()
+    .cwd(s)
+    .args_vec(vec![
+      "fmt".to_string(),
+      format!(
+        "--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str}",
+      ),
+      format!(
+        "--check {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}",
+      ),
+    ])
+    .run();
+
   // No target files found
-  assert!(!status.success());
+  output.assert_exit_code(1);
+  output.skip_output_check();
 
   // Check without ignore.
-  let status = util::deno_cmd()
-    .current_dir(&testdata_fmt_dir)
-    .arg("fmt")
-    .arg("--check")
-    .arg(badly_formatted_js_str)
-    .arg(badly_formatted_md_str)
-    .arg(badly_formatted_json_str)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(!status.success());
+  let output = context
+    .new_command()
+    .cwd(s)
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      badly_formatted_js_str.to_string(),
+      badly_formatted_md_str.to_string(),
+      badly_formatted_json_str.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+  output.skip_output_check();
 
   // Format the source file.
-  let status = util::deno_cmd()
-    .current_dir(&testdata_fmt_dir)
-    .arg("fmt")
-    .arg(badly_formatted_js_str)
-    .arg(badly_formatted_md_str)
-    .arg(badly_formatted_json_str)
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
+  let output = context
+    .new_command()
+    .cwd(s)
+    .args_vec(vec![
+      "fmt".to_string(),
+      badly_formatted_js_str.to_string(),
+      badly_formatted_md_str.to_string(),
+      badly_formatted_json_str.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
   let expected_js = std::fs::read_to_string(fixed_js).unwrap();
   let expected_md = std::fs::read_to_string(fixed_md).unwrap();
   let expected_json = std::fs::read_to_string(fixed_json).unwrap();
@@ -105,22 +115,15 @@ fn fmt_stdin_error() {
 
 #[test]
 fn fmt_ignore_unexplicit_files() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
+  let context = TestContext::default();
+  let output = context
+    .new_command()
     .env("NO_COLOR", "1")
-    .arg("fmt")
-    .arg("--check")
-    .arg("--ignore=./")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr),
-    "error: No target files found.\n"
-  );
+    .args("fmt --check --ignore=./")
+    .run();
+
+  output.assert_exit_code(1);
+  assert_eq!(output.combined_output(), "error: No target files found.\n");
 }
 
 #[test]
@@ -148,20 +151,17 @@ fn fmt_auto_ignore_git_and_node_modules() {
   create_bad_json(git_dir);
   create_bad_json(nest_node_modules);
   create_bad_json(node_modules_dir);
-  let output = util::deno_cmd()
-    .current_dir(t)
+
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .cwd(t.as_os_str().to_str().unwrap())
     .env("NO_COLOR", "1")
-    .arg("fmt")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr),
-    "error: No target files found.\n"
-  );
+    .args("fmt")
+    .run();
+
+  output.assert_exit_code(1);
+  assert_eq!(output.combined_output(), "error: No target files found.\n");
 }
 
 itest!(fmt_quiet_check_fmt_dir {
@@ -227,6 +227,12 @@ itest!(fmt_stdin_check_not_formatted {
 itest!(fmt_with_config {
   args: "fmt --config fmt/with_config/deno.jsonc fmt/with_config/subdir",
   output: "fmt/fmt_with_config.out",
+});
+
+itest!(fmt_with_deprecated_config {
+  args:
+    "fmt --config fmt/with_config/deno.deprecated.jsonc fmt/with_config/subdir",
+  output: "fmt/fmt_with_deprecated_config.out",
 });
 
 itest!(fmt_with_config_default {

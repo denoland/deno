@@ -98,6 +98,7 @@ declare namespace Deno {
    *
    * The native struct type for interfacing with foreign functions.
    *
+   * @category FFI
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -131,10 +132,10 @@ declare namespace Deno {
    */
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue | null>
-    & Record<NativeFunctionType, PointerValue | null>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>
     & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -164,7 +165,7 @@ declare namespace Deno {
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? BufferSource
-    : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -191,7 +192,7 @@ declare namespace Deno {
    */
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue>
     & Record<NativeBufferType, PointerValue>
@@ -226,7 +227,7 @@ declare namespace Deno {
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? Uint8Array
-    : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -272,6 +273,11 @@ declare namespace Deno {
      *
      * @default {false} */
     callback?: boolean;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -283,6 +289,11 @@ declare namespace Deno {
     name?: string;
     /** The type of the foreign static value. */
     type: Type;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -337,8 +348,15 @@ declare namespace Deno {
    * @category FFI
    */
   type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
-    [K in keyof T]: StaticForeignSymbol<T[K]>;
+    [K in keyof T]: T[K]["optional"] extends true
+      ? StaticForeignSymbol<T[K]> | null
+      : StaticForeignSymbol<T[K]>;
   };
+
+  /** @category FFI */
+  const brand: unique symbol;
+  /** @category FFI */
+  type PointerObject = { [brand]: unknown };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -350,7 +368,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = number | bigint;
+  export type PointerValue = null | PointerObject;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -360,8 +378,19 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointer {
+    /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
+    static create(value: number | bigint): PointerValue;
+    /** Returns `true` if the two pointers point to the same address. */
+    static equals(a: PointerValue, b: PointerValue): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    /** Return a new pointer offset from the original by `offset` bytes. */
+    static offset(
+      value: NonNullable<PointerValue>,
+      offset: number,
+    ): PointerValue;
+    /** Get the numeric value of a pointer */
+    static value(value: PointerValue): number | bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -374,9 +403,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: PointerValue);
+    constructor(pointer: NonNullable<PointerValue>);
 
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -400,29 +429,34 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): PointerValue;
+    getBigUint64(offset?: number): number | bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): PointerValue;
+    getBigInt64(offset?: number): number | bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the
      * pointer. */
     getFloat64(offset?: number): number;
+    /** Gets a pointer at the specified byte offset from the pointer */
+    getPointer(offset?: number): PointerValue;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
-    static getCString(pointer: PointerValue, offset?: number): string;
+    static getCString(
+      pointer: NonNullable<PointerValue>,
+      offset?: number,
+    ): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -438,7 +472,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: PointerValue,
+      pointer: NonNullable<PointerValue>,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -453,11 +487,11 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: PointerValue;
+    pointer: NonNullable<PointerValue>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerValue, definition: Const<Fn>);
+    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -499,8 +533,19 @@ declare namespace Deno {
    *
    * The function pointer remains valid until the `close()` method is called.
    *
-   * The callback can be explicitly referenced via `ref()` and dereferenced via
-   * `deref()` to stop Deno's process from exiting.
+   * All `UnsafeCallback` are always thread safe in that they can be called from
+   * foreign threads without crashing. However, they do not wake up the Deno event
+   * loop by default.
+   *
+   * If a callback is to be called from foreign threads, use the `threadSafe()`
+   * static constructor or explicitly call `ref()` to have the callback wake up
+   * the Deno event loop when called from foreign threads. This also stops
+   * Deno's process from exiting while the callback still exists and is not
+   * unref'ed.
+   *
+   * Use `deref()` to then allow Deno's process to exit. Calling `deref()` on
+   * a ref'ed callback does not stop it from waking up the Deno event loop when
+   * called from foreign threads.
    *
    * @category FFI
    */
@@ -516,29 +561,52 @@ declare namespace Deno {
     );
 
     /** The pointer to the unsafe callback. */
-    pointer: PointerValue;
+    readonly pointer: NonNullable<PointerValue>;
     /** The definition of the unsafe callback. */
-    definition: Definition;
+    readonly definition: Definition;
     /** The callback function. */
-    callback: UnsafeCallbackFunction<
+    readonly callback: UnsafeCallbackFunction<
       Definition["parameters"],
       Definition["result"]
     >;
 
     /**
-     * Adds one to this callback's reference counting and returns the new
+     * Creates an {@linkcode UnsafeCallback} and calls `ref()` once to allow it to
+     * wake up the Deno event loop when called from foreign threads.
+     *
+     * This also stops Deno's process from exiting while the callback still
+     * exists and is not unref'ed.
+     */
+    static threadSafe<
+      Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    >(
+      definition: Const<Definition>,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    ): UnsafeCallback<Definition>;
+
+    /**
+     * Increments the callback's reference counting and returns the new
      * reference count.
      *
-     * If the callback's reference count is non-zero, it will keep Deno's
+     * After `ref()` has been called, the callback always wakes up the
+     * Deno event loop when called from foreign threads.
+     *
+     * If the callback's reference count is non-zero, it keeps Deno's
      * process from exiting.
      */
     ref(): number;
 
     /**
-     * Removes one from this callback's reference counting and returns the new
+     * Decrements the callback's reference counting and returns the new
      * reference count.
      *
-     * If the callback's reference counter is zero, it will no longer keep
+     * Calling `unref()` does not stop a callback from waking up the Deno
+     * event loop when called from foreign threads.
+     *
+     * If the callback's reference counter is zero, it no longer keeps
      * Deno's process from exiting.
      */
     unref(): number;
@@ -546,11 +614,12 @@ declare namespace Deno {
     /**
      * Removes the C function pointer associated with this instance.
      *
-     * Continuing to use the instance after calling this object will lead to
-     * errors and crashes.
+     * Continuing to use the instance or the C function pointer after closing
+     * the `UnsafeCallback` will lead to errors and crashes.
      *
-     * Calling this method will also immediately set the callback's reference
-     * counting to zero and it will no longer keep Deno's process from exiting.
+     * Calling this method sets the callback's reference counting to zero,
+     * stops the callback from waking up the Deno event loop when called from
+     * foreign threads and no longer keeps Deno's process from exiting.
      */
     close(): void;
   }
@@ -578,8 +647,11 @@ declare namespace Deno {
 
   /**
    *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
+   *
+   *  @category FFI
    */
   type Cast<A, B> = A extends B ? A : B;
+  /** @category FFI */
   type Const<T> = Cast<
     T,
     | (T extends string | number | bigint | boolean ? T : never)
@@ -805,11 +877,51 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Represents membership of a IPv4 multicast group.
+   *
+   * @category Network
+   */
+  interface MulticastV4Membership {
+    /** Leaves the multicast group. */
+    leave: () => Promise<void>;
+    /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+    setLoopback: (loopback: boolean) => Promise<void>;
+    /** Sets the time-to-live of outgoing multicast packets for this socket. */
+    setTTL: (ttl: number) => Promise<void>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Represents membership of a IPv6 multicast group.
+   *
+   * @category Network
+   */
+  interface MulticastV6Membership {
+    /** Leaves the multicast group. */
+    leave: () => Promise<void>;
+    /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+    setLoopback: (loopback: boolean) => Promise<void>;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A generic transport listener for message-oriented protocols.
    *
    * @category Network
    */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+    /** Joins an IPv4 multicast group. */
+    joinMulticastV4(
+      address: string,
+      networkInterface: string,
+    ): Promise<MulticastV4Membership>;
+
+    /** Joins an IPv6 multicast group. */
+    joinMulticastV6(
+      address: string,
+      networkInterface: number,
+    ): Promise<MulticastV6Membership>;
+
     /** Waits for and resolves to the next message to the instance.
      *
      * Messages are received in the format of a tuple containing the data array
@@ -871,6 +983,11 @@ declare namespace Deno {
      *
      * @default {false} */
     reuseAddress?: boolean;
+
+    /** When `true`, sent multicast packets will be looped back to the local socket.
+     *
+     * @default {false} */
+    loopback?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1118,6 +1235,17 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Information for a HTTP request.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.NetAddr;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A handler for HTTP requests. Consumes a request and returns a response.
    *
    * If a handler throws, the server calling the handler will assume the impact
@@ -1126,7 +1254,10 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export type ServeHandler = (request: Request) => Response | Promise<Response>;
+  export type ServeHandler = (
+    request: Request,
+    info: ServeHandlerInfo,
+  ) => Response | Promise<Response>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1230,10 +1361,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(
-    handler: ServeHandler,
-    options?: ServeOptions | ServeTlsOptions,
-  ): Promise<void>;
+  export function serve(handler: ServeHandler): Promise<void>;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1390,255 +1518,558 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Allows "hijacking" the connection that the request is associated with.
-   * This can be used to implement protocols that build on top of HTTP (eg.
-   * {@linkcode WebSocket}).
+   * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
-   * Unlike {@linkcode Deno.upgradeHttp} this function does not require that you
-   * respond to the request with a {@linkcode Response} object. Instead this
-   * function returns the underlying connection and first packet received
-   * immediately, and then the caller is responsible for writing the response to
-   * the connection.
+   * When a path is provided, the database will be persisted to disk at that
+   * path. Read and write access to the file is required.
    *
-   * This method can only be called on requests originating the
-   * {@linkcode Deno.serve} server.
+   * When no path is provided, the database will be opened in a default path for
+   * the current script. This location is persistent across script runs and is
+   * keyed on the origin storage key (the same key that is used to determine
+   * `localStorage` persistence). More information about the origin storage key
+   * can be found in the Deno Manual.
    *
-   * @category HTTP Server
+   * @tags allow-read, allow-write
+   * @category KV
    */
-  export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
+  export function openKv(path?: string): Promise<Deno.Kv>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Create a child process.
+   * A key to be persisted in a {@linkcode Deno.Kv}. A key is a sequence
+   * of {@linkcode Deno.KvKeyPart}s.
    *
-   * If any stdio options are not set to `"piped"`, accessing the corresponding
-   * field on the `Command` or its `CommandOutput` will throw a `TypeError`.
+   * Keys are ordered lexicographically by their parts. The first part is the
+   * most significant, and the last part is the least significant. The order of
+   * the parts is determined by both the type and the value of the part. The
+   * relative significance of the types can be found in documentation for the
+   * {@linkcode Deno.KvKeyPart} type.
    *
-   * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
-   * needs to be closed manually.
+   * Keys have a maximum size of 2048 bytes serialized. If the size of the key
+   * exceeds this limit, an error will be thrown on the operation that this key
+   * was passed to.
    *
-   * @example Spawn a subprocess and pipe the output to a file
-   *
-   * ```ts
-   * const command = new Deno.Command(Deno.execPath(), {
-   *   args: [
-   *     "eval",
-   *     "console.log('Hello World')",
-   *   ],
-   *   stdin: "piped",
-   * });
-   * const child = command.spawn();
-   *
-   * // open a file and pipe the subprocess output to it.
-   * child.stdout.pipeTo(Deno.openSync("output").writable);
-   *
-   * // manually close stdin
-   * child.stdin.close();
-   * const status = await child.status;
-   * ```
-   *
-   * @example Spawn a subprocess and collect its output
-   *
-   * ```ts
-   * const command = new Deno.Command(Deno.execPath(), {
-   *   args: [
-   *     "eval",
-   *     "console.log('hello'); console.error('world')",
-   *   ],
-   * });
-   * const { code, stdout, stderr } = await command.output();
-   * console.assert(code === 0);
-   * console.assert("hello\n" === new TextDecoder().decode(stdout));
-   * console.assert("world\n" === new TextDecoder().decode(stderr));
-   * ```
-   *
-   * @example Spawn a subprocess and collect its output synchronously
-   *
-   * ```ts
-   * const command = new Deno.Command(Deno.execPath(), {
-   *   args: [
-   *     "eval",
-   *     "console.log('hello'); console.error('world')",
-   *   ],
-   * });
-   * const { code, stdout, stderr } = command.outputSync();
-   * console.assert(code === 0);
-   * console.assert("hello\n" === new TextDecoder().decode(stdout));
-   * console.assert("world\n" === new TextDecoder().decode(stderr));
-   * ```
-   *
-   * @category Sub Process
+   * @category KV
    */
-  export class Command {
-    constructor(command: string | URL, options?: CommandOptions);
+  export type KvKey = readonly KvKeyPart[];
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A single part of a {@linkcode Deno.KvKey}. Parts are ordered
+   * lexicographically, first by their type, and within a given type by their
+   * value.
+   *
+   * The ordering of types is as follows:
+   *
+   * 1. `Uint8Array`
+   * 2. `string`
+   * 3. `number`
+   * 4. `bigint`
+   * 5. `boolean`
+   *
+   * Within a given type, the ordering is as follows:
+   *
+   * - `Uint8Array` is ordered by the byte ordering of the array
+   * - `string` is ordered by the byte ordering of the UTF-8 encoding of the
+   *   string
+   * - `number` is ordered following this pattern: `-NaN`
+   *   < `-Infinity` < `-100.0` < `-1.0` < -`0.5` < `-0.0` < `0.0` < `0.5`
+   *   < `1.0` < `100.0` < `Infinity` < `NaN`
+   * - `bigint` is ordered by mathematical ordering, with the largest negative
+   *   number being the least first value, and the largest positive number
+   *   being the last value
+   * - `boolean` is ordered by `false` < `true`
+   *
+   * This means that the part `1.0` (a number) is ordered before the part `2.0`
+   * (also a number), but is greater than the part `0n` (a bigint), because
+   * `1.0` is a number and `0n` is a bigint, and type ordering has precedence
+   * over the ordering of values within a type.
+   *
+   * @category KV
+   */
+  export type KvKeyPart = Uint8Array | string | number | bigint | boolean;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Consistency level of a KV operation.
+   *
+   * - `strong` - This operation must be strongly-consistent.
+   * - `eventual` - Eventually-consistent behavior is allowed.
+   *
+   * @category KV
+   */
+  export type KvConsistencyLevel = "strong" | "eventual";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A selector that selects the range of data returned by a list operation on a
+   * {@linkcode Deno.Kv}.
+   *
+   * The selector can either be a prefix selector or a range selector. A prefix
+   * selector selects all keys that start with the given prefix (optionally
+   * starting at a given key). A range selector selects all keys that are
+   * lexicographically between the given start and end keys.
+   *
+   * @category KV
+   */
+  export type KvListSelector =
+    | { prefix: KvKey }
+    | { prefix: KvKey; start: KvKey }
+    | { prefix: KvKey; end: KvKey }
+    | { start: KvKey; end: KvKey };
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A mutation to a key in a {@linkcode Deno.Kv}. A mutation is a
+   * combination of a key, a value, and a type. The type determines how the
+   * mutation is applied to the key.
+   *
+   * - `set` - Sets the value of the key to the given value, overwriting any
+   *   existing value.
+   * - `delete` - Deletes the key from the database. The mutation is a no-op if
+   *   the key does not exist.
+   * - `sum` - Adds the given value to the existing value of the key. Both the
+   *   value specified in the mutation, and any existing value must be of type
+   *   `Deno.KvU64`. If the key does not exist, the value is set to the given
+   *   value (summed with 0). If the result of the sum overflows an unsigned
+   *   64-bit integer, the result is wrapped around.
+   * - `max` - Sets the value of the key to the maximum of the existing value
+   *   and the given value. Both the value specified in the mutation, and any
+   *   existing value must be of type `Deno.KvU64`. If the key does not exist,
+   *   the value is set to the given value.
+   * - `min` - Sets the value of the key to the minimum of the existing value
+   *   and the given value. Both the value specified in the mutation, and any
+   *   existing value must be of type `Deno.KvU64`. If the key does not exist,
+   *   the value is set to the given value.
+   *
+   * @category KV
+   */
+  export type KvMutation =
+    & { key: KvKey }
+    & (
+      | { type: "set"; value: unknown }
+      | { type: "delete" }
+      | { type: "sum"; value: KvU64 }
+      | { type: "max"; value: KvU64 }
+      | { type: "min"; value: KvU64 }
+    );
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An iterator over a range of data entries in a {@linkcode Deno.Kv}.
+   *
+   * The cursor getter returns the cursor that can be used to resume the
+   * iteration from the current position in the future.
+   *
+   * @category KV
+   */
+  export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
-     * Executes the {@linkcode Deno.Command}, waiting for it to finish and
-     * collecting all of its output.
-     * If `spawn()` was called, calling this function will collect the remaining
-     * output.
-     *
-     * Will throw an error if `stdin: "piped"` is set.
-     *
-     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
-     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
+     * Returns the cursor of the current position in the iteration. This cursor
+     * can be used to resume the iteration from the current position in the
+     * future by passing it to the `cursor` option of the `list` method.
      */
-    output(): Promise<CommandOutput>;
-    /**
-     * Synchronously executes the {@linkcode Deno.Command}, waiting for it to
-     * finish and collecting all of its output.
-     *
-     * Will throw an error if `stdin: "piped"` is set.
-     *
-     * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
-     * corresponding field on {@linkcode Deno.CommandOutput} will throw a `TypeError`.
-     */
-    outputSync(): CommandOutput;
-    /**
-     * Spawns a streamable subprocess, allowing to use the other methods.
-     */
-    spawn(): ChildProcess;
+    get cursor(): string;
+
+    next(): Promise<IteratorResult<KvEntry<T>, undefined>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry<T>>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * The interface for handling a child process returned from
-   * {@linkcode Deno.Command.spawn}.
+   * A versioned pair of key and value in a {@linkcode Deno.Kv}.
    *
-   * @category Sub Process
+   * The `versionstamp` is a string that represents the current version of the
+   * key-value pair. It can be used to perform atomic operations on the KV store
+   * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
+   *
+   * @category KV
    */
-  export class ChildProcess {
-    get stdin(): WritableStream<Uint8Array>;
-    get stdout(): ReadableStream<Uint8Array>;
-    get stderr(): ReadableStream<Uint8Array>;
-    readonly pid: number;
-    /** Get the status of the child. */
-    readonly status: Promise<CommandStatus>;
+  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
 
-    /** Waits for the child to exit completely, returning all its output and
-     * status. */
-    output(): Promise<CommandOutput>;
-    /** Kills the process with given {@linkcode Deno.Signal}.
-     *
-     * @param [signo="SIGTERM"]
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An optional versioned pair of key and value in a {@linkcode Deno.Kv}.
+   *
+   * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
+   * fields may be `null` if no value exists for the given key in the KV store.
+   *
+   * @category KV
+   */
+  export type KvEntryMaybe<T> = KvEntry<T> | {
+    key: KvKey;
+    value: null;
+    versionstamp: null;
+  };
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options for listing key-value pairs in a {@linkcode Deno.Kv}.
+   *
+   * @category KV
+   */
+  export interface KvListOptions {
+    /**
+     * The maximum number of key-value pairs to return. If not specified, all
+     * matching key-value pairs will be returned.
      */
-    kill(signo?: Signal): void;
+    limit?: number;
+    /**
+     * The cursor to resume the iteration from. If not specified, the iteration
+     * will start from the beginning.
+     */
+    cursor?: string;
+    /**
+     * Whether to reverse the order of the returned key-value pairs. If not
+     * specified, the order will be ascending from the start of the range as per
+     * the lexicographical ordering of the keys. If `true`, the order will be
+     * descending from the end of the range.
+     *
+     * The default value is `false`.
+     */
+    reverse?: boolean;
+    /**
+     * The consistency level of the list operation. The default consistency
+     * level is "strong". Some use cases can benefit from using a weaker
+     * consistency level. For more information on consistency levels, see the
+     * documentation for {@linkcode Deno.KvConsistencyLevel}.
+     *
+     * List operations are performed in batches (in sizes specified by the
+     * `batchSize` option). The consistency level of the list operation is
+     * applied to each batch individually. This means that while each batch is
+     * guaranteed to be consistent within itself, the entire list operation may
+     * not be consistent across batches because a mutation may be applied to a
+     * key-value pair between batches, in a batch that has already been returned
+     * by the list operation.
+     */
+    consistency?: KvConsistencyLevel;
+    /**
+     * The size of the batches in which the list operation is performed. Larger
+     * or smaller batch sizes may positively or negatively affect the
+     * performance of a list operation depending on the specific use case and
+     * iteration behavior. Slow iterating queries may benefit from using a
+     * smaller batch size for increased overall consistency, while fast
+     * iterating queries may benefit from using a larger batch size for better
+     * performance.
+     *
+     * The default batch size is equal to the `limit` option, or 100 if this is
+     * unset. The maximum value for this option is 500. Larger values will be
+     * clamped.
+     */
+    batchSize?: number;
+  }
 
-    /** Ensure that the status of the child process prevents the Deno process
-     * from exiting. */
-    ref(): void;
-    /** Ensure that the status of the child process does not block the Deno
-     * process from exiting. */
-    unref(): void;
+  /** @category KV */
+  export interface KvCommitResult {
+    ok: true;
+    /** The versionstamp of the value committed to KV. */
+    versionstamp: string;
+  }
+
+  /** @category KV */
+  export interface KvCommitError {
+    ok: false;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Options which can be set when calling {@linkcode Deno.command}.
+   * A check to perform as part of a {@linkcode Deno.AtomicOperation}. The check
+   * will fail if the versionstamp for the key-value pair in the KV store does
+   * not match the given versionstamp. A check with a `null` versionstamp checks
+   * that the key-value pair does not currently exist in the KV store.
    *
-   * @category Sub Process
+   * @category KV
    */
-  export interface CommandOptions {
-    /** Arguments to pass to the process. */
-    args?: readonly string[];
-    /**
-     * The working directory of the process.
-     *
-     * If not specified, the `cwd` of the parent process is used.
-     */
-    cwd?: string | URL;
-    /**
-     * Clear environmental variables from parent process.
-     *
-     * Doesn't guarantee that only `env` variables are present, as the OS may
-     * set environmental variables for processes.
-     *
-     * @default {false}
-     */
-    clearEnv?: boolean;
-    /** Environmental variables to pass to the subprocess. */
-    env?: Record<string, string>;
-    /**
-     * Sets the child process’s user ID. This translates to a setuid call in the
-     * child process. Failure in the set uid call will cause the spawn to fail.
-     */
-    uid?: number;
-    /** Similar to `uid`, but sets the group ID of the child process. */
-    gid?: number;
-    /**
-     * An {@linkcode AbortSignal} that allows closing the process using the
-     * corresponding {@linkcode AbortController} by sending the process a
-     * SIGTERM signal.
-     *
-     * Not supported in {@linkcode Deno.Command.outputSync}.
-     */
-    signal?: AbortSignal;
-
-    /** How `stdin` of the spawned process should be handled.
-     *
-     * Defaults to `"inherit"` for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
-    stdin?: "piped" | "inherit" | "null";
-    /** How `stdout` of the spawned process should be handled.
-     *
-     * Defaults to `"piped"` for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
-    stdout?: "piped" | "inherit" | "null";
-    /** How `stderr` of the spawned process should be handled.
-     *
-     * Defaults to `"piped"` for `output` & `outputSync`,
-     * and `"inherit"` for `spawn`. */
-    stderr?: "piped" | "inherit" | "null";
-
-    /** Skips quoting and escaping of the arguments on windows. This option
-     * is ignored on non-windows platforms.
-     *
-     * @default {false} */
-    windowsRawArguments?: boolean;
+  export interface AtomicCheck {
+    key: KvKey;
+    versionstamp: string | null;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @category Sub Process
+   * An operation on a {@linkcode Deno.Kv} that can be performed
+   * atomically. Atomic operations do not auto-commit, and must be committed
+   * explicitly by calling the `commit` method.
+   *
+   * Atomic operations can be used to perform multiple mutations on the KV store
+   * in a single atomic transaction. They can also be used to perform
+   * conditional mutations by specifying one or more
+   * {@linkcode Deno.AtomicCheck}s that ensure that a mutation is only performed
+   * if the key-value pair in the KV has a specific versionstamp. If any of the
+   * checks fail, the entire operation will fail and no mutations will be made.
+   *
+   * The ordering of mutations is guaranteed to be the same as the ordering of
+   * the mutations specified in the operation. Checks are performed before any
+   * mutations are performed. The ordering of checks is unobservable.
+   *
+   * Atomic operations can be used to implement optimistic locking, where a
+   * mutation is only performed if the key-value pair in the KV store has not
+   * been modified since the last read. This can be done by specifying a check
+   * that ensures that the versionstamp of the key-value pair matches the
+   * versionstamp that was read. If the check fails, the mutation will not be
+   * performed and the operation will fail. One can then retry the read-modify-
+   * write operation in a loop until it succeeds.
+   *
+   * The `commit` method of an atomic operation returns a value indicating
+   * whether checks passed and mutations were performed. If the operation failed
+   * because of a failed check, the return value will be a
+   * {@linkcode Deno.KvCommitError} with an `ok: false` property. If the
+   * operation failed for any other reason (storage error, invalid value, etc.),
+   * an exception will be thrown. If the operation succeeded, the return value
+   * will be a {@linkcode Deno.KvCommitResult} object with a `ok: true` property
+   * and the versionstamp of the value committed to KV.
+
+   *
+   * @category KV
    */
-  export interface CommandStatus {
-    /** If the child process exits with a 0 status code, `success` will be set
-     * to `true`, otherwise `false`. */
-    success: boolean;
-    /** The exit code of the child process. */
-    code: number;
-    /** The signal associated with the child process. */
-    signal: Signal | null;
+  export class AtomicOperation {
+    /**
+     * Add to the operation a check that ensures that the versionstamp of the
+     * key-value pair in the KV store matches the given versionstamp. If the
+     * check fails, the entire operation will fail and no mutations will be
+     * performed during the commit.
+     */
+    check(...checks: AtomicCheck[]): this;
+    /**
+     * Add to the operation a mutation that performs the specified mutation on
+     * the specified key if all checks pass during the commit. The types and
+     * semantics of all available mutations are described in the documentation
+     * for {@linkcode Deno.KvMutation}.
+     */
+    mutate(...mutations: KvMutation[]): this;
+    /**
+     * Shortcut for creating a `sum` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    sum(key: KvKey, n: bigint): this;
+    /**
+     * Shortcut for creating a `min` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    min(key: KvKey, n: bigint): this;
+    /**
+     * Shortcut for creating a `max` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    max(key: KvKey, n: bigint): this;
+    /**
+     * Add to the operation a mutation that sets the value of the specified key
+     * to the specified value if all checks pass during the commit.
+     */
+    set(key: KvKey, value: unknown): this;
+    /**
+     * Add to the operation a mutation that deletes the specified key if all
+     * checks pass during the commit.
+     */
+    delete(key: KvKey): this;
+    /**
+     * Commit the operation to the KV store. Returns a value indicating whether
+     * checks passed and mutations were performed. If the operation failed
+     * because of a failed check, the return value will be a {@linkcode
+     * Deno.KvCommitError} with an `ok: false` property. If the operation failed
+     * for any other reason (storage error, invalid value, etc.), an exception
+     * will be thrown. If the operation succeeded, the return value will be a
+     * {@linkcode Deno.KvCommitResult} object with a `ok: true` property and the
+     * versionstamp of the value committed to KV.
+     *
+     * If the commit returns `ok: false`, one may create a new atomic operation
+     * with updated checks and mutations and attempt to commit it again. See the
+     * note on optimistic locking in the documentation for
+     * {@linkcode Deno.AtomicOperation}.
+     */
+    commit(): Promise<KvCommitResult | KvCommitError>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * The interface returned from calling {@linkcode Command.output} or
-   * {@linkcode Command.outputSync} which represents the result of spawning the
-   * child process.
+   * A key-value database that can be used to store and retrieve data.
    *
-   * @category Sub Process
+   * Data is stored as key-value pairs, where the key is a {@linkcode Deno.KvKey}
+   * and the value is an arbitrary structured-serializable JavaScript value.
+   * Keys are ordered lexicographically as described in the documentation for
+   * {@linkcode Deno.KvKey}. Keys are unique within a database, and the last
+   * value set for a given key is the one that is returned when reading the
+   * key. Keys can be deleted from the database, in which case they will no
+   * longer be returned when reading keys.
+   *
+   * Values can be any structured-serializable JavaScript value (objects,
+   * arrays, strings, numbers, etc.). The special value {@linkcode Deno.KvU64}
+   * can be used to store 64-bit unsigned integers in the database. This special
+   * value can not be nested within other objects or arrays. In addition to the
+   * regular database mutation operations, the unsigned 64-bit integer value
+   * also supports `sum`, `max`, and `min` mutations.
+   *
+   * Keys are versioned on write by assigning the key an ever-increasing
+   * "versionstamp". The versionstamp represents the version of a key-value pair
+   * in the database at some point in time, and can be used to perform
+   * transactional operations on the database without requiring any locking.
+   * This is enabled by atomic operations, which can have conditions that ensure
+   * that the operation only succeeds if the versionstamp of the key-value pair
+   * matches an expected versionstamp.
+   *
+   * Keys have a maximum length of 2048 bytes after serialization. Values have a
+   * maximum length of 64 KiB after serialization. Serialization of both keys
+   * and values is somewhat opaque, but one can usually assume that the
+   * serialization of any value is about the same length as the resulting string
+   * of a JSON serialization of that same value. If theses limits are exceeded,
+   * an exception will be thrown.
+   *
+   * @category KV
    */
-  export interface CommandOutput extends CommandStatus {
-    /** The buffered output from the child process' `stdout`. */
-    readonly stdout: Uint8Array;
-    /** The buffered output from the child process' `stderr`. */
-    readonly stderr: Uint8Array;
+  export class Kv {
+    /**
+     * Retrieve the value and versionstamp for the given key from the database
+     * in the form of a {@linkcode Deno.KvEntryMaybe}. If no value exists for
+     * the key, the returned entry will have a `null` value and versionstamp.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * const result = await db.get(["foo"]);
+     * result.key; // ["foo"]
+     * result.value; // "bar"
+     * result.versionstamp; // "00000000000000010000"
+     * ```
+     *
+     * The `consistency` option can be used to specify the consistency level
+     * for the read operation. The default consistency level is "strong". Some
+     * use cases can benefit from using a weaker consistency level. For more
+     * information on consistency levels, see the documentation for
+     * {@linkcode Deno.KvConsistencyLevel}.
+     */
+    get<T = unknown>(
+      key: KvKey,
+      options?: { consistency?: KvConsistencyLevel },
+    ): Promise<KvEntryMaybe<T>>;
+
+    /**
+     * Retrieve multiple values and versionstamps from the database in the form
+     * of an array of {@linkcode Deno.KvEntryMaybe} objects. The returned array
+     * will have the same length as the `keys` array, and the entries will be in
+     * the same order as the keys. If no value exists for a given key, the
+     * returned entry will have a `null` value and versionstamp.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * const result = await db.getMany([["foo"], ["baz"]]);
+     * result[0].key; // ["foo"]
+     * result[0].value; // "bar"
+     * result[0].versionstamp; // "00000000000000010000"
+     * result[1].key; // ["baz"]
+     * result[1].value; // null
+     * result[1].versionstamp; // null
+     * ```
+     *
+     * The `consistency` option can be used to specify the consistency level
+     * for the read operation. The default consistency level is "strong". Some
+     * use cases can benefit from using a weaker consistency level. For more
+     * information on consistency levels, see the documentation for
+     * {@linkcode Deno.KvConsistencyLevel}.
+     */
+    getMany<T extends readonly unknown[]>(
+      keys: readonly [...{ [K in keyof T]: KvKey }],
+      options?: { consistency?: KvConsistencyLevel },
+    ): Promise<{ [K in keyof T]: KvEntryMaybe<T[K]> }>;
+    /**
+     * Set the value for the given key in the database. If a value already
+     * exists for the key, it will be overwritten.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * await db.set(["foo"], "bar");
+     * ```
+     */
+    set(key: KvKey, value: unknown): Promise<KvCommitResult>;
+
+    /**
+     * Delete the value for the given key from the database. If no value exists
+     * for the key, this operation is a no-op.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * await db.delete(["foo"]);
+     * ```
+     */
+    delete(key: KvKey): Promise<void>;
+
+    /**
+     * Retrieve a list of keys in the database. The returned list is an
+     * {@linkcode Deno.KvListIterator} which can be used to iterate over the
+     * entries in the database.
+     *
+     * Each list operation must specify a selector which is used to specify the
+     * range of keys to return. The selector can either be a prefix selector, or
+     * a range selector:
+     *
+     * - A prefix selector selects all keys that start with the given prefix of
+     *   key parts. For example, the selector `["users"]` will select all keys
+     *   that start with the prefix `["users"]`, such as `["users", "alice"]`
+     *   and `["users", "bob"]`. Note that you can not partially match a key
+     *   part, so the selector `["users", "a"]` will not match the key
+     *   `["users", "alice"]`. A prefix selector may specify a `start` key that
+     *   is used to skip over keys that are lexicographically less than the
+     *   start key.
+     * - A range selector selects all keys that are lexicographically between
+     *   the given start and end keys (including the start, and excluding the
+     *   end). For example, the selector `["users", "a"], ["users", "n"]` will
+     *   select all keys that start with the prefix `["users"]` and have a
+     *   second key part that is lexicographically between `a` and `n`, such as
+     *   `["users", "alice"]`, `["users", "bob"]`, and `["users", "mike"]`, but
+     *   not `["users", "noa"]` or `["users", "zoe"]`.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * const entries = db.list({ prefix: ["users"] });
+     * for await (const entry of entries) {
+     *   entry.key; // ["users", "alice"]
+     *   entry.value; // { name: "Alice" }
+     *   entry.versionstamp; // "00000000000000010000"
+     * }
+     * ```
+     *
+     * The `options` argument can be used to specify additional options for the
+     * list operation. See the documentation for {@linkcode Deno.KvListOptions}
+     * for more information.
+     */
+    list<T = unknown>(
+      selector: KvListSelector,
+      options?: KvListOptions,
+    ): KvListIterator<T>;
+
+    /**
+     * Create a new {@linkcode Deno.AtomicOperation} object which can be used to
+     * perform an atomic transaction on the database. This does not perform any
+     * operations on the database - the atomic transaction must be committed
+     * explicitly using the {@linkcode Deno.AtomicOperation.commit} method once
+     * all checks and mutations have been added to the operation.
+     */
+    atomic(): AtomicOperation;
+
+    /**
+     * Close the database connection. This will prevent any further operations
+     * from being performed on the database, but will wait for any in-flight
+     * operations to complete before closing the underlying database connection.
+     */
+    close(): Promise<void>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns the Operating System uptime in number of seconds.
+   * Wrapper type for 64-bit unsigned integers for use as values in a
+   * {@linkcode Deno.Kv}.
    *
-   * ```ts
-   * console.log(Deno.osUptime());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
+   * @category KV
    */
-  export function osUptime(): number;
+  export class KvU64 {
+    /** Create a new `KvU64` instance from the given bigint value. If the value
+     * is signed or greater than 64-bits, an error will be thrown. */
+    constructor(value: bigint);
+    /** The value of this unsigned 64-bit integer, represented as a bigint. */
+    readonly value: bigint;
+  }
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

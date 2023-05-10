@@ -478,6 +478,14 @@ fn dynamic_non_analyzable_import() {
   assert!(output.status.success());
 }
 
+itest!(dynamic_non_existent {
+  args: "vendor http://localhost:4545/vendor/dynamic_non_existent.ts",
+  temp_cwd: true,
+  exit_code: 0,
+  http_server: true,
+  output: "vendor/dynamic_non_existent.ts.out",
+});
+
 #[test]
 fn update_existing_config_test() {
   let _server = http_server();

@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -159,10 +160,7 @@ impl BlobPart for SlicedBlobPart {
 }
 
 #[op]
-pub fn op_blob_create_part(
-  state: &mut deno_core::OpState,
-  data: ZeroCopyBuf,
-) -> Uuid {
+pub fn op_blob_create_part(state: &mut OpState, data: ZeroCopyBuf) -> Uuid {
   let blob_store = state.borrow::<BlobStore>();
   let part = InMemoryBlobPart(data.to_vec());
   blob_store.insert_part(Arc::new(part))
@@ -177,7 +175,7 @@ pub struct SliceOptions {
 
 #[op]
 pub fn op_blob_slice_part(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   id: Uuid,
   options: SliceOptions,
 ) -> Result<Uuid, AnyError> {
@@ -203,7 +201,7 @@ pub fn op_blob_slice_part(
 
 #[op]
 pub async fn op_blob_read_part(
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: Rc<RefCell<OpState>>,
   id: Uuid,
 ) -> Result<ZeroCopyBuf, AnyError> {
   let part = {
@@ -217,14 +215,14 @@ pub async fn op_blob_read_part(
 }
 
 #[op]
-pub fn op_blob_remove_part(state: &mut deno_core::OpState, id: Uuid) {
+pub fn op_blob_remove_part(state: &mut OpState, id: Uuid) {
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_part(&id);
 }
 
 #[op]
 pub fn op_blob_create_object_url(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   media_type: String,
   part_ids: Vec<Uuid>,
 ) -> Result<String, AnyError> {
@@ -251,9 +249,9 @@ pub fn op_blob_create_object_url(
 #[op]
 pub fn op_blob_revoke_object_url(
   state: &mut deno_core::OpState,
-  url: String,
+  url: &str,
 ) -> Result<(), AnyError> {
-  let url = Url::parse(&url)?;
+  let url = Url::parse(url)?;
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_object_url(&url);
   Ok(())
@@ -273,7 +271,7 @@ pub struct ReturnBlobPart {
 
 #[op]
 pub fn op_blob_from_object_url(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   url: String,
 ) -> Result<Option<ReturnBlob>, AnyError> {
   let url = Url::parse(&url)?;

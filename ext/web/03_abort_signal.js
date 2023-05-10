@@ -3,29 +3,25 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   Event,
   EventTarget,
   listenerCount,
   setIsTrusted,
-} from "internal:deno_web/02_event.js";
+} from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   SafeArrayIterator,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
   TypeError,
 } = primordials;
-import {
-  refTimer,
-  setTimeout,
-  unrefTimer,
-} from "internal:deno_web/02_timers.js";
+import { refTimer, setTimeout, unrefTimer } from "ext:deno_web/02_timers.js";
 
 const add = Symbol("[[add]]");
 const signalAbort = Symbol("[[signalAbort]]");
@@ -49,10 +45,15 @@ class AbortSignal extends EventTarget {
 
   static timeout(millis) {
     const prefix = "Failed to call 'AbortSignal.timeout'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    millis = webidl.converters["unsigned long long"](millis, {
-      enforceRange: true,
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    millis = webidl.converters["unsigned long long"](
+      millis,
+      prefix,
+      "Argument 1",
+      {
+        enforceRange: true,
+      },
+    );
 
     const signal = new AbortSignal(illegalConstructorKey);
     signal[timerId] = setTimeout(
@@ -73,7 +74,7 @@ class AbortSignal extends EventTarget {
       return;
     }
     if (this[abortAlgos] === null) {
-      this[abortAlgos] = new Set();
+      this[abortAlgos] = new SafeSet();
     }
     SetPrototypeAdd(this[abortAlgos], algorithm);
   }

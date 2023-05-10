@@ -3,14 +3,22 @@
 mod byte_stream;
 mod fs_fetch_handler;
 
-use data_url::DataUrl;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::cmp::min;
+use std::convert::From;
+use std::path::Path;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
@@ -23,7 +31,6 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -31,6 +38,9 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
+use deno_tls::RootCertStoreProvider;
+
+use data_url::DataUrl;
 use http::header::CONTENT_LENGTH;
 use http::Uri;
 use reqwest::header::HeaderMap;
@@ -48,14 +58,6 @@ use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::cmp::min;
-use std::convert::From;
-use std::path::Path;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::rc::Rc;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -69,19 +71,29 @@ use crate::byte_stream::MpscByteStream;
 #[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
-  pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub request_builder_hook:
+    Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+}
+
+impl Options {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+    Ok(match &self.root_cert_store_provider {
+      Some(provider) => Some(provider.get_or_try_init()?.clone()),
+      None => None,
+    })
+  }
 }
 
 impl Default for Options {
   fn default() -> Self {
     Self {
       user_agent: "".to_string(),
-      root_cert_store: None,
+      root_cert_store_provider: None,
       proxy: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
@@ -91,43 +103,30 @@ impl Default for Options {
   }
 }
 
-pub fn init<FP>(options: Options) -> Extension
-where
-  FP: FetchPermissions + 'static,
-{
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
-    .esm(include_js_files!(
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
-    .ops(vec![
-      op_fetch::decl::<FP>(),
-      op_fetch_send::decl(),
-      op_fetch_custom_client::decl::<FP>(),
-    ])
-    .state(move |state| {
-      state.put::<Options>(options.clone());
-      state.put::<reqwest::Client>({
-        create_http_client(
-          options.user_agent.clone(),
-          options.root_cert_store.clone(),
-          vec![],
-          options.proxy.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-          options.client_cert_chain_and_key.clone(),
-        )
-        .unwrap()
-      });
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_fetch,
+  deps = [ deno_webidl, deno_web, deno_url, deno_console ],
+  parameters = [FP: FetchPermissions],
+  ops = [
+    op_fetch<FP>,
+    op_fetch_send,
+    op_fetch_custom_client<FP>,
+  ],
+  esm = [
+    "20_headers.js",
+    "21_formdata.js",
+    "22_body.js",
+    "22_http_client.js",
+    "23_request.js",
+    "23_response.js",
+    "26_fetch.js"
+  ],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options);
+  },
+);
 
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
@@ -192,6 +191,26 @@ pub struct FetchReturn {
   cancel_handle_rid: Option<ResourceId>,
 }
 
+pub fn get_or_create_client_from_state(
+  state: &mut OpState,
+) -> Result<reqwest::Client, AnyError> {
+  if let Some(client) = state.try_borrow::<reqwest::Client>() {
+    Ok(client.clone())
+  } else {
+    let options = state.borrow::<Options>();
+    let client = create_http_client(
+      &options.user_agent,
+      options.root_cert_store()?,
+      vec![],
+      options.proxy.clone(),
+      options.unsafely_ignore_certificate_errors.clone(),
+      options.client_cert_chain_and_key.clone(),
+    )?;
+    state.put::<reqwest::Client>(client.clone());
+    Ok(client)
+  }
+}
+
 #[op]
 pub fn op_fetch<FP>(
   state: &mut OpState,
@@ -210,8 +229,7 @@ where
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
-    let client = state.borrow::<reqwest::Client>();
-    client.clone()
+    get_or_create_client_from_state(state)?
   };
 
   let method = Method::from_bytes(&method)?;
@@ -319,7 +337,8 @@ where
 
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
-        request = request_builder_hook(request);
+        request = request_builder_hook(request)
+          .map_err(|err| type_error(err.to_string()))?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -633,8 +652,8 @@ where
     .collect::<Vec<_>>();
 
   let client = create_http_client(
-    options.user_agent.clone(),
-    options.root_cert_store.clone(),
+    &options.user_agent,
+    options.root_cert_store()?,
     ca_certs,
     args.proxy,
     options.unsafely_ignore_certificate_errors.clone(),
@@ -648,7 +667,7 @@ where
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
-  user_agent: String,
+  user_agent: &str,
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   proxy: Option<Proxy>,

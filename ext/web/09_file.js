@@ -12,33 +12,44 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { ReadableStream } from "ext:deno_web/06_streams.js";
+import { URL } from "ext:deno_url/00_url.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayBufferPrototypeSlice,
+  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
   ArrayPrototypePush,
   AsyncGeneratorPrototypeNext,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   Date,
   DatePrototypeGetTime,
-  FinalizationRegistry,
   MathMax,
   MathMin,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
+  SafeFinalizationRegistry,
+  SafeRegExp,
   StringPrototypeCharAt,
   StringPrototypeToLowerCase,
   StringPrototypeSlice,
   Symbol,
   SymbolFor,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
 } = primordials;
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -98,6 +109,7 @@ function convertLineEndingsToNative(s) {
 /** @param {(BlobReference | Blob)[]} parts */
 async function* toIterator(parts) {
   for (let i = 0; i < parts.length; ++i) {
+    // deno-lint-ignore prefer-primordials
     yield* parts[i].stream();
   }
 }
@@ -118,15 +130,31 @@ function processBlobParts(parts, endings) {
     if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, element)) {
       const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
-      size += element.byteLength;
+      size += ArrayBufferPrototypeGetByteLength(element);
     } else if (ArrayBufferIsView(element)) {
-      const chunk = new Uint8Array(
-        element.buffer,
-        element.byteOffset,
-        element.byteLength,
-      );
-      size += element.byteLength;
-      ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
+      if (TypedArrayPrototypeGetSymbolToStringTag(element) !== undefined) {
+        // TypedArray
+        const chunk = new Uint8Array(
+          TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (element)),
+          TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (element)),
+          TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (element)),
+        );
+        size += TypedArrayPrototypeGetByteLength(
+          /** @type {Uint8Array} */ (element),
+        );
+        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
+      } else {
+        // DataView
+        const chunk = new Uint8Array(
+          DataViewPrototypeGetBuffer(/** @type {DataView} */ (element)),
+          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (element)),
+          DataViewPrototypeGetByteLength(/** @type {DataView} */ (element)),
+        );
+        size += DataViewPrototypeGetByteLength(
+          /** @type {DataView} */ (element),
+        );
+        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
+      }
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, element)) {
       ArrayPrototypePush(processedParts, element);
       size += element.size;
@@ -134,7 +162,7 @@ function processBlobParts(parts, endings) {
       const chunk = core.encode(
         endings == "native" ? convertLineEndingsToNative(element) : element,
       );
-      size += chunk.byteLength;
+      size += TypedArrayPrototypeGetByteLength(chunk);
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
     } else {
       throw new TypeError("Unreachable code (invalid element type)");
@@ -143,13 +171,15 @@ function processBlobParts(parts, endings) {
   return { parts: processedParts, size };
 }
 
+const NORMALIZE_PATTERN = new SafeRegExp(/^[\x20-\x7E]*$/);
+
 /**
  * @param {string} str
  * @returns {string}
  */
 function normalizeType(str) {
   let normalizedType = str;
-  if (!RegExpPrototypeTest(/^[\x20-\x7E]*$/, str)) {
+  if (!RegExpPrototypeTest(NORMALIZE_PATTERN, str)) {
     normalizedType = "";
   }
   return StringPrototypeToLowerCase(normalizedType);
@@ -189,14 +219,16 @@ class Blob {
    */
   constructor(blobParts = [], options = {}) {
     const prefix = "Failed to construct 'Blob'";
-    blobParts = webidl.converters["sequence<BlobPart>"](blobParts, {
-      context: "Argument 1",
+    blobParts = webidl.converters["sequence<BlobPart>"](
+      blobParts,
       prefix,
-    });
-    options = webidl.converters["BlobPropertyBag"](options, {
-      context: "Argument 2",
+      "Argument 1",
+    );
+    options = webidl.converters["BlobPropertyBag"](
+      options,
       prefix,
-    });
+      "Argument 2",
+    );
 
     this[webidl.brand] = webidl.brand;
 
@@ -232,24 +264,21 @@ class Blob {
     webidl.assertBranded(this, BlobPrototype);
     const prefix = "Failed to execute 'slice' on 'Blob'";
     if (start !== undefined) {
-      start = webidl.converters["long long"](start, {
+      start = webidl.converters["long long"](start, prefix, "Argument 1", {
         clamp: true,
-        context: "Argument 1",
-        prefix,
       });
     }
     if (end !== undefined) {
-      end = webidl.converters["long long"](end, {
+      end = webidl.converters["long long"](end, prefix, "Argument 2", {
         clamp: true,
-        context: "Argument 2",
-        prefix,
       });
     }
     if (contentType !== undefined) {
-      contentType = webidl.converters["DOMString"](contentType, {
-        context: "Argument 3",
+      contentType = webidl.converters["DOMString"](
+        contentType,
         prefix,
-      });
+        "Argument 3",
+      );
     }
 
     // deno-lint-ignore no-this-alias
@@ -337,7 +366,7 @@ class Blob {
             partIterator,
           );
           if (done) return controller.close();
-          if (value.byteLength > 0) {
+          if (TypedArrayPrototypeGetByteLength(value) > 0) {
             return controller.enqueue(value);
           }
         }
@@ -364,7 +393,7 @@ class Blob {
         partIterator,
       );
       if (done) break;
-      const byteLength = value.byteLength;
+      const byteLength = TypedArrayPrototypeGetByteLength(value);
       if (byteLength > 0) {
         TypedArrayPrototypeSet(bytes, value, offset);
         offset += byteLength;
@@ -379,7 +408,7 @@ class Blob {
   async arrayBuffer() {
     webidl.assertBranded(this, BlobPrototype);
     const buf = await this.#u8Array(this.size);
-    return buf.buffer;
+    return TypedArrayPrototypeGetBuffer(buf);
   }
 
   [SymbolFor("Deno.customInspect")](inspect) {
@@ -401,27 +430,27 @@ webidl.converters["Blob"] = webidl.createInterfaceConverter(
   "Blob",
   Blob.prototype,
 );
-webidl.converters["BlobPart"] = (V, opts) => {
+webidl.converters["BlobPart"] = (V, prefix, context, opts) => {
   // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
   if (typeof V == "object") {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
-      return webidl.converters["Blob"](V, opts);
+      return webidl.converters["Blob"](V, prefix, context, opts);
     }
     if (
       ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
       // deno-lint-ignore prefer-primordials
       ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
     ) {
-      return webidl.converters["ArrayBuffer"](V, opts);
+      return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
-      return webidl.converters["ArrayBufferView"](V, opts);
+      return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
   }
   // BlobPart is passed to processBlobParts after conversion, which calls core.encode()
   // on the string.
   // core.encode() is equivalent to USVString normalization.
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["sequence<BlobPart>"] = webidl.createSequenceConverter(
   webidl.converters["BlobPart"],
@@ -463,20 +492,19 @@ class File extends Blob {
    */
   constructor(fileBits, fileName, options = {}) {
     const prefix = "Failed to construct 'File'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
-    fileBits = webidl.converters["sequence<BlobPart>"](fileBits, {
-      context: "Argument 1",
+    fileBits = webidl.converters["sequence<BlobPart>"](
+      fileBits,
       prefix,
-    });
-    fileName = webidl.converters["USVString"](fileName, {
-      context: "Argument 2",
+      "Argument 1",
+    );
+    fileName = webidl.converters["USVString"](fileName, prefix, "Argument 2");
+    options = webidl.converters["FilePropertyBag"](
+      options,
       prefix,
-    });
-    options = webidl.converters["FilePropertyBag"](options, {
-      context: "Argument 3",
-      prefix,
-    });
+      "Argument 3",
+    );
 
     super(fileBits, options);
 
@@ -520,7 +548,7 @@ webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(
 
 // A finalization registry to deallocate a blob part when its JS reference is
 // garbage collected.
-const registry = new FinalizationRegistry((uuid) => {
+const registry = new SafeFinalizationRegistry((uuid) => {
   ops.op_blob_remove_part(uuid);
 });
 
@@ -550,7 +578,7 @@ class BlobReference {
    */
   static fromUint8Array(data) {
     const id = ops.op_blob_create_part(data);
-    return new BlobReference(id, data.byteLength);
+    return new BlobReference(id, TypedArrayPrototypeGetByteLength(data));
   }
 
   /**
@@ -625,6 +653,33 @@ function blobFromObjectUrl(url) {
   blob[_parts] = parts;
   return blob;
 }
+
+/**
+ * @param {Blob} blob
+ * @returns {string}
+ */
+function createObjectURL(blob) {
+  const prefix = "Failed to execute 'createObjectURL' on 'URL'";
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  blob = webidl.converters["Blob"](blob, prefix, "Argument 1");
+
+  return ops.op_blob_create_object_url(blob.type, getParts(blob));
+}
+
+/**
+ * @param {string} url
+ * @returns {void}
+ */
+function revokeObjectURL(url) {
+  const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  url = webidl.converters["DOMString"](url, prefix, "Argument 1");
+
+  ops.op_blob_revoke_object_url(url);
+}
+
+URL.createObjectURL = createObjectURL;
+URL.revokeObjectURL = revokeObjectURL;
 
 export {
   Blob,

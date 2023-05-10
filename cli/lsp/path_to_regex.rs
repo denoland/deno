@@ -37,7 +37,7 @@ use std::fmt::Write as _;
 use std::iter::Peekable;
 
 static ESCAPE_STRING_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"([.+*?=^!:${}()\[\]|/\\])").unwrap());
+  lazy_regex::lazy_regex!(r"([.+*?=^!:${}()\[\]|/\\])");
 
 #[derive(Debug, PartialEq, Eq)]
 enum TokenType {
@@ -452,14 +452,11 @@ pub fn parse(
         path = String::new();
       }
 
-      let name = name.map_or_else(
-        || {
-          let default = StringOrNumber::Number(key);
-          key += 1;
-          default
-        },
-        StringOrNumber::String,
-      );
+      let name = name.map(StringOrNumber::String).unwrap_or_else(|| {
+        let default = StringOrNumber::Number(key);
+        key += 1;
+        default
+      });
       let prefix = if prefix.is_empty() {
         None
       } else {
@@ -498,8 +495,10 @@ pub fn parse(
 
       must_consume(&TokenType::Close, &mut tokens)?;
 
-      let name = maybe_name.clone().map_or_else(
-        || {
+      let name = maybe_name
+        .clone()
+        .map(StringOrNumber::String)
+        .unwrap_or_else(|| {
           if maybe_pattern.is_some() {
             let default = StringOrNumber::Number(key);
             key += 1;
@@ -507,9 +506,7 @@ pub fn parse(
           } else {
             StringOrNumber::String("".to_string())
           }
-        },
-        StringOrNumber::String,
-      );
+        });
       let pattern = if maybe_name.is_some() && maybe_pattern.is_none() {
         default_pattern.clone()
       } else {
@@ -570,11 +567,13 @@ pub fn tokens_to_regex(
         let prefix = key
           .prefix
           .clone()
-          .map_or_else(|| "".to_string(), |s| escape_string(&s));
+          .map(|s| escape_string(&s))
+          .unwrap_or_default();
         let suffix = key
           .suffix
           .clone()
-          .map_or_else(|| "".to_string(), |s| escape_string(&s));
+          .map(|s| escape_string(&s))
+          .unwrap_or_default();
 
         if !key.pattern.is_empty() {
           if !prefix.is_empty() || !suffix.is_empty() {

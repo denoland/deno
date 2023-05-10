@@ -6,6 +6,7 @@ mod cache;
 mod deno_std;
 mod emit;
 mod errors;
+mod factory;
 mod file_fetcher;
 mod graph_util;
 mod http_util;
@@ -16,21 +17,26 @@ mod napi;
 mod node;
 mod npm;
 mod ops;
-mod proc_state;
 mod resolver;
-mod semver;
 mod standalone;
 mod tools;
 mod tsc;
 mod util;
 mod version;
+mod watcher;
 mod worker;
+
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::proc_state::ProcState;
-use crate::resolver::CliResolver;
+use crate::resolver::CliGraphResolver;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -42,7 +48,9 @@ use deno_core::error::JsError;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::run_local;
+use factory::CliFactory;
 use std::env;
+use std::env::current_exe;
 use std::path::PathBuf;
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
@@ -70,14 +78,22 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }
     DenoSubcommand::Cache(cache_flags) => {
-      let ps = ProcState::build(flags).await?;
-      ps.load_and_type_check_files(&cache_flags.files).await?;
-      ps.cache_module_emits()?;
+      let factory = CliFactory::from_flags(flags).await?;
+      let module_load_preparer = factory.module_load_preparer().await?;
+      let emitter = factory.emitter()?;
+      let graph_container = factory.graph_container();
+      module_load_preparer
+        .load_and_type_check_files(&cache_flags.files)
+        .await?;
+      emitter.cache_module_emits(&graph_container.graph())?;
       Ok(0)
     }
     DenoSubcommand::Check(check_flags) => {
-      let ps = ProcState::build(flags).await?;
-      ps.load_and_type_check_files(&check_flags.files).await?;
+      let factory = CliFactory::from_flags(flags).await?;
+      let module_load_preparer = factory.module_load_preparer().await?;
+      module_load_preparer
+        .load_and_type_check_files(&check_flags.files)
+        .await?;
       Ok(0)
     }
     DenoSubcommand::Compile(compile_flags) => {
@@ -89,7 +105,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Fmt(fmt_flags) => {
-      let cli_options = CliOptions::from_flags(flags)?;
+      let cli_options = CliOptions::from_flags(flags.clone())?;
       let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
       tools::fmt::format(cli_options, fmt_options).await?;
       Ok(0)
@@ -131,7 +147,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags, run_flags).await
+        tools::run::run_script(flags).await
       }
     }
     DenoSubcommand::Task(task_flags) => {
@@ -242,8 +258,11 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
 
   let future = async move {
+    let current_exe_path = current_exe()?;
     let standalone_res =
-      match standalone::extract_standalone(args.clone()).await {
+      match standalone::extract_standalone(&current_exe_path, args.clone())
+        .await
+      {
         Ok(Some((metadata, eszip))) => standalone::run(eszip, metadata).await,
         Ok(None) => Ok(()),
         Err(err) => Err(err),
@@ -254,8 +273,8 @@ pub fn main() {
     let flags = match flags_from_vec(args) {
       Ok(flags) => flags,
       Err(err @ clap::Error { .. })
-        if err.kind() == clap::ErrorKind::DisplayHelp
-          || err.kind() == clap::ErrorKind::DisplayVersion =>
+        if err.kind() == clap::error::ErrorKind::DisplayHelp
+          || err.kind() == clap::error::ErrorKind::DisplayVersion =>
       {
         err.print().unwrap();
         std::process::exit(0);

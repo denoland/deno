@@ -99,6 +99,7 @@ pub fn benchmark(
             "run",
             "--allow-all",
             "--unstable",
+            "--enable-testing-features-do-not-use",
             path,
             &server_addr(port),
           ],
@@ -174,7 +175,7 @@ fn run(
 
   println!("{output}");
   assert!(
-    server.try_wait()?.map_or(true, |s| s.success()),
+    server.try_wait()?.map(|s| s.success()).unwrap_or(true),
     "server ended with error"
   );
 
@@ -187,7 +188,7 @@ fn run(
 }
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(4544);
-fn get_port() -> u16 {
+pub(crate) fn get_port() -> u16 {
   let p = NEXT_PORT.load(Ordering::SeqCst);
   NEXT_PORT.store(p.wrapping_add(1), Ordering::SeqCst);
   p

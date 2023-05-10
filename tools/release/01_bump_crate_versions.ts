@@ -97,17 +97,16 @@ async function getGitLog() {
 }
 
 async function updateStdVersion() {
-  const compatFilePath = $.path.join(cliCrate.folderPath, "deno_std.rs");
-  const text = await Deno.readTextFile(compatFilePath);
+  const compatFilePath = cliCrate.folderPath.join("deno_std.rs");
+  const text = await compatFilePath.readText();
   const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
   const stdVersionText = versionRe.exec(text)?.[1];
   if (stdVersionText == null) {
     throw new Error(`Could not find the deno_std version in ${compatFilePath}`);
   }
   const stdVersion = semver.parse(stdVersionText)!;
-  const newStdVersion = stdVersion.inc("minor");
-  await Deno.writeTextFile(
-    compatFilePath,
+  const newStdVersion = stdVersion.increment("minor");
+  await compatFilePath.writeText(
     text.replace(versionRe, `std@${newStdVersion}`),
   );
 }

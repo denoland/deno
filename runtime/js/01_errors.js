@@ -96,6 +96,13 @@ class WriteZero extends Error {
   }
 }
 
+class WouldBlock extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "WouldBlock";
+  }
+}
+
 class UnexpectedEof extends Error {
   constructor(msg) {
     super(msg);
@@ -139,6 +146,7 @@ const errors = {
   TimedOut,
   Interrupted,
   WriteZero,
+  WouldBlock,
   UnexpectedEof,
   BadResource,
   Http,

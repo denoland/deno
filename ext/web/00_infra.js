@@ -7,28 +7,34 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 const core = globalThis.Deno.core;
+const internals = globalThis.__bootstrap.internals;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  decodeURIComponent,
   Error,
   JSONStringify,
   NumberPrototypeToString,
-  RegExp,
+  ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeRegExp,
   String,
   StringPrototypeCharAt,
   StringPrototypeCharCodeAt,
   StringPrototypeMatch,
   StringPrototypePadStart,
   StringPrototypeReplace,
+  StringPrototypeReplaceAll,
   StringPrototypeSlice,
   StringPrototypeSubstring,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
   TypeError,
 } = primordials;
+import { URLPrototype } from "ext:deno_url/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
 const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
@@ -67,7 +73,7 @@ const HTTP_TOKEN_CODE_POINT = [
   "\u007E",
   ...new SafeArrayIterator(ASCII_ALPHANUMERIC),
 ];
-const HTTP_TOKEN_CODE_POINT_RE = new RegExp(
+const HTTP_TOKEN_CODE_POINT_RE = new SafeRegExp(
   `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`,
 );
 const HTTP_QUOTED_STRING_TOKEN_POINT = [
@@ -75,27 +81,27 @@ const HTTP_QUOTED_STRING_TOKEN_POINT = [
   "\u0020-\u007E",
   "\u0080-\u00FF",
 ];
-const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new RegExp(
+const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new SafeRegExp(
   `^[${regexMatcher(HTTP_QUOTED_STRING_TOKEN_POINT)}]+$`,
 );
 const HTTP_TAB_OR_SPACE_MATCHER = regexMatcher(HTTP_TAB_OR_SPACE);
-const HTTP_TAB_OR_SPACE_PREFIX_RE = new RegExp(
+const HTTP_TAB_OR_SPACE_PREFIX_RE = new SafeRegExp(
   `^[${HTTP_TAB_OR_SPACE_MATCHER}]+`,
   "g",
 );
-const HTTP_TAB_OR_SPACE_SUFFIX_RE = new RegExp(
+const HTTP_TAB_OR_SPACE_SUFFIX_RE = new SafeRegExp(
   `[${HTTP_TAB_OR_SPACE_MATCHER}]+$`,
   "g",
 );
 const HTTP_WHITESPACE_MATCHER = regexMatcher(HTTP_WHITESPACE);
-const HTTP_BETWEEN_WHITESPACE = new RegExp(
+const HTTP_BETWEEN_WHITESPACE = new SafeRegExp(
   `^[${HTTP_WHITESPACE_MATCHER}]*(.*?)[${HTTP_WHITESPACE_MATCHER}]*$`,
 );
-const HTTP_WHITESPACE_PREFIX_RE = new RegExp(
+const HTTP_WHITESPACE_PREFIX_RE = new SafeRegExp(
   `^[${HTTP_WHITESPACE_MATCHER}]+`,
   "g",
 );
-const HTTP_WHITESPACE_SUFFIX_RE = new RegExp(
+const HTTP_WHITESPACE_SUFFIX_RE = new SafeRegExp(
   `[${HTTP_WHITESPACE_MATCHER}]+$`,
   "g",
 );
@@ -150,6 +156,8 @@ function collectSequenceOfCodepoints(input, position, condition) {
   return { result: StringPrototypeSlice(input, start, position), position };
 }
 
+const LOWERCASE_PATTERN = new SafeRegExp(/[a-z]/g);
+
 /**
  * @param {string} s
  * @returns {string}
@@ -157,7 +165,7 @@ function collectSequenceOfCodepoints(input, position, condition) {
 function byteUpperCase(s) {
   return StringPrototypeReplace(
     String(s),
-    /[a-z]/g,
+    LOWERCASE_PATTERN,
     function byteUpperCaseReplace(c) {
       return StringPrototypeToUpperCase(c);
     },
@@ -249,6 +257,79 @@ function forgivingBase64Decode(data) {
   return ops.op_base64_decode(data);
 }
 
+// Taken from std/encoding/base64url.ts
+/*
+ * Some variants allow or require omitting the padding '=' signs:
+ * https://en.wikipedia.org/wiki/Base64#The_URL_applications
+ * @param base64url
+ */
+/**
+ * @param {string} base64url
+ * @returns {string}
+ */
+function addPaddingToBase64url(base64url) {
+  if (base64url.length % 4 === 2) return base64url + "==";
+  if (base64url.length % 4 === 3) return base64url + "=";
+  if (base64url.length % 4 === 1) {
+    throw new TypeError("Illegal base64url string!");
+  }
+  return base64url;
+}
+
+const BASE64URL_PATTERN = new SafeRegExp(/^[-_A-Z0-9]*?={0,2}$/i);
+
+/**
+ * @param {string} base64url
+ * @returns {string}
+ */
+function convertBase64urlToBase64(base64url) {
+  if (!RegExpPrototypeTest(BASE64URL_PATTERN, base64url)) {
+    // Contains characters not part of base64url spec.
+    throw new TypeError("Failed to decode base64url: invalid character");
+  }
+  return StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(
+      addPaddingToBase64url(base64url),
+      "-",
+      "+",
+    ),
+    "_",
+    "/",
+  );
+}
+
+/**
+ * Encodes a given ArrayBuffer or string into a base64url representation
+ * @param {ArrayBuffer | string} data
+ * @returns {string}
+ */
+function forgivingBase64UrlEncode(data) {
+  return StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(
+      StringPrototypeReplaceAll(
+        forgivingBase64Encode(
+          typeof data === "string" ? new TextEncoder().encode(data) : data,
+        ),
+        "=",
+        "",
+      ),
+      "+",
+      "-",
+    ),
+    "/",
+    "_",
+  );
+}
+
+/**
+ * Converts given base64url encoded data back to original
+ * @param {string} b64url
+ * @returns {Uint8Array}
+ */
+function forgivingBase64UrlDecode(b64url) {
+  return forgivingBase64Decode(convertBase64urlToBase64(b64url));
+}
+
 /**
  * @param {string} char
  * @returns {boolean}
@@ -306,6 +387,77 @@ function serializeJSValueToJSONString(value) {
   return result;
 }
 
+const PATHNAME_WIN_RE = new SafeRegExp(/^\/*([A-Za-z]:)(\/|$)/);
+const SLASH_WIN_RE = new SafeRegExp(/\//g);
+const PERCENT_RE = new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g);
+
+// Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
+/**
+ * @param {URL} url
+ * @returns {string}
+ */
+function pathFromURLWin32(url) {
+  let p = StringPrototypeReplace(
+    url.pathname,
+    PATHNAME_WIN_RE,
+    "$1/",
+  );
+  p = StringPrototypeReplace(
+    p,
+    SLASH_WIN_RE,
+    "\\",
+  );
+  p = StringPrototypeReplace(
+    p,
+    PERCENT_RE,
+    "%25",
+  );
+  let path = decodeURIComponent(p);
+  if (url.hostname != "") {
+    // Note: The `URL` implementation guarantees that the drive letter and
+    // hostname are mutually exclusive. Otherwise it would not have been valid
+    // to append the hostname and path like this.
+    path = `\\\\${url.hostname}${path}`;
+  }
+  return path;
+}
+
+// Keep in sync with `fromFileUrl()` in `std/path/posix.ts`.
+/**
+ * @param {URL} url
+ * @returns {string}
+ */
+function pathFromURLPosix(url) {
+  if (url.hostname !== "") {
+    throw new TypeError(`Host must be empty.`);
+  }
+
+  return decodeURIComponent(
+    StringPrototypeReplace(
+      url.pathname,
+      PERCENT_RE,
+      "%25",
+    ),
+  );
+}
+
+function pathFromURL(pathOrUrl) {
+  if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrUrl)) {
+    if (pathOrUrl.protocol != "file:") {
+      throw new TypeError("Must be a file URL.");
+    }
+
+    return core.build.os == "windows"
+      ? pathFromURLWin32(pathOrUrl)
+      : pathFromURLPosix(pathOrUrl);
+  }
+  return pathOrUrl;
+}
+
+// NOTE(bartlomieju): this is exposed on `internals` so we can test
+// it in unit tests
+internals.pathFromURL = pathFromURL;
+
 export {
   ASCII_ALPHA,
   ASCII_ALPHANUMERIC,
@@ -320,6 +472,8 @@ export {
   collectSequenceOfCodepoints,
   forgivingBase64Decode,
   forgivingBase64Encode,
+  forgivingBase64UrlDecode,
+  forgivingBase64UrlEncode,
   HTTP_QUOTED_STRING_TOKEN_POINT,
   HTTP_QUOTED_STRING_TOKEN_POINT_RE,
   HTTP_TAB_OR_SPACE,
@@ -331,6 +485,7 @@ export {
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
   httpTrim,
+  pathFromURL,
   regexMatcher,
   serializeJSValueToJSONString,
 };

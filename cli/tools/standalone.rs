@@ -1,33 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::CaData;
 use crate::args::CompileFlags;
 use crate::args::Flags;
-use crate::cache::DenoDir;
-use crate::graph_util::create_graph_and_maybe_check;
+use crate::factory::CliFactory;
 use crate::graph_util::error_for_any_npm_specifier;
-use crate::http_util::HttpClient;
-use crate::standalone::Metadata;
-use crate::standalone::MAGIC_TRAILER;
+use crate::standalone::is_standalone_binary;
+use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
-use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
-use deno_graph::ModuleSpecifier;
 use deno_runtime::colors;
-use std::env;
-use std::fs;
-use std::fs::File;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -38,183 +23,80 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
-  let deno_dir = &ps.dir;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let file_fetcher = factory.file_fetcher()?;
+  let http_client = factory.http_client();
+  let deno_dir = factory.deno_dir()?;
+  let module_graph_builder = factory.module_graph_builder().await?;
+  let parsed_source_cache = factory.parsed_source_cache()?;
 
-  let output_path =
-    resolve_compile_executable_output_path(&compile_flags).await?;
+  let binary_writer =
+    DenoCompileBinaryWriter::new(file_fetcher, http_client, deno_dir);
+  let module_specifier = cli_options.resolve_main_module()?;
+  let module_roots = {
+    let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
+    vec.push(module_specifier.clone());
+    for side_module in &compile_flags.include {
+      vec.push(resolve_url_or_path(side_module, cli_options.initial_cwd())?);
+    }
+    vec
+  };
+
+  let output_path = resolve_compile_executable_output_path(
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )
+  .await?;
 
   let graph = Arc::try_unwrap(
-    create_graph_and_maybe_check(module_specifier.clone(), &ps).await?,
+    module_graph_builder
+      .create_graph_and_maybe_check(module_roots)
+      .await?,
   )
   .unwrap();
 
   // at the moment, we don't support npm specifiers in deno_compile, so show an error
   error_for_any_npm_specifier(&graph)?;
 
-  let parser = ps.parsed_source_cache.as_capturing_parser();
+  let parser = parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
 
   log::info!(
-    "{} {}",
+    "{} {} to {}",
     colors::green("Compile"),
-    module_specifier.to_string()
+    module_specifier.to_string(),
+    output_path.display(),
   );
+  validate_output_path(&output_path)?;
 
-  // Select base binary based on target
-  let original_binary =
-    get_base_binary(&ps.http_client, deno_dir, compile_flags.target.clone())
-      .await?;
+  let mut file = std::fs::File::create(&output_path)?;
+  binary_writer
+    .write_bin(
+      &mut file,
+      eszip,
+      &module_specifier,
+      &compile_flags,
+      cli_options,
+    )
+    .await
+    .with_context(|| format!("Writing {}", output_path.display()))?;
+  drop(file);
 
-  let final_bin = create_standalone_binary(
-    original_binary,
-    eszip,
-    module_specifier,
-    &compile_flags,
-    ps,
-  )
-  .await?;
-
-  log::info!("{} {}", colors::green("Emit"), output_path.display());
-
-  write_standalone_binary(output_path, final_bin).await?;
-  Ok(())
-}
-
-async fn get_base_binary(
-  client: &HttpClient,
-  deno_dir: &DenoDir,
-  target: Option<String>,
-) -> Result<Vec<u8>, AnyError> {
-  if target.is_none() {
-    let path = std::env::current_exe()?;
-    return Ok(tokio::fs::read(path).await?);
+  // set it as executable
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o777);
+    std::fs::set_permissions(output_path, perms)?;
   }
 
-  let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-  let binary_name = format!("deno-{target}.zip");
-
-  let binary_path_suffix = if crate::version::is_canary() {
-    format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
-  } else {
-    format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
-  };
-
-  let download_directory = deno_dir.dl_folder_path();
-  let binary_path = download_directory.join(&binary_path_suffix);
-
-  if !binary_path.exists() {
-    download_base_binary(client, &download_directory, &binary_path_suffix)
-      .await?;
-  }
-
-  let archive_data = tokio::fs::read(binary_path).await?;
-  let temp_dir = secure_tempfile::TempDir::new()?;
-  let base_binary_path = crate::tools::upgrade::unpack_into_dir(
-    archive_data,
-    target.contains("windows"),
-    &temp_dir,
-  )?;
-  let base_binary = tokio::fs::read(base_binary_path).await?;
-  drop(temp_dir); // delete the temp dir
-  Ok(base_binary)
-}
-
-async fn download_base_binary(
-  client: &HttpClient,
-  output_directory: &Path,
-  binary_path_suffix: &str,
-) -> Result<(), AnyError> {
-  let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
-  let maybe_bytes = {
-    let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
-    let progress = progress_bars.update(&download_url);
-
-    client
-      .download_with_progress(download_url, &progress)
-      .await?
-  };
-  let bytes = match maybe_bytes {
-    Some(bytes) => bytes,
-    None => {
-      log::info!("Download could not be found, aborting");
-      std::process::exit(1)
-    }
-  };
-
-  std::fs::create_dir_all(output_directory)?;
-  let output_path = output_directory.join(binary_path_suffix);
-  std::fs::create_dir_all(output_path.parent().unwrap())?;
-  tokio::fs::write(output_path, bytes).await?;
   Ok(())
-}
-
-/// This functions creates a standalone deno binary by appending a bundle
-/// and magic trailer to the currently executing binary.
-async fn create_standalone_binary(
-  mut original_bin: Vec<u8>,
-  eszip: eszip::EszipV2,
-  entrypoint: ModuleSpecifier,
-  compile_flags: &CompileFlags,
-  ps: ProcState,
-) -> Result<Vec<u8>, AnyError> {
-  let mut eszip_archive = eszip.into_bytes();
-
-  let ca_data = match ps.options.ca_data() {
-    Some(CaData::File(ca_file)) => {
-      Some(fs::read(ca_file).with_context(|| format!("Reading: {ca_file}"))?)
-    }
-    Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
-    None => None,
-  };
-  let maybe_import_map = ps
-    .options
-    .resolve_import_map(&ps.file_fetcher)
-    .await?
-    .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
-  let metadata = Metadata {
-    argv: compile_flags.args.clone(),
-    unstable: ps.options.unstable(),
-    seed: ps.options.seed(),
-    location: ps.options.location_flag().clone(),
-    permissions: ps.options.permissions_options(),
-    v8_flags: ps.options.v8_flags().clone(),
-    unsafely_ignore_certificate_errors: ps
-      .options
-      .unsafely_ignore_certificate_errors()
-      .clone(),
-    log_level: ps.options.log_level(),
-    ca_stores: ps.options.ca_stores().clone(),
-    ca_data,
-    entrypoint,
-    maybe_import_map,
-  };
-  let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
-
-  let eszip_pos = original_bin.len();
-  let metadata_pos = eszip_pos + eszip_archive.len();
-  let mut trailer = MAGIC_TRAILER.to_vec();
-  trailer.write_all(&eszip_pos.to_be_bytes())?;
-  trailer.write_all(&metadata_pos.to_be_bytes())?;
-
-  let mut final_bin = Vec::with_capacity(
-    original_bin.len() + eszip_archive.len() + trailer.len(),
-  );
-  final_bin.append(&mut original_bin);
-  final_bin.append(&mut eszip_archive);
-  final_bin.append(&mut metadata);
-  final_bin.append(&mut trailer);
-
-  Ok(final_bin)
 }
 
 /// This function writes out a final binary to specified path. If output path
 /// is not already standalone binary it will return error instead.
-async fn write_standalone_binary(
-  output_path: PathBuf,
-  final_bin: Vec<u8>,
-) -> Result<(), AnyError> {
+fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
   if output_path.exists() {
     // If the output is a directory, throw error
     if output_path.is_dir() {
@@ -228,19 +110,9 @@ async fn write_standalone_binary(
       );
     }
 
-    // Make sure we don't overwrite any file not created by Deno compiler.
-    // Check for magic trailer in last 24 bytes.
-    let mut has_trailer = false;
-    let mut output_file = File::open(&output_path)?;
-    // This seek may fail because the file is too small to possibly be
-    // `deno compile` output.
-    if output_file.seek(SeekFrom::End(-24)).is_ok() {
-      let mut trailer = [0; 24];
-      output_file.read_exact(&mut trailer)?;
-      let (magic_trailer, _) = trailer.split_at(8);
-      has_trailer = magic_trailer == MAGIC_TRAILER;
-    }
-    if !has_trailer {
+    // Make sure we don't overwrite any file not created by Deno compiler because
+    // this filename is chosen automatically in some cases.
+    if !is_standalone_binary(output_path) {
       bail!(
         concat!(
           "Could not compile to file '{}' because the file already exists ",
@@ -253,28 +125,20 @@ async fn write_standalone_binary(
 
     // Remove file if it was indeed a deno compiled binary, to avoid corruption
     // (see https://github.com/denoland/deno/issues/10310)
-    std::fs::remove_file(&output_path)?;
+    std::fs::remove_file(output_path)?;
   } else {
     let output_base = &output_path.parent().unwrap();
     if output_base.exists() && output_base.is_file() {
       bail!(
-        concat!(
-          "Could not compile to file '{}' because its parent directory ",
-          "is an existing file. You can use the `--output <file-path>` flag to ",
-          "provide an alternative name.",
-        ),
-        output_base.display(),
-      );
+          concat!(
+            "Could not compile to file '{}' because its parent directory ",
+            "is an existing file. You can use the `--output <file-path>` flag to ",
+            "provide an alternative name.",
+          ),
+          output_base.display(),
+        );
     }
-    tokio::fs::create_dir_all(output_base).await?;
-  }
-
-  tokio::fs::write(&output_path, final_bin).await?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o777);
-    tokio::fs::set_permissions(output_path, perms).await?;
+    std::fs::create_dir_all(output_base)?;
   }
 
   Ok(())
@@ -282,8 +146,10 @@ async fn write_standalone_binary(
 
 async fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
+  current_dir: &Path,
 ) -> Result<PathBuf, AnyError> {
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let module_specifier =
+    resolve_url_or_path(&compile_flags.source_file, current_dir)?;
 
   let mut output = compile_flags.output.clone();
 
@@ -339,12 +205,16 @@ mod test {
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
-    let path = resolve_compile_executable_output_path(&CompileFlags {
-      source_file: "mod.ts".to_string(),
-      output: Some(PathBuf::from("./file")),
-      args: Vec::new(),
-      target: Some("x86_64-unknown-linux-gnu".to_string()),
-    })
+    let path = resolve_compile_executable_output_path(
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: Some(PathBuf::from("./file")),
+        args: Vec::new(),
+        target: Some("x86_64-unknown-linux-gnu".to_string()),
+        include: vec![],
+      },
+      &std::env::current_dir().unwrap(),
+    )
     .await
     .unwrap();
 
@@ -356,12 +226,16 @@ mod test {
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_windows() {
-    let path = resolve_compile_executable_output_path(&CompileFlags {
-      source_file: "mod.ts".to_string(),
-      output: Some(PathBuf::from("./file")),
-      args: Vec::new(),
-      target: Some("x86_64-pc-windows-msvc".to_string()),
-    })
+    let path = resolve_compile_executable_output_path(
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: Some(PathBuf::from("./file")),
+        args: Vec::new(),
+        target: Some("x86_64-pc-windows-msvc".to_string()),
+        include: vec![],
+      },
+      &std::env::current_dir().unwrap(),
+    )
     .await
     .unwrap();
     assert_eq!(path.file_name().unwrap(), "file.exe");

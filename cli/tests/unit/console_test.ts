@@ -152,16 +152,16 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n\")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n\")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r\")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t\")',
-  [Symbol("qux\\x00")]: 'Symbol(\"qux\\x00")'
+  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
+  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
+  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
+  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
+  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
       stringify(new Set(["foo\n", "foo\r", "foo\0"])),
-      `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
+      `Set(3) { "foo\\n", "foo\\r", "foo\\x00" }`,
     );
   },
 );
@@ -236,8 +236,8 @@ Deno.test(function consoleTestStringifyCircular() {
   nu: null,
   arrowFunc: [Function: arrowFunc],
   extendedClass: Extended { a: 1, b: 2 },
-  nFunc: [Function],
-  extendedCstr: [Class: Extended],
+  nFunc: [Function: anonymous],
+  extendedCstr: [class Extended extends Base],
   o: {
     num: 2,
     bool: false,
@@ -267,7 +267,7 @@ Deno.test(function consoleTestStringifyCircular() {
     stringify(new Date("2018-12-10T02:26:59.002Z")),
     "2018-12-10T02:26:59.002Z",
   );
-  assertEquals(stringify(new Set([1, 2, 3])), "Set { 1, 2, 3 }");
+  assertEquals(stringify(new Set([1, 2, 3])), "Set(3) { 1, 2, 3 }");
   assertEquals(
     stringify(
       new Map([
@@ -275,10 +275,10 @@ Deno.test(function consoleTestStringifyCircular() {
         [2, "two"],
       ]),
     ),
-    `Map { 1 => "one", 2 => "two" }`,
+    `Map(2) { 1 => "one", 2 => "two" }`,
   );
-  assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
-  assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
+  assertEquals(stringify(new WeakSet()), "WeakSet { <items unknown> }");
+  assertEquals(stringify(new WeakMap()), "WeakMap { <items unknown> }");
   assertEquals(stringify(Symbol(1)), `Symbol("1")`);
   assertEquals(stringify(Object(Symbol(1))), `[Symbol: Symbol("1")]`);
   assertEquals(stringify(null), "null");
@@ -304,19 +304,23 @@ Deno.test(function consoleTestStringifyCircular() {
     stringify(new Uint8Array([1, 2, 3])),
     "Uint8Array(3) [ 1, 2, 3 ]",
   );
-  assertEquals(stringify(Uint8Array.prototype), "Uint8Array {}");
+  assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
-    "{ a: { b: { c: { d: [Set] } } } }",
+    `{
+  a: {
+    b: { c: { d: Set(1) { 1 } } }
+  }
+}`,
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
     stringify(JSON),
-    "JSON {}",
+    "Object [JSON] {}",
   );
   assertEquals(
     stringify(new Console(() => {})),
-    `console {
+    `Object [console] {
   log: [Function: log],
   debug: [Function: debug],
   info: [Function: info],
@@ -345,15 +349,11 @@ Deno.test(function consoleTestStringifyCircular() {
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
-    'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
-  );
-  assertEquals(
-    stringify({
-      [Symbol.for("Deno.customInspect")]: function () {
-        return Deno.inspect(this);
-      },
-    }),
-    "[Circular *1]",
+    `Object [TAG] {
+  str: 1,
+  [Symbol(sym)]: 2,
+  [Symbol(Symbol.toStringTag)]: "TAG"
+}`,
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
@@ -363,26 +363,28 @@ Deno.test(function consoleTestStringifyMultipleCircular() {
   const y = { a: { b: {} }, foo: { bar: {} } };
   y.a.b = y.a;
   y.foo.bar = y.foo;
-  console.log(y);
   assertEquals(
     stringify(y),
-    "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
+    "{\n" +
+      "  a: <ref *1> { b: [Circular *1] },\n" +
+      "  foo: <ref *2> { bar: [Circular *2] }\n" +
+      "}",
   );
 });
 
 Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
   const f = function f() {};
   Reflect.setPrototypeOf(f, null);
-  assertEquals(stringify(f), "[Function: f]");
+  assertEquals(stringify(f), "[Function (null prototype): f]");
   const af = async function af() {};
   Reflect.setPrototypeOf(af, null);
-  assertEquals(stringify(af), "[Function: af]");
+  assertEquals(stringify(af), "[Function (null prototype): af]");
   const gf = function* gf() {};
   Reflect.setPrototypeOf(gf, null);
-  assertEquals(stringify(gf), "[Function: gf]");
+  assertEquals(stringify(gf), "[Function (null prototype): gf]");
   const agf = async function* agf() {};
   Reflect.setPrototypeOf(agf, null);
-  assertEquals(stringify(agf), "[Function: agf]");
+  assertEquals(stringify(agf), "[Function (null prototype): agf]");
 });
 
 Deno.test(function consoleTestStringifyFunctionWithProperties() {
@@ -395,7 +397,13 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
+  f: [Function: f] {
+    x: [Function (anonymous)],
+    y: 3,
+    z: [Function (anonymous)],
+    b: [Function: bar],
+    a: Map(0) {}
+  }
 }`,
   );
 
@@ -407,11 +415,11 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
     stringify({ f }),
     `{
   f: <ref *1> [Function: f] {
-    x: [Function],
+    x: [Function (anonymous)],
     y: 3,
-    z: [Function],
+    z: [Function (anonymous)],
     b: [Function: bar],
-    a: Map {},
+    a: Map(0) {},
     s: [Circular *1],
     t: [Function: t] { x: [Circular *1] }
   }
@@ -425,7 +433,75 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
 
   assertEquals(
     stripColor(Deno.inspect(Array, { showHidden: true })),
-    `[Function: Array] { [Symbol(Symbol.species)]: [Getter] }`,
+    `<ref *1> [Function: Array] {
+  [length]: 1,
+  [name]: "Array",
+  [prototype]: Object(0) [
+    [length]: 0,
+    [constructor]: [Circular *1],
+    [at]: [Function: at] { [length]: 1, [name]: "at" },
+    [concat]: [Function: concat] { [length]: 1, [name]: "concat" },
+    [copyWithin]: [Function: copyWithin] { [length]: 2, [name]: "copyWithin" },
+    [fill]: [Function: fill] { [length]: 1, [name]: "fill" },
+    [find]: [Function: find] { [length]: 1, [name]: "find" },
+    [findIndex]: [Function: findIndex] { [length]: 1, [name]: "findIndex" },
+    [findLast]: [Function: findLast] { [length]: 1, [name]: "findLast" },
+    [findLastIndex]: [Function: findLastIndex] { [length]: 1, [name]: "findLastIndex" },
+    [lastIndexOf]: [Function: lastIndexOf] { [length]: 1, [name]: "lastIndexOf" },
+    [pop]: [Function: pop] { [length]: 0, [name]: "pop" },
+    [push]: [Function: push] { [length]: 1, [name]: "push" },
+    [reverse]: [Function: reverse] { [length]: 0, [name]: "reverse" },
+    [shift]: [Function: shift] { [length]: 0, [name]: "shift" },
+    [unshift]: [Function: unshift] { [length]: 1, [name]: "unshift" },
+    [slice]: [Function: slice] { [length]: 2, [name]: "slice" },
+    [sort]: [Function: sort] { [length]: 1, [name]: "sort" },
+    [splice]: [Function: splice] { [length]: 2, [name]: "splice" },
+    [includes]: [Function: includes] { [length]: 1, [name]: "includes" },
+    [indexOf]: [Function: indexOf] { [length]: 1, [name]: "indexOf" },
+    [join]: [Function: join] { [length]: 1, [name]: "join" },
+    [keys]: [Function: keys] { [length]: 0, [name]: "keys" },
+    [entries]: [Function: entries] { [length]: 0, [name]: "entries" },
+    [values]: [Function: values] { [length]: 0, [name]: "values" },
+    [forEach]: [Function: forEach] { [length]: 1, [name]: "forEach" },
+    [filter]: [Function: filter] { [length]: 1, [name]: "filter" },
+    [flat]: [Function: flat] { [length]: 0, [name]: "flat" },
+    [flatMap]: [Function: flatMap] { [length]: 1, [name]: "flatMap" },
+    [map]: [Function: map] { [length]: 1, [name]: "map" },
+    [every]: [Function: every] { [length]: 1, [name]: "every" },
+    [some]: [Function: some] { [length]: 1, [name]: "some" },
+    [reduce]: [Function: reduce] { [length]: 1, [name]: "reduce" },
+    [reduceRight]: [Function: reduceRight] { [length]: 1, [name]: "reduceRight" },
+    [toLocaleString]: [Function: toLocaleString] { [length]: 0, [name]: "toLocaleString" },
+    [toString]: [Function: toString] { [length]: 0, [name]: "toString" },
+    [toReversed]: [Function: toReversed] { [length]: 0, [name]: "toReversed" },
+    [toSorted]: [Function: toSorted] { [length]: 1, [name]: "toSorted" },
+    [toSpliced]: [Function: toSpliced] { [length]: 2, [name]: "toSpliced" },
+    [with]: [Function: with] { [length]: 2, [name]: "with" },
+    [Symbol(Symbol.iterator)]: [Function: values] { [length]: 0, [name]: "values" },
+    [Symbol(Symbol.unscopables)]: [Object: null prototype] {
+      at: true,
+      copyWithin: true,
+      entries: true,
+      fill: true,
+      find: true,
+      findIndex: true,
+      findLast: true,
+      findLastIndex: true,
+      flat: true,
+      flatMap: true,
+      includes: true,
+      keys: true,
+      values: true,
+      toReversed: true,
+      toSorted: true,
+      toSpliced: true
+    }
+  ],
+  [isArray]: [Function: isArray] { [length]: 1, [name]: "isArray" },
+  [from]: [Function: from] { [length]: 1, [name]: "from" },
+  [of]: [Function: of] { [length]: 0, [name]: "of" },
+  [Symbol(Symbol.species)]: [Getter]
+}`,
   );
 });
 
@@ -434,21 +510,24 @@ Deno.test(function consoleTestStringifyWithDepth() {
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
     stripColor(inspectArgs([nestedObj], { depth: 3 })),
-    "{ a: { b: { c: [Object] } } }",
+    "{\n  a: { b: { c: { d: [Object] } } }\n}",
   );
   assertEquals(
     stripColor(inspectArgs([nestedObj], { depth: 4 })),
-    "{ a: { b: { c: { d: [Object] } } } }",
+    "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
-  assertEquals(stripColor(inspectArgs([nestedObj], { depth: 0 })), "[Object]");
+  assertEquals(
+    stripColor(inspectArgs([nestedObj], { depth: 0 })),
+    "{ a: [Object] }",
+  );
   assertEquals(
     stripColor(inspectArgs([nestedObj])),
-    "{ a: { b: { c: { d: [Object] } } } }",
+    "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
   // test inspect is working the same way
   assertEquals(
     stripColor(Deno.inspect(nestedObj, { depth: 4 })),
-    "{ a: { b: { c: { d: [Object] } } } }",
+    "{\n  a: {\n    b: { c: { d: { e: [Object] } } }\n  }\n}",
   );
 });
 
@@ -496,13 +575,15 @@ Deno.test(function consoleTestStringifyIterable() {
   assertEquals(
     stringify(longArray),
     `[
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0,
   ... 100 more items
 ]`,
   );
@@ -513,13 +594,15 @@ Deno.test(function consoleTestStringifyIterable() {
     `{
   a: "a",
   longArray: [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
     ... 100 more items
   ]
 }`,
@@ -529,7 +612,7 @@ Deno.test(function consoleTestStringifyIterable() {
     ["a", 0],
     ["b", 1],
   ]);
-  assertEquals(stringify(shortMap), `Map { "a" => 0, "b" => 1 }`);
+  assertEquals(stringify(shortMap), `Map(2) { "a" => 0, "b" => 1 }`);
 
   const longMap = new Map();
   for (const key of Array(200).keys()) {
@@ -537,7 +620,7 @@ Deno.test(function consoleTestStringifyIterable() {
   }
   assertEquals(
     stringify(longMap),
-    `Map {
+    `Map(200) {
   "0" => 0,
   "1" => 1,
   "2" => 2,
@@ -643,14 +726,14 @@ Deno.test(function consoleTestStringifyIterable() {
   );
 
   const shortSet = new Set([1, 2, 3]);
-  assertEquals(stringify(shortSet), `Set { 1, 2, 3 }`);
+  assertEquals(stringify(shortSet), `Set(3) { 1, 2, 3 }`);
   const longSet = new Set();
   for (const key of Array(200).keys()) {
     longSet.add(key);
   }
   assertEquals(
     stringify(longSet),
-    `Set {
+    `Set(200) {
   0,
   1,
   2,
@@ -1053,7 +1136,7 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
   assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
   assertEquals(
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
-    "{ a: { b: { c: { d: [Set] } } } }",
+    "{\n  a: {\n    b: { c: { d: Set(1) { 1 } } }\n  }\n}",
   );
 });
 
@@ -1497,15 +1580,15 @@ Deno.test(function consoleTable() {
     assertEquals(
       stripColor(out.toString()),
       `\
-┌───────┬───────────┬───────────────────┬────────┐
-│ (idx) │ c         │ e                 │ Values │
-├───────┼───────────┼───────────────────┼────────┤
-│ a     │           │                   │ true   │
-│ b     │ { d: 10 } │ [ 1, 2, [Array] ] │        │
-│ f     │           │                   │ "test" │
-│ g     │           │                   │        │
-│ h     │           │                   │        │
-└───────┴───────────┴───────────────────┴────────┘
+┌───────┬───────────┬────────────────────┬────────┐
+│ (idx) │ c         │ e                  │ Values │
+├───────┼───────────┼────────────────────┼────────┤
+│ a     │           │                    │ true   │
+│ b     │ { d: 10 } │ [ 1, 2, [ 5, 6 ] ] │        │
+│ f     │           │                    │ "test" │
+│ g     │           │                    │        │
+│ h     │           │                    │        │
+└───────┴───────────┴────────────────────┴────────┘
 `,
     );
   });
@@ -1791,7 +1874,7 @@ Deno.test(function inspectGetters() {
         return 0;
       },
     }, { getters: true })),
-    "{ foo: 0 }",
+    "{ foo: [Getter: 0] }",
   );
 
   assertEquals(
@@ -1800,13 +1883,13 @@ Deno.test(function inspectGetters() {
         throw new Error("bar");
       },
     }, { getters: true }),
-    "{ foo: [Thrown Error: bar] }",
+    "{ foo: [Getter: <Inspection threw (bar)>] }",
   );
 });
 
 Deno.test(function inspectPrototype() {
   class A {}
-  assertEquals(Deno.inspect(A.prototype), "A {}");
+  assertEquals(Deno.inspect(A.prototype), "{}");
 });
 
 Deno.test(function inspectSorted() {
@@ -1816,7 +1899,7 @@ Deno.test(function inspectSorted() {
   );
   assertEquals(
     stripColor(Deno.inspect(new Set(["b", "a"]), { sorted: true })),
-    `Set { "a", "b" }`,
+    `Set(2) { "a", "b" }`,
   );
   assertEquals(
     stripColor(Deno.inspect(
@@ -1826,7 +1909,7 @@ Deno.test(function inspectSorted() {
       ]),
       { sorted: true },
     )),
-    `Map { "a" => 1, "b" => 2 }`,
+    `Map(2) { "a" => 1, "b" => 2 }`,
   );
 });
 
@@ -1865,7 +1948,7 @@ Deno.test(function inspectTrailingComma() {
       ]),
       { trailingComma: true },
     )),
-    `Set {
+    `Set(2) {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 }`,
@@ -1878,7 +1961,7 @@ Deno.test(function inspectTrailingComma() {
       ]),
       { trailingComma: true },
     )),
-    `Map {
+    `Map(2) {
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" => 1,
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" => 2,
 }`,
@@ -1898,11 +1981,11 @@ Deno.test(function inspectCompact() {
 Deno.test(function inspectIterableLimit() {
   assertEquals(
     stripColor(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
-    `[ "a", "b", ... 1 more items ]`,
+    `[ "a", "b", ... 1 more item ]`,
   );
   assertEquals(
     stripColor(Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 })),
-    `Set { "a", "b", ... 1 more items }`,
+    `Set(3) { "a", "b", ... 1 more item }`,
   );
   assertEquals(
     stripColor(Deno.inspect(
@@ -1913,7 +1996,7 @@ Deno.test(function inspectIterableLimit() {
       ]),
       { iterableLimit: 2 },
     )),
-    `Map { "a" => 1, "b" => 2, ... 1 more items }`,
+    `Map(3) { "a" => 1, "b" => 2, ... 1 more item }`,
   );
 });
 
@@ -1952,7 +2035,7 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `MyProxy { prop1: 5, prop2: 5 }`,
+    `Object [MyProxy] { prop1: 5, prop2: 5 }`,
   );
   assertEquals(
     stripColor(Deno.inspect(
@@ -1977,10 +2060,13 @@ Deno.test(function inspectProxy() {
       new Proxy([1, 2, 3, 4, 5, 6, 7], { get() {} }),
       { showProxy: true },
     )),
-    `Proxy [ [
+    `Proxy [
+  [
     1, 2, 3, 4,
     5, 6, 7
-  ], { get: [Function: get] } ]`,
+  ],
+  { get: [Function: get] }
+]`,
   );
   assertEquals(
     stripColor(Deno.inspect(
@@ -2051,7 +2137,7 @@ Deno.test(function inspectEmptyArray() {
       compact: false,
       trailingComma: true,
     }),
-    "[\n]",
+    "[]",
   );
 });
 
@@ -2066,8 +2152,7 @@ Deno.test(function inspectDeepEmptyArray() {
       trailingComma: true,
     }),
     `{
-  arr: [
-  ],
+  arr: [],
 }`,
   );
 });
@@ -2080,11 +2165,11 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Map {\n}",
+    "Map(0) {}",
   );
 });
 
-Deno.test(function inspectEmptyMap() {
+Deno.test(function inspectEmptySet() {
   const set = new Set();
 
   assertEquals(
@@ -2092,11 +2177,11 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Set {\n}",
+    "Set(0) {}",
   );
 });
 
-Deno.test(function inspectEmptyMap() {
+Deno.test(function inspectEmptyUint8Array() {
   const typedArray = new Uint8Array(0);
 
   assertEquals(
@@ -2104,7 +2189,7 @@ Deno.test(function inspectEmptyMap() {
       compact: false,
       trailingComma: true,
     }),
-    "Uint8Array(0) [\n]",
+    "Uint8Array(0) []",
   );
 });
 
@@ -2118,12 +2203,12 @@ Deno.test(function inspectStringAbbreviation() {
 
   assertEquals(
     Deno.inspect(obj, { strAbbreviateSize: 10 }),
-    '{ str: "This is a ..." }',
+    '{ str: "This is a "... 59 more characters }',
   );
 
   assertEquals(
     Deno.inspect(arr, { strAbbreviateSize: 10 }),
-    '[ "This is a ..." ]',
+    '[ "This is a "... 59 more characters ]',
   );
 });
 
@@ -2138,8 +2223,51 @@ Deno.test(async function inspectAggregateError() {
   }
 });
 
+Deno.test(function inspectWithPrototypePollution() {
+  const originalExec = RegExp.prototype.exec;
+  try {
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
+    Deno.inspect("foo");
+  } finally {
+    RegExp.prototype.exec = originalExec;
+  }
+});
+
 Deno.test(function inspectorMethods() {
   console.timeStamp("test");
   console.profile("test");
   console.profileEnd("test");
+});
+
+Deno.test(function inspectQuotesOverride() {
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("foo", { quotes: ["'", '"', "`"] }),
+    "'foo'",
+  );
+  assertEquals(
+    // @ts-ignore - 'quotes' is an internal option
+    Deno.inspect("'foo'", { quotes: ["'", '"', "`"] }),
+    `"'foo'"`,
+  );
+});
+
+Deno.test(function inspectAnonymousFunctions() {
+  assertEquals(Deno.inspect(() => {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(function () {}), "[Function (anonymous)]");
+  assertEquals(Deno.inspect(async () => {}), "[AsyncFunction (anonymous)]");
+  assertEquals(
+    Deno.inspect(async function () {}),
+    "[AsyncFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(function* () {}),
+    "[GeneratorFunction (anonymous)]",
+  );
+  assertEquals(
+    Deno.inspect(async function* () {}),
+    "[AsyncGeneratorFunction (anonymous)]",
+  );
 });

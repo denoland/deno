@@ -1,3 +1,5 @@
+Warning "deno bundle" is deprecated and will be removed in the future.
+Use alternative bundlers like "deno_emit", "esbuild" or "rollup" instead.
 Bundle file:///[WILDCARD]/subdir/shebang_file.js
 #!/usr/bin/env -S deno run --allow-read
 // deno-fmt-ignore-file

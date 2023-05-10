@@ -8,10 +8,8 @@ use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -72,49 +70,49 @@ use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
 
-pub fn init(maybe_seed: Option<u64>) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web"])
-    .esm(include_js_files!("00_crypto.js", "01_webidl.js",))
-    .ops(vec![
-      op_crypto_get_random_values::decl(),
-      op_crypto_generate_key::decl(),
-      op_crypto_sign_key::decl(),
-      op_crypto_verify_key::decl(),
-      op_crypto_derive_bits::decl(),
-      op_crypto_import_key::decl(),
-      op_crypto_export_key::decl(),
-      op_crypto_encrypt::decl(),
-      op_crypto_decrypt::decl(),
-      op_crypto_subtle_digest::decl(),
-      op_crypto_random_uuid::decl(),
-      op_crypto_wrap_key::decl(),
-      op_crypto_unwrap_key::decl(),
-      op_crypto_base64url_decode::decl(),
-      op_crypto_base64url_encode::decl(),
-      x25519::op_generate_x25519_keypair::decl(),
-      x25519::op_derive_bits_x25519::decl(),
-      x25519::op_import_spki_x25519::decl(),
-      x25519::op_import_pkcs8_x25519::decl(),
-      ed25519::op_generate_ed25519_keypair::decl(),
-      ed25519::op_import_spki_ed25519::decl(),
-      ed25519::op_import_pkcs8_ed25519::decl(),
-      ed25519::op_sign_ed25519::decl(),
-      ed25519::op_verify_ed25519::decl(),
-      ed25519::op_export_spki_ed25519::decl(),
-      ed25519::op_export_pkcs8_ed25519::decl(),
-      ed25519::op_jwk_x_ed25519::decl(),
-      x25519::op_export_spki_x25519::decl(),
-      x25519::op_export_pkcs8_x25519::decl(),
-    ])
-    .state(move |state| {
-      if let Some(seed) = maybe_seed {
-        state.put(StdRng::seed_from_u64(seed));
-      }
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_crypto,
+  deps = [ deno_webidl, deno_web ],
+  ops = [
+    op_crypto_get_random_values,
+    op_crypto_generate_key,
+    op_crypto_sign_key,
+    op_crypto_verify_key,
+    op_crypto_derive_bits,
+    op_crypto_import_key,
+    op_crypto_export_key,
+    op_crypto_encrypt,
+    op_crypto_decrypt,
+    op_crypto_subtle_digest,
+    op_crypto_random_uuid,
+    op_crypto_wrap_key,
+    op_crypto_unwrap_key,
+    op_crypto_base64url_decode,
+    op_crypto_base64url_encode,
+    x25519::op_crypto_generate_x25519_keypair,
+    x25519::op_crypto_derive_bits_x25519,
+    x25519::op_crypto_import_spki_x25519,
+    x25519::op_crypto_import_pkcs8_x25519,
+    ed25519::op_crypto_generate_ed25519_keypair,
+    ed25519::op_crypto_import_spki_ed25519,
+    ed25519::op_crypto_import_pkcs8_ed25519,
+    ed25519::op_crypto_sign_ed25519,
+    ed25519::op_crypto_verify_ed25519,
+    ed25519::op_crypto_export_spki_ed25519,
+    ed25519::op_crypto_export_pkcs8_ed25519,
+    ed25519::op_crypto_jwk_x_ed25519,
+    x25519::op_crypto_export_spki_x25519,
+    x25519::op_crypto_export_pkcs8_x25519,
+  ],
+  esm = [ "00_crypto.js" ],
+  options = {
+    maybe_seed: Option<u64>,
+  },
+  state = |state, options| {
+    if let Some(seed) = options.maybe_seed {
+      state.put(StdRng::seed_from_u64(seed));
+    }
+  },
+);
 
 #[op]
 pub fn op_crypto_base64url_decode(data: String) -> ZeroCopyBuf {

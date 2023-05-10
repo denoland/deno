@@ -11,25 +11,25 @@
 /// <reference lib="esnext" />
 
 const core = globalThis.Deno.core;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "internal:deno_console/02_console.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
   regexMatcher,
   serializeJSValueToJSONString,
-} from "internal:deno_web/00_infra.js";
-import { extractBody, mixinBody } from "internal:deno_fetch/22_body.js";
-import { getLocationHref } from "internal:deno_web/12_location.js";
-import { extractMimeType } from "internal:deno_web/01_mimesniff.js";
-import { URL } from "internal:deno_url/00_url.js";
+} from "ext:deno_web/00_infra.js";
+import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
+import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
+import { URL } from "ext:deno_url/00_url.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "internal:deno_fetch/20_headers.js";
+} from "ext:deno_fetch/20_headers.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
@@ -37,9 +37,9 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   RangeError,
-  RegExp,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeRegExp,
   Symbol,
   SymbolFor,
   TypeError,
@@ -54,7 +54,7 @@ const REASON_PHRASE = [
   ...new SafeArrayIterator(OBS_TEXT),
 ];
 const REASON_PHRASE_MATCHER = regexMatcher(REASON_PHRASE);
-const REASON_PHRASE_RE = new RegExp(`^[${REASON_PHRASE_MATCHER}]*$`);
+const REASON_PHRASE_RE = new SafeRegExp(`^[${REASON_PHRASE_MATCHER}]*$`);
 
 const _response = Symbol("response");
 const _headers = Symbol("headers");
@@ -257,14 +257,8 @@ class Response {
    */
   static redirect(url, status = 302) {
     const prefix = "Failed to call 'Response.redirect'";
-    url = webidl.converters["USVString"](url, {
-      prefix,
-      context: "Argument 1",
-    });
-    status = webidl.converters["unsigned short"](status, {
-      prefix,
-      context: "Argument 2",
-    });
+    url = webidl.converters["USVString"](url, prefix, "Argument 1");
+    status = webidl.converters["unsigned short"](status, prefix, "Argument 2");
 
     const baseURL = getLocationHref();
     const parsedURL = new URL(url, baseURL);
@@ -291,10 +285,7 @@ class Response {
   static json(data = undefined, init = {}) {
     const prefix = "Failed to call 'Response.json'";
     data = webidl.converters.any(data);
-    init = webidl.converters["ResponseInit_fast"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
 
     const str = serializeJSValueToJSONString(data);
     const res = extractBody(str);
@@ -315,14 +306,8 @@ class Response {
    */
   constructor(body = null, init = undefined) {
     const prefix = "Failed to construct 'Response'";
-    body = webidl.converters["BodyInit_DOMString?"](body, {
-      prefix,
-      context: "Argument 1",
-    });
-    init = webidl.converters["ResponseInit_fast"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+    body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
+    init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
 
     this[_response] = newInnerResponse();
     this[_headers] = headersFromHeaderList(
@@ -463,7 +448,12 @@ webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
     converter: webidl.converters["HeadersInit"],
   }],
 );
-webidl.converters["ResponseInit_fast"] = function (init, opts) {
+webidl.converters["ResponseInit_fast"] = function (
+  init,
+  prefix,
+  context,
+  opts,
+) {
   if (init === undefined || init === null) {
     return { status: 200, statusText: "", headers: undefined };
   }
@@ -482,7 +472,7 @@ webidl.converters["ResponseInit_fast"] = function (init, opts) {
     return { status, statusText, headers };
   }
   // Slow default path
-  return webidl.converters["ResponseInit"](init, opts);
+  return webidl.converters["ResponseInit"](init, prefix, context, opts);
 };
 
 /**

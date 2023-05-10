@@ -84,7 +84,7 @@ impl CacheMetadata {
   }
 
   fn refresh(&self, specifier: &ModuleSpecifier) -> Option<Metadata> {
-    if specifier.scheme() == "file" || specifier.scheme() == "npm" {
+    if matches!(specifier.scheme(), "file" | "npm" | "node") {
       return None;
     }
     let cache_filename = self.cache.get_cache_filename(specifier)?;

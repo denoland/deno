@@ -23,18 +23,17 @@ if (Deno.args.includes("--rs")) {
 }
 
 if (!didLint) {
-  await dlint();
-  // todo(dsherret): re-enable
-  // await dlintPreferPrimordials();
-  console.log("copyright checker");
-  await checkCopyright();
-  await clippy();
+  await Promise.all([
+    dlint(),
+    dlintPreferPrimordials(),
+    checkCopyright(),
+    clippy(),
+  ]);
 }
 
 async function dlint() {
   const configFile = join(ROOT_PATH, ".dlint.json");
   const execPath = getPrebuiltToolPath("dlint");
-  console.log("dlint");
 
   const sourceFiles = await getSources(ROOT_PATH, [
     "*.js",
@@ -50,6 +49,7 @@ async function dlint() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
+    ":!:cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     ":!:cli/tests/testdata/fmt/**",
     ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
@@ -65,19 +65,26 @@ async function dlint() {
   }
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
+  const pending = [];
   for (const chunk of chunks) {
     const cmd = new Deno.Command(execPath, {
       cwd: ROOT_PATH,
       args: ["run", "--config=" + configFile, ...chunk],
-      stdout: "inherit",
-      stderr: "inherit",
+      // capture to not conflict with clippy output
+      stderr: "piped",
     });
-    const { code } = await cmd.output();
-
-    if (code > 0) {
-      throw new Error("dlint failed");
-    }
+    pending.push(
+      cmd.output().then(({ stderr, code }) => {
+        if (code > 0) {
+          const decoder = new TextDecoder();
+          console.log("\n------ dlint ------");
+          console.log(decoder.decode(stderr));
+          throw new Error("dlint failed");
+        }
+      }),
+    );
   }
+  await Promise.all(pending);
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
@@ -85,11 +92,13 @@ async function dlint() {
 // is needed.
 async function dlintPreferPrimordials() {
   const execPath = getPrebuiltToolPath("dlint");
-  console.log("prefer-primordials");
-
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",
+    // TODO(petamoriken): enable for node polyfills
+    // "ext/node/polyfills/*.mjs",
+    // "ext/node/polyfills/*.ts",
+    // ":!:ext/node/polyfills/*.d.ts",
     "core/*.js",
     ":!:core/*_test.js",
     ":!:core/examples/**",
@@ -132,10 +141,8 @@ function splitToChunks(paths, initCmdLen) {
 }
 
 async function clippy() {
-  console.log("clippy");
-
   const currentBuildMode = buildMode();
-  const cmd = ["clippy", "--all-targets", "--locked"];
+  const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
 
   if (currentBuildMode != "debug") {
     cmd.push("--release");

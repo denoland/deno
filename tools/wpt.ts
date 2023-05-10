@@ -25,6 +25,7 @@ import {
   ManifestFolder,
   ManifestTestOptions,
   ManifestTestVariation,
+  noIgnore,
   quiet,
   rest,
   runPy,
@@ -173,6 +174,9 @@ async function run() {
           test.options,
           inParallel ? () => {} : createReportTestCase(test.expectation),
           inspectBrk,
+          Deno.env.get("CI")
+            ? { long: 4 * 60_000, default: 4 * 60_000 }
+            : { long: 60_000, default: 10_000 },
         );
         results.push({ test, result });
         if (inParallel) {
@@ -213,7 +217,7 @@ async function run() {
     await Deno.writeTextFile(wptreport, JSON.stringify(report));
   }
 
-  const code = reportFinal(results);
+  const code = reportFinal(results, endTime - startTime);
   Deno.exit(code);
 }
 
@@ -245,8 +249,10 @@ async function generateWptReport(
         if (!case_.passed) {
           if (typeof test.expectation === "boolean") {
             expected = test.expectation ? "PASS" : "FAIL";
-          } else {
+          } else if (Array.isArray(test.expectation)) {
             expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          } else {
+            expected = "PASS";
           }
         }
 
@@ -319,6 +325,7 @@ function assertAllExpectationsHaveTests(
 
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
+  const startTime = new Date().getTime();
   const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest, true);
   console.log(`Going to run ${tests.length} test files.`);
 
@@ -332,6 +339,7 @@ async function update() {
         test.options,
         json ? () => {} : createReportTestCase(test.expectation),
         inspectBrk,
+        { long: 60_000, default: 10_000 },
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -339,6 +347,7 @@ async function update() {
 
     return results;
   });
+  const endTime = new Date().getTime();
 
   if (json) {
     await Deno.writeTextFile(json, JSON.stringify(results));
@@ -367,7 +376,7 @@ async function update() {
 
   const currentExpectation = getExpectation();
 
-  for (const result of Object.values(resultTests)) {
+  for (const [path, result] of Object.entries(resultTests)) {
     const { passed, failed, testSucceeded } = result;
     let finalExpectation: boolean | string[];
     if (failed.length == 0 && testSucceeded) {
@@ -387,7 +396,7 @@ async function update() {
 
   saveExpectation(currentExpectation);
 
-  reportFinal(results);
+  reportFinal(results, endTime - startTime);
 
   console.log(blue("Updated expectation.json to match reality."));
 
@@ -421,6 +430,7 @@ function insertExpectation(
 
 function reportFinal(
   results: { test: TestToRun; result: TestResult }[],
+  duration: number,
 ): number {
   const finalTotalCount = results.length;
   let finalFailedCount = 0;
@@ -502,7 +512,7 @@ function reportFinal(
   console.log(
     `\nfinal result: ${
       failed ? red("failed") : green("ok")
-    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`,
+    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)\n`,
   );
 
   return failed ? 1 : 0;
@@ -557,7 +567,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. ${failReason}\n`,
+      }. ${failReason} (${formatDuration(result.duration)})\n`,
     );
     return;
   }
@@ -594,7 +604,9 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   console.log(
     `\nfile result: ${
       failedCount > 0 ? red("failed") : green("ok")
-    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount}\n`,
+    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount} (${
+      formatDuration(result.duration)
+    })\n`,
   );
 }
 
@@ -699,14 +711,16 @@ function discoverTestsToRun(
                 typeof expectation.ignore === "boolean",
                 "test entry's `ignore` key must be a boolean",
               );
-              if (expectation.ignore === true) continue;
+              if (expectation.ignore === true && !noIgnore) continue;
             }
           }
 
-          assert(
-            Array.isArray(expectation) || typeof expectation == "boolean",
-            "test entry must not have a folder expectation",
-          );
+          if (!noIgnore) {
+            assert(
+              Array.isArray(expectation) || typeof expectation == "boolean",
+              "test entry must not have a folder expectation",
+            );
+          }
 
           if (
             filter &&
@@ -749,4 +763,14 @@ function partitionTests(tests: TestToRun[]): TestToRun[][] {
     testsByKey[key].push(test);
   }
   return Object.values(testsByKey);
+}
+
+function formatDuration(duration: number): string {
+  if (duration >= 5000) {
+    return red(`${duration}ms`);
+  } else if (duration >= 1000) {
+    return yellow(`${duration}ms`);
+  } else {
+    return `${duration}ms`;
+  }
 }
