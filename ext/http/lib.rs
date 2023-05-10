@@ -73,7 +73,6 @@ use tokio::task::spawn_local;
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
-use crate::request_properties::HttpPropertyExtractor;
 
 pub mod compressible;
 mod http_next;
@@ -85,6 +84,10 @@ mod response_body;
 mod websocket_upgrade;
 
 pub use request_properties::DefaultHttpPropertyExtractor;
+pub use request_properties::HttpConnectionProperties;
+pub use request_properties::HttpListenProperties;
+pub use request_properties::HttpPropertyExtractor;
+pub use request_properties::HttpRequestProperties;
 
 deno_core::extension!(
   deno_http,
