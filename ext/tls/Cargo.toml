@@ -19,6 +19,7 @@ once_cell.workspace = true
 rustls = { workspace = true, features = ["dangerous_configuration"] }
 rustls-native-certs = "0.6.2"
 rustls-pemfile.workspace = true
+rustls-tokio-stream.workspace = true
 serde.workspace = true
 webpki = "0.22"
 webpki-roots = "0.22"

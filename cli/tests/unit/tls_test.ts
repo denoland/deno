@@ -11,6 +11,7 @@ import {
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { readAll } from "../../../test_util/std/streams/read_all.ts";
+import { writeAll } from "../../../test_util/std/streams/write_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
@@ -196,7 +197,7 @@ Deno.test(
       async (conn) => {
         assert(conn.remoteAddr != null);
         assert(conn.localAddr != null);
-        await conn.write(response);
+        await writeAll(conn, response);
         // TODO(bartlomieju): this might be a bug
         setTimeout(() => {
           conn.close();
@@ -250,7 +251,7 @@ Deno.test(
       async (conn) => {
         assert(conn.remoteAddr != null);
         assert(conn.localAddr != null);
-        await conn.write(response);
+        await writeAll(conn, response);
         setTimeout(() => {
           conn.close();
           resolvable.resolve();
@@ -538,15 +539,17 @@ Deno.test(
   },
 );
 
+const READ_SIZE = 1 << 20; /* 1 MB */
+
 async function sendAlotReceiveNothing(conn: Deno.Conn) {
   // Start receive op.
   const readBuf = new Uint8Array(1024);
   const readPromise = conn.read(readBuf);
 
-  // Send 1 MB of data.
-  const writeBuf = new Uint8Array(1 << 20 /* 1 MB */);
+  // Send READ_SIZE of data.
+  const writeBuf = new Uint8Array(READ_SIZE);
   writeBuf.fill(42);
-  await conn.write(writeBuf);
+  await writeAll(conn, writeBuf);
 
   // Send EOF.
   await conn.closeWrite();
@@ -565,10 +568,14 @@ async function receiveAlotSendNothing(conn: Deno.Conn) {
   const readBuf = new Uint8Array(1024);
   let n: number | null;
 
-  // Receive 1 MB of data.
-  for (let nread = 0; nread < 1 << 20 /* 1 MB */; nread += n!) {
+  // Receive READ_SIZE of data.
+  for (let nread = 0; nread < READ_SIZE; nread += n!) {
     n = await conn.read(readBuf);
-    assertStrictEquals(typeof n, "number");
+    assertStrictEquals(
+      typeof n,
+      "number",
+      `Expected number, got ${n} after reading ${nread}/${READ_SIZE}`,
+    );
     assert(n! > 0);
     assertStrictEquals(readBuf[0], 42);
   }
@@ -1036,8 +1043,8 @@ function createHttpsListener(port: number): Deno.Listener {
       );
 
       // Send response.
-      await conn.write(resHead);
-      await conn.write(resBody);
+      await writeAll(conn, resHead);
+      await writeAll(conn, resBody);
 
       // Close TCP connection.
       conn.close();

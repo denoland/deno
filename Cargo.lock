@@ -1324,6 +1324,7 @@ dependencies = [
  "rustls",
  "rustls-native-certs",
  "rustls-pemfile",
+ "rustls-tokio-stream",
  "serde",
  "webpki",
  "webpki-roots",
@@ -3981,6 +3982,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d194b56d58803a43635bdc398cd17e383d6f71f9182b9a192c127ca42494a59b"
 dependencies = [
  "base64 0.21.0",
+]
+
+[[package]]
+name = "rustls-tokio-stream"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa8411641eb0298c0c611901da02119e01b965b45bd1f5cbc6c52b1c8c465103"
+dependencies = [
+ "futures",
+ "parking_lot 0.12.1",
+ "rustls",
+ "tokio",
 ]
 
 [[package]]
