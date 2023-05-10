@@ -145,6 +145,18 @@ interface TestToRun {
   expectation: boolean | string[];
 }
 
+function getTestTimeout(test: TestToRun) {
+  if (Deno.env.get("CI")) {
+    // Don't give expected failures the full time
+    if (test.expectation === false) {
+      return { long: 60_000, default: 10_000 };
+    }
+    return { long: 4 * 60_000, default: 4 * 60_000 };
+  }
+
+  return { long: 60_000, default: 10_000 };
+}
+
 async function run() {
   const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
@@ -154,11 +166,11 @@ async function run() {
     expectation,
   );
   assertAllExpectationsHaveTests(expectation, tests, rest);
-  console.log(`Going to run ${tests.length} test files.`);
+  const cores = navigator.hardwareConcurrency;
+  console.log(`Going to run ${tests.length} test files on ${cores} cores.`);
 
   const results = await runWithTestUtil(false, async () => {
     const results: { test: TestToRun; result: TestResult }[] = [];
-    const cores = navigator.hardwareConcurrency;
     const inParallel = !(cores === 1 || tests.length === 1);
     // ideally we would parallelize all tests, but we ran into some flakiness
     // on the CI, so here we're partitioning based on the start of the test path
@@ -174,9 +186,7 @@ async function run() {
           test.options,
           inParallel ? () => {} : createReportTestCase(test.expectation),
           inspectBrk,
-          Deno.env.get("CI")
-            ? { long: 4 * 60_000, default: 4 * 60_000 }
-            : { long: 60_000, default: 10_000 },
+          getTestTimeout(test),
         );
         results.push({ test, result });
         if (inParallel) {
@@ -755,6 +765,11 @@ function discoverTestsToRun(
 function partitionTests(tests: TestToRun[]): TestToRun[][] {
   const testsByKey: { [key: string]: TestToRun[] } = {};
   for (const test of tests) {
+    // Run all WebCryptoAPI tests in parallel
+    if (test.path.includes("/WebCryptoAPI")) {
+      testsByKey[test.path] = [test];
+      continue;
+    }
     // Paths looks like: /fetch/corb/img-html-correctly-labeled.sub-ref.html
     const key = test.path.split("/")[1];
     if (!(key in testsByKey)) {
