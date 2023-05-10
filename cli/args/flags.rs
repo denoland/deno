@@ -299,6 +299,7 @@ pub struct Flags {
   pub allow_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub deny_env: Option<Vec<String>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
@@ -445,6 +446,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.deny_env {
+      Some(env_denylist) if env_denylist.is_empty() => {
+        args.push("--deny-env".to_string());
+      }
+      Some(env_denylist) => {
+        let s = format!("--deny-env={}", env_denylist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
     if self.allow_hrtime {
       args.push("--allow-hrtime".to_string());
     }
@@ -542,6 +554,7 @@ impl Flags {
       || self.allow_run.is_some()
       || self.allow_sys.is_some()
       || self.allow_write.is_some()
+      || self.deny_env.is_some()
   }
 
   pub fn has_permission_in_argv(&self) -> bool {
@@ -555,6 +568,7 @@ impl Flags {
         || arg.starts_with("--allow-run")
         || arg.starts_with("--allow-sys")
         || arg.starts_with("--allow-write")
+        || arg.starts_with("--deny-env")
     })
   }
 }
@@ -1966,6 +1980,16 @@ static ALLOW_ALL_HELP: &str = concat!(
   "/basics/permissions\n"
 );
 
+static DENY_ENV_HELP: &str = concat!(
+  "Deny access to system environment information. Optionally specify accessible environment variables.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --deny-env\n",
+  "  --deny-env=\"PORT,HOME,PATH\""
+);
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -2063,6 +2087,26 @@ fn permission_args(app: Command) -> Command {
         .long("allow-all")
         .action(ArgAction::SetTrue)
         .help(ALLOW_ALL_HELP),
+    )
+    .arg(
+      Arg::new("deny-env")
+        .long("deny-env")
+        .num_args(0..)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .value_name("VARIABLE_NAME")
+        .help(DENY_ENV_HELP)
+        .value_parser(|key: &str| {
+          if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+            return Err(format!("invalid key \"{key}\""));
+          }
+
+          Ok(if cfg!(windows) {
+            key.to_uppercase()
+          } else {
+            key.to_string()
+          })
+        }),
     )
     .arg(
       Arg::new("prompt")
@@ -3053,6 +3097,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
+
+  if let Some(env_wl) = matches.remove_many::<String>("deny-env") {
+    flags.deny_env = Some(env_wl.collect());
+    debug!("env denylist: {:#?}", &flags.deny_env);
+  }
+
   if matches.get_flag("no-prompt") {
     flags.no_prompt = true;
   }
@@ -4714,6 +4764,51 @@ mod tests {
       "--allow-sys=hostname,foo",
       "script.ts"
     ]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn deny_env_denylist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-env=HOME", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_env: Some(svec!["HOME"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_env_denylist_multiple() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-env=HOME,PATH", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_env: Some(svec!["HOME", "PATH"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_env_denylist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-env=HOME", "script.ts"]);
+    assert!(r.is_ok());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-env=H=ME", "script.ts"]);
+    assert!(r.is_err());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-env=H\0ME", "script.ts"]);
     assert!(r.is_err());
   }
 

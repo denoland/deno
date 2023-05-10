@@ -1554,7 +1554,7 @@ impl Default for Permissions {
       read: Permissions::new_read(&None, false).unwrap(),
       write: Permissions::new_write(&None, false).unwrap(),
       net: Permissions::new_net(&None, false).unwrap(),
-      env: Permissions::new_env(&None, false).unwrap(),
+      env: Permissions::new_env(&None, &None, false).unwrap(),
       sys: Permissions::new_sys(&None, false).unwrap(),
       run: Permissions::new_run(&None, false).unwrap(),
       ffi: Permissions::new_ffi(&None, false).unwrap(),
@@ -1574,6 +1574,7 @@ pub struct PermissionsOptions {
   pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub prompt: bool,
+  pub deny_env: Option<Vec<String>>,
 }
 
 impl Permissions {
@@ -1620,26 +1621,34 @@ impl Permissions {
     })
   }
 
-  pub fn new_env(
+  pub fn parse_env_list(
     state: &Option<Vec<String>>,
+  ) -> Result<HashSet<EnvDescriptor>, AnyError> {
+    state
+      .as_ref()
+      .map(|v| {
+        v.iter()
+          .map(|x| {
+            if x.is_empty() {
+              Err(AnyError::msg("Empty path is not allowed"))
+            } else {
+              Ok(EnvDescriptor::new(x))
+            }
+          })
+          .collect()
+      })
+      .unwrap_or_else(|| Ok(HashSet::new()))
+  }
+
+  pub fn new_env(
+    allowed_state: &Option<Vec<String>>,
+    denied_state: &Option<Vec<String>>,
     prompt: bool,
   ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
     Ok(UnaryPermission::<EnvDescriptor> {
-      global_state: global_state_from_option(state),
-      granted_list: state
-        .as_ref()
-        .map(|v| {
-          v.iter()
-            .map(|x| {
-              if x.is_empty() {
-                Err(AnyError::msg("Empty path is not allowed"))
-              } else {
-                Ok(EnvDescriptor::new(x))
-              }
-            })
-            .collect()
-        })
-        .unwrap_or_else(|| Ok(HashSet::new()))?,
+      global_state: global_state_from_option(allowed_state),
+      granted_list: Permissions::parse_env_list(allowed_state)?,
+      denied_list: Permissions::parse_env_list(denied_state)?,
       prompt,
       ..Default::default()
     })
@@ -1721,7 +1730,7 @@ impl Permissions {
       read: Permissions::new_read(&opts.allow_read, opts.prompt)?,
       write: Permissions::new_write(&opts.allow_write, opts.prompt)?,
       net: Permissions::new_net(&opts.allow_net, opts.prompt)?,
-      env: Permissions::new_env(&opts.allow_env, opts.prompt)?,
+      env: Permissions::new_env(&opts.allow_env, &opts.deny_env, opts.prompt)?,
       sys: Permissions::new_sys(&opts.allow_sys, opts.prompt)?,
       run: Permissions::new_run(&opts.allow_run, opts.prompt)?,
       ffi: Permissions::new_ffi(&opts.allow_ffi, opts.prompt)?,
@@ -1734,7 +1743,7 @@ impl Permissions {
       read: Permissions::new_read(&Some(vec![]), false).unwrap(),
       write: Permissions::new_write(&Some(vec![]), false).unwrap(),
       net: Permissions::new_net(&Some(vec![]), false).unwrap(),
-      env: Permissions::new_env(&Some(vec![]), false).unwrap(),
+      env: Permissions::new_env(&Some(vec![]), &Some(vec![]), false).unwrap(),
       sys: Permissions::new_sys(&Some(vec![]), false).unwrap(),
       run: Permissions::new_run(&Some(vec![]), false).unwrap(),
       ffi: Permissions::new_ffi(&Some(vec![]), false).unwrap(),
@@ -2387,7 +2396,8 @@ pub fn create_child_permissions(
     ChildUnaryPermissionArg::NotGranted => {}
     ChildUnaryPermissionArg::GrantedList(granted_list) => {
       worker_perms.env.granted_list =
-        Permissions::new_env(&Some(granted_list), false)?.granted_list;
+        Permissions::new_env(&Some(granted_list), &Some(vec![]), false)?
+          .granted_list;
       if !worker_perms
         .env
         .granted_list
@@ -2991,7 +3001,8 @@ mod tests {
       },
       env: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_env(&Some(svec!["HOME"]), false).unwrap()
+        ..Permissions::new_env(&Some(svec!["HOME"]), &Some(vec![]), false)
+          .unwrap()
       },
       sys: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -3130,7 +3141,8 @@ mod tests {
       },
       env: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_env(&Some(svec!["HOME"]), false).unwrap()
+        ..Permissions::new_env(&Some(svec!["HOME"]), &Some(vec![]), false)
+          .unwrap()
       },
       sys: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -3173,7 +3185,7 @@ mod tests {
       read: Permissions::new_read(&None, true).unwrap(),
       write: Permissions::new_write(&None, true).unwrap(),
       net: Permissions::new_net(&None, true).unwrap(),
-      env: Permissions::new_env(&None, true).unwrap(),
+      env: Permissions::new_env(&None, &None, true).unwrap(),
       sys: Permissions::new_sys(&None, true).unwrap(),
       run: Permissions::new_run(&None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, true).unwrap(),
@@ -3237,7 +3249,7 @@ mod tests {
       read: Permissions::new_read(&None, true).unwrap(),
       write: Permissions::new_write(&None, true).unwrap(),
       net: Permissions::new_net(&None, true).unwrap(),
-      env: Permissions::new_env(&None, true).unwrap(),
+      env: Permissions::new_env(&None, &None, true).unwrap(),
       sys: Permissions::new_sys(&None, true).unwrap(),
       run: Permissions::new_run(&None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, true).unwrap(),
@@ -3489,7 +3501,7 @@ mod tests {
   fn test_create_child_permissions() {
     set_prompter(Box::new(TestPrompter));
     let mut main_perms = Permissions {
-      env: Permissions::new_env(&Some(vec![]), false).unwrap(),
+      env: Permissions::new_env(&Some(vec![]), &Some(vec![]), false).unwrap(),
       hrtime: Permissions::new_hrtime(true),
       net: Permissions::new_net(&Some(svec!["foo", "bar"]), false).unwrap(),
       ..Default::default()
@@ -3507,7 +3519,7 @@ mod tests {
       )
       .unwrap(),
       Permissions {
-        env: Permissions::new_env(&Some(vec![]), false).unwrap(),
+        env: Permissions::new_env(&Some(vec![]), &Some(vec![]), false).unwrap(),
         net: Permissions::new_net(&Some(svec!["foo"]), false).unwrap(),
         ..Default::default()
       }
@@ -3583,7 +3595,12 @@ mod tests {
   fn test_handle_empty_value() {
     set_prompter(Box::new(TestPrompter));
     assert!(Permissions::new_read(&Some(vec![PathBuf::new()]), false).is_err());
-    assert!(Permissions::new_env(&Some(vec![String::new()]), false).is_err());
+    assert!(Permissions::new_env(
+      &Some(vec![String::new()]),
+      &Some(vec![String::new()]),
+      false
+    )
+    .is_err());
     assert!(Permissions::new_sys(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_run(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_ffi(&Some(vec![PathBuf::new()]), false).is_err());
