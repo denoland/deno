@@ -1026,6 +1026,7 @@ name = "deno_http"
 version = "0.99.0"
 dependencies = [
  "async-compression",
+ "async-trait",
  "base64 0.13.1",
  "bencher",
  "brotli",
