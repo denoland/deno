@@ -1621,25 +1621,6 @@ impl Permissions {
     })
   }
 
-  pub fn parse_env_list(
-    state: &Option<Vec<String>>,
-  ) -> Result<HashSet<EnvDescriptor>, AnyError> {
-    state
-      .as_ref()
-      .map(|v| {
-        v.iter()
-          .map(|x| {
-            if x.is_empty() {
-              Err(AnyError::msg("Empty path is not allowed"))
-            } else {
-              Ok(EnvDescriptor::new(x))
-            }
-          })
-          .collect()
-      })
-      .unwrap_or_else(|| Ok(HashSet::new()))
-  }
-
   pub fn new_env(
     allowed_state: &Option<Vec<String>>,
     denied_state: &Option<Vec<String>>,
@@ -1647,8 +1628,8 @@ impl Permissions {
   ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
     Ok(UnaryPermission::<EnvDescriptor> {
       global_state: global_state_from_option(allowed_state),
-      granted_list: Permissions::parse_env_list(allowed_state)?,
-      denied_list: Permissions::parse_env_list(denied_state)?,
+      granted_list: parse_env_list(allowed_state)?,
+      denied_list: parse_env_list(denied_state)?,
       prompt,
       ..Default::default()
     })
@@ -2108,6 +2089,25 @@ pub fn resolve_ffi_allowlist(
   } else {
     Ok(HashSet::new())
   }
+}
+
+pub fn parse_env_list(
+  state: &Option<Vec<String>>,
+) -> Result<HashSet<EnvDescriptor>, AnyError> {
+  state
+    .as_ref()
+    .map(|v| {
+      v.iter()
+        .map(|x| {
+          if x.is_empty() {
+            Err(AnyError::msg("Empty path is not allowed"))
+          } else {
+            Ok(EnvDescriptor::new(x))
+          }
+        })
+        .collect()
+    })
+    .unwrap_or_else(|| Ok(HashSet::new()))
 }
 
 /// Arbitrary helper. Resolves the path from CWD, and also gets a path that
