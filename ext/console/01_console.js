@@ -1034,12 +1034,10 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     if (protoProps !== undefined) {
       ArrayPrototypePushApply(output, protoProps);
     }
-  } catch {
+  } catch (error) {
     // TODO(wafuwafu13): Implement stack overflow check
     return ctx.stylize(
-      `[Internal Formatting Error]\n${
-        new Error().stack.replace(new SafeRegExp(".*\n"), "")
-      }`,
+      `[Internal Formatting Error] ${error.stack}`,
       "internalError",
     );
   }
