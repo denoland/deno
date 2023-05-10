@@ -1084,55 +1084,6 @@ impl Default for UnaryPermission<EnvDescriptor> {
   }
 }
 
-fn run_descriptor_list_contains(
-  list: &HashSet<RunDescriptor>,
-  desc: &RunDescriptor,
-) -> bool {
-  list.contains(desc)
-    || match desc {
-      RunDescriptor::Name(name) => match which(name) {
-        Ok(path) => list.contains(&RunDescriptor::from(path)),
-        _ => false,
-      },
-      _ => false,
-    }
-}
-
-fn run_descriptor_list_insert(
-  list: &mut HashSet<RunDescriptor>,
-  desc: RunDescriptor,
-) {
-  if let RunDescriptor::Name(name) = &desc {
-    if let Ok(path) = which(name) {
-      list.insert(RunDescriptor::from(path));
-    }
-  }
-  list.insert(desc);
-}
-
-fn run_descriptor_list_remove(
-  list: &mut HashSet<RunDescriptor>,
-  desc: &RunDescriptor,
-) {
-  match &desc {
-    RunDescriptor::Name(name) => {
-      list.remove(desc);
-      if let Ok(path) = which(name) {
-        list.remove(&RunDescriptor::from(path));
-      }
-    }
-    RunDescriptor::Path(path) => {
-      list.retain(|desc2| match desc2 {
-        RunDescriptor::Name(name) => match which(name) {
-          Ok(path2) => path != &path2,
-          _ => true,
-        },
-        RunDescriptor::Path(path2) => path != path2,
-      });
-    }
-  }
-}
-
 impl UnaryPermission<SysDescriptor> {
   pub fn query(&self, kind: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
@@ -1277,7 +1228,7 @@ impl UnaryPermission<RunDescriptor> {
     if self.global_state == PermissionState::Denied
       && match cmd {
         None => true,
-        Some(cmd) => run_descriptor_list_contains(
+        Some(cmd) => Self::list_contains(
           &self.denied_list,
           &RunDescriptor::from(cmd.to_string()),
         ),
@@ -1287,7 +1238,7 @@ impl UnaryPermission<RunDescriptor> {
     } else if self.global_state == PermissionState::Granted
       || match cmd {
         None => false,
-        Some(cmd) => run_descriptor_list_contains(
+        Some(cmd) => Self::list_contains(
           &self.granted_list,
           &RunDescriptor::from(cmd.to_string()),
         ),
@@ -1310,14 +1261,14 @@ impl UnaryPermission<RunDescriptor> {
           true,
         ) {
           PromptResponse::Allow => {
-            run_descriptor_list_insert(
+            Self::list_insert(
               &mut self.granted_list,
               RunDescriptor::from(cmd.to_string()),
             );
             PermissionState::Granted
           }
           PromptResponse::Deny => {
-            run_descriptor_list_insert(
+            Self::list_insert(
               &mut self.denied_list,
               RunDescriptor::from(cmd.to_string()),
             );
@@ -1331,7 +1282,7 @@ impl UnaryPermission<RunDescriptor> {
           }
         }
       } else if state == PermissionState::Granted {
-        run_descriptor_list_insert(
+        Self::list_insert(
           &mut self.denied_list,
           RunDescriptor::from(cmd.to_string()),
         );
@@ -1365,7 +1316,7 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
     if let Some(cmd) = cmd {
-      run_descriptor_list_remove(
+      Self::list_remove(
         &mut self.granted_list,
         &RunDescriptor::from(cmd.to_string()),
       );
@@ -1395,13 +1346,13 @@ impl UnaryPermission<RunDescriptor> {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
         } else {
-          run_descriptor_list_insert(
+          Self::list_insert(
             &mut self.granted_list,
             RunDescriptor::from(cmd.to_string()),
           );
         }
       } else {
-        run_descriptor_list_insert(
+        Self::list_insert(
           &mut self.denied_list,
           RunDescriptor::from(cmd.to_string()),
         );
@@ -1424,6 +1375,49 @@ impl UnaryPermission<RunDescriptor> {
       }
     }
     result
+  }
+
+  fn list_contains(
+    list: &HashSet<RunDescriptor>,
+    desc: &RunDescriptor,
+  ) -> bool {
+    list.contains(desc)
+      || match desc {
+        RunDescriptor::Name(name) => match which(name) {
+          Ok(path) => list.contains(&RunDescriptor::from(path)),
+          _ => false,
+        },
+        _ => false,
+      }
+  }
+
+  fn list_insert(list: &mut HashSet<RunDescriptor>, desc: RunDescriptor) {
+    if let RunDescriptor::Name(name) = &desc {
+      if let Ok(path) = which(name) {
+        list.insert(RunDescriptor::from(path));
+      }
+    }
+    list.insert(desc);
+  }
+
+  fn list_remove(list: &mut HashSet<RunDescriptor>, desc: &RunDescriptor) {
+    match &desc {
+      RunDescriptor::Name(name) => {
+        list.remove(desc);
+        if let Ok(path) = which(name) {
+          list.remove(&RunDescriptor::from(path));
+        }
+      }
+      RunDescriptor::Path(path) => {
+        list.retain(|desc2| match desc2 {
+          RunDescriptor::Name(name) => match which(name) {
+            Ok(path2) => path != &path2,
+            _ => true,
+          },
+          RunDescriptor::Path(path2) => path != path2,
+        });
+      }
+    }
   }
 }
 
@@ -1755,7 +1749,7 @@ impl Permissions {
           return Err(AnyError::msg("Empty path is not allowed"));
         }
         let desc = RunDescriptor::from(s.to_string());
-        run_descriptor_list_insert(&mut granted_list, desc);
+        UnaryPermission::<RunDescriptor>::list_insert(&mut granted_list, desc);
       }
     }
     Ok(UnaryPermission::<RunDescriptor> {
