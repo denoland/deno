@@ -1046,6 +1046,7 @@ dependencies = [
  "percent-encoding",
  "phf",
  "pin-project",
+ "rand",
  "ring",
  "serde",
  "slab",
