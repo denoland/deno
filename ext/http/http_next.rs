@@ -1,9 +1,8 @@
-use crate::compressible::is_content_compressible;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
-use crate::request_properties::DefaultHttpRequestProperties;
 use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
@@ -375,12 +374,15 @@ pub fn op_http_set_promise_complete(index: u32, status: u16) {
 }
 
 #[op]
-pub fn op_http_get_request_method_and_url(
+pub fn op_http_get_request_method_and_url<HTTP>(
   index: u32,
-) -> (String, Option<String>, String, String, Option<u16>) {
+) -> (String, Option<String>, String, String, Option<u16>)
+where
+  HTTP: HttpPropertyExtractor,
+{
   // TODO(mmastrac): Passing method can be optimized
   with_http(index, |http| {
-    let request_properties = DefaultHttpRequestProperties::request_properties(
+    let request_properties = HTTP::request_properties(
       &http.request_info,
       &http.request_parts.uri,
       &http.request_parts.headers,
@@ -825,12 +827,15 @@ fn serve_http(
   spawn_local(serve_http2_autodetect(io, svc).try_or_cancel(cancel))
 }
 
-fn serve_http_on(
+fn serve_http_on<HTTP>(
   network_stream: NetworkStream,
   listen_properties: &HttpListenProperties,
   cancel: Rc<CancelHandle>,
   tx: tokio::sync::mpsc::Sender<u32>,
-) -> JoinHandle<Result<(), AnyError>> {
+) -> JoinHandle<Result<(), AnyError>>
+where
+  HTTP: HttpPropertyExtractor,
+{
   // We always want some sort of peer address. If we can't get one, just make up one.
   let peer_address = network_stream.peer_address().unwrap_or_else(|_| {
     NetworkStreamAddress::Ip(SocketAddr::V4(SocketAddrV4::new(
@@ -839,10 +844,7 @@ fn serve_http_on(
     )))
   });
   let connection_properties: HttpConnectionProperties =
-    DefaultHttpRequestProperties::connection_properties(
-      listen_properties,
-      &peer_address,
-    );
+    HTTP::connection_properties(listen_properties, &peer_address);
 
   match network_stream {
     NetworkStream::Tcp(conn) => {
@@ -889,21 +891,21 @@ impl Drop for HttpJoinHandle {
 }
 
 #[op(v8)]
-pub fn op_http_serve(
+pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   listener_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), AnyError> {
-  let listener =
-    DefaultHttpRequestProperties::get_network_stream_listener_for_rid(
-      &mut state.borrow_mut(),
-      listener_rid,
-    )?;
+) -> Result<(ResourceId, &'static str, String), AnyError>
+where
+  HTTP: HttpPropertyExtractor,
+{
+  let listener = HTTP::get_network_stream_listener_for_rid(
+    &mut state.borrow_mut(),
+    listener_rid,
+  )?;
 
   let local_address = listener.listen_address()?;
-  let listen_properties = DefaultHttpRequestProperties::listen_properties(
-    listener.stream(),
-    &local_address,
-  );
+  let listen_properties =
+    HTTP::listen_properties(listener.stream(), &local_address);
 
   let (tx, rx) = tokio::sync::mpsc::channel(10);
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle(
@@ -920,7 +922,7 @@ pub fn op_http_serve(
         .accept()
         .try_or_cancel(cancel_clone.clone())
         .await?;
-      serve_http_on(
+      serve_http_on::<HTTP>(
         conn,
         &listen_properties_clone,
         cancel_clone.clone(),
@@ -944,21 +946,19 @@ pub fn op_http_serve(
 }
 
 #[op(v8)]
-pub fn op_http_serve_on(
+pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   conn: ResourceId,
-) -> Result<(ResourceId, &'static str, String), AnyError> {
+) -> Result<(ResourceId, &'static str, String), AnyError>
+where
+  HTTP: HttpPropertyExtractor,
+{
   let network_stream: NetworkStream =
-    DefaultHttpRequestProperties::get_network_stream_for_rid(
-      &mut state.borrow_mut(),
-      conn,
-    )?;
+    HTTP::get_network_stream_for_rid(&mut state.borrow_mut(), conn)?;
 
   let local_address = network_stream.local_address()?;
-  let listen_properties = DefaultHttpRequestProperties::listen_properties(
-    network_stream.stream(),
-    &local_address,
-  );
+  let listen_properties =
+    HTTP::listen_properties(network_stream.stream(), &local_address);
 
   let (tx, rx) = tokio::sync::mpsc::channel(10);
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle(
@@ -967,12 +967,13 @@ pub fn op_http_serve_on(
     AsyncRefCell::new(rx),
   ));
 
-  let handle: JoinHandle<Result<(), deno_core::anyhow::Error>> = serve_http_on(
-    network_stream,
-    &listen_properties,
-    resource.cancel_handle(),
-    tx,
-  );
+  let handle: JoinHandle<Result<(), deno_core::anyhow::Error>> =
+    serve_http_on::<HTTP>(
+      network_stream,
+      &listen_properties,
+      resource.cancel_handle(),
+      tx,
+    );
 
   // Set the handle after we start the future
   *RcRef::map(&resource, |this| &this.0)
