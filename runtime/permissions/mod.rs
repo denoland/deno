@@ -1743,7 +1743,7 @@ impl Permissions {
       read: Permissions::new_read(&Some(vec![]), false).unwrap(),
       write: Permissions::new_write(&Some(vec![]), false).unwrap(),
       net: Permissions::new_net(&Some(vec![]), false).unwrap(),
-      env: Permissions::new_env(&Some(vec![]), &Some(vec![]), false).unwrap(),
+      env: Permissions::new_env(&Some(vec![]), &None, false).unwrap(),
       sys: Permissions::new_sys(&Some(vec![]), false).unwrap(),
       run: Permissions::new_run(&Some(vec![]), false).unwrap(),
       ffi: Permissions::new_ffi(&Some(vec![]), false).unwrap(),
@@ -2396,8 +2396,7 @@ pub fn create_child_permissions(
     ChildUnaryPermissionArg::NotGranted => {}
     ChildUnaryPermissionArg::GrantedList(granted_list) => {
       worker_perms.env.granted_list =
-        Permissions::new_env(&Some(granted_list), &Some(vec![]), false)?
-          .granted_list;
+        Permissions::new_env(&Some(granted_list), &None, false)?.granted_list;
       if !worker_perms
         .env
         .granted_list
@@ -3001,8 +3000,7 @@ mod tests {
       },
       env: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_env(&Some(svec!["HOME"]), &Some(vec![]), false)
-          .unwrap()
+        ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
       },
       sys: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -3141,8 +3139,7 @@ mod tests {
       },
       env: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_env(&Some(svec!["HOME"]), &Some(vec![]), false)
-          .unwrap()
+        ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
       },
       sys: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -3330,7 +3327,7 @@ mod tests {
     let mut perms = Permissions::allow_all();
     perms.env = UnaryPermission {
       global_state: PermissionState::Prompt,
-      ..Permissions::new_env(&Some(svec!["HOME"]), false).unwrap()
+      ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
     };
 
     prompt_value.set(true);
@@ -3501,7 +3498,7 @@ mod tests {
   fn test_create_child_permissions() {
     set_prompter(Box::new(TestPrompter));
     let mut main_perms = Permissions {
-      env: Permissions::new_env(&Some(vec![]), &Some(vec![]), false).unwrap(),
+      env: Permissions::new_env(&Some(vec![]), &None, false).unwrap(),
       hrtime: Permissions::new_hrtime(true),
       net: Permissions::new_net(&Some(svec!["foo", "bar"]), false).unwrap(),
       ..Default::default()
@@ -3519,7 +3516,7 @@ mod tests {
       )
       .unwrap(),
       Permissions {
-        env: Permissions::new_env(&Some(vec![]), &Some(vec![]), false).unwrap(),
+        env: Permissions::new_env(&Some(vec![]), &None, false).unwrap(),
         net: Permissions::new_net(&Some(svec!["foo"]), false).unwrap(),
         ..Default::default()
       }
@@ -3595,12 +3592,9 @@ mod tests {
   fn test_handle_empty_value() {
     set_prompter(Box::new(TestPrompter));
     assert!(Permissions::new_read(&Some(vec![PathBuf::new()]), false).is_err());
-    assert!(Permissions::new_env(
-      &Some(vec![String::new()]),
-      &Some(vec![String::new()]),
-      false
-    )
-    .is_err());
+    assert!(
+      Permissions::new_env(&Some(vec![String::new()]), &None, false).is_err()
+    );
     assert!(Permissions::new_sys(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_run(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_ffi(&Some(vec![PathBuf::new()]), false).is_err());
