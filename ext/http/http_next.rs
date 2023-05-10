@@ -345,13 +345,24 @@ fn is_request_compressible(headers: &HeaderMap) -> Compression {
   if accept_encoding == "gzip" {
     return Compression::GZip;
   }
+  if accept_encoding == "br" {
+    return Compression::Brotli;
+  }
   // Fall back to the expensive parser
   let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
-    matches!(r, Ok((Some(Encoding::Identity | Encoding::Gzip), _)))
+    matches!(
+      r,
+      Ok((
+        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+        _
+      ))
+    )
   });
-  #[allow(clippy::single_match)]
   match fly_accept_encoding::preferred(accepted) {
     Ok(Some(fly_accept_encoding::Encoding::Gzip)) => return Compression::GZip,
+    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => {
+      return Compression::Brotli
+    }
     _ => {}
   }
   Compression::None

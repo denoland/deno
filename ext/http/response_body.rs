@@ -118,6 +118,7 @@ trait PollFrame: Unpin {
 pub enum Compression {
   None,
   GZip,
+  Brotli,
 }
 
 pub enum ResponseStream {
@@ -140,6 +141,8 @@ pub enum ResponseBytesInner {
   UncompressedStream(ResponseStream),
   /// A GZip stream.
   GZipStream(GZipResponseStream),
+  /// A Brotli stream.
+  BrotliStream(BrotliResponseStream),
 }
 
 impl std::fmt::Debug for ResponseBytesInner {
@@ -150,6 +153,7 @@ impl std::fmt::Debug for ResponseBytesInner {
       Self::Bytes(..) => f.write_str("Bytes"),
       Self::UncompressedStream(..) => f.write_str("Uncompressed"),
       Self::GZipStream(..) => f.write_str("GZip"),
+      Self::BrotliStream(..) => f.write_str("Brotli"),
     }
   }
 }
@@ -201,10 +205,12 @@ impl ResponseBytesInner {
   }
 
   fn from_stream(compression: Compression, stream: ResponseStream) -> Self {
-    if compression == Compression::GZip {
-      Self::GZipStream(GZipResponseStream::new(stream))
-    } else {
-      Self::UncompressedStream(stream)
+    match compression {
+      Compression::GZip => Self::GZipStream(GZipResponseStream::new(stream)),
+      Compression::Brotli => {
+        Self::BrotliStream(BrotliResponseStream::new(stream))
+      }
+      _ => Self::UncompressedStream(stream),
     }
   }
 
@@ -227,22 +233,41 @@ impl ResponseBytesInner {
   }
 
   pub fn from_slice(compression: Compression, bytes: &[u8]) -> Self {
-    if compression == Compression::GZip {
-      let mut writer = GzEncoder::new(Vec::new(), flate2::Compression::fast());
-      writer.write_all(bytes).unwrap();
-      Self::Bytes(BufView::from(writer.finish().unwrap()))
-    } else {
-      Self::Bytes(BufView::from(bytes.to_vec()))
+    match compression {
+      Compression::GZip => {
+        let mut writer =
+          GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        writer.write_all(bytes).unwrap();
+        Self::Bytes(BufView::from(writer.finish().unwrap()))
+      }
+      Compression::Brotli => {
+        // quality level 6 is based on google's nginx default value for
+        // on-the-fly compression
+        // https://github.com/google/ngx_brotli#brotli_comp_level
+        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
+        // (~4MB)
+        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        writer.write_all(bytes).unwrap();
+        Self::Bytes(BufView::from(writer.into_inner()))
+      }
+      _ => Self::Bytes(BufView::from(bytes.to_vec())),
     }
   }
 
   pub fn from_vec(compression: Compression, vec: Vec<u8>) -> Self {
-    if compression == Compression::GZip {
-      let mut writer = GzEncoder::new(Vec::new(), flate2::Compression::fast());
-      writer.write_all(&vec).unwrap();
-      Self::Bytes(BufView::from(writer.finish().unwrap()))
-    } else {
-      Self::Bytes(BufView::from(vec))
+    match compression {
+      Compression::GZip => {
+        let mut writer =
+          GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        writer.write_all(&vec).unwrap();
+        Self::Bytes(BufView::from(writer.finish().unwrap()))
+      }
+      Compression::Brotli => {
+        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        writer.write_all(&vec).unwrap();
+        Self::Bytes(BufView::from(writer.into_inner()))
+      }
+      _ => Self::Bytes(BufView::from(vec)),
     }
   }
 }
@@ -426,6 +451,27 @@ impl GZipResponseStream {
       state: GZipState::Header,
       underlying,
     }
+  }
+}
+
+#[pin_project]
+pub struct BrotliResponseStream {
+  #[pin]
+  underlying: ResponseStream,
+}
+
+impl BrotliResponseStream {
+  pub fn new(underlying: ResponseStream) -> Self {
+    Self { underlying }
+  }
+}
+
+impl PollFrame for GZipResponseStream {
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<ResponseStreamResult> {
+    todo!()
   }
 }
 

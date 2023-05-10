@@ -2089,6 +2089,13 @@ const compressionTestCases = [
     expect: "gzip",
   },
   {
+    name: "CompressibleType3",
+    length: 1024,
+    in: { "Accept-Encoding": "br" },
+    out: { "Content-Type": "text/plain" },
+    expect: "br",
+  },
+  {
     name: "UncompressibleRange",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
