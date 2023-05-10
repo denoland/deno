@@ -1093,6 +1093,7 @@ impl ModuleMap {
     output
   }
 
+  #[cfg(debug_assertions)]
   pub(crate) fn assert_all_modules_evaluated(
     &self,
     scope: &mut v8::HandleScope,
