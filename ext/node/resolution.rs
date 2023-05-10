@@ -922,7 +922,7 @@ impl NodeResolver {
             // emitTrailingSlashPatternDeprecation();
           }
           let pattern_trailer = &key[pattern_index + 1..];
-          if package_subpath.len() > key.len()
+          if package_subpath.len() >= key.len()
             && package_subpath.ends_with(&pattern_trailer)
             && pattern_key_compare(best_match, key) == 1
             && key.rfind('*') == Some(pattern_index)
