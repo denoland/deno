@@ -161,6 +161,7 @@ const styles = {
   // TODO(BridgeAR): Highlight regular expressions properly.
   regexp: "red",
   module: "underline",
+  internalError: "red",
 };
 
 const defaultFG = 39;
@@ -1022,7 +1023,6 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   ArrayPrototypePush(ctx.seen, value);
   ctx.currentDepth = recurseTimes;
   let output;
-  const indentationLvl = ctx.indentationLvl;
   try {
     output = formatter(ctx, value, recurseTimes);
     for (i = 0; i < keys.length; i++) {
@@ -1034,13 +1034,14 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     if (protoProps !== undefined) {
       ArrayPrototypePushApply(output, protoProps);
     }
-  } catch (err) {
-    const constructorName = StringPrototypeSlice(
-      getCtxStyle(value, constructor, tag),
-      0,
-      -1,
+  } catch {
+    // TODO(wafuwafu13): Implement stack overflow check
+    return ctx.stylize(
+      `[Internal Formatting Error]\n${
+        new Error().stack.replace(new SafeRegExp(".*\n"), "")
+      }`,
+      "internalError",
     );
-    return handleMaxCallStackSize(ctx, err, constructorName, indentationLvl);
   }
 
   if (ctx.circular !== undefined) {
@@ -1658,8 +1659,14 @@ const PromiseState = {
 
 function formatPromise(ctx, value, recurseTimes) {
   let output;
-  // TODO(wafuwafu13): Implement
-  const { 0: state, 1: result } = core.getPromiseDetails(value);
+  let opResult;
+  // This op will fail for non-promises, but we get here for some promise-likes.
+  try {
+    opResult = core.getPromiseDetails(value);
+  } catch {
+    return [ctx.stylize("<unknown>", "special")];
+  }
+  const { 0: state, 1: result } = opResult;
   if (state === PromiseState.Pending) {
     output = [ctx.stylize("<pending>", "special")];
   } else {
@@ -1768,26 +1775,6 @@ function formatProperty(
     name = ctx.stylize(quoteString(key, ctx), "string");
   }
   return `${name}:${extra}${str}`;
-}
-
-function handleMaxCallStackSize(
-  _ctx,
-  _err,
-  _constructorName,
-  _indentationLvl,
-) {
-  // TODO(wafuwafu13): Implement
-  // if (isStackOverflowError(err)) {
-  //   ctx.seen.pop();
-  //   ctx.indentationLvl = indentationLvl;
-  //   return ctx.stylize(
-  //     `[${constructorName}: Inspection interrupted ` +
-  //       'prematurely. Maximum call stack size exceeded.]',
-  //     'special'
-  //   );
-  // }
-  // /* c8 ignore next */
-  // assert.fail(err.stack);
 }
 
 const colorRegExp = new SafeRegExp("\u001b\\[\\d\\d?m", "g");
