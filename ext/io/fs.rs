@@ -15,6 +15,7 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use tokio::task::JoinError;
 
+#[derive(Debug)]
 pub enum FsError {
   Io(io::Error),
   FileBusy,
@@ -27,6 +28,14 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
+    }
+  }
+
+  pub fn into_io_error(self) -> io::Error {
+    match self {
+      FsError::Io(err) => err,
+      FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
+      FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
     }
   }
 }

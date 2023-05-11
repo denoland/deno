@@ -9,6 +9,7 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
+use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
 use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
@@ -361,7 +362,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       false, // No --unstable.
     ),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-    deno_http::deno_http::init_ops(),
+    deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops(Default::default()),
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
     deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
@@ -466,7 +467,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.0.3"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.0.4"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

@@ -50,3 +50,4 @@ tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
 bencher.workspace = true
+rand.workspace = true

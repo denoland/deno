@@ -70,9 +70,9 @@ pub trait HttpPropertyExtractor {
   ) -> HttpRequestProperties;
 }
 
-pub struct DefaultHttpRequestProperties {}
+pub struct DefaultHttpPropertyExtractor {}
 
-impl HttpPropertyExtractor for DefaultHttpRequestProperties {
+impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   fn get_network_stream_for_rid(
     state: &mut OpState,
     rid: ResourceId,
