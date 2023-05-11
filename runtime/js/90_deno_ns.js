@@ -222,6 +222,7 @@ const denoNsUnstable = {
   // TODO(bartlomieju): why is it needed?
   http,
   dlopen: ffi.dlopen,
+  FfiToken: ffi.FfiToken,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
   UnsafePointerView: ffi.UnsafePointerView,

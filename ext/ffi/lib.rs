@@ -18,6 +18,7 @@ mod ir;
 mod repr;
 mod r#static;
 mod symbol;
+mod token;
 mod turbocall;
 
 use call::op_ffi_call_nonblocking;
@@ -32,6 +33,7 @@ use r#static::op_ffi_get_static;
 use repr::*;
 use symbol::NativeType;
 use symbol::Symbol;
+use token::*;
 
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");
@@ -99,6 +101,9 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_create<P>,
     op_ffi_unsafe_callback_close,
     op_ffi_unsafe_callback_ref,
+    op_ffi_create_token<P>,
+    op_ffi_token_ptr_create,
+    op_ffi_token_read_u8,
   ],
   esm = [ "00_ffi.js" ],
   event_loop_middleware = event_loop_middleware,

@@ -447,6 +447,23 @@ class UnsafeCallback {
 
 const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 
+class FfiToken {
+  #rid;
+  #ptr;
+
+  constructor(path) {
+    ({ 0: this.#rid, 1: this.#ptr } = ops.op_ffi_create_token(path));
+  }
+
+  createPointer(value) {
+    return ops.op_ffi_token_ptr_create(this.#rid, this.#ptr, value);
+  }
+
+  readU8(pointer, offset = 0) {
+    return ops.op_ffi_token_read_u8(this.#rid, this.#ptr, pointer, offset);
+  }
+}
+
 class DynamicLibrary {
   #rid;
   symbols = {};
@@ -594,6 +611,7 @@ function dlopen(path, symbols) {
 
 export {
   dlopen,
+  FfiToken,
   UnsafeCallback,
   UnsafeFnPointer,
   UnsafePointer,
