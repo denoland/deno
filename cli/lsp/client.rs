@@ -26,13 +26,6 @@ pub enum TestingNotification {
   Progress(testing_lsp_custom::TestRunProgressParams),
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub enum LspClientKind {
-  #[default]
-  CodeEditor,
-  Repl,
-}
-
 #[derive(Clone)]
 pub struct Client(Arc<dyn ClientTrait>);
 
@@ -49,10 +42,6 @@ impl Client {
 
   pub fn new_for_repl() -> Self {
     Self(Arc::new(ReplClient))
-  }
-
-  pub fn kind(&self) -> LspClientKind {
-    self.0.kind()
   }
 
   /// Gets additional methods that should only be called outside
@@ -160,7 +149,6 @@ impl OutsideLockClient {
 
 #[async_trait]
 trait ClientTrait: Send + Sync {
-  fn kind(&self) -> LspClientKind;
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -189,10 +177,6 @@ struct TowerClient(tower_lsp::Client);
 
 #[async_trait]
 impl ClientTrait for TowerClient {
-  fn kind(&self) -> LspClientKind {
-    LspClientKind::CodeEditor
-  }
-
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -312,10 +296,6 @@ struct ReplClient;
 
 #[async_trait]
 impl ClientTrait for ReplClient {
-  fn kind(&self) -> LspClientKind {
-    LspClientKind::Repl
-  }
-
   async fn publish_diagnostics(
     &self,
     _uri: lsp::Url,
