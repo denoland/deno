@@ -49,6 +49,7 @@ use super::documents::Document;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
+use super::documents::UpdateDocumentConfigOptions;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
@@ -285,7 +286,7 @@ impl LanguageServer {
     if let Some(testing_server) = &inner.maybe_testing_server {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => testing_server
-          .run_request(params, inner.config.get_workspace_settings()),
+          .run_request(params, inner.config.workspace_settings().clone()),
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       }
@@ -489,7 +490,7 @@ impl Inner {
     let module_registries =
       ModuleRegistry::new(&module_registries_location, http_client.clone());
     let location = dir.deps_folder_path();
-    let documents = Documents::new(&location, client.kind());
+    let documents = Documents::new(&location);
     let deps_http_cache = HttpCache::new(&location);
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -602,9 +603,9 @@ impl Inner {
   }
 
   fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
-    let workspace_settings = self.config.get_workspace_settings();
-    let maybe_config = workspace_settings.config;
-    if let Some(config_str) = &maybe_config {
+    let workspace_settings = self.config.workspace_settings();
+    let maybe_config = &workspace_settings.config;
+    if let Some(config_str) = maybe_config {
       if !config_str.is_empty() {
         lsp_log!("Setting Deno configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
@@ -744,8 +745,8 @@ impl Inner {
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
-    let maybe_cache = self.config.get_workspace_settings().cache;
-    let maybe_cache_path = if let Some(cache_str) = &maybe_cache {
+    let maybe_cache = &self.config.workspace_settings().cache;
+    let maybe_cache_path = if let Some(cache_str) = maybe_cache {
       lsp_log!("Setting cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
@@ -785,7 +786,7 @@ impl Inner {
       .clone()
       .or_else(|| env::var("DENO_DIR").map(String::into).ok());
     let dir = DenoDir::new(maybe_custom_root)?;
-    let workspace_settings = self.config.get_workspace_settings();
+    let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
       .root_uri
@@ -793,15 +794,17 @@ impl Inner {
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
-      workspace_settings.certificate_stores,
-      workspace_settings.tls_certificate.map(CaData::File),
+      workspace_settings.certificate_stores.clone(),
+      workspace_settings.tls_certificate.clone().map(CaData::File),
     )?;
     let root_cert_store_provider =
       Arc::new(LspRootCertStoreProvider(root_cert_store));
     let module_registries_location = dir.registries_folder_path();
     self.http_client = Arc::new(HttpClient::new(
       Some(root_cert_store_provider),
-      workspace_settings.unsafely_ignore_certificate_errors,
+      workspace_settings
+        .unsafely_ignore_certificate_errors
+        .clone(),
     ));
     self.module_registries = ModuleRegistry::new(
       &module_registries_location,
@@ -883,8 +886,9 @@ impl Inner {
     Ok(
       if let Some(import_map_str) = self
         .config
-        .get_workspace_settings()
+        .workspace_settings()
         .import_map
+        .clone()
         .and_then(|s| if s.is_empty() { None } else { Some(s) })
       {
         lsp_log!(
@@ -957,14 +961,14 @@ impl Inner {
   }
 
   pub fn update_debug_flag(&self) {
-    let internal_debug = self.config.get_workspace_settings().internal_debug;
+    let internal_debug = self.config.workspace_settings().internal_debug;
     super::logging::set_lsp_debug_flag(internal_debug)
   }
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
     self.recreate_http_client_and_dependents(self.maybe_cache_path.clone())?;
-    let workspace_settings = self.config.get_workspace_settings();
+    let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
         lsp_log!("Enabling import suggestions for: {}", registry);
@@ -1037,7 +1041,7 @@ impl Inner {
       "useUnknownInCatchVariables": false,
     }));
     let config = &self.config;
-    let workspace_settings = config.get_workspace_settings();
+    let workspace_settings = config.workspace_settings();
     if workspace_settings.unstable {
       let unstable_libs = json!({
         "lib": ["deno.ns", "deno.window", "deno.unstable"]
@@ -1169,14 +1173,15 @@ impl Inner {
   }
 
   fn refresh_documents_config(&mut self) {
-    self.documents.update_config(
-      self.config.enabled_urls(),
-      self.maybe_import_map.clone(),
-      self.maybe_config_file.as_ref(),
-      self.maybe_package_json.as_ref(),
-      self.npm_api.clone(),
-      self.npm_resolution.clone(),
-    );
+    self.documents.update_config(UpdateDocumentConfigOptions {
+      enabled_urls: self.config.enabled_urls(),
+      document_preload_limit: self.config.workspace_settings().preload_limit,
+      maybe_import_map: self.maybe_import_map.clone(),
+      maybe_config_file: self.maybe_config_file.as_ref(),
+      maybe_package_json: self.maybe_package_json.as_ref(),
+      npm_registry_api: self.npm_api.clone(),
+      npm_resolution: self.npm_resolution.clone(),
+    });
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -1871,7 +1876,7 @@ impl Inner {
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !(self.config.get_workspace_settings().enabled_code_lens()
+      || !(self.config.workspace_settings().enabled_code_lens()
         || self.config.specifier_code_lens_test(&specifier))
     {
       return Ok(None);
@@ -2171,7 +2176,7 @@ impl Inner {
             ),
             include_automatic_optional_chain_completions: Some(true),
             include_completions_for_import_statements: Some(
-              self.config.get_workspace_settings().suggest.auto_imports,
+              self.config.workspace_settings().suggest.auto_imports,
             ),
             include_completions_for_module_exports: Some(true),
             include_completions_with_object_literal_method_snippets: Some(
@@ -2205,7 +2210,7 @@ impl Inner {
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
           line_index,
-          &self.config.get_workspace_settings().suggest,
+          &self.config.workspace_settings().suggest,
           &specifier,
           position,
         );
@@ -3315,7 +3320,7 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    let workspace_settings = self.config.get_workspace_settings();
+    let workspace_settings = self.config.workspace_settings();
     if !self.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
       || !workspace_settings.enabled_inlay_hints()
@@ -3334,7 +3339,7 @@ impl Inner {
     let req = tsc::RequestMethod::ProvideInlayHints((
       specifier,
       range,
-      (&workspace_settings).into(),
+      workspace_settings.into(),
     ));
     let maybe_inlay_hints: Option<Vec<tsc::InlayHint>> = self
       .ts_server
@@ -3388,7 +3393,7 @@ impl Inner {
         .collect::<Vec<_>>();
       documents_specifiers.sort();
       let measures = self.performance.to_vec();
-      let workspace_settings = self.config.get_workspace_settings();
+      let workspace_settings = self.config.workspace_settings();
 
       write!(
         contents,

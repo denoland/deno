@@ -391,7 +391,7 @@ pub async fn collect(
   code_lenses.extend(
     collect_tsc(
       specifier,
-      &config.get_workspace_settings(),
+      config.workspace_settings(),
       line_index,
       navigation_tree,
     )
