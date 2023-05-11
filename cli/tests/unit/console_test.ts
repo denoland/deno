@@ -2235,6 +2235,13 @@ Deno.test(function inspectWithPrototypePollution() {
   }
 });
 
+Deno.test(function inspectPromiseLike() {
+  assertEquals(
+    Deno.inspect(Object.create(Promise.prototype)),
+    "Promise { <unknown> }",
+  );
+});
+
 Deno.test(function inspectorMethods() {
   console.timeStamp("test");
   console.profile("test");

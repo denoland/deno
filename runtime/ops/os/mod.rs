@@ -339,6 +339,7 @@ fn rss() -> usize {
     (out, idx)
   }
 
+  #[allow(clippy::disallowed_methods)]
   let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
   {
     c

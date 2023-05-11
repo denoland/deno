@@ -1,10 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::io::Error;
+use std::rc::Rc;
+
+use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
-use deno_io::StdFileResource;
-use std::io::Error;
+use deno_core::Resource;
+use deno_io::fs::FileResource;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -14,8 +18,6 @@ use nix::sys::termios;
 use std::cell::RefCell;
 #[cfg(unix)]
 use std::collections::HashMap;
-#[cfg(unix)]
-use std::rc::Rc;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -44,19 +46,30 @@ use winapi::shared::minwindef::DWORD;
 use winapi::um::wincon;
 
 #[cfg(windows)]
-fn get_windows_handle(
-  f: &std::fs::File,
+fn get_fd_from_resource(
+  resource: Rc<FileResource>,
 ) -> Result<std::os::windows::io::RawHandle, AnyError> {
-  use std::os::windows::io::AsRawHandle;
   use winapi::um::handleapi;
 
-  let handle = f.as_raw_handle();
+  let Some(handle) = resource.backing_fd() else {
+    return Err(resource_unavailable());
+  };
   if handle == handleapi::INVALID_HANDLE_VALUE {
     return Err(Error::last_os_error().into());
   } else if handle.is_null() {
     return Err(custom_error("ReferenceError", "null handle"));
   }
   Ok(handle)
+}
+
+#[cfg(not(windows))]
+fn get_fd_from_resource(
+  resource: Rc<FileResource>,
+) -> Result<std::os::unix::prelude::RawFd, AnyError> {
+  match resource.backing_fd() {
+    Some(fd) => Ok(fd),
+    None => Err(resource_unavailable()),
+  }
 }
 
 deno_core::extension!(
@@ -106,23 +119,15 @@ fn op_stdin_set_raw(
   // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
-    use std::os::windows::io::AsRawHandle;
     use winapi::shared::minwindef::FALSE;
     use winapi::um::consoleapi;
-    use winapi::um::handleapi;
 
     if cbreak {
       return Err(deno_core::error::not_supported());
     }
 
-    StdFileResource::with_file(state, rid, move |std_file| {
-      let handle = std_file.as_raw_handle();
-
-      if handle == handleapi::INVALID_HANDLE_VALUE {
-        return Err(Error::last_os_error().into());
-      } else if handle.is_null() {
-        return Err(custom_error("ReferenceError", "null handle"));
-      }
+    FileResource::with_resource(state, rid, move |resource| {
+      let handle = get_fd_from_resource(resource)?;
       let mut original_mode: DWORD = 0;
       // SAFETY: winapi call
       if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
@@ -147,13 +152,11 @@ fn op_stdin_set_raw(
   }
   #[cfg(unix)]
   {
-    use std::os::unix::io::AsRawFd;
-
     let tty_mode_store = state.borrow::<TtyModeStore>().clone();
     let previous_mode = tty_mode_store.get(rid);
 
-    StdFileResource::with_file(state, rid, move |std_file| {
-      let raw_fd = std_file.as_raw_fd();
+    FileResource::with_resource(state, rid, move |resource| {
+      let raw_fd = get_fd_from_resource(resource)?;
 
       if is_raw {
         let mut raw = match previous_mode {
@@ -201,13 +204,14 @@ fn op_isatty(
   rid: u32,
   out: &mut [u8],
 ) -> Result<(), AnyError> {
-  StdFileResource::with_file(state, rid, move |std_file| {
+  FileResource::with_resource(state, rid, move |resource| {
+    let raw_fd = get_fd_from_resource(resource)?;
     #[cfg(windows)]
     {
       use winapi::shared::minwindef::FALSE;
       use winapi::um::consoleapi;
 
-      let handle = get_windows_handle(std_file)?;
+      let handle = raw_fd;
       let mut test_mode: DWORD = 0;
       // If I cannot get mode out of console, it is not a console.
       // TODO(bartlomieju):
@@ -220,8 +224,6 @@ fn op_isatty(
     }
     #[cfg(unix)]
     {
-      use std::os::unix::io::AsRawFd;
-      let raw_fd = std_file.as_raw_fd();
       // TODO(bartlomieju):
       #[allow(clippy::undocumented_unsafe_blocks)]
       {
@@ -242,8 +244,9 @@ fn op_console_size(
     result: &mut [u32],
     rid: u32,
   ) -> Result<(), AnyError> {
-    StdFileResource::with_file(state, rid, move |std_file| {
-      let size = console_size(std_file)?;
+    FileResource::with_resource(state, rid, move |resource| {
+      let fd = get_fd_from_resource(resource)?;
+      let size = console_size_from_fd(fd)?;
       result[0] = size.cols;
       result[1] = size.rows;
       Ok(())
@@ -276,40 +279,50 @@ pub fn console_size(
   {
     use std::os::windows::io::AsRawHandle;
     let handle = std_file.as_raw_handle();
-
-    // SAFETY: winapi calls
-    unsafe {
-      let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-        std::mem::zeroed();
-
-      if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
-        == 0
-      {
-        return Err(Error::last_os_error());
-      }
-      Ok(ConsoleSize {
-        cols: bufinfo.dwSize.X as u32,
-        rows: bufinfo.dwSize.Y as u32,
-      })
-    }
+    console_size_from_fd(handle)
   }
-
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
-
     let fd = std_file.as_raw_fd();
-    // SAFETY: libc calls
-    unsafe {
-      let mut size: libc::winsize = std::mem::zeroed();
-      if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-        return Err(Error::last_os_error());
-      }
-      Ok(ConsoleSize {
-        cols: size.ws_col as u32,
-        rows: size.ws_row as u32,
-      })
+    console_size_from_fd(fd)
+  }
+}
+
+#[cfg(windows)]
+fn console_size_from_fd(
+  handle: std::os::windows::io::RawHandle,
+) -> Result<ConsoleSize, std::io::Error> {
+  // SAFETY: winapi calls
+  unsafe {
+    let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+      std::mem::zeroed();
+
+    if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0
+    {
+      return Err(Error::last_os_error());
     }
+    Ok(ConsoleSize {
+      cols: bufinfo.dwSize.X as u32,
+      rows: bufinfo.dwSize.Y as u32,
+    })
+  }
+}
+
+#[cfg(not(windows))]
+fn console_size_from_fd(
+  fd: std::os::unix::prelude::RawFd,
+) -> Result<ConsoleSize, std::io::Error> {
+  // SAFETY: libc calls
+  unsafe {
+    let mut size: libc::winsize = std::mem::zeroed();
+    if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+      return Err(Error::last_os_error());
+    }
+    Ok(ConsoleSize {
+      cols: size.ws_col as u32,
+      rows: size.ws_row as u32,
+    })
   }
 }
 

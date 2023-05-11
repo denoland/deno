@@ -30,7 +30,8 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
-use deno_fs::StdFs;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_tls::RootCertStoreProvider;
@@ -87,13 +88,13 @@ pub struct WorkerOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
+  pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_fs: Option<Arc<dyn deno_node::NodeFs>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
@@ -149,6 +150,7 @@ impl Default for WorkerOptions {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
+      fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
@@ -164,7 +166,6 @@ impl Default for WorkerOptions {
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
       root_cert_store_provider: Default::default(),
-      node_fs: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
@@ -264,12 +265,15 @@ impl MainWorker {
         unstable,
       ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops(),
+      deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
-      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
-        options.node_fs,
+        options.fs,
       ),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops(main_module.clone()),

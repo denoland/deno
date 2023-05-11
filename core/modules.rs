@@ -1093,6 +1093,29 @@ impl ModuleMap {
     output
   }
 
+  #[cfg(debug_assertions)]
+  pub(crate) fn assert_all_modules_evaluated(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) {
+    let mut not_evaluated = vec![];
+
+    for (i, handle) in self.handles.iter().enumerate() {
+      let module = v8::Local::new(scope, handle);
+      if !matches!(module.get_status(), v8::ModuleStatus::Evaluated) {
+        not_evaluated.push(self.info[i].name.as_str().to_string());
+      }
+    }
+
+    if !not_evaluated.is_empty() {
+      let mut msg = "Following modules were not evaluated; make sure they are imported from other code:\n".to_string();
+      for m in not_evaluated {
+        msg.push_str(&format!("  - {}\n", m));
+      }
+      panic!("{}", msg);
+    }
+  }
+
   pub fn serialize_for_snapshotting(
     &self,
     scope: &mut v8::HandleScope,
@@ -1366,7 +1389,7 @@ impl ModuleMap {
 
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
-  fn get_id(
+  pub(crate) fn get_id(
     &self,
     name: impl AsRef<str>,
     asserted_module_type: AssertedModuleType,
@@ -1740,6 +1763,7 @@ mod tests {
   use crate::RuntimeOptions;
   use crate::Snapshot;
   use deno_ops::op;
+  use futures::future::poll_fn;
   use futures::future::FutureExt;
   use parking_lot::Mutex;
   use std::fmt;
@@ -1753,12 +1777,6 @@ mod tests {
   mod deno_core {
     pub use crate::*;
   }
-
-  // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
-  // even though we are only using poll() in these tests and not Tokio, we must
-  // nevertheless run it in the tokio executor. Ideally run_in_task can be
-  // removed in the future.
-  use crate::runtime::tests::run_in_task;
 
   #[derive(Default)]
   struct MockLoader {
@@ -1907,7 +1925,7 @@ import "/a.js";
       }
       if inner.url == "file:///slow.js" && inner.counter < 2 {
         // TODO(ry) Hopefully in the future we can remove current task
-        // notification. See comment above run_in_task.
+        // notification.
         cx.waker().wake_by_ref();
         return Poll::Pending;
       }
@@ -2263,8 +2281,8 @@ import "/a.js";
     futures::executor::block_on(receiver).unwrap().unwrap();
   }
 
-  #[test]
-  fn dyn_import_err() {
+  #[tokio::test]
+  async fn dyn_import_err() {
     #[derive(Clone, Default)]
     struct DynImportErrLoader {
       pub count: Arc<AtomicUsize>,
@@ -2302,7 +2320,7 @@ import "/a.js";
     });
 
     // Test an erroneous dynamic import where the specified module isn't found.
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "file:///dyn_import2.js",
@@ -2320,7 +2338,9 @@ import "/a.js";
         unreachable!();
       }
       assert_eq!(count.load(Ordering::Relaxed), 4);
+      Poll::Ready(())
     })
+    .await;
   }
 
   #[derive(Clone, Default)]
@@ -2369,8 +2389,8 @@ import "/a.js";
     }
   }
 
-  #[test]
-  fn dyn_import_ok() {
+  #[tokio::test]
+  async fn dyn_import_ok() {
     let loader = Rc::new(DynImportOkLoader::default());
     let prepare_load_count = loader.prepare_load_count.clone();
     let resolve_count = loader.resolve_count.clone();
@@ -2379,7 +2399,7 @@ import "/a.js";
       module_loader: Some(loader),
       ..Default::default()
     });
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       // Dynamically import mod_b
       runtime
         .execute_script_static(
@@ -2413,11 +2433,13 @@ import "/a.js";
       ));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 7);
       assert_eq!(load_count.load(Ordering::Relaxed), 1);
+      Poll::Ready(())
     })
+    .await;
   }
 
-  #[test]
-  fn dyn_import_borrow_mut_error() {
+  #[tokio::test]
+  async fn dyn_import_borrow_mut_error() {
     // https://github.com/denoland/deno/issues/6054
     let loader = Rc::new(DynImportOkLoader::default());
     let prepare_load_count = loader.prepare_load_count.clone();
@@ -2426,7 +2448,7 @@ import "/a.js";
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "file:///dyn_import3.js",
@@ -2445,7 +2467,9 @@ import "/a.js";
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       // Second poll triggers error
       let _ = runtime.poll_event_loop(cx, false);
+      Poll::Ready(())
     })
+    .await;
   }
 
   // Regression test for https://github.com/denoland/deno/issues/3736.
@@ -2671,8 +2695,8 @@ import "/a.js";
     futures::executor::block_on(fut);
   }
 
-  #[test]
-  fn slow_never_ready_modules() {
+  #[tokio::test]
+  async fn slow_never_ready_modules() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2680,7 +2704,7 @@ import "/a.js";
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       let spec = resolve_url("file:///main.js").unwrap();
       let mut recursive_load =
         runtime.load_main_module(&spec, None).boxed_local();
@@ -2694,8 +2718,7 @@ import "/a.js";
       //      "file:///never_ready.js",
       //      "file:///slow.js"
       // But due to current task notification in DelayedSourceCodeFuture they
-      // all get loaded in a single poll. Also see the comment above
-      // run_in_task.
+      // all get loaded in a single poll.
 
       for _ in 0..10 {
         let result = recursive_load.poll_unpin(cx);
@@ -2714,30 +2737,26 @@ import "/a.js";
           ]
         );
       }
+      Poll::Ready(())
     })
+    .await;
   }
 
-  #[test]
-  fn loader_disappears_after_error() {
+  #[tokio::test]
+  async fn loader_disappears_after_error() {
     let loader = MockLoader::new();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
-      let spec = resolve_url("file:///bad_import.js").unwrap();
-      let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
-      let result = load_fut.poll_unpin(cx);
-      if let Poll::Ready(Err(err)) = result {
-        assert_eq!(
-          err.downcast_ref::<MockError>().unwrap(),
-          &MockError::ResolveErr
-        );
-      } else {
-        unreachable!();
-      }
-    })
+    let spec = resolve_url("file:///bad_import.js").unwrap();
+    let result = runtime.load_main_module(&spec, None).await;
+    let err = result.unwrap_err();
+    assert_eq!(
+      err.downcast_ref::<MockError>().unwrap(),
+      &MockError::ResolveErr
+    );
   }
 
   #[test]

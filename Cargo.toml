@@ -44,38 +44,38 @@ repository = "https://github.com/denoland/deno"
 v8 = { version = "0.71.0", default-features = false }
 deno_ast = { version = "0.26.0", features = ["transpiling"] }
 
-deno_core = { version = "0.184.0", path = "./core" }
-deno_ops = { version = "0.62.0", path = "./ops" }
-serde_v8 = { version = "0.95.0", path = "./serde_v8" }
-deno_runtime = { version = "0.110.0", path = "./runtime" }
-napi_sym = { version = "0.32.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.96.0", path = "./bench_util" }
+deno_core = { version = "0.185.0", path = "./core" }
+deno_ops = { version = "0.63.0", path = "./ops" }
+serde_v8 = { version = "0.96.0", path = "./serde_v8" }
+deno_runtime = { version = "0.111.0", path = "./runtime" }
+napi_sym = { version = "0.33.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.97.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
-deno_lockfile = "0.13.0"
+deno_lockfile = "0.14.0"
 deno_media_type = { version = "0.1.0", features = ["module_specifier"] }
 deno_npm = "0.3.0"
 deno_semver = "0.2.1"
 
 # exts
-deno_broadcast_channel = { version = "0.96.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.34.0", path = "./ext/cache" }
-deno_console = { version = "0.102.0", path = "./ext/console" }
-deno_crypto = { version = "0.116.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.126.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.89.0", path = "./ext/ffi" }
-deno_fs = { version = "0.12.0", path = "./ext/fs" }
-deno_http = { version = "0.97.0", path = "./ext/http" }
-deno_io = { version = "0.12.0", path = "./ext/io" }
-deno_net = { version = "0.94.0", path = "./ext/net" }
-deno_node = { version = "0.39.0", path = "./ext/node" }
-deno_kv = { version = "0.10.0", path = "./ext/kv" }
-deno_tls = { version = "0.89.0", path = "./ext/tls" }
-deno_url = { version = "0.102.0", path = "./ext/url" }
-deno_web = { version = "0.133.0", path = "./ext/web" }
-deno_webidl = { version = "0.102.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.107.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.97.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.32.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.97.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.35.0", path = "./ext/cache" }
+deno_console = { version = "0.103.0", path = "./ext/console" }
+deno_crypto = { version = "0.117.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.127.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.90.0", path = "./ext/ffi" }
+deno_fs = { version = "0.13.0", path = "./ext/fs" }
+deno_http = { version = "0.98.0", path = "./ext/http" }
+deno_io = { version = "0.13.0", path = "./ext/io" }
+deno_net = { version = "0.95.0", path = "./ext/net" }
+deno_node = { version = "0.40.0", path = "./ext/node" }
+deno_kv = { version = "0.11.0", path = "./ext/kv" }
+deno_tls = { version = "0.90.0", path = "./ext/tls" }
+deno_url = { version = "0.103.0", path = "./ext/url" }
+deno_web = { version = "0.134.0", path = "./ext/web" }
+deno_webidl = { version = "0.103.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.108.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.98.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.33.0", path = "./ext/napi" }
 
 aes = "=0.8.2"
 anyhow = "1.0.57"
@@ -92,6 +92,7 @@ dlopen = "0.1.8"
 encoding_rs = "=0.8.31"
 ecb = "=0.1.1"
 fastwebsockets = "=0.3.1"
+filetime = "0.2.16"
 flate2 = "=1.0.24"
 fs3 = "0.5.0"
 futures = "0.3.21"
@@ -131,8 +132,8 @@ smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
 tempfile = "3.4.0"
-thiserror = "=1.0.38"
-tokio = { version = "1.25.0", features = ["full"] }
+thiserror = "1.0.40"
+tokio = { version = "1.28.1", features = ["full"] }
 tikv-jemallocator = "0.5.0"
 tikv-jemalloc-sys = "0.5.3"
 tokio-rustls = "0.23.3"

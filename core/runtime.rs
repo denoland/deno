@@ -8,6 +8,7 @@ use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::AssertedModuleType;
 use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleCode;
 use crate::modules::ModuleError;
@@ -23,7 +24,6 @@ use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
-use crate::ExtensionFileSource;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -70,48 +70,6 @@ pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e Error) -> &'static str;
 struct IsolateAllocations {
   near_heap_limit_callback_data:
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
-}
-
-/// A custom allocator for array buffers for V8. It uses `jemalloc` so it's
-/// not available on Windows.
-#[cfg(not(target_env = "msvc"))]
-mod custom_allocator {
-  use std::ffi::c_void;
-
-  pub struct RustAllocator;
-
-  pub unsafe extern "C" fn allocate(
-    _alloc: &RustAllocator,
-    n: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::calloc(1, n)
-  }
-
-  pub unsafe extern "C" fn allocate_uninitialized(
-    _alloc: &RustAllocator,
-    n: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::malloc(n)
-  }
-
-  pub unsafe extern "C" fn free(
-    _alloc: &RustAllocator,
-    data: *mut c_void,
-    _n: usize,
-  ) {
-    tikv_jemalloc_sys::free(data)
-  }
-
-  pub unsafe extern "C" fn reallocate(
-    _alloc: &RustAllocator,
-    prev: *mut c_void,
-    _oldlen: usize,
-    newlen: usize,
-  ) -> *mut c_void {
-    tikv_jemalloc_sys::realloc(prev, newlen)
-  }
-
-  pub unsafe extern "C" fn drop(_alloc: *const RustAllocator) {}
 }
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
@@ -435,38 +393,15 @@ impl JsRuntime {
       }
       isolate
     } else {
-      #[cfg(not(target_env = "msvc"))]
-      let vtable: &'static v8::RustAllocatorVtable<
-        custom_allocator::RustAllocator,
-      > = &v8::RustAllocatorVtable {
-        allocate: custom_allocator::allocate,
-        allocate_uninitialized: custom_allocator::allocate_uninitialized,
-        free: custom_allocator::free,
-        reallocate: custom_allocator::reallocate,
-        drop: custom_allocator::drop,
-      };
-      #[cfg(not(target_env = "msvc"))]
-      let allocator = Arc::new(custom_allocator::RustAllocator);
-
-      #[allow(unused_mut)]
       let mut params = options
         .create_params
         .take()
-        .unwrap_or_else(|| {
-          v8::CreateParams::default().embedder_wrapper_type_info_offsets(
-            V8_WRAPPER_TYPE_INDEX,
-            V8_WRAPPER_OBJECT_INDEX,
-          )
-        })
+        .unwrap_or_default()
+        .embedder_wrapper_type_info_offsets(
+          V8_WRAPPER_TYPE_INDEX,
+          V8_WRAPPER_OBJECT_INDEX,
+        )
         .external_references(&**refs);
-
-      #[cfg(not(target_env = "msvc"))]
-      // SAFETY: We are leaking the created `allocator` variable so we're sure
-      // it will outlive the created isolate. We also made sure that the vtable
-      // is correct.
-      let mut params = params.array_buffer_allocator(unsafe {
-        v8::new_rust_allocator(Arc::into_raw(allocator), vtable)
-      });
 
       if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
@@ -752,46 +687,49 @@ impl JsRuntime {
     module_map
   }
 
-  /// Initializes JS of provided Extensions in the given realm
+  /// Initializes JS of provided Extensions in the given realm.
   fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
-    fn load_and_evaluate_module(
-      runtime: &mut JsRuntime,
-      file_source: &ExtensionFileSource,
-    ) -> Result<(), Error> {
-      futures::executor::block_on(async {
-        let id = runtime
-          .load_side_module(
-            &ModuleSpecifier::parse(file_source.specifier)?,
-            None,
-          )
-          .await?;
-        let receiver = runtime.mod_evaluate(id);
-        runtime.run_event_loop(false).await?;
-        receiver.await?
-      })
-      .with_context(|| format!("Couldn't execute '{}'", file_source.specifier))
-    }
+    // Initalization of JS happens in phases:
+    // 1. Iterate through all extensions:
+    //  a. Execute all extension "script" JS files
+    //  b. Load all extension "module" JS files (but do not execute them yet)
+    // 2. Iterate through all extensions:
+    //  a. If an extension has a `esm_entry_point`, execute it.
+
+    let mut esm_entrypoints = vec![];
 
     // Take extensions to avoid double-borrow
     let extensions = std::mem::take(&mut self.extensions);
-    for ext in extensions.borrow().iter() {
-      {
-        if let Some(esm_files) = ext.get_esm_sources() {
-          if let Some(entry_point) = ext.get_esm_entry_point() {
-            let file_source = esm_files
-              .iter()
-              .find(|file| file.specifier == entry_point)
-              .unwrap();
-            load_and_evaluate_module(self, file_source)?;
-          } else {
-            for file_source in esm_files {
-              load_and_evaluate_module(self, file_source)?;
-            }
+
+    futures::executor::block_on(async {
+      let num_of_extensions = extensions.borrow().len();
+      for i in 0..num_of_extensions {
+        let (maybe_esm_files, maybe_esm_entry_point) = {
+          let exts = extensions.borrow();
+          (
+            exts[i].get_esm_sources().map(|e| e.to_owned()),
+            exts[i].get_esm_entry_point(),
+          )
+        };
+
+        if let Some(esm_files) = maybe_esm_files {
+          for file_source in esm_files {
+            self
+              .load_side_module(
+                &ModuleSpecifier::parse(file_source.specifier)?,
+                None,
+              )
+              .await?;
           }
         }
-      }
 
-      {
+        if let Some(entry_point) = maybe_esm_entry_point {
+          esm_entrypoints.push(entry_point);
+        }
+
+        let exts = extensions.borrow();
+        let ext = &exts[i];
+
         if let Some(js_files) = ext.get_js_sources() {
           for file_source in js_files {
             realm.execute_script(
@@ -801,14 +739,41 @@ impl JsRuntime {
             )?;
           }
         }
+
+        if ext.is_core {
+          self.init_cbs(realm);
+        }
       }
 
-      // TODO(bartlomieju): this not great that we need to have this conditional
-      // here, but I haven't found a better way to do it yet.
-      if ext.is_core {
-        self.init_cbs(realm);
+      for specifier in esm_entrypoints {
+        let mod_id = {
+          let module_map = self.module_map.as_ref().unwrap();
+
+          module_map
+            .borrow()
+            .get_id(specifier, AssertedModuleType::JavaScriptOrWasm)
+            .unwrap_or_else(|| {
+              panic!("{} not present in the module map", specifier)
+            })
+        };
+        let receiver = self.mod_evaluate(mod_id);
+        self.run_event_loop(false).await?;
+        receiver
+          .await?
+          .with_context(|| format!("Couldn't execute '{specifier}'"))?;
       }
-    }
+
+      #[cfg(debug_assertions)]
+      {
+        let module_map_rc = self.module_map.clone().unwrap();
+        let mut scope = realm.handle_scope(self.v8_isolate());
+        let module_map = module_map_rc.borrow();
+        module_map.assert_all_modules_evaluated(&mut scope);
+      }
+
+      Ok::<_, anyhow::Error>(())
+    })?;
+
     // Restore extensions
     self.extensions = extensions;
 
@@ -833,7 +798,7 @@ impl JsRuntime {
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
     // Flatten ops, apply middlware & override disabled ops
-    exts
+    let ops: Vec<_> = exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
       .flatten()
@@ -841,7 +806,37 @@ impl JsRuntime {
         name: d.name,
         ..macroware(d)
       })
-      .collect()
+      .collect();
+
+    // In debug build verify there are no duplicate ops.
+    #[cfg(debug_assertions)]
+    {
+      let mut count_by_name = HashMap::new();
+
+      for op in ops.iter() {
+        count_by_name
+          .entry(&op.name)
+          .or_insert(vec![])
+          .push(op.name.to_string());
+      }
+
+      let mut duplicate_ops = vec![];
+      for (op_name, _count) in
+        count_by_name.iter().filter(|(_k, v)| v.len() > 1)
+      {
+        duplicate_ops.push(op_name.to_string());
+      }
+      if !duplicate_ops.is_empty() {
+        let mut msg = "Found ops with duplicate names:\n".to_string();
+        for op_name in duplicate_ops {
+          msg.push_str(&format!("  - {}\n", op_name));
+        }
+        msg.push_str("Op names need to be unique.");
+        panic!("{}", msg);
+      }
+    }
+
+    ops
   }
 
   /// Initializes ops of provided Extensions
@@ -1831,7 +1826,7 @@ impl JsRuntime {
             .state(tc_scope)
             .borrow_mut()
             .pending_promise_rejections
-            .remove(&promise_global);
+            .retain(|(key, _)| key != &promise_global);
         }
       }
       let promise_global = v8::Global::new(tc_scope, promise);
@@ -2610,8 +2605,6 @@ pub mod tests {
   use crate::modules::SymbolicModule;
   use crate::ZeroCopyBuf;
   use deno_ops::op;
-  use futures::future::lazy;
-  use std::ops::FnOnce;
   use std::pin::Pin;
   use std::rc::Rc;
   use std::sync::atomic::AtomicUsize;
@@ -2621,13 +2614,6 @@ pub mod tests {
   // deno_ops macros generate code assuming deno_core in scope.
   mod deno_core {
     pub use crate::*;
-  }
-
-  pub fn run_in_task<F>(f: F)
-  where
-    F: FnOnce(&mut Context) + 'static,
-  {
-    futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
   #[derive(Copy, Clone)]
@@ -2864,7 +2850,7 @@ pub mod tests {
   #[tokio::test]
   async fn test_poll_value() {
     let mut runtime = JsRuntime::new(Default::default());
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       let value_global = runtime
         .execute_script_static("a.js", "Promise.resolve(1 + 2)")
         .unwrap();
@@ -2903,7 +2889,8 @@ pub mod tests {
         .unwrap();
       let v = runtime.poll_value(&value_global, cx);
       matches!(v, Poll::Ready(Err(e)) if e.to_string() == "Promise resolution is still pending but the event loop has already resolved.");
-    });
+      Poll::Ready(())
+    }).await;
   }
 
   #[tokio::test]
@@ -3061,10 +3048,10 @@ pub mod tests {
     assert_eq!(frame.column_number, Some(12));
   }
 
-  #[test]
-  fn test_encode_decode() {
+  #[tokio::test]
+  async fn test_encode_decode() {
     let (mut runtime, _dispatch_count) = setup(Mode::Async);
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script(
           "encode_decode_test.js",
@@ -3075,13 +3062,15 @@ pub mod tests {
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
-  #[test]
-  fn test_serialize_deserialize() {
+  #[tokio::test]
+  async fn test_serialize_deserialize() {
     let (mut runtime, _dispatch_count) = setup(Mode::Async);
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script(
           "serialize_deserialize_test.js",
@@ -3091,11 +3080,13 @@ pub mod tests {
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
-  #[test]
-  fn test_error_builder() {
+  #[tokio::test]
+  async fn test_error_builder() {
     #[op]
     fn op_err() -> Result<(), Error> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
@@ -3111,7 +3102,7 @@ pub mod tests {
       get_error_class_fn: Some(&get_error_class_name),
       ..Default::default()
     });
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "error_builder_test.js",
@@ -3121,7 +3112,9 @@ pub mod tests {
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
   #[test]
@@ -3646,10 +3639,10 @@ main();
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
-  #[test]
-  fn test_error_async_stack() {
+  #[tokio::test]
+  async fn test_error_async_stack() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "error_async_stack.js",
@@ -3680,11 +3673,13 @@ main();
         }
         _ => panic!(),
       };
+      Poll::Ready(())
     })
+    .await;
   }
 
-  #[test]
-  fn test_error_context() {
+  #[tokio::test]
+  async fn test_error_context() {
     use anyhow::anyhow;
 
     #[op]
@@ -3703,7 +3698,7 @@ main();
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "test_error_context_sync.js",
@@ -3746,13 +3741,14 @@ if (errMessage !== "higher-level sync error: original sync error") {
         Poll::Ready(Err(err)) => panic!("{err:?}"),
         _ => panic!(),
       }
-    })
+      Poll::Ready(())
+    }).await;
   }
 
-  #[test]
-  fn test_pump_message_loop() {
+  #[tokio::test]
+  async fn test_pump_message_loop() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "pump_message_loop.js",
@@ -3797,7 +3793,9 @@ assertEquals(1, notify_return_value);
           r#"assertEquals(globalThis.resolved, true);"#,
         )
         .unwrap();
+      Poll::Ready(())
     })
+    .await;
   }
 
   #[test]
@@ -4133,6 +4131,23 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       .unwrap_err()
       .to_string()
       .contains("JavaScript execution has been terminated"));
+  }
+
+  #[tokio::test]
+  async fn test_unhandled_rejection_order() {
+    let mut runtime = JsRuntime::new(Default::default());
+    runtime
+      .execute_script_static(
+        "",
+        r#"
+        for (let i = 0; i < 100; i++) {
+          Promise.reject(i);
+        }
+        "#,
+      )
+      .unwrap();
+    let err = runtime.run_event_loop(false).await.unwrap_err();
+    assert_eq!(err.to_string(), "Uncaught (in promise) 0");
   }
 
   #[tokio::test]
@@ -4695,7 +4710,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       let main_realm = runtime.global_realm();
       let other_realm = runtime.create_realm().unwrap();
 
@@ -4747,7 +4762,9 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(()))
       ));
-    });
+      Poll::Ready(())
+    })
+    .await;
   }
 
   #[test]
@@ -4828,5 +4845,30 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       err.to_string(),
       "Cannot load extension module from external code"
     );
+  }
+
+  #[cfg(debug_assertions)]
+  #[test]
+  #[should_panic(expected = "Found ops with duplicate names:")]
+  fn duplicate_op_names() {
+    mod a {
+      use super::*;
+
+      #[op]
+      fn op_test() -> Result<String, Error> {
+        Ok(String::from("Test"))
+      }
+    }
+
+    #[op]
+    fn op_test() -> Result<String, Error> {
+      Ok(String::from("Test"))
+    }
+
+    deno_core::extension!(test_ext, ops = [a::op_test, op_test]);
+    JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init_ops()],
+      ..Default::default()
+    });
   }
 }

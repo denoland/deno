@@ -3,23 +3,17 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
-use std::env::current_dir;
-use std::io::Error;
 use std::path::Path;
 use std::path::PathBuf;
-
-/// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
-pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
-}
 
 #[inline]
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   if path.is_absolute() {
     Ok(normalize_path(path))
   } else {
-    let cwd =
-      current_dir().context("Failed to get current working directory")?;
+    #[allow(clippy::disallowed_methods)]
+    let cwd = std::env::current_dir()
+      .context("Failed to get current working directory")?;
     Ok(normalize_path(cwd.join(path)))
   }
 }
@@ -28,21 +22,26 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 mod tests {
   use super::*;
 
+  fn current_dir() -> PathBuf {
+    #[allow(clippy::disallowed_methods)]
+    std::env::current_dir().unwrap()
+  }
+
   #[test]
   fn resolve_from_cwd_child() {
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir();
     assert_eq!(resolve_from_cwd(Path::new("a")).unwrap(), cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir();
     assert_eq!(resolve_from_cwd(Path::new(".")).unwrap(), cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
   }
 
@@ -66,7 +65,7 @@ mod tests {
   #[test]
   fn resolve_from_cwd_absolute() {
     let expected = Path::new("a");
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir();
     let absolute_expected = cwd.join(expected);
     assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }

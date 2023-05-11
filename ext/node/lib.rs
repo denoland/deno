@@ -1,11 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_fs::sync::MaybeSend;
+use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageNv;
@@ -13,12 +20,6 @@ use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
-use std::collections::HashSet;
-use std::io;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
 pub mod analyze;
 pub mod errors;
@@ -39,10 +40,6 @@ pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
 
-pub trait NodeEnv {
-  type P: NodePermissions;
-}
-
 pub trait NodePermissions {
   fn check_read(&self, path: &Path) -> Result<(), AnyError>;
 }
@@ -55,72 +52,10 @@ impl NodePermissions for AllowAllNodePermissions {
   }
 }
 
-#[derive(Default, Clone)]
-pub struct NodeFsMetadata {
-  pub is_file: bool,
-  pub is_dir: bool,
-}
+#[allow(clippy::disallowed_types)]
+pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
 
-pub trait NodeFs: std::fmt::Debug + Send + Sync {
-  fn current_dir(&self) -> io::Result<PathBuf>;
-  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata>;
-  fn is_file(&self, path: &Path) -> bool;
-  fn is_dir(&self, path: &Path) -> bool;
-  fn exists(&self, path: &Path) -> bool;
-  fn read_to_string(&self, path: &Path) -> io::Result<String>;
-  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
-}
-
-#[derive(Debug)]
-pub struct RealFs;
-
-impl NodeFs for RealFs {
-  fn current_dir(&self) -> io::Result<PathBuf> {
-    #[allow(clippy::disallowed_methods)]
-    std::env::current_dir()
-  }
-
-  fn metadata(&self, path: &Path) -> io::Result<NodeFsMetadata> {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path).map(|metadata| {
-      // on most systems, calling is_file() and is_dir() is cheap
-      // and returns information already found in the metadata object
-      NodeFsMetadata {
-        is_file: metadata.is_file(),
-        is_dir: metadata.is_dir(),
-      }
-    })
-  }
-
-  fn exists(&self, path: &Path) -> bool {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path).is_ok()
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path)
-      .map(|m| m.is_file())
-      .unwrap_or(false)
-  }
-
-  fn is_dir(&self, path: &Path) -> bool {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false)
-  }
-
-  fn read_to_string(&self, path: &Path) -> io::Result<String> {
-    #[allow(clippy::disallowed_methods)]
-    std::fs::read_to_string(path)
-  }
-
-  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
-    #[allow(clippy::disallowed_methods)]
-    std::path::Path::canonicalize(path)
-  }
-}
-
-pub trait NpmResolver: std::fmt::Debug + Send + Sync {
+pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -192,7 +127,7 @@ fn op_node_build_os() -> String {
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [Env: NodeEnv],
+  parameters = [P: NodePermissions],
   ops = [
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_cipheriv_encrypt,
@@ -271,26 +206,26 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_reset,
     op_node_build_os,
     ops::require::op_require_init_paths,
-    ops::require::op_require_node_module_paths<Env>,
+    ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
     ops::require::op_require_is_deno_dir_package,
     ops::require::op_require_resolve_deno_dir,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
-    ops::require::op_require_try_self_parent_path<Env>,
-    ops::require::op_require_try_self<Env>,
-    ops::require::op_require_real_path<Env>,
+    ops::require::op_require_try_self_parent_path<P>,
+    ops::require::op_require_try_self<P>,
+    ops::require::op_require_real_path<P>,
     ops::require::op_require_path_is_absolute,
     ops::require::op_require_path_dirname,
-    ops::require::op_require_stat<Env>,
+    ops::require::op_require_stat<P>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
-    ops::require::op_require_read_file<Env>,
+    ops::require::op_require_read_file<P>,
     ops::require::op_require_as_file_path,
-    ops::require::op_require_resolve_exports<Env>,
-    ops::require::op_require_read_closest_package_json<Env>,
-    ops::require::op_require_read_package_scope<Env>,
-    ops::require::op_require_package_imports_resolve<Env>,
+    ops::require::op_require_resolve_exports<P>,
+    ops::require::op_require_read_closest_package_json<P>,
+    ops::require::op_require_read_package_scope<P>,
+    ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
@@ -519,11 +454,11 @@ deno_core::extension!(deno_node,
     "zlib.ts",
   ],
   options = {
-    maybe_npm_resolver: Option<Arc<dyn NpmResolver>>,
-    fs: Option<Arc<dyn NodeFs>>,
+    maybe_npm_resolver: Option<NpmResolverRc>,
+    fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
-    let fs = options.fs.unwrap_or_else(|| Arc::new(RealFs));
+    let fs = options.fs;
     state.put(fs.clone());
     if let Some(npm_resolver) = options.maybe_npm_resolver {
       state.put(npm_resolver.clone());

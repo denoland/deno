@@ -23,7 +23,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_runtime::deno_core::futures;
-use deno_runtime::deno_node::NodeFs;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
@@ -44,7 +44,7 @@ use super::common::NpmPackageFsResolver;
 /// and resolves packages from it.
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver {
-  fs: Arc<dyn NodeFs>,
+  fs: Arc<dyn deno_fs::FileSystem>,
   cache: Arc<NpmCache>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
@@ -55,7 +55,7 @@ pub struct LocalNpmPackageResolver {
 
 impl LocalNpmPackageResolver {
   pub fn new(
-    fs: Arc<dyn NodeFs>,
+    fs: Arc<dyn deno_fs::FileSystem>,
     cache: Arc<NpmCache>,
     progress_bar: ProgressBar,
     registry_url: Url,
@@ -94,7 +94,7 @@ impl LocalNpmPackageResolver {
       // Canonicalize the path so it's not pointing to the symlinked directory
       // in `node_modules` directory of the referrer.
       Some(path) => {
-        Ok(deno_core::strip_unc_prefix(self.fs.canonicalize(&path)?))
+        Ok(deno_core::strip_unc_prefix(self.fs.realpath_sync(&path)?))
       }
       None => bail!("could not find npm package for '{}'", specifier),
     }
@@ -154,7 +154,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     loop {
       current_folder = get_next_node_modules_ancestor(current_folder);
       let sub_dir = join_package_name(current_folder, name);
-      if sub_dir.is_dir() {
+      if self.fs.is_dir(&sub_dir) {
         // if doing types resolution, only resolve the package if it specifies a types property
         if mode.is_types() && !name.starts_with("@types/") {
           let package_json = PackageJson::load_skip_read_permission(
@@ -173,7 +173,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(current_folder, &types_package_name(name));
-        if sub_dir.is_dir() {
+        if self.fs.is_dir(&sub_dir) {
           return Ok(sub_dir);
         }
       }
@@ -214,6 +214,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     path: &Path,
   ) -> Result<(), AnyError> {
     ensure_registry_read_permission(
+      &self.fs,
       permissions,
       &self.root_node_modules_path,
       path,

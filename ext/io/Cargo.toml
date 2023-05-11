@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.12.0"
+version = "0.13.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,7 +14,10 @@ description = "IO promitives for Deno extensions"
 path = "lib.rs"
 
 [dependencies]
+async-trait.workspace = true
 deno_core.workspace = true
+filetime.workspace = true
+fs3.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
 
