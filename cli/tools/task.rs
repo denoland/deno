@@ -64,12 +64,13 @@ pub async fn execute_script(
         .await;
     Ok(exit_code)
   } else if let Some(script) = package_json_scripts.get(task_name) {
+    let package_json_deps_provider = factory.package_json_deps_provider();
     let package_json_deps_installer =
       factory.package_json_deps_installer().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let node_resolver = factory.node_resolver().await?;
 
-    if let Some(package_deps) = package_json_deps_installer.package_deps() {
+    if let Some(package_deps) = package_json_deps_provider.deps() {
       for (key, value) in package_deps {
         if let Err(err) = value {
           log::info!(

@@ -33,6 +33,7 @@ pub use config_file::TsTypeLib;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
+pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -556,7 +557,7 @@ struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
 
-/// Holds the resolved options of many sources used by sub commands
+/// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
@@ -1301,6 +1302,16 @@ pub fn resolve_no_prompt(flags: &Flags) -> bool {
 fn has_flag_env_var(name: &str) -> bool {
   let value = env::var(name);
   matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
+}
+
+pub fn npm_pkg_req_ref_to_binary_command(
+  req_ref: &NpmPackageReqReference,
+) -> String {
+  let binary_name = req_ref
+    .sub_path
+    .as_deref()
+    .unwrap_or(req_ref.req.name.as_str());
+  binary_name.to_string()
 }
 
 #[cfg(test)]

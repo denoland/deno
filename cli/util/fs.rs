@@ -93,11 +93,18 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
+  canonicalize_path_maybe_not_exists_with_fs(path, canonicalize_path)
+}
+
+pub fn canonicalize_path_maybe_not_exists_with_fs(
+  path: &Path,
+  canonicalize: impl Fn(&Path) -> Result<PathBuf, Error>,
+) -> Result<PathBuf, Error> {
   let path = path.to_path_buf().clean();
   let mut path = path.as_path();
   let mut names_stack = Vec::new();
   loop {
-    match canonicalize_path(path) {
+    match canonicalize(path) {
       Ok(mut canonicalized_path) => {
         for name in names_stack.into_iter().rev() {
           canonicalized_path = canonicalized_path.join(name);

@@ -28,6 +28,33 @@ pub enum PackageJsonDepValueParseError {
 pub type PackageJsonDeps =
   BTreeMap<String, Result<NpmPackageReq, PackageJsonDepValueParseError>>;
 
+#[derive(Debug, Default)]
+pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);
+
+impl PackageJsonDepsProvider {
+  pub fn new(deps: Option<PackageJsonDeps>) -> Self {
+    Self(deps)
+  }
+
+  pub fn deps(&self) -> Option<&PackageJsonDeps> {
+    self.0.as_ref()
+  }
+
+  pub fn reqs(&self) -> Vec<&NpmPackageReq> {
+    match &self.0 {
+      Some(deps) => {
+        let mut package_reqs = deps
+          .values()
+          .filter_map(|r| r.as_ref().ok())
+          .collect::<Vec<_>>();
+        package_reqs.sort(); // deterministic resolution
+        package_reqs
+      }
+      None => Vec::new(),
+    }
+  }
+}
+
 /// Gets an application level package.json's npm package requirements.
 ///
 /// Note that this function is not general purpose. It is specifically for

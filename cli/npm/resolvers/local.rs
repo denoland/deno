@@ -154,7 +154,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     loop {
       current_folder = get_next_node_modules_ancestor(current_folder);
       let sub_dir = join_package_name(current_folder, name);
-      if sub_dir.is_dir() {
+      if self.fs.is_dir(&sub_dir) {
         // if doing types resolution, only resolve the package if it specifies a types property
         if mode.is_types() && !name.starts_with("@types/") {
           let package_json = PackageJson::load_skip_read_permission(
@@ -173,7 +173,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(current_folder, &types_package_name(name));
-        if sub_dir.is_dir() {
+        if self.fs.is_dir(&sub_dir) {
           return Ok(sub_dir);
         }
       }
@@ -214,6 +214,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     path: &Path,
   ) -> Result<(), AnyError> {
     ensure_registry_read_permission(
+      &self.fs,
       permissions,
       &self.root_node_modules_path,
       path,

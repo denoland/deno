@@ -100,7 +100,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   async fn mkdir_async(
     &self,
     path: PathBuf,
-    recusive: bool,
+    recursive: bool,
     mode: u32,
   ) -> FsResult<()>;
 
