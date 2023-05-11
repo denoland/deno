@@ -597,7 +597,6 @@ mod deprecated {
 
   #[cfg(not(unix))]
   pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
-    use deno_core::error::type_error;
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
     use winapi::shared::minwindef::DWORD;
