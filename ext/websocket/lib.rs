@@ -409,7 +409,12 @@ pub async fn op_ws_send_text(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
   resource
-    .write_frame(Frame::new(true, OpCode::Text, None, data.into_bytes().into()))
+    .write_frame(Frame::new(
+      true,
+      OpCode::Text,
+      None,
+      data.into_bytes().into(),
+    ))
     .await
 }
 
@@ -424,7 +429,9 @@ pub async fn op_ws_send_pong(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  resource.write_frame(Frame::pong(EMPTY_PAYLOAD.into())).await
+  resource
+    .write_frame(Frame::pong(EMPTY_PAYLOAD.into()))
+    .await
 }
 
 #[op]
@@ -497,7 +504,9 @@ pub async fn op_ws_next_event(
     break Ok(match val.opcode {
       OpCode::Text => (
         MessageKind::Text as u16,
-        StringOrBuffer::String(String::from_utf8(val.payload.to_vec()).unwrap()),
+        StringOrBuffer::String(
+          String::from_utf8(val.payload.to_vec()).unwrap(),
+        ),
       ),
       OpCode::Binary => (
         MessageKind::Binary as u16,
