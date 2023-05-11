@@ -133,7 +133,7 @@ socket2 = "0.4.7"
 tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "1.0.40"
-tokio = { version = "1.28.0", features = ["full"] }
+tokio = { version = "1.28.1", features = ["full"] }
 tikv-jemallocator = "0.5.0"
 tikv-jemalloc-sys = "0.5.3"
 tokio-rustls = "0.23.3"
