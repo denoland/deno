@@ -1237,8 +1237,9 @@ delete Object.prototype.__proto__;
   }
 
   function serverRestart() {
-    languageService = ts.createLanguageService(host, documentRegistry);
+    documentRegistrySourceFileCache.clear();
     isNodeSourceFileCache.clear();
+    languageService = ts.createLanguageService(host, documentRegistry);
     debug("serverRestart()");
   }
 
