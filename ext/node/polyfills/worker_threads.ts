@@ -4,6 +4,7 @@
 import { resolve, toFileUrl } from "ext:deno_node/path.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
+import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
 
 const environmentData = new Map();
 let threads = 0;
@@ -204,11 +205,6 @@ export function setEnvironmentData(key: unknown, value?: unknown) {
   }
 }
 
-// deno-lint-ignore no-explicit-any
-const _MessagePort: typeof MessagePort = (globalThis as any).MessagePort;
-const _MessageChannel: typeof MessageChannel =
-  // deno-lint-ignore no-explicit-any
-  (globalThis as any).MessageChannel;
 export const BroadcastChannel = globalThis.BroadcastChannel;
 export const SHARE_ENV = Symbol.for("nodejs.worker_threads.SHARE_ENV");
 export function markAsUntransferable() {
@@ -221,8 +217,8 @@ export function receiveMessageOnPort() {
   notImplemented("receiveMessageOnPort");
 }
 export {
-  _MessageChannel as MessageChannel,
-  _MessagePort as MessagePort,
+  MessageChannel,
+  MessagePort,
   _Worker as Worker,
   parentPort,
   threadId,
@@ -233,8 +229,8 @@ export default {
   markAsUntransferable,
   moveMessagePortToContext,
   receiveMessageOnPort,
-  MessagePort: _MessagePort,
-  MessageChannel: _MessageChannel,
+  MessagePort,
+  MessageChannel,
   BroadcastChannel,
   Worker: _Worker,
   getEnvironmentData,
