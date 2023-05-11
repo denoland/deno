@@ -377,7 +377,7 @@ async fn ping_websocket_handler(
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
   for i in 0..9 {
-    ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![].into()))
       .await
       .unwrap();
 
@@ -385,9 +385,11 @@ async fn ping_websocket_handler(
     assert_eq!(frame.opcode, OpCode::Pong);
     assert!(frame.payload.is_empty());
 
-    ws.write_frame(Frame::text(format!("hello {}", i).as_bytes().to_vec()))
-      .await
-      .unwrap();
+    ws.write_frame(Frame::text(
+      format!("hello {}", i).as_bytes().to_vec().into(),
+    ))
+    .await
+    .unwrap();
 
     let frame = ws.read_frame().await.unwrap();
     assert_eq!(frame.opcode, OpCode::Text);
@@ -414,7 +416,7 @@ async fn close_websocket_handler(
 ) -> Result<(), anyhow::Error> {
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
-  ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+  ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await
     .unwrap();
 
