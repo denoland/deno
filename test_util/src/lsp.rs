@@ -380,7 +380,7 @@ impl InitializeParamsBuilder {
 
   pub fn set_preload_limit(&mut self, arg: usize) -> &mut Self {
     let options = self.initialization_options_mut();
-    options.insert("preloadLimit".to_string(), arg.into());
+    options.insert("documentPreloadLimit".to_string(), arg.into());
     self
   }
 

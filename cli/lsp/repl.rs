@@ -294,7 +294,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     inlay_hints: Default::default(),
     internal_debug: false,
     lint: false,
-    preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
+    document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
     unstable: false,

@@ -265,7 +265,7 @@ fn default_to_true() -> bool {
   true
 }
 
-fn default_preload_limit() -> usize {
+fn default_document_preload_limit() -> usize {
   1000
 }
 
@@ -323,8 +323,8 @@ pub struct WorkspaceSettings {
   pub lint: bool,
 
   /// Limits the number of files that can be preloaded by the language server.
-  #[serde(default = "default_preload_limit")]
-  pub preload_limit: usize,
+  #[serde(default = "default_document_preload_limit")]
+  pub document_preload_limit: usize,
 
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
@@ -362,7 +362,7 @@ impl Default for WorkspaceSettings {
       inlay_hints: Default::default(),
       internal_debug: false,
       lint: true,
-      preload_limit: default_preload_limit(),
+      document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -759,7 +759,7 @@ mod tests {
         },
         internal_debug: false,
         lint: true,
-        preload_limit: 1_000,
+        document_preload_limit: 1_000,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,

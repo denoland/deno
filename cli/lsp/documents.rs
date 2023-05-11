@@ -1314,7 +1314,8 @@ impl Documents {
             concat!(
               "Hit the language server document preload limit of {} file system entries. ",
               "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
-              "partially enable a workspace or increase the limit via \"deno.preloadLimit\"."
+              "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
+              "In cases where Deno ends up using too much memory, you may want to lower the limit."
             ),
             document_preload_limit,
           );
