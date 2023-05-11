@@ -203,6 +203,10 @@ impl<'a> VfsEntryRef<'a> {
         gid: 0,
         rdev: 0,
         blocks: 0,
+        is_block_device: false,
+        is_char_device: false,
+        is_fifo: false,
+        is_socket: false,
       },
       VfsEntryRef::File(file) => FsStat {
         is_directory: false,
@@ -221,6 +225,10 @@ impl<'a> VfsEntryRef<'a> {
         gid: 0,
         rdev: 0,
         blocks: 0,
+        is_block_device: false,
+        is_char_device: false,
+        is_fifo: false,
+        is_socket: false,
       },
       VfsEntryRef::Symlink(_) => FsStat {
         is_directory: false,
@@ -239,6 +247,10 @@ impl<'a> VfsEntryRef<'a> {
         gid: 0,
         rdev: 0,
         blocks: 0,
+        is_block_device: false,
+        is_char_device: false,
+        is_fifo: false,
+        is_socket: false,
       },
     }
   }
