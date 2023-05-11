@@ -418,7 +418,7 @@ pub async fn op_ws_send_text(
     .await
 }
 
-const EMPTY_PAYLOAD: &'static [u8] = &[];
+const EMPTY_PAYLOAD: &[u8] = &[];
 
 #[op]
 pub async fn op_ws_send_pong(
