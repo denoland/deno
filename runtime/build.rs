@@ -18,6 +18,7 @@ mod startup_snapshot {
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
   use deno_core::ModuleCode;
+  use deno_http::DefaultHttpPropertyExtractor;
   use std::path::Path;
 
   fn transpile_ts_for_snapshotting(
@@ -267,6 +268,17 @@ mod startup_snapshot {
           include_str!("js/99_main.js"),
         ),
       }]);
+      ext.esm_entry_point("ext:runtime_main/js/99_main.js");
+    }
+  );
+
+  #[cfg(feature = "snapshot_from_snapshot")]
+  deno_core::extension!(
+    runtime_main,
+    deps = [runtime],
+    customizer = |ext: &mut deno_core::ExtensionBuilder| {
+      eprintln!("I am here!!!");
+      ext.esm_entry_point("ext:runtime/90_deno_ns.js");
     }
   );
 
@@ -308,14 +320,13 @@ mod startup_snapshot {
         false, // No --unstable
       ),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
-      deno_http::deno_http::init_ops_and_esm(),
+      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
       deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, fs.clone()),
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
       deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
-      #[cfg(not(feature = "snapshot_from_snapshot"))]
       runtime_main::init_ops_and_esm(),
     ];
 
@@ -347,6 +358,7 @@ fn main() {
   if env::var_os("DOCS_RS").is_some() {
     let snapshot_slice = &[];
     #[allow(clippy::needless_borrow)]
+    #[allow(clippy::disallowed_methods)]
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 

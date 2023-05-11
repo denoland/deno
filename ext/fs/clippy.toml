@@ -43,3 +43,6 @@ disallowed-methods = [
   { path = "std::path::Path::canonicalize", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::path::Path::exists", reason = "File system operations should be done using FileSystem trait" },
 ]
+disallowed-types = [
+  { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
+]

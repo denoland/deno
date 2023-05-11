@@ -2,7 +2,6 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -12,6 +11,7 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_fs::FileSystemRc;
 use deno_media_type::MediaType;
 use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
@@ -20,7 +20,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use crate::errors;
 use crate::AllowAllNodePermissions;
 use crate::NodePermissions;
-use crate::NpmResolver;
+use crate::NpmResolverRc;
 use crate::PackageJson;
 use crate::PathClean;
 
@@ -104,17 +104,17 @@ impl NodeResolution {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
+
 #[derive(Debug)]
 pub struct NodeResolver {
-  fs: Arc<dyn deno_fs::FileSystem>,
-  npm_resolver: Arc<dyn NpmResolver>,
+  fs: FileSystemRc,
+  npm_resolver: NpmResolverRc,
 }
 
 impl NodeResolver {
-  pub fn new(
-    fs: Arc<dyn deno_fs::FileSystem>,
-    npm_resolver: Arc<dyn NpmResolver>,
-  ) -> Self {
+  pub fn new(fs: FileSystemRc, npm_resolver: NpmResolverRc) -> Self {
     Self { fs, npm_resolver }
   }
 
@@ -922,7 +922,7 @@ impl NodeResolver {
             // emitTrailingSlashPatternDeprecation();
           }
           let pattern_trailer = &key[pattern_index + 1..];
-          if package_subpath.len() > key.len()
+          if package_subpath.len() >= key.len()
             && package_subpath.ends_with(&pattern_trailer)
             && pattern_key_compare(best_match, key) == 1
             && key.rfind('*') == Some(pattern_index)

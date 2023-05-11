@@ -67,7 +67,7 @@ data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.2"
 dprint-plugin-markdown = "=0.15.2"
-dprint-plugin-typescript = "=0.84.2"
+dprint-plugin-typescript = "=0.84.4"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
 eszip = "=0.41.0"
@@ -84,7 +84,7 @@ lazy-regex.workspace = true
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-monch = "=0.4.1"
+monch = "=0.4.2"
 notify.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true

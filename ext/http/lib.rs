@@ -83,35 +83,42 @@ mod request_properties;
 mod response_body;
 mod websocket_upgrade;
 
+pub use request_properties::DefaultHttpPropertyExtractor;
+pub use request_properties::HttpConnectionProperties;
+pub use request_properties::HttpListenProperties;
+pub use request_properties::HttpPropertyExtractor;
+pub use request_properties::HttpRequestProperties;
+
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  parameters = [ HTTP: HttpPropertyExtractor ],
   ops = [
     op_http_accept,
-    op_http_write_headers,
     op_http_headers,
-    op_http_write,
-    op_http_write_resource,
     op_http_shutdown,
-    op_http_websocket_accept_header,
     op_http_upgrade_websocket,
-    http_next::op_serve_http,
-    http_next::op_serve_http_on,
-    http_next::op_http_wait,
+    op_http_websocket_accept_header,
+    op_http_write_headers,
+    op_http_write_resource,
+    op_http_write,
+    http_next::op_http_get_request_header,
+    http_next::op_http_get_request_headers,
+    http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_read_request_body,
+    http_next::op_http_serve_on<HTTP>,
+    http_next::op_http_serve<HTTP>,
+    http_next::op_http_set_promise_complete,
+    http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_stream,
+    http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_header,
+    http_next::op_http_set_response_headers,
     http_next::op_http_track,
-    http_next::op_set_response_header,
-    http_next::op_set_response_headers,
-    http_next::op_set_response_body_text,
-    http_next::op_set_promise_complete,
-    http_next::op_set_response_body_bytes,
-    http_next::op_set_response_body_resource,
-    http_next::op_set_response_body_stream,
-    http_next::op_get_request_header,
-    http_next::op_get_request_headers,
-    http_next::op_get_request_method_and_url,
-    http_next::op_read_request_body,
-    http_next::op_upgrade,
-    http_next::op_upgrade_raw,
+    http_next::op_http_upgrade_raw,
+    http_next::op_http_upgrade_next,
+    http_next::op_http_wait,
   ],
   esm = ["00_serve.js", "01_http.js"],
 );
