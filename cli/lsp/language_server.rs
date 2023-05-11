@@ -1175,7 +1175,10 @@ impl Inner {
   fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
       enabled_urls: self.config.enabled_urls(),
-      document_preload_limit: self.config.workspace_settings().preload_limit,
+      document_preload_limit: self
+        .config
+        .workspace_settings()
+        .document_preload_limit,
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.maybe_config_file.as_ref(),
       maybe_package_json: self.maybe_package_json.as_ref(),
