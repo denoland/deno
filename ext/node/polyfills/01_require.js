@@ -1108,6 +1108,11 @@ Module.syncBuiltinESMExports = function syncBuiltinESMExports() {
   throw new Error("not implemented");
 };
 
+// Mostly used by tools like ts-node.
+Module.runMain = function () {
+  Module._load(process.argv[1], null, true);
+};
+
 Module.Module = Module;
 
 nativeModuleExports.module = Module;
