@@ -149,6 +149,9 @@ impl FsStat {
       blksize: unix_or_zero!(blksize),
       blocks: unix_or_zero!(blocks),
       is_block_device: unix_or_false!(is_block_device),
+      is_char_device: unix_or_false!(is_char_device),
+      is_fifo: unix_or_false!(is_fifo),
+      is_socket: unix_or_false!(is_socket),
     }
   }
 }
