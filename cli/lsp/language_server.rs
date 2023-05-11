@@ -2194,10 +2194,13 @@ impl Inner {
       ));
       let snapshot = self.snapshot();
       let maybe_completion_info: Option<tsc::CompletionInfo> =
-        self.ts_server.request(snapshot, req).await.map_err(|err| {
-          error!("Unable to get completion info from TypeScript: {}", err);
-          LspError::internal_error()
-        })?;
+        match self.ts_server.request(snapshot, req).await {
+          Ok(maybe_info) => maybe_info,
+          Err(err) => {
+            error!("Unable to get completion info from TypeScript: {:#}", err);
+            None
+          }
+        };
 
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
