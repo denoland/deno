@@ -137,7 +137,7 @@ impl BenchOptions {
       files: resolve_files(
         maybe_bench_config.map(|c| c.files),
         Some(bench_flags.files),
-      ),
+      )?,
       filter: bench_flags.filter,
       json: bench_flags.json,
       no_run: bench_flags.no_run,
@@ -182,7 +182,7 @@ impl FmtOptions {
       files: resolve_files(
         maybe_config_files,
         maybe_fmt_flags.map(|f| f.files),
-      ),
+      )?,
     })
   }
 }
@@ -252,7 +252,7 @@ impl TestOptions {
       files: resolve_files(
         maybe_test_config.map(|c| c.files),
         Some(test_flags.files),
-      ),
+      )?,
       allow_none: test_flags.allow_none,
       concurrent_jobs: test_flags
         .concurrent_jobs
@@ -347,7 +347,7 @@ impl LintOptions {
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       is_stdin,
-      files: resolve_files(maybe_config_files, Some(maybe_file_flags)),
+      files: resolve_files(maybe_config_files, Some(maybe_file_flags))?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,
         maybe_rules_tags,
@@ -1275,13 +1275,37 @@ impl StorageKeyResolver {
   }
 }
 
+fn glob_and_append(
+  paths: &mut Vec<PathBuf>,
+  pattern: &str,
+) -> Result<(), AnyError> {
+  let globbed_paths = glob::glob_with(
+    pattern,
+    // Matches what `deno_task_shell` does
+    glob::MatchOptions {
+      // false because it should work the same way on case insensitive file systems
+      case_sensitive: false,
+      // true because it copies what sh does
+      require_literal_separator: true,
+      // true because it copies with sh does—these files are considered "hidden"
+      require_literal_leading_dot: true,
+    },
+  )?;
+
+  for globbed_path_result in globbed_paths {
+    paths.push(globbed_path_result?);
+  }
+
+  Ok(())
+}
+
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
   maybe_files_config: Option<FilesConfig>,
   maybe_file_flags: Option<FileFlags>,
-) -> FilesConfig {
+) -> Result<FilesConfig, AnyError> {
   let mut result = maybe_files_config.unwrap_or_default();
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
@@ -1291,7 +1315,38 @@ fn resolve_files(
       result.exclude = file_flags.ignore;
     }
   }
-  result
+
+  // Now expand globs if there are any
+  if !result.include.is_empty() {
+    let mut new_include = vec![];
+    for include in &result.include {
+      let include_str = include.to_string_lossy();
+      if include_str.contains('*') || include_str.contains('?') {
+        glob_and_append(&mut new_include, &include_str)?;
+      } else {
+        // TODO(bartlomieju): handle brackets
+        new_include.push(include.clone());
+      }
+    }
+    result.include = new_include;
+  }
+
+  if !result.exclude.is_empty() {
+    let mut new_exclude = vec![];
+    for exclude in &result.exclude {
+      let exclude_str = exclude.to_string_lossy();
+      if exclude_str.contains('*') || exclude_str.contains('?') {
+        glob_and_append(&mut new_exclude, &exclude_str)?;
+      } else {
+        // TODO(bartlomieju): handle brackets
+        new_exclude.push(exclude.clone());
+      }
+    }
+    result.exclude = new_exclude;
+  }
+
+  eprintln!("resolved files {:#?}", result);
+  Ok(result)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
