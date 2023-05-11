@@ -1147,14 +1147,17 @@ fn resolve_local_node_modules_folder(
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
 ) -> Result<Option<PathBuf>, AnyError> {
-  let path = if flags.node_modules_dir == Some(false) {
+  let use_node_modules_dir = flags
+    .node_modules_dir
+    .or_else(|| maybe_config_file.and_then(|c| c.node_modules_dir()));
+  let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
     // always auto-discover the local_node_modules_folder when a package.json exists
     package_json_path.parent().unwrap().join("node_modules")
-  } else if flags.node_modules_dir.is_none() {
+  } else if use_node_modules_dir.is_none() {
     return Ok(None);
   } else if let Some(config_path) = maybe_config_file
     .as_ref()

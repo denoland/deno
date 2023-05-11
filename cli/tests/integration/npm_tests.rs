@@ -1799,3 +1799,34 @@ fn reload_info_not_found_cache_but_exists_remote() {
     output.assert_exit_code(0);
   }
 }
+
+#[test]
+pub fn node_modules_dir_config_file() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let node_modules_dir = temp_dir.path().join("node_modules");
+  let rm_node_modules = || std::fs::remove_dir_all(&node_modules_dir).unwrap();
+
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": true }"#);
+  temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
+
+  let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
+  deno_cache_cmd.run();
+
+  assert!(node_modules_dir.exists());
+  rm_node_modules();
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": false }"#);
+
+  deno_cache_cmd.run();
+  assert!(!node_modules_dir.exists());
+
+  temp_dir.write("package.json", r#"{}"#);
+  deno_cache_cmd.run();
+  assert!(!node_modules_dir.exists());
+
+  test_context
+    .new_command()
+    .args("cache --quiet --node-modules-dir main.ts")
+    .run();
+  assert!(node_modules_dir.exists());
+}
