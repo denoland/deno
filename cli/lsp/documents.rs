@@ -1170,11 +1170,13 @@ impl Documents {
   pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     fn calculate_resolver_config_hash(
       enabled_urls: &[Url],
+      document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
+      hasher.write_hashable(&document_preload_limit);
       hasher.write_hashable(&{
         // ensure these are sorted so the hashing is deterministic
         let mut enabled_urls = enabled_urls.to_vec();
@@ -1215,6 +1217,7 @@ impl Documents {
       .and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
       &options.enabled_urls,
+      options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
