@@ -363,9 +363,8 @@ fn is_request_compressible(headers: &HeaderMap) -> Compression {
     Ok(Some(fly_accept_encoding::Encoding::Brotli)) => {
       return Compression::Brotli
     }
-    _ => {}
+    _ => return Compression::None,
   }
-  Compression::None
 }
 
 fn is_response_compressible(headers: &HeaderMap) -> bool {
