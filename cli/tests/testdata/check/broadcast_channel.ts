@@ -1,1 +1,1 @@
-const channel = new BroadcastChannel("foo");
+const _channel = new BroadcastChannel("foo");
