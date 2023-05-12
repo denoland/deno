@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.33.3 / 2023.05.12
 
-- Revert "perf(core): use jemalloc for V8 array buffer allocator (#18875)"
-  (#19046)
 - feat(compile): unstable npm and node specifier support (#19005)
 - feat(ext/http): Automatic compression for Deno.serve (#19031)
 - feat(lsp): ability to configure document pre-load limit (#19097)
