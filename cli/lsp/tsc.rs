@@ -3235,6 +3235,10 @@ fn op_script_version(
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
+  deno_core::v8_set_flags(vec![
+    "required-arg-that-is-ignored".to_string(),
+    "--max-old-space-size=3072".to_string(),
+  ]);
   JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
