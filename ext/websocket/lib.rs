@@ -332,8 +332,9 @@ impl ServerWebSocket {
     // to populate the write buffer. We encounter an await point when writing
     // to the socket after the frame has already been written to the buffer.
     let ws = unsafe { &mut *self.ws.as_ptr() };
-    ws.write_frame(frame).await
-    .map_err(|err| type_error(err.to_string()))?;
+    ws.write_frame(frame)
+      .await
+      .map_err(|err| type_error(err.to_string()))?;
     Ok(())
   }
 }
