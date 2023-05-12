@@ -20,6 +20,8 @@ Deno.test("[node/module runMain] loads module using the current process.argv", (
     "./cli/tests/unit_node/testdata/add_global_property_run_main.js",
   ];
 
+  // deno-lint-ignore no-explicit-any
   (Module as any).runMain();
+  // deno-lint-ignore no-explicit-any
   assertEquals((globalThis as any).calledViaRunMain, true);
 });
