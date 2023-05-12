@@ -4106,7 +4106,7 @@ async fn websocketstream_ping() {
     tokio::spawn(async move {
       let mut ws = upgrade_fut.await.unwrap();
 
-      ws.write_frame(fastwebsockets::Frame::text(b"A".into()))
+      ws.write_frame(fastwebsockets::Frame::text(b"A"[..].into()))
         .await
         .unwrap();
       ws.write_frame(fastwebsockets::Frame::new(
@@ -4117,12 +4117,12 @@ async fn websocketstream_ping() {
       ))
       .await
       .unwrap();
-      ws.write_frame(fastwebsockets::Frame::text(b"B".into()))
+      ws.write_frame(fastwebsockets::Frame::text(b"B"[..].into()))
         .await
         .unwrap();
       let message = ws.read_frame().await.unwrap();
       assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
-      ws.write_frame(fastwebsockets::Frame::text(b"C".into()))
+      ws.write_frame(fastwebsockets::Frame::text(b"C"[..].into()))
         .await
         .unwrap();
       ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))

@@ -109,7 +109,7 @@ impl InspectorTester {
     for msg in messages {
       let result = self
         .socket
-        .write_frame(Frame::text(msg.to_string().into_bytes()))
+        .write_frame(Frame::text(msg.to_string().into_bytes().into()))
         .await
         .map_err(|e| anyhow!(e));
       self.handle_error(result);
@@ -147,7 +147,7 @@ impl InspectorTester {
     loop {
       let result = self.socket.read_frame().await.map_err(|e| anyhow!(e));
       let message =
-        String::from_utf8(self.handle_error(result).payload).unwrap();
+        String::from_utf8(self.handle_error(result).payload.to_vec()).unwrap();
       if (self.notification_filter)(&message) {
         return message;
       }
@@ -548,7 +548,7 @@ async fn inspector_does_not_hang() {
   // Check that we can gracefully close the websocket connection.
   tester
     .socket
-    .write_frame(Frame::close_raw(vec![]))
+    .write_frame(Frame::close_raw(vec![].into()))
     .await
     .unwrap();
 
