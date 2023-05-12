@@ -3235,6 +3235,8 @@ fn op_script_version(
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
+  // Using same default as VSCode:
+  // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
   deno_core::v8_set_flags(vec![
     "required-arg-that-is-ignored".to_string(),
     "--max-old-space-size=3072".to_string(),
