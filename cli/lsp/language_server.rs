@@ -578,10 +578,7 @@ impl Inner {
       } else {
         let navigation_tree: tsc::NavigationTree = self
           .ts_server
-          .request(
-            self.snapshot(),
-            tsc::RequestMethod::GetNavigationTree(specifier.clone()),
-          )
+          .get_navigation_tree(self.snapshot(), specifier.clone())
           .await?;
         let navigation_tree = Arc::new(navigation_tree);
         match asset_or_doc {
@@ -1051,10 +1048,7 @@ impl Inner {
     if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
       self.client.show_message(MessageType::WARNING, err);
     }
-    let _ok: bool = self
-      .ts_server
-      .request(self.snapshot(), tsc::RequestMethod::Configure(tsconfig))
-      .await?;
+    let _ok = self.ts_server.configure(self.snapshot(), tsconfig).await?;
     self.performance.measure(mark);
     Ok(())
   }
@@ -1142,14 +1136,10 @@ impl Inner {
     }
 
     if capabilities.code_action_provider.is_some() {
-      let fixable_diagnostics: Vec<String> = self
+      let fixable_diagnostics = self
         .ts_server
-        .request(self.snapshot(), tsc::RequestMethod::GetSupportedCodeFixes)
-        .await
-        .map_err(|err| {
-          error!("Unable to get fixable diagnostics: {}", err);
-          LspError::internal_error()
-        })?;
+        .get_supported_code_fixes(self.snapshot())
+        .await?;
       self.ts_fixable_diagnostics = fixable_diagnostics;
     }
 
@@ -1383,7 +1373,7 @@ impl Inner {
       self.refresh_documents_config();
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
-      self.restart_ts_server().await;
+      self.ts_server.restart(self.snapshot()).await;
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1594,18 +1584,12 @@ impl Inner {
       })
     } else {
       let line_index = asset_or_doc.line_index();
-      let req = tsc::RequestMethod::GetQuickInfo((
-        specifier,
-        line_index.offset_tsc(params.text_document_position_params.position)?,
-      ));
-      let maybe_quick_info: Option<tsc::QuickInfo> = self
+      let position =
+        line_index.offset_tsc(params.text_document_position_params.position)?;
+      let maybe_quick_info = self
         .ts_server
-        .request(self.snapshot(), req)
-        .await
-        .map_err(|err| {
-          error!("Unable to get quick info: {}", err);
-          LspError::internal_error()
-        })?;
+        .get_quick_info(self.snapshot(), specifier.clone(), position)
+        .await?;
       maybe_quick_info.map(|qi| qi.to_hover(line_index, self))
     };
     self.performance.measure(mark);
@@ -1666,24 +1650,16 @@ impl Inner {
               NumberOrString::Number(code) => code.to_string(),
             };
             let codes = vec![code];
-            let req = tsc::RequestMethod::GetCodeFixes((
-              specifier.clone(),
-              line_index.offset_tsc(diagnostic.range.start)?,
-              line_index.offset_tsc(diagnostic.range.end)?,
-              codes,
-            ));
-            let actions: Vec<tsc::CodeFixAction> =
-              match self.ts_server.request(self.snapshot(), req).await {
-                Ok(items) => items,
-                Err(err) => {
-                  // sometimes tsc reports errors when retrieving code actions
-                  // because they don't reflect the current state of the document
-                  // so we will log them to the output, but we won't send an error
-                  // message back to the client.
-                  error!("Error getting actions from TypeScript: {}", err);
-                  Vec::new()
-                }
-              };
+            let actions = self
+              .ts_server
+              .get_code_fixes(
+                self.snapshot(),
+                specifier.clone(),
+                line_index.offset_tsc(diagnostic.range.start)?
+                  ..line_index.offset_tsc(diagnostic.range.end)?,
+                codes,
+              )
+              .await;
             for action in actions {
               code_actions
                 .add_ts_fix_action(&specifier, &action, diagnostic, self)
@@ -1726,27 +1702,22 @@ impl Inner {
     }
 
     // Refactor
-    let start = line_index.offset_tsc(params.range.start)?;
-    let length = line_index.offset_tsc(params.range.end)? - start;
     let only = params
       .context
       .only
       .as_ref()
       .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
       .unwrap_or_default();
-    let req = tsc::RequestMethod::GetApplicableRefactors((
-      specifier.clone(),
-      tsc::TextSpan { start, length },
-      only,
-    ));
-    let refactor_infos: Vec<tsc::ApplicableRefactorInfo> = self
+    let refactor_infos = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .get_applicable_refactors(
+        self.snapshot(),
+        specifier.clone(),
+        line_index.offset_tsc(params.range.start)?
+          ..line_index.offset_tsc(params.range.end)?,
+        only,
+      )
+      .await?;
     let mut refactor_actions = Vec::<CodeAction>::new();
     for refactor_info in refactor_infos.iter() {
       refactor_actions
@@ -1788,24 +1759,15 @@ impl Inner {
 
     let result = if kind.as_str().starts_with(CodeActionKind::QUICKFIX.as_str())
     {
-      let snapshot = self.snapshot();
       let code_action_data: CodeActionData =
         from_value(data).map_err(|err| {
           error!("Unable to decode code action data: {}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
-      let req = tsc::RequestMethod::GetCombinedCodeFix((
-        code_action_data.specifier.clone(),
-        json!(code_action_data.fix_id.clone()),
-      ));
-      let combined_code_actions: tsc::CombinedCodeActions = self
+      let combined_code_actions = self
         .ts_server
-        .request(snapshot.clone(), req)
-        .await
-        .map_err(|err| {
-          error!("Unable to get combined fix from TypeScript: {}", err);
-          LspError::internal_error()
-        })?;
+        .get_combined_code_fix(self.snapshot(), &code_action_data)
+        .await?;
       if combined_code_actions.commands.is_some() {
         error!("Deno does not support code actions with commands.");
         return Err(LspError::invalid_request());
@@ -1831,7 +1793,6 @@ impl Inner {
       })?;
       code_action
     } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
-      let snapshot = self.snapshot();
       let mut code_action = params;
       let action_data: refactor::RefactorCodeActionData = from_value(data)
         .map_err(|err| {
@@ -1840,19 +1801,17 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let start = line_index.offset_tsc(action_data.range.start)?;
-      let length = line_index.offset_tsc(action_data.range.end)? - start;
-      let req = tsc::RequestMethod::GetEditsForRefactor((
-        action_data.specifier,
-        tsc::TextSpan { start, length },
-        action_data.refactor_name,
-        action_data.action_name,
-      ));
-      let refactor_edit_info: tsc::RefactorEditInfo =
-        self.ts_server.request(snapshot, req).await.map_err(|err| {
-          error!("Failed to request to tsserver {}", err);
-          LspError::invalid_request()
-        })?;
+      let refactor_edit_info = self
+        .ts_server
+        .get_edits_for_refactor(
+          self.snapshot(),
+          action_data.specifier,
+          line_index.offset_tsc(action_data.range.start)?
+            ..line_index.offset_tsc(action_data.range.end)?,
+          action_data.refactor_name,
+          action_data.action_name,
+        )
+        .await?;
       code_action.edit = refactor_edit_info
         .to_workspace_edit(self)
         .await
@@ -1950,19 +1909,15 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let files_to_search = vec![specifier.clone()];
-    let req = tsc::RequestMethod::GetDocumentHighlights((
-      specifier,
-      line_index.offset_tsc(params.text_document_position_params.position)?,
-      files_to_search,
-    ));
-    let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> = self
+    let maybe_document_highlights = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get document highlights from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
+      .get_document_highlights(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+        files_to_search,
+      )
+      .await?;
 
     if let Some(document_highlights) = maybe_document_highlights {
       let result = document_highlights
@@ -1998,7 +1953,7 @@ impl Inner {
       .ts_server
       .find_references(
         self.snapshot(),
-        &specifier,
+        specifier.clone(),
         line_index.offset_tsc(params.text_document_position.position)?,
       )
       .await?;
@@ -2050,18 +2005,14 @@ impl Inner {
     let mark = self.performance.mark("goto_definition", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
-    let req = tsc::RequestMethod::GetDefinition((
-      specifier,
-      line_index.offset_tsc(params.text_document_position_params.position)?,
-    ));
-    let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> = self
+    let maybe_definition = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get definition from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
+      .get_definition(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+      )
+      .await?;
 
     if let Some(definition) = maybe_definition {
       let results = definition.to_definition(line_index, self).await;
@@ -2090,19 +2041,14 @@ impl Inner {
     let mark = self.performance.mark("goto_definition", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
-    let req = tsc::RequestMethod::GetTypeDefinition {
-      specifier,
-      position: line_index
-        .offset_tsc(params.text_document_position_params.position)?,
-    };
-    let maybe_definition_info: Option<Vec<tsc::DefinitionInfo>> = self
+    let maybe_definition_info = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get type definition from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
+      .get_type_definition(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+      )
+      .await?;
 
     let response = if let Some(definition_info) = maybe_definition_info {
       let mut location_links = Vec::new();
@@ -2167,48 +2113,47 @@ impl Inner {
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
       let use_snippets = self.config.client_capabilities.snippet_support;
-      let req = tsc::RequestMethod::GetCompletions((
-        specifier.clone(),
-        position,
-        tsc::GetCompletionsAtPositionOptions {
-          user_preferences: tsc::UserPreferences {
-            allow_incomplete_completions: Some(true),
-            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
-            import_module_specifier_ending: Some(
-              tsc::ImportModuleSpecifierEnding::Index,
-            ),
-            include_automatic_optional_chain_completions: Some(true),
-            include_completions_for_import_statements: Some(
-              self.config.workspace_settings().suggest.auto_imports,
-            ),
-            include_completions_for_module_exports: Some(true),
-            include_completions_with_object_literal_method_snippets: Some(
-              use_snippets,
-            ),
-            include_completions_with_class_member_snippets: Some(use_snippets),
-            include_completions_with_insert_text: Some(true),
-            include_completions_with_snippet_text: Some(use_snippets),
-            jsx_attribute_completion_style: Some(
-              tsc::JsxAttributeCompletionStyle::Auto,
-            ),
-            provide_prefix_and_suffix_text_for_rename: Some(true),
-            provide_refactor_not_applicable_reason: Some(true),
-            use_label_details_in_completion_entries: Some(true),
-            ..Default::default()
+      let maybe_completion_info = self
+        .ts_server
+        .get_completions(
+          self.snapshot(),
+          specifier.clone(),
+          position,
+          tsc::GetCompletionsAtPositionOptions {
+            user_preferences: tsc::UserPreferences {
+              allow_incomplete_completions: Some(true),
+              allow_text_changes_in_new_files: Some(
+                specifier.scheme() == "file",
+              ),
+              import_module_specifier_ending: Some(
+                tsc::ImportModuleSpecifierEnding::Index,
+              ),
+              include_automatic_optional_chain_completions: Some(true),
+              include_completions_for_import_statements: Some(
+                self.config.workspace_settings().suggest.auto_imports,
+              ),
+              include_completions_for_module_exports: Some(true),
+              include_completions_with_object_literal_method_snippets: Some(
+                use_snippets,
+              ),
+              include_completions_with_class_member_snippets: Some(
+                use_snippets,
+              ),
+              include_completions_with_insert_text: Some(true),
+              include_completions_with_snippet_text: Some(use_snippets),
+              jsx_attribute_completion_style: Some(
+                tsc::JsxAttributeCompletionStyle::Auto,
+              ),
+              provide_prefix_and_suffix_text_for_rename: Some(true),
+              provide_refactor_not_applicable_reason: Some(true),
+              use_label_details_in_completion_entries: Some(true),
+              ..Default::default()
+            },
+            trigger_character,
+            trigger_kind,
           },
-          trigger_character,
-          trigger_kind,
-        },
-      ));
-      let snapshot = self.snapshot();
-      let maybe_completion_info: Option<tsc::CompletionInfo> =
-        match self.ts_server.request(snapshot, req).await {
-          Ok(maybe_info) => maybe_info,
-          Err(err) => {
-            error!("Unable to get completion info from TypeScript: {:#}", err);
-            None
-          }
-        };
+        )
+        .await;
 
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
@@ -2241,9 +2186,10 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
-        let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-        let result: Result<Option<tsc::CompletionEntryDetails>, _> =
-          self.ts_server.request(self.snapshot(), req).await;
+        let result = self
+          .ts_server
+          .get_completion_details(self.snapshot(), data.into())
+          .await;
         match result {
           Ok(maybe_completion_info) => {
             if let Some(completion_info) = maybe_completion_info {
@@ -2302,18 +2248,14 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
-    let req = tsc::RequestMethod::GetImplementation((
-      specifier,
-      line_index.offset_tsc(params.text_document_position_params.position)?,
-    ));
-    let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = self
+    let maybe_implementations = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .get_implementations(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+      )
+      .await?;
 
     let result = if let Some(implementations) = maybe_implementations {
       let mut links = Vec::new();
@@ -2347,15 +2289,10 @@ impl Inner {
     let mark = self.performance.mark("folding_range", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
 
-    let req = tsc::RequestMethod::GetOutliningSpans(specifier);
-    let outlining_spans: Vec<tsc::OutliningSpan> = self
+    let outlining_spans = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .get_outlining_spans(self.snapshot(), specifier)
+      .await?;
 
     let response = if !outlining_spans.is_empty() {
       Some(
@@ -2394,18 +2331,14 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
-    let req = tsc::RequestMethod::ProvideCallHierarchyIncomingCalls((
-      specifier,
-      line_index.offset_tsc(params.item.selection_range.start)?,
-    ));
     let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .provide_call_hierarchy_incoming_calls(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.item.selection_range.start)?,
+      )
+      .await?;
 
     let maybe_root_path_owned = self
       .config
@@ -2442,18 +2375,14 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
-    let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
-      specifier,
-      line_index.offset_tsc(params.item.selection_range.start)?,
-    ));
     let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .provide_call_hierarchy_outgoing_calls(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.item.selection_range.start)?,
+      )
+      .await?;
 
     let maybe_root_path_owned = self
       .config
@@ -2494,19 +2423,14 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
-    let req = tsc::RequestMethod::PrepareCallHierarchy((
-      specifier,
-      line_index.offset_tsc(params.text_document_position_params.position)?,
-    ));
-    let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
-      self
-        .ts_server
-        .request(self.snapshot(), req)
-        .await
-        .map_err(|err| {
-          error!("Failed to request to tsserver {}", err);
-          LspError::invalid_request()
-        })?;
+    let maybe_one_or_many = self
+      .ts_server
+      .prepare_call_hierarchy(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+      )
+      .await?;
 
     let response = if let Some(one_or_many) = maybe_one_or_many {
       let maybe_root_path_owned = self
@@ -2561,23 +2485,14 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
-    let req = tsc::RequestMethod::FindRenameLocations {
-      specifier,
-      position: line_index
-        .offset_tsc(params.text_document_position.position)?,
-      find_in_strings: false,
-      find_in_comments: false,
-      provide_prefix_and_suffix_text_for_rename: false,
-    };
-
-    let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
+    let maybe_locations = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .find_rename_locations(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.text_document_position.position)?,
+      )
+      .await?;
 
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
@@ -2615,19 +2530,14 @@ impl Inner {
 
     let mut selection_ranges = Vec::<SelectionRange>::new();
     for position in params.positions {
-      let req = tsc::RequestMethod::GetSmartSelectionRange((
-        specifier.clone(),
-        line_index.offset_tsc(position)?,
-      ));
-
       let selection_range: tsc::SelectionRange = self
         .ts_server
-        .request(self.snapshot(), req)
-        .await
-        .map_err(|err| {
-          error!("Failed to request to tsserver {}", err);
-          LspError::invalid_request()
-        })?;
+        .get_smart_selection_range(
+          self.snapshot(),
+          specifier.clone(),
+          line_index.offset_tsc(position)?,
+        )
+        .await?;
 
       selection_ranges
         .push(selection_range.to_selection_range(line_index.clone()));
@@ -2653,21 +2563,14 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
-    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
-      specifier,
-      tsc::TextSpan {
-        start: 0,
-        length: line_index.text_content_length_utf16().into(),
-      },
-    ));
-    let semantic_classification: tsc::Classifications = self
+    let semantic_classification = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .get_encoded_semantic_classifications(
+        self.snapshot(),
+        specifier,
+        0..line_index.text_content_length_utf16().into(),
+      )
+      .await?;
 
     let semantic_tokens =
       semantic_classification.to_semantic_tokens(&asset_or_doc, line_index)?;
@@ -2699,20 +2602,15 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
-    let start = line_index.offset_tsc(params.range.start)?;
-    let length = line_index.offset_tsc(params.range.end)? - start;
-    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
-      specifier,
-      tsc::TextSpan { start, length },
-    ));
-    let semantic_classification: tsc::Classifications = self
+    let semantic_classification = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })?;
+      .get_encoded_semantic_classifications(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.range.start)?
+          ..line_index.offset_tsc(params.range.end)?,
+      )
+      .await?;
 
     let semantic_tokens =
       semantic_classification.to_semantic_tokens(&asset_or_doc, line_index)?;
@@ -2754,19 +2652,15 @@ impl Inner {
         trigger_reason: None,
       }
     };
-    let req = tsc::RequestMethod::GetSignatureHelpItems((
-      specifier,
-      line_index.offset_tsc(params.text_document_position_params.position)?,
-      options,
-    ));
     let maybe_signature_help_items: Option<tsc::SignatureHelpItems> = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver: {}", err);
-        LspError::invalid_request()
-      })?;
+      .get_signature_help_items(
+        self.snapshot(),
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+        options,
+      )
+      .await?;
 
     if let Some(signature_help_items) = maybe_signature_help_items {
       let signature_help = signature_help_items.into_signature_help(self);
@@ -2784,21 +2678,18 @@ impl Inner {
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
     let mark = self.performance.mark("symbol", Some(&params));
 
-    let req = tsc::RequestMethod::GetNavigateToItems {
-      search: params.query,
-      // this matches vscode's hard coded result count
-      max_result_count: Some(256),
-      file: None,
-    };
-
-    let navigate_to_items: Vec<tsc::NavigateToItem> = self
+    let navigate_to_items = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed request to tsserver: {}", err);
-        LspError::invalid_request()
-      })?;
+      .get_navigate_to_items(
+        self.snapshot(),
+        tsc::GetNavigateToItemsArgs {
+          search: params.query,
+          // this matches vscode's hard coded result count
+          max_result_count: Some(256),
+          file: None,
+        },
+      )
+      .await?;
 
     let maybe_symbol_information = if navigate_to_items.is_empty() {
       None
@@ -3287,19 +3178,11 @@ impl Inner {
     // the language server for TypeScript (as it might hold to some stale
     // documents).
     self.diagnostics_server.invalidate_all();
-    self.restart_ts_server().await;
+    self.ts_server.restart(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
 
     self.performance.measure(mark);
-  }
-
-  async fn restart_ts_server(&self) {
-    let _: bool = self
-      .ts_server
-      .request(self.snapshot(), tsc::RequestMethod::Restart)
-      .await
-      .unwrap();
   }
 
   fn get_performance(&self) -> Value {
@@ -3334,24 +3217,22 @@ impl Inner {
     let mark = self.performance.mark("inlay_hint", Some(&params));
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
-    let range = tsc::TextSpan::from_range(&params.range, line_index.clone())
-      .map_err(|err| {
-        error!("Failed to convert range to text_span: {}", err);
-        LspError::internal_error()
-      })?;
-    let req = tsc::RequestMethod::ProvideInlayHints((
-      specifier,
-      range,
-      workspace_settings.into(),
-    ));
-    let maybe_inlay_hints: Option<Vec<tsc::InlayHint>> = self
+    let text_span =
+      tsc::TextSpan::from_range(&params.range, line_index.clone()).map_err(
+        |err| {
+          error!("Failed to convert range to text_span: {}", err);
+          LspError::internal_error()
+        },
+      )?;
+    let maybe_inlay_hints = self
       .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get inlay hints: {}", err);
-        LspError::internal_error()
-      })?;
+      .provide_inlay_hints(
+        self.snapshot(),
+        specifier,
+        text_span,
+        workspace_settings.into(),
+      )
+      .await?;
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
       hints
         .iter()
