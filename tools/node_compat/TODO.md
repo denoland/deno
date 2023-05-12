@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2923
+Total: 2924
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -281,6 +281,7 @@ Total: 2923
 - [parallel/test-child-process-exec-encoding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-encoding.js)
 - [parallel/test-child-process-exec-std-encoding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-std-encoding.js)
 - [parallel/test-child-process-exec-timeout-expire.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-timeout-expire.js)
+- [parallel/test-child-process-exec-timeout-kill.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-timeout-kill.js)
 - [parallel/test-child-process-exec-timeout-not-expired.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-timeout-not-expired.js)
 - [parallel/test-child-process-execFile-promisified-abortController.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-execFile-promisified-abortController.js)
 - [parallel/test-child-process-execfile.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-execfile.js)

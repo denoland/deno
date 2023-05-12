@@ -366,7 +366,6 @@
       "test-http-outgoing-message-inheritance.js",
       "test-http-outgoing-renderHeaders.js",
       "test-http-outgoing-settimeout.js",
-      "test-module-run-main.js",
       "test-net-access-byteswritten.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
