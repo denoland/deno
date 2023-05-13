@@ -3239,10 +3239,7 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   TS_SERVER_INIT.call_once(move || {
     // Using same default as VSCode:
     // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-    deno_core::v8_set_flags(vec![
-      "required-arg-that-is-ignored".to_string(),
-      "--max-old-space-size=3072".to_string(),
-    ]);
+    deno_core::v8::V8::set_flags_from_string("--max-old-space-size=3072");
   });
   JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance)],
