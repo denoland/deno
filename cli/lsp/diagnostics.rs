@@ -50,7 +50,6 @@ pub type DiagnosticRecord =
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
-type TsDiagnosticsMap = HashMap<String, Vec<crate::tsc::Diagnostic>>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -539,10 +538,9 @@ async fn generate_ts_diagnostics(
   let (enabled_specifiers, disabled_specifiers) = specifiers
     .into_iter()
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
-  let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
-    let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
+  let ts_diagnostics_map = if !enabled_specifiers.is_empty() {
     ts_server
-      .request_with_cancellation(snapshot.clone(), req, token)
+      .get_diagnostics(snapshot.clone(), enabled_specifiers, token)
       .await?
   } else {
     Default::default()
