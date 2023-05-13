@@ -1275,28 +1275,34 @@ impl StorageKeyResolver {
   }
 }
 
-fn glob_and_append(
-  paths: &mut Vec<PathBuf>,
-  pattern: &str,
-) -> Result<(), AnyError> {
-  let globbed_paths = glob::glob_with(
-    pattern,
-    // Matches what `deno_task_shell` does
-    glob::MatchOptions {
-      // false because it should work the same way on case insensitive file systems
-      case_sensitive: false,
-      // true because it copies what sh does
-      require_literal_separator: true,
-      // true because it copies with sh does—these files are considered "hidden"
-      require_literal_leading_dot: true,
-    },
-  )?;
+fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
+  let mut new_paths = vec![];
+  for path in paths {
+    let path_str = path.to_string_lossy();
+    if path_str.contains('*') || path_str.contains('?') {
+      let globbed_paths = glob::glob_with(
+        &path_str,
+        // Matches what `deno_task_shell` does
+        glob::MatchOptions {
+          // false because it should work the same way on case insensitive file systems
+          case_sensitive: false,
+          // true because it copies what sh does
+          require_literal_separator: true,
+          // true because it copies with sh does—these files are considered "hidden"
+          require_literal_leading_dot: true,
+        },
+      )?;
 
-  for globbed_path_result in globbed_paths {
-    paths.push(globbed_path_result?);
+      for globbed_path_result in globbed_paths {
+        new_paths.push(globbed_path_result?);
+      }
+    } else {
+      // TODO(bartlomieju): handle brackets
+      new_paths.push(path.clone());
+    }
   }
 
-  Ok(())
+  Ok(new_paths)
 }
 
 /// Collect included and ignored files. CLI flags take precedence
@@ -1318,31 +1324,11 @@ fn resolve_files(
 
   // Now expand globs if there are any
   if !result.include.is_empty() {
-    let mut new_include = vec![];
-    for include in &result.include {
-      let include_str = include.to_string_lossy();
-      if include_str.contains('*') || include_str.contains('?') {
-        glob_and_append(&mut new_include, &include_str)?;
-      } else {
-        // TODO(bartlomieju): handle brackets
-        new_include.push(include.clone());
-      }
-    }
-    result.include = new_include;
+    result.include = expand_globs(&result.include)?;
   }
 
   if !result.exclude.is_empty() {
-    let mut new_exclude = vec![];
-    for exclude in &result.exclude {
-      let exclude_str = exclude.to_string_lossy();
-      if exclude_str.contains('*') || exclude_str.contains('?') {
-        glob_and_append(&mut new_exclude, &exclude_str)?;
-      } else {
-        // TODO(bartlomieju): handle brackets
-        new_exclude.push(exclude.clone());
-      }
-    }
-    result.exclude = new_exclude;
+    result.exclude = expand_globs(&result.exclude)?;
   }
 
   eprintln!("resolved files {:#?}", result);
