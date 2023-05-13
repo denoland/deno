@@ -281,7 +281,13 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
-    init_v8_flags(&flags.v8_flags, get_v8_flags_from_env());
+    let default_v8_flags = match flags.subcommand {
+      // Using same default as VSCode:
+      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+      DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+      _ => vec![],
+    };
+    init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
 
     util::logger::init(flags.log_level);
 
