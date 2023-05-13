@@ -96,13 +96,6 @@ pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
-    static TS_SERVER_INIT: std::sync::Once = std::sync::Once::new();
-    TS_SERVER_INIT.call_once(move || {
-      // Using same default as VSCode:
-      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-      deno_core::v8::V8::set_flags_from_string("--max-old-space-size=3072");
-    });
-
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
       let mut ts_runtime = js_runtime(performance);
