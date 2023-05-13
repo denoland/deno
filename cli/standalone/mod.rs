@@ -430,7 +430,7 @@ pub async fn run(
     },
   );
 
-  v8_set_flags(construct_v8_flags(&metadata.v8_flags, vec![]));
+  v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
 
   let mut worker = worker_factory
     .create_main_worker(main_module.clone(), permissions)

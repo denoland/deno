@@ -17,7 +17,7 @@ const Runners = (() => {
 })();
 // bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
-  "25-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  "26-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -476,7 +476,7 @@ const ci = {
               "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "25-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              "26-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
           },
         },
         {
