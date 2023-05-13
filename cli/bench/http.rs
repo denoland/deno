@@ -99,6 +99,7 @@ pub fn benchmark(
             "run",
             "--allow-all",
             "--unstable",
+            "--enable-testing-features-do-not-use",
             path,
             &server_addr(port),
           ],

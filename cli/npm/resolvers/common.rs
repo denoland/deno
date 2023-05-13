@@ -12,6 +12,7 @@ use deno_core::futures;
 use deno_core::url::Url;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
@@ -47,7 +48,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -90,7 +91,8 @@ pub async fn cache_packages(
 }
 
 pub fn ensure_registry_read_permission(
-  permissions: &mut dyn NodePermissions,
+  fs: &Arc<dyn FileSystem>,
+  permissions: &dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
 ) -> Result<(), AnyError> {
@@ -101,8 +103,8 @@ pub fn ensure_registry_read_permission(
       .all(|c| !matches!(c, std::path::Component::ParentDir))
   {
     // todo(dsherret): cache this?
-    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
-      match std::fs::canonicalize(path) {
+    if let Ok(registry_path) = fs.realpath_sync(registry_path) {
+      match fs.realpath_sync(path) {
         Ok(path) if path.starts_with(registry_path) => {
           return Ok(());
         }

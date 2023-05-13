@@ -378,6 +378,12 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_preload_limit(&mut self, arg: usize) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("documentPreloadLimit".to_string(), arg.into());
+    self
+  }
+
   pub fn set_tls_certificate(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert(

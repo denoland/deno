@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -19,7 +20,6 @@ use deno_semver::Version;
 use once_cell::sync::Lazy;
 
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
 use crate::http_util::HttpClient;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::hard_link_dir_recursive;
@@ -119,20 +119,6 @@ pub struct ReadonlyNpmCache {
   root_dir_url: Url,
 }
 
-// todo(dsherret): implementing Default for this is error prone because someone
-// might accidentally use the default implementation instead of getting the
-// correct location of the deno dir, which might be provided via a CLI argument.
-// That said, the rest of the LSP code does this at the moment and so this code
-// copies that.
-impl Default for ReadonlyNpmCache {
-  fn default() -> Self {
-    // This only gets used when creating the tsc runtime and for testing, and so
-    // it shouldn't ever actually access the DenoDir, so it doesn't support a
-    // custom root.
-    Self::from_deno_dir(&DenoDir::new(None).unwrap())
-  }
-}
-
 impl ReadonlyNpmCache {
   pub fn new(root_dir: PathBuf) -> Self {
     fn try_get_canonicalized_root_dir(
@@ -153,10 +139,6 @@ impl ReadonlyNpmCache {
       root_dir,
       root_dir_url,
     }
-  }
-
-  pub fn from_deno_dir(dir: &DenoDir) -> Self {
-    Self::new(dir.npm_folder_path())
   }
 
   pub fn root_dir_url(&self) -> &Url {
@@ -299,21 +281,21 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
   /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<NpmPackageNv>>,
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(
-    dir: &DenoDir,
+  pub fn new(
+    cache_dir_path: PathBuf,
     cache_setting: CacheSetting,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {
-      readonly: ReadonlyNpmCache::from_deno_dir(dir),
+      readonly: ReadonlyNpmCache::new(cache_dir_path),
       cache_setting,
       http_client,
       progress_bar,

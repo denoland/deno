@@ -10,7 +10,7 @@ use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_semver::npm::NpmPackageReq;
 
-use crate::args::package_json::PackageJsonDeps;
+use crate::args::PackageJsonDepsProvider;
 use crate::util::sync::AtomicFlag;
 
 use super::CliNpmRegistryApi;
@@ -18,23 +18,13 @@ use super::NpmResolution;
 
 #[derive(Debug)]
 struct PackageJsonDepsInstallerInner {
+  deps_provider: Arc<PackageJsonDepsProvider>,
   has_installed_flag: AtomicFlag,
   npm_registry_api: Arc<CliNpmRegistryApi>,
   npm_resolution: Arc<NpmResolution>,
-  package_deps: PackageJsonDeps,
 }
 
 impl PackageJsonDepsInstallerInner {
-  pub fn reqs(&self) -> Vec<&NpmPackageReq> {
-    let mut package_reqs = self
-      .package_deps
-      .values()
-      .filter_map(|r| r.as_ref().ok())
-      .collect::<Vec<_>>();
-    package_reqs.sort(); // deterministic resolution
-    package_reqs
-  }
-
   pub fn reqs_with_info_futures(
     &self,
   ) -> FuturesOrdered<
@@ -45,7 +35,7 @@ impl PackageJsonDepsInstallerInner {
       >,
     >,
   > {
-    let package_reqs = self.reqs();
+    let package_reqs = self.deps_provider.reqs();
 
     FuturesOrdered::from_iter(package_reqs.into_iter().map(|req| {
       let api = self.npm_registry_api.clone();
@@ -63,20 +53,16 @@ pub struct PackageJsonDepsInstaller(Option<PackageJsonDepsInstallerInner>);
 
 impl PackageJsonDepsInstaller {
   pub fn new(
+    deps_provider: Arc<PackageJsonDepsProvider>,
     npm_registry_api: Arc<CliNpmRegistryApi>,
     npm_resolution: Arc<NpmResolution>,
-    deps: Option<PackageJsonDeps>,
   ) -> Self {
-    Self(deps.map(|package_deps| PackageJsonDepsInstallerInner {
+    Self(Some(PackageJsonDepsInstallerInner {
+      deps_provider,
       has_installed_flag: Default::default(),
       npm_registry_api,
       npm_resolution,
-      package_deps,
     }))
-  }
-
-  pub fn package_deps(&self) -> Option<&PackageJsonDeps> {
-    self.0.as_ref().map(|inner| &inner.package_deps)
   }
 
   /// Installs the top level dependencies in the package.json file

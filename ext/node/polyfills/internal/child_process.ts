@@ -34,7 +34,7 @@ import {
   ArrayPrototypeSlice,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   StringPrototypeToUpperCase,
 } from "ext:deno_node/internal/primordials.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
@@ -429,7 +429,7 @@ function copyProcessEnvToEnv(
   if (
     Deno.env.get(name) &&
     (!optionEnv ||
-      !ObjectPrototypeHasOwnProperty(optionEnv, name))
+      !ObjectHasOwn(optionEnv, name))
   ) {
     env[name] = Deno.env.get(name);
   }

@@ -13,6 +13,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
@@ -32,6 +33,7 @@ pub use config_file::TsTypeLib;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
+pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -52,6 +54,7 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
 use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -61,6 +64,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use thiserror::Error;
 
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
@@ -401,13 +405,62 @@ fn discover_package_json(
   Ok(None)
 }
 
+struct CliRootCertStoreProvider {
+  cell: OnceCell<RootCertStore>,
+  maybe_root_path: Option<PathBuf>,
+  maybe_ca_stores: Option<Vec<String>>,
+  maybe_ca_data: Option<CaData>,
+}
+
+impl CliRootCertStoreProvider {
+  pub fn new(
+    maybe_root_path: Option<PathBuf>,
+    maybe_ca_stores: Option<Vec<String>>,
+    maybe_ca_data: Option<CaData>,
+  ) -> Self {
+    Self {
+      cell: Default::default(),
+      maybe_root_path,
+      maybe_ca_stores,
+      maybe_ca_data,
+    }
+  }
+}
+
+impl RootCertStoreProvider for CliRootCertStoreProvider {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+    self
+      .cell
+      .get_or_try_init(|| {
+        get_root_cert_store(
+          self.maybe_root_path.clone(),
+          self.maybe_ca_stores.clone(),
+          self.maybe_ca_data.clone(),
+        )
+      })
+      .map_err(|e| e.into())
+  }
+}
+
+#[derive(Error, Debug, Clone)]
+pub enum RootCertStoreLoadError {
+  #[error(
+    "Unknown certificate store \"{0}\" specified (allowed: \"system,mozilla\")"
+  )]
+  UnknownStore(String),
+  #[error("Unable to add pem file to certificate store: {0}")]
+  FailedAddPemFile(String),
+  #[error("Failed opening CA file: {0}")]
+  CaFileOpenError(String),
+}
+
 /// Create and populate a root cert store based on the passed options and
 /// environment.
 pub fn get_root_cert_store(
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
   maybe_ca_data: Option<CaData>,
-) -> Result<RootCertStore, AnyError> {
+) -> Result<RootCertStore, RootCertStoreLoadError> {
   let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
     .or_else(|| {
@@ -444,7 +497,7 @@ pub fn get_root_cert_store(
         }
       }
       _ => {
-        return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
+        return Err(RootCertStoreLoadError::UnknownStore(store.clone()));
       }
     }
   }
@@ -459,7 +512,9 @@ pub fn get_root_cert_store(
         } else {
           PathBuf::from(ca_file)
         };
-        let certfile = std::fs::File::open(ca_file)?;
+        let certfile = std::fs::File::open(ca_file).map_err(|err| {
+          RootCertStoreLoadError::CaFileOpenError(err.to_string())
+        })?;
         let mut reader = BufReader::new(certfile);
         rustls_pemfile::certs(&mut reader)
       }
@@ -474,10 +529,7 @@ pub fn get_root_cert_store(
         root_cert_store.add_parsable_certificates(&certs);
       }
       Err(e) => {
-        return Err(anyhow!(
-          "Unable to add pem file to certificate store: {}",
-          e
-        ));
+        return Err(RootCertStoreLoadError::FailedAddPemFile(e.to_string()));
       }
     }
   }
@@ -505,7 +557,7 @@ struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
 
-/// Holds the resolved options of many sources used by sub commands
+/// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
@@ -753,7 +805,7 @@ impl CliOptions {
       return Ok(Some(state.snapshot.clone().into_valid()?));
     }
 
-    if let Some(lockfile) = self.maybe_lock_file() {
+    if let Some(lockfile) = self.maybe_lockfile() {
       if !lockfile.lock().overwrite {
         return Ok(Some(
           snapshot_from_lockfile(lockfile.clone(), api)
@@ -799,12 +851,14 @@ impl CliOptions {
       .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
-  pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
-    get_root_cert_store(
+  pub fn resolve_root_cert_store_provider(
+    &self,
+  ) -> Arc<dyn RootCertStoreProvider> {
+    Arc::new(CliRootCertStoreProvider::new(
       None,
       self.flags.ca_stores.clone(),
       self.flags.ca_data.clone(),
-    )
+    ))
   }
 
   pub fn resolve_ts_config_for_emit(
@@ -817,30 +871,6 @@ impl CliOptions {
     )
   }
 
-  /// Resolves the storage key to use based on the current flags, config, or main module.
-  pub fn resolve_storage_key(
-    &self,
-    main_module: &ModuleSpecifier,
-  ) -> Option<String> {
-    if let Some(location) = &self.flags.location {
-      // if a location is set, then the ascii serialization of the location is
-      // used, unless the origin is opaque, and then no storage origin is set, as
-      // we can't expect the origin to be reproducible
-      let storage_origin = location.origin();
-      if storage_origin.is_tuple() {
-        Some(storage_origin.ascii_serialization())
-      } else {
-        None
-      }
-    } else if let Some(config_file) = &self.maybe_config_file {
-      // otherwise we will use the path to the config file
-      Some(config_file.specifier.to_string())
-    } else {
-      // otherwise we will use the path to the main module
-      Some(main_module.to_string())
-    }
-  }
-
   pub fn resolve_inspector_server(&self) -> Option<InspectorServer> {
     let maybe_inspect_host = self
       .flags
@@ -851,7 +881,7 @@ impl CliOptions {
       .map(|host| InspectorServer::new(host, version::get_user_agent()))
   }
 
-  pub fn maybe_lock_file(&self) -> Option<Arc<Mutex<Lockfile>>> {
+  pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
     self.maybe_lockfile.clone()
   }
 
@@ -1089,20 +1119,6 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
-  pub fn trace_ops(&self) -> bool {
-    match self.sub_command() {
-      DenoSubcommand::Test(flags) => flags.trace_ops,
-      _ => false,
-    }
-  }
-
-  pub fn shuffle_tests(&self) -> Option<u64> {
-    match self.sub_command() {
-      DenoSubcommand::Test(flags) => flags.shuffle,
-      _ => None,
-    }
-  }
-
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
   }
@@ -1216,6 +1232,49 @@ fn resolve_import_map_specifier(
   Ok(None)
 }
 
+pub struct StorageKeyResolver(Option<Option<String>>);
+
+impl StorageKeyResolver {
+  pub fn from_options(options: &CliOptions) -> Self {
+    Self(if let Some(location) = &options.flags.location {
+      // if a location is set, then the ascii serialization of the location is
+      // used, unless the origin is opaque, and then no storage origin is set, as
+      // we can't expect the origin to be reproducible
+      let storage_origin = location.origin();
+      if storage_origin.is_tuple() {
+        Some(Some(storage_origin.ascii_serialization()))
+      } else {
+        Some(None)
+      }
+    } else {
+      // otherwise we will use the path to the config file or None to
+      // fall back to using the main module's path
+      options
+        .maybe_config_file
+        .as_ref()
+        .map(|config_file| Some(config_file.specifier.to_string()))
+    })
+  }
+
+  /// Creates a storage key resolver that will always resolve to being empty.
+  pub fn empty() -> Self {
+    Self(Some(None))
+  }
+
+  /// Resolves the storage key to use based on the current flags, config, or main module.
+  pub fn resolve_storage_key(
+    &self,
+    main_module: &ModuleSpecifier,
+  ) -> Option<String> {
+    // use the stored value or fall back to using the path of the main module.
+    if let Some(maybe_value) = &self.0 {
+      maybe_value.clone()
+    } else {
+      Some(main_module.to_string())
+    }
+  }
+}
+
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
@@ -1243,6 +1302,16 @@ pub fn resolve_no_prompt(flags: &Flags) -> bool {
 fn has_flag_env_var(name: &str) -> bool {
   let value = env::var(name);
   matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
+}
+
+pub fn npm_pkg_req_ref_to_binary_command(
+  req_ref: &NpmPackageReqReference,
+) -> String {
+  let binary_name = req_ref
+    .sub_path
+    .as_deref()
+    .unwrap_or(req_ref.req.name.as_str());
+  binary_name.to_string()
 }
 
 #[cfg(test)]
@@ -1380,5 +1449,26 @@ mod test {
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
+  }
+
+  #[test]
+  fn storage_key_resolver_test() {
+    let resolver = StorageKeyResolver(None);
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    assert_eq!(
+      resolver.resolve_storage_key(&specifier),
+      Some(specifier.to_string())
+    );
+    let resolver = StorageKeyResolver(Some(None));
+    assert_eq!(resolver.resolve_storage_key(&specifier), None);
+    let resolver = StorageKeyResolver(Some(Some("value".to_string())));
+    assert_eq!(
+      resolver.resolve_storage_key(&specifier),
+      Some("value".to_string())
+    );
+
+    // test empty
+    let resolver = StorageKeyResolver::empty();
+    assert_eq!(resolver.resolve_storage_key(&specifier), None);
   }
 }

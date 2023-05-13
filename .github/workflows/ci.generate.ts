@@ -17,7 +17,7 @@ const Runners = (() => {
 })();
 // bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
-  "21-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  "26-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -476,7 +476,7 @@ const ci = {
               "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "21-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              "26-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
           },
         },
         {
@@ -641,6 +641,15 @@ const ci = {
           },
           run:
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+        },
+        {
+          name: "Autobahn testsuite",
+          if: [
+            "matrix.job == 'test' && matrix.profile == 'release' &&",
+            "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
+          ].join("\n"),
+          run:
+            "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test debug",

@@ -73,6 +73,7 @@ pub struct OpDecl {
   pub is_unstable: bool,
   pub is_v8: bool,
   pub force_registration: bool,
+  pub arg_count: u8,
   pub fast_fn: Option<FastFunction>,
 }
 
@@ -469,6 +470,16 @@ impl Extension {
 
   pub fn disable(self) -> Self {
     self.enabled(false)
+  }
+
+  pub(crate) fn find_esm(
+    &self,
+    specifier: &str,
+  ) -> Option<&ExtensionFileSource> {
+    self
+      .get_esm_sources()?
+      .iter()
+      .find(|s| s.specifier == specifier)
   }
 }
 

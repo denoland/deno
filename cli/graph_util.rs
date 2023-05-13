@@ -314,23 +314,18 @@ impl ModuleGraphBuilder {
 
   /// Creates the default loader used for creating a graph.
   pub fn create_graph_loader(&self) -> cache::FetchCacher {
-    self.create_fetch_cacher(
-      PermissionsContainer::allow_all(),
-      PermissionsContainer::allow_all(),
-    )
+    self.create_fetch_cacher(PermissionsContainer::allow_all())
   }
 
   pub fn create_fetch_cacher(
     &self,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
-      root_permissions,
-      dynamic_permissions,
+      permissions,
       self.options.node_modules_dir_specifier(),
     )
   }
@@ -350,10 +345,10 @@ pub fn error_for_any_npm_specifier(
   for module in graph.modules() {
     match module {
       Module::Npm(module) => {
-        bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
+        bail!("npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
       Module::Node(module) => {
-        bail!("Node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
+        bail!("Node specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
       }
       Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
     }

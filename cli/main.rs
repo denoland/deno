@@ -6,6 +6,7 @@ mod cache;
 mod deno_std;
 mod emit;
 mod errors;
+mod factory;
 mod file_fetcher;
 mod graph_util;
 mod http_util;
@@ -16,20 +17,25 @@ mod napi;
 mod node;
 mod npm;
 mod ops;
-mod proc_state;
 mod resolver;
 mod standalone;
 mod tools;
 mod tsc;
 mod util;
 mod version;
+mod watcher;
 mod worker;
+
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::proc_state::ProcState;
-use crate::resolver::CliGraphResolver;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -41,6 +47,7 @@ use deno_core::error::JsError;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::run_local;
+use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
 use std::path::PathBuf;
@@ -70,22 +77,26 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }
     DenoSubcommand::Cache(cache_flags) => {
-      let ps = ProcState::from_flags(flags).await?;
-      ps.module_load_preparer
+      let factory = CliFactory::from_flags(flags).await?;
+      let module_load_preparer = factory.module_load_preparer().await?;
+      let emitter = factory.emitter()?;
+      let graph_container = factory.graph_container();
+      module_load_preparer
         .load_and_type_check_files(&cache_flags.files)
         .await?;
-      ps.emitter.cache_module_emits(&ps.graph_container.graph())?;
+      emitter.cache_module_emits(&graph_container.graph())?;
       Ok(0)
     }
     DenoSubcommand::Check(check_flags) => {
-      let ps = ProcState::from_flags(flags).await?;
-      ps.module_load_preparer
+      let factory = CliFactory::from_flags(flags).await?;
+      let module_load_preparer = factory.module_load_preparer().await?;
+      module_load_preparer
         .load_and_type_check_files(&check_flags.files)
         .await?;
       Ok(0)
     }
     DenoSubcommand::Compile(compile_flags) => {
-      tools::standalone::compile(flags, compile_flags).await?;
+      tools::compile::compile(flags, compile_flags).await?;
       Ok(0)
     }
     DenoSubcommand::Coverage(coverage_flags) => {
@@ -270,7 +281,13 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
-    init_v8_flags(&flags.v8_flags, get_v8_flags_from_env());
+    let default_v8_flags = match flags.subcommand {
+      // Using same default as VSCode:
+      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+      DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+      _ => vec![],
+    };
+    init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
 
     util::logger::init(flags.log_level);
 

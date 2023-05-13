@@ -2,13 +2,14 @@
 
 use std::env;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
-use deno_runtime::deno_fs::StdFs;
+use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
 use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
@@ -309,9 +310,11 @@ mod ts {
 // deps = [runtime]
 deno_core::extension!(
   cli,
+  esm_entry_point = "ext:cli/99_main.js",
   esm = [
     dir "js",
-    "40_testing.js"
+    "40_testing.js",
+    "99_main.js"
   ],
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.esm(vec![ExtensionFileSource {
@@ -326,6 +329,7 @@ deno_core::extension!(
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
+  let fs = Arc::new(deno_fs::RealFs);
   let extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops(),
     deno_console::deno_console::init_ops(),
@@ -358,10 +362,10 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
       false, // No --unstable.
     ),
     deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-    deno_http::deno_http::init_ops(),
+    deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(false, StdFs),
-    deno_node::deno_node::init_ops::<deno_runtime::RuntimeNodeEnv>(None),
+    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
+    deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 
@@ -463,7 +467,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.0.3"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.0.4"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

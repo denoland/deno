@@ -28,8 +28,8 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
   ArrayPrototypeFilter,
-  ObjectPrototypeHasOwnProperty,
   ObjectEntries,
+  ObjectHasOwn,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeRegExp,
@@ -79,7 +79,7 @@ function fillHeaders(headers, object) {
     }
   } else {
     for (const key in object) {
-      if (!ObjectPrototypeHasOwnProperty(object, key)) {
+      if (!ObjectHasOwn(object, key)) {
         continue;
       }
       appendHeader(headers, key, object[key]);
@@ -251,10 +251,7 @@ class Headers {
   constructor(init = undefined) {
     const prefix = "Failed to construct 'Headers'";
     if (init !== undefined) {
-      init = webidl.converters["HeadersInit"](init, {
-        prefix,
-        context: "Argument 1",
-      });
+      init = webidl.converters["HeadersInit"](init, prefix, "Argument 1");
     }
 
     this[webidl.brand] = webidl.brand;
@@ -272,14 +269,8 @@ class Headers {
     webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'append' on 'Headers'";
     webidl.requiredArguments(arguments.length, 2, prefix);
-    name = webidl.converters["ByteString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
-    value = webidl.converters["ByteString"](value, {
-      prefix,
-      context: "Argument 2",
-    });
+    name = webidl.converters["ByteString"](name, prefix, "Argument 1");
+    value = webidl.converters["ByteString"](value, prefix, "Argument 2");
     appendHeader(this, name, value);
   }
 
@@ -289,10 +280,7 @@ class Headers {
   delete(name) {
     const prefix = "Failed to execute 'delete' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    name = webidl.converters["ByteString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
     if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
       throw new TypeError("Header name is not valid.");
@@ -317,10 +305,7 @@ class Headers {
   get(name) {
     const prefix = "Failed to execute 'get' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    name = webidl.converters["ByteString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
     if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
       throw new TypeError("Header name is not valid.");
@@ -336,10 +321,7 @@ class Headers {
   has(name) {
     const prefix = "Failed to execute 'has' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    name = webidl.converters["ByteString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
     if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
       throw new TypeError("Header name is not valid.");
@@ -363,14 +345,8 @@ class Headers {
     webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'set' on 'Headers'";
     webidl.requiredArguments(arguments.length, 2, prefix);
-    name = webidl.converters["ByteString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
-    value = webidl.converters["ByteString"](value, {
-      prefix,
-      context: "Argument 2",
-    });
+    name = webidl.converters["ByteString"](name, prefix, "Argument 1");
+    value = webidl.converters["ByteString"](value, prefix, "Argument 2");
 
     value = normalizeHeaderValue(value);
 
@@ -420,19 +396,29 @@ webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 webidl.configurePrototype(Headers);
 const HeadersPrototype = Headers.prototype;
 
-webidl.converters["HeadersInit"] = (V, opts) => {
+webidl.converters["HeadersInit"] = (V, prefix, context, opts) => {
   // Union for (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
   if (webidl.type(V) === "Object" && V !== null) {
     if (V[SymbolIterator] !== undefined) {
-      return webidl.converters["sequence<sequence<ByteString>>"](V, opts);
+      return webidl.converters["sequence<sequence<ByteString>>"](
+        V,
+        prefix,
+        context,
+        opts,
+      );
     }
-    return webidl.converters["record<ByteString, ByteString>"](V, opts);
+    return webidl.converters["record<ByteString, ByteString>"](
+      V,
+      prefix,
+      context,
+      opts,
+    );
   }
   throw webidl.makeException(
     TypeError,
     "The provided value is not of type '(sequence<sequence<ByteString>> or record<ByteString, ByteString>)'",
-    opts.prefix,
-    opts.context,
+    prefix,
+    context,
   );
 };
 webidl.converters["Headers"] = webidl.createInterfaceConverter(

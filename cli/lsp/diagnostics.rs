@@ -50,7 +50,6 @@ pub type DiagnosticRecord =
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
-type TsDiagnosticsMap = HashMap<String, Vec<crate::tsc::Diagnostic>>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -539,10 +538,9 @@ async fn generate_ts_diagnostics(
   let (enabled_specifiers, disabled_specifiers) = specifiers
     .into_iter()
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
-  let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
-    let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
+  let ts_diagnostics_map = if !enabled_specifiers.is_empty() {
     ts_server
-      .request_with_cancellation(snapshot.clone(), req, token)
+      .get_diagnostics(snapshot.clone(), enabled_specifiers, token)
       .await?
   } else {
     Default::default()
@@ -857,24 +855,24 @@ impl DenoDiagnostic {
 }
 
 fn diagnose_resolution(
-  diagnostics: &mut Vec<lsp::Diagnostic>,
+  lsp_diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
+  ranges: Vec<lsp::Range>,
 ) {
+  let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
       let specifier = &resolved.specifier;
-      let range = documents::to_lsp_range(&resolved.range);
       // If the module is a remote module and has a `X-Deno-Warning` header, we
       // want a warning diagnostic with that message.
       if let Some(metadata) = snapshot.cache_metadata.get(specifier) {
         if let Some(message) =
           metadata.get(&cache::MetadataKey::Warning).cloned()
         {
-          diagnostics
-            .push(DenoDiagnostic::DenoWarn(message).to_lsp_diagnostic(&range));
+          diagnostics.push(DenoDiagnostic::DenoWarn(message));
         }
       }
       if let Some(doc) = snapshot.documents.get(specifier) {
@@ -883,13 +881,10 @@ fn diagnose_resolution(
         // diagnostic that indicates this. This then allows us to issue a code
         // action to replace the specifier with the final redirected one.
         if doc_specifier != specifier {
-          diagnostics.push(
-            DenoDiagnostic::Redirect {
-              from: specifier.clone(),
-              to: doc_specifier.clone(),
-            }
-            .to_lsp_diagnostic(&range),
-          );
+          diagnostics.push(DenoDiagnostic::Redirect {
+            from: specifier.clone(),
+            to: doc_specifier.clone(),
+          });
         }
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
@@ -900,13 +895,10 @@ fn diagnose_resolution(
             // not provide a potentially incorrect diagnostic.
             None if is_dynamic => (),
             // The module has an incorrect assertion type, diagnostic
-            Some(assert_type) => diagnostics.push(
-              DenoDiagnostic::InvalidAssertType(assert_type.to_string())
-                .to_lsp_diagnostic(&range),
-            ),
+            Some(assert_type) => diagnostics
+              .push(DenoDiagnostic::InvalidAssertType(assert_type.to_string())),
             // The module is missing an assertion type, diagnostic
-            None => diagnostics
-              .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
+            None => diagnostics.push(DenoDiagnostic::NoAssertType),
           }
         }
       } else if let Ok(pkg_ref) =
@@ -918,19 +910,15 @@ fn diagnose_resolution(
             .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
             .is_err()
           {
-            diagnostics.push(
-              DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
-                .to_lsp_diagnostic(&range),
-            );
+            diagnostics
+              .push(DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone()));
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       {
         if deno_node::resolve_builtin_node_module(module_name).is_err() {
-          diagnostics.push(
-            DenoDiagnostic::InvalidNodeSpecifier(specifier.clone())
-              .to_lsp_diagnostic(&range),
-          );
+          diagnostics
+            .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_ref =
@@ -939,13 +927,10 @@ fn diagnose_resolution(
             .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
             .is_err()
           {
-            diagnostics.push(
-              DenoDiagnostic::NoCacheNpm(
-                types_node_ref,
-                ModuleSpecifier::parse("npm:@types/node").unwrap(),
-              )
-              .to_lsp_diagnostic(&range),
-            );
+            diagnostics.push(DenoDiagnostic::NoCacheNpm(
+              types_node_ref,
+              ModuleSpecifier::parse("npm:@types/node").unwrap(),
+            ));
           }
         }
       } else {
@@ -958,16 +943,20 @@ fn diagnose_resolution(
           "blob" => DenoDiagnostic::NoCacheBlob,
           _ => DenoDiagnostic::NoCache(specifier.clone()),
         };
-        diagnostics.push(deno_diagnostic.to_lsp_diagnostic(&range));
+        diagnostics.push(deno_diagnostic);
       }
     }
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
-    Resolution::Err(err) => diagnostics.push(
-      DenoDiagnostic::ResolutionError(*err.clone())
-        .to_lsp_diagnostic(&documents::to_lsp_range(err.range())),
-    ),
+    Resolution::Err(err) => {
+      diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone()))
+    }
     _ => (),
+  }
+  for range in ranges {
+    for diagnostic in &diagnostics {
+      lsp_diagnostics.push(diagnostic.to_lsp_diagnostic(&range));
+    }
   }
 }
 
@@ -1005,17 +994,43 @@ fn diagnose_dependency(
   diagnose_resolution(
     diagnostics,
     snapshot,
-    &dependency.maybe_code,
+    if dependency.maybe_code.is_none() {
+      &dependency.maybe_type
+    } else {
+      &dependency.maybe_code
+    },
     dependency.is_dynamic,
     dependency.maybe_assert_type.as_deref(),
+    dependency
+      .imports
+      .iter()
+      .map(|i| documents::to_lsp_range(&i.range))
+      .collect(),
   );
-  diagnose_resolution(
-    diagnostics,
-    snapshot,
-    &dependency.maybe_type,
-    dependency.is_dynamic,
-    dependency.maybe_assert_type.as_deref(),
-  );
+  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
+  // a different specifier and therefore needs a separate call to
+  // `diagnose_resolution()`. It would be much cleaner if that were modelled as
+  // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
+  if !dependency.maybe_type.is_none()
+    && !dependency
+      .imports
+      .iter()
+      .any(|i| dependency.maybe_type.includes(&i.range.start).is_some())
+  {
+    let range = match &dependency.maybe_type {
+      Resolution::Ok(resolved) => documents::to_lsp_range(&resolved.range),
+      Resolution::Err(error) => documents::to_lsp_range(error.range()),
+      Resolution::None => unreachable!(),
+    };
+    diagnose_resolution(
+      diagnostics,
+      snapshot,
+      &dependency.maybe_type,
+      dependency.is_dynamic,
+      dependency.maybe_assert_type.as_deref(),
+      vec![range],
+    );
+  }
 }
 
 /// Generate diagnostics that come from Deno module resolution logic (like
@@ -1079,7 +1094,7 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location, Default::default());
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -1374,6 +1389,83 @@ let c: number = "a";
           }
         }
       })
+    );
+  }
+
+  #[tokio::test]
+  async fn duplicate_diagnostics_for_duplicate_imports() {
+    let temp_dir = TempDir::new();
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[(
+        "file:///a.ts",
+        r#"
+        // @deno-types="bad.d.ts"
+        import "bad.js";
+        import "bad.js";
+        "#,
+        1,
+        LanguageId::TypeScript,
+      )],
+      None,
+    );
+    let config = mock_config();
+    let token = CancellationToken::new();
+    let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
+    assert_eq!(actual.len(), 1);
+    let (_, _, diagnostics) = actual.first().unwrap();
+    assert_eq!(
+      json!(diagnostics),
+      json!([
+        {
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 15
+            },
+            "end": {
+              "line": 2,
+              "character": 23
+            }
+          },
+          "severity": 1,
+          "code": "import-prefix-missing",
+          "source": "deno",
+          "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+        },
+        {
+          "range": {
+            "start": {
+              "line": 3,
+              "character": 15
+            },
+            "end": {
+              "line": 3,
+              "character": 23
+            }
+          },
+          "severity": 1,
+          "code": "import-prefix-missing",
+          "source": "deno",
+          "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+        },
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 23
+            },
+            "end": {
+              "line": 1,
+              "character": 33
+            }
+          },
+          "severity": 1,
+          "code": "import-prefix-missing",
+          "source": "deno",
+          "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
+        },
+      ])
     );
   }
 }
