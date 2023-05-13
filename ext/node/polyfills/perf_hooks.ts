@@ -22,6 +22,8 @@ const performance:
     timerify: any;
     // deno-lint-ignore no-explicit-any
     timeOrigin: any;
+    // deno-lint-ignore no-explicit-any
+    markResourceTiming: any;
   } = {
     clearMarks: (markName: string) => shimPerformance.clearMarks(markName),
     eventLoopUtilization: () =>
@@ -50,6 +52,8 @@ const performance:
     timerify: () => notImplemented("timerify from performance"),
     // deno-lint-ignore no-explicit-any
     timeOrigin: (shimPerformance as any).timeOrigin,
+    // deno-lint-ignore no-explicit-any
+    markResourceTiming: (shimPerformance as any).markResourceTiming,
     // @ts-ignore waiting on update in `deno`, but currently this is
     // a circular dependency
     toJSON: () => shimPerformance.toJSON(),

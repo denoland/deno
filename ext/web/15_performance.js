@@ -455,6 +455,10 @@ class Performance extends EventTarget {
     return entry;
   }
 
+  // TODO(bartlomieju): adding empty function for now as it blocks using
+  // "npm:undici" module
+  markResourceTiming() {}
+
   measure(
     measureName,
     startOrMeasureOptions = {},
