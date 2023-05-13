@@ -114,7 +114,7 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
         concat!(
           "Could not compile to file '{}' because the file already exists ",
           "and cannot be overwritten. Please delete the existing file or ",
-          "use the `--output <file-path` flag to provide an alternative name."
+          "use the `--output <file-path>` flag to provide an alternative name."
         ),
         output_path.display()
       );
