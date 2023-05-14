@@ -8,6 +8,7 @@ use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::task::spawn;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
@@ -240,7 +241,7 @@ impl LanguageServer {
           let cli_options = result.cli_options;
           let roots = result.roots;
           let open_docs = result.open_docs;
-          let handle = tokio::task::spawn_local(async move {
+          let handle = spawn(async move {
             create_graph_for_caching(cli_options, roots, open_docs).await
           });
           if let Err(err) = handle.await.unwrap() {
