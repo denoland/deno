@@ -549,7 +549,7 @@ const ci = {
           name: "node_compat/setup.ts --check",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --allow-write --allow-read ./tools/node_compat/setup.ts --check",
+            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
         },
         {
           name: "Build debug",
