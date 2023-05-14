@@ -84,6 +84,17 @@ itest!(check_no_error_truncation {
     exit_code: 1,
   });
 
+itest!(check_broadcast_channel_stable {
+  args: "check --quiet check/broadcast_channel.ts",
+  output: "check/broadcast_channel.ts.error.out",
+  exit_code: 1,
+});
+
+itest!(check_broadcast_channel_unstable {
+  args: "check --quiet --unstable check/broadcast_channel.ts",
+  exit_code: 0,
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();
