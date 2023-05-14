@@ -591,6 +591,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn_local(fut);
+    deno_core::task::spawn(fut);
   }
 }
