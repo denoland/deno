@@ -1280,8 +1280,12 @@ fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
   for path in paths {
     let path_str = path.to_string_lossy();
     if path_str.contains('*') || path_str.contains('?') {
+      // Escape brackets - we currently don't support them, because with introduction
+      // of glob expansion paths like "pages/[id].ts" would suddenly start giving
+      // wrong results. We might want to revisit that in the future.
+      let escaped_path_str = path_str.replace('[', "[[]").replace(']', "[]]");
       let globbed_paths = glob::glob_with(
-        &path_str,
+        &escaped_path_str,
         // Matches what `deno_task_shell` does
         glob::MatchOptions {
           // false because it should work the same way on case insensitive file systems
@@ -1297,7 +1301,6 @@ fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
         new_paths.push(globbed_path_result?);
       }
     } else {
-      // TODO(bartlomieju): handle brackets
       new_paths.push(path.clone());
     }
   }
