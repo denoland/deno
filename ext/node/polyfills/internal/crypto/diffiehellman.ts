@@ -171,7 +171,7 @@ export class DiffieHellman {
   getGenerator(): Buffer;
   getGenerator(encoding: BinaryToTextEncoding): string;
   getGenerator(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined) {
+    if (encoding !== undefined && encoding != 'buffer') {
       return this.#generator.toString(encoding);
     }
 
@@ -181,7 +181,7 @@ export class DiffieHellman {
   getPrime(): Buffer;
   getPrime(encoding: BinaryToTextEncoding): string;
   getPrime(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined) {
+    if (encoding !== undefined && encoding != 'buffer') {
       return this.#prime.toString(encoding);
     }
 
@@ -191,7 +191,7 @@ export class DiffieHellman {
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined) {
+    if (encoding !== undefined && encoding != 'buffer') {
       return this.#privateKey.toString(encoding);
     }
 
@@ -201,7 +201,7 @@ export class DiffieHellman {
   getPublicKey(): Buffer;
   getPublicKey(encoding: BinaryToTextEncoding): string;
   getPublicKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined) {
+    if (encoding !== undefined && encoding != 'buffer') {
       return this.#publicKey.toString(encoding);
     }
 
